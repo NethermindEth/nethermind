@@ -63,8 +63,7 @@ public class DebugModuleTests
     public async Task DebugGetRawHeader_WhenXdcHeader_ReturnsXdcShapedRlp()
     {
         XdcBlockHeader header = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
-        Block block = Build.A.Block.WithHeader(header).TestObject;
-        _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(block);
+        _blockFinder.FindHeader(new BlockParameter(0UL)).Returns(header);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
 

@@ -30,7 +30,7 @@ public class PbtOfflineSourceTests
         _directory = Directory.CreateTempSubdirectory("pbt-offline-").FullName;
         _database = new SnapshotableMemColumnsDb<FlatDbColumns>("offline");
         _codes = new MemDb();
-        _persistence = new PreimageRocksdbPersistence(_database, LimboLogs.Instance, FlatLayout.PreimageFlat);
+        _persistence = new PreimageRocksdbPersistence(_database, LimboLogs.Instance, FlatLayout.PreimageFlat, Flat.Persistence.TrieNodeLog.NullTrieNodeLog.Instance);
     }
 
     [TearDown]

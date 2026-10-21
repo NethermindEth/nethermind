@@ -31,6 +31,10 @@ public static class JsonRpcResponseWriter
         SkipValidation = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
+    private static readonly ArrayBufferWriter<byte> DetachedOutput = new(1);
+
+    [ThreadStatic] private static Utf8JsonWriter? _cachedWriter;
+    [ThreadStatic] private static JsonSerializerOptions? _cachedWriterOptions;
 
     /// <summary>Writes <paramref name="response"/> as a JSON-RPC response envelope.</summary>
     public static void Write(IBufferWriter<byte> writer, JsonRpcResponse response, JsonSerializerOptions options)
@@ -41,8 +45,35 @@ public static class JsonRpcResponseWriter
             return;
         }
 
-        using Utf8JsonWriter jsonWriter = new(writer, CreateWriterOptions(options));
-        response.WriteTo(jsonWriter, options);
+        Utf8JsonWriter jsonWriter = RentWriter(writer, options);
+        try
+        {
+            response.WriteTo(jsonWriter, options);
+            jsonWriter.Flush();
+        }
+        catch
+        {
+            jsonWriter.Dispose();
+            throw;
+        }
+
+        // Detach so the cached writer does not keep the transport buffer alive.
+        jsonWriter.Reset(DetachedOutput);
+        _cachedWriter = jsonWriter;
+        _cachedWriterOptions = options;
+    }
+
+    private static Utf8JsonWriter RentWriter(IBufferWriter<byte> output, JsonSerializerOptions options)
+    {
+        Utf8JsonWriter? cached = _cachedWriter;
+        if (cached is null || !ReferenceEquals(_cachedWriterOptions, options))
+        {
+            return new Utf8JsonWriter(output, CreateWriterOptions(options));
+        }
+
+        _cachedWriter = null;
+        cached.Reset(output);
+        return cached;
     }
 
     /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>

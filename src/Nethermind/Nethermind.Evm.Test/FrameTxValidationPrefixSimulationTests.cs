@@ -458,7 +458,20 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.Violated, Is.True);
     }
 
-    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, 0x4C is
+    [Test]
+    public void Simulate_PrefixUsesPay_RecordsViolationOnlyWhenEip5920Enabled([Values] bool enabled)
+    {
+        UseSpec(new Bogota { IsEip8141Enabled = true, IsEip5920Enabled = enabled });
+        byte[] deployed = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.PAY)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.ViolationReason, enabled ? Is.EqualTo("banned opcode PAY in validation prefix") : Is.Null);
+    }
+
+    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, SETCODEFROM is
     // undefined, so the prefix must fare exactly as with another undefined opcode (0xF6).
     [Test]
     public void Simulate_PrefixUsesSetCodeFrom_BannedOnlyUnderEip8298([Values] bool eip8298, [Values] bool inDeployFrame)
@@ -486,6 +499,42 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.TransactionExecuted, Is.EqualTo(undefinedResult.TransactionExecuted));
             Assert.That(result.ErrorDescription, Is.EqualTo(undefinedResult.ErrorDescription));
         }
+    }
+
+    // With EIP-8360 off, 0xF6 is undefined, so the prefix must fare exactly as with another undefined opcode (0x0C).
+    [Test]
+    public void Simulate_PrefixUsesTcreate_BannedOnlyUnderEip8360([Values] bool eip8360)
+    {
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip8360Enabled = eip8360 });
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = SimulateOpcodeBeforeApprove((byte)Instruction.TCREATE);
+
+        if (eip8360)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.ViolationReason, Is.EqualTo("banned opcode TCREATE in validation prefix"));
+                Assert.That(tracer.Payer, Is.Null);
+            }
+            return;
+        }
+
+        (TransactionResult undefinedResult, FrameTxValidationTracer undefinedTracer) = SimulateOpcodeBeforeApprove(0x0c);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.EqualTo(undefinedTracer.ViolationReason));
+            Assert.That(tracer.Payer, Is.EqualTo(undefinedTracer.Payer));
+            Assert.That(result.TransactionExecuted, Is.EqualTo(undefinedResult.TransactionExecuted));
+            Assert.That(result.ErrorDescription, Is.EqualTo(undefinedResult.ErrorDescription));
+        }
+    }
+
+    /// <summary>Runs <paramref name="opcode"/> on four zero operands in a self-verify frame that then approves.</summary>
+    private (TransactionResult, FrameTxValidationTracer) SimulateOpcodeBeforeApprove(byte opcode)
+    {
+        byte[] operands = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).Done;
+        DeployContract(Sender, [.. operands, opcode, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        return SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
     }
 
     /// <summary>Runs <paramref name="opcode"/> on <see cref="TestItem.AddressC"/> in deploy-frame initcode or a self-verify frame.</summary>

@@ -8,20 +8,27 @@ permissions:
 
 env:
   PACKAGE_DIR: guests
+  # Provers use ere-server, so the verification keys come from it. Bump together with the
+  # ere_digests
+  ERE_VERSION: 0.19.2
 
 jobs:
   # The tested binaries are what gets released, so nothing unexecuted is ever signed
   test:
     name: Test
     uses: ./.github/workflows/stateless-tests.yml
-    secrets:
-      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
-      DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
+    permissions:
+      contents: read
+      id-token: write
 
   release:
     name: Draft release on GitHub
     runs-on: ubuntu-latest
     needs: test
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
     # Concurrent runs would claim the same release number
     concurrency:
       group: ${{ github.workflow }}
@@ -53,8 +60,8 @@ jobs:
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "commit=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
 
-      - name: Archive and sign
-        id: archive
+      - name: Generate verification keys and sign
+        id: sign
         env:
           GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
           GPG_SECRET_KEY: ${{ secrets.PPA_GPG_SECRET_KEY }}
@@ -62,44 +69,70 @@ jobs:
         run: |
           set -euo pipefail
           declare -A names=([zisk]=ZisK [sp1]=SP1 [openvm]=OpenVM)
+          declare -A guests=([zisk]=Zisk [sp1]=Sp1 [openvm]=OpenVM)
+          declare -A ere_digests=(
+            [zisk]=sha256:5712a0eaa811a5bd960c8493538181c14b7cf650716891bd29808065e418c065
+            [sp1]=sha256:e13e2d07a10c5cdb0d548bceacbc1cbe468c1dbda3972c3d4611589585f1fede
+          )
           mtime=$(git log -1 --format=%ct)
-          digests=$'| zkVM | SHA-256 |\n| --- | --- |'
+          assets=()
+          digests=
 
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
           for vm in zisk sp1 openvm; do
             dir=nethermind-$vm
-            archive_name=nethermind-guest-${{ steps.version.outputs.version }}-${{ steps.version.outputs.commit }}-$vm.tar.gz
+            # The zkVM version is the tag of the image the guest is run with
+            zkvm_version=$(sed -n 's/^[A-Z0-9]*_IMAGE ?= [^:]*:v\{0,1\}\([^@]*\)@.*/\1/p' \
+              "../src/Nethermind/Nethermind.Stateless.${guests[$vm]}Guest/Makefile")
+            name=nethermind-guest-${{ steps.version.outputs.version }}-${{ steps.version.outputs.commit }}-$vm-${zkvm_version:?}
+            digests+="- **${names[$vm]} $zkvm_version**"$'\n'"  - ELF: \`$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)\`"$'\n'
 
-            # Artifacts are zipped, which drops the executable bit
-            chmod +x "$dir/nethermind"
-
-            # For a zkVM guest the ELF is the program commitment, so anyone verifying
-            # a proof needs its digest
-            digest=$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)
-            digests+=$'\n'"| ${names[$vm]} | \`$digest\` |"
-
-            files=(nethermind)
-            # The OpenVM guest cannot run without the config it was built against
+            # ere-server's OpenVM rejects the guest's entrypoint, so that guest gets no VK. It
+            # cannot run without the config it was built against, so the two ship as one archive
             if [[ "$vm" == openvm ]]; then
+              # Artifacts are zipped, which drops the executable bit
+              chmod +x "$dir/nethermind"
               cp ../src/Nethermind/Nethermind.Stateless.OpenVMGuest/openvm.toml "$dir"
-              files+=(openvm.toml)
+
+              # Without these flags tar records mtime/uid/gid, so two archives of a
+              # byte-identical guest differ
+              tar --sort=name --owner=0 --group=0 --numeric-owner \
+                --mtime="@$mtime" -czf "$name.tar.gz" -C "$dir" nethermind openvm.toml
+              tar -tzf "$name.tar.gz"
+              files=("$name.tar.gz")
+            else
+              mv "$dir/nethermind" "$name.elf"
+              # The container sees only a read-only ELF, so it cannot alter what gets signed
+              out=$(mktemp -d)
+              docker run --rm -v "$PWD/$name.elf:/input/$name.elf:ro" -v "$out:/output" \
+                "ghcr.io/eth-act/ere/ere-server-$vm:$ERE_VERSION@${ere_digests[$vm]}" \
+                --elf-path "/input/$name.elf" keygen --program-vk-path "/output/$name.vk"
+              mv "$out/$name.vk" .
+              files=("$name.elf" "$name.vk")
+              # A proof verifies against the VK, which commits to the ELF
+              digests+="  - VK: \`$(sha256sum "$name.vk" | cut -d ' ' -f 1)\`"$'\n'
             fi
 
-            # Without these flags tar records mtime/uid/gid, so two archives of a
-            # byte-identical guest differ
-            tar --sort=name --owner=0 --group=0 --numeric-owner \
-              --mtime="@$mtime" -czf "$archive_name" -C "$dir" "${files[@]}"
-            tar -tzf "$archive_name"
-
-            gpg --no-tty --batch --yes --pinentry-mode loopback \
-              --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
-              -o "$archive_name.asc" -ab "$archive_name"
+            assets+=("${files[@]}")
           done
+
+          # One signature over the checksums covers every file
+          sha256sum "${assets[@]}" > SHA256SUMS
+          cat SHA256SUMS
+          gpg --no-tty --batch --yes --pinentry-mode loopback \
+            --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+            -o SHA256SUMS.asc -ab SHA256SUMS
 
           echo "$digests" >> $GITHUB_STEP_SUMMARY
           delimiter=$(openssl rand -hex 16)
           printf 'guest-digests<<%s\n%s\n%s\n' "$delimiter" "$digests" "$delimiter" >> $GITHUB_OUTPUT
+
+      # Unlike the key signature, the attestation binds each file to this workflow and commit
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: ${{ env.PACKAGE_DIR }}/SHA256SUMS
 
       # The release is left as a draft on purpose: publishing it, once the notes
       # are filled in, is a manual step in the UI
@@ -118,13 +151,15 @@ jobs:
 
           #### Guest binaries
 
-          Built from `${{ github.sha }}` with the following SHA-256 checksums:
+          Built from `${{ github.sha }}`, with verification keys generated by ere-server ${{ env.ERE_VERSION }}. The SHA-256 checksums are listed below; the OpenVM ELF is the one inside its archive:
 
-          ${{ steps.archive.outputs.guest-digests }}
+          ${{ steps.sign.outputs.guest-digests }}
 
           #### Build signature
 
-          The packages are signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
+          `SHA256SUMS` lists every file and is signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
+
+          Each file listed in `SHA256SUMS` also has a build provenance attestation: `gh attestation verify <file> --repo ${{ github.repository }}`
           EOF
           )
 
@@ -154,6 +189,6 @@ jobs:
           fi
 
           echo "Uploading assets"
-          gh release upload "$git_tag" *.tar.gz *.tar.gz.asc --clobber
+          gh release upload "$git_tag" *.elf *.vk *.tar.gz SHA256SUMS SHA256SUMS.asc --clobber
 
           echo "Drafting completed. Review and publish the release manually."

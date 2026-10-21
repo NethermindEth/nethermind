@@ -9,8 +9,16 @@ namespace Nethermind.Core.Memory;
 public interface IGCStrategy
 {
     /// <summary>Gets the payload interval for decommit: -1 disables it, 0 requests it every time, and positive values count eligible payload calls.</summary>
-    /// <remarks>Calls disallowed by this strategy do not count; eligible calls with skipped entry or cancelled collections still count. Once due, decommit remains due until accepted.</remarks>
+    /// <remarks>Calls disallowed by this strategy do not count; eligible calls with skipped entry or cancelled collections still count. Once due, decommit remains due until accepted,
+    /// and runs only while <see cref="DecommitMemoryLoadPercent"/> is reached or once <see cref="CollectionsPerUnconditionalDecommit"/> payloads have been counted.</remarks>
     int CollectionsPerDecommit { get; }
+    /// <summary>Gets the memory load, in percent of physical memory or of the container's memory limit, at which a due decommit runs; 0 or less runs it whenever due.</summary>
+    /// <remarks>The load is the one the runtime recorded at its last collection (<see cref="System.GCMemoryInfo.MemoryLoadBytes"/>).
+    /// Defaults to 0, so a strategy that does not implement it decommits whenever due.</remarks>
+    int DecommitMemoryLoadPercent => 0;
+    /// <summary>Gets the payload count after which a due decommit runs below <see cref="DecommitMemoryLoadPercent"/>: -1 never; a count below <see cref="CollectionsPerDecommit"/> runs it whenever due.</summary>
+    /// <remarks>Defaults to -1; not read while <see cref="DecommitMemoryLoadPercent"/> is 0 or less.</remarks>
+    int CollectionsPerUnconditionalDecommit => -1;
     /// <summary>Gets the delay in milliseconds before attempting a post-payload collection.</summary>
     int PostBlockDelayMs { get; }
     /// <summary>Returns whether no-GC-region entry is currently permitted.</summary>

@@ -30,7 +30,7 @@ public class EthRpcSimulateTestsBase
 {
     public static readonly Address GasProbeContractAddress = new("0xc200000000000000000000000000000000000000");
 
-    private const string GasProbeBytecode = "0x5a60005260206000f3";
+    public const string GasProbeBytecode = "0x5a60005260206000f3";
 
     public static SimulatePayload<TransactionForRpc> CreateGasProbePayload(ulong? requestGas = null)
     {

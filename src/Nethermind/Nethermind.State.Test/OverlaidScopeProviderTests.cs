@@ -237,25 +237,23 @@ public class OverlaidScopeProviderTests
     }
 
     [Test]
-    public void AnAccount_RepeatedInTheBlock_AsksTheParentStateOnce_AndStaysUnderThePrefix()
+    public void AnAccount_WithAParentState_IsReadFromTheScopeOncePerBlock_AndStaysUnderThePrefix()
     {
-        ParentStateOverlay parent = new();
         BlockReadCache cache = new();
         IStateReadOverlay writing = Substitute.For<IStateReadOverlay>();
         writing.TryGetAccount(TestItem.AddressA, Arg.Any<Account>(), out Arg.Any<Account>())
             .Returns(c => { c[2] = ((Account)c[1]).WithChangedNonce(9); return true; });
 
-        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), cache, parent);
+        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), cache, new ParentStateOverlay());
         Account first = _scope.Get(TestItem.AddressA);
-        _slot.Arm(writing, Substitute.For<IDisposable>(), cache, parent);
+        _slot.Arm(writing, Substitute.For<IDisposable>(), cache, new ParentStateOverlay());
         Account second = _scope.Get(TestItem.AddressA);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(first, Is.SameAs(ParentStateOverlay.Account), "the earlier blocks answer ahead of the scope");
-            Assert.That(second.Balance, Is.EqualTo(ParentStateOverlay.Account.Balance), "the prefix is laid over the cached parent account");
+            Assert.That(first, Is.SameAs(Underlying), "the scope stands on the parent state the earlier blocks are a copy of");
+            Assert.That(second.Balance, Is.EqualTo(Underlying.Balance), "the prefix is laid over the cached account");
             Assert.That(second.Nonce, Is.EqualTo(9UL), "the prefix still answers in front of the cache");
-            Assert.That(parent.AccountProbes, Is.EqualTo(1), "one walk of the earlier blocks per account per block, not one per read");
             _inner.Received(1).Get(TestItem.AddressA);
         }
     }
@@ -269,19 +267,9 @@ public class OverlaidScopeProviderTests
             "an empty root would make the storage provider skip the tree, and the earlier blocks' slots with it");
     }
 
-    private sealed class ParentStateOverlay : IStateReadOverlay
+    private sealed class ParentStateOverlay : IStorageReadOverlay
     {
-        public static readonly Account Account = new(3, 30, TestItem.KeccakA, TestItem.KeccakB);
-
-        public int AccountProbes { get; private set; }
         public int StorageProbes { get; private set; }
-
-        public bool TryGetAccount(Address address, Account underlying, out Account overlaid)
-        {
-            AccountProbes++;
-            overlaid = address == TestItem.AddressA ? Account : null;
-            return address == TestItem.AddressA;
-        }
 
         public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value)
         {

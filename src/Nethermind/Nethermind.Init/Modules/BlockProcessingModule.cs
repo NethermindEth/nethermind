@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -22,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -31,6 +33,7 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 
 namespace Nethermind.Init.Modules;
 
@@ -61,7 +64,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
-            .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
+            .AddScoped<EthereumTransactionProcessor>()
             .AddSingleton<ITransactionProcessorFactory, TransactionProcessorFactory<EthereumGasPolicy>>()
             .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
@@ -108,6 +111,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 .Bind<IOverridableEnvFactory, OverridableEnvFactory>()
                 .Bind<ITraceEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
+            .AddSingleton<InvalidBlockDiagnostics>()
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `IMainProcessingContext`.
@@ -119,6 +123,23 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             .AddSingleton<INonceManager, IChainHeadInfoProvider, IStateHeaderProvider, IStateReader>((chainHeadInfoProvider, stateHeaderProvider, stateReader) =>
                 new NonceManager(chainHeadInfoProvider, stateHeaderProvider, stateReader))
+            .AddSingleton<ITransactionComparerProvider, ISpecProvider, IBlockTree>((specProvider, blockTree) =>
+                new TransactionComparerProvider(specProvider, blockTree.AsReadOnly()))
+            .AddSingleton<ITxPool>(static ctx => new TxPool.TxPool(
+                ctx.Resolve<IEthereumEcdsa>(),
+                ctx.Resolve<IBlobTxStorage>(),
+                ctx.Resolve<IChainHeadInfoProvider>(),
+                ctx.Resolve<ITxPoolConfig>(),
+                ctx.Resolve<ITxValidator>(),
+                ctx.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<ITransactionComparerProvider>().GetDefaultComparer(),
+                ctx.Resolve<FrameTxWidthLedger>(),
+                ctx.Resolve<ITxGossipPolicy>(),
+                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+                stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>()))
+            .AddSingleton<ITxSender, ITxPool, IWallet, ISpecProvider, ITimestamper, INonceManager, IEthereumEcdsa>((txPool, wallet, specProvider, timestamper, nonceManager, ecdsa) =>
+                new TxPoolSender(txPool, new TxSealer(new WalletTxSigner(wallet, specProvider.ChainId), timestamper), nonceManager, ecdsa))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider, ILogManager>((mainProcessingContext, chainHeadInfoProvider, logManager) => new BackgroundTaskScheduler(
                 mainProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
@@ -155,6 +176,14 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IGenesisBuilder, GenesisBuilder>()
             .AddScoped<IGenesisLoader, GenesisLoader>()
             ;
+
+        // Marked for the pre-warm handoff, which mirrors this processor's execution. A chain that registers its own
+        // processor replaces the registration, and with it the mark.
+        builder.Register(static ctx => ctx.Resolve<EthereumTransactionProcessor>())
+            .As<ITransactionProcessor>()
+            .InstancePerLifetimeScope()
+            .ExternallyOwned()
+            .WithMetadata(PrewarmerEnvFactory.HandoffMetadata, true);
 
         builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
 

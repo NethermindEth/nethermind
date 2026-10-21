@@ -107,6 +107,22 @@ public class ForkTests
     }
 
     [Test]
+    public void FramesDevnet1_enables_frame_transactions_with_all_their_extensions()
+    {
+        IReleaseSpec spec = SpecNameParser.Parse("FramesDevnet1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec, Is.SameAs(FramesDevnet1.Instance));
+            Assert.That(FramesDevnet1.Instance.Parent, Is.SameAs(Eip8141Prototype.Instance));
+            Assert.That(spec.IsEip8141Enabled, Is.True);
+            Assert.That(spec.IsEip8250Enabled, Is.True);
+            Assert.That(spec.IsEip8272Enabled, Is.True);
+            Assert.That(spec.IsEip7906Enabled, Is.True);
+            Assert.That(spec.IsEip7805Enabled, Is.False);
+        }
+    }
+
+    [Test]
     public void Bogota_enables_inclusion_lists_without_frame_transactions()
     {
         using (Assert.EnterMultipleScope())

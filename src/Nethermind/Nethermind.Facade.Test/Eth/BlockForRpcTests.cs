@@ -33,6 +33,24 @@ public class BlockForRpcTests
     }
 
     [Test]
+    public void Size_computed_for_a_block_without_a_recorded_size_is_kept_on_the_block()
+    {
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject)
+            .TestObject;
+        int expected = new BlockDecoder().GetLength(block, RlpBehaviors.None);
+        Assert.That(block.EncodedSize, Is.Null, "precondition: a block that was not decoded has no recorded size");
+
+        BlockForRpc rpc = new(block, false, MainnetSpecProvider.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.Size, Is.EqualTo(expected));
+            Assert.That(block.EncodedSize, Is.EqualTo(expected), "the next response reuses the length instead of encoding again");
+        }
+    }
+
+    [Test]
     public void Size_uses_the_encoded_size_recorded_at_decode_instead_of_encoding_again()
     {
         const int recordedSize = 12_345;

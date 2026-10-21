@@ -768,7 +768,7 @@ public class ImportPbtFromPreimageFlatTests
 
     private static PreimageRocksdbPersistence CreateSource(SnapshotableMemColumnsDb<FlatDbColumns> flatDb, Action<IPersistence.IWriteBatch> write)
     {
-        PreimageRocksdbPersistence source = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
+        PreimageRocksdbPersistence source = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat, Flat.Persistence.TrieNodeLog.NullTrieNodeLog.Instance);
         using IPersistence.IWriteBatch batch = source.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), WriteFlags.None);
         write(batch);
         return source;

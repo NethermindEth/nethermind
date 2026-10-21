@@ -135,6 +135,69 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         Assert.That(logs.All(l => l.ReturnData is null), Is.True);
     }
 
+    [Test]
+    public void Reused_tracer_streams_each_tx_storage_as_a_fresh_tracer_without_allocating_storage_maps()
+    {
+        const int warmupTxs = 2;
+        const int measuredTxs = 8;
+        const int lastTx = warmupTxs + measuredTxs - 1;
+        ArrayBufferWriter<byte> reusedOutput = new(4 * 1024 * 1024);
+        using Utf8JsonWriter reusedWriter = new(reusedOutput);
+        GethLikeTxDirectStreamingTracer reused = new(null, GethTraceOptions.Default, reusedWriter, pipeWriter: null, CancellationToken.None);
+        reusedWriter.WriteStartArray();
+
+        long[] allocatedPerTx = new long[measuredTxs];
+        for (int tx = 0; tx <= lastTx; tx++)
+        {
+            if (tx > 0) reused.ResetForNextTx(null);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            TraceSstores(reused, tx);
+            if (tx >= warmupTxs) allocatedPerTx[tx - warmupTxs] = GC.GetAllocatedBytesForCurrentThread() - before;
+            reused.BuildResult();
+        }
+        Complete(reused, reusedWriter);
+        Array.Sort(allocatedPerTx);
+
+        ArrayBufferWriter<byte> freshOutput = new();
+        using Utf8JsonWriter freshWriter = new(freshOutput);
+        GethLikeTxDirectStreamingTracer fresh = new(null, GethTraceOptions.Default, freshWriter, pipeWriter: null, CancellationToken.None);
+        freshWriter.WriteStartArray();
+        TraceSstores(fresh, lastTx);
+        Complete(fresh, freshWriter);
+
+        using JsonDocument reusedLogs = JsonDocument.Parse(reusedOutput.WrittenMemory);
+        using JsonDocument freshLogs = JsonDocument.Parse(freshOutput.WrittenMemory);
+        string[] expected = [.. freshLogs.RootElement.EnumerateArray().Select(static e => e.GetRawText())];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reusedLogs.RootElement.EnumerateArray().TakeLast(expected.Length).Select(static e => e.GetRawText()), Is.EqualTo(expected),
+                "storage of earlier txs must not leak into a later tx");
+            // Tier-0 code boxes a few keys while the maps grow; one storage-map array alone exceeds the bound.
+            // The upper median ignores up to 3 txs whose pooled arrays another thread took from the shared ArrayPool,
+            // yet still fails a regression that reallocates the maps on every other tx.
+            Assert.That(allocatedPerTx[measuredTxs / 2], Is.LessThan(1024), "storage maps must be reused across txs");
+        }
+    }
+
+    private static void TraceSstores(GethLikeTxDirectStreamingTracer tracer, int tx)
+    {
+        const int slotsPerAddress = 32;
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+        Span<byte> value = stackalloc byte[32];
+        foreach (Address address in (ReadOnlySpan<Address>)[TestItem.AddressA, TestItem.AddressB])
+        {
+            for (int slot = 0; slot < slotsPerAddress; slot++)
+            {
+                UInt256 index = new((ulong)(tx * slotsPerAddress + slot));
+                index.ToBigEndian(value);
+                tracer.StartOperation(slot, Instruction.SSTORE, 1_000_000, in environment);
+                tracer.SetOperationStorage(address, index, value, value);
+                tracer.ReportOperationRemainingGas(900_000);
+            }
+        }
+    }
+
     private const int DeepStackDepth = 512;
     private const int MaxEntryOvershootBytes = 64 * 1024;
 

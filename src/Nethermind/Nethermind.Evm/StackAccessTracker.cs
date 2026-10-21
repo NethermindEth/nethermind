@@ -6,11 +6,12 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct StackAccessTracker(bool isTracingAccess) : IDisposable
+public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
 {
     public StackAccessTracker() : this(false) { }
 
@@ -23,10 +24,11 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private readonly bool _isTracingAccess = isTracingAccess;
     private TrackingState _trackingState = TrackingState.RentState();
 
-    private int _addressesSnapshots;
-    private int _storageKeysSnapshots;
-    private int _destroyListSnapshots;
-    private int _logsSnapshots;
+    // Word-sized: every call frame stores all four, and zkVMs charge a 32-bit store several times a 64-bit one.
+    private nint _addressesSnapshots;
+    private nint _storageKeysSnapshots;
+    private nint _destroyListSnapshots;
+    private nint _logsSnapshots;
 
     public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
 
@@ -57,6 +59,37 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     public readonly void WasCreated(Address address) => _trackingState.CreateList.Add(address);
 
+    /// <summary>
+    /// EIP-8360 <c>TCREATE</c> accounts of the current transaction, with the balance each had at the start of the transaction,
+    /// or <see langword="null"/> while no <c>TCREATE</c> has run.
+    /// </summary>
+    /// <remarks>
+    /// Not journaled, so call-frame snapshots carry no cost for it: a reverted creation keeps its entry, and
+    /// <see cref="IsTransientCreate"/> tells it apart through the nonce the world-state rollback reset.
+    /// </remarks>
+    public readonly Dictionary<AddressAsKey, UInt256>? TransientCreates => _trackingState.TransientCreates;
+
+    /// <summary>Records an EIP-8360 <c>TCREATE</c> account and the balance it had at the start of the transaction.</summary>
+    public readonly void WasTransientlyCreated(Address address, in UInt256 originalBalance) =>
+        (_trackingState.TransientCreates ??= new(AddressAsKey.EqualityComparer))[address] = originalBalance;
+
+    /// <summary>Returns whether <paramref name="address"/> is a live EIP-8360 <c>TCREATE</c> account.</summary>
+    /// <remarks>
+    /// EIP-8360 gives the account nonce 1 when its initcode starts and requires nonce 0 before (EIP-684), so a
+    /// recorded account whose nonce is 0 had its creation reverted.
+    /// </remarks>
+    /// <param name="worldState">The state the creation was made in.</param>
+    /// <param name="address">The account to check.</param>
+    /// <param name="originalBalance">The balance the account had at the start of the transaction, the EIP-8360 original balance.</param>
+    public readonly bool IsTransientCreate(IWorldState worldState, Address address, out UInt256 originalBalance)
+    {
+        if (_trackingState.TransientCreates?.TryGetValue(address, out originalBalance) == true && worldState.GetNonce(address) != 0)
+            return true;
+
+        originalBalance = default;
+        return false;
+    }
+
     public void TakeSnapshot()
     {
         _addressesSnapshots = _trackingState.AccessedAddresses.TakeSnapshot();
@@ -71,12 +104,12 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         // The generated list will pre-warm all touched addresses.
         if (!_isTracingAccess)
         {
-            _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
-            _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+            _trackingState.AccessedAddresses.Restore((int)_addressesSnapshots);
+            _trackingState.AccessedStorageCells.Restore((int)_storageKeysSnapshots);
             _trackingState.ForgetWarm();
         }
-        _trackingState.DestroyList.Restore(_destroyListSnapshots);
-        _trackingState.Logs.Restore(_logsSnapshots);
+        _trackingState.DestroyList.Restore((int)_destroyListSnapshots);
+        _trackingState.Logs.Restore((int)_logsSnapshots);
     }
 
     public void Dispose()
@@ -86,12 +119,8 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         TrackingState.ResetAndReturn(state);
     }
 
-    private sealed class TrackingState
+    private sealed partial class TrackingState
     {
-        // Rented once per top-level execution, not per frame, so one slot per thread is the whole win;
-        // the collections a returned state keeps sized would otherwise be retained a slot at a time.
-        private static readonly EvmObjectPool<TrackingState> _trackerPool = new(localCapacity: 1);
-
         public static TrackingState RentState()
         {
             if (_trackerPool.TryDequeue(out TrackingState? tracker)) return tracker;
@@ -110,6 +139,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public Dictionary<AddressAsKey, UInt256>? TransientCreates;
 
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;
@@ -160,6 +190,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
+            TransientCreates = null;
         }
     }
 }

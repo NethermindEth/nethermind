@@ -191,6 +191,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         value = default;
     }
 
+    /// <remarks>Writes do not reach this state, so its balance is the one at the start of the transaction.</remarks>
+    public override UInt256 GetOriginalBalance(Address address) => GetBalance(address);
+
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce) => oldNonce = GetNonce(address);
 
     /// <remarks>
@@ -238,6 +241,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => true;
+
+    public override void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec) { }
 
     public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
         => true;
@@ -517,7 +522,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     /// <remarks>
     /// EIP-8298: adopted bytecode is declared at a lower block access index or is in the pre-block state.
     /// A hash found in neither is a malformed BAL, so it must surface as <see cref="InvalidBlockLevelAccessListException"/>
-    /// for the parallel path to retry sequentially, not as the code database's <see cref="InvalidOperationException"/>.
+    /// so the block is rejected as invalid, not as the code database's <see cref="InvalidOperationException"/>.
     /// </remarks>
     private ReadOnlyMemory<byte> GetAdoptedCode(in ValueHash256 codeHash)
     {

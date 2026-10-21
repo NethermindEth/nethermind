@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using Snapshot = Nethermind.State.Flat.Snapshot;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Blockchain.Synchronization;
@@ -42,6 +43,7 @@ using Nethermind.State.Pbt.Snapshot;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.Api.Steps;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -1572,6 +1574,7 @@ public class PbtDbManagerTests
                 .AddSingleton<IFlatDbConfig>(flatConfig)
                 .AddSingleton<IDbFactory, MemDbFactory>()
                 .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = Path.Combine(path, "flat") })
+                .AddSingleton<IFileSystem>(new RealFileSystem())
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IMetricsConfig>(new MetricsConfig())
                 .AddSingleton<IBlocksConfig>(new BlocksConfig())

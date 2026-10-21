@@ -69,8 +69,9 @@ jobs:
   build:
     name: Build ZisK guest
     runs-on: ubuntu-latest
-    env:
-      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -78,14 +79,24 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
 
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
+
       - name: Log in to Docker Hub
-        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
-        # that don't pass it); those runs pull anonymously as before.
-        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
+        # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
+        # id-token: write); those runs pull anonymously as before.
+        if: steps.dockerhub.outputs.available == 'true'
         uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          # The longest lifetime docker/login-action accepts; the pinned images are pulled once and then cached
+          DOCKERHUB_OIDC_EXPIREIN: 3600
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
       - name: Build Nethermind
         working-directory: ${{ env.GUEST_DIR }}
@@ -153,8 +164,10 @@ jobs:
       max-parallel: 64
       matrix:
         include: ${{ fromJSON(needs.matrix.outputs.shards) }}
+    permissions:
+      contents: read
+      id-token: write
     env:
-      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
       GAS: ${{ matrix.gas }}
       SHARD: ${{ matrix.shard }}
       SHARDS: ${{ matrix.shards }}
@@ -216,14 +229,24 @@ jobs:
             > "$RUNNER_TEMP/manifest.run.json"
           mv "$RUNNER_TEMP/manifest.run.json" "$RUNNER_TEMP/manifest.json"
 
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
+
       - name: Log in to Docker Hub
-        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
-        # that don't pass it); those runs pull anonymously as before.
-        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
+        # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
+        # id-token: write); those runs pull anonymously as before.
+        if: steps.dockerhub.outputs.available == 'true'
         uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          # The longest lifetime docker/login-action accepts; the pinned images are pulled once and then cached
+          DOCKERHUB_OIDC_EXPIREIN: 3600
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
       - name: Measure
         working-directory: ${{ env.GUEST_DIR }}

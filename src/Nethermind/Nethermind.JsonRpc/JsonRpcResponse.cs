@@ -44,6 +44,12 @@ namespace Nethermind.JsonRpc
             return this;
         }
 
+        private protected void ClearResponseContext()
+        {
+            action = null;
+            Streaming = null;
+        }
+
         internal virtual bool TryGetError(out Error? error)
         {
             error = null;

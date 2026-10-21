@@ -210,7 +210,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         /// <inheritdoc cref="CreatePooledTransactionsMessage" path="/remarks"/>
         protected virtual NewPooledTransactionHashesMessage CreateAnnouncementMessage(IOwnedReadOnlyList<Hash256> hashes) => new(hashes);
 
-        protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
+        protected override void SendNewTransactionsCore(ReadOnlySpan<Transaction> txs, bool sendFullTx)
         {
             void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes) => Send(CreateAnnouncementMessage(hashes));
 

@@ -17,9 +17,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
     public class Log
     {
         public Opcode? op { get; set; }
-        public Stack stack { get; set; }
+        public Stack stack { get; set; } = new();
         public Memory memory { get; set; } = new();
-        public Contract contract { get; set; }
+        public Contract contract { get; set; } = null!;
         public long pc { get; set; }
 
         public ulong gas { get; set; }
@@ -35,31 +35,46 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
         public ulong getRefund() => (ulong)refund;
         public dynamic getError() => !string.IsNullOrEmpty(error) ? error : Undefined.Value;
 
-        public readonly struct Opcode(Instruction value)
+        public sealed class Opcode
         {
-            public Instruction Value { get; } = value;
+            // Shared per instruction so each step hands the script an existing host object rather than a new box.
+            private static readonly Opcode[] All = CreateAll();
+
+            private Opcode(Instruction value) => Value = value;
+
+            public Instruction Value { get; }
+
+            internal static Opcode Of(Instruction value) => All[(byte)value];
+
+            private static Opcode[] CreateAll()
+            {
+                Opcode[] all = new Opcode[byte.MaxValue + 1];
+                for (int i = 0; i < all.Length; i++)
+                {
+                    all[i] = new Opcode((Instruction)i);
+                }
+                return all;
+            }
 
             public int toNumber() => (int)Value;
             public string toString() => OpcodeJsonNames.GetName(Value);
             public bool isPush() => Value is >= Instruction.PUSH0 and <= Instruction.PUSH32;
         }
 
-        public readonly struct Stack(TraceStack items)
+        public class Stack
         {
-            private readonly TraceStack _items = items;
-            private readonly Engine? _inputErrorEngine;
+            internal TraceStack Items;
+            internal Engine? InputErrorEngine { get; set; }
 
-            internal Stack(TraceStack items, Engine? inputErrorEngine) : this(items) => _inputErrorEngine = inputErrorEngine;
-
-            public int length() => _items.Count;
+            public int length() => Items.Count;
             public IJavaScriptObject peek(int index)
             {
-                if (_inputErrorEngine is not null && (index < 0 || index >= _items.Count))
+                if (InputErrorEngine is not null && (index < 0 || index >= Items.Count))
                 {
-                    _inputErrorEngine.AbortInput($"tracer accessed out of bound stack: size {_items.Count}, index {index}");
+                    InputErrorEngine.AbortInput($"tracer accessed out of bound stack: size {Items.Count}, index {index}");
                     return null!;
                 }
-                return new BigInteger(_items[^(index + 1)].Span, true, true).ToBigInteger();
+                return new BigInteger(Items[^(index + 1)].Span, true, true).ToBigInteger();
             }
         }
 
@@ -115,20 +130,17 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             }
         }
 
-        public struct Contract(Address caller, Address address, UInt256 value, ReadOnlyMemory<byte>? input)
+        public sealed class Contract(Address caller, Address address, UInt256 value, ReadOnlyMemory<byte>? input)
         {
             private readonly UInt256 _value = value;
             private readonly Address _address = address;
             private readonly ReadOnlyMemory<byte>? _input = input;
-            private ITypedArray<byte>? _callerConverted;
-            private ITypedArray<byte>? _addressConverted;
-            private ITypedArray<byte>? _inputConverted;
             private IJavaScriptObject? _valueConverted;
             public Address Caller { get; } = caller;
 
-            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToArray().ToTypedScriptArray();
-            public ITypedArray<byte> getCaller() => _callerConverted ??= Caller.Bytes.ToArray().ToTypedScriptArray();
-            public object getInput() => (_inputConverted ??= _input?.ToArray().ToTypedScriptArray()) ?? (object)Undefined.Value;
+            public ITypedArray<byte> getAddress() => _address.Bytes.ToArray().ToTypedScriptArray();
+            public ITypedArray<byte> getCaller() => Caller.Bytes.ToArray().ToTypedScriptArray();
+            public object getInput() => _input?.ToArray().ToTypedScriptArray() ?? (object)Undefined.Value;
 
             public IJavaScriptObject getValue() => _valueConverted ??= _value.ToBigInteger();
         }

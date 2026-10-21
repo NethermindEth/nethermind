@@ -134,12 +134,9 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
         where TEip8037 : struct, IFlag
         where TOpCreate : struct, EvmInstructions.IOpCreate
     {
-        ulong baseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
-            : TEip8037.IsActive ? GasCostOf.CreateExecution
-            : GasCostOf.Create;
+        ulong baseCost = CreateGasCost.Base<TOpCreate>(spec.IsEip8038Enabled, TEip8037.IsActive);
         ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
-        ulong create2HashCost = typeof(TOpCreate) == typeof(EvmInstructions.OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
-        return TSelf.UpdateGas(ref gas, baseCost + initCodeWordCost + create2HashCost);
+        return TSelf.UpdateGas(ref gas, baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -347,7 +344,8 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
         TSelf.CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
     static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit);
 
-    static abstract bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec, out TSelf available);
+    /// <param name="capExecutionGas">Whether EIP-8037 caps the execution gas at TX_MAX_GAS_LIMIT and moves the rest into the state gas reservoir.</param>
+    static abstract bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec, out TSelf available, bool capExecutionGas = true);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childExecutionGas) => TSelf.FromULong(childExecutionGas);

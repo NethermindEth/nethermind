@@ -336,7 +336,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(creation.Error, Is.Null, "error");
-            Assert.That(creation.Output!.AsSpan().ToArray(), Is.EqualTo(SourceCode), "output");
+            Assert.That(creation.Output.ToArray(), Is.EqualTo(SourceCode), "output");
         }
     }
 
@@ -361,7 +361,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(TestState.GetCode(created).ToArray(), Is.EqualTo(SourceCode), "deployed code");
-            Assert.That(root.Output!.AsSpan().ToArray(), Is.EqualTo(SourceCode), "callTracer root output");
+            Assert.That(root.Output.ToArray(), Is.EqualTo(SourceCode), "callTracer root output");
             Assert.That(receiptTracer.ReturnValue, Is.EqualTo(SourceCode), "eth_call output");
             Assert.That(parityTracer.BuildResult().Action!.Result!.Code, Is.EqualTo(SourceCode), "trace_* created code");
         }

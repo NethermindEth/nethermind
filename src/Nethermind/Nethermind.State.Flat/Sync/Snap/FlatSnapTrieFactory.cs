@@ -20,7 +20,7 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// EnsureInitialize/FinalizeSync are driven by the snap-sync runner at start/end of the run,
 /// so they don't need internal locking — they're never called concurrently with CreateXxxTree.
 /// </summary>
-public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
+public class FlatSnapTrieFactory(IPersistence persistence, IPersistenceManager persistenceManager, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
 
@@ -33,6 +33,9 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
 
         long startTime = Stopwatch.GetTimestamp();
         persistence.Clear();
+        // The wipe drops the persisted state pointer; without this, HasStateForBlock keeps answering from the cached
+        // pre-wipe pointer (genesis on a fresh node) for the whole sync, though no reader can serve that state anymore.
+        persistenceManager.ResetPersistedStateId();
         if (_logger.IsInfo) _logger.Info($"Cleared database in {Stopwatch.GetElapsedTime(startTime).TotalSeconds:N1}s");
     }
 

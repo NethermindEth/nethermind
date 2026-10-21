@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -108,6 +109,12 @@ internal sealed class TracingProducedBlockProcessor(
                     r.BlockHash = processed.Hash;
                     r.BlockNumber = processed.Number;
                 }).ToArray();
+                // EIP-8116: the dump tracer bypasses FinalizeBlock, so match the per-transaction gas the block commits.
+                if (specProvider.GetSpec(processed.Header).IsEip8116Enabled)
+                {
+                    receipts.SetEip8116GasUsed();
+                }
+
                 WriteJson($"receipts_{name}.json", receipts);
             }
 
@@ -185,7 +192,7 @@ internal sealed class TracingProducedBlockProcessor(
     /// <see cref="BlockReceiptsTracer.StartNewTxTrace"/> hands out the tracer it wraps rather than itself, so nested
     /// under the block processor's own receipts tracer it would never see a transaction's result.
     /// </remarks>
-    private sealed class ReceiptsCollector(BlockReceiptsTracer receiptsTracer) : IBlockTracer
+    private sealed class ReceiptsCollector(BlockReceiptsTracer receiptsTracer) : IBlockTracer, ITxDiscardAwareTracer
     {
         public bool IsTracingRewards => receiptsTracer.IsTracingRewards;
 
@@ -200,6 +207,8 @@ internal sealed class TracingProducedBlockProcessor(
         }
 
         public void EndTxTrace() => receiptsTracer.EndTxTrace();
+
+        public void DiscardLastTx() => receiptsTracer.DiscardLastTx();
 
         public void EndBlockTrace() => receiptsTracer.EndBlockTrace(accumulateBlockBloom: false);
     }

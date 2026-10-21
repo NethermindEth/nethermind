@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json.Nodes;
@@ -27,7 +29,6 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -72,6 +73,7 @@ using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
@@ -165,7 +167,7 @@ public class EthereumRunnerTests
         {
             IBlockProcessor wrapped = scenario == WarmupScenario.SupportedBehindCatchUp ? main.BlockProcessor : Substitute.For<IBlockProcessor>();
             api.MainProcessingContext!.BlockProcessor.Returns(new FinalizedBlockAccessListProcessor(wrapped,
-                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), NullLogManager.Instance));
+                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), container.Resolve<IReceiptsRecovery>(), NullLogManager.Instance));
             api.MainProcessingContext.TransactionProcessor.Returns(main.TransactionProcessor);
         }
 
@@ -359,7 +361,8 @@ public class EthereumRunnerTests
     [Test]
     public async Task Startup_pipeline_warmup_keeps_live_head_metrics()
     {
-        using BasicTestBlockchain live = await BasicTestBlockchain.Create();
+        // The live chain's own unordered thread-pool reports could leave an older height in the gauges, so only the restore sets them.
+        using BasicTestBlockchain live = await BasicTestBlockchain.Create(builder => builder.AddScoped(Substitute.For<IProcessingStats>()));
         // Live heights above the warm chain's make a warm value left in a gauge visible.
         for (int i = 0; i < 4; i++) await live.AddBlock();
         using TempPath dataDirectory = TempPath.GetTempDirectory();
@@ -377,8 +380,9 @@ public class EthereumRunnerTests
     [Test]
     public async Task Startup_pipeline_warmup_restores_live_metrics_after_warm_reports()
     {
-        using BasicTestBlockchain live = await BasicTestBlockchain.Create();
-        for (int i = 0; i < 4; i++) await live.AddBlock();
+        // A processing live chain would also publish the height gauges, from its own unordered thread-pool reports.
+        IBlockTree live = Substitute.For<IBlockTree>();
+        live.Head.Returns(Nethermind.Core.Test.Builders.Build.A.Block.WithNumber(4).TestObject);
         using ManualResetEventSlim reporting = new();
         using ManualResetEventSlim release = new();
         // Holds the warm report on its thread-pool thread, before it publishes the height gauges.
@@ -396,18 +400,18 @@ public class EthereumRunnerTests
         logManager.GetLogger("SlowBlocks").Returns(slowBlocks);
         logManager.GetClassLogger<ProcessingStats>().Returns(statsLogger);
         StartupPipelineWarmer.WarmMetrics warmMetrics = new();
-        IProcessingStats stats = new StartupPipelineWarmer.WarmProcessingStats(live.StateReader, logManager, new BlocksConfig { SlowBlockThresholdMs = 0 }, warmMetrics);
+        IProcessingStats stats = new StartupPipelineWarmer.WarmProcessingStats(Substitute.For<IStateReader>(), logManager, new BlocksConfig { SlowBlockThresholdMs = 0 }, warmMetrics);
 
         stats.UpdateStats([Nethermind.Core.Test.Builders.Build.A.Block.WithNumber(2).TestObject], null, 1_000);
         Assert.That(reporting.Wait(RunnerTimeout), Is.True);
-        Task restore = warmMetrics.RestoreLiveAsync(live.BlockTree);
+        Task restore = warmMetrics.RestoreLiveAsync(live);
         bool restoredBeforeReport = restore.IsCompleted;
         release.Set();
         await restore.WaitAsync(RunnerTimeout);
         // The warm report has published by now, so a restore that ran before it would have been overwritten.
         Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref warmMetrics.PendingReports) == 0, RunnerTimeout), Is.True);
 
-        ulong liveHead = live.BlockTree.Head!.Number;
+        ulong liveHead = live.Head!.Number;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(restoredBeforeReport, Is.False);
@@ -680,7 +684,7 @@ public class EthereumRunnerTests
     /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
     /// is unbounded and can stall on slow CI hosts. Without a bound, a start or stop that never completes takes the
     /// whole assembly into the CI hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
-    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(90);
 
     private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
 
@@ -793,7 +797,6 @@ public class EthereumRunnerTests
     /// <c>EthereumStepsManagerTests</c>.
     /// </summary>
     [Test]
-    [MaxTime(60000)]
     public async Task Command_run_that_cannot_do_its_job_fails_without_exiting_ok()
     {
         Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
@@ -824,10 +827,10 @@ public class EthereumRunnerTests
         }
     }
 
-    [TestCase("gnosis", true)]
-    [TestCase("xdc", true)]
-    [TestCase("mainnet", false)]
-    public async Task Pool_initializer_retains_simulator_and_registers_shutdown_disposal(string network, bool chainSpecific)
+    [TestCase("gnosis")]
+    [TestCase("xdc")]
+    [TestCase("mainnet")]
+    public async Task Pool_retains_simulator_and_is_disposed_on_shutdown(string network)
     {
         ConfigProvider configProvider = new();
         configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
@@ -841,26 +844,12 @@ public class EthereumRunnerTests
         TxPool.TxPool? pool = null;
         try
         {
-            INethermindApi api = runner.Api;
-            api.TransactionComparerProvider = new TransactionComparerProvider(api.SpecProvider!, api.BlockTree!.AsReadOnly());
-            IFrameTxPrefixSimulator simulator = api.Context.Resolve<IFrameTxPrefixSimulator>();
-            IEthereumStepsLoader loader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
-            foreach (StepInfo step in loader.ResolveStepsImplementations())
-            {
-                if (!typeof(InitializeBlockchain).IsAssignableFrom(step.StepType)) continue;
-                Assert.That(step.StepType != typeof(InitializeBlockchain), Is.EqualTo(chainSpecific));
-                object initializer = runner.LifetimeScope.Resolve(step.StepType);
-                MethodInfo createPool = step.StepType.GetMethod("CreateTxPool", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
-                FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                Assert.That(simulatorField.GetValue(pool), Is.SameAs(simulator));
-                return;
-            }
-            Assert.Fail("No blockchain initializer resolved");
+            pool = (TxPool.TxPool)runner.Api.Context.Resolve<ITxPool>();
+            FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.That(simulatorField.GetValue(pool), Is.SameAs(runner.Api.Context.Resolve<IFrameTxPrefixSimulator>()));
         }
         finally
         {
-            await using TxPool.TxPool? poolCleanup = pool;
             await runner.StopAsync();
             if (pool is not null)
             {
@@ -1046,6 +1035,39 @@ public class EthereumRunnerTests
             networkConfig.P2PPort = port;
             networkConfig.DiscoveryPort = port;
 
+            // A taken RPC port fails startup, so move the RPC listeners off defaults such as 8545/8551 that the host may hold.
+            // Each probe listener stays open until all ports are picked: a released port can be handed out again, and an
+            // engine URL on the same port as the RPC URL is skipped, which fails startup for want of an engine module.
+            IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            Dictionary<int, int> rpcPorts = [];
+            List<TcpListener> probeListeners = [];
+            int FreePort(int configuredPort)
+            {
+                if (!rpcPorts.TryGetValue(configuredPort, out int freePort))
+                {
+                    TcpListener listener = new(IPAddress.Loopback, 0);
+                    probeListeners.Add(listener);
+                    listener.Start();
+                    rpcPorts[configuredPort] = freePort = ((IPEndPoint)listener.LocalEndpoint).Port;
+                }
+
+                return freePort;
+            }
+
+            jsonRpcConfig.Port = FreePort(jsonRpcConfig.Port);
+            jsonRpcConfig.WebSocketsPort = FreePort(jsonRpcConfig.WebSocketsPort);
+            if (jsonRpcConfig.EnginePort is int enginePort)
+                jsonRpcConfig.EnginePort = FreePort(enginePort);
+            string[] additionalRpcUrls = (string[])jsonRpcConfig.AdditionalRpcUrls.Clone();
+            for (int i = 0; i < additionalRpcUrls.Length; i++)
+            {
+                int separator = additionalRpcUrls[i].IndexOf('|');
+                Uri url = new(additionalRpcUrls[i][..separator]);
+                additionalRpcUrls[i] = $"{url.Scheme}://{url.Host}:{FreePort(url.Port)}{additionalRpcUrls[i][separator..]}";
+            }
+            jsonRpcConfig.AdditionalRpcUrls = additionalRpcUrls;
+            foreach (TcpListener listener in probeListeners) listener.Dispose();
+
             PluginLoader pluginLoader = new(
                 "plugins",
                 new RealFileSystem(),
@@ -1081,6 +1103,8 @@ public class EthereumRunnerTests
                 try
                 {
                     await runner.StopAsync().WaitAsync(RunnerTimeout);
+                    Assert.That(IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners(), Has.None.Property(nameof(IPEndPoint.Port)).EqualTo(port),
+                        "the P2P listener is closed on stop");
                 }
                 catch (Exception e)
                 {

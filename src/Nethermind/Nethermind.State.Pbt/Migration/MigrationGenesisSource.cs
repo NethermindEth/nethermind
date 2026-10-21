@@ -25,7 +25,7 @@ public sealed class MigrationGenesisSource : IDisposable
             DeleteOnStart = false,
             CanDeleteFolder = false
         });
-        try { Persistence = new PreimageRocksdbPersistence(Database, logManager, FlatLayout.PreimageFlat); }
+        try { Persistence = new PreimageRocksdbPersistence(Database, logManager, FlatLayout.PreimageFlat, Flat.Persistence.TrieNodeLog.NullTrieNodeLog.Instance); }
         catch
         {
             Database.Dispose();

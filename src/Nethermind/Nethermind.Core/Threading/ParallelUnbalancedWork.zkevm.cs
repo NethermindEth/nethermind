@@ -11,6 +11,8 @@ namespace Nethermind.Core.Threading;
 /// <inheritdoc cref="ParallelUnbalancedWork"/>
 public partial class ParallelUnbalancedWork
 {
+    public static ParallelOptions DefaultOptions => field ??= new() { MaxDegreeOfParallelism = Cpu.RuntimeInformation.ProcessorCount };
+
     internal static partial int GetWorkerCount(int fromInclusive, int toExclusive, ParallelOptions parallelOptions)
     {
         parallelOptions.CancellationToken.ThrowIfCancellationRequested();

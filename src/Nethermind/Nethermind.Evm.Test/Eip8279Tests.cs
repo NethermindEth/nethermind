@@ -39,9 +39,9 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private const int FloorBindingCalldataBytes = 20_000;
     private const ulong GasLimit = 2_000_000;
 
-    // EIP-8298 is on in both so the SETCODEFROM cases run with and without EIP-8279.
-    private static readonly IReleaseSpec Spec8279 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = true, IsEip8298Enabled = true, IsEip8151Enabled = true };
-    private static readonly IReleaseSpec Spec8131Only = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip8298Enabled = true };
+    // EIP-8298 is on in both so the SETCODEFROM cases run with and without EIP-8279; likewise EIP-5920 for PAY.
+    private static readonly IReleaseSpec Spec8279 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = true, IsEip8298Enabled = true, IsEip8151Enabled = true, IsEip5920Enabled = true };
+    private static readonly IReleaseSpec Spec8131Only = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip8298Enabled = true, IsEip5920Enabled = true };
     private static readonly Address Executing = TestItem.AddressB;
     private static readonly Address ColdAccount = TestItem.AddressC;
     private static readonly Address Callee = TestItem.AddressE;
@@ -61,7 +61,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private static Prepare SStore(int key, int value) => Prepare.EvmCode.PushData(value).PushData(key).Op(Instruction.SSTORE);
 
     private static Prepare EcRecover() => Prepare.EvmCode
-        .DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover.Value, 50_000, Eip8151Tests.CreateInput(EcRecoverSigner));
+        .DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover, 50_000, Eip8151Tests.CreateInput(EcRecoverSigner));
 
     private static IEnumerable<TestCaseData> MeteredBytesCases()
     {
@@ -104,6 +104,9 @@ public class Eip8279Tests : VirtualMachineTestsBase
         yield return Case("EXTCODECOPY out of gas on its charge meters no address bytes", Prepare.EvmCode.Call(StarvedCopier, 50_000), 20);
         yield return Case("SELFDESTRUCT sweeping to another account", Prepare.EvmCode.PushData(ColdAccount).Op(Instruction.SELFDESTRUCT), 20 + 64);
         yield return Case("SELFDESTRUCT to itself", Prepare.EvmCode.PushData(Executing).Op(Instruction.SELFDESTRUCT), 20);
+        yield return Case("PAY without value", Eip5920Tests.Pay(Prepare.EvmCode, ColdAccount, 0), 20);
+        yield return Case("PAY with value", Eip5920Tests.Pay(Prepare.EvmCode, ColdAccount, 1), 20 + 64);
+        yield return Case("PAY with value to itself adds no balance bytes", Eip5920Tests.Pay(Prepare.EvmCode, Executing, 1), 20);
         // The new address, the creator's nonce and the new contract's nonce.
         yield return Case("CREATE", Prepare.EvmCode.Create([], 0), 20 + 8 + 8);
         yield return Case("CREATE with endowment", Prepare.EvmCode.Create([], 1), 20 + 8 + 8 + 64);
@@ -317,6 +320,30 @@ public class Eip8279Tests : VirtualMachineTestsBase
         {
             Assert.That(result.TransactionExecuted, Is.True, result.ToString());
             Assert.That(vm.TxExecutionContext.BalDataMeter, Is.Null);
+        }
+    }
+
+    [TestCase(0, false, 20, TestName = "TCREATE meters only the new address")]
+    [TestCase(1, false, 20 + 64, TestName = "TCREATE with endowment meters both balances")]
+    [TestCase(0, true, 20, TestName = "TCREATE deploying code meters no code")]
+    public void Tcreate_meters_only_what_outlives_the_transaction(int endowment, bool deploy, int expectedBytes)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Spec8279) { IsEip8360Enabled = true };
+        byte[] salt = new byte[32];
+        byte[] initCode = deploy ? Prepare.EvmCode.ForInitOf([1, 2, 3, 4, 5]).Done : [];
+        byte[] code = Prepare.EvmCode.TCreate(initCode, salt, (UInt256)endowment).STOP().Done;
+        (Block block, Transaction tx) = PrepareFloorBindingTx(code, GasLimit);
+
+        (ulong gasSpent, _, BlockAccessListAtIndex bal, _) = Execute(block, tx, spec);
+
+        AccountChangesAtIndex? created = bal.GetAccountChanges(ContractAddress.FromTransientCreate(Executing, salt, initCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gasSpent, Is.EqualTo(IntrinsicGasCalculator.Calculate(tx, spec).FloorGas + (ulong)expectedBytes * Eip8131Constants.FloorGasPerByte));
+            Assert.That(created, Is.Not.Null);
+            Assert.That(created!.NonceChange, Is.Null);
+            Assert.That(created.CodeChange, Is.Null);
+            Assert.That(created.BalanceChange, endowment == 0 ? Is.Null : Is.Not.Null);
         }
     }
 

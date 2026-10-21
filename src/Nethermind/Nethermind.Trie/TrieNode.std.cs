@@ -220,6 +220,23 @@ namespace Nethermind.Trie
         /// persisted path it has ever walked. See <c>TrieNode.zkevm.cs</c> for why the guest declines.</remarks>
         private const bool PruneTraversedChildren = true;
 
+        /// <summary>Whether a re-encoded branch keeps its previous RLP's value as it stands, rather than walking to it to drop it.</summary>
+        /// <remarks>Not on the host, whose stores can hold a branch read from anywhere: like a fresh encoding, the re-encode drops
+        /// any value. See <c>TrieNode.zkevm.cs</c> for why the guest keeps it.</remarks>
+        private static bool CopiesBranchValue => false;
+
+        /// <summary>Whether a branch hashed as soon as it is encoded keeps the RLP it had rather than its new one.</summary>
+        /// <remarks>Not on the host, which persists the new RLP. See <c>TrieNode.zkevm.cs</c> for the guest.</remarks>
+        private static bool KeepsRlpOfHashedBranch => false;
+
+        /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: from <paramref name="pool"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> RentBranchRlp(ICappedArrayPool? pool, int length, in TreePath path) => pool.SafeRent(length);
+
+        /// <summary>Returns <paramref name="rlp"/>, a branch encoding, in a buffer the node can keep: the one it is in.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> StorableBranchRlp(CappedArray<byte> rlp, ICappedArrayPool? pool) => rlp;
+
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions GetChildWithChildPathInlining = default;
 

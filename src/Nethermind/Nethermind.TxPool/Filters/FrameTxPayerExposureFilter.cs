@@ -120,7 +120,7 @@ internal sealed class FrameTxPayerExposureFilter(
     /// <summary>The wei <paramref name="tx"/>'s SENDER frames move that its sender must already hold.</summary>
     /// <remarks>Frames run in order, so the first frame able to credit the sender ends what a balance bounds:
     /// summing past it would refuse a transaction whose later frames are funded by its earlier ones. VERIFY and
-    /// POST_TX frames are static, and the deploy frame EIP-8141's prologue admits — the only non-static frame a
+    /// ASSERT frames are static, and the deploy frame EIP-8141's prologue admits — the only non-static frame a
     /// recognized validation prefix contains — moves no wei either: a non-SENDER frame's value must be zero, and
     /// the mempool trace rules bar the prefix from any value-carrying call, endowed create or SELFDESTRUCT. The
     /// first frame past that prologue is therefore the one this bounds; skipping it would leave the deploy-and-use
@@ -131,7 +131,7 @@ internal sealed class FrameTxPayerExposureFilter(
         TxFrame[] frames = tx.Frames!;
         for (int i = FrameTxValidation.ApprovalSearchStart(frames); i < frames.Length; i++)
         {
-            if (frames[i].Mode is FrameMode.Verify or FrameMode.PostTx) continue;
+            if (frames[i].Mode is FrameMode.Verify or FrameMode.Assert) continue;
             return frames[i].Mode == FrameMode.Sender ? frames[i].Value : UInt256.Zero;
         }
 

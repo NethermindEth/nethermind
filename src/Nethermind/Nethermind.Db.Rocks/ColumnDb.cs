@@ -10,7 +10,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
+public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
@@ -41,6 +41,10 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     }
 
     public string Name { get; }
+
+    /// <inheritdoc/>
+    void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder) =>
+        _mainDb.GetManyWithColumnFamily(keys, keyLength, values, decoder, _columnFamily);
 
     byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags) => _reader.Get(key, flags);
 
@@ -189,6 +193,12 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) =>
         _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily, flags);
+
+    /// <inheritdoc/>
+    public bool TryGetCeilingInSnapshot(
+        scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
+        _reader.TryGetCeilingInSnapshot(lowerBoundInclusive, upperBoundExclusive, keyBuffer, out keyLength, valueBuffer, out valueLength);
 
     public bool TryGetCeiling(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,

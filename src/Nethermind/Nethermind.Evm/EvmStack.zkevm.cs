@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
@@ -100,10 +101,12 @@ public ref partial struct EvmStack
     /// sign-extend it first.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal readonly bool IsAnalyzedJumpDestination(nuint destination)
+    internal readonly unsafe bool IsAnalyzedJumpDestination(nuint destination)
     {
         Debug.Assert(destination < (nuint)CodeLength, "Only a position inside the code indexes the bitmap unchecked.");
-        ulong bits = (ulong)Unsafe.Add(ref _jumpDestinationBits, (nint)(destination >> 6));
+        ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, (nint)(destination >> 6));
+        // The bitmap is a long[], so rounding the segment's address changes nothing but lets the JIT drop its alignment test.
+        ulong bits = (ulong)(StrictAlignmentFlag.IsActive ? *(long*)((nuint)Unsafe.AsPointer(ref segment) & ~(nuint)(sizeof(long) - 1)) : segment);
         return (long)((bits >> (int)destination) << 63) < 0;
     }
 

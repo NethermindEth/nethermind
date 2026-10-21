@@ -9,19 +9,26 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
@@ -1221,10 +1228,15 @@ public partial class EngineModuleTests
     [NonParallelizable]
     public async Task NewPayloadV6_answers_a_resend_after_a_timeout_against_its_own_list(bool resendSameList, bool satisfied)
     {
+        const int budgetMs = 3_000;
         CommitWaitProbe probe = new();
+        // The handler's budget runs on this clock, so only the first request times out, and only when the test says so.
+        ManualTimeProvider clock = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 3_000 },
-            configurer: builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler))));
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = budgetMs },
+            configurer: builder => builder
+                .AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler)))
+                .UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<TimeProvider>(clock)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block parent = chain.BlockTree.Head!;
         byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
@@ -1239,10 +1251,14 @@ public partial class EngineModuleTests
         int copiesQueued = 0;
         int executed = 0;
         TaskCompletionSource resendAnswered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         chain.BlockProcessingQueue.BlockAdded += (_, e) =>
         {
-            if (e.Block.Hash == payload.BlockHash && Interlocked.Increment(ref copiesQueued) == 2) secondCopyQueued.TrySetResult();
+            if (e.Block.Hash != payload.BlockHash) return;
+            int copy = Interlocked.Increment(ref copiesQueued);
+            if (copy == 1) firstCopyQueued.TrySetResult();
+            else if (copy == 2) secondCopyQueued.TrySetResult();
         };
         chain.BlockProcessingQueue.BlockExecuted += (_, e) =>
         {
@@ -1256,7 +1272,12 @@ public partial class EngineModuleTests
         try
         {
             OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
-            ResultWrapper<PayloadStatusV2> timedOut = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, inclusionList);
+            Task<ResultWrapper<PayloadStatusV2>> timingOut = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, inclusionList);
+            // Out of budget only once its copy is queued, so the request leaves that copy behind with its list. The
+            // clock fires only the last timer it created, which here is this request's timeout.
+            await firstCopyQueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            clock.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
+            ResultWrapper<PayloadStatusV2> timedOut = await timingOut.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
 
             probe.Watch(payload.BlockHash);
@@ -1269,7 +1290,7 @@ public partial class EngineModuleTests
             branchProcessor.ProcessingRelease = null;
         }
 
-        ResultWrapper<PayloadStatusV2> result = await resend;
+        ResultWrapper<PayloadStatusV2> result = await resend.WaitAsync(TimeSpan.FromSeconds(10));
         resendAnswered.TrySetResult();
         await WaitForCommit(chain, payload.BlockHash);
         using (Assert.EnterMultipleScope())
@@ -1612,6 +1633,87 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(payload.BlockHash, checkpoint, checkpoint), payloadAttributes: null);
         return payload;
+    }
+
+    /// <summary>
+    /// A block that runs EIP-8360 TCREATE twice at one address and then pays the wiped account is accepted by a
+    /// second node in the fixture's execution mode, and its witness re-executes statelessly to the same state root.
+    /// </summary>
+    [Test]
+    public virtual async Task Eip8360_tcreate_block_validates_on_another_node_and_from_its_witness()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true };
+        using MergeTestBlockchain producer = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" });
+        using MergeTestBlockchain validator = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" });
+
+        byte[] salt = new UInt256(8360).ToBigEndian();
+        byte[] runtime = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done;
+        // Sends 2 of its endowment of 5 out and writes transient storage before deploying.
+        byte[] init = Prepare.EvmCode.CallWithValue(TestItem.AddressB, 100_000, 2).Op(Instruction.POP).SSTORE(0, [7]).ForInitOf(runtime).Done;
+        ulong nonce = producer.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Address factory = ContractAddress.From(TestItem.AddressA, nonce);
+        Address tcreated = ContractAddress.FromTransientCreate(factory, salt, init);
+        byte[] factoryCode = Prepare.EvmCode
+            .TCreate(init, salt, 5).PushData(0).Op(Instruction.SSTORE)
+            .PushData(32).PushData(0).PushData(0).PushData(0).PushData(0).PushData(tcreated).PushData(200_000)
+            .Op(Instruction.CALL).Op(Instruction.POP)
+            .PushData(0).Op(Instruction.MLOAD).PushData(1).Op(Instruction.SSTORE)
+            .STOP().Done;
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithNonce(nonce).WithCode(Prepare.EvmCode.ForInitOf(factoryCode).Done).WithGasLimit(800_000)
+                .SignedAndResolved(producer.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(nonce + 1).WithTo(factory).WithValue(5).WithGasLimit(900_000)
+                .SignedAndResolved(producer.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(nonce + 2).WithTo(factory).WithValue(5).WithGasLimit(900_000)
+                .SignedAndResolved(producer.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(nonce + 3).WithTo(tcreated).WithValue(1).WithGasLimit(900_000)
+                .SignedAndResolved(producer.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+        ];
+        foreach (Transaction tx in txs)
+        {
+            Assert.That(producer.TxPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        Hash256 head = producer.BlockTree.HeadHash;
+        Task improved = producer.WaitForImprovedBlock(head, minTransactions: txs.Length);
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await producer.EngineRpcModule.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(head, Keccak.Zero, head), BuildBogotaPayloadAttributes(inclusionList: []));
+        Assert.That(fcu.Result.ResultType, Is.EqualTo(ResultType.Success), fcu.Result.Error);
+        await improved;
+        ResultWrapper<GetPayloadV6Result?> payload = await producer.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 executionPayload = payload.Data!.ExecutionPayload;
+        Assert.That(executionPayload.Transactions, Has.Length.EqualTo(txs.Length));
+
+        BlockHeader parent = validator.BlockTree.Head!.Header;
+        ResultWrapper<NewPayloadWithWitnessV1Result> result = await validator.EngineRpcModule.engine_newPayloadWithWitnessV6(
+            executionPayload, [], Keccak.Zero, payload.Data.ExecutionRequests, []);
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), result.Data.ValidationError);
+
+        Block suggested = executionPayload.TryGetBlock().Data!;
+        StatelessBlockProcessingEnv stateless = new(result.Data.ExecutionWitness!, validator.SpecProvider, Always.Valid, LimboLogs.Instance);
+        Hash256? statelessRoot;
+        using (stateless.WorldState.BeginScope(parent))
+        {
+            (Block processed, _) = stateless.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, validator.SpecProvider.GetSpec(suggested.Header));
+            statelessRoot = processed.Header.StateRoot;
+        }
+
+        await validator.EngineRpcModule.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash), null);
+        BlockHeader block = validator.BlockTree.Head!.Header;
+        validator.StateReader.GetStorage(block, factory, 0, out UInt256 lastTCreate);
+        validator.StateReader.GetStorage(block, factory, 1, out UInt256 calledCode);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statelessRoot, Is.EqualTo(executionPayload.StateRoot), "the witness covers the end-of-transaction wipe");
+            Assert.That(block.Hash, Is.EqualTo(executionPayload.BlockHash));
+            Assert.That(lastTCreate, Is.EqualTo(new UInt256(tcreated.Bytes, isBigEndian: true)), "the second TCREATE in the block succeeds");
+            Assert.That(calledCode, Is.EqualTo((UInt256)42));
+            Assert.That(validator.StateReader.GetBalance(block, tcreated), Is.EqualTo((UInt256)7));
+            Assert.That(validator.StateReader.GetNonce(block, tcreated), Is.Zero);
+            Assert.That(validator.StateReader.GetCodeHash(block, tcreated), Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256));
+        }
     }
 
     private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList, ulong targetGasLimit = 30_000_000UL, ulong? timestamp = null, ulong slotNumber = 1) => new()

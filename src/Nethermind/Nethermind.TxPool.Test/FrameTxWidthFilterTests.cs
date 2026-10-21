@@ -30,7 +30,7 @@ public class FrameTxWidthFilterTests
     private const ulong Baseline = 1;
     private const ulong SafetyFactorPermille = 1000;
 
-    private const ulong Cost = (ulong)Eip8141Constants.IntrinsicGasCost + Eip8141Constants.Secp256k1VerificationGasCost + GasCostOf.ColdSLoad;
+    private const ulong Cost = (ulong)Eip8141Constants.IntrinsicGasCost + Eip8141Constants.Secp256k1VerificationGasCost + Eip8250Constants.KeyedNonceAccessCost;
 
     [TestCase(0, true, TestName = "the single baseline admission is free")]
     [TestCase((int)Baseline, false, TestName = "first admission beyond the baseline")]
@@ -517,7 +517,7 @@ public class FrameTxWidthFilterTests
         ConcurrentDictionary<AddressAsKey, ValueHash256> baselines = new();
         if (baseline is not null) baselines[Sender] = baseline.Hash!.ValueHash256;
         FrameTxWidthFilter filter = new(config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pending, FrameTxFilterTestPools.Pool(false), cache, baselines, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
-        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8250Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
@@ -561,7 +561,7 @@ public class FrameTxWidthFilterTests
     private static Transaction SponsoredTx(ulong nonce, UInt256[]? nonceKeys = null, uint gasPrice = 1) =>
         FrameTx(nonce, nonceKeys, gasPrice, frames: [OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]);
 
-    private static UInt256 ChargeOf(Transaction tx) => FrameTxWidthCharge.For(tx, Eip8141Prototype.Instance, SafetyFactorPermille);
+    private static UInt256 ChargeOf(Transaction tx) => FrameTxWidthCharge.For(tx, Eip8250Prototype.Instance, SafetyFactorPermille);
 
     /// <summary>The paymaster filter and the width filter as the pool chains them, over the pending set they admitted.</summary>
     private sealed class SponsoredAdmission(bool enabled = true, uint nextBaseFee = 0, bool paymasterHasCode = true)
@@ -586,7 +586,7 @@ public class FrameTxWidthFilterTests
             ILogger logger = LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>();
             FrameTxPaymasterFilter paymasterFilter = new(chain, pool, blobPool, Paymasters, _config, PaymasterWidth, _paymasterBaselines, logger);
             FrameTxWidthFilter widthFilter = new(_config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pool, blobPool, SenderWidth, _senderBaselines, logger);
-            TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+            TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8250Prototype.Instance);
 
             AcceptTxResult result = paymasterFilter.Accept(tx, ref state, TxHandlingOptions.None);
             if (result)
