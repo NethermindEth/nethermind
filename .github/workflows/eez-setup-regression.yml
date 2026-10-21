@@ -2,7 +2,7 @@ name: EEZ setup reorg regression
 
 on:
   push:
-    branches: [diagnostics/eez-setup-reorg]
+    branches: [diagnostics/eez-setup-unit]
 
 permissions:
   contents: read
@@ -33,7 +33,7 @@ jobs:
           broadcast_directory="$RUNNER_TEMP/eez-private-broadcast"
           FOUNDRY_BROADCAST="$broadcast_directory" forge config --root core --json | jq -e --arg path "$broadcast_directory" '.broadcast == $path'
       - name: Build matching contract ABIs for existing regressions
-        run: forge build --root core
+        run: forge build --root core --skip test --skip script
       - name: Require the regression to fail before the fix
         run: |
           mkdir -p artifacts/setup-regression
