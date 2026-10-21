@@ -140,7 +140,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
           path: |
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
           path: |
@@ -262,7 +262,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-dumps
           path: |

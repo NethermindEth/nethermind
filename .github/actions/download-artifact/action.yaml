@@ -1,0 +1,162 @@
+name: Download artifact
+description: >-
+  Runs actions/download-artifact, retrying up to 10 attempts with growing pauses, as the artifact service
+  sometimes drops the connection (e.g. ECONNRESET). Takes the inputs of
+  actions/download-artifact that the workflows use. Run after actions/checkout, as this action is local.
+
+inputs:
+  name:
+    description: Artifact name. Empty downloads all artifacts of the run.
+    default: ''
+  path:
+    description: Destination directory. Empty uses the workspace.
+    default: ''
+  pattern:
+    description: Glob of the artifact names to download, when name is empty.
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Download artifact
+      id: attempt1
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+
+    - name: Wait before attempt 2
+      if: steps.attempt1.outcome == 'failure'
+      shell: bash
+      run: sleep 5
+
+    - name: Download artifact (attempt 2)
+      id: attempt2
+      if: steps.attempt1.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+
+    - name: Wait before attempt 3
+      if: steps.attempt2.outcome == 'failure'
+      shell: bash
+      run: sleep 10
+
+    - name: Download artifact (attempt 3)
+      id: attempt3
+      if: steps.attempt2.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+
+    - name: Wait before attempt 4
+      if: steps.attempt3.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Download artifact (attempt 4)
+      id: attempt4
+      if: steps.attempt3.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+
+    - name: Wait before attempt 5
+      if: steps.attempt4.outcome == 'failure'
+      shell: bash
+      run: sleep 20
+
+    - name: Download artifact (attempt 5)
+      id: attempt5
+      if: steps.attempt4.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+
+    - name: Wait before attempt 6
+      if: steps.attempt5.outcome == 'failure'
+      shell: bash
+      run: sleep 25
+
+    - name: Download artifact (attempt 6)
+      id: attempt6
+      if: steps.attempt5.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+
+    - name: Wait before attempt 7
+      if: steps.attempt6.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+
+    - name: Download artifact (attempt 7)
+      id: attempt7
+      if: steps.attempt6.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+
+    - name: Wait before attempt 8
+      if: steps.attempt7.outcome == 'failure'
+      shell: bash
+      run: sleep 35
+
+    - name: Download artifact (attempt 8)
+      id: attempt8
+      if: steps.attempt7.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+
+    - name: Wait before attempt 9
+      if: steps.attempt8.outcome == 'failure'
+      shell: bash
+      run: sleep 40
+
+    - name: Download artifact (attempt 9)
+      id: attempt9
+      if: steps.attempt8.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+
+    - name: Wait before attempt 10
+      if: steps.attempt9.outcome == 'failure'
+      shell: bash
+      run: sleep 45
+
+    - name: Download artifact (attempt 10)
+      id: attempt10
+      if: steps.attempt9.outcome == 'failure'
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}

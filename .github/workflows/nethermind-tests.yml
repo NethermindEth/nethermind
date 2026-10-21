@@ -181,7 +181,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-${{ matrix.runner }}-dumps
           path: |
@@ -192,7 +192,7 @@ jobs:
 
       - name: Upload coverage report
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-coverage
           path: src/Nethermind/*/TestResults/*.cobertura.xml
@@ -310,7 +310,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-${{ matrix.runner }}-dumps
           path: |
@@ -409,7 +409,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.runner }}-dumps
           path: |
@@ -506,7 +506,7 @@ jobs:
         uses: ./.github/actions/setup-dotnet
 
       - name: Download coverage reports
-        uses: actions/download-artifact@v8
+        uses: ./.github/actions/download-artifact
         with:
           path: coverage
           pattern: '*-coverage'

@@ -31,15 +31,7 @@ runs:
         echo "rid=$rid" >> "$GITHUB_OUTPUT"
 
     - name: Download test binaries
-      id: download
-      continue-on-error: true
-      uses: actions/download-artifact@v8
-      with:
-        name: test-bin-${{ inputs.variant }}-${{ steps.rid.outputs.rid }}
-
-    - name: Download test binaries (retry)
-      if: steps.download.outcome == 'failure'
-      uses: actions/download-artifact@v8
+      uses: ./.github/actions/download-artifact
       with:
         name: test-bin-${{ inputs.variant }}-${{ steps.rid.outputs.rid }}
 

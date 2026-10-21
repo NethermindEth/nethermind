@@ -186,7 +186,7 @@ jobs:
           dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false $BUILD_ARGS
 
       - name: Upload runner artifact
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           # Variant-suffixed so a caller can invoke this workflow once per variant in the
           # same run without the artifact names colliding.
@@ -428,7 +428,7 @@ jobs:
         uses: ./.github/actions/setup-dotnet
 
       - name: Download runner artifact
-        uses: actions/download-artifact@v8
+        uses: ./.github/actions/download-artifact
         with:
           name: nethtest-runner-${{ inputs.variant || 'default' }}
           path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
@@ -961,7 +961,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: nethtest-results-${{ matrix.test_type }}-${{ matrix.test_setup }}-${{ matrix.chunk }}
           path: |
