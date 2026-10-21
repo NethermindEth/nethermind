@@ -493,8 +493,6 @@ public class DebugRpcModule(
             return blockError;
         }
 
-        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
-
         if (CanStreamBlockTrace(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
@@ -549,8 +547,6 @@ public class DebugRpcModule(
             return stateError;
         }
 
-        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
-
         // A malformed native duration must reach the real constructor before it can fail.
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
             return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
@@ -599,8 +595,6 @@ public class DebugRpcModule(
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
-        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
-
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? stateError = CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header);
         if (stateError is not null)
         {
@@ -647,8 +641,6 @@ public class DebugRpcModule(
         {
             return stateError;
         }
-
-        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         if (CanStreamBlockTrace(options))
         {

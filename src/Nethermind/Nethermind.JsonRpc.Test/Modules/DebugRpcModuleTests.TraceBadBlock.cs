@@ -16,7 +16,7 @@ public partial class DebugRpcModuleTests
 {
     [Test]
     public async Task Debug_traceBadBlock_replays_rejected_block_on_its_parent_state(
-        [Values] bool streamMode, [Values(null, "callTracer")] string? tracer)
+        [Values] bool streamMode, [Values(null, "callTracer", "{fault:function(){},result:function(){throw Error('result failure');}}")] string? tracer)
     {
         using Context context = await Context.Create();
         Block valid = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));

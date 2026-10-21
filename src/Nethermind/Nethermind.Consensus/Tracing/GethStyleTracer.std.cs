@@ -418,6 +418,10 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
+        // As in geth, a block trace reports a tracer error on the failing transaction's entry, while a
+        // single-transaction trace fails the call.
+        if (options.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
+
         // A block trace filtered to one transaction is that transaction's trace: the sequential tracer replays the
         // block and keeps one result, and the seeded single-transaction path produces the same result without the
         // replay. The block-level options the sequential path ignores stay with it.
