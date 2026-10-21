@@ -287,7 +287,7 @@ public class ParallelUpdateRootTests
         store.Writes = 0;
         if (failWorker)
         {
-            Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null, PooledRefCountingMemoryProvider.Instance));
+            Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null, PooledRefCountingMemoryProvider.Instance));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
@@ -299,7 +299,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             return;
         }
-        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null, PooledRefCountingMemoryProvider.Instance);
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null, PooledRefCountingMemoryProvider.Instance).Hash;
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -583,7 +583,7 @@ public class ParallelUpdateRootTests
         private long _directReads;
         private long _fallbackReads;
         private ulong _inputRoot;
-        private readonly List<List<ulong>> _writes = [];
+        private readonly List<ulong> _writes = [];
         // Groups the folds published, with None for removed ones, over the persisted groups.
         private readonly Dictionary<PbtStorageNodePath, ulong> _groups = [];
 
@@ -616,13 +616,17 @@ public class ParallelUpdateRootTests
         public List<PbtStorageNodePath> LastWrittenGroups { get; } = [];
         public int FoldConcurrency { get; set; } = Environment.ProcessorCount;
 
-        public ulong RootGroupPointer => _inputRoot;
-        public IPbtConcurrentWriter CreateWriter() => new Writer(this);
-        public void CompleteFold() => LastComplete = true;
-
-        public bool TryGetNodeGroupRecord(ulong pointer, scoped in PbtTraversalPath path, out PbtGroupRecord record)
+        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength)
         {
-            if (Buffer.TryLocate(pointer, out record) && PbtNodePathOperations.Equal(record.Path, path.ToPath<PbtStorageNodePath>()))
+            if (Interlocked.Increment(ref _writeCount) == FailOnWrite) throw new InvalidOperationException("Configured write failure.");
+            IPbtGroupRecordWriteBatch batch = Buffer.StartWriteBatch(alignedTotalLength);
+            lock (_writes) _writes.Add(batch.BasePointer);
+            return batch;
+        }
+
+        public bool TryLocate(ulong pointer, out PbtGroupRecord record)
+        {
+            if (Buffer.TryLocate(pointer, out record))
             {
                 Interlocked.Increment(ref _directReads);
                 return true;
@@ -631,29 +635,11 @@ public class ParallelUpdateRootTests
             return false;
         }
 
-        private sealed class Writer(LoggedGroupStore store) : IPbtConcurrentWriter
-        {
-            private readonly List<ulong> _buffer = [];
-
-            public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength)
-            {
-                if (Interlocked.Increment(ref store._writeCount) == store.FailOnWrite) throw new InvalidOperationException("Configured write failure.");
-                IPbtGroupRecordWriteBatch batch = store.Buffer.StartWriteBatch(alignedTotalLength);
-                _buffer.Add(batch.BasePointer);
-                return batch;
-            }
-
-            public void Dispose()
-            {
-                lock (store._writes) store._writes.Add(_buffer);
-            }
-        }
-
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath path)
+        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record)
         {
             Interlocked.Increment(ref _storeReads);
             if (FailDescendantReads && path.BitDepth != 0) throw new InvalidDataException("Configured descendant read failure.");
-            return _persisted?.GetNodeGroup(path);
+            return PbtNodeGroupStore.TryLoadLease(_persisted?.GetNodeGroup(path), path, out record);
         }
 
         public ValueHash256 Fold((byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut, ulong? rootOverride = null)
@@ -668,7 +654,8 @@ public class ParallelUpdateRootTests
             ValueHash256 root;
             try
             {
-                root = TrieUpdater.UpdateRoot(this, _root, batches, new ConcurrencyController(FoldConcurrency), fanOut, null, _memory);
+                root = TrieUpdater.UpdateRoot(this, (_root, _inputRoot), batches, new ConcurrencyController(FoldConcurrency), fanOut, null, _memory).Hash;
+                LastComplete = true;
             }
             finally
             {
@@ -679,15 +666,14 @@ public class ParallelUpdateRootTests
                 if (LastComplete)
                 {
                     RootPointer = 0;
-                    foreach (List<ulong> buffer in _writes)
-                        foreach (ulong pointer in buffer)
-                        {
-                            Buffer.TryLocate(pointer, out PbtGroupRecord record);
-                            PbtStorageNodePath path = record.Path;
-                            _groups[path] = pointer;
-                            if (path.BitDepth == 0) RootPointer = pointer;
-                            LastWrittenGroups.Add(path);
-                        }
+                    foreach (ulong pointer in _writes)
+                    {
+                        Buffer.TryLocate(pointer, out PbtGroupRecord record);
+                        PbtStorageNodePath path = record.Path;
+                        _groups[path] = pointer;
+                        if (path.BitDepth == 0) RootPointer = pointer;
+                        LastWrittenGroups.Add(path);
+                    }
                 }
                 _writes.Clear();
             }
@@ -757,8 +743,13 @@ public class ParallelUpdateRootTests
 
     private sealed class GroupRecordingStore : IPbtStore, IDisposable
     {
-        public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(SetNodeGroup);
-        public void CompleteFold() => _store.CompleteFold();
+        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
+        public bool TryLocate(ulong pointer, out PbtGroupRecord record)
+        {
+            record = default;
+            return false;
+        }
+        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record) => PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), path, out record);
 
         private readonly PbtNodeGroupStore _store = new();
         internal List<PbtStorageNodePath> Reads { get; } = [];
@@ -815,8 +806,13 @@ public class ParallelUpdateRootTests
 
     private sealed class CoordinatedStore : IPbtStore, IDisposable
     {
-        public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(SetNodeGroup);
-        public void CompleteFold() => Inner.CompleteFold();
+        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
+        public bool TryLocate(ulong pointer, out PbtGroupRecord record)
+        {
+            record = default;
+            return false;
+        }
+        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record) => PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), path, out record);
 
         private readonly Barrier _barrier = new(2);
         private readonly HashSet<PbtStorageNodePath> _writtenGroups = [];
@@ -874,8 +870,13 @@ public class ParallelUpdateRootTests
     /// <remarks>Only reads below the zone frame take part, so the calling thread's reads before the fan-out cannot block on a worker that never starts.</remarks>
     private sealed class BucketWorkerStore : IPbtStore, IDisposable
     {
-        public IPbtConcurrentWriter CreateWriter() => Inner.CreateWriter();
-        public void CompleteFold() => Inner.CompleteFold();
+        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => Inner.StartWriteBatch(alignedTotalLength);
+        public bool TryLocate(ulong pointer, out PbtGroupRecord record)
+        {
+            record = default;
+            return false;
+        }
+        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record) => PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), path, out record);
 
         private const int BucketGroupBitDepth = 12;
         private readonly Barrier _barrier = new(2);

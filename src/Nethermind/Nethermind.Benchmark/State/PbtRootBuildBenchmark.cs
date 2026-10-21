@@ -97,9 +97,6 @@ public class PbtRootBuildBenchmark
         }
     }
 
-    [GlobalCleanup]
-    public void GlobalCleanup() => _store.Dispose();
-
     [Benchmark]
     public ValueHash256 BuildRoot() => Compute(Method);
 
@@ -132,6 +129,6 @@ public class PbtRootBuildBenchmark
         {
             Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(_shardedOperations), new ArrayPoolList<int>(_zoneTable)),
         };
-        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, null, PooledRefCountingMemoryProvider.Instance);
+        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, null, PooledRefCountingMemoryProvider.Instance).Hash;
     }
 }

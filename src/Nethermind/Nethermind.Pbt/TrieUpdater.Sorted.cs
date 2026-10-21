@@ -125,10 +125,9 @@ public static partial class TrieUpdater<TKey, TPath>
             absent = new(bitDepth, 0, 0);
         else
         {
-            GroupFrameReader<TKey, TPath> reader = context.Store.TryGetNodeGroupRecord(current.GroupPointer, path, out PbtGroupRecord record)
-                ? new GroupFrameReader<TKey, TPath>(record)
-                : new GroupFrameReader<TKey, TPath>(context.Store.GetNodeGroup(path)
-                    ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth);
+            if (!context.Store.TryLocate(current.GroupPointer, out PbtGroupRecord record) && !context.Store.TryLoad(path, out record))
+                throw new InvalidDataException("A referenced PBT node group is missing.");
+            GroupFrameReader<TKey, TPath> reader = new(record);
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
                 return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
         }
@@ -377,13 +376,9 @@ public static partial class TrieUpdater<TKey, TPath>
         public readonly int Slot = slot;
         public SlotNode Result;
 
-        public void Fold(FoldContext context, TPath groupPath, int bitDepth, byte[] foldedAhead)
-        {
-            using IPbtConcurrentWriter writer = context.Store.CreateWriter();
-            FoldContext workerContext = new(context.Store, writer, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut);
-            Result = FoldDetachedSlot(workerContext, groupPath, bitDepth, Slot, boundary, descendantBytes, context.Operations.AsSpan(offset, count),
+        public void Fold(FoldContext context, TPath groupPath, int bitDepth, byte[] foldedAhead) =>
+            Result = FoldDetachedSlot(context, groupPath, bitDepth, Slot, boundary, descendantBytes, context.Operations.AsSpan(offset, count),
                 foldedAhead.AsSpan(Slot * MaxNodeLength, MaxNodeLength));
-        }
     }
 
     /// <summary>Folds <paramref name="operations"/> below boundary slot <paramref name="slot"/> of the group at <paramref name="groupPath"/>, away from the frame that owns the slot.</summary>

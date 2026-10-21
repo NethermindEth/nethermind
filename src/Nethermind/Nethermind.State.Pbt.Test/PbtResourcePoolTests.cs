@@ -196,4 +196,19 @@ public class PbtResourcePoolTests
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, rented);
     }
 
+    [Test]
+    public void ReleaseLease_returns_the_resource_to_its_checkout_pool_and_throws_without_one()
+    {
+        PbtTransientResource resource = _pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtTransientResource unpooled = new(new PbtTransientResource.Size(1));
+
+        resource.ReleaseLease();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing), Is.SameAs(resource));
+            Assert.That(unpooled.ReleaseLease, Throws.InvalidOperationException);
+        }
+    }
+
 }

@@ -51,12 +51,9 @@ public sealed class PbtReadOnlySnapshotBundle(
     private static readonly StringLabel[] _readRunSnapshotLabels = [new("storage_run_snapshot"), new("storage_run_header_snapshot")];
     private static readonly StringLabel[] _readRunPersistenceLabels = [new("storage_run_persistence"), new("storage_run_header_persistence")];
     private static readonly StringLabel[] _readRunPersistenceNullLabels = [new("storage_run_persistence_null"), new("storage_run_header_persistence_null")];
-    private static readonly StringLabel[] _readNodeGroupSnapshotLabels = [new("node_group_account_snapshot"), new("node_group_code_snapshot"), new("node_group_storage_snapshot")];
-    private static readonly StringLabel[] _readNodeGroupSnapshotNullLabels = [new("node_group_account_snapshot_null"), new("node_group_code_snapshot_null"), new("node_group_storage_snapshot_null")];
     private static readonly StringLabel[] _readNodeGroupPersistenceLabels = [new("node_group_account_persistence"), new("node_group_code_persistence"), new("node_group_storage_persistence")];
     private static readonly StringLabel[] _readNodeGroupPersistenceNullLabels = [new("node_group_account_persistence_null"), new("node_group_code_persistence_null"), new("node_group_storage_persistence_null")];
     // The size metric keys on the same label text, so a tier's bytes and its histogram count line up.
-    private static readonly string[] _readNodeGroupSnapshotSizeKeys = [.. _readNodeGroupSnapshotLabels.Select(static label => label.Labels[0])];
     private static readonly string[] _readNodeGroupPersistenceSizeKeys = [.. _readNodeGroupPersistenceLabels.Select(static label => label.Labels[0])];
     private static readonly StringLabel _readCodeSnapshotLabel = new("code_snapshot");
     private static readonly StringLabel _readCodePersistenceLabel = new("code_persistence");
@@ -130,26 +127,6 @@ public sealed class PbtReadOnlySnapshotBundle(
                 : persistedSnapshots.Count > 0 ? persistedSnapshots[^1].TreeRoot
                 : reader.CurrentRoot;
         }
-    }
-
-    /// <summary>Returns a caller-owned group lease, or null when a persisted snapshot has no group there, from the persisted snapshots.</summary>
-    /// <remarks>In-memory snapshots are not probed: their groups are in the group record buffer, which the bundle walks first.</remarks>
-    /// <returns>False when neither resolves the group, which the persistence reader must then provide.</returns>
-    public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
-    {
-        GuardDispose();
-        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        payload = null;
-        bool found = false;
-        for (int index = persistedSnapshots.Count - 1; !found && index >= 0; index--) found = persistedSnapshots[index].TryGetNodeGroup(groupKey, out payload);
-        if (!found) return false;
-        if (recordDetailedMetrics)
-        {
-            int partition = (int)PbtPartitions.PartitionOfPath(groupKey);
-            Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (payload is null ? _readNodeGroupSnapshotNullLabels : _readNodeGroupSnapshotLabels)[partition]);
-            if (payload is not null) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupSnapshotSizeKeys[partition], payload.GetSpan().Length);
-        }
-        return true;
     }
 
     /// <summary>Reads persisted snapshots and the captured persistence reader, without probing in-memory snapshots.</summary>

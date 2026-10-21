@@ -366,7 +366,7 @@ public class PbtWorldStateScopeTests
         scope.HintGet(TestItem.AddressB, hinted);
         scope.Get(TestItem.AddressB);
 
-        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
+        using PbtSnapshot snapshot = bundle.Collect(StateId.PreGenesis, new StateId(1, default), default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(snapshot.Content.Accounts.TryGetValue(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), out PbtAccount? readA), Is.True, "a read is promoted");

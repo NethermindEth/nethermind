@@ -52,7 +52,12 @@ public class PbtNodeGroupPrefetchTests
             })]);
         }
         if (skip == PrefetchSkip.ReadByFold)
+        {
+            // Only a found group is kept, so the fold's read must find it.
+            reader.GetNodeGroup(Arg.Is<PbtStorageNodePath>(path => firstGroups.Contains(path)))
+                .Returns(call => LifecyclePrefetchPayload(new TrackingMemoryProvider(), call.Arg<PbtStorageNodePath>(), 0));
             foreach (PbtStorageNodePath path in firstGroups) ((IDisposable?)bundle.GetNodeGroup(path))?.Dispose();
+        }
         if (skip == PrefetchSkip.EmptyBal) bal = Build.A.BlockAccessList.TestObject;
         reader.ClearReceivedCalls();
 
@@ -84,8 +89,8 @@ public class PbtNodeGroupPrefetchTests
         IPbtPersistence.IReader reader = Reader();
         reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call => ReadPayload(call.Arg<PbtStorageNodePath>()));
 
-        RefCountingMemory? ReadPayload(PbtStorageNodePath path) =>
-            descendantBytes < 0 || path.BitDepth == 264 && !path.Equals(storageGroup) ? null : LifecyclePrefetchPayload(memory, path, descendantBytes);
+        bool Absent(PbtStorageNodePath path) => descendantBytes < 0 || path.BitDepth == 264 && !path.Equals(storageGroup);
+        RefCountingMemory? ReadPayload(PbtStorageNodePath path) => Absent(path) ? null : LifecyclePrefetchPayload(memory, path, descendantBytes);
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
         PbtStorageNodePath deeperSnapshot = PbtTestPaths.Prefix<PbtStorageNodePath>(storagePath.Bytes, 267);
         if (snapshotBacked)
@@ -95,6 +100,8 @@ public class PbtNodeGroupPrefetchTests
             bundle.SetTree((storageGroup, payload?.GetSpan().ToArray()), (deeperSnapshot, deeperPayload?.GetSpan().ToArray()));
         }
         HashSet<PbtStorageNodePath> firstGroups = [FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.AccountZone), FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone), FirstGroup(TestItem.AddressB, Eip8297KeyDerivation.StorageZone)];
+        // Only a found group is kept, so the prefetch reads again the groups the fold found absent.
+        PbtStorageNodePath[] reread = readByFold ? [.. firstGroups.Where(Absent)] : [];
         if (readByFold)
             foreach (PbtStorageNodePath path in firstGroups) ((IDisposable?)bundle.GetNodeGroup(path))?.Dispose();
 
@@ -113,22 +120,23 @@ public class PbtNodeGroupPrefetchTests
             expected.Remove(storageGroup);
             expected.Remove(deeperSnapshot);
         }
-        Assert.That(() => LifecycleSingleReads(reader), Is.EquivalentTo(expected).After(5000, 10));
+        PbtStorageNodePath[] expectedReads = [.. expected, .. reread];
+        Assert.That(() => LifecycleSingleReads(reader), Is.EquivalentTo(expectedReads).After(5000, 10));
         scope.UpdateRootHash();
         PbtStorageNodePath[] singles = LifecycleSingleReads(reader);
         reader.ClearReceivedCalls();
-        foreach (PbtStorageNodePath path in expected)
+        foreach (PbtStorageNodePath path in expected.Where(path => !Absent(path)))
         {
             using RefCountingMemory? kept = bundle.GetNodeGroup(path);
             using RefCountingMemory? persisted = ReadPayload(path);
             Assert.That(kept?.GetSpan().ToArray(), Is.EqualTo(persisted?.GetSpan().ToArray()));
         }
-        bool reread = LifecycleSingleReads(reader).Length != 0;
+        bool keptGroupsReread = LifecycleSingleReads(reader).Length != 0;
         bundle.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(singles, Is.EquivalentTo(expected));
-            Assert.That(reread, Is.False, "the fold must read prefetched groups from the bundle");
+            Assert.That(singles, Is.EquivalentTo(expectedReads));
+            Assert.That(keptGroupsReread, Is.False, "the fold must read prefetched groups from the bundle");
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
         }
     }

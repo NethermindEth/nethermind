@@ -42,7 +42,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     private StateId _currentStateId;
     private Hash256 _rootHash;
-    private ValueHash256 _treeRoot;
+    private readonly PbtSnapshotStore _tree;
     private Hash256? _authoritativeRoot;
     private BlockHeader? _currentHeader;
     private BlockHeader? _childHeader;
@@ -70,7 +70,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         Bundle = bundle;
         _commitTarget = commitTarget;
         _childHeaders = childHeaders;
-        _treeRoot = bundle.TreeRoot;
+        _tree = new PbtSnapshotStore(bundle, (bundle.TreeRoot, bundle.RootGroupPointer));
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, Bundle);
         if (_logger.IsDebug) LogLifecycle("opened");
@@ -219,7 +219,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         ParallelUnbalancedWork.For(0, accountGroupPaths.Length + storageAccounts.Count, (bundle, keys, accountGroupPaths, storageAccounts, cancellation), static (item, state) =>
         {
             if (state.cancellation.IsCancellationRequested) return state;
-            if (item < state.accountGroupPaths.Length) ((IDisposable?)ReadNodeGroup(state.bundle, state.accountGroupPaths[item]))?.Dispose();
+            if (item < state.accountGroupPaths.Length) state.bundle.WarmUp(state.accountGroupPaths[item], []);
             else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan()[state.storageAccounts[item - state.accountGroupPaths.Length]], state.cancellation);
             return state;
         });
@@ -231,8 +231,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     {
         PbtStoragePath previous = slots[0].Key;
         Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
-        using (RefCountingMemory? storageGroup = ReadNodeGroup(bundle, GroupOf(previous.Bytes, StorageGroupDepth)))
-            if (storageGroup is not null) PbtNodeGroupCodec.ReadDescendantBytes(storageGroup.GetSpan(), descendantBytes);
+        bundle.WarmUp(GroupOf(previous.Bytes, StorageGroupDepth), descendantBytes);
 
         for (int position = 0; position < slots.Length; position++)
         {
@@ -246,7 +245,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 int depth = StorageGroupDepth + level * PbtThreeLevelGroupGeometry.LevelsPerGroup;
                 if (depth <= sharedBits) continue;
                 if (cancellation.IsCancellationRequested) return;
-                ((IDisposable?)ReadNodeGroup(bundle, GroupOf(key.Bytes, depth)))?.Dispose();
+                bundle.WarmUp(GroupOf(key.Bytes, depth), []);
             }
         }
     }
@@ -259,11 +258,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         if (depth % 8 != 0) path[^1] &= (byte)(0xFF << (8 - depth % 8));
         return new PbtStorageNodePath(path, depth);
     }
-
-    /// <summary>Reads a group from the snapshots, or else from persistence.</summary>
-    /// <returns>A caller-owned group lease, or null when the group is absent.</returns>
-    private static RefCountingMemory? ReadNodeGroup(PbtSnapshotBundle bundle, PbtStorageNodePath path) =>
-        bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot) ? snapshot : bundle.GetPersistedNodeGroup(path);
 
     /// <summary>Reads the slot and forwards it to <paramref name="sink"/> when the sink still needs it.</summary>
     /// <returns>Whether the slot was read.</returns>
@@ -406,8 +400,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
                 long updaterStart = Stopwatch.GetTimestamp();
-                using (PbtSnapshotStore store = new(Bundle))
-                    _treeRoot = TrieUpdater.UpdateRoot(store, _treeRoot, changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime, memoryProvider: _nodeGroupMemory);
+                _tree.UpdateRoot(changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime, _nodeGroupMemory);
                 Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
                 Bundle.CompleteLeafChanges();
             }
@@ -417,9 +410,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             }
             Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
             _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
-            _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
+            _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _tree.Root.Hash.ToHash256();
             _rootDirty = false;
-            if (_logger.IsDebug) LogLifecycle($"root calculated treeRoot={_treeRoot}, mutations={mutationCount}, elapsed={Stopwatch.GetElapsedTime(start)}");
+            if (_logger.IsDebug) LogLifecycle($"root calculated treeRoot={_tree.Root.Hash}, mutations={mutationCount}, elapsed={Stopwatch.GetElapsedTime(start)}");
         }
         finally
         {
@@ -439,8 +432,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             if (newStateId != _currentStateId)
             {
                 long addSnapshotStart = Stopwatch.GetTimestamp();
-                PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot);
-                _commitTarget.AddSnapshot(snapshot);
+                _tree.Publish();
+                (PbtSnapshot snapshot, PbtTransientResource transientResource) = Bundle.CollectSnapshot(_currentStateId, newStateId, _tree.Root.Hash);
+                _commitTarget.AddSnapshot(snapshot, transientResource);
                 Metrics.PbtAddSnapshotTime.Observe(Stopwatch.GetTimestamp() - addSnapshotStart);
                 _currentStateId = newStateId;
             }

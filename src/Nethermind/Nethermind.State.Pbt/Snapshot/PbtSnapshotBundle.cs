@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
@@ -11,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
@@ -42,8 +44,7 @@ public sealed class PbtSnapshotBundle(
     private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
     // Accounts the layer above read past this bundle for the block in the write buffer, so a write never re-reads them.
     private readonly ConcurrentDictionary<ValueHash256, Account?> _hintedAccounts = new();
-    // Persisted groups, and null for absent ones, that the fold or the node group prefetch read for the block in the write buffer.
-    private readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> _persistedNodeGroups = new();
+    private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
     // Storage commits may write one run from several threads, so a write replaces its run by compare-and-swap.
     // A replaced run is held here until the write buffer is sealed: returned earlier, it could be re-rented and
     // stored back under the same key, and a writer still comparing against it would overwrite a newer run (ABA).
@@ -110,47 +111,100 @@ public sealed class PbtSnapshotBundle(
 
     public void CompleteLeafChanges() => _leafChanges.Reset();
 
-    /// <summary>Publishes a completed fold's root group from this bundle's group record buffer and accounts for the groups the fold wrote.</summary>
-    /// <param name="root">The pointer of the new tree's root group, or 0 for an empty tree.</param>
-    /// <param name="count">The number of groups the fold wrote.</param>
-    /// <param name="bytes">Their path and payload bytes.</param>
-    public void PublishNodeGroups(ulong root, int count, long bytes)
+    /// <summary>Makes the tree's final root readable from this bundle, including a change to empty, and accounts for the groups its folds wrote.</summary>
+    /// <param name="root">The new tree's root and its group's pointer, which is 0 only for the empty tree.</param>
+    /// <param name="count">The number of groups the folds wrote.</param>
+    /// <param name="bytes">Their record bytes.</param>
+    public void PublishTreeRoot(in (ValueHash256 Hash, ulong Pointer) root, int count, long bytes)
     {
-        WriteBuffer.RootGroupPointer = root;
+        Debug.Assert(root.Pointer != 0 || root.Hash == default);
+        WriteBuffer.RootGroupPointer = root.Pointer;
         WriteBuffer.AddNodeGroups(count, bytes);
     }
 
-    public RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey) =>
-        TryGetSnapshotNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : GetPersistedNodeGroup(groupKey);
-
-    /// <summary>Returns a caller-owned group lease, or null when the branch's tree has no group there, from its resident tree or the persisted snapshots.</summary>
-    /// <returns>False when neither resolves the group, which the persistence reader must then provide.</returns>
-    public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload) =>
-        WriteBuffer.TryFindNodeGroup(RootGroupPointer, groupKey, out payload) || readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload);
-
-    /// <summary>Reads only persisted layers, keeping the result for this block's later misses.</summary>
-    public RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey) =>
-        TryGetKeptNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : ReadPersistedNodeGroup(groupKey);
-
-    private bool TryGetKeptNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
+    // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
+    // retired resource that was already re-rented by another bundle, so the acquire cannot be trusted on
+    // its own: the identity re-check catches a resource swapped out by CollectSnapshot, and the
+    // disposed re-check catches one released by Dispose, which leaves _transientResource pointing at the
+    // recycled instance. The current resource always holds its owner lease (armed at pool checkout and
+    // kept across SwapTransientResource) until Dispose, so the only way the acquire never succeeds is a
+    // disposed bundle whose transient will not be replaced - the _isDisposed check bails there instead of
+    // spinning forever (the target has no whole-bundle lease deferring that release).
+    private PbtTransientResource? TryLeaseTransientResource()
     {
-        if (!_persistedNodeGroups.TryGetValue(groupKey, out payload)) return false;
-        payload?.AcquireLease();
+        SpinWait spinWait = default;
+        while (true)
+        {
+            if (Volatile.Read(ref _isDisposed)) return null;
+
+            PbtTransientResource transientResource = Volatile.Read(ref _transientResource);
+            if (transientResource.TryAcquireLease())
+            {
+                if (ReferenceEquals(Volatile.Read(ref _transientResource), transientResource)
+                    && !Volatile.Read(ref _isDisposed))
+                {
+                    return transientResource;
+                }
+
+                transientResource.ReleaseLease();
+            }
+
+            spinWait.SpinOnce();
+        }
+    }
+
+    /// <summary>Loads a group the fold reaches by no pointer, by its path.</summary>
+    /// <remarks>
+    /// Tries the groups warmed for this block by path, then the persisted snapshots and persistence, whose group is appended to
+    /// the warmed groups. The groups of this bundle's changes and of every in-memory snapshot are in the buffer, which their
+    /// pins keep readable, so this source only fetches groups the buffer reaches by no pointer.
+    /// </remarks>
+    /// <returns>False when no layer holds a group at <paramref name="path"/>.</returns>
+    public bool TryLoadNodeGroupRecord(in PbtStorageNodePath path, out PbtGroupRecord record)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+        PbtWarmedGroupLog warmed = _transientResource.WarmedGroupLog;
+        return warmed.TryGet(path, out record) || TryLoadNodeGroupFromPersistence(readOnlyBundle, warmed, path, out record);
+    }
+
+    /// <summary>Warms the group at <paramref name="path"/> when the branch's buffer does not hold it, for this block's folds.</summary>
+    /// <remarks>
+    /// The transient resource holding the warmed groups is leased for the read, so it cannot be recycled until the read ends.
+    /// Does nothing once the bundle is being torn down.
+    /// </remarks>
+    /// <param name="descendantBytes">Receives the group's descendant sizes by boundary slot when it is found; empty to skip them.</param>
+    public void WarmUp(in PbtStorageNodePath path, Span<long> descendantBytes)
+    {
+        PbtTransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return;
+
+        try
+        {
+            PbtWarmedGroupLog warmed = transientResource.WarmedGroupLog;
+            if (!GroupRecordBuffer.TryFindGroup(RootGroupPointer, path, out PbtGroupRecord record)
+                && !warmed.TryGet(path, out record)
+                && !TryLoadNodeGroupFromPersistence(readOnlyBundle, warmed, path, out record)) return;
+            if (!descendantBytes.IsEmpty) PbtNodeGroupCodec.ReadDescendantBytes(record.Payload.Span, descendantBytes);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
+    }
+
+    /// <summary>Reads the group at <paramref name="path"/> from the persisted layers into <paramref name="warmed"/>.</summary>
+    private static bool TryLoadNodeGroupFromPersistence(PbtReadOnlySnapshotBundle readOnly, PbtWarmedGroupLog warmed, in PbtStorageNodePath path, out PbtGroupRecord record)
+    {
+        using RefCountingMemory? payload = readOnly.GetPersistedNodeGroup(path);
+        if (payload is null)
+        {
+            record = default;
+            return false;
+        }
+
+        warmed.Append(path, payload.GetSpan(), out record);
         return true;
-    }
-
-    private RefCountingMemory? ReadPersistedNodeGroup(PbtStorageNodePath groupKey)
-    {
-        RefCountingMemory? payload = readOnlyBundle.GetPersistedNodeGroup(groupKey);
-        payload?.AcquireLease();
-        if (!_persistedNodeGroups.TryAdd(groupKey, payload)) ((IDisposable?)payload)?.Dispose();
-        return payload;
-    }
-
-    private void ReleasePersistedNodeGroups()
-    {
-        foreach (KeyValuePair<PbtStorageNodePath, RefCountingMemory?> entry in _persistedNodeGroups) ((IDisposable?)entry.Value)?.Dispose();
-        _persistedNodeGroups.Clear();
     }
 
     public Account? GetAccount(Address address) => ReadAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), promote: false);
@@ -355,43 +409,30 @@ public sealed class PbtSnapshotBundle(
         return code;
     }
 
-    /// <summary>Seals the write buffer into a snapshot and hands its initial lease to the caller.</summary>
-    /// <remarks>
-    /// The snapshot's root group pointer is 0 only for the empty tree: a root group this branch's buffer cannot reach is
-    /// copied back in.
-    /// </remarks>
-    public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
+    /// <summary>Seals the write buffer into a snapshot and starts collecting the next one.</summary>
+    /// <remarks>The tree's root must be published first, with <see cref="PublishTreeRoot"/>, unless the tree is unchanged.</remarks>
+    /// <returns>The snapshot with its initial lease, and the retired transient resource, whose lease the caller releases once it added the snapshot.</returns>
+    public (PbtSnapshot Snapshot, PbtTransientResource TransientResource) CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
         if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
             throw new InvalidOperationException("Pending leaf changes must be folded before collecting a snapshot.");
-        ulong rootPointer = WriteBuffer.RootGroupPointer;
-        if (rootPointer == 0 && treeRoot != default)
+        if (WriteBuffer.RootGroupPointer == 0 && treeRoot != default)
         {
             if (treeRoot != TreeRoot) throw new InvalidOperationException("The tree root changed without a published root group.");
-            rootPointer = RootGroupPointer;
-            if (rootPointer == 0) rootPointer = CopyRootGroup();
+            WriteBuffer.RootGroupPointer = RootGroupPointer;
         }
-        if (rootPointer != 0) GroupRecordBuffer.SetRoot(treeRoot, rootPointer);
-        WriteBuffer.RootGroupPointer = rootPointer;
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _hintedAccounts.Clear();
-        ReleasePersistedNodeGroups();
         ReturnReplacedRuns();
+        PbtTransientResource transientResource = _transientResource;
+        SwapTransientResource();
         _writeBuffer = RentWriteBuffer(resourcePool, usage, groupRecordBuffer);
-        return snapshot;
+        return (snapshot, transientResource);
     }
 
-    /// <exception cref="InvalidDataException">No layer holds a root group for the non-empty tree.</exception>
-    private ulong CopyRootGroup()
-    {
-        using RefCountingMemory payload = GetNodeGroup(default) ?? throw new InvalidDataException("A referenced PBT node group is missing.");
-        ReadOnlySpan<byte> bytes = payload.GetSpan();
-        ulong pointer = GroupRecordBuffer.Append(default, bytes, default);
-        WriteBuffer.AddNodeGroups(1, bytes.Length);
-        return pointer;
-    }
+    private void SwapTransientResource() => Volatile.Write(ref _transientResource, resourcePool.GetCachedResource(usage));
 
     private static PbtSnapshotContent RentWriteBuffer(IPbtResourcePool resourcePool, PbtResourcePool.Usage usage, IPbtGroupRecordBuffer groupRecordBuffer)
     {
@@ -411,8 +452,8 @@ public sealed class PbtSnapshotBundle(
         _accountsAwaitingCode.Clear();
         _codeMemo.Clear();
         _hintedAccounts.Clear();
-        ReleasePersistedNodeGroups();
         ReturnReplacedRuns();
+        _transientResource.ReleaseLease();
         Interlocked.Exchange(ref _rootLookupPin, null)?.Dispose();
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;

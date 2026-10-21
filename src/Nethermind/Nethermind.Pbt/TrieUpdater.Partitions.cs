@@ -34,21 +34,21 @@ public static partial class TrieUpdater
     /// quota of one folds everything serially. Each root slot's fold time is observed on <paramref name="partitionFoldTime"/>,
     /// labelled <c>account</c> for the one the code zone shares, so an imbalance between them is visible.
     /// Each zone's shards are sorted in place.
-    /// The supplied store must support concurrent reads; each worker writes through its own <see cref="IPbtStore.CreateWriter"/>. Failed
+    /// The supplied store must support concurrent reads and <see cref="IPbtStore.StartWriteBatch"/> calls. Failed
     /// folds may leave partial writes; the caller owns failure isolation and must not reuse that state without
     /// recovery.
     /// </remarks>
     /// <param name="store">The node-group store the fold reads from and publishes into.</param>
-    /// <param name="currentRoot">The root of the tree the changes apply to; default for an empty tree.</param>
+    /// <param name="currentRoot">The root of the tree the changes apply to, default for an empty tree, and its group's pointer, or 0 when the store does not hold it.</param>
     /// <param name="changes">The account, code and storage write batches to fold, each sharded by key nibble.</param>
     /// <param name="foldQuota">The worker slots the fold's parallel parts share.</param>
     /// <param name="fanOut">The fewest operations worth handing a worker, by the stored size below its buckets.</param>
     /// <param name="partitionFoldTime">Observes each root slot's fold time, labelled by partition; <c>null</c> to skip.</param>
     /// <param name="memoryProvider">Rents the published groups' memory.</param>
-    /// <returns>The root of the updated tree.</returns>
-    public static ValueHash256 UpdateRoot(
+    /// <returns>The root of the updated tree and its group's pointer, which is 0 for an empty tree.</returns>
+    public static (ValueHash256 Hash, ulong Pointer) UpdateRoot(
         IPbtStore store,
-        in ValueHash256 currentRoot,
+        in (ValueHash256 Hash, ulong Pointer) currentRoot,
         PbtPartitionBatches changes,
         ConcurrencyController foldQuota,
         FoldFanOut fanOut,
@@ -69,35 +69,30 @@ public static partial class TrieUpdater
             : storageFold.Fold(slot, boundary, descendantBytes, encoding);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
         // An empty tree owns no groups; a group left at the root path by an earlier tree is stale.
-        if (currentRoot == default)
+        if (currentRoot.Hash == default)
         {
             AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
             return FoldRoot(store, ref emptyRoot, default, touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
         }
-        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader;
-        if (store.TryGetNodeGroupRecord(store.RootGroupPointer, rootPath, out PbtGroupRecord rootRecord))
-            rootReader = new(rootRecord);
-        else
-        {
-            if (store.GetNodeGroup(rootPath) is not { } rootGroup) throw new InvalidDataException("A referenced PBT node group is missing.");
-            rootReader = new(rootGroup, rootPath.BitDepth);
-        }
+        if (!store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord) && !store.TryLoad(rootPath, out rootRecord))
+            throw new InvalidDataException("A referenced PBT node group is missing.");
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader = new(rootRecord);
         using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
-            return FoldRoot(store, ref rootReader, rootReader.TakeRoot(currentRoot), touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
+            return FoldRoot(store, ref rootReader, rootReader.TakeRoot(currentRoot.Hash), touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
     }
 
     /// <summary>Rebuilds the root group of <paramref name="rootReader"/> around its touched slots, each folded by <paramref name="foldSlot"/>, and publishes it.</summary>
-    private static ValueHash256 FoldRoot<TRoot>(IPbtStore store, ref TRoot rootReader, in BoundaryNode root, int touchedSlots, ForeignSlotFold foldSlot,
+    private static (ValueHash256 Hash, ulong Pointer) FoldRoot<TRoot>(IPbtStore store, ref TRoot rootReader, in BoundaryNode root, int touchedSlots, ForeignSlotFold foldSlot,
         ConcurrencyController foldQuota, FoldFanOut fanOut, IRefCountingMemoryProvider memoryProvider)
         where TRoot : struct, IGroupFrame<PbtVariableTreeKey, PbtStorageNodePath>
     {
         ValueHash256 hash = default;
-        using (IPbtConcurrentWriter storeWriter = store.CreateWriter())
+        GroupPublication publication;
         using (PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(0, memoryProvider))
         {
             PbtTraversalPath rootPath = new(Span<byte>.Empty);
             StoredGroupHashes.Open(out StoredGroupHashes hashes);
-            FoldContext context = new(store, storeWriter, memoryProvider, foldQuota, null, fanOut);
+            FoldContext context = new(store, memoryProvider, foldQuota, null, fanOut);
             ComposedNode rootNode = WalkFrameOverForeignSlots(context, ref rootReader, ref hashes, rootWriter, root, rootPath, touchedSlots, foldSlot);
             if (!rootNode.IsEmpty)
             {
@@ -105,10 +100,9 @@ public static partial class TrieUpdater
                 rootWriter.ValidateEntry(rootPath, PbtThreeLevelGroupGeometry.RootPosition, entry);
                 hash = rootNode.Hash != default || PbtNodeCodec.IsLeaf(entry) ? rootNode.Hash : HashBranch(entry);
             }
-            PublishGroup(context, ref rootReader, rootWriter, rootPath);
+            publication = PublishGroup(context, ref rootReader, rootWriter, rootPath);
         }
-        store.CompleteFold();
-        return hash;
+        return (hash, publication.Pointer);
     }
 
     /// <summary>The operations under one root boundary slot, all of one key type, folded below the root group.</summary>
@@ -147,8 +141,7 @@ public static partial class TrieUpdater
         public SlotNode Fold(int slot, in BoundaryNode boundary, long descendantBytes, Span<byte> encoding)
         {
             long start = Stopwatch.GetTimestamp();
-            using IPbtConcurrentWriter writer = store.CreateWriter();
-            TrieUpdater<TKey, TPath>.FoldContext context = new(store, writer, memoryProvider, foldQuota, _operations!.UnsafeGetInternalArray(), fanOut);
+            TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, foldQuota, _operations!.UnsafeGetInternalArray(), fanOut);
             Span<PbtWriteOperation<TKey>> operations = _operations.AsSpan();
             // The producer grouped each zone by its shard nibble, so sorted shards sort the zone; each shard's leaves are
             // hashed with its sort, so the fold reads leaf hashes in place of values.

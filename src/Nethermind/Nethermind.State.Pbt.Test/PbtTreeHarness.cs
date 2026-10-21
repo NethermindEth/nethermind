@@ -18,6 +18,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using NSubstitute;
 using NUnit.Framework;
@@ -183,7 +184,7 @@ internal static class PbtStoreTestExtensions
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
-        return store.GetNodeGroup(cursor);
+        return store.TryLoad(cursor, out PbtGroupRecord record) ? PbtSnapshotTestExtensions.CopyPayload(record) : null;
     }
 
     internal static void SetNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey, RefCountingMemory? payload)
@@ -339,7 +340,10 @@ internal static class PbtStoreTestExtensions
         ConcurrencyController foldQuota, FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider)
     {
         using PbtPartitionBatches changes = PreparePartitions(writes);
-        return TrieUpdater.UpdateRoot(store, root, changes, foldQuota, fanOut, null, memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
+        ValueHash256 folded = TrieUpdater.UpdateRoot(store, (root, 0), changes, foldQuota, fanOut, null, memoryProvider ?? PooledRefCountingMemoryProvider.Instance).Hash;
+        // An emptied tree writes no root group, so nothing pruned its groups.
+        if (folded == default && root != default && store is PbtNodeGroupStore groups) groups.RetainTreeGroups(emptyTree: true);
+        return folded;
     }
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)

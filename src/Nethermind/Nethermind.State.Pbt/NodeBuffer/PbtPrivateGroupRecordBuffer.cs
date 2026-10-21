@@ -11,7 +11,7 @@ namespace Nethermind.State.Pbt.NodeBuffer;
 /// <remarks>
 /// Pointers are laid out as in <see cref="PbtGroupRecordBuffer"/>, but no generation is ever dropped or compacted, so pins only defer
 /// the release of native storage past <see cref="Dispose"/>. It reports no metrics and keeps roots in a plain dictionary.
-/// The first generation is allocated on the first write.
+/// The first generation is allocated on the first write and its storage is kept across <see cref="Clear"/>.
 /// </remarks>
 /// <param name="generationBytes">The size of a generation in bytes; a larger record gets a generation of its own size.</param>
 public sealed class PbtPrivateGroupRecordBuffer(int generationBytes) : IPbtGroupRecordBuffer
@@ -21,7 +21,7 @@ public sealed class PbtPrivateGroupRecordBuffer(int generationBytes) : IPbtGroup
     private readonly Lock _lock = new();
     private readonly ConcurrentDictionary<ValueHash256, ulong> _roots = new();
     private Generation?[] _generations = new Generation?[InitialGenerationSlots];
-    private readonly ulong _firstGeneration = 1;
+    private ulong _firstGeneration = 1;
     private Generation? _active;
     private int _pinCount;
     private bool _disposed;
@@ -77,6 +77,7 @@ public sealed class PbtPrivateGroupRecordBuffer(int generationBytes) : IPbtGroup
 
             lock (_lock)
             {
+                // The first generation keeps the base size even for a larger record, so Clear can always reuse it.
                 if (_active != generation) continue;
                 if (generation is null) StartGeneration(_firstGeneration, PbtNativeGroupBuffer.Allocate(generationBytes));
                 else StartGeneration(PbtGroupRecordBuffer.NextGeneration(generation.Id), PbtNativeGroupBuffer.Allocate(Math.Max(generationBytes, alignedTotalLength)));
@@ -89,6 +90,27 @@ public sealed class PbtPrivateGroupRecordBuffer(int generationBytes) : IPbtGroup
 
     /// <inheritdoc/>
     public void SetRoot(in ValueHash256 root, ulong rootPointer) => _roots[root] = rootPointer;
+
+    /// <summary>Frees every record and root; later records get pointers past the freed ones.</summary>
+    /// <remarks>No pin may be held, and no record or pointer handed out before may be used after.</remarks>
+    public void Clear()
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _roots.Clear();
+            if (_active is null) return;
+
+            ulong next = PbtGroupRecordBuffer.NextGeneration(_active.Id);
+            // The first generation always has the base size, so its storage is reused rather than reallocated.
+            // It does not need to be zeroed: a record write covers every byte the record is read back by.
+            PbtNativeGroupBuffer reused = _generations[0]!.Data;
+            _generations[0] = null;
+            FreeGenerations();
+            _firstGeneration = next;
+            StartGeneration(next, reused);
+        }
+    }
 
     /// <summary>Stops new operations; native storage is released once every pin is.</summary>
     public void Dispose()

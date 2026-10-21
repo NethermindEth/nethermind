@@ -561,41 +561,6 @@ public class PbtNodeGroupTests
         Assert.That(() => store.Fold(new ValueHash256(Value(3)), [(PbtStoreTestExtensions.ZoneKey("FF"), Value(2))]), Throws.TypeOf<InvalidDataException>());
     }
 
-    // 0001 keeps the surviving subtree a stored branch rather than an inline leaf, so it escapes through its frames.
-    [TestCase("000000,000001,000800", "000800", false, new[] { 12, 0 }, TestName = "Escaping_subtree_survives_poisoned_group_root_handoff")]
-    [TestCase("000000,000001,000080,000800", "000080,000800", false, new[] { 15, 12, 0 }, TestName = "Escaping_subtree_survives_poisoned_nested_groups")]
-    [TestCase("000000,000001,000080,000800", "000080,000800", true, new[] { 15, 12, 0 }, TestName = "Inline_subtree_survives_poisoned_nested_groups")]
-    [TestCase("000000,000008", "000080", false, new[] { 0 }, TestName = "Ancestor_borrowed_subtree_survives_child_frame_return")]
-    // Worker frames release their groups in no fixed order, so only that some were released is asserted.
-    [TestCase("000000,000008,000080,008000,010000", "000080,008000", false, null, TestName = "Worker_branch_results_survive_poisoned_group_memory")]
-    [TestCase("000000,000080,008000,010000", "000080,008000", false, null, TestName = "Worker_leaf_results_survive_poisoned_group_memory")]
-    public void Returned_subtrees_survive_group_lease_release(string initialKeys, string deletedKeys, bool replaceSurvivor, int[]? releasedDepths)
-    {
-        using PbtTreeHarness expected = new();
-        EipReferenceTree oracle = new();
-        List<(byte[] Key, byte[]? Value)> initial = [.. initialKeys.Split(',').Select(key => (PbtStoreTestExtensions.ZoneKey(key), (byte[]?)Value(1)))];
-        oracle.Apply(initial);
-        ValueHash256 root = expected.ApplyBatch(initial);
-        using PoisoningStore store = new(PbtNodeGroupStore.FromPhysicalPayloads(expected.PhysicalPayloads));
-        List<(byte[] Key, byte[]? Value)> changes = [.. deletedKeys.Split(',').Select(key => (PbtStoreTestExtensions.ZoneKey(key), (byte[]?)null))];
-        if (replaceSurvivor) changes.Add((PbtStoreTestExtensions.ZoneKey("000000"), Value(2)));
-        oracle.Apply(changes);
-        expected.ApplyBatch(changes);
-
-        ValueHash256 actualRoot = store.Fold(root, changes);
-
-        if (releasedDepths is not null)
-            Assert.That(store.ReleasedGroupDepths, Is.EqualTo(releasedDepths), "payloads are poisoned when their owning frame releases them");
-        else Assert.That(store.ReleasedGroupDepths, Is.Not.Empty);
-        Assert.That(store.ReleasedGroupDepths.Count, Is.EqualTo(store.ReadCount));
-        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.Inner.ExportPhysicalPayloads());
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(actualRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-            Assert.That(reopened.CanonicalRecords(), Is.EqualTo(expected.CanonicalRecords()));
-        }
-    }
-
     // Keys sharing a long prefix leave the groups between the root and their branch absent. An insert diverging
     // inside one of those groups creates it, so its stored sizes must pick up the untouched descendants from the
     // parent's slot without reading their group; a delete of an absent key diverging there is a no-op that must
@@ -652,54 +617,19 @@ public class PbtNodeGroupTests
         Assert.That(store.PhysicalRecords(), Is.EqualTo(initial));
     }
 
-    private sealed class PoisoningStore(PbtNodeGroupStore inner) : IPbtStore, IDisposable
-    {
-        public IPbtConcurrentWriter CreateWriter() => Inner.CreateWriter();
-        public void CompleteFold() => Inner.CompleteFold();
-
-        private readonly ArrayPool<byte> _pool = ArrayPool<byte>.Create();
-        internal PbtNodeGroupStore Inner { get; } = inner;
-        internal List<int> ReleasedGroupDepths { get; } = [];
-        internal int ReadCount { get; private set; }
-
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
-        {
-            using RefCountingMemory? payload = Inner.GetNodeGroup(groupKey);
-            if (payload is null) return null;
-            int length = payload.GetSpan().Length;
-            ReadCount++;
-            byte[] buffer = _pool.Rent(length);
-            payload.GetSpan().CopyTo(buffer);
-            int groupDepth = groupKey.BitDepth;
-            return RefCountingMemory.OwningRocksDb(new PoisoningMemoryManager(_pool, buffer, length,
-                () => ReleasedGroupDepths.Add(groupDepth)));
-        }
-
-        public void Dispose() => Inner.Dispose();
-    }
-
-    private sealed class PoisoningMemoryManager(ArrayPool<byte> pool, byte[] buffer, int length, Action onRelease) : MemoryManager<byte>
-    {
-        // Leave stale spans readable so a missing escape copy observes poison rather than relying on pool reuse timing.
-        public override Span<byte> GetSpan() => buffer.AsSpan(0, length);
-        public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
-        public override void Unpin() { }
-        protected override void Dispose(bool disposing)
-        {
-            buffer.AsSpan().Fill(0xFF);
-            pool.Return(buffer);
-            onRelease();
-        }
-    }
-
     /// <summary>Counts every group fetch, and the fetches that found a group.</summary>
     private sealed class CountingStore(PbtNodeGroupStore inner) : IPbtStore
     {
         private int _fetches;
         private int _loads;
 
-        public IPbtConcurrentWriter CreateWriter() => inner.CreateWriter();
-        public void CompleteFold() => inner.CompleteFold();
+        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => inner.StartWriteBatch(alignedTotalLength);
+        public bool TryLocate(ulong pointer, out PbtGroupRecord record)
+        {
+            record = default;
+            return false;
+        }
+        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record) => PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), path, out record);
 
         internal int Fetches => _fetches;
         internal int Loads => _loads;
@@ -1091,9 +1021,15 @@ public class PbtNodeGroupTests
         return PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(node, LeafBranch(node, 1))], default);
     }
 
-    private sealed class WarmReadStore(IPbtStore store) : IPbtStore
+    private sealed class WarmReadStore(PbtNodeGroupStore store) : IPbtStore
     {
-        public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(static _ => throw new AssertionException("Group frame reads must never write."));
+        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => throw new AssertionException("Group frame reads must never write.");
+        public bool TryLocate(ulong pointer, out PbtGroupRecord record)
+        {
+            record = default;
+            return false;
+        }
+        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record) => PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), path, out record);
 
         internal List<PbtStorageNodePath> Reads { get; } = [];
         internal RefCountingMemory? Payload { get; set; }

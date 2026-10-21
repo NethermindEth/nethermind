@@ -59,9 +59,11 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     public IWorldStateScopeProvider WorldState => _worldState;
     public IStateReader GlobalStateReader { get; }
 
-    public void AddSnapshot(PbtSnapshot snapshot)
+    public void AddSnapshot(PbtSnapshot snapshot, PbtTransientResource transientResource)
     {
         if (!_snapshots.TryAdd(snapshot.To, snapshot)) snapshot.Dispose();
+
+        transientResource.ReleaseLease();
     }
 
     public void ResetOverrides()

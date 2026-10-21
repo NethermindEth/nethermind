@@ -104,7 +104,7 @@ internal static class PbtSnapshotTestExtensions
     internal static void SetTree(this PbtSnapshotBundle bundle, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {
         (ulong root, int count, long bytes) = BuildTree(bundle.GroupRecordBuffer, groups, fillAncestors: true);
-        bundle.PublishNodeGroups(root, count, bytes);
+        bundle.PublishTreeRoot((default, root), count, bytes);
     }
 
     private static (ulong Root, int Count, long Bytes) BuildTree(IPbtGroupRecordBuffer buffer, (PbtStorageNodePath Path, byte[]? Payload)[] groups, bool fillAncestors)
@@ -149,6 +149,19 @@ internal static class PbtSnapshotTestExtensions
     }
 
     /// <summary>Returns a caller-owned group lease, or null when no layer has an entry.</summary>
-    internal static RefCountingMemory? GetNodeGroup(this PbtReadOnlySnapshotBundle bundle, PbtStorageNodePath groupKey) =>
-        bundle.TryGetSnapshotNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : bundle.GetPersistedNodeGroup(groupKey);
+    internal static RefCountingMemory? GetNodeGroup(this PbtReadOnlySnapshotBundle bundle, PbtStorageNodePath groupKey) => bundle.GetPersistedNodeGroup(groupKey);
+
+    /// <summary>A caller-owned copy of the group at <paramref name="groupKey"/> in the branch's tree, from its buffer or else as a fold loads it.</summary>
+    internal static RefCountingMemory? GetNodeGroup(this PbtSnapshotBundle bundle, PbtStorageNodePath groupKey) =>
+        bundle.GroupRecordBuffer.TryFindGroup(bundle.RootGroupPointer, groupKey, out PbtGroupRecord record) || bundle.TryLoadNodeGroupRecord(groupKey, out record)
+            ? CopyPayload(record)
+            : null;
+
+    /// <summary>A pooled copy of <paramref name="record"/>'s payload.</summary>
+    internal static RefCountingMemory CopyPayload(in PbtGroupRecord record)
+    {
+        RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(record.Payload.Length);
+        record.Payload.Span.CopyTo(payload.GetSpan());
+        return payload;
+    }
 }

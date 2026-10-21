@@ -15,7 +15,7 @@ namespace Nethermind.Pbt;
 /// <remarks>
 /// A frame reader only ever wraps a stored payload: never construct one for a group that does not exist. A group the
 /// boundary node proves absent is folded through <see cref="AbsentGroupFrame{TKey, TPath}"/> instead, and the tree
-/// root's group is loaded through its direct reference or <see cref="IPbtStore.GetNodeGroup"/>.
+/// root's group is loaded through its direct reference or <see cref="IPbtStore.TryLoad"/>.
 /// </remarks>
 public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposable
     where TKey : unmanaged, IPbtKey<TKey>

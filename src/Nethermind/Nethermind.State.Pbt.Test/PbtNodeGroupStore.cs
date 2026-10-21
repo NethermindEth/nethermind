@@ -13,14 +13,14 @@ using Nethermind.Pbt.NodeBuffer;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>In-memory store of canonical nodes grouped by three-level ownership boundaries.</summary>
+/// <remarks>Groups are kept as managed record bytes, so a borrowed record stays valid after its group is replaced.</remarks>
 public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider = null) : IPbtStore, IDisposable
 {
-    public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(SetNodeGroup);
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
 
     private readonly IRefCountingMemoryProvider _memoryProvider = memoryProvider ?? PooledRefCountingMemoryProvider.Instance;
     private readonly System.Threading.Lock _groupLock = new();
-    private Dictionary<PbtStorageNodePath, RefCountingMemory> _groups = [];
-    private bool _rootWritten;
+    private Dictionary<PbtStorageNodePath, byte[]> _groups = [];
     private bool _disposed;
 
     /// <summary>Reconstructs a store from canonical node-group payloads.</summary>
@@ -29,60 +29,48 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     {
         ArgumentNullException.ThrowIfNull(payloads);
         PbtNodeGroupStore store = new();
-        try
+        foreach (PbtPhysicalPayload payload in payloads)
         {
-            foreach (PbtPhysicalPayload payload in payloads)
-            {
-                PbtStorageNodePath groupKey = payload.Key;
-                if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-                    throw new InvalidDataException("A PBT node-group key depth must be a three-level boundary.");
-                if (store._groups.ContainsKey(groupKey)) throw new InvalidDataException("Duplicate PBT node group.");
+            PbtStorageNodePath groupKey = payload.Key;
+            if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+                throw new InvalidDataException("A PBT node-group key depth must be a three-level boundary.");
+            if (store._groups.ContainsKey(groupKey)) throw new InvalidDataException("Duplicate PBT node group.");
 
-                ReadOnlySpan<byte> payloadSpan = payload.Payload.Span;
-                PbtNodeGroupCodec.ValidateNodes(groupKey, payloadSpan);
-                RefCountingMemory ownedPayload = store._memoryProvider.Rent(payloadSpan.Length);
-                try
-                {
-                    payloadSpan.CopyTo(ownedPayload.GetSpan());
-                    store._groups.Add(groupKey, ownedPayload);
-                }
-                catch
-                {
-                    ((IDisposable)ownedPayload).Dispose();
-                    throw;
-                }
-            }
+            ReadOnlySpan<byte> payloadSpan = payload.Payload.Span;
+            PbtNodeGroupCodec.ValidateNodes(groupKey, payloadSpan);
+            store._groups.Add(groupKey, Record(groupKey, payloadSpan));
+        }
 
-            return store;
-        }
-        catch
-        {
-            store.Dispose();
-            throw;
-        }
+        return store;
     }
 
-    /// <inheritdoc/>
-    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
+    public bool TryLocate(ulong pointer, out PbtGroupRecord record)
+    {
+        record = default;
+        return false;
+    }
+
+    public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record)
     {
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-                throw new ArgumentException("A group key depth must be a three-level boundary.", nameof(groupKey));
-            if (!_groups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out RefCountingMemory? payload)) return null;
-
-            payload.AcquireLease();
-            return payload;
+            bool found = _groups.TryGetValue(path.ToPath<PbtStorageNodePath>(), out byte[]? bytes);
+            record = found ? new PbtGroupRecord(bytes, 0) : default;
+            return found;
         }
     }
 
-    /// <summary>Drops the groups the completed fold left unreachable, as persistence keeps only the new tree's groups.</summary>
-    /// <remarks>A completed fold that wrote no root group emptied the tree.</remarks>
-    public void CompleteFold()
+    /// <summary>Returns a caller-owned copy of the group payload at <paramref name="groupKey"/>, or null when the store has none.</summary>
+    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
-        RetainTreeGroups(!_rootWritten);
-        _rootWritten = false;
+        if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            throw new ArgumentException("A group key depth must be a three-level boundary.", nameof(groupKey));
+        if (!TryLoad(groupKey, out PbtGroupRecord record)) return null;
+
+        RefCountingMemory payload = _memoryProvider.Rent(record.Payload.Length);
+        record.Payload.Span.CopyTo(payload.GetSpan());
+        return payload;
     }
 
     /// <summary>Drops every group the tree from the root group no longer reaches, or every group of an empty tree.</summary>
@@ -91,50 +79,61 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         HashSet<PbtStorageNodePath> reachable = emptyTree ? [] : [.. this.EnumerateRecords().Select(static record => PbtTestPaths.Locate(record.Path).GroupKey)];
         lock (_groupLock)
             foreach (PbtStorageNodePath key in _groups.Keys.ToArray())
-                if (!reachable.Contains(key) && _groups.Remove(key, out RefCountingMemory? payload)) ((IDisposable)payload).Dispose();
+                if (!reachable.Contains(key)) _groups.Remove(key);
     }
 
     /// <summary>Copies a fold's group record into the store.</summary>
+    /// <remarks>
+    /// A fold writes its root group last, so on the root the store drops the groups the new tree no longer reaches, as
+    /// persistence keeps only the new tree's groups. A fold that empties the tree writes no root, see <see cref="RetainTreeGroups"/>.
+    /// </remarks>
     public void SetNodeGroup(PbtGroupRecord record)
     {
-        if (record.Path.BitDepth == 0) _rootWritten = true;
-        using RefCountingMemory payload = _memoryProvider.Rent(record.Payload.Length);
-        record.Payload.Span.CopyTo(payload.GetSpan());
-        SetNodeGroup(record.Path, payload);
+        SetNodeGroup(record.Path, record.Span.ToArray());
+        if (record.Path.BitDepth == 0) RetainTreeGroups(emptyTree: false);
     }
 
-    /// <summary>Replaces the group at <paramref name="groupKey"/>, or deletes it for a null payload, which the store then leases.</summary>
-    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) => SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
+    /// <summary>Replaces the group at <paramref name="groupKey"/> with a copy of <paramref name="payload"/>, or deletes it for a null payload.</summary>
+    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+    {
+        PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
+        SetNodeGroup(storagePath, payload is null ? null : Record(storagePath, payload.GetSpan()));
+    }
 
-    private void SetNodeGroup(PbtStorageNodePath storagePath, RefCountingMemory? payload)
+    private void SetNodeGroup(PbtStorageNodePath storagePath, byte[]? record)
     {
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!PbtThreeLevelGroupGeometry.IsGroupDepth(storagePath.BitDepth))
                 throw new ArgumentException("A group key depth must be a three-level boundary.", nameof(storagePath));
-            if (payload is not null) PbtNodeGroupCodec.ValidateNodes(storagePath, payload.GetSpan());
-
-            _groups.TryGetValue(storagePath, out RefCountingMemory? previous);
-            if (payload is null)
+            if (record is null)
             {
                 _groups.Remove(storagePath);
+                return;
             }
-            else
-            {
-                payload.AcquireLease();
-                try
-                {
-                    _groups[storagePath] = payload;
-                }
-                catch
-                {
-                    ((IDisposable)payload).Dispose();
-                    throw;
-                }
-            }
-            ((IDisposable?)previous)?.Dispose();
+
+            PbtNodeGroupCodec.ValidateNodes(storagePath, new PbtGroupRecord(record, 0).Payload.Span);
+            _groups[storagePath] = record;
         }
+    }
+
+    /// <summary>Loads a test store's leased group as a managed record, releasing the lease.</summary>
+    /// <returns>False for a null lease, which stands for a missing group.</returns>
+    public static bool TryLoadLease(RefCountingMemory? payload, scoped in PbtTraversalPath path, out PbtGroupRecord record)
+    {
+        using (payload)
+        {
+            record = payload is null ? default : new PbtGroupRecord(Record(path.ToPath<PbtStorageNodePath>(), payload.GetSpan()), 0);
+            return payload is not null;
+        }
+    }
+
+    private static byte[] Record(in PbtStorageNodePath path, ReadOnlySpan<byte> payload)
+    {
+        byte[] record = new byte[PbtGroupRecordCodec.Length(payload.Length)];
+        payload.CopyTo(PbtGroupRecordCodec.WriteGroup(record, path, default, payload.Length));
+        return record;
     }
 
     /// <summary>Enumerates group keys in canonical order.</summary>
@@ -154,16 +153,15 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         Array.Sort(keys);
         PbtPhysicalPayload[] payloads = new PbtPhysicalPayload[keys.Length];
         for (int index = 0; index < keys.Length; index++)
-            payloads[index] = new PbtPhysicalPayload(keys[index], _groups[keys[index]].GetSpan());
+            payloads[index] = new PbtPhysicalPayload(keys[index], new PbtGroupRecord(_groups[keys[index]], 0).Payload.Span);
         return payloads;
     }
 
-    /// <summary>Releases all node-group payloads owned by this store.</summary>
+    /// <summary>Drops all node groups of this store.</summary>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        foreach (RefCountingMemory payload in _groups.Values) ((IDisposable)payload).Dispose();
         _groups.Clear();
     }
 }

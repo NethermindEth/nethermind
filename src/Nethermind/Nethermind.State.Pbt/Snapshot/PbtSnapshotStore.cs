@@ -3,9 +3,10 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
+using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
@@ -13,47 +14,72 @@ using Nethermind.State.Pbt.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
-/// <summary>Adapts a writable snapshot bundle to the canonical <see cref="TrieUpdater"/> store contract.</summary>
+/// <summary>The tree of a <see cref="PbtSnapshotBundle"/>, written by <see cref="TrieUpdater"/>.</summary>
 /// <remarks>
-/// One store serves one root fold. Workers reserve buffer records and hand their references over on disposal.
-/// The owner publishes the new tree's root on store disposal only after a successful fold. The bundle's read-only base pins
-/// every record the fold borrows, and its write buffer's generation pin every record the fold writes. A removed group is
-/// simply no longer linked, so nothing records its removal.
+/// Written groups go to the bundle's <see cref="PbtSnapshotBundle.GroupRecordBuffer"/> at once, but reach the bundle only on
+/// <see cref="Publish"/>. Until then the folds read them back from the buffer by pointer, which the write buffer's pin keeps
+/// readable. The bundle's read-only base pins every record the fold borrows. A removed group is simply no longer linked, so
+/// nothing records its removal.
 /// </remarks>
-public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDisposable
+/// <param name="root">The tree's root and its group's pointer, or 0 when the buffer does not hold it.</param>
+public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Hash, ulong Pointer) root) : IPbtStore
 {
     private static readonly PbtNodeGroupReadLabel[] _foundLabels = ReadLabels("found");
     private static readonly PbtNodeGroupReadLabel[] _nullLabels = ReadLabels("null");
 
     // Detailed observers stay no-ops unless Metrics.EnableDetailedMetric, so the timestamps are skipped with them.
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
-    private readonly ArrayPoolList<ArrayPoolList<ulong>> _handedOff = new(16);
-    private bool _complete;
+    private int _writtenGroups;
+    private long _writtenBytes;
+    private bool _rootDirty;
     private IPbtGroupRecordBuffer Buffer => bundle.GroupRecordBuffer;
 
-    /// <inheritdoc/>
-    public ulong RootGroupPointer => bundle.RootGroupPointer;
+    public (ValueHash256 Hash, ulong Pointer) Root { get; private set; } = root;
 
-    /// <inheritdoc/>
-    public bool TryGetNodeGroupRecord(ulong pointer, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record) =>
-        bundle.GroupRecordBuffer.TryLocate(pointer, out record)
-        && PbtNodePathOperations.Equal(record.Path, groupKey.ToPath<PbtStorageNodePath>());
+    /// <inheritdoc cref="TrieUpdater.UpdateRoot"/>
+    public void UpdateRoot(PbtPartitionBatches changes, ConcurrencyController foldQuota, FoldFanOut fanOut, IMetricObserver? partitionFoldTime,
+        IRefCountingMemoryProvider memoryProvider) =>
+        SetRoot(TrieUpdater.UpdateRoot(this, Root, changes, foldQuota, fanOut, partitionFoldTime, memoryProvider));
 
-    /// <inheritdoc/>
-    public void CompleteFold() => _complete = true;
-
-    /// <inheritdoc/>
-    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
+    /// <summary>Makes the final root readable from the bundle.</summary>
+    public void Publish()
     {
-        PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
-        if (!_recordReadTimes) return bundle.GetNodeGroup(storagePath);
+        // A published root always points at its record, so a root the buffer no longer holds is copied back in.
+        if (Root.Pointer == 0 && Root.Hash != default) SetRoot((Root.Hash, CopyRootRecord()));
+        if (_rootDirty && Root.Pointer != 0) Buffer.SetRoot(Root.Hash, Root.Pointer);
+        bundle.PublishTreeRoot(Root, _writtenGroups, _writtenBytes);
+
+        _writtenGroups = 0;
+        _writtenBytes = 0;
+        _rootDirty = false;
+    }
+
+    /// <exception cref="InvalidDataException">Neither the warmed groups nor persistence hold the root group.</exception>
+    private ulong CopyRootRecord()
+    {
+        if (!TryLoad(new PbtTraversalPath(Span<byte>.Empty), out PbtGroupRecord record))
+            throw new InvalidDataException("A referenced PBT node group is missing.");
+
+        using IPbtGroupRecordWriteBatch batch = StartWriteBatch(PbtGroupRecordCodec.AlignedLength(record.Span.Length));
+        record.Span.CopyTo(batch.Bytes);
+        return batch.BasePointer;
+    }
+
+    /// <inheritdoc/>
+    public bool TryLocate(ulong pointer, out PbtGroupRecord record) => Buffer.TryLocate(pointer, out record);
+
+    /// <inheritdoc/>
+    public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record)
+    {
+        PbtStorageNodePath storagePath = path.ToPath<PbtStorageNodePath>();
+        if (!_recordReadTimes) return bundle.TryLoadNodeGroupRecord(storagePath, out record);
 
         long start = Stopwatch.GetTimestamp();
-        RefCountingMemory? payload = bundle.GetNodeGroup(storagePath);
+        bool found = bundle.TryLoadNodeGroupRecord(storagePath, out record);
         Metrics.PbtTrieUpdaterNodeGroupReadTimes.Observe(
             Stopwatch.GetTimestamp() - start,
-            (payload is null ? _nullLabels : _foundLabels)[ReadLabelIndex(storagePath)]);
-        return payload;
+            (found ? _foundLabels : _nullLabels)[ReadLabelIndex(storagePath)]);
+        return found;
     }
 
     // Indexed by PbtPartitions.PartitionOfPath, offset by three for groups the persistence keeps in the top column.
@@ -66,53 +92,17 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
         return PbtNodeGroupLayout.IsTopGroup(groupKey) ? partition + 3 : partition;
     }
 
-    public IPbtConcurrentWriter CreateWriter() => new ConcurrentWriter(this);
-
-    /// <summary>Publishes a successful fold's handed-off groups on the owner thread.</summary>
-    public void Dispose()
+    /// <inheritdoc/>
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength)
     {
-        try
-        {
-            if (_complete)
-            {
-                ulong root = 0;
-                int count = 0;
-                long bytes = 0;
-                foreach (ArrayPoolList<ulong> buffer in _handedOff)
-                    foreach (ulong pointer in buffer)
-                    {
-                        if (!Buffer.TryLocate(pointer, out PbtGroupRecord group)) throw new InvalidOperationException("A pinned group record no longer resolves.");
-                        PbtStorageNodePath path = group.Path;
-                        if (path.BitDepth == 0) root = pointer;
-                        count++;
-                        bytes += ((path.BitDepth + 7) >> 3) + group.Payload.Length;
-                    }
-                bundle.PublishNodeGroups(root, count, bytes);
-            }
-        }
-        finally
-        {
-            foreach (ArrayPoolList<ulong> buffer in _handedOff) buffer.Dispose();
-            _handedOff.Dispose();
-        }
+        Interlocked.Increment(ref _writtenGroups);
+        Interlocked.Add(ref _writtenBytes, alignedTotalLength);
+        return Buffer.StartWriteBatch(alignedTotalLength);
     }
 
-    private sealed class ConcurrentWriter(PbtSnapshotStore store) : IPbtConcurrentWriter
+    private void SetRoot(in (ValueHash256 Hash, ulong Pointer) updated)
     {
-        // The pointers of the written records.
-        private readonly ArrayPoolList<ulong> _buffer = new(16);
-
-        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength)
-        {
-            IPbtGroupRecordWriteBatch batch = store.Buffer.StartWriteBatch(alignedTotalLength);
-            _buffer.Add(batch.BasePointer);
-            return batch;
-        }
-
-        public void Dispose()
-        {
-            if (_buffer.Count == 0) _buffer.Dispose();
-            else lock (store._handedOff) store._handedOff.Add(_buffer);
-        }
+        _rootDirty |= updated != Root;
+        Root = updated;
     }
 }

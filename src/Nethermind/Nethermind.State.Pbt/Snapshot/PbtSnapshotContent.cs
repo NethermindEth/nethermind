@@ -58,7 +58,7 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
 
     /// <summary>Accounts for groups a fold wrote into this layer's tree.</summary>
     /// <param name="count">The number of groups.</param>
-    /// <param name="bytes">Their path and payload bytes.</param>
+    /// <param name="bytes">Their record bytes.</param>
     public void AddNodeGroups(int count, long bytes)
     {
         NodeGroupCount += count;

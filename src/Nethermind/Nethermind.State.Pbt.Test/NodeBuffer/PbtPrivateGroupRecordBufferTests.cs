@@ -47,6 +47,25 @@ public class PbtPrivateGroupRecordBufferTests
         Assert.That(() => record.Payload.ToArray(), Throws.InstanceOf<ObjectDisposedException>(), "the last pin frees storage");
     }
 
+    [Test]
+    public void Clear_frees_every_record_and_root_and_later_pointers_move_past_them()
+    {
+        using PbtPrivateGroupRecordBuffer buffer = new(GenerationBytes);
+        List<(ulong Pointer, byte[] Payload)> records = [.. Enumerable.Range(0, 10).Select(i => PbtGroupRecordBufferTests.Payload(i, 1000)).Select(payload => (Append(buffer, payload), payload))];
+
+        buffer.Clear();
+
+        byte[] payload = records[0].Payload;
+        ulong appended = Append(buffer, payload);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records.Select(record => buffer.TryLocate(record.Pointer, out _)), Is.All.False, "records before the clear");
+            Assert.That(records.Skip(1).Select(record => buffer.FindRoot(ValueKeccak.Compute(record.Payload))), Is.All.Zero, "roots before the clear");
+            Assert.That(appended, Is.GreaterThan(records.Max(record => record.Pointer)), "a clear never reuses a pointer");
+            Assert.That(buffer.TryLocate(appended, out PbtGroupRecord located) && located.Payload.Span.SequenceEqual(payload), Is.True, "records after the clear");
+        }
+    }
+
     private static ulong Append(PbtPrivateGroupRecordBuffer buffer, byte[] payload)
     {
         ulong pointer = buffer.Append(default, payload, default);

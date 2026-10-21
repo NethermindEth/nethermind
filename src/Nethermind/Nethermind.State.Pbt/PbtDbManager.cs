@@ -183,12 +183,13 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         }
     }
 
-    public void AddSnapshot(PbtSnapshot snapshot)
+    public void AddSnapshot(PbtSnapshot snapshot, PbtTransientResource transientResource)
     {
         lock (_admissionLock)
         {
             if (Volatile.Read(ref _isDisposed) != 0 || _processExitToken.IsCancellationRequested)
             {
+                transientResource.ReleaseLease();
                 snapshot.Dispose();
                 return;
             }
@@ -197,10 +198,13 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             StateId persisted = _persistenceManager.GetCurrentPersistedStateId();
             if (persisted != StateId.PreGenesis && committed.BlockNumber <= persisted.BlockNumber)
             {
+                transientResource.ReleaseLease();
                 snapshot.Dispose();
                 return;
             }
-            if (!_repository.TryAdd(snapshot)) return;
+            bool added = _repository.TryAdd(snapshot);
+            transientResource.ReleaseLease();
+            if (!added) return;
             if (_inlineCompaction)
             {
                 if (_compactor.DoCompactSnapshot(committed)) ClearReadOnlyBundleCache();

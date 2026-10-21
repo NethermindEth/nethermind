@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Memory;
 using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;
@@ -17,27 +15,32 @@ namespace Nethermind.Pbt;
 /// Zones and buckets fold concurrently, so a group superseded during a fold stays readable until the fold ends.
 /// </remarks>
 /// <param name="writeThrough">Receives every group record the fold writes, borrowed for the call, one call at a time under this store's lock.</param>
-public sealed class PbtRightmostGroupStore(Action<PbtGroupRecord> writeThrough) : IPbtStore, IDisposable
+public sealed class PbtRightmostGroupStore(Action<PbtGroupRecord> writeThrough) : IPbtStore
 {
     private readonly Lock _lock = new();
     private readonly Group[] _edge = new Group[PbtVariableTreeKey.MaxLength * 8 + 1];
     /// <summary>The group each depth held when the fold started, once superseded; released when the fold ends.</summary>
     private readonly Group[] _superseded = new Group[PbtVariableTreeKey.MaxLength * 8 + 1];
 
-    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
+    public bool TryLocate(ulong pointer, out PbtGroupRecord record)
     {
-        PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
+        record = default;
+        return false;
+    }
+
+    public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record)
+    {
+        PbtStorageNodePath groupPath = path.ToPath<PbtStorageNodePath>();
         lock (_lock)
         {
-            Group group = _edge[groupKey.BitDepth];
-            if (!group.Holds(path)) group = _superseded[groupKey.BitDepth];
-            if (!group.Holds(path)) return null;
-            group.Payload!.AcquireLease();
-            return group.Payload;
+            Group group = _edge[path.BitDepth];
+            if (!group.Holds(groupPath)) group = _superseded[path.BitDepth];
+            record = group.Holds(groupPath) ? new PbtGroupRecord(group.Record, 0) : default;
+            return group.Holds(groupPath);
         }
     }
 
-    public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(Retain);
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(Retain, alignedTotalLength);
 
     private void Retain(PbtGroupRecord record)
     {
@@ -46,34 +49,19 @@ public sealed class PbtRightmostGroupStore(Action<PbtGroupRecord> writeThrough) 
         {
             writeThrough(record);
             ref Group edge = ref _edge[path.BitDepth];
-            if (edge.Payload is not null && path.CompareTo(edge.Path) < 0) return;
-            RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(record.Payload.Length);
-            record.Payload.Span.CopyTo(payload.GetSpan());
+            if (edge.Record is not null && path.CompareTo(edge.Path) < 0) return;
             ref Group superseded = ref _superseded[path.BitDepth];
-            if (superseded.Payload is null) superseded = edge;
-            else ((IDisposable?)edge.Payload)?.Dispose();
-            edge = new(path, payload);
+            if (superseded.Record is null) superseded = edge;
+            edge = new(path, record.Span.ToArray());
         }
     }
 
-    /// <summary>Releases the groups the last fold superseded; call once each fold ends.</summary>
-    public void ReleaseSuperseded()
-    {
-        foreach (ref Group group in _superseded.AsSpan())
-        {
-            ((IDisposable?)group.Payload)?.Dispose();
-            group = default;
-        }
-    }
+    /// <summary>Forgets the groups the last fold superseded; call once each fold ends.</summary>
+    public void ReleaseSuperseded() => Array.Clear(_superseded);
 
-    public void Dispose()
+    /// <param name="Record">The group's record bytes, kept in a managed array so a borrowed record stays valid after it is superseded.</param>
+    private readonly record struct Group(PbtStorageNodePath Path, byte[]? Record)
     {
-        ReleaseSuperseded();
-        foreach (Group group in _edge) ((IDisposable?)group.Payload)?.Dispose();
-    }
-
-    private readonly record struct Group(PbtStorageNodePath Path, RefCountingMemory? Payload)
-    {
-        public bool Holds(in PbtStorageNodePath path) => Payload is not null && Path.Equals(path);
+        public bool Holds(in PbtStorageNodePath path) => Record is not null && Path.Equals(path);
     }
 }

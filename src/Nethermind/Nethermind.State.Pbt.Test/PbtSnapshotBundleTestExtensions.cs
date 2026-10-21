@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,6 +21,20 @@ internal static class PbtSnapshotBundleTestExtensions
     /// <summary>A read-only bundle pin for tests whose buffer records outlive the bundle.</summary>
     public static IDisposable NoNodeGroupPin => new Reactive.AnonymousDisposable(static () => { });
 
+    private static readonly PbtResourcePool _transientPool = new(new PbtConfig());
+
+    /// <summary>Collects the bundle's snapshot and releases the retired transient resource, as a commit target would.</summary>
+    public static PbtSnapshot Collect(this PbtSnapshotBundle bundle, in StateId from, in StateId to, in ValueHash256 treeRoot)
+    {
+        (PbtSnapshot snapshot, PbtTransientResource transientResource) = bundle.CollectSnapshot(from, to, treeRoot);
+        transientResource.ReleaseLease();
+        return snapshot;
+    }
+
+    /// <summary>Adds <paramref name="snapshot"/> with a freshly rented transient resource, for tests that build snapshots without a bundle.</summary>
+    public static void AddSnapshot(this IPbtCommitTarget target, PbtSnapshot snapshot) =>
+        target.AddSnapshot(snapshot, _transientPool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing));
+
     public static void SetSlot(this PbtSnapshotBundle bundle, Address address, in UInt256 slot, in UInt256 value) =>
         bundle.SetSlots(address, Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), [(slot, value)]);
 
@@ -34,16 +49,26 @@ internal static class PbtSnapshotBundleTestExtensions
         PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         try
         {
-            ValueHash256 updated;
-            using (PbtSnapshotStore store = new(bundle))
-                updated = TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance);
+            PbtSnapshotStore store = new(bundle, (root, bundle.RootGroupPointer));
+            store.UpdateRoot(changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance);
+            store.Publish();
             bundle.CompleteLeafChanges();
-            return updated;
+            return store.Root.Hash;
         }
         finally
         {
             changes.Dispose();
         }
+    }
+
+    /// <summary>Folds zone-key <paramref name="writes"/> into the bundle's tree at <paramref name="root"/>, publishes the new root and returns it.</summary>
+    public static ValueHash256 FoldPublished(this PbtSnapshotBundle bundle, ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes)
+    {
+        PbtSnapshotStore store = new(bundle, (root, bundle.RootGroupPointer));
+        using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
+            store.UpdateRoot(changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance);
+        store.Publish();
+        return store.Root.Hash;
     }
 
     public static PbtSnapshotPooledList Chain(IPbtResourcePool pool, params PbtSnapshotContent[] layersOldestFirst)

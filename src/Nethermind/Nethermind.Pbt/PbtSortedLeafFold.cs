@@ -23,9 +23,9 @@ public static class PbtSortedLeafFold
     public static ValueHash256 FoldWindows(IEnumerator<RebuildEntry> source, Action<PbtGroupRecord> writeThrough, int windowSize,
         ConcurrencyController foldQuota, FoldFanOut foldFanOut, Action<int> onWindowFolded, CancellationToken cancellationToken)
     {
-        using PbtRightmostGroupStore store = new(writeThrough);
+        PbtRightmostGroupStore store = new(writeThrough);
         using PbtPartitionBatchesBuilder changes = new(new(), new(), new());
-        ValueHash256 root = default;
+        (ValueHash256 Hash, ulong Pointer) root = default;
         int windowCount = 0;
 
         while (source.MoveNext())
@@ -37,7 +37,7 @@ public static class PbtSortedLeafFold
         }
 
         if (windowCount != 0) FoldWindow();
-        return root;
+        return root.Hash;
 
         void FoldWindow()
         {

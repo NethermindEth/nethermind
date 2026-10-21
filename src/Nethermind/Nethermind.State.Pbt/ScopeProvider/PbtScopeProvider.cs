@@ -55,6 +55,10 @@ public class PbtScopeProvider(
     {
         public static readonly DiscardingCommitTarget Instance = new();
 
-        public void AddSnapshot(PbtSnapshot snapshot) => snapshot.Dispose();
+        public void AddSnapshot(PbtSnapshot snapshot, PbtTransientResource transientResource)
+        {
+            snapshot.Dispose();
+            transientResource.ReleaseLease();
+        }
     }
 }

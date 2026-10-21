@@ -30,4 +30,10 @@ public interface IPbtResourcePool
 
     /// <summary>Returns a storage accumulator to its original rental usage.</summary>
     void ReturnStorageWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder<PbtStoragePath> batch);
+
+    /// <summary>Rents a reset per-block resource, armed with one lease that returns it here on its final release.</summary>
+    PbtTransientResource GetCachedResource(PbtResourcePool.Usage usage);
+
+    /// <summary>Returns a transient resource to its original rental usage, resetting it.</summary>
+    void ReturnCachedResource(PbtResourcePool.Usage usage, PbtTransientResource transientResource);
 }

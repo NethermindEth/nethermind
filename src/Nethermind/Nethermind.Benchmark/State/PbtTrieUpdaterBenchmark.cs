@@ -64,9 +64,6 @@ public class PbtTrieUpdaterBenchmark
         for (int variant = 0; variant < BatchVariants; variant++) _batches[variant] = CreateBatch(random, keys);
     }
 
-    [GlobalCleanup]
-    public void GlobalCleanup() => _store.Dispose();
-
     [Benchmark]
     public ValueHash256 UpdateRoot()
     {
@@ -81,7 +78,7 @@ public class PbtTrieUpdaterBenchmark
         {
             Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(sharded), new ArrayPoolList<int>(zoneTable)),
         };
-        return TrieUpdater.UpdateRoot(_store, _root, batches, _foldQuota, FoldFanOut.Default, null, PooledRefCountingMemoryProvider.Instance);
+        return TrieUpdater.UpdateRoot(_store, (_root, 0), batches, _foldQuota, FoldFanOut.Default, null, PooledRefCountingMemoryProvider.Instance).Hash;
     }
 
     /// <summary>A batch of about 70% updates, 20% inserts and 10% deletes over distinct keys.</summary>

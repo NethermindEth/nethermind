@@ -102,19 +102,10 @@ public static partial class TrieUpdater<TKey, TPath>
     /// Each stored descendant size is the loaded (or inherited) size of its slot adjusted by the change folded below that
     /// slot. A group that is or becomes absent writes no record, so only the folded change survives.
     /// </remarks>
-    public static long PublishGroup<TFrame>(IPbtNodeGroupSink sink, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
-        scoped in PbtTraversalPath path)
-        where TFrame : struct, IGroupFrame<TKey, TPath> => PublishGroupWithPointer(sink, ref reader, writer, path).SizeDelta;
-
     public readonly record struct GroupPublication(long SizeDelta, ulong Pointer);
 
     public static GroupPublication PublishGroup<TFrame>(FoldContext context, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
-        scoped in PbtTraversalPath path) where TFrame : struct, IGroupFrame<TKey, TPath> =>
-        PublishGroupWithPointer(context.Writer, ref reader, writer, path);
-
-    private static GroupPublication PublishGroupWithPointer<TFrame>(IPbtNodeGroupSink sink,
-        ref TFrame reader, PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path)
-        where TFrame : struct, IGroupFrame<TKey, TPath>
+        scoped in PbtTraversalPath path) where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
         ushort candidateSlots = (ushort)(reader.DescendantMask | writer.DescendantDeltaMask);
@@ -135,7 +126,7 @@ public static partial class TrieUpdater<TKey, TPath>
         ulong pointer = surviving;
         if (length != 0)
         {
-            using IPbtGroupRecordWriteBatch batch = sink.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(length)));
+            using IPbtGroupRecordWriteBatch batch = context.Store.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(length)));
             writer.DetachTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, path.ToPath<PbtStorageNodePath>(), links, length), descendantBytes, candidateSlots);
             pointer = batch.BasePointer;
         }
@@ -175,13 +166,11 @@ public static partial class TrieUpdater<TKey, TPath>
     /// <see cref="Operations"/>, set only when wide frames may fold their buckets concurrently, is the backing array of
     /// every operation range, so a bucket can rebuild its span on another thread,
     /// and <see cref="FanOut"/> gives how many operations a concurrent run of buckets holds at least, by what it has stored below it.
-    /// Buffer frames borrow records directly; <see cref="Store"/> remains the exact-view fallback. Each concurrent bucket
-    /// owns its publication writer, so workers never modify the visible store directly.
+    /// Buffer frames borrow records directly; <see cref="Store"/> remains the exact-view fallback and takes every group record.
     /// </remarks>
-    public sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
+    public sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
     {
         public IPbtStore Store { get; } = store;
-        public IPbtNodeGroupSink Writer { get; } = writer;
         public IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
         public ConcurrencyController FoldQuota { get; } = foldQuota;
         public PbtWriteOperation<TKey>[]? Operations { get; } = operations;
