@@ -1229,42 +1229,6 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         public int MainThreadTxIndex { get; set; }
     }
 
-    /// <summary>
-    /// The prewarmer wraps its world state in a <see cref="FootprintRecorder"/> when handoff is on, the default; the
-    /// address warmer prefetches only when that wrapper reports and forwards the backend's prefetch support.
-    /// </summary>
-    [Test]
-    public void FootprintRecorder_forwards_prefetch_to_the_recorded_state([Values] bool supported)
-    {
-        PrefetchRecordingState inner = new(Substitute.For<IWorldState>(), supported);
-        IWorldState recorder = new FootprintRecorder(inner);
-        Address[] accounts = [TestItem.AddressA, TestItem.AddressB];
-        StorageCell[] slots = [new(TestItem.AddressA, 1)];
-
-        recorder.Prefetch(accounts, slots, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(recorder.SupportsPrefetch, Is.EqualTo(supported));
-            Assert.That(inner.Accounts, Is.EqualTo(accounts));
-            Assert.That(inner.Slots, Is.EqualTo(slots));
-        }
-    }
-
-    private sealed class PrefetchRecordingState(IWorldState state, bool supported) : WorldStateDecorator(state), IWorldState
-    {
-        public List<Address> Accounts { get; } = [];
-        public List<StorageCell> Slots { get; } = [];
-
-        bool IWorldState.SupportsPrefetch => supported;
-
-        void IWorldState.Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
-        {
-            Accounts.AddRange(accounts);
-            Slots.AddRange(slots);
-        }
-    }
-
     private sealed class ForwardingWorldState(IWorldState state) : WorldStateDecorator(state);
 
     private sealed class ForwardingProcessor(ITransactionProcessor processor) : ITransactionProcessor

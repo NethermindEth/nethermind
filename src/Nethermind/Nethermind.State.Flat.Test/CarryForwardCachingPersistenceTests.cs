@@ -52,32 +52,6 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public async Task Prefetch_ForwardsOnlyTheKeysTheCacheCannotServe()
-    {
-        FakePersistence inner = new();
-        await using CarryForwardCachingPersistence cache = new(inner);
-        UInt256 value = default;
-        using (IPersistence.IPersistenceReader reader = cache.CreateReader())
-        {
-            reader.GetAccount(TestItem.AddressA);
-            reader.TryGetSlot(TestItem.AddressA, 1, ref value);
-        }
-
-        using (IPersistence.IPersistenceReader reader = cache.CreateReader())
-        {
-            ((IPersistence.IPrefetchingReader)reader).Prefetch([TestItem.AddressA, TestItem.AddressB],
-                [new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressA, 2), new StorageCell(TestItem.AddressB, 1)],
-                CancellationToken.None);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(inner.PrefetchedAccounts, Is.EqualTo(new[] { TestItem.AddressB }));
-            Assert.That(inner.PrefetchedSlots, Is.EqualTo(new[] { new StorageCell(TestItem.AddressA, 2), new StorageCell(TestItem.AddressB, 1) }));
-        }
-    }
-
-    [Test]
     public async Task GetAccount_SecondReadAtSameBasis_ServedFromCache()
     {
         FakePersistence inner = new();
@@ -1036,15 +1010,13 @@ public class CarryForwardCachingPersistenceTests
         public bool AccountExists = true;
         public bool SlotExists = true;
         public bool ThrowOnReaderDispose;
-        public readonly List<Address> PrefetchedAccounts = [];
-        public readonly List<StorageCell> PrefetchedSlots = [];
 
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => new Reader(this);
         public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new FakeWriteBatch();
         public void Flush() { }
         public void Clear() { }
 
-        private sealed class Reader(FakePersistence parent) : IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
+        private sealed class Reader(FakePersistence parent) : IPersistence.IPersistenceReader
         {
             public Account? GetAccount(Address address)
             {
@@ -1068,12 +1040,6 @@ public class CarryForwardCachingPersistenceTests
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
             public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
             public bool IsPreimageMode => false;
-
-            public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
-            {
-                parent.PrefetchedAccounts.AddRange(accounts);
-                parent.PrefetchedSlots.AddRange(slots);
-            }
 
             public void Dispose()
             {
