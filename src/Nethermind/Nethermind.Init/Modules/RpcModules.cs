@@ -114,11 +114,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // Trace
             .AddSingleton<ParallelTraceBudget, IFlatDbConfig, ILogManager>(CreateTraceBudget)
             .AddSingleton<ParallelTraceBudgets, ISpecProvider, IFlatDbConfig, ParallelTraceBudget>(CreateParallelTraceBudgets)
-            // Each instance holds two block-processing scopes for the life of the process, built on demand, so memory grows
-            // only with the instances concurrent requests use: tens of megabytes each on mainnet. Single-transaction traces
-            // and trace_call get no help from the parallel tracers' shared pool, so, as for the Debug module, one instance
-            // per logical processor, capped at 16.
-            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.TraceModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16), jsonRpcConfig.Timeout)
+            // Each instance holds two block-processing scopes for the life of the process. The lazy pool creates all
+            // configured instances and its shared instance on first access, so lower the capacity where memory is short.
+            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.TraceModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
