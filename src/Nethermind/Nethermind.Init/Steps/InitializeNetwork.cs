@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
@@ -66,6 +67,7 @@ public class InitializeNetwork : IStep
     private readonly ILogManager _logManager;
 
     private readonly ILogger _logger;
+    private readonly ProofWrapperGossip? _proofWrapperGossip;
 
     public InitializeNetwork(
         ISyncServer _, // Need to be resolved at least once
@@ -89,7 +91,8 @@ public class InitializeNetwork : IStep
         IPruningConfig pruningConfig,
         INodeStorageFactory nodeStorageFactory,
         FlatStateActivationPolicy flatStateActivationPolicy,
-        ILogManager logManager
+        ILogManager logManager,
+        ProofWrapperGossip? proofWrapperGossip = null
     )
     {
         _synchronizer = synchronizer;
@@ -113,6 +116,7 @@ public class InitializeNetwork : IStep
         _nodeStorageFactory = nodeStorageFactory;
         _flatStateActivationPolicy = flatStateActivationPolicy;
         _logManager = logManager;
+        _proofWrapperGossip = proofWrapperGossip;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
@@ -146,6 +150,8 @@ public class InitializeNetwork : IStep
         {
             return;
         }
+
+        _proofWrapperGossip?.Start();
 
         try
         {

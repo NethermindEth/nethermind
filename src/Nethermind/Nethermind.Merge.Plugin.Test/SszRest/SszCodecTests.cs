@@ -26,6 +26,44 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 public class SszCodecTests
 {
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Ssz_payload_rejects_unrepresentable_proof_fields(bool inclusionCommitment)
+    {
+        ExecutionPayloadV4 payload = new();
+        if (inclusionCommitment) payload.InclusionLists = [new InclusionListV1 { Transactions = [], RecursiveStark = new() { StarkProofHash = Keccak.Zero, DepsHash = Keccak.Zero } }];
+        else payload.StarkProof = [1];
+        Assert.That(() => new SszExecutionPayloadV4(payload), Throws.TypeOf<NotSupportedException>());
+    }
+
+    [TestCase(1, false)]
+    [TestCase(1, true)]
+    [TestCase(2, false)]
+    [TestCase(2, true)]
+    [TestCase(3, false)]
+    [TestCase(3, true)]
+    [TestCase(4, false)]
+    [TestCase(4, true)]
+    public void Ssz_block_factory_rejects_proofs_before_payload_conversion(int version, bool inclusionCommitment)
+    {
+        Block block = Build.A.Block.TestObject;
+        byte[] proof = [1];
+        if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList(0, [], new InclusionListCommitment(Keccak.Compute(proof).ValueHash256, default))];
+        else
+        {
+            block.StarkProof = proof;
+            block.Header.RecursiveStark = new(Keccak.Compute(proof), Keccak.Zero);
+        }
+        Func<SszExecutionPayloadV1> create = () => version switch
+        {
+            1 => SszExecutionPayloadV1.From(block),
+            2 => SszExecutionPayloadV2.From(block),
+            3 => SszExecutionPayloadV3.From(block),
+            _ => SszExecutionPayloadV4.From(block)
+        };
+        Assert.That(create, Throws.TypeOf<NotSupportedException>());
+    }
+
     /// <summary>
     /// Calls <paramref name="encode"/> against an <see cref="ArrayBufferWriter{T}"/>
     /// and returns the written bytes — the test-side analogue of writing into the

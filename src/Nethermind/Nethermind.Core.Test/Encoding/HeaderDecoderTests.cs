@@ -43,6 +43,62 @@ public class HeaderDecoderTests
     }
 
     [Test]
+    public void Can_encode_decode_with_recursive_stark()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithMixHash(Keccak.Compute("mix_hash"))
+            .WithNonce(1000)
+            .TestObject;
+        header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(new byte[] { 1, 2, 3, 4 }), Keccak.Compute("deps"));
+
+        HeaderDecoder decoder = new();
+        Rlp rlp = decoder.Encode(header);
+        RlpReader decoderContext = new(rlp.Bytes);
+        BlockHeader decoded = decoder.Decode(ref decoderContext)!;
+
+        RlpReader fields = new(rlp.Bytes);
+        fields.ReadSequenceLength();
+        fields.SkipItems(23);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fields.DecodeKeccak(), Is.EqualTo(header.RecursiveStark.StarkProofHash));
+            Assert.That(fields.DecodeKeccak(), Is.EqualTo(header.RecursiveStark.BlockDepsHash));
+            Assert.That(fields.Position, Is.EqualTo(rlp.Length));
+        }
+
+        Assert.That(decoded.RecursiveStark, Is.Not.Null);
+        Assert.That(decoded.RecursiveStark!.StarkProofHash, Is.EqualTo(Keccak.Compute(new byte[] { 1, 2, 3, 4 })));
+        Assert.That(decoded.RecursiveStark.BlockDepsHash, Is.EqualTo(Keccak.Compute("deps")));
+
+        decoded.Hash = decoded.CalculateHash();
+        Assert.That(decoded.Hash, Is.EqualTo(header.CalculateHash()), "hash");
+    }
+
+    [Test]
+    public void Proof_commitments_require_32_bytes([Values(23, 24)] int fieldIndex, [Values(0, 31, 33)] int size)
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        header.RecursiveStark = new(Keccak.OfAnEmptyString, Keccak.Compute("deps"));
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(Rlp.Encode(header).Bytes, fieldIndex, Rlp.Encode(new byte[size]).Bytes);
+
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    public void Proof_commitment_has_fixed_size_and_changes_header_hash()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        header.RecursiveStark = new(Keccak.OfAnEmptyString, Keccak.Compute("deps"));
+        HeaderDecoder decoder = new();
+        Rlp emptyProof = decoder.Encode(header);
+        header.RecursiveStark = new(Keccak.Compute(new byte[Eip8288Constants.MaxAggregateProofBytes]), Keccak.Compute("deps"));
+        Rlp largeProof = decoder.Encode(header);
+        Assert.That(largeProof.Length, Is.EqualTo(emptyProof.Length));
+        Assert.That(Keccak.Compute(largeProof.Bytes), Is.Not.EqualTo(Keccak.Compute(emptyProof.Bytes)));
+        Assert.That(largeProof.Length, Is.LessThan(1024));
+    }
+
+    [Test]
     public void Get_length_null()
     {
         HeaderDecoder decoder = new();

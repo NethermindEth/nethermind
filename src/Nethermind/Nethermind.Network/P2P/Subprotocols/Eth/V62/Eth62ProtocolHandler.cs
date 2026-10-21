@@ -78,6 +78,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private protected void IgnorePooledTransactionResponse() => _floodController.ClearPooledTransactionRequests();
 
+        /// <summary>Counts an unaccepted transaction against this peer's gossip score, as a pool rejection would.</summary>
+        private protected void ReportUnacceptedTransaction(AcceptTxResult result) => _floodController.Report(result);
+
         public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
@@ -426,6 +429,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return ValueTask.CompletedTask;
         }
 
+        /// <summary>Takes a dependency-bearing transaction received through a transaction message, before it is recycled.</summary>
+        /// <remarks>Below <c>eth/73</c> peers must not send these, and they are ignored.</remarks>
+        protected virtual void HandleDependencyBearingTransaction(Transaction tx) { }
+
         protected static void ReturnUnsubmittedTransactions(ReadOnlySpan<Transaction> transactions)
         {
             foreach (Transaction tx in transactions)
@@ -439,6 +446,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         /// <remarks>The caller must not access the transaction after submission.</remarks>
         protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
+            // EIP-8437: a dependency-bearing transaction is admitted only with a fully validated covering wrapper, so it never
+            // reaches the pool from a transaction message. eth/73 retains it for that wrapper; below eth/73 it is ignored.
+            if (Eip8288Dependencies.IsDependencyBearing(tx))
+            {
+                if (isTrace) Logger.Trace($"{Node:c} sent dependency-bearing {tx.Hash} outside a proof wrapper");
+                HandleDependencyBearingTransaction(tx);
+                ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
+                return;
+            }
+
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
             {

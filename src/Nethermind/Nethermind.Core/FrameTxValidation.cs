@@ -17,7 +17,7 @@ public static class FrameTxValidation
 {
     public const string MissingFrames = "frame transaction must contain between 1 and 64 frames";
     public const string MissingSender = "frame transaction sender must be set";
-    public const string InvalidMode = "frame mode must be DEFAULT, VERIFY, SENDER, or ASSERT";
+    public const string InvalidMode = "frame mode must be DEFAULT, VERIFY, SENDER, ASSERT, or DEP_VERIFY";
     public const string AssertFrameNotTrailing = "ASSERT frames must form a trailing suffix of the frame list";
     public const string AssertFrameNotEnabled = "ASSERT frames are not enabled";
     public const string InvalidFlags = "frame flags must not use reserved bits";
@@ -45,6 +45,13 @@ public static class FrameTxValidation
     public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
+    public const string DependencyFrameShape = "dependency verification frame must have a null target, zero value, and zero flags";
+    public const string DependencyFrameInAtomicBatch = "dependency verification frame must not be part of an atomic batch";
+    public const string DependencyFrameDataLength = "dependency verification frame data must be a non-empty multiple of 96 bytes";
+    public const string TooManyDependenciesPerFrame = "dependency verification frame must declare at most 256 dependencies";
+    public const string DependencyPaddingNotZero = "each dependency must begin with 31 zero bytes before the scheme id";
+    public const string InvalidDependencyScheme = "dependency scheme is not enabled";
+    public const string DependencyFrameGasMismatch = "dependency verification frame gas limit must equal the sum of per-scheme verification gas";
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
@@ -54,22 +61,25 @@ public static class FrameTxValidation
     /// list, its signature entries and the fields the frame envelope adds.
     /// </summary>
     /// <remarks>
-    /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="assertEnabled"/>: it
-    /// reads no state and no release spec, so both consensus (<c>BlockValidator</c>) and the pool can reach it, and
+    /// The decision is a pure function of <paramref name="transaction"/> and the fork flags of <paramref name="spec"/>:
+    /// it reads no state, so both consensus (<c>BlockValidator</c>) and the pool can reach it, and
     /// the same transaction always yields the same verdict at a given fork. Structural RLP shape is already enforced
-    /// at decode time and is not rechecked. Checks needing the release spec — the EIP-7594 blob limits and the
-    /// EIP-7825 gas cap among them — are left to the validators in <c>TxValidator</c>'s frame composite, which is
+    /// at decode time and is not rechecked. Checks needing the rest of the release spec, the EIP-7594 blob limits and the
+    /// EIP-7825 gas cap among them, are left to the validators in <c>TxValidator</c>'s frame composite, which is
     /// also the only place several of this type's own message constants are raised, so passing this is necessary
     /// but not sufficient for validity.
     /// </remarks>
     /// <param name="transaction">The frame transaction to check. Must carry <see cref="Transaction.Frames"/> and a
     /// resolved <see cref="Transaction.SenderAddress"/>; both are reported as failures rather than thrown on.</param>
-    /// <param name="assertEnabled">Whether EIP-7906 is active, which decides only whether
-    /// <see cref="FrameMode.Assert"/> frames are admitted at all.</param>
+    /// <param name="spec">The fork: EIP-7906 admits <see cref="FrameMode.Assert"/> frames, and EIP-8141 with EIP-8288
+    /// admits dependency verification frames.</param>
     /// <param name="error">On failure, the first violated constraint, always one of this type's message constants;
     /// <see langword="null"/> on success.</param>
     /// <returns><see langword="true"/> if every stateless constraint holds.</returns>
-    public static bool IsWellFormed(Transaction transaction, bool assertEnabled, out string? error)
+    public static bool IsWellFormed(Transaction transaction, IReleaseSpec spec, out string? error) =>
+        IsWellFormed(transaction, spec.IsEip7906Enabled, spec.IsEip8141Enabled && spec.IsEip8288Enabled, out error);
+
+    private static bool IsWellFormed(Transaction transaction, bool assertEnabled, bool dependencyEnabled, out string? error)
     {
         error = null;
 
@@ -92,7 +102,23 @@ public static class FrameTxValidation
         {
             TxFrame frame = frames[i];
 
-            if (frame.Mode > FrameMode.Assert)
+            if (frame.Mode == FrameMode.DepVerify)
+            {
+                if (!dependencyEnabled || !IsWellFormedDependencyFrame(frame, out error))
+                {
+                    error ??= InvalidMode;
+                    return false;
+                }
+
+                // EIP-8288: a flag-free dependency frame would still terminate a preceding batch, and a skipped
+                // terminator would declare dependencies the block must prove while its frame never ran.
+                if (i > 0 && (frames[i - 1].Flags & FrameFlags.AtomicBatch) != 0)
+                {
+                    error = DependencyFrameInAtomicBatch;
+                    return false;
+                }
+            }
+            else if (frame.Mode > FrameMode.Assert)
             {
                 error = InvalidMode;
                 return false;
@@ -288,6 +314,7 @@ public static class FrameTxValidation
     /// execution limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) plus signature verification, saturating at
     /// <see cref="ulong.MaxValue"/>. The prefix's <c>limits.state</c> is bounded separately by <c>MAX_VERIFY_STATE_GAS</c>.
     /// </summary>
+    /// <remarks>EIP-8288 dependency declarations perform no EVM work and are excluded from this bound.</remarks>
     public static ulong ValidationWorkGas(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
@@ -296,6 +323,7 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
+            if (frames[i].Mode == FrameMode.DepVerify) continue;
             total = total.SaturatingAdd(frames[i].ExecutionGasLimit);
         }
 
@@ -418,7 +446,7 @@ public static class FrameTxValidation
     public static bool HasMisplacedExpiryFrame(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
-        for (int i = 1; i < frames.Length; i++)
+        for (int i = SkipDependencies(frames, 0) + 1; i < frames.Length; i++)
         {
             if (IsExpiryVerifyFrame(frames[i]))
             {
@@ -449,6 +477,7 @@ public static class FrameTxValidation
 
         for (int i = ApprovalSearchStart(frames); i < frames.Length; i++)
         {
+            if (frames[i].Mode == FrameMode.DepVerify) continue;
             // A non-VERIFY frame ends the prefix, so nothing past it can install a payer.
             if (frames[i].Mode != FrameMode.Verify) break;
             if ((frames[i].Flags & FrameFlags.ApprovePayment) == 0) continue;
@@ -466,17 +495,10 @@ public static class FrameTxValidation
     /// that scan for the approving frame; the prefix simulation asks the same rule positionally and keeps its form.</remarks>
     public static int ApprovalSearchStart(TxFrame[] frames)
     {
-        int next = ProtocolVerifierFrameCount(frames);
-        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
-        return next;
-    }
-
-    /// <summary>The number of optional leading protocol verifier frames, an <c>expiry_verify</c> frame and then an
-    /// EIP-8272 <c>recent_root_verify</c> frame, which EIP-8141 prefix-shape matching skips.</summary>
-    public static int ProtocolVerifierFrameCount(TxFrame[] frames)
-    {
-        int next = RecentRootVerifyFrameIndex(frames);
-        if (next < frames.Length && IsRecentRootVerifyFrame(frames[next])) next++;
+        int next = SkipDependencies(frames, 0);
+        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next = SkipDependencies(frames, next + 1);
+        if (next < frames.Length && IsRecentRootVerifyFrame(frames[next])) next = SkipDependencies(frames, next + 1);
+        if (next < frames.Length && IsDeployFrame(frames[next])) next = SkipDependencies(frames, next + 1);
         return next;
     }
 
@@ -537,14 +559,19 @@ public static class FrameTxValidation
             return next + 1;
         }
 
-        if (next + 1 < frames.Length
-            && IsOnlyVerifyFrame(frames[next], sender)
-            && IsPayFrame(frames[next + 1]))
+        if (next < frames.Length && IsOnlyVerifyFrame(frames[next], sender))
         {
-            return next + 2;
+            int payer = SkipDependencies(frames, next + 1);
+            if (payer < frames.Length && IsPayFrame(frames[payer])) return payer + 1;
         }
 
         return null;
+    }
+
+    private static int SkipDependencies(TxFrame[] frames, int next)
+    {
+        while (next < frames.Length && frames[next].Mode == FrameMode.DepVerify) next++;
+        return next;
     }
 
     /// <summary>True if <paramref name="frame"/> is a well-formed EIP-8141 expiry-verifier VERIFY frame.</summary>
@@ -754,7 +781,8 @@ public static class FrameTxValidation
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost
                              + valueTransferCost
-                             + keyedNonceAccessCost;
+                             + keyedNonceAccessCost
+                             + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
@@ -858,12 +886,84 @@ public static class FrameTxValidation
             return transaction.PersistedExpiryDeadline is not null;
         }
 
-        if (frames.Length == 0 || !IsExpiryVerifyFrame(frames[0]))
+        int expiryIndex = SkipDependencies(frames, 0);
+        if (expiryIndex == frames.Length || !IsExpiryVerifyFrame(frames[expiryIndex]))
         {
             return false;
         }
 
-        deadline = BinaryPrimitives.ReadUInt64BigEndian(frames[0].Data.Span);
+        deadline = BinaryPrimitives.ReadUInt64BigEndian(frames[expiryIndex].Data.Span);
+        return true;
+    }
+
+    /// <summary>Checks the triples of a dependency verification frame: at least one and at most
+    /// <see cref="Eip8288Constants.MaxDependenciesPerFrame"/>, each zero-padded with an enabled scheme.</summary>
+    /// <remarks>These are the frame validity checks that precede EIP-8288 capacity checks and fix the transaction's dependency
+    /// union: an unsupported scheme invalidates the transaction rather than being filtered out of it.</remarks>
+    public static bool IsWellFormedDependencyData(ReadOnlySpan<byte> data, out string? error)
+    {
+        error = null;
+        if (data.Length == 0 || data.Length % Eip8288Constants.DependencyTripleLength != 0)
+        {
+            error = DependencyFrameDataLength;
+            return false;
+        }
+
+        int count = data.Length / Eip8288Constants.DependencyTripleLength;
+        if (count > Eip8288Constants.MaxDependenciesPerFrame)
+        {
+            error = TooManyDependenciesPerFrame;
+            return false;
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            ReadOnlySpan<byte> triple = data.Slice(i * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength);
+            if (!triple[..31].IsZero())
+            {
+                error = DependencyPaddingNotZero;
+                return false;
+            }
+
+            if (!Eip8288Dependencies.IsAcceptedScheme(triple[31]))
+            {
+                error = InvalidDependencyScheme;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsWellFormedDependencyFrame(TxFrame frame, out string? error)
+    {
+        error = null;
+
+        // EIP-8288: the absent target, not the zero address; FRAMEPARAM then resolves it to the sender.
+        if (frame.Target is not null || !frame.Value.IsZero || frame.Flags != 0)
+        {
+            error = DependencyFrameShape;
+            return false;
+        }
+
+        if (!IsWellFormedDependencyData(frame.Data.Span, out error)) return false;
+
+        ReadOnlySpan<byte> data = frame.Data.Span;
+        int count = data.Length / Eip8288Constants.DependencyTripleLength;
+        ulong expectedGas = 0;
+        for (int i = 0; i < count; i++)
+        {
+            expectedGas += data[i * Eip8288Constants.DependencyTripleLength + 31] == Eip8288Constants.LeanStarkScheme
+                ? Eip8288Constants.LeanStarkVerificationGas
+                : Eip8288Constants.LeanSphincsVerificationGas;
+        }
+
+        if (frame.StateGasLimit != 0 || frame.ExecutionGasLimit != expectedGas)
+        {
+            error = DependencyFrameGasMismatch;
+            return false;
+        }
+
         return true;
     }
 }

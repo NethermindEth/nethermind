@@ -104,7 +104,8 @@ namespace Nethermind.Consensus.Validators
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
                    && ValidateSlotNumber(header, spec, ref error)
-                   && ValidateBloom(header, spec, ref error);
+                   && ValidateBloom(header, spec, ref error)
+                   && ValidateRecursiveStarkFields(header, spec, ref error);
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
@@ -131,6 +132,29 @@ namespace Nethermind.Consensus.Validators
                     error = BlockErrorMessages.WithdrawalsRootNotEnabled;
                     return false;
                 }
+            }
+            return true;
+        }
+
+        private static bool ValidateRecursiveStarkFields(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            RecursiveStarkCommitment? proof = header.RecursiveStark;
+            if (!spec.IsEip8288Enabled)
+            {
+                if (proof is null) return true;
+                error = BlockErrorMessages.RecursiveStarkNotEnabled;
+                return false;
+            }
+            if (proof is null)
+            {
+                if (header.IsGenesis) return true;
+                error = BlockErrorMessages.MissingRecursiveStark;
+                return false;
+            }
+            if (!proof.HasValidShape)
+            {
+                error = BlockErrorMessages.InvalidRecursiveStark;
+                return false;
             }
             return true;
         }

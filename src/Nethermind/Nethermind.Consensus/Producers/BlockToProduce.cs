@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 //TODO: Redo clique block producer
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
@@ -48,6 +50,27 @@ namespace Nethermind.Consensus.Producers
 
         public long TxByteLength { get; internal set; }
 
-        public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals);
+        internal AggregationInput? InclusionListProofInput { get; set; }
+        internal List<AggregationInput> LeanProofInputs { get; } = [];
+        internal LeanProofBudget LeanProofBudget { get; private set; } = new();
+
+        /// <summary>When set, only transactions whose dependencies all lie in this proven set are picked.</summary>
+        internal IReadOnlySet<FrameDependency>? LeanDependencyLimit { get; set; }
+
+        public override Block WithReplacedHeader(BlockHeader newHeader)
+        {
+            BlockToProduce replacement = new(newHeader, Transactions, Uncles, Withdrawals)
+            {
+                StarkProof = StarkProof,
+                InclusionListTransactions = InclusionListTransactions,
+                InclusionLists = InclusionLists,
+                InclusionListProofInput = InclusionListProofInput,
+                TxByteLength = TxByteLength,
+                LeanProofBudget = LeanProofBudget.Clone(),
+                LeanDependencyLimit = LeanDependencyLimit
+            };
+            replacement.LeanProofInputs.AddRange(LeanProofInputs);
+            return replacement;
+        }
     }
 }

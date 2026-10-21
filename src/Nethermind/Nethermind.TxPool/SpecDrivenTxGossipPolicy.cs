@@ -9,6 +9,8 @@ public class SpecDrivenTxGossipPolicy(IChainHeadInfoProvider chainHeadInfoProvid
 {
     private IChainHeadInfoProvider ChainHeadInfoProvider { get; } = chainHeadInfoProvider;
 
+    /// <remarks>EIP-8437 dependency-bearing transactions are gossiped too; each peer connection carries them only from
+    /// <c>eth/73</c>.</remarks>
     public bool ShouldGossipTransaction(Transaction tx) =>
         (!tx.SupportsBlobs && !tx.CarriesBlobs) || tx.GetProofVersion() == ChainHeadInfoProvider.CurrentProofVersion;
 }

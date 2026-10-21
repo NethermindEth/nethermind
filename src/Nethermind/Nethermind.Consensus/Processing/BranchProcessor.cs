@@ -160,9 +160,13 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                useBalForInclusionList = checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 }
+                // EIP-8288 prefix simulation needs mutable state before post-transaction system calls.
+                bool simulateFrameInclusionList = checkInclusionList && spec.IsEip8288Enabled
+                    && suggestedBlock.InclusionListTransactions is { } inclusionList
+                    && Array.Exists(inclusionList, static tx => tx.SupportsFrames && !tx.SupportsBlobs);
+                useBalForInclusionList = !simulateFrameInclusionList && checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 }
                     && spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis;
-                ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
+                ProcessingOptions blockOptions = !simulateFrameInclusionList && blockTracer == NullBlockTracer.Instance
                     ? options
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
                 Block processedBlock;
@@ -273,8 +277,13 @@ public class BranchProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             processingException = ex;
-            // Cancelling the token is reported by whoever cancelled it: a processing timeout or shutdown.
-            if (_logger.IsWarn && !(ex is OperationCanceledException && token.IsCancellationRequested)) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            // A production body waiting for its dependency proof is an expected outcome, and cancelling the token is reported by
+            // whoever cancelled it: a processing timeout or shutdown.
+            if (ex is ProofAggregation.LeanProofNotReadyException || ex is OperationCanceledException && token.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block processing stopped: {ex.Message}");
+            }
+            else if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             DrainAndClear(ref prewarming);
 

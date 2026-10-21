@@ -235,6 +235,9 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8038TransitionTimestamp = parameters.Eip8038TransitionTimestamp,
             Eip8282TransitionTimestamp = parameters.Eip8282TransitionTimestamp,
             Eip8141TransitionTimestamp = parameters.Eip8141TransitionTimestamp,
+            Eip8288TransitionTimestamp = parameters.Eip8288TransitionTimestamp,
+            Eip8288AggregatedVkTransitionTimestamp = parameters.Eip8288AggregatedVkTransitionTimestamp,
+            Eip8288AggregatedVk = parameters.Eip8288AggregatedVk,
             Eip8250TransitionTimestamp = parameters.Eip8250TransitionTimestamp,
             Eip8272TransitionTimestamp = parameters.Eip8272TransitionTimestamp,
             Eip7906TransitionTimestamp = parameters.Eip7906TransitionTimestamp,
@@ -482,6 +485,12 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                 ? new Block(genesisHeader)
                 : new Block(genesisHeader, [], [], []))
             : new Block(genesisHeader, [], [], [], new());
+
+        if (parameters.Eip8288TransitionTimestamp is { } proofTransition && genesisHeader.Timestamp >= proofTransition)
+        {
+            genesisHeader.RecursiveStark = new RecursiveStarkCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+            chainSpec.Genesis.StarkProof = [];
+        }
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

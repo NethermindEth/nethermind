@@ -45,7 +45,9 @@ public sealed class FinalizedBlockAccessListProcessor(
         // EIP-8037 dimensions are not recoverable from a BAL or the header's combined gas total.
         bool needsGasDimensions = spec.IsEip8037Enabled && block.InclusionListTransactions is { Length: > 0 }
             && block.GasUsed != 0 && block.Header.GasUsedPerDimension is null;
-        if ((options & excluded) != 0 || needsGasDimensions || blockTracer != NullBlockTracer.Instance || !policy.CanReconstruct(block.Header))
+        bool needsFrameSimulation = spec.IsEip8288Enabled && block.InclusionListTransactions is { } inclusionList
+            && Array.Exists(inclusionList, static tx => tx.SupportsFrames && !tx.SupportsBlobs);
+        if ((options & excluded) != 0 || needsGasDimensions || needsFrameSimulation || blockTracer != NullBlockTracer.Instance || !policy.CanReconstruct(block.Header))
             return inner.ProcessOne(block, options, blockTracer, spec, token);
 
         // Queued processing attaches a stored list only when it matches the header's commitment.

@@ -47,6 +47,7 @@ namespace Nethermind.Blockchain
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
+        private InvalidProofCache? _invalidProofs;
 
         protected readonly ILogger Logger;
         protected readonly ISpecProvider SpecProvider;
@@ -427,7 +428,7 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (_invalidBlocks.Contains(header.Hash))
+            if (_invalidBlocks.Contains(header.Hash) || Volatile.Read(ref _invalidProofs)?.Contains(header.Hash.ValueHash256) == true)
             {
                 return AddBlockResult.InvalidBlock;
             }
@@ -626,9 +627,9 @@ namespace Nethermind.Blockchain
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-                if (allowInvalid && _invalidBlocks.TryGet(blockHash, out Block block))
+                if (allowInvalid)
                 {
-                    header = block.Header;
+                    header = FindInvalidBlock(blockHash)?.Header;
                 }
 
                 return header;
@@ -854,7 +855,18 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            _invalidBlocks.Set(badBlock.Hash, badBlock);
+            if (InvalidProofCache.ProofBytes(badBlock) > BlockStore.MaxCachedProofBytes)
+            {
+                _invalidBlocks.Delete(badBlock.Hash);
+                InvalidProofCache cache = Volatile.Read(ref _invalidProofs) ??
+                    Interlocked.CompareExchange(ref _invalidProofs, new InvalidProofCache(), null) ?? _invalidProofs!;
+                cache.Set(badBlock);
+            }
+            else
+            {
+                Volatile.Read(ref _invalidProofs)?.Delete(badBlock.Hash.ValueHash256);
+                _invalidBlocks.Set(badBlock.Hash, badBlock);
+            }
             _badBlockStore.Insert(badBlock);
         }
 
@@ -1763,7 +1775,7 @@ namespace Nethermind.Blockchain
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
                 if (allowInvalid)
                 {
-                    _invalidBlocks.TryGet(blockHash, out block);
+                    block = FindInvalidBlock(blockHash);
                 }
 
                 return block;

@@ -465,6 +465,9 @@ public class FrameTxPayerExposureFilterTests
 
         /// <summary>[self_verify, DEFAULT, user_op]: a DEFAULT frame past the prefix runs arbitrary code.</summary>
         BehindAPostPrefixDefaultFrame,
+
+        /// <summary>[self_verify, dependency, user_op]: a dependency frame cannot fund the sender.</summary>
+        BehindDependencyFrame,
     }
 
     // TXPARAM(0x06) prices gas alone, so the wei a SENDER frame moves sits outside it. One in the leading prologue
@@ -478,6 +481,8 @@ public class FrameTxPayerExposureFilterTests
     [TestCase(-1, true, SenderFramePosition.BehindTheExpiryAndDeployFrames, false, TestName = "an expiry frame ahead of that deploy frame does not lift the bound either")]
     [TestCase(-1, true, SenderFramePosition.BehindThePrologueDeployFrame, true, TestName = "a payer-less deploy-and-use layout is bounded too")]
     [TestCase(-1, false, SenderFramePosition.BehindAPostPrefixDefaultFrame, false, TestName = "a SENDER frame a post-prefix DEFAULT frame could fund is not summed")]
+    [TestCase(-1, true, SenderFramePosition.BehindDependencyFrame, false)]
+    [TestCase(0, false, SenderFramePosition.BehindDependencyFrame, false)]
     public void Accept_SelfPayingSender_CountsTheValueOfALeadingSenderFrame(int balanceDelta, bool rejected, SenderFramePosition position, bool payerless)
     {
         const int frameValue = 4_000;
@@ -511,6 +516,9 @@ public class FrameTxPayerExposureFilterTests
         SenderFramePosition.BehindThePrologueDeployFrame => [FrameTxTestFrames.Deploy(), FrameTxTestFrames.SelfVerify(), senderFrame],
         SenderFramePosition.BehindTheExpiryAndDeployFrames => [FrameTxTestFrames.Expiry(), FrameTxTestFrames.Deploy(), FrameTxTestFrames.SelfVerify(), senderFrame],
         SenderFramePosition.BehindAPostPrefixDefaultFrame => [FrameTxTestFrames.SelfVerify(), FrameTxTestFrames.Deploy(), senderFrame],
+        SenderFramePosition.BehindDependencyFrame => [FrameTxTestFrames.SelfVerify(),
+            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero,
+                Eip8288Dependencies.Serialize([new FrameDependency(Eip8288Constants.LeanSphincsScheme, default, default)])), senderFrame],
         _ => [FrameTxTestFrames.SelfVerify(), senderFrame],
     };
 

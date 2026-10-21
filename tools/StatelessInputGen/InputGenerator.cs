@@ -149,7 +149,7 @@ internal static class InputGenerator
 
         // Requests are post-merge, but the RLP header does not carry this execution flag.
         block.Header.IsPostMerge = true;
-        StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
+        StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance, NativeLeanProofVerifier.Instance);
         if (!env.WorldState.TryBeginScope(headers[^1], out IDisposable? scope))
             throw new InvalidDataException("Witness is missing the parent state root.");
         using IDisposable _ = scope;

@@ -138,6 +138,16 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip7805Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7805Enabled));
 
+        // Bogota with EIP-8288 per-list inclusion lists: JSON only, as the SSZ transport has no per-list encoding.
+        bool perListInclusionLists = spec.IsEip7805Enabled && spec.IsEip8288Enabled;
+        jsonLocal[nameof(IEngineRpcModule.engine_newPayloadV7)] = Gate(perListInclusionLists);
+        jsonLocal[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV6)] = Gate(perListInclusionLists);
+        jsonLocal[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV7)] = Gate(perListInclusionLists);
+        // The inclusion-list proof methods apply EIP-8288 rules only, under the fork at their timestamp.
+        jsonLocal[nameof(IEngineRpcModule.engine_verifyInclusionListProofV1)] = Gate(spec.IsEip8288Enabled);
+        jsonLocal[nameof(IEngineRpcModule.engine_getInclusionListProofV1)] = Gate(spec.IsEip8288Enabled);
+        jsonLocal[nameof(IEngineRpcModule.engine_submitInclusionListProofV1)] = Gate(spec.IsEip8288Enabled);
+
         json = jsonLocal;
         ssz = sszLocal;
     }

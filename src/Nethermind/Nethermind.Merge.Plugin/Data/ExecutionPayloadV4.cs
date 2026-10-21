@@ -137,10 +137,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
     {
         IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
-        // V5 and V6 share this payload type and differ only by the inclusion list beside it, so the
-        // fork decides which version is valid.
+        // V5, V6 and V7 share this payload type and differ only by the inclusion lists beside it, so the
+        // fork decides which version is valid. V7 carries EIP-8288's per-list commitments, which V6 cannot.
         return spec.IsAmsterdamEnabled
-            && spec.IsBogotaEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V6);
+            && spec.IsBogotaEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V6)
+            && spec.PerListInclusionListsEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V7);
     }
 
 

@@ -31,6 +31,8 @@ using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Test;
+using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Test.Processing;
 
@@ -79,9 +81,75 @@ public class BranchProcessorVerdictTests
     }
 
     [Test]
-    public void Inclusion_list_preserves_parallel_execution_options([Values] bool nonemptyList)
+    public void Frame_inclusion_list_uses_state_before_post_execution_credits([Values] bool fundedBeforeTransactions, [Values] bool withdrawal, [Values] bool withBal)
     {
-        Block block = Build.A.Block.WithNumber(0).WithInclusionListTransactions(nonemptyList ? [Build.A.Transaction.TestObject] : []).TestObject;
+        IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEip7805Enabled = true, IsEip7928Enabled = withBal };
+        byte[] approve = Prepare.EvmCode.PushData((byte)FrameFlags.ApproveExecutionAndPayment)
+            .PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas)];
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = 1,
+            SenderAddress = TestItem.AddressA,
+            NonceKeys = [0],
+            Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 100.GWei
+        };
+        FrameTxTestFrames.SignSecp256k1(tx, TestItem.PrivateKeyA, TestItem.AddressA);
+        tx.Hash = tx.CalculateHash();
+        IBlockValidator validator = Substitute.For<IBlockValidator>();
+        validator.ValidateProcessedBlock(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), Arg.Any<Block>(), out Arg.Any<string>()).Returns(true);
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(spec))
+            .AddSingleton(validator).Build();
+        IMainProcessingContext context = container.Resolve<IMainProcessingContext>();
+        Block genesis;
+        using (context.WorldState.BeginScope(IWorldState.PreGenesis))
+        {
+            context.WorldState.CreateAccount(TestItem.AddressA, fundedBeforeTransactions ? 1.Ether : UInt256.Zero);
+            context.WorldState.InsertCode(TestItem.AddressA, approve, spec);
+            foreach (Address contract in new[] { spec.Eip7002ContractAddress!, spec.Eip7251ContractAddress!,
+                Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282Constants.BuilderExitRequestPredeployAddress })
+            {
+                bool fundsSender = !withdrawal && contract == spec.Eip7002ContractAddress;
+                context.WorldState.CreateAccount(contract, fundsSender ? 1.Ether : UInt256.Zero);
+                context.WorldState.InsertCode(contract, fundsSender
+                    ? Prepare.EvmCode.PushData(TestItem.AddressA).Op(Instruction.SELFDESTRUCT).Done
+                    : [0x00], spec);
+            }
+            context.WorldState.Commit(spec);
+            context.WorldState.RecalculateStateRoot();
+            genesis = Build.A.Block.Genesis.WithStateRoot(context.WorldState.StateRoot).TestObject;
+            context.WorldState.CommitTree(0);
+        }
+        container.Resolve<IBlockTree>().SuggestBlock(genesis, BlockTreeSuggestOptions.None);
+        Block block = Build.A.Block.WithParent(genesis).WithGasLimit(30_000_000).WithBaseFeePerGas(0)
+            .WithWithdrawals(withdrawal ? [Build.A.Withdrawal.WithRecipient(TestItem.AddressA).WithAmount(1_000_000_000).TestObject] : [])
+            .WithInclusionListTransactions([tx]).TestObject;
+        ValidationResult validation = container.Resolve<ITxValidator>().IsWellFormed(tx, spec, block.GasLimit);
+        Assert.That((bool)validation, Is.True, validation.ToString());
+
+        Block[] processed = context.BranchProcessor.Process(genesis.Header, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        using IDisposable scope = context.WorldState.BeginScope(processed[0].Header);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed[0].IsInclusionListSatisfied, Is.EqualTo(!fundedBeforeTransactions));
+            Assert.That(block.IsInclusionListSatisfied, Is.EqualTo(!fundedBeforeTransactions));
+            Assert.That(context.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo(fundedBeforeTransactions ? 2.Ether : 1.Ether));
+            Assert.That(context.WorldState.GetNonce(TestItem.AddressA), Is.Zero);
+            Assert.That(context.WorldState.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(approve));
+        }
+        processed[0].DisposeAccountChanges();
+    }
+
+    [Test]
+    public void Inclusion_list_preserves_parallel_execution_except_for_frame_simulation([Values] bool nonemptyList, [Values] bool frame)
+    {
+        Transaction tx = Build.A.Transaction.WithType(frame ? TxType.FrameTx : TxType.Legacy).TestObject;
+        Block block = Build.A.Block.WithNumber(0).WithInclusionListTransactions(nonemptyList ? [tx] : []).TestObject;
         IBlockProcessor processor = Substitute.For<IBlockProcessor>();
         ProcessingOptions actualOptions = ProcessingOptions.None;
         processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
@@ -92,13 +160,13 @@ public class BranchProcessorVerdictTests
                 return (block, Array.Empty<TxReceipt>());
             });
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(Bogota.Instance))
+            .AddModule(new TestNethermindModule(new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEip7805Enabled = true }))
             .AddSingleton(processor)
             .Build();
 
         container.Resolve<IMainProcessingContext>().BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
 
-        Assert.That(actualOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.False);
+        Assert.That(actualOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.EqualTo(nonemptyList && frame));
     }
 
     [Test]

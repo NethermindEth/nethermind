@@ -160,6 +160,20 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
     }
 
     [Test]
+    public void Frame_inclusion_lists_require_execution([Values] bool frame)
+    {
+        using TestEnvironment env = new(useFlatDb);
+        Block block = env.CreateBlock();
+        block.InclusionListTransactions = [Build.A.Transaction.WithType(frame ? TxType.FrameTx : TxType.Legacy).TestObject];
+        env.Beacon.GetFinalizedHash().Returns(block.Hash);
+        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
+
+        env.Processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Eip8288Prototype.Instance);
+
+        Assert.That(env.Recording.Calls, Is.EqualTo(frame ? 1 : 0));
+    }
+
+    [Test]
     public void Inclusion_list_uses_generated_bal_without_reading_unchanged_parent()
     {
         IWorldStateManager parentReader = Substitute.For<IWorldStateManager>();

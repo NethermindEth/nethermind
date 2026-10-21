@@ -11,6 +11,10 @@ namespace Nethermind.Core.ZkEvm.Test.Specs;
 /// <summary>The schedule scan behind <see cref="ForkScheduleSpecProvider.TryGetForkSpec"/> in the zkEVM build.</summary>
 public class GuestForkLookupTests
 {
+    [Test]
+    public void Pinned_proof_verifier_does_not_require_guest_syscalls() =>
+        Assert.That(Eip8288Verifier.Pinned.AggregatedVk.Bytes.ToArray(), Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
+
     [TestCase("Frontier")]
     [TestCase("osaka")]
     [TestCase("AMSTERDAM")]

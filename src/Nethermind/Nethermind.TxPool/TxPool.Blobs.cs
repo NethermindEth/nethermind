@@ -143,6 +143,8 @@ namespace Nethermind.TxPool
             }
             finally
             {
+                state.ProofReservation?.Dispose();
+                state.SenderProofReservation?.Dispose();
                 state.SenderAdmissionGate?.Exit();
                 _newHeadLock.ExitReadLock();
             }

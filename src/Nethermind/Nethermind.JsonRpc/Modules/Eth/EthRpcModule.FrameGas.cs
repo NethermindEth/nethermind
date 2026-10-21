@@ -58,13 +58,24 @@ public partial class EthRpcModule
         errorCode = ErrorCodes.InvalidInput;
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
         IReleaseSpec spec = _specProvider.GetSpec(blockOverride?.ApplyTo(header) ?? header);
-        Result<Transaction> converted = request.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: false, checksFork: checksFork);
+        FrameForRpc[]? requested = request.Frames;
+        FrameForRpc[]? input = WithDependencyFrameGas(requested);
+        Result<Transaction> converted;
+        request.Frames = input;
+        try
+        {
+            converted = request.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: false, checksFork: checksFork);
+        }
+        finally
+        {
+            request.Frames = requested;
+        }
+
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
         tx.ChainId = _blockchainBridge.GetChainId();
-        if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out error)) return Result<FrameForRpc[]>.Fail(error!);
+        if (!FrameTxValidation.IsWellFormed(tx, spec, out error)) return Result<FrameForRpc[]>.Fail(error!);
 
-        FrameForRpc[] input = request.Frames!;
-        bool[] fillExecution = new bool[input.Length];
+        bool[] fillExecution = new bool[input!.Length];
         bool[] fillState = new bool[input.Length];
         for (int i = 0; i < input.Length; i++)
         {
@@ -82,5 +93,35 @@ public partial class EthRpcModule
         if (executionReverted) errorCode = ErrorCodes.ExecutionReverted;
         if (!result.Success(out TxFrame[]? frames, out error)) return Result<FrameForRpc[]>.Fail(error!);
         return FrameForRpc.FromFrames(frames);
+    }
+
+    /// <summary>Copies <paramref name="frames"/> with each dependency frame's omitted limits set to the only values
+    /// EIP-8288 admits: the per-scheme verification gas of its triples, and zero state gas.</summary>
+    /// <remarks>Explicit limits are kept, so validation still rejects wrong ones.</remarks>
+    private static FrameForRpc[]? WithDependencyFrameGas(FrameForRpc[]? frames)
+    {
+        if (frames is null) return null;
+        FrameForRpc[] resolved = (FrameForRpc[])frames.Clone();
+        for (int i = 0; i < resolved.Length; i++)
+        {
+            FrameForRpc? frame = resolved[i];
+            if (frame?.Mode != (byte)FrameMode.DepVerify || frame.ExecutionGas is not null && frame.StateGas is not null) continue;
+
+            ulong verificationGas = 0;
+            foreach (FrameDependency dependency in Eip8288Dependencies.Parse(frame.Data.Span))
+                verificationGas += dependency.VerificationGas;
+            resolved[i] = new FrameForRpc
+            {
+                Mode = frame.Mode,
+                Flags = frame.Flags,
+                Target = frame.Target,
+                ExecutionGas = frame.ExecutionGas ?? verificationGas,
+                StateGas = frame.StateGas ?? 0,
+                Value = frame.Value,
+                Data = frame.Data,
+            };
+        }
+
+        return resolved;
     }
 }

@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
@@ -51,7 +52,10 @@ public partial class EngineRpcModule(
     IBlockProcessingQueue processingQueue,
     ILogManager logManager,
     IBlockTree blockTree,
-    PayloadTransactionCountGuard? transactionCountGuard) : IEngineRpcModule
+    PayloadTransactionCountGuard? transactionCountGuard = null,
+    IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>? verifyInclusionListProofHandler = null,
+    IHandler<GetInclusionListProofRequest, InclusionListProofV1?>? getInclusionListProofHandler = null,
+    IHandler<SubmitInclusionListProofRequest, InclusionListProofStatusV1>? submitInclusionListProofHandler = null) : IEngineRpcModule
 {
     /// <summary>Initializes the module without a <see cref="PayloadTransactionCountGuard"/>.</summary>
     public EngineRpcModule(
@@ -151,7 +155,10 @@ public partial class EngineRpcModule(
         GCKeeper gcKeeper,
         IBlockProcessingQueue processingQueue,
         ILogManager logManager,
-        IBlockTree blockTree)
+        IBlockTree blockTree,
+        IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>? verifyInclusionListProofHandler = null,
+        IHandler<GetInclusionListProofRequest, InclusionListProofV1?>? getInclusionListProofHandler = null,
+        IHandler<SubmitInclusionListProofRequest, InclusionListProofStatusV1>? submitInclusionListProofHandler = null)
         : this(
             getPayloadHandlerV1,
             getPayloadHandlerV2,
@@ -182,7 +189,10 @@ public partial class EngineRpcModule(
             gcKeeper,
             processingQueue,
             logManager,
-            blockTree)
+            blockTree,
+            verifyInclusionListProofHandler: verifyInclusionListProofHandler,
+            getInclusionListProofHandler: getInclusionListProofHandler,
+            submitInclusionListProofHandler: submitInclusionListProofHandler)
     {
     }
 

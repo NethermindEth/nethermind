@@ -956,6 +956,23 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    [TestCase(20UL, 10UL, 10UL, false)]
+    [TestCase(20UL, 10UL, 20UL, true)]
+    [TestCase(10UL, 20UL, 19UL, false)]
+    [TestCase(10UL, 20UL, 20UL, true)]
+    [TestCase(null, 10UL, 100UL, false)]
+    [TestCase(10UL, null, 100UL, false)]
+    public void Eip8288_requires_both_transition_timestamps(ulong? frameTime, ulong? proofTime, ulong timestamp, bool enabled)
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip8141TransitionTimestamp = frameTime, Eip8288TransitionTimestamp = proofTime },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(timestamp)).IsEip8288Enabled, Is.EqualTo(enabled));
+    }
+
     private static IEnumerable<TestCaseData> FloorEipTransitions()
     {
         yield return new TestCaseData(new ChainParameters { Eip8131TransitionTimestamp = 20 }, (Func<IReleaseSpec, bool>)(static s => s.IsEip8131Enabled))

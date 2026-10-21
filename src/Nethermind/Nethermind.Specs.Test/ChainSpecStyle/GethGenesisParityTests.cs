@@ -49,11 +49,13 @@ public class GethGenesisParityTests
     /// </summary>
     private static readonly HashSet<string> ForksWithoutBlobScheduleKey =
     [
-        // Single-EIP prototypes riding on Amsterdam's blob parameters; devnets key blob changes by the fork they run on.
+        // Prototypes riding on Amsterdam's blob parameters; devnets key blob changes by the fork they run on.
         nameof(Eip8141Prototype),
+        nameof(Eip8288Prototype),
         nameof(Eip8250Prototype),
         nameof(Eip8272Prototype),
         nameof(Eip7906Prototype),
+        nameof(Eip4758Prototype),
     ];
 
     /// <summary>Parity <c>*TransitionTimestamp</c> fields a geth genesis cannot set, with the reason.</summary>
@@ -89,6 +91,7 @@ public class GethGenesisParityTests
         [nameof(GethGenesisConfigJson.Eip150Block)] = "Parity's eip150Transition",
         [nameof(GethGenesisConfigJson.Eip155Block)] = "Parity's eip155Transition",
         [nameof(GethGenesisConfigJson.Eip158Block)] = "Parity's eip161abcTransition and eip161dTransition",
+        [nameof(GethGenesisConfigJson.Eip8288AggregatedVkTimestamp)] = "Parity's eip8288AggregatedVkTransitionTimestamp",
     };
 
     /// <summary>
@@ -137,10 +140,12 @@ public class GethGenesisParityTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(DiffAgainstFork(atFork, fork), Is.Empty, $"geth genesis at {fork.Name} differs from the {fork.GetType().Name} class");
+            // EIP-8288 also schedules its EIP-8141 parent; both activate together.
+            NamedReleaseSpec parent = fork is Eip8288Prototype ? fork.Parent!.Parent! : fork.Parent!;
             // Paris is the last fork before Shanghai, but a chain merged at genesis is not the Paris class.
-            if (IsTimestampFork(fork.Parent!))
+            if (IsTimestampFork(parent))
             {
-                Assert.That(DiffAgainstFork(beforeFork, fork.Parent!), Is.Empty, $"geth genesis just before {fork.Name} differs from the {fork.Parent!.GetType().Name} class");
+                Assert.That(DiffAgainstFork(beforeFork, parent), Is.Empty, $"geth genesis just before {fork.Name} differs from the {parent.GetType().Name} class");
             }
         }
     }
@@ -200,6 +205,7 @@ public class GethGenesisParityTests
     {
         // Every geth timestamp label at once; whatever ends up unset is unreachable from a geth genesis.
         string labels = string.Join(", ", GethTimeKeysByFork.Value.Values.Select(k => $"\"{k}\": {ForkTime}"));
+        labels += $", \"eip8288AggregatedVkTimestamp\": {ForkTime}";
         ChainParameters parameters = LoadGeth(BuildGethGenesisJson(labels, blobSchedule: "")).Parameters;
 
         List<string> unreachable = [];
@@ -307,10 +313,11 @@ public class GethGenesisParityTests
 
     /// <summary>
     /// Timestamp forks from Shanghai to <paramref name="fork"/>, oldest first, each with its activation: genesis for
-    /// ancestors, <see cref="ForkTime"/> for the fork itself.
+    /// ancestors, <see cref="ForkTime"/> for the fork itself and any parent it also schedules.
     /// </summary>
     private static IEnumerable<(NamedReleaseSpec Fork, ulong Time)> Schedule(NamedReleaseSpec fork) =>
-        Ancestry(fork).Where(IsTimestampFork).Reverse().Select(f => (f, f == fork ? ForkTime : 0UL));
+        Ancestry(fork).Where(IsTimestampFork).Reverse()
+            .Select(f => (f, f == fork || fork is Eip8288Prototype && f is Eip8141Prototype ? ForkTime : 0UL));
 
     private static bool ChangesBlobParams(NamedReleaseSpec fork) =>
         fork.Parent is { } parent

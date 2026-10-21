@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -75,7 +76,8 @@ public partial class EthRpcModule(
     IEthCapabilitiesProvider capabilitiesProvider,
     IBlockForRpcFactory blockForRpcFactory,
     HashesOnlyBlockReader? hashesOnlyBlockReader = null,
-    IReceiptFinder? storedReceiptFinder = null) : IEthRpcModule
+    IReceiptFinder? storedReceiptFinder = null,
+    ProofWrapperService? proofWrapperService = null) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;

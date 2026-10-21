@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -1061,7 +1062,12 @@ public partial class EngineModuleTests
         HeadStateInterceptor headState = new();
         StatusOverridingNewPayloadHandler newPayloadHandler = new();
         using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState,
-            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 100 },
+            new MergeConfig
+            {
+                TerminalTotalDifficulty = "0",
+                NewPayloadBlockProcessingTimeout = newPayloadStatus == PayloadStatus.Syncing
+                    ? 100 : MergeConfig.DefaultNewPayloadBlockProcessingTimeout
+            },
             builder => builder.AddDecorator<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>((_, inner) =>
             {
                 newPayloadHandler.Inner = inner;
@@ -1078,6 +1084,15 @@ public partial class EngineModuleTests
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
         Assert.That(payload.Transactions, Has.Length.EqualTo(satisfied ? 1 : 0));
+        ConcurrentQueue<string> processingEvents = new();
+        chain.BlockProcessingQueue.BlockAdded += (_, args) =>
+        {
+            if (args.Block.Hash == payload.BlockHash) processingEvents.Enqueue("added");
+        };
+        chain.BlockProcessingQueue.BlockRemoved += (_, args) =>
+        {
+            if (args.BlockHash == payload.BlockHash) processingEvents.Enqueue($"removed: {args.ProcessingResult}, {args.Message}, {args.Exception}");
+        };
 
         // This node never answers ACCEPTED itself, so that status is forced on an otherwise processed payload.
         TaskCompletionSource releaseProcessing = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1087,6 +1102,16 @@ public partial class EngineModuleTests
             if (newPayloadStatus == PayloadStatus.Syncing)
             {
                 OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
+                // SYNCING can exhaust its whole request budget before enqueueing, so establish the queued copy explicitly.
+                payload.ExecutionRequests = payloadResult.Data.ExecutionRequests;
+                payload.InclusionListTransactions = inclusionList;
+                Result<Block> decoded = payload.TryGetBlock(parent.TotalDifficulty);
+                Assert.That(decoded.IsSuccess, Is.True, decoded.Error);
+                Block queuedPayload = decoded.Data!;
+                AddBlockResult added = await chain.BlockTree.SuggestBlockAsync(queuedPayload, BlockTreeSuggestOptions.ForceDontSetAsMain);
+                Assert.That(added, Is.AnyOf(AddBlockResult.Added, AddBlockResult.AlreadyKnown));
+                await chain.BlockProcessingQueue.Enqueue(queuedPayload, ProcessingOptions.EthereumMerge);
+                Assert.That(processingEvents, Does.Contain("added"), "the payload must actually be queued behind the barrier");
             }
             else newPayloadHandler.Status = newPayloadStatus;
 
@@ -1094,6 +1119,11 @@ public partial class EngineModuleTests
                 payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(newPayloadHandler.LastStatus?.Status,
+                    Is.EqualTo(newPayloadStatus == PayloadStatus.Accepted
+                        ? satisfied ? PayloadStatus.Valid : PayloadStatus.InclusionListUnsatisfied
+                        : PayloadStatus.Syncing),
+                    newPayloadHandler.LastStatus?.ValidationError);
                 Assert.That(newPayload.Data.Status, Is.EqualTo(newPayloadStatus));
                 Assert.That(newPayload.Data.InclusionListSatisfied, Is.Null);
             }
@@ -1105,9 +1135,14 @@ public partial class EngineModuleTests
             newPayloadHandler.Status = null;
         }
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(20));
-        while (!chain.BlockTree.WasProcessed(payload.BlockNumber, payload.BlockHash))
+        try
         {
-            await Task.Delay(20, cts.Token);
+            while (!chain.BlockTree.WasProcessed(payload.BlockNumber, payload.BlockHash))
+                await Task.Delay(20, cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            Assert.Fail($"Payload did not commit: known={chain.BlockTree.IsKnownBlock(payload.BlockNumber, payload.BlockHash)}, status={newPayloadHandler.LastStatus?.Status}, events={string.Join("; ", processingEvents)}");
         }
 
         if (stateReadThrows) headState.MissingNodeBlock = payload.BlockHash;
@@ -1288,6 +1323,30 @@ public partial class EngineModuleTests
             Assert.That(rpc.HasInclusionListAnswer(third.BlockHash), Is.True);
             Assert.That(rpc.HasInclusionListAnswer(sibling.BlockHash), Is.False);
         }
+    }
+
+    // EIP-8288: whether a committed list obligates its dependency-bearing entries is fixed when its payload arrives; a held
+    // proof released by the time engine_forkchoiceUpdated evaluates the retained list must not excuse an omission.
+    [Test]
+    public async Task Retained_lists_are_evaluated_with_the_obligations_resolved_on_arrival()
+    {
+        InterleavingEvaluator evaluator = new();
+        bool[]? evaluatedWith = null;
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<IInclusionListComplianceEvaluator>((_, inner) =>
+            {
+                evaluator.Inner = inner;
+                return evaluator;
+            }));
+        EngineRpcModule rpc = (EngineRpcModule)chain.EngineRpcModule;
+        Hash256 head = Keccak.Compute("retained-held-proof");
+        InclusionListV1[] lists = [new() { CommitteeIndex = 0, Transactions = [] }];
+        rpc.SetRetainedInclusionList(head, 1, [new byte[1]], accepted: true, lists, heldProofs: [true]);
+        evaluator.OnHeldProofs = held => evaluatedWith = held;
+
+        rpc.GetInclusionListSatisfied(head);
+
+        Assert.That(evaluatedWith, Is.EqualTo(new[] { true }));
     }
 
     [Test]
@@ -1646,11 +1705,15 @@ public partial class EngineModuleTests
 
         /// <summary>Status to answer with, or <c>null</c> to pass the wrapped handler's result through.</summary>
         public string? Status { get; set; }
+        public PayloadStatusV1? LastStatus { get; private set; }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
         {
             ResultWrapper<PayloadStatusV1> result = await Inner.HandleAsync(request);
-            return Status is { } status ? ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = status }) : result;
+            LastStatus = result.Data;
+            // ACCEPTED models a deferred answer for a valid payload, never a hidden invalidity or timeout.
+            return Status is { } status && result.Data.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied
+                ? ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = status }) : result;
         }
     }
 
@@ -1662,11 +1725,29 @@ public partial class EngineModuleTests
 
         public Action? BeforeEvaluate { get; set; }
 
+        public Action<bool[]?>? OnHeldProofs { get; set; }
+
         public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
         {
             BeforeEvaluate?.Invoke();
             return Inner.TryEvaluate(blockHash, inclusionListTransactions);
         }
+
+        public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1> lists)
+        {
+            BeforeEvaluate?.Invoke();
+            return Inner.TryEvaluate(blockHash, inclusionListTransactions, lists);
+        }
+
+        public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1> lists, bool[]? heldProofs)
+        {
+            BeforeEvaluate?.Invoke();
+            OnHeldProofs?.Invoke(heldProofs);
+            return Inner.TryEvaluate(blockHash, inclusionListTransactions, lists, heldProofs);
+        }
+
+        public bool[]? ResolveHeldProofs(IReadOnlyList<InclusionListV1> lists, ulong blockNumber, ulong timestamp)
+            => Inner.ResolveHeldProofs(lists, blockNumber, timestamp);
     }
 
     /// <summary>Wraps the chain's <see cref="IStateReader"/> so one block's state can be made unreadable.</summary>
@@ -1965,7 +2046,8 @@ public partial class EngineModuleTests
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), result.Data.ValidationError);
 
         Block suggested = executionPayload.TryGetBlock().Data!;
-        StatelessBlockProcessingEnv stateless = new(result.Data.ExecutionWitness!, validator.SpecProvider, Always.Valid, LimboLogs.Instance);
+        StatelessBlockProcessingEnv stateless = new(result.Data.ExecutionWitness!, validator.SpecProvider, Always.Valid, LimboLogs.Instance,
+            Substitute.For<ILeanProofVerifier>());
         Hash256? statelessRoot;
         using (stateless.WorldState.BeginScope(parent))
         {

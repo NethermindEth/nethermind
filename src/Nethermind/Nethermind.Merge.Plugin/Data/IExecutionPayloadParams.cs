@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -14,6 +15,7 @@ public interface IExecutionPayloadParams
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
     byte[][]? InclusionListTransactions { get; set; }
+    InclusionListV1[]? InclusionLists { get; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 
     /// <summary>Validates request parameters and bounds the transaction count before decoding when supported.</summary>
@@ -34,7 +36,8 @@ public enum ValidationResult : byte { Success, Fail, Invalid };
 
 public class ExecutionPayloadParams(
     byte[][]? executionRequests = null,
-    byte[][]? inclusionListTransactions = null)
+    byte[][]? inclusionListTransactions = null,
+    InclusionListV1[]? inclusionLists = null)
 {
     /// <summary>
     /// Gets or sets <see cref="ExecutionRequests"/> as defined in
@@ -44,6 +47,10 @@ public class ExecutionPayloadParams(
 
     /// <summary>Inclusion-list entries as defined in <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.</summary>
     public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
+
+    /// <summary>Each counted inclusion list with its EIP-8288 commitment, from <c>engine_newPayloadV7</c>.</summary>
+    /// <remarks>Once validated, <see cref="InclusionListTransactions"/> holds them flattened for EIP-7805's checks.</remarks>
+    public InclusionListV1[]? InclusionLists { get; } = inclusionLists;
 
     protected ValidationResult ValidateInitialParams(IReleaseSpec spec, out string? error)
     {
@@ -81,6 +88,16 @@ public class ExecutionPayloadParams(
 
         if (spec.InclusionListsEnabled)
         {
+            if (InclusionLists is not null)
+            {
+                if (InclusionListV1.Validate(InclusionLists) is { } listError)
+                {
+                    error = listError;
+                    return ValidationResult.Fail;
+                }
+                InclusionListTransactions ??= InclusionListV1.Flatten(InclusionLists);
+            }
+
             if (InclusionListTransactions is null)
             {
                 error = "Inclusion list must be set";
@@ -113,8 +130,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     Hash256?[]? blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests = null,
-    byte[][]? inclusionListTransactions = null)
-    : ExecutionPayloadParams(executionRequests, inclusionListTransactions), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
+    byte[][]? inclusionListTransactions = null,
+    InclusionListV1[]? inclusionLists = null)
+    : ExecutionPayloadParams(executionRequests, inclusionListTransactions, inclusionLists), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
 
@@ -141,6 +159,13 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (result != ValidationResult.Success)
         {
             return result;
+        }
+
+        // engine_newPayloadV7 carries each list with its commitment in place of the flattened list; earlier versions keep theirs.
+        if ((version >= EngineApiVersions.NewPayload.V7) != (InclusionLists is not null))
+        {
+            error = version >= EngineApiVersions.NewPayload.V7 ? "Inclusion lists must be set" : "Inclusion lists must not be set before engine_newPayloadV7";
+            return ValidationResult.Fail;
         }
 
         if (parentBeaconBlockRoot is null)
@@ -316,6 +341,13 @@ public sealed class InclusionListExecutionPayloadParams(
     Hash256?[]? blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests,
-    byte[][]? inclusionListTransactions)
+    byte[][]? inclusionListTransactions,
+    InclusionListV1[]? inclusionLists = null,
+    int newPayloadVersion = EngineApiVersions.NewPayload.V6)
     : ExecutionPayloadParams<ExecutionPayloadV4>(
-        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions);
+        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions, inclusionLists)
+{
+    /// <summary>The <c>engine_newPayload</c> version the request was made through, which a missing
+    /// <see cref="ExecutionPayloadParams.InclusionLists"/> cannot reveal.</summary>
+    public int NewPayloadVersion => newPayloadVersion;
+}

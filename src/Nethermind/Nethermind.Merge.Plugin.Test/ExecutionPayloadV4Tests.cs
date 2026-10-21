@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp.Eip7928;
@@ -130,6 +131,108 @@ public class ExecutionPayloadV4Tests
         ExecutionPayload payload = (ExecutionPayload)json.Deserialize(payloadType, EthereumJsonSerializer.JsonOptions)!;
 
         Assert.That(payload.HasUnboundField ? payload.UnboundFieldName : null, Is.EqualTo(expectedUnboundField));
+    }
+
+    [Test]
+    public void Recursive_stark_round_trips_through_payload_and_block([Values] bool hasDependencies)
+    {
+        byte[] proof = [1, 2, 3];
+        Hash256 depsHash = new(Eip8288Dependencies.ComputeDepsHash([]));
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            SlotNumber = 0,
+            StarkProof = proof,
+        };
+
+        if (hasDependencies)
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, Keccak.Compute("data"), Keccak.Compute("key"));
+            payload.SetTransactions(new Transaction
+            {
+                Type = TxType.FrameTx,
+                ChainId = 1,
+                SenderAddress = TestItem.AddressA,
+                Frames = [new TxFrame(FrameMode.DepVerify, 0, null, 100_000, 0, Eip8288Dependencies.Serialize([dependency]))]
+            });
+            depsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency]));
+        }
+
+        Block block = payload.TryGetBlock().Data!;
+        Assert.That(block.Header.RecursiveStark, Is.Not.Null);
+        Assert.That(block.StarkProof, Is.EqualTo(proof));
+        Assert.That(block.Header.RecursiveStark.BlockDepsHash, Is.EqualTo(depsHash));
+
+        // Re-create a payload from the reconstructed block and round-trip again: recursive_stark
+        // survives the payload boundary, so the block hash reconciles (it would not if the field
+        // were dropped, since it is part of the header hash).
+        Block reRoundTripped = ExecutionPayloadV4.Create(block).TryGetBlock().Data!;
+        Assert.That(reRoundTripped.Header.CalculateHash(), Is.EqualTo(block.Header.CalculateHash()));
+    }
+
+    [Test]
+    public void Recursive_stark_oversized_proof_fails_the_result()
+    {
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
+        };
+
+        Result<Block> result = payload.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.StarkProof)));
+        }
+    }
+
+    [Test]
+    public void Recursive_stark_survives_json_round_trip()
+    {
+        byte[] proof = [1, 2, 3];
+        Hash256 depsHash = new(Eip8288Dependencies.ComputeDepsHash([]));
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        block.Header.BlobGasUsed = 0;
+        block.Header.ExcessBlobGas = 0;
+        block.Header.SlotNumber = 0;
+        block.StarkProof = proof;
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), depsHash);
+        block.Header.Hash = block.Header.CalculateHash();
+        ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
+
+        EthereumJsonSerializer serializer = new();
+        ExecutionPayloadV4 deserialized = serializer.Deserialize<ExecutionPayloadV4>(serializer.Serialize(payload))!;
+
+        Assert.That(deserialized.StarkProof, Is.EqualTo(proof));
+        JsonObject json = JsonSerializer.SerializeToNode(payload, EthereumJsonSerializer.JsonOptions)!.AsObject();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.ContainsKey("starkProof"), Is.True);
+            Assert.That(json.ContainsKey("recursiveStarkProof"), Is.False);
+            Assert.That(json.ContainsKey("recursiveStarkBlockDepsHash"), Is.False);
+            Assert.That(deserialized.TryGetBlock().Data!.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(depsHash));
+        }
+    }
+
+    [Test]
+    public void Recursive_stark_absent_when_block_has_none()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
+
+        Assert.That(payload.StarkProof, Is.Null);
+        Assert.That(payload.TryGetBlock().Data!.Header.RecursiveStark, Is.Null);
     }
 
     private static IEnumerable<TestCaseData> MalformedBlockAccessLists()

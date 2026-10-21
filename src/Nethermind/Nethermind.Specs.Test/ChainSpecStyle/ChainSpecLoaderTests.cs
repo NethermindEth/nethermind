@@ -237,6 +237,19 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
+    public void Genesis_proof_commitment_matches_activation([Values(0ul, 1ul)] ulong transitionTimestamp)
+    {
+        ChainSpec chainSpec = LoadChainSpecWithTransition("eip8288TransitionTimestamp", transitionTimestamp);
+        bool activeAtGenesis = transitionTimestamp == 0;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Genesis!.Header.RecursiveStark?.StarkProofHash, Is.EqualTo(activeAtGenesis ? Keccak.OfAnEmptyString : null));
+            Assert.That(chainSpec.Genesis.Header.RecursiveStark?.BlockDepsHash, Is.EqualTo(activeAtGenesis ? new Hash256(Eip8288Dependencies.ComputeDepsHash([])) : null));
+            Assert.That(chainSpec.Genesis.StarkProof, Is.EqualTo(activeAtGenesis ? Array.Empty<byte>() : null));
+        }
+    }
+
+    [Test]
     public void Genesis_requests_hash_matches_builder_request_activation([Values(0ul, 1ul)] ulong transitionTimestamp)
     {
         ChainSpec chainSpec = LoadChainSpecWithTransition("eip8282TransitionTimestamp", transitionTimestamp);

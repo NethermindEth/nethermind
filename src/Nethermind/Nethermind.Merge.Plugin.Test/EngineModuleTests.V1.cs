@@ -48,6 +48,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Synchronization.ParallelSync;
@@ -3299,7 +3300,9 @@ public partial class EngineModuleTests
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
             .Where(static m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal)
-                            && !m.Equals(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), StringComparison.Ordinal))
+                            && !m.Equals(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), StringComparison.Ordinal)
+                            && !PerListInclusionListMethods.Contains(m)
+                            && !InclusionListProofMethods.Contains(m))
             .Order();
 
         ResultWrapper<IReadOnlyList<string>> result = rpcModule.engine_exchangeCapabilities(expected);
@@ -3308,6 +3311,37 @@ public partial class EngineModuleTests
         // Filter to JSON-RPC names by intersecting with reflection over IEngineRpcModule.
         HashSet<string> jsonRpcMethodNames = [.. typeof(IEngineRpcModule).GetMethods().Select(static m => m.Name)];
         Assert.That(result.Data.Where(jsonRpcMethodNames.Contains), Is.EquivalentTo(expected));
+    }
+
+    private static readonly string[] PerListInclusionListMethods =
+    [
+        nameof(IEngineRpcModule.engine_newPayloadV7),
+        nameof(IEngineRpcModule.engine_forkchoiceUpdatedV6),
+        nameof(IEngineRpcModule.engine_newPayloadWithWitnessV7)
+    ];
+
+    private static readonly string[] InclusionListProofMethods =
+    [
+        nameof(IEngineRpcModule.engine_verifyInclusionListProofV1),
+        nameof(IEngineRpcModule.engine_getInclusionListProofV1),
+        nameof(IEngineRpcModule.engine_submitInclusionListProofV1)
+    ];
+
+    // EIP-8288's per-list inclusion-list versions exist only once it is active alongside EIP-7805.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Per_list_inclusion_list_methods_follow_eip8288(bool eip8288)
+    {
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = eip8288, IsEip8288Enabled = eip8288 };
+        EngineRpcCapabilitiesProvider provider = new(new TestSpecProvider(spec));
+        string[] enabled = [.. provider.GetJsonRpcCapabilities().Where(static kv => kv.Value.IsEnabled()).Select(static kv => kv.Key)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PerListInclusionListMethods.All(enabled.Contains), Is.EqualTo(eip8288));
+            Assert.That(PerListInclusionListMethods.Any(enabled.Contains), Is.EqualTo(eip8288));
+            Assert.That(InclusionListProofMethods.All(enabled.Contains), Is.EqualTo(eip8288));
+            Assert.That(InclusionListProofMethods.Any(enabled.Contains), Is.EqualTo(eip8288));
+        }
     }
 
     [Test]

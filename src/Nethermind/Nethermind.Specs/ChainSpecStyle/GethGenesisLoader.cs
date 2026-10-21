@@ -112,6 +112,9 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 
             Eip7Transition = config.HomesteadBlock ?? 0,
 
+            Eip8288AggregatedVkTransitionTimestamp = config.Eip8288AggregatedVkTimestamp,
+            Eip8288AggregatedVk = config.Eip8288AggregatedVk,
+
             // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon
             MaxCodeSize = 0x6000,
             MaxCodeSizeTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
@@ -271,6 +274,12 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             : isShanghaiActive
                 ? new Block(genesisHeader, [], [], [])
                 : new Block(genesisHeader);
+
+        if (IsForkActive(config.Eip8288PrototypeTime, genesisHeader.Timestamp))
+        {
+            genesisHeader.RecursiveStark = new RecursiveStarkCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+            chainSpec.Genesis.StarkProof = [];
+        }
     }
 
     private static void LoadAllocations(GethGenesisJson gethGenesis, ChainSpec chainSpec)

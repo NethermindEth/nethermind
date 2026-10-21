@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -36,6 +38,8 @@ public class ChainParametersTests
             "MaxCodeSizeTransitionTimestamp",
             "Eip4844FeeCollectorTransitionTimestamp",
             "Eip6110TransitionTimestamp",
+            // Switches Eip8288AggregatedVk rather than enabling an EIP; see the test below.
+            "Eip8288AggregatedVkTransitionTimestamp",
             "Eip8272TransitionTimestamp",
         ];
 
@@ -45,6 +49,8 @@ public class ChainParametersTests
         {
             ChainSpecJson test = new() { Params = new ChainSpecParamsJson() };
             jsonParamsProp.SetValue(test.Params, testValue);
+            if (jsonParamsProp.Name == nameof(ChainSpecParamsJson.Eip8288TransitionTimestamp))
+                test.Params.Eip8141TransitionTimestamp = testValue;
             (ChainSpecBasedSpecProvider? prov, ChainSpec? spec) = TestSpecHelper.LoadChainSpec(test);
 
             PropertyInfo? paramsProp = typeof(ChainParameters).GetProperty(jsonParamsProp.Name);
@@ -63,6 +69,47 @@ public class ChainParametersTests
 
             IReleaseSpec postSpec = prov.GetSpec(ForkActivation.TimestampOnly(1));
             Assert.That(specProp.GetValue(postSpec), Is.True, $"Property {specPropName} is not activated.");
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Eip8288_aggregated_vk_and_its_transition_are_set_together(bool keyOnly)
+    {
+        ChainSpecJson test = new()
+        {
+            Params = new ChainSpecParamsJson
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip8288TransitionTimestamp = 0,
+                Eip8288AggregatedVkTransitionTimestamp = keyOnly ? null : 10,
+                Eip8288AggregatedVk = keyOnly ? Keccak.Compute("next AGGREGATED_VK") : null
+            }
+        };
+        Assert.That(() => TestSpecHelper.LoadChainSpec(test), Throws.InvalidOperationException);
+    }
+
+    [Test]
+    public void Eip8288_aggregated_vk_switches_at_its_transition()
+    {
+        Hash256 upgraded = Keccak.Compute("next AGGREGATED_VK");
+        ChainSpecJson test = new()
+        {
+            Params = new ChainSpecParamsJson
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip8288TransitionTimestamp = 0,
+                Eip8288AggregatedVkTransitionTimestamp = 10,
+                Eip8288AggregatedVk = upgraded
+            }
+        };
+        (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(test);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(9)).Eip8288AggregatedVk, Is.EqualTo(Eip8288Verifier.PinnedAggregatedVk));
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(10)).Eip8288AggregatedVk, Is.EqualTo(upgraded.ValueHash256));
+            Assert.That(provider.TransitionActivations, Has.Some.Matches<ForkActivation>(a => a.Timestamp == 10), "the key change is a fork");
         }
     }
 }
