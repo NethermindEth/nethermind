@@ -174,7 +174,7 @@ jobs:
             Find the root cause and fix it with the smallest change. The bug may be in the test or in production code;
             if production code races, fix the production code. Do not add retries, sleeps, longer timeouts,
             [Retry]/[Ignore]/[Explicit] attributes, or category exclusions, and do not weaken assertions.
-            Do not change .github/, scripts/, *.props, *.targets, global.json or NuGet.Config: such changes are rejected.
+            Do not change .github/, scripts/, *.props, *.targets, *.csproj, global.json or NuGet.Config: such changes are rejected.
             Follow AGENTS.md, CONTRIBUTING.md and .agents/rules/.
 
             Verify before you finish:
@@ -234,6 +234,20 @@ jobs:
           } > "$RUNNER_TEMP/body.md"
           gh pr create --draft --base master --head "$BRANCH" --label "$LABEL" \
             --title "Fix flaky $METHOD" --body-file "$RUNNER_TEMP/body.md"
+
+      - name: Record a failed fix attempt
+        if: failure() && steps.baseline.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEST: ${{ needs.detect.outputs.test }}
+          FAILURES: ${{ steps.baseline.outputs.failures }}
+          RUNS: ${{ steps.baseline.outputs.runs }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
+          gh issue create --label "$LABEL" --title "Flaky test: $METHOD" --body "$(printf \
+            '`%s` in `%s` failed %s of %s reruns under CPU load. The automatic fix did not pass: %s\n' \
+            "$TEST" "$PROJECT" "$FAILURES" "$RUNS" "$RUN_URL")"
 
   follow-up:
     if: |
@@ -344,11 +358,11 @@ jobs:
             test filter under Evidence, is in `${{ runner.temp }}/pr-body.md`.
 
             Fix every unresolved Critical, High and Medium finding. Keep the flaky-test fix intact.
-            Do not change .github/, scripts/, *.props, *.targets, global.json or NuGet.Config: such changes are rejected.
+            Do not change .github/, scripts/, *.props, *.targets, *.csproj, global.json or NuGet.Config: such changes are rejected.
             Follow AGENTS.md, CONTRIBUTING.md and .agents/rules/.
 
             Rebuild the project with `dotnet build ... -c release` and rerun
-            `python3 scripts/ci/flaky_tests.py repeat --project <project> --filter '<test filter>' --runs 200 --budget 1800 --stop-after 1`
+            `python3 scripts/ci/flaky_tests.py repeat --project <project> --filter '<test filter>' --runs 200 --budget 1800 --stop-after 1 --out-dir ${{ runner.temp }}/claude`
             until it reports 0 failures. Do not commit or push.
           claude_args: |
             --model opus

@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import time
 
 TIMESTAMP = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z ?")
@@ -21,7 +22,7 @@ PROJECT = re.compile(r"^Nethermind(\.[A-Za-z0-9]+)+\.Test$")
 METHOD = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 NAMESPACE = re.compile(r"^\s*namespace\s+([\w.]+)", re.MULTILINE)
 CLASS = re.compile(r"^[ \t]*(?:(?:public|internal|private|protected|sealed|static|partial|abstract|file)\s+)*(?:record\s+)?class\s+(\w+)", re.MULTILINE)
-PROTECTED_PATH = re.compile(r"^(\.github/|scripts/)|\.(props|targets)$|(^|/)(global\.json|nuget\.config)$", re.IGNORECASE)
+PROTECTED_PATH = re.compile(r"^(\.github/|scripts/)|\.(props|targets|csproj)$|(^|/)(global\.json|nuget\.config)$", re.IGNORECASE)
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 REVIEW_BOT = "claude"
 REVIEW_THREADS = """
@@ -29,9 +30,9 @@ query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       reviewThreads(first: 100) {
-        nodes { isResolved path line comments(first: 50) { nodes { author { login } authorAssociation body } } }
+        nodes { isResolved path line comments(first: 50) { nodes { author { __typename login } authorAssociation body } } }
       }
-      comments(last: 50) { nodes { author { login } authorAssociation body } }
+      comments(last: 50) { nodes { author { __typename login } authorAssociation body } }
     }
   }
 }
@@ -211,8 +212,9 @@ def blocked_paths(paths):
 
 
 def is_trusted(comment):
-    login = (comment.get("author") or {}).get("login", "")
-    return login == REVIEW_BOT or comment.get("authorAssociation") in TRUSTED_ASSOCIATIONS
+    author = comment.get("author") or {}
+    is_review_bot = author.get("__typename") == "Bot" and author.get("login") == REVIEW_BOT
+    return is_review_bot or comment.get("authorAssociation") in TRUSTED_ASSOCIATIONS
 
 
 def trusted_feedback(pull_request):
@@ -265,7 +267,7 @@ def main(argv=None):
     repeat_parser.add_argument("--runs", type=int, required=True)
     repeat_parser.add_argument("--budget", type=int, required=True)
     repeat_parser.add_argument("--stop-after", type=int, default=0)
-    repeat_parser.add_argument("--out-dir", default="flaky-repeat")
+    repeat_parser.add_argument("--out-dir", default=os.path.join(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()), "flaky-repeat"))
     repeat_parser.add_argument("--load", type=int, default=max(1, (os.cpu_count() or 2) // 2))
 
     runs_parser = commands.add_parser("required-runs")

@@ -108,20 +108,21 @@ class FilterTests(unittest.TestCase):
 class GuardTests(unittest.TestCase):
     def test_blocks_ci_and_build_configuration(self):
         paths = [".github/workflows/x.yml", "scripts/ci/flaky_tests.py", "src/Directory.Build.props",
-                 "src/Nethermind/X.targets", "global.json", "src/Nethermind/NuGet.Config",
+                 "src/Nethermind/X.targets", "src/Nethermind/X.Test/X.Test.csproj", "global.json", "src/Nethermind/NuGet.Config",
                  "src/Nethermind/Nethermind.Core/Foo.cs", "src/Nethermind/Nethermind.Core.Test/FooTests.cs"]
-        self.assertEqual(flaky_tests.blocked_paths(paths), paths[:6])
+        self.assertEqual(flaky_tests.blocked_paths(paths), paths[:7])
 
 
 class FeedbackTests(unittest.TestCase):
     def test_keeps_unresolved_comments_from_trusted_authors_only(self):
-        def comment(login, association, body):
-            return {"author": {"login": login}, "authorAssociation": association, "body": body}
+        def comment(login, association, body, typename="User"):
+            return {"author": {"__typename": typename, "login": login}, "authorAssociation": association, "body": body}
 
         pull_request = {
             "reviewThreads": {"nodes": [
                 {"isResolved": False, "path": "a.cs", "line": 3,
-                 "comments": {"nodes": [comment("claude", "NONE", "High: race"), comment("x", "NONE", "ignore me")]}},
+                 "comments": {"nodes": [comment("claude", "NONE", "High: race", "Bot"), comment("claude", "NONE", "spoofed"),
+                                           comment("x", "NONE", "ignore me")]}},
                 {"isResolved": True, "path": "b.cs", "line": 1, "comments": {"nodes": [comment("m", "MEMBER", "done")]}},
                 {"isResolved": False, "path": "c.cs", "line": 2, "comments": {"nodes": [comment("x", "NONE", "evil")]}},
             ]},
