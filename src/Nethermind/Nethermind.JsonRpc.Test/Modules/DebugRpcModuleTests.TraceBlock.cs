@@ -388,8 +388,8 @@ public partial class DebugRpcModuleTests
             yield return new TestCaseData(true, "\"5s\"", "constructor", method);
             yield return new TestCaseData(false, "7", "type", method);
         }
-        yield return new TestCaseData(false, "\"bad\"", "type", "debug_traceTransaction");
-        yield return new TestCaseData(false, "\"bad\"", "type", "debug_intermediateRoots");
+        yield return new TestCaseData(false, "\"bad\"", "eager", "debug_traceTransaction");
+        yield return new TestCaseData(false, "\"bad\"", "eager", "debug_intermediateRoots");
     }
 
     [TestCaseSource(nameof(BlockTimeoutPrecedenceCases))]
@@ -409,7 +409,7 @@ public partial class DebugRpcModuleTests
             new Dictionary<string, object> { ["tracer"] = tracer, ["timeout"] = timeout });
         JToken json = JToken.Parse(response);
 
-        if (expected == "type")
+        if (expected is "type" or "eager")
         {
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
             return;
