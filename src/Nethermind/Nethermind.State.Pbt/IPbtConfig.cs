@@ -177,7 +177,7 @@ public interface IPbtConfig : IConfig
     bool NativeNodeGroupMemory { get; set; }
 
     [ConfigItem(Description = "Byte budget of compacted in-memory group record buffer generations: groups of retired generations that later generations did not rewrite stay readable within it, so persisted subtrees need not be read back.", DefaultValue = "524288000", HiddenFromDocs = true)]
-    long CompressedGroupRecordBufferMemoryBudget { get; set; }
+    ulong CompressedGroupRecordBufferMemoryBudget { get; set; }
 
     [ConfigItem(Description = "Number of the newest group record buffer generations kept readable in place; older unpinned ones are compacted into the compressed budget.", DefaultValue = "1", HiddenFromDocs = true)]
     int GroupRecordBufferLiveGenerations { get; set; }

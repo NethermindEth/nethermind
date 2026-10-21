@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -142,7 +143,7 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
 
     /// <summary>Copies the group at <paramref name="groupKey"/> in the tree whose root group is at <paramref name="rootPointer"/> into an independent caller-owned payload.</summary>
     /// <returns>False when the walk misses, which the persisted view must then resolve.</returns>
-    /// <remarks>The caller holds a <see cref="PbtGroupRecordBuffer.PinAll"/> of the buffer, as a read-only bundle does.</remarks>
+    /// <remarks>The caller holds a <see cref="IPbtGroupRecordBuffer.PinAll"/> of the buffer, as a read-only bundle does.</remarks>
     public bool TryFindNodeGroup(ulong rootPointer, PbtStorageNodePath groupKey, [NotNullWhen(true)] out RefCountingMemory? payload)
     {
         payload = null;
@@ -153,7 +154,7 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     }
 
     /// <summary>Takes over the generation range of <paramref name="source"/>, whose groups a merged layer covers.</summary>
-    internal void CopyNodeGroupsFrom(PbtSnapshotContent source)
+    public void CopyNodeGroupsFrom(PbtSnapshotContent source)
     {
         Debug.Assert(_nodeGroupPin is null || source._nodeGroupPin is null || ReferenceEquals(_nodeGroupPin.Buffer, source._nodeGroupPin.Buffer));
         if (source._nodeGroupPin is { } pin && (_nodeGroupPin is null || pin.WriteBoundary < _nodeGroupPin.WriteBoundary))

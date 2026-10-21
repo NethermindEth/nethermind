@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
@@ -23,6 +25,7 @@ using Nethermind.Evm.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Monitoring.Config;
@@ -207,7 +210,7 @@ public class PbtSnapshotBundleTests
     public async Task Persisted_only_base_starts_from_its_indexed_root_or_copies_the_root_group_back([Values] bool indexed)
     {
         // Production retains the newest unpinned generation, which keeps the persisted root record resident.
-        using PbtGroupRecordBuffer buffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: indexed ? 1 : 0);
+        using PbtGroupRecordBuffer buffer = new(0, 64 * 1024, 1);
         await using PbtTestContext context = new(groupRecordBuffer: buffer);
         Hash256 rootHash;
         using (PbtWorldStateScope initial = context.BeginScope(null))
@@ -221,6 +224,8 @@ public class PbtSnapshotBundleTests
             rootHash = initial.RootHash;
         }
         context.Manager.FlushCache(CancellationToken.None);
+        // A full generation drops the one holding the persisted root.
+        if (!indexed) buffer.StartWriteBatch(64 * 1024).Dispose();
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootHash).TestObject;
         using PbtWorldStateScope next = context.BeginScope(parent, out PbtSnapshotBundle bundle);
         Assert.That(bundle.RootGroupPointer != 0, Is.EqualTo(indexed));
@@ -245,7 +250,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Changed_roots_without_a_published_root_are_rejected()
     {
-        using PbtGroupRecordBuffer sourceBuffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+        using PbtGroupRecordBuffer sourceBuffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         content.BeginNodeGroupWrites(sourceBuffer);
@@ -264,7 +269,7 @@ public class PbtSnapshotBundleTests
     {
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         TrackingMemoryProvider memory = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
-        using PbtGroupRecordBuffer buffer = new(memory, compressedMaxMemory: 0, generationBytes: 256, liveGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
         PbtResourcePool pool = new(new PbtConfig(), memory);
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtStorageNodePath path = default;
@@ -291,7 +296,7 @@ public class PbtSnapshotBundleTests
         branch.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(buffer.ResidentBytes, Is.Zero);
+            Assert.That(buffer.PinCount(), Is.Zero);
             Assert.That(source.RootGroupPointer, Is.EqualTo(rootPointer), "the snapshot root hint is not read back from recycled content");
             Assert.That(independentlyOwned!.GetSpan().ToArray(), Is.EqualTo(encoding));
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(1), "only the independent caller payload remains");
@@ -313,10 +318,10 @@ public class PbtSnapshotBundleTests
                 PbtTraversalPath path = new(Span<byte>.Empty);
                 for (int write = 0; write < 2; write++)
                 {
-                    writer.TryReserveNodeGroup(path, encoding.Length, default, out _, out Span<byte> payload);
-                    encoding.CopyTo(payload);
+                    writer.TryStartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(encoding.Length)), out IPbtGroupRecordWriteBatch? batch);
+                    using (batch) encoding.CopyTo(PbtGroupRecordCodec.WriteGroup(batch!.Bytes, groupPath, default, encoding.Length));
                 }
-                if (emptied) writer.TryReserveNodeGroup(path, 0, default, out _, out _);
+                if (emptied) writer.SetNodeGroup(path, null);
             });
 
             using RefCountingMemory? pending = bundle.GetNodeGroup(groupPath);
@@ -340,7 +345,7 @@ public class PbtSnapshotBundleTests
     public void SnapshotContent_ReplacedTreesAndResetPreserveReadLeases([Values(1, 8)] int groupCount, [Values] bool removed)
     {
         TrackingMemoryProvider memoryProvider = new();
-        using PbtGroupRecordBuffer buffer = new(memoryProvider, compressedMaxMemory: 0, generationBytes: 256, liveGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
         using PbtSnapshotContent content = new(memoryProvider);
         for (int round = 0; round < 2; round++)
         {
@@ -365,7 +370,7 @@ public class PbtSnapshotBundleTests
                         using (replaced) Assert.That(replaced!.GetSpan().ToArray(), Is.EqualTo(originals[index]), "the pin keeps a replaced tree readable until reset");
                         Assert.That(read[index]!.GetSpan().ToArray(), Is.EqualTo(originals[index]));
                     }
-                    Assert.That(buffer.GenerationCount, Is.GreaterThan(1));
+                    Assert.That(buffer.WriteFrontier() >> 32, Is.GreaterThan(1));
                 }
 
                 content.Reset();
@@ -928,7 +933,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Failed_partition_fold_keeps_mutations_pending_without_completing_snapshot([Values(0x00, 0x01, 0xFF)] int failedZone)
     {
-        using PbtGroupRecordBuffer buffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), new Reader(default, null), buffer);
         byte[] bytes = new byte[(256 + 2) * 31];
         bytes.AsSpan().Fill(0x5b);
@@ -950,7 +955,7 @@ public class PbtSnapshotBundleTests
         Account other = Build.An.Account.WithCode(otherBytes).TestObject;
         SetAccountWithCode(bundle, TestItem.AddressB, other, new CodeInfo(otherBytes), codeFirst: true);
         CountingStore store;
-        long initialBufferBytes = buffer.UsedBytes;
+        ulong initialFrontier = buffer.WriteFrontier();
         using (PbtSnapshotStore snapshotStore = new(bundle))
         {
             store = new(snapshotStore) { FailedZone = failedZone };
@@ -958,7 +963,7 @@ public class PbtSnapshotBundleTests
             if (failedZone == 0xFF)
             {
                 Assert.That(store.ApplyCount, Is.GreaterThan(0));
-                Assert.That(buffer.UsedBytes, Is.GreaterThan(initialBufferBytes), "the failure followed private buffer writes");
+                Assert.That(buffer.WriteFrontier(), Is.GreaterThan(initialFrontier), "the failure followed private buffer writes");
             }
         }
         using (Assert.EnterMultipleScope())
@@ -1084,18 +1089,38 @@ public class PbtSnapshotBundleTests
             return store.GetNodeGroup(path);
         }
 
+        private void Apply(in PbtStorageNodePath path)
+        {
+            if (path.BitDepth >= 9 && path.GetByte(0) == FailedZone) throw new InvalidDataException("Configured partition write failure.");
+            System.Threading.Interlocked.Increment(ref _applyCount);
+        }
+
         private sealed class Writer(CountingStore owner, IPbtConcurrentWriter writer) : IPbtConcurrentWriter
         {
-            public bool TryReserveNodeGroup(scoped in PbtTraversalPath path, int length, in PbtGroupLinks links, out ulong pointer, out Span<byte> payload)
+            public bool TryStartWriteBatch(int alignedTotalLength, [NotNullWhen(true)] out IPbtGroupRecordWriteBatch? batch)
             {
-                if (path.BitDepth >= 9 && path.ToPath<PbtStorageNodePath>().GetByte(0) == owner.FailedZone)
-                    throw new InvalidDataException("Configured partition write failure.");
-                bool reserved = writer.TryReserveNodeGroup(path, length, links, out pointer, out payload);
-                System.Threading.Interlocked.Increment(ref owner._applyCount);
-                return reserved;
+                bool started = writer.TryStartWriteBatch(alignedTotalLength, out IPbtGroupRecordWriteBatch? written);
+                batch = started ? new Batch(owner, written!) : null;
+                return started;
             }
-            public void SetNodeGroup(scoped in PbtTraversalPath path, RefCountingMemory? payload) => writer.SetNodeGroup(path, payload);
+            public void SetNodeGroup(scoped in PbtTraversalPath path, RefCountingMemory? payload)
+            {
+                owner.Apply(path.ToPath<PbtStorageNodePath>());
+                writer.SetNodeGroup(path, payload);
+            }
             public void Dispose() => writer.Dispose();
+        }
+
+        private sealed class Batch(CountingStore owner, IPbtGroupRecordWriteBatch batch) : IPbtGroupRecordWriteBatch
+        {
+            public ulong BasePointer => batch.BasePointer;
+            public Span<byte> Bytes => batch.Bytes;
+            public void Dispose()
+            {
+                PbtStorageNodePath path = MemoryMarshal.AsRef<PbtGroupRecordHeader>(Bytes).Path;
+                batch.Dispose();
+                owner.Apply(path);
+            }
         }
     }
 }

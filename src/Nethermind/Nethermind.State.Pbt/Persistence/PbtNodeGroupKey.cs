@@ -3,6 +3,7 @@
 
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
+using Nethermind.State.Pbt.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Persistence;
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -13,6 +14,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
@@ -427,7 +429,7 @@ public class ParallelUpdateRootTests
     private static void AssertLoggedFold(LoggedGroupStore store, PbtTreeHarness expected, (byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut)
     {
         PbtStorageNodePath[] previous = store.TreePayloads().Select(static group => group.Key).ToArray();
-        using PbtGroupRecordBuffer.GenerationPin pin = store.Buffer.PinHead();
+        using PbtGroupRecordBufferPin pin = store.Buffer.PinHead();
         ValueHash256 actual = store.Fold(writes, fanOut);
         expected.ApplyBatch(writes);
         HashSet<PbtStorageNodePath> current = expected.PhysicalPayloads.Select(static group => group.Key).ToHashSet();
@@ -487,19 +489,19 @@ public class ParallelUpdateRootTests
     [TestCase(false, true)]
     public void Log_reference_fold_failure_does_not_publish_partial_records(bool splitEveryFrame, bool failAfterWrite)
     {
-        TrackingMemoryProvider memory = new();
-        using PbtGroupRecordBuffer buffer = new(memory, compressedMaxMemory: 0, generationBytes: 256, liveGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
         using LoggedGroupStore store = new(PooledRefCountingMemoryProvider.Instance, buffer);
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: false);
         expected.ApplyBatch(entries);
         store.Seed(expected.RootHash, expected.PhysicalPayloads);
         string[] initial = store.Payloads().PhysicalRecords();
-        long initialBytes = buffer.UsedBytes;
+        ulong initialFrontier = buffer.WriteFrontier();
+        int initialPins = buffer.PinCount();
         if (failAfterWrite)
         {
             store.FoldConcurrency = 1;
-            memory.ThrowOnRent = memory.RentCount + 3;
+            store.FailOnWrite = 2;
         }
         else store.FailDescendantReads = true;
         Assert.That(() => store.Fold(Changes(entries), SplitFanOut(splitEveryFrame)),
@@ -509,9 +511,9 @@ public class ParallelUpdateRootTests
             Assert.That(store.LastComplete, Is.False);
             Assert.That(store.Payloads().PhysicalRecords(), Is.EqualTo(initial));
             Assert.That(store.RootPointer, Is.Zero);
-            if (failAfterWrite) Assert.That(store.LastUsedBytes, Is.GreaterThan(initialBytes), "the failure followed actual private group writes");
+            if (failAfterWrite) Assert.That(store.LastWriteFrontier, Is.GreaterThan(initialFrontier), "the failure followed actual private group writes");
             store.DiscardUncommittedState();
-            Assert.That(buffer.UsedBytes, Is.EqualTo(initialBytes), "aborting the scope releases its generation pin");
+            Assert.That(buffer.PinCount(), Is.EqualTo(initialPins), "aborting the scope releases its generation pin");
         }
     }
 
@@ -520,7 +522,7 @@ public class ParallelUpdateRootTests
     {
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         TrackingMemoryProvider memory = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
-        using PbtGroupRecordBuffer buffer = new(memory, compressedMaxMemory: 0, generationBytes: 256, liveGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
         using LoggedGroupStore first = new(memory, buffer);
         using LoggedGroupStore second = new(memory, buffer);
         using PbtTreeHarness firstExpected = new();
@@ -558,7 +560,7 @@ public class ParallelUpdateRootTests
         second.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(buffer.ResidentBytes, Is.Zero);
+            Assert.That(buffer.PinCount(), Is.Zero);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
         }
 
@@ -599,7 +601,7 @@ public class ParallelUpdateRootTests
         {
             _memory = memory;
             _ownsBuffer = buffer is null;
-            Buffer = buffer ?? new PbtGroupRecordBuffer(memory, compressedMaxMemory: 0, generationBytes: 4096, liveGenerations: 0);
+            Buffer = buffer ?? new PbtGroupRecordBuffer(0, 4096, 1);
             _content = NewContent();
         }
 
@@ -616,8 +618,11 @@ public class ParallelUpdateRootTests
         public long LastFallbackReads { get; private set; }
         public long StoreReads => Interlocked.Read(ref _storeReads);
         public bool FailDescendantReads { get; set; }
+        /// <summary>The ordinal of the fold's write batch that throws, if any.</summary>
+        public int? FailOnWrite { get; set; }
+        private int _writeCount;
         public bool LastComplete { get; private set; }
-        public long LastUsedBytes { get; private set; }
+        public ulong LastWriteFrontier { get; private set; }
         public List<PbtStorageNodePath> LastWrittenGroups { get; } = [];
         public int FoldConcurrency { get; set; } = Environment.ProcessorCount;
 
@@ -640,17 +645,19 @@ public class ParallelUpdateRootTests
         {
             private readonly List<(PbtStorageNodePath Path, ulong Pointer)> _buffer = [];
 
-            public bool TryReserveNodeGroup(scoped in PbtTraversalPath path, int length, in PbtGroupLinks links, out ulong pointer, out Span<byte> payload)
+            public bool TryStartWriteBatch(int alignedTotalLength, [NotNullWhen(true)] out IPbtGroupRecordWriteBatch? batch)
             {
-                PbtStorageNodePath key = path.ToPath<PbtStorageNodePath>();
-                payload = default;
-                pointer = length == 0 ? 0 : store.Buffer.Reserve(key, length, links, out payload);
-                _buffer.Add((key, pointer));
+                if (Interlocked.Increment(ref store._writeCount) == store.FailOnWrite) throw new InvalidOperationException("Configured write failure.");
+                batch = store.Buffer.StartWriteBatch(alignedTotalLength);
+                _buffer.Add((default, batch.BasePointer));
                 return true;
             }
 
-            public void SetNodeGroup(scoped in PbtTraversalPath path, RefCountingMemory? payload) =>
-                throw new AssertionException("Logged folds must publish reserved pointers.");
+            public void SetNodeGroup(scoped in PbtTraversalPath path, RefCountingMemory? payload)
+            {
+                if (payload is not null) throw new AssertionException("Logged folds must publish buffer records.");
+                _buffer.Add((path.ToPath<PbtStorageNodePath>(), 0));
+            }
 
             public void Dispose()
             {
@@ -669,6 +676,7 @@ public class ParallelUpdateRootTests
         {
             _inputRoot = rootOverride ?? RootPointer;
             _writes.Clear();
+            _writeCount = 0;
             _directReads = _fallbackReads = 0;
             LastComplete = false;
             using PbtPartitionBatches batches = PreparePartitions(writes);
@@ -680,14 +688,15 @@ public class ParallelUpdateRootTests
             }
             finally
             {
-                LastUsedBytes = Buffer.UsedBytes;
+                LastWriteFrontier = Buffer.WriteFrontier();
                 LastDirectReads = _directReads;
                 LastFallbackReads = _fallbackReads;
                 LastWrittenGroups.Clear();
                 if (LastComplete)
                     foreach (List<(PbtStorageNodePath Path, ulong Pointer)> buffer in _writes)
-                        foreach ((PbtStorageNodePath path, ulong pointer) in buffer)
+                        foreach ((PbtStorageNodePath removed, ulong pointer) in buffer)
                         {
+                            PbtStorageNodePath path = pointer != 0 && Buffer.TryLocate(pointer, out PbtGroupRecord record) ? record.Path : removed;
                             _groups[path] = pointer;
                             if (path.BitDepth == 0) RootPointer = pointer;
                             if (pointer != 0) LastWrittenGroups.Add(path);
@@ -720,7 +729,7 @@ public class ParallelUpdateRootTests
             _persisted?.Dispose();
             _persisted = persisted;
             Assert.That(Buffer.TryLocate(RootPointer, out PbtGroupRecord record), Is.True);
-            using PbtGroupRecordBuffer.GenerationPin parent = Buffer.PinHead();
+            using PbtGroupRecordBufferPin parent = Buffer.PinHead();
             RootPointer = Buffer.Append(default, record.Payload.Span, unknownLinks ? default : record.Links);
             DiscardUncommittedState();
             _groups[default] = RootPointer;

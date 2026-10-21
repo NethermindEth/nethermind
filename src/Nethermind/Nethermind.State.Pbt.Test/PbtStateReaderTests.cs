@@ -7,9 +7,9 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -38,7 +38,7 @@ public class PbtStateReaderTests
     {
         IPbtDbManager manager = Substitute.For<IPbtDbManager>();
         using MemDb codeDb = new();
-        using PbtGroupRecordBuffer buffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
         using PbtOverridableWorldScope overridableScope = new(codeDb, manager, PooledRefCountingMemoryProvider.Instance, buffer, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
         IStateReader reader = overridable ? overridableScope.GlobalStateReader : new PbtStateReader(codeDb, manager);
         BlockHeader? header = nullHeader ? null : Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;

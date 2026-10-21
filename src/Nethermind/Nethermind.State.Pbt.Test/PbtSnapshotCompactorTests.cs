@@ -21,6 +21,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
@@ -87,7 +88,7 @@ public class PbtSnapshotCompactorTests
     {
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
-        using PbtGroupRecordBuffer buffer = new(memory, compressedMaxMemory: 0, generationBytes: 256, liveGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
         PbtResourcePool pool = new(new PbtConfig(), memory);
         using PbtTreeHarness tree = new();
         tree.ApplyBatch(Enumerable.Range(0, 16).Select(index =>
@@ -125,8 +126,8 @@ public class PbtSnapshotCompactorTests
             Assert.That(buffer.TryLocate(childPointer, out PbtGroupRecord child), Is.True);
             Assert.That(child.Path, Is.EqualTo(childPath));
         }
-        Assert.That(compacted.Content.EnumerateNodeGroups().Select(static record => record.Pointer), Is.EquivalentTo(new[] { original[default], original[childPath] }),
-            "the compacted snapshot persists its newest tree's groups by their original pointers");
+        Assert.That(compacted.Content.EnumerateNodeGroups().Select(static record => record.Path), Is.EquivalentTo(new[] { default, childPath }),
+            "the compacted snapshot persists its newest tree's groups");
     }
 
     [Test]

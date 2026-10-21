@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Init.Modules;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -26,7 +27,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -36,7 +36,6 @@ using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Logging;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
@@ -1496,7 +1495,7 @@ public class PbtDbManagerTests
 
         public PbtConfig Config { get; }
         public PbtResourcePool Pool { get; }
-        public PbtGroupRecordBuffer GroupRecordBuffer { get; } = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+        public PbtGroupRecordBuffer GroupRecordBuffer { get; } = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
         public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         public MemDb Metadata { get; } = new();
         public ICompactionSchedule Schedule { get; }

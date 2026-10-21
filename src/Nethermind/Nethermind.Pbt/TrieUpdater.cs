@@ -107,9 +107,9 @@ public static partial class TrieUpdater<TKey, TPath>
         scoped in PbtTraversalPath path)
         where TFrame : struct, IGroupFrame<TKey, TPath> => PublishGroupWithPointer(sink, ref reader, writer, path).SizeDelta;
 
-    internal readonly record struct GroupPublication(long SizeDelta, ulong Pointer);
+    public readonly record struct GroupPublication(long SizeDelta, ulong Pointer);
 
-    internal static GroupPublication PublishGroup<TFrame>(FoldContext context, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
+    public static GroupPublication PublishGroup<TFrame>(FoldContext context, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
         scoped in PbtTraversalPath path) where TFrame : struct, IGroupFrame<TKey, TPath> =>
         PublishGroupWithPointer(context.Writer, ref reader, writer, path);
 
@@ -136,8 +136,14 @@ public static partial class TrieUpdater<TKey, TPath>
         ulong pointer = 0;
         if (length != 0 || reader.PayloadLength != 0)
         {
-            if (sink.TryReserveNodeGroup(path, length, links, out pointer, out Span<byte> destination))
-                writer.DetachTo(destination, descendantBytes, candidateSlots);
+            if (length != 0 && sink.TryStartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(length)), out IPbtGroupRecordWriteBatch? batch))
+            {
+                using (batch)
+                {
+                    writer.DetachTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, path.ToPath<PbtStorageNodePath>(), links, length), descendantBytes, candidateSlots);
+                    pointer = batch.BasePointer;
+                }
+            }
             else
             {
                 using RefCountingMemory? payload = writer.Detach(descendantBytes, candidateSlots);

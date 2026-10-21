@@ -6,7 +6,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
 using NonBlocking;
@@ -187,15 +186,6 @@ public static class Metrics
     [GaugeMetric]
     [Description("Number of compacted pbt group record buffer generations")]
     public static long PbtGroupRecordBufferCompressedGenerations { get; set; }
-
-    /// <summary>Refreshes the group record buffer metrics from <paramref name="buffer"/>.</summary>
-    public static void ObserveGroupRecordBuffer(PbtGroupRecordBuffer buffer)
-    {
-        PbtGroupRecordBufferMemory = buffer.ResidentBytes;
-        PbtGroupRecordBufferGenerations = buffer.GenerationCount;
-        PbtGroupRecordBufferCompressedMemory = buffer.CompressedBytes;
-        PbtGroupRecordBufferCompressedGenerations = buffer.CompressedGenerationCount;
-    }
 
     /// <remarks>Layers widen as they compact, so this diverges from the layer count as compaction runs.</remarks>
     [DetailedMetric]

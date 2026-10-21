@@ -66,7 +66,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
         return writer;
     }
 
-    internal PbtGroupLinks DescendantPointers;
+    public PbtGroupLinks DescendantPointers;
 
     public int WrittenCount => _written;
     /// <summary>The number of leading key bytes inline leaf keys omit in a branch written at <paramref name="position"/>.</summary>
@@ -157,7 +157,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     /// <summary>The exact canonical payload length, or zero for an empty group.</summary>
     /// <exception cref="InvalidDataException">The group exceeds <see cref="PbtNodeGroupCodec.MaxPayloadLength"/>.</exception>
-    internal int GetPayloadLength(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    public int GetPayloadLength(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
         if (_availability == 0) return 0;
         ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
@@ -169,7 +169,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private static int ThrowTooLarge() => throw new InvalidDataException("A PBT node group exceeds the maximum payload length.");
 
     /// <summary>Finishes the canonical payload in an exactly sized destination and releases the scratch buffer.</summary>
-    internal void DetachTo(Span<byte> payload, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    public void DetachTo(Span<byte> payload, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
         int length = GetPayloadLength(descendantBytes, candidateSlots);
         if (payload.Length != length) throw new ArgumentException("The destination must match the canonical payload length.", nameof(payload));

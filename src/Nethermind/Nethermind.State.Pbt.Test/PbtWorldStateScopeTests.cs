@@ -19,9 +19,9 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
@@ -69,16 +69,16 @@ public class PbtWorldStateScopeTests
         PbtConfig config = new() { Enabled = true };
         await using IContainer container = PbtTestContext.BuildProductionContainer(config);
         PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
-        PbtGroupRecordBuffer buffer = container.Resolve<PbtGroupRecordBuffer>();
+        IPbtGroupRecordBuffer buffer = container.Resolve<IPbtGroupRecordBuffer>();
         BlockHeader first = CommitCanonical(manager, null, 1, 1);
         using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
-        long globalBytes = buffer.UsedBytes;
+        ulong globalFrontier = buffer.WriteFrontier();
         using (IWorldStateScopeProvider.IScope scope = overrides.WorldState.BeginScope(first, new LocalMetrics()))
         {
             Write(scope, 5);
             scope.Commit(2);
         }
-        Assert.That(buffer.UsedBytes, Is.EqualTo(globalBytes), "override folds write to the overlay buffer");
+        Assert.That(buffer.WriteFrontier(), Is.EqualTo(globalFrontier), "override folds write to the overlay buffer");
         // The overlay pinned the global buffer before this block, so it cannot reach the block's root group.
         BlockHeader second = CommitCanonical(manager, first, 2, 3);
         Hash256 expected;
@@ -202,7 +202,6 @@ public class PbtWorldStateScopeTests
             Write(scope, 1);
             scope.UpdateRootHash();
             scope.Commit(1);
-            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.GreaterThan(baselineCount), "the fold wrote its groups into native memory");
         }
 
         // Released blocks stay retained in the pool's buckets, so only the instance count proves that

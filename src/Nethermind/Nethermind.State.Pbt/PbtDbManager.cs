@@ -13,9 +13,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.Snapshot;
@@ -31,7 +31,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly PbtPersistenceManager _persistenceManager;
     private readonly IPbtPersistence _persistence;
     private readonly IPbtResourcePool _resourcePool;
-    private readonly PbtGroupRecordBuffer _groupRecordBuffer;
+    private readonly IPbtGroupRecordBuffer _groupRecordBuffer;
     private readonly PbtSnapshotCompactor _compactor;
     private readonly ILogger _logger;
     private readonly Channel<StateId> _persistenceJobs;
@@ -60,7 +60,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         PbtPersistenceManager persistenceManager,
         IPbtPersistence persistence,
         IPbtResourcePool resourcePool,
-        PbtGroupRecordBuffer groupRecordBuffer,
+        IPbtGroupRecordBuffer groupRecordBuffer,
         PbtSnapshotCompactor compactor,
         IProcessExitSource processExitSource,
         ILogManager logManager,

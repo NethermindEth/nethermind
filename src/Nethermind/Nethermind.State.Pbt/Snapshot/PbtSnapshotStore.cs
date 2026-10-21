@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Memory;
@@ -9,6 +10,7 @@ using Nethermind.Core.Metric;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
@@ -26,7 +28,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
 
     // Detailed observers stay no-ops unless Metrics.EnableDetailedMetric, so the timestamps are skipped with them.
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
-    private readonly ArrayPoolList<ArrayPoolList<BufferedNodeGroup>> _handedOff = new(16);
+    private readonly ArrayPoolList<ArrayPoolList<ulong>> _handedOff = new(16);
     private bool _complete;
     private IPbtGroupRecordBuffer Buffer => bundle.GroupRecordBuffer;
 
@@ -81,42 +83,48 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
                 ulong? root = null;
                 int count = 0;
                 long bytes = 0;
-                foreach (ArrayPoolList<BufferedNodeGroup> buffer in _handedOff)
-                    foreach (BufferedNodeGroup group in buffer)
+                foreach (ArrayPoolList<ulong> buffer in _handedOff)
+                    foreach (ulong pointer in buffer)
                     {
-                        if (group.Path.BitDepth == 0) root = group.Pointer;
-                        if (group.Pointer == 0) continue;
+                        if (pointer == 0)
+                        {
+                            root = 0;
+                            continue;
+                        }
+                        if (!Buffer.TryLocate(pointer, out PbtGroupRecord group)) throw new InvalidOperationException("A pinned group record no longer resolves.");
+                        PbtStorageNodePath path = group.Path;
+                        if (path.BitDepth == 0) root = pointer;
                         count++;
-                        bytes += ((group.Path.BitDepth + 7) >> 3) + group.Length;
+                        bytes += ((path.BitDepth + 7) >> 3) + group.Payload.Length;
                     }
                 if (root is { } published) bundle.PublishNodeGroups(published, count, bytes);
             }
         }
         finally
         {
-            foreach (ArrayPoolList<BufferedNodeGroup> buffer in _handedOff) buffer.Dispose();
+            foreach (ArrayPoolList<ulong> buffer in _handedOff) buffer.Dispose();
             _handedOff.Dispose();
         }
     }
 
-    private readonly record struct BufferedNodeGroup(PbtStorageNodePath Path, ulong Pointer, int Length);
-
     private sealed class ConcurrentWriter(PbtSnapshotStore store) : IPbtConcurrentWriter
     {
-        private readonly ArrayPoolList<BufferedNodeGroup> _buffer = new(16);
+        // The pointers of the written records, and 0 for a removed root group.
+        private readonly ArrayPoolList<ulong> _buffer = new(16);
 
-        public bool TryReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out ulong pointer, out Span<byte> payload)
+        public bool TryStartWriteBatch(int alignedTotalLength, [NotNullWhen(true)] out IPbtGroupRecordWriteBatch? batch)
         {
-            PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
-            payload = default;
-            pointer = length == 0 ? 0 : store.Buffer.Reserve(path, length, links, out payload);
-            _buffer.Add(new BufferedNodeGroup(path, pointer, length));
+            batch = store.Buffer.StartWriteBatch(alignedTotalLength);
+            _buffer.Add(batch.BasePointer);
             return true;
         }
 
-        /// <remarks>Never called: every reservation here succeeds, so folds write groups in place.</remarks>
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
-            throw new NotSupportedException("Snapshot folds write reserved buffer records.");
+        /// <remarks>Only called for a removed group: every write batch here starts, so folds write groups in place.</remarks>
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+        {
+            if (payload is not null) throw new NotSupportedException("Snapshot folds write buffer records.");
+            if (groupKey.BitDepth == 0) _buffer.Add(0);
+        }
 
         public void Dispose()
         {

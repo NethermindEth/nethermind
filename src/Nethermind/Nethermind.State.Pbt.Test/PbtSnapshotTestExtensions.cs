@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.Snapshot;
 
@@ -60,8 +62,19 @@ internal static class PbtSnapshotTestExtensions
         }
     }
 
+    /// <summary>The current write frontier of <paramref name="buffer"/>, at or below every later write.</summary>
+    internal static ulong WriteFrontier(this IPbtGroupRecordBuffer buffer)
+    {
+        using IPbtGroupRecordBufferPin pin = buffer.PinHead();
+        return pin.WriteBoundary;
+    }
+
+    /// <summary>The pins <paramref name="buffer"/> holds.</summary>
+    internal static int PinCount(this PbtGroupRecordBuffer buffer) =>
+        (int)typeof(PbtGroupRecordBuffer).GetField("_pinCount", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(buffer)!;
+
     /// <summary>The group record buffer of test layers and bundles that bring none of their own.</summary>
-    internal static PbtGroupRecordBuffer DefaultGroupRecordBuffer { get; } = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+    internal static PbtGroupRecordBuffer DefaultGroupRecordBuffer { get; } = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
 
     /// <summary>Publishes a tree holding <paramref name="groups"/> as the layer's own groups.</summary>
     /// <remarks>

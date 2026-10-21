@@ -16,10 +16,10 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -220,7 +220,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
     {
         IPbtDbManager manager = Substitute.For<IPbtDbManager>();
         using MemDb codeDb = new();
-        using PbtGroupRecordBuffer buffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
         using PbtOverridableWorldScope scope = new(codeDb, manager, PooledRefCountingMemoryProvider.Instance, buffer, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
 
         Assert.Throws<MissingTrieNodeException>(() => scope.GlobalStateReader.GetStorage(null, TestItem.AddressA, 1, out _));

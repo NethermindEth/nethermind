@@ -8,11 +8,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 
@@ -171,13 +170,15 @@ public class PbtResourcePoolTests
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(Bytes.FromHexString("6001"));
         content.SelfDestructedStorageAddresses[addressHash] = true;
         byte[] encoding = PbtNodeGroupEncoder.Encode(default(PbtNodePath), [new PbtNodeRecord(default, PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey([0])))], default);
-        using PbtGroupRecordBuffer buffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(0, 4096, 1);
         content.BeginNodeGroupWrites(buffer);
         content.SetTree((default, encoding));
         ulong pointer = content.RootGroupPointer;
         Assert.That(pointer != 0, Is.True);
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, content);
         PbtSnapshotContent rented = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        // A full generation drops the unpinned one holding the root.
+        buffer.StartWriteBatch(4096).Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rented, Is.SameAs(content));
@@ -189,7 +190,7 @@ public class PbtResourcePoolTests
             Assert.That(rented.NodeGroupCount, Is.Zero);
             Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
             Assert.That(rented.GroupRecordBuffer, Is.Null, "a reset layer keeps no generation pin");
-            Assert.That(buffer.ResidentBytes, Is.Zero);
+            Assert.That(buffer.PinCount(), Is.Zero);
             Assert.That(buffer.TryLocate(pointer, out _), Is.False);
         }
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, rented);

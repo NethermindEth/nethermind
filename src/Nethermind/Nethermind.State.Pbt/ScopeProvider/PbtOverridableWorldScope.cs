@@ -10,9 +10,9 @@ using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Snapshot;
 using Nethermind.Trie;
 
@@ -30,7 +30,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly ILogManager _logManager;
     private readonly IPbtDbManager _manager;
     private readonly IRefCountingMemoryProvider _nodeGroupMemory;
-    private readonly PbtGroupRecordBuffer _groupRecordBuffer;
+    private readonly IPbtGroupRecordBuffer _groupRecordBuffer;
     // Keeps the groups the overrides fold out of the global buffer; created by the first bundle after a reset.
     private PbtOverlayGroupRecordBuffer? _overlayGroupRecordBuffer;
     private readonly IPbtConfig _config;
@@ -41,7 +41,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IPbtDbManager manager,
         IRefCountingMemoryProvider nodeGroupMemory,
-        PbtGroupRecordBuffer groupRecordBuffer,
+        IPbtGroupRecordBuffer groupRecordBuffer,
         IPbtConfig config,
         IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
@@ -111,7 +111,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         // receipt regeneration and the transaction changeset index), so its slot reads may use the in-memory
         // snapshots' negative filter.
         return _manager.TryGatherBundle(current, localChain, PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true,
-            _overlayGroupRecordBuffer ??= new PbtOverlayGroupRecordBuffer(_groupRecordBuffer, _nodeGroupMemory));
+            _overlayGroupRecordBuffer ??= new PbtOverlayGroupRecordBuffer(_groupRecordBuffer));
     }
 
     private class OverridableScopeProvider(PbtOverridableWorldScope outer, IStateHeaderProvider stateHeaderProvider) : IWorldStateScopeProvider

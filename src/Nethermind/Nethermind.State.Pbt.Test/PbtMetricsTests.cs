@@ -14,7 +14,6 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
@@ -75,13 +74,10 @@ public class PbtMetricsTests
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1)) batch.Set(TestItem.AddressA, new Account(1, 100));
             scope.Commit(1);
         }
-        PbtGroupRecordBuffer buffer = context.GroupRecordBuffer;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Metrics.PbtGroupRecordBufferGenerations, Is.EqualTo(buffer.GenerationCount).And.GreaterThan(0));
-            Assert.That(Metrics.PbtGroupRecordBufferMemory, Is.EqualTo(buffer.ResidentBytes).And.GreaterThan(0));
-            Assert.That(Metrics.PbtGroupRecordBufferCompressedMemory, Is.EqualTo(buffer.CompressedBytes));
-            Assert.That(Metrics.PbtGroupRecordBufferCompressedGenerations, Is.EqualTo(buffer.CompressedGenerationCount));
+            Assert.That(Metrics.PbtGroupRecordBufferGenerations, Is.GreaterThan(0));
+            Assert.That(Metrics.PbtGroupRecordBufferMemory, Is.GreaterThan(0));
         }
     }
 

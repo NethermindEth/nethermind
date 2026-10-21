@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Pbt.NodeBuffer;
+using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 
-/// <summary>Writes and walks the group trees of an <see cref="IPbtGroupRecordBuffer"/>.</summary>
+namespace Nethermind.State.Pbt.NodeBuffer;
+
+/// <summary>Operations on the shared group record representation, independent of buffer storage policy.</summary>
 /// <remarks>
 /// A tree is walked from its root record through boundary links. A link names the first physical group below its slot,
 /// possibly past compressed absent groups, so the walk misses at a linked record deeper than the wanted path, or off it.
@@ -12,12 +15,12 @@ namespace Nethermind.Pbt.NodeBuffer;
 /// </remarks>
 public static class PbtGroupRecordBufferExtensions
 {
-    /// <summary>Copies an existing canonical group into a new immutable record.</summary>
+    /// <summary>Appends a canonical group with the given links to the records of its descendants.</summary>
     public static ulong Append(this IPbtGroupRecordBuffer buffer, PbtStorageNodePath path, ReadOnlySpan<byte> payload, in PbtGroupLinks links)
     {
-        ulong pointer = buffer.Reserve(path, payload.Length, links, out Span<byte> destination);
-        payload.CopyTo(destination);
-        return pointer;
+        using IPbtGroupRecordWriteBatch batch = buffer.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length)));
+        payload.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, path, links, payload.Length));
+        return batch.BasePointer;
     }
 
     /// <summary>Finds the buffer-resident group at the exact <paramref name="path"/> from the given root, or misses at an unavailable link.</summary>
@@ -29,7 +32,7 @@ public static class PbtGroupRecordBufferExtensions
         Span<byte> linked = stackalloc byte[PbtVariableTreeKey.MaxLength];
         target.Clear();
         PbtNodePathOperations.CopyTo(path, target);
-        for (ulong pointer = rootPointer; buffer.TryLocate(pointer, out record);)
+        for (ulong pointer = rootPointer; pointer != 0 && buffer.TryLocate(pointer, out record);)
         {
             PbtStorageNodePath recordPath = record.Path;
             if (recordPath.BitDepth > path.BitDepth) break;

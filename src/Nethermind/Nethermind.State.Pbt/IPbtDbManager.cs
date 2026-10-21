@@ -4,6 +4,7 @@
 using System.Threading;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt;

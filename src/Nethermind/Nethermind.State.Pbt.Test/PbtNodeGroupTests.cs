@@ -16,7 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
-using Nethermind.State.Pbt.Snapshot;
+using Nethermind.State.Pbt.NodeBuffer;
 using NUnit.Framework;
 using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
@@ -1028,21 +1028,20 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Group_buffer_reservations_preserve_canonical_payloads_and_immutable_links([Values] bool native, [Values(0, 3, 267)] int depth)
+    public void Group_buffer_write_batches_preserve_canonical_payloads_and_immutable_links([Values(0, 3, 267)] int depth)
     {
-        using GroupRecordBufferContext context = new(native);
-        using PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
+        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, PbtGroupRecordBuffer.DefaultLiveGenerations);
+        using PbtGroupRecordBufferPin pin = buffer.PinHead();
         byte[] key = new byte[PbtVariableTreeKey.MaxLength];
         PbtStorageNodePath path = PbtTestPaths.Prefix<PbtStorageNodePath>(key, depth);
         PbtStorageNodePath childPath = PbtTestPaths.Prefix<PbtStorageNodePath>(key, depth + 6);
         byte[] payload = GroupRecordPayload(path);
-        ulong child = context.Buffer.Append(childPath, GroupRecordPayload(childPath), default);
+        ulong child = buffer.Append(childPath, GroupRecordPayload(childPath), default);
         PbtGroupLinks links = default;
         links[0] = child;
         links[1] = 0;
-        ulong pointer = context.Buffer.Reserve(path, payload.Length, links, out Span<byte> destination);
-        payload.CopyTo(destination);
-        Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
+        ulong pointer = buffer.Append(path, payload, links);
+        Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
         PbtGroupLinks copiedLinks = record.Links;
         copiedLinks[0] = 0;
         using (Assert.EnterMultipleScope())
@@ -1058,240 +1057,27 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Group_buffer_generation_pins_retain_their_generation_range_and_copies([Values] bool native)
+    public void Group_buffer_concurrent_appends_and_reads_do_not_allocate_per_read()
     {
-        using GroupRecordBufferContext context = new(native);
-        PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
-        byte[] payload = RootGroup(LeafEncoding(0x20));
-        ulong[] pointers = new ulong[16];
-        for (int i = 0; i < pointers.Length; i++)
-            pointers[i] = context.Buffer.Append(default, payload, default);
-        using (PbtGroupRecordBuffer.GenerationPin later = context.Buffer.PinHead())
-        {
-            ulong next = context.Buffer.Append(default, payload, default);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(context.Buffer.GenerationCount, Is.GreaterThan(1));
-                Assert.That(pointers, Is.All.GreaterThanOrEqualTo(pin.WriteBoundary));
-                Assert.That(pointers, Is.All.LessThan(later.WriteBoundary));
-                Assert.That(next, Is.GreaterThanOrEqualTo(later.WriteBoundary));
-            }
-        }
-        PbtGroupRecordBuffer.GenerationPin copy = pin.Copy();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(copy.Generation, Is.EqualTo(pin.Generation));
-            Assert.That(copy.WriteBoundary, Is.EqualTo(pin.WriteBoundary));
-        }
-        pin.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.GenerationCount, Is.GreaterThan(1));
-            Assert.That(context.Buffer.PinnedBytes, Is.EqualTo(context.Buffer.ResidentBytes));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.GreaterThan(1));
-        }
-        foreach (ulong pointer in pointers)
-        {
-            Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
-            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
-        }
-        copy.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.ResidentBytes, Is.Zero);
-            Assert.That(context.Buffer.GenerationCount, Is.Zero);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
-            Assert.Throws<ObjectDisposedException>(() => copy.Copy(), "a disposed pin cannot re-pin its released generation");
-        }
-    }
-
-    [Test]
-    public void Group_buffer_root_index_resolves_resident_roots_and_misses_replaced_or_reclaimed_ones([Values] bool native)
-    {
-        using GroupRecordBufferContext context = new(native);
-        // Both roots share their first eight bytes, so they index the same slot.
-        ValueHash256 first = new(Bytes.FromHexString("1111111111111111aa0000000000000000000000000000000000000000000000"));
-        ValueHash256 colliding = new(Bytes.FromHexString("1111111111111111bb0000000000000000000000000000000000000000000000"));
-        PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
-        ulong firstRoot = context.Buffer.Append(default, RootGroup(LeafEncoding(0x20)), default);
-        ulong collidingRoot = context.Buffer.Append(default, RootGroup(LeafEncoding(0x40)), default);
-        context.Buffer.SetRoot(first, firstRoot);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.FindRoot(first), Is.EqualTo(firstRoot));
-            Assert.That(context.Buffer.FindRoot(colliding), Is.Zero);
-        }
-        context.Buffer.SetRoot(colliding, collidingRoot);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.FindRoot(first), Is.Zero, "a newer root replaces its slot");
-            Assert.That(context.Buffer.FindRoot(colliding), Is.EqualTo(collidingRoot));
-        }
-        pin.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.FindRoot(colliding), Is.Zero, "a reclaimed root record misses");
-            Assert.Throws<ArgumentException>(() => context.Buffer.SetRoot(first, 0));
-        }
-    }
-
-    [Test]
-    public void Group_buffer_dropped_generations_miss_but_stay_borrowed_only_for_the_readers_pinned_before_the_drop([Values] bool native)
-    {
-        using GroupRecordBufferContext context = new(native);
-        PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
-        byte[] payload = RootGroup(LeafEncoding(0x20));
-        ulong pointer = context.Buffer.Append(default, payload, default);
-        IDisposable earlier = context.Buffer.PinAll();
-        Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord borrowed), Is.True);
-        pin.Dispose();
-        IDisposable later = context.Buffer.PinAll();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.TryLocate(pointer, out _), Is.False, "a dropped generation misses at once");
-            Assert.That(borrowed.Payload.ToArray(), Is.EqualTo(payload), "records borrowed before the drop stay valid");
-            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.EqualTo(1));
-        }
-        earlier.Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero, "a reader pinned after the drop does not keep the generation");
-        later.Dispose();
-        later.Dispose();
-    }
-
-    [Test]
-    public void Group_buffer_compaction_keeps_unsuperseded_records_by_reference_within_its_budget([Values] bool withinBudget)
-    {
-        using GroupRecordBufferContext context = new(native: false, compressedMaxMemory: withinBudget ? 1 << 20 : 1);
-        PbtStorageNodePath rewritten = new([0x20], 3);
-        PbtStorageNodePath kept = new([0x40], 3);
-        PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
-        // Each record fills a 256-byte generation of its own.
-        ulong superseded = context.Buffer.Append(rewritten, FillingPayload(1), default);
-        ulong survivor = context.Buffer.Append(kept, FillingPayload(2), default);
-        ulong replacement = context.Buffer.Append(rewritten, FillingPayload(3), default);
-        PbtGroupRecordBuffer.GenerationPin newest = context.Buffer.PinHead();
-        Assert.That(context.Buffer.GenerationCount, Is.GreaterThanOrEqualTo(3));
-        IDisposable reader = context.Buffer.PinAll();
-        pin.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.CompressedGenerationCount, Is.Zero, "a generation a reader pins is not compacted");
-            Assert.That(context.Buffer.ResidentBytes, Is.GreaterThan(context.Buffer.PinnedBytes));
-        }
-        reader.Dispose();
-        Assert.That(() => context.Buffer.ResidentBytes, Is.EqualTo(context.Buffer.PinnedBytes).After(5000, 10), "dropped generations are compacted in the background");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.TryLocate(superseded, out _), Is.False, "a path a later generation rewrote is not kept");
-            Assert.That(context.Buffer.TryLocate(survivor, out PbtGroupRecord record), Is.EqualTo(withinBudget));
-            if (withinBudget)
-            {
-                Assert.That(record.Path, Is.EqualTo(kept));
-                Assert.That(record.Payload.ToArray(), Is.EqualTo(FillingPayload(2)));
-            }
-            Assert.That(context.Buffer.TryLocate(replacement, out _), Is.True);
-            Assert.That(context.Buffer.CompressedGenerationCount, Is.EqualTo(withinBudget ? 1 : 0));
-            Assert.That(context.Buffer.CompressedBytes, withinBudget ? Is.GreaterThan(0) : Is.Zero);
-        }
-        newest.Dispose();
-        context.Buffer.Dispose();
-        Assert.That(() => TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero.After(5000, 10));
-    }
-
-    [Test]
-    public void Group_buffer_disposal_during_compaction_releases_everything()
-    {
-        using GroupRecordBufferContext context = new(native: false, compressedMaxMemory: 1 << 20);
-        PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
-        for (int index = 0; index < 64; index++)
-            context.Buffer.Append(new PbtStorageNodePath([(byte)(index << 2)], 6), FillingPayload((byte)index), default);
-        pin.Dispose();
-        context.Buffer.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero.After(5000, 10));
-            Assert.That(context.Buffer.GenerationCount, Is.Zero);
-            Assert.Throws<ObjectDisposedException>(() => context.Buffer.PinAll());
-        }
-    }
-
-    [Test]
-    public void Group_buffer_pins_protect_borrowed_views_after_buffer_disposal([Values] bool native, [Values(0, 32)] int rotations)
-    {
-        using GroupRecordBufferContext context = new(native);
-        PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
-        byte[] payload = RootGroup(LeafEncoding(0x40));
-        ulong pointer = context.Buffer.Append(default, payload, default);
-        IDisposable reader = context.Buffer.PinAll();
-        Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
-        Parallel.For(0, rotations, index =>
-        {
-            context.Buffer.Append(default, RootGroup(LeafEncoding((byte)(index + 1))), default);
-            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
-        });
-        pin.Dispose();
-        context.Buffer.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.EqualTo(rotations + 1));
-            Assert.Throws<ObjectDisposedException>(() => context.Buffer.PinHead());
-            Assert.Throws<ObjectDisposedException>(() => context.Buffer.PinAll());
-            Assert.Throws<ObjectDisposedException>(() => context.Buffer.Append(default, payload, default));
-        }
-        reader.Dispose();
-        reader.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.ResidentBytes, Is.Zero);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
-            Assert.That(context.Buffer.TryLocate(pointer, out _), Is.False);
-        }
-    }
-
-    [Test]
-    public void Group_buffer_retired_references_miss_even_when_storage_is_reused([Values] bool native)
-    {
-        using GroupRecordBufferContext context = new(native);
-        ulong retired;
-        using (context.Buffer.PinHead()) retired = context.Buffer.Append(default, RootGroup(LeafEncoding(0x20)), default);
-        Assert.That(context.Buffer.ResidentBytes, Is.Zero);
-        using PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
-        byte[] payload = RootGroup(LeafEncoding(0x40));
-        ulong current = context.Buffer.Append(default, payload, default);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(current, Is.Not.EqualTo(retired));
-            Assert.That(context.Buffer.TryLocate(retired, out _), Is.False);
-            Assert.That(context.Buffer.TryLocate(current, out PbtGroupRecord record), Is.True);
-            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
-        }
-    }
-
-    [Test]
-    public void Group_buffer_concurrent_appends_and_reads_do_not_allocate_per_read([Values] bool native)
-    {
-        using GroupRecordBufferContext context = new(native);
-        using PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
+        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, PbtGroupRecordBuffer.DefaultLiveGenerations);
+        using PbtGroupRecordBufferPin pin = buffer.PinHead();
         ConcurrentBag<(ulong Pointer, byte[] Payload)> written = [];
         Parallel.For(0, 128, index =>
         {
             byte[] payload = RootGroup(LeafEncoding((byte)index));
-            ulong pointer = context.Buffer.Reserve(default, payload.Length, default, out Span<byte> destination);
-            payload.CopyTo(destination);
-            written.Add((pointer, payload));
+            written.Add((buffer.Append(default, payload, default), payload));
         });
         Assert.That(written.Select(static entry => entry.Pointer).Distinct().Count(), Is.EqualTo(128));
         foreach ((ulong pointer, byte[] payload) in written)
         {
-            Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
+            Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
             Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
         }
         ulong retained = written.First().Pointer;
-        for (int i = 0; i < 100; i++) context.Buffer.TryLocate(retained, out _);
+        for (int i = 0; i < 100; i++) buffer.TryLocate(retained, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread();
         bool found = true;
-        for (int i = 0; i < 10_000; i++) found &= context.Buffer.TryLocate(retained, out _);
+        for (int i = 0; i < 10_000; i++) found &= buffer.TryLocate(retained, out _);
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
         using (Assert.EnterMultipleScope())
         {
@@ -1300,89 +1086,10 @@ public class PbtNodeGroupTests
         }
     }
 
-    [Test]
-    public void Overlay_buffer_writes_privately_and_reaches_global_records_only_before_its_pin([Values] bool native)
-    {
-        using GroupRecordBufferContext context = new(native);
-        ValueHash256 globalRoot = new(Bytes.FromHexString("0100000000000000000000000000000000000000000000000000000000000000"));
-        ValueHash256 laterRoot = new(Bytes.FromHexString("0200000000000000000000000000000000000000000000000000000000000000"));
-        ValueHash256 localRoot = new(Bytes.FromHexString("0300000000000000000000000000000000000000000000000000000000000000"));
-        PbtGroupRecordBuffer.GenerationPin writer = context.Buffer.PinHead();
-        ulong global = context.Buffer.Append(default, RootGroup(LeafEncoding(0x20)), default);
-        context.Buffer.SetRoot(globalRoot, global);
-        PbtOverlayGroupRecordBuffer overlay = new(context.Buffer, context.Memory);
-        ulong later = context.Buffer.Append(default, RootGroup(LeafEncoding(0x40)), default);
-        context.Buffer.SetRoot(laterRoot, later);
-        long globalUsed = context.Buffer.UsedBytes;
-        IPbtGroupRecordBufferPin pin = overlay.PinHead();
-        PbtGroupLinks links = default;
-        links[0] = global;
-        byte[] payload = RootGroup(LeafEncoding(0x60));
-        ulong local = overlay.Append(default, payload, links);
-        overlay.SetRoot(localRoot, local);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.UsedBytes, Is.EqualTo(globalUsed), "the overlay writes to its private buffer");
-            Assert.That(local, Is.GreaterThanOrEqualTo(pin.WriteBoundary));
-            Assert.That(overlay.TryLocate(local, out PbtGroupRecord record), Is.True);
-            Assert.That(record.Pointer, Is.EqualTo(local));
-            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
-            Assert.That(record.GetLink(0), Is.EqualTo(global));
-            Assert.That(overlay.TryLocate(global, out _), Is.True);
-            Assert.That(overlay.FindRoot(globalRoot), Is.EqualTo(global));
-            Assert.That(overlay.FindRoot(laterRoot), Is.Zero);
-            Assert.That(overlay.FindRoot(localRoot), Is.EqualTo(local));
-            Assert.That(context.Buffer.FindRoot(localRoot), Is.Zero, "a private root stays out of the global index");
-        }
-        overlay.Dispose();
-        writer.Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.GreaterThan(0), "an overlay pin keeps the private and global records");
-        pin.Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero, "the last overlay pin releases them");
-    }
-
-    [Test]
-    public void Group_buffer_opportunistic_retention_is_bounded([Values] bool native)
-    {
-        using GroupRecordBufferContext context = new(native, liveGenerations: 2);
-        for (int i = 0; i < 32; i++) context.Buffer.Append(default, RootGroup(LeafEncoding((byte)i)), default);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Buffer.GenerationCount, Is.EqualTo(2));
-            Assert.That(context.Buffer.PinnedBytes, Is.Zero);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.EqualTo(2));
-        }
-        context.Buffer.Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
-    }
-
-    /// <summary>An opaque payload whose record fills a 256-byte generation on its own.</summary>
-    private static byte[] FillingPayload(byte marker) => Enumerable.Repeat(marker, 80).ToArray();
-
     private static byte[] GroupRecordPayload(PbtStorageNodePath path)
     {
         PbtStorageNodePath node = PbtTestPaths.Prefix<PbtStorageNodePath>(new byte[PbtVariableTreeKey.MaxLength], path.BitDepth == 0 ? 0 : path.BitDepth + 1);
         return PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(node, LeafBranch(node, 1))], default);
-    }
-
-    private sealed class GroupRecordBufferContext : IDisposable
-    {
-        private readonly NativeBucketedMemoryPool _nativePool = PbtNodeGroupMemory.CreateNativePool();
-
-        public GroupRecordBufferContext(bool native, int liveGenerations = 0, long compressedMaxMemory = 0)
-        {
-            Memory = new TrackingMemoryProvider(native ? _nativePool : PooledRefCountingMemoryProvider.Instance) { FillByte = 0xFF };
-            Buffer = new PbtGroupRecordBuffer(Memory, compressedMaxMemory, generationBytes: 256, liveGenerations);
-        }
-
-        public TrackingMemoryProvider Memory { get; }
-        public PbtGroupRecordBuffer Buffer { get; }
-
-        public void Dispose()
-        {
-            Buffer.Dispose();
-            _nativePool.Dispose();
-        }
     }
 
     private sealed class WarmReadStore(IPbtStore store) : IPbtStore, IPbtNodeGroupSink

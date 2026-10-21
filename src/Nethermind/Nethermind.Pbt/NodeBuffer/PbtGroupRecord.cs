@@ -1,53 +1,48 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Pbt.NodeBuffer;
 
-/// <summary>A borrowed immutable group payload and its in-memory descendant links.</summary>
-/// <remarks>The pin protecting the record must remain alive for every use of the view, including its memory and spans.</remarks>
-public readonly struct PbtGroupRecord
+/// <summary>A group record held in place inside a buffer of the group record buffer.</summary>
+/// <remarks>Buffer records borrow native storage for the lifetime of the pin protecting them, including their memory and spans.</remarks>
+public readonly struct PbtGroupRecord(ReadOnlyMemory<byte> buffer, int offset)
 {
-    private readonly ReadOnlyMemory<byte> _record;
+    private readonly ReadOnlyMemory<byte> _buffer = buffer;
+    private readonly int _offset = offset;
 
-    internal PbtGroupRecord(ulong pointer, ReadOnlyMemory<byte> record)
+    /// <summary>Whether this references no record.</summary>
+    public bool IsNull => _buffer.Equals(default);
+
+    /// <summary>The whole record: header and payload.</summary>
+    public ReadOnlySpan<byte> Span
     {
-        Pointer = pointer;
-        _record = record;
+        get
+        {
+            ReadOnlySpan<byte> record = _buffer.Span[_offset..];
+            return record[..PbtGroupRecordCodec.Length(record)];
+        }
     }
 
-    /// <summary>The buffer pointer of this record.</summary>
-    public ulong Pointer { get; }
-
-    /// <summary>The same record under <paramref name="pointer"/>, as a buffer that numbers another buffer's records exposes it.</summary>
-    public PbtGroupRecord WithPointer(ulong pointer) => new(pointer, _record);
+    public PbtGroupRecordKind Kind => (PbtGroupRecordKind)_buffer.Span[_offset];
 
     /// <summary>The canonical path of the physical group.</summary>
-    public PbtStorageNodePath Path => MemoryMarshal.AsRef<PbtGroupRecordHeader>(_record.Span).Path;
+    public PbtStorageNodePath Path => Header.Path;
 
     /// <summary>The unchanged canonical group encoding, without buffer metadata.</summary>
-    public ReadOnlyMemory<byte> Payload => _record[PbtGroupRecordHeader.Size..];
+    public ReadOnlyMemory<byte> Payload => _buffer.Slice(_offset + PbtGroupRecordCodec.HeaderLength, Header.PayloadLength);
 
     /// <summary>A copy of the boundary links, for inheriting the untouched slots of a replacement group.</summary>
-    public PbtGroupLinks Links => MemoryMarshal.AsRef<PbtGroupRecordHeader>(_record.Span).Links;
+    public PbtGroupLinks Links => Header.Links;
+
+    private ref readonly PbtGroupRecordHeader Header => ref MemoryMarshal.AsRef<PbtGroupRecordHeader>(_buffer.Span[_offset..]);
 
     /// <summary>The pointer of the first physical descendant group owned by boundary <paramref name="slot"/>, or 0 when it is not in the buffer.</summary>
     public ulong GetLink(int slot)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(slot);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(slot, PbtThreeLevelGroupGeometry.BoundarySlots);
-        return MemoryMarshal.AsRef<PbtGroupRecordHeader>(_record.Span).Links[slot];
+        return Header.Links[slot];
     }
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct PbtGroupRecordHeader
-{
-    public static readonly int Size = Unsafe.SizeOf<PbtGroupRecordHeader>();
-
-    public int PayloadLength;
-    public PbtStorageNodePath Path;
-    public PbtGroupLinks Links;
 }

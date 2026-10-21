@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt.NodeBuffer;
@@ -20,16 +21,16 @@ public interface IPbtNodeGroupSink
     /// </remarks>
     void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload);
 
-    /// <summary>Reserves a replacement's final payload and hands its pointer off with this writer; zero length deletes the group.</summary>
+    /// <summary>Reserves contiguous, zero-filled bytes for group records, registered with the buffer when the batch is disposed.</summary>
     /// <returns>False for a payload-only sink, which receives <see cref="SetNodeGroup"/> instead.</returns>
     /// <remarks>
-    /// The caller fills the borrowed span before publishing its pointer to a parent. The store keeps the reservation
-    /// alive through fold completion and publication. A deletion reserves no record, so its pointer is 0.
+    /// The caller fills the batch with complete records before publishing their pointers to a parent. The store keeps the
+    /// records alive through fold completion and publication. A deletion writes no record and goes through <see cref="SetNodeGroup"/>.
     /// </remarks>
-    bool TryReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out ulong pointer, out Span<byte> payload)
+    /// <param name="alignedTotalLength">The total length of the records, a multiple of <see cref="PbtGroupRecordCodec.RecordAlignment"/>.</param>
+    bool TryStartWriteBatch(int alignedTotalLength, [NotNullWhen(true)] out IPbtGroupRecordWriteBatch? batch)
     {
-        pointer = 0;
-        payload = default;
+        batch = null;
         return false;
     }
 }
@@ -77,8 +78,8 @@ public interface IPbtConcurrentWriter : IPbtNodeGroupSink, IDisposable;
 public sealed class PbtPassThroughWriter(IPbtNodeGroupSink store) : IPbtConcurrentWriter
 {
     /// <inheritdoc/>
-    public bool TryReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out ulong pointer, out Span<byte> payload) =>
-        store.TryReserveNodeGroup(groupKey, length, links, out pointer, out payload);
+    public bool TryStartWriteBatch(int alignedTotalLength, [NotNullWhen(true)] out IPbtGroupRecordWriteBatch? batch) =>
+        store.TryStartWriteBatch(alignedTotalLength, out batch);
 
     public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
         store.SetNodeGroup(groupKey, payload);

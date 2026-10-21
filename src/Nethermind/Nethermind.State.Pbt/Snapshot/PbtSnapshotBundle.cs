@@ -11,9 +11,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 
@@ -376,7 +376,6 @@ public sealed class PbtSnapshotBundle(
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
-        if (GroupRecordBuffer is PbtGroupRecordBuffer buffer) Metrics.ObserveGroupRecordBuffer(buffer);
         _hintedAccounts.Clear();
         ReleasePersistedNodeGroups();
         ReturnReplacedRuns();

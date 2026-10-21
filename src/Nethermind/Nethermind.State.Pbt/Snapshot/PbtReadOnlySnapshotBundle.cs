@@ -14,15 +14,15 @@ using Nethermind.Core.Utils;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>An immutable canonical state view composed from snapshot diffs over one persistence snapshot.</summary>
-/// <param name="nodeGroupPin">A <see cref="PbtGroupRecordBuffer.PinAll"/> keeping every buffer record the bundle's readers may
+/// <param name="nodeGroupPin">A <see cref="IPbtGroupRecordBuffer.PinAll"/> keeping every buffer record the bundle's readers may
 /// borrow valid; released with the bundle.</param>
 /// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="RentRunFiltered"/> builds over the
 /// in-memory layers' slot runs; 0 never builds one.</param>
