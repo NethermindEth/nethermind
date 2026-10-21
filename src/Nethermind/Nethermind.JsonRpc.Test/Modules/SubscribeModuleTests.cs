@@ -116,6 +116,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             _filterStore.Dispose();
         }
 
+        private static void AssertDelivery(WaitHandle received, bool shouldReceiveResult) =>
+            Assert.That(received.WaitOne(shouldReceiveResult ? DeliveryTimeout : NoDeliveryWait), Is.EqualTo(shouldReceiveResult));
+
         private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null, bool shouldReceiveResult = true)
         {
             NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, new BlockForRpcFactory(), options);
@@ -131,7 +134,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockReplacementEventArgs);
-            Assert.That(manualResetEvent.WaitOne(shouldReceiveResult ? DeliveryTimeout : NoDeliveryWait), Is.EqualTo(shouldReceiveResult));
+            AssertDelivery(manualResetEvent, shouldReceiveResult);
 
             subscriptionId = newHeadSubscription.Id;
             return jsonRpcResult;
@@ -182,7 +185,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _txPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(new object(), txEventArgs);
-            Assert.That(manualResetEvent.WaitOne(shouldReceiveResult ? DeliveryTimeout : NoDeliveryWait), Is.EqualTo(shouldReceiveResult));
+            AssertDelivery(manualResetEvent, shouldReceiveResult);
 
             subscriptionId = newPendingTransactionsSubscription.Id;
             return jsonRpcResult;
@@ -201,7 +204,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _txPool.EvictedPending += Raise.Event<EventHandler<TxEventArgs>>(new object(), txEventArgs);
-            Assert.That(manualResetEvent.WaitOne(shouldReceiveResult ? DeliveryTimeout : NoDeliveryWait), Is.EqualTo(shouldReceiveResult));
+            AssertDelivery(manualResetEvent, shouldReceiveResult);
 
             subscriptionId = droppedPendingTransactionsSubscription.Id;
             return jsonRpcResult;
@@ -237,7 +240,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             if (newHead) _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
             else _blockTree.NewBestSuggestedBlock += Raise.EventWith(new object(), blockEventArgs);
 
-            Assert.That(manualResetEvent.WaitOne(shouldReceiveResult ? DeliveryTimeout : NoDeliveryWait), Is.EqualTo(shouldReceiveResult));
+            AssertDelivery(manualResetEvent, shouldReceiveResult);
 
             return jsonRpcResult;
         }
@@ -253,7 +256,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
             _peerPool.PeerAdded += Raise.EventWith(new object(), peerEventArgs);
-            Assert.That(manualResetEvent.WaitOne(shouldReceiveResult ? DeliveryTimeout : NoDeliveryWait), Is.EqualTo(shouldReceiveResult));
+            AssertDelivery(manualResetEvent, shouldReceiveResult);
             subscriptionId = peerEventsSubscription.Id;
             return jsonRpcResult;
         }
@@ -268,7 +271,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
             _peerPool.PeerRemoved += Raise.EventWith(new object(), peerEventArgs);
-            Assert.That(manualResetEvent.WaitOne(shouldReceiveResult ? DeliveryTimeout : NoDeliveryWait), Is.EqualTo(shouldReceiveResult));
+            AssertDelivery(manualResetEvent, shouldReceiveResult);
             subscriptionId = peerEventsSubscription.Id;
             return jsonRpcResult;
         }
