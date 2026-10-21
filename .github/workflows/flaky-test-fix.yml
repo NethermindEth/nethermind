@@ -5,304 +5,114 @@ on:
     workflows: ["Nethermind/Ethereum tests"]
     types: [completed]
     branches: [master]
-  workflow_dispatch:
-    inputs:
-      run_id:
-        description: Failed "Nethermind/Ethereum tests" run to analyze
-        required: true
 
 permissions:
   contents: read
 
-env:
-  LABEL: flaky-test
-  BASELINE_RUNS: 200
-  BASELINE_SECONDS: 2400
-  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+concurrency:
+  group: flaky-test-fix
+  cancel-in-progress: false
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  detect:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.name == 'Nethermind/Ethereum tests' &&
-        github.event.workflow_run.conclusion == 'failure' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'master')
+  fix:
+    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 120
     permissions:
       actions: read
       contents: read
-      issues: read
-      pull-requests: read
-    outputs:
-      found: ${{ steps.select.outputs.found }}
-      project: ${{ steps.select.outputs.project }}
-      method: ${{ steps.select.outputs.method }}
-      test: ${{ steps.select.outputs.test }}
-      source: ${{ steps.select.outputs.source }}
-      branch: ${{ steps.select.outputs.branch }}
-      filter: ${{ steps.select.outputs.filter }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Download failed job logs
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
-        run: |
-          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || exit 1
-          run=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '[.name, .event, .head_branch, .head_repository.full_name] | @tsv')
-          if [ "$run" != "$(printf 'Nethermind/Ethereum tests\tpush\tmaster\t%s' "$REPO")" ]; then
-            echo "::error::Run $RUN_ID is not a master push run of Nethermind/Ethereum tests"
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/logs"
-          gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
-            --jq '.jobs[] | select(.conclusion == "failure") | .id' |
-          while read -r job; do
-            gh api "repos/$REPO/actions/jobs/$job/logs" > "$RUNNER_TEMP/logs/$job.log" || true
-          done
-
-      - name: Select a flaky test candidate
-        id: select
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 scripts/ci/flaky_tests.py select --log-dir "$RUNNER_TEMP/logs" --repo "$GITHUB_REPOSITORY" \
-            --out "$RUNNER_TEMP/candidate.json"
-
-      - if: steps.select.outputs.found == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: flaky-candidate
-          path: ${{ runner.temp }}/candidate.json
-
-  fix:
-    needs: detect
-    if: needs.detect.outputs.found == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 270
-    concurrency:
-      group: flaky-test-fix-${{ needs.detect.outputs.branch }}
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      issues: write
       pull-requests: read
       id-token: write
     outputs:
-      verified: ${{ steps.verify.outcome == 'success' }}
-      base: ${{ steps.check.outputs.base }}
-    env:
-      PROJECT: ${{ needs.detect.outputs.project }}
-      METHOD: ${{ needs.detect.outputs.method }}
-      BRANCH: ${{ needs.detect.outputs.branch }}
-      DETECTED_FILTER: ${{ needs.detect.outputs.filter }}
+      changed: ${{ steps.check.outputs.changed }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: master
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
-      - name: Skip a test another run already took
-        id: claim
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          issues=$(gh issue list --repo "$GITHUB_REPOSITORY" --label "$LABEL" --state open \
-            --search "$METHOD in:title" --json number --jq length)
-          if gh api "repos/$GITHUB_REPOSITORY/branches/$BRANCH" --silent 2>/dev/null || [ "$issues" != 0 ]; then
-            echo "taken=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - if: steps.claim.outputs.taken != 'true'
-        uses: ./.github/actions/fetch-submodules
+      - uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
 
-      - if: steps.claim.outputs.taken != 'true'
-        uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v5
 
-      - if: steps.claim.outputs.taken != 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: flaky-candidate
-          path: ${{ runner.temp }}
-
-      - name: Build the test project
-        if: steps.claim.outputs.taken != 'true'
-        run: |
-          cp scripts/ci/flaky_tests.py "$RUNNER_TEMP/flaky_tests.py"
-          mkdir -p "$RUNNER_TEMP/claude"
-          cp "$RUNNER_TEMP/candidate.json" "$RUNNER_TEMP/claude/candidate.json"
-          dotnet build "src/Nethermind/$PROJECT/$PROJECT.csproj" -c release
-
-      - name: Reproduce
-        if: steps.claim.outputs.taken != 'true'
-        id: baseline
-        run: |
-          python3 "$RUNNER_TEMP/flaky_tests.py" repeat --project "$PROJECT" --filter "$DETECTED_FILTER" \
-            --runs "$BASELINE_RUNS" --budget "$BASELINE_SECONDS" --out-dir "$RUNNER_TEMP/claude/baseline"
-
-      - name: Record a test that did not reproduce or always fails
-        if: steps.baseline.outputs.verdict == 'not-reproduced' || steps.baseline.outputs.verdict == 'deterministic'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUNS: ${{ steps.baseline.outputs.runs }}
-          FAILURES: ${{ steps.baseline.outputs.failures }}
-          VERDICT: ${{ steps.baseline.outputs.verdict }}
-          TEST: ${{ needs.detect.outputs.test }}
-          FAILED_RUN: ${{ github.event.workflow_run.html_url || inputs.run_id }}
-        run: |
-          gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
-          title="Flaky test: $METHOD"
-          [ "$VERDICT" = deterministic ] && title="Failing test: $METHOD"
-          excerpt=$(jq -r .excerpt_markdown "$RUNNER_TEMP/candidate.json")
-          gh issue create --label "$LABEL" --title "$title" --body "$(printf \
-            '`%s` in `%s` failed on master (%s) and failed %s of %s reruns under CPU load in this workflow.\n\n%s\n' \
-            "$TEST" "$PROJECT" "$FAILED_RUN" "$FAILURES" "$RUNS" "$excerpt")"
-
-      - name: Take one of today's Claude runs
-        if: steps.baseline.outputs.verdict == 'flaky'
-        id: slot
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 "$RUNNER_TEMP/flaky_tests.py" claude-slot --repo "$GITHUB_REPOSITORY"
-
-      - name: Fix the root cause
-        if: steps.slot.outputs.taken == 'true'
+      - name: Fix the flaky test
         timeout-minutes: 90
         uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: |
-            The test `${{ needs.detect.outputs.test }}` in `${{ env.PROJECT }}` (source: `${{ needs.detect.outputs.source }}`)
-            is flaky on master: it failed ${{ steps.baseline.outputs.failures }} of ${{ steps.baseline.outputs.runs }} reruns under CPU load.
-            The original CI failure is in `${{ runner.temp }}/claude/candidate.json` (field `excerpt`); logs of failing reruns are in
-            `${{ runner.temp }}/claude/baseline/failure-*.log`.
+            Run ${{ github.event.workflow_run.html_url }} of "Nethermind/Ethereum tests" failed on master.
+            List its failed jobs with `gh api repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs`
+            and read their logs with `gh api repos/${{ github.repository }}/actions/jobs/<job id>/logs`.
 
-            Find the root cause and fix it with the smallest change. The bug may be in the test or in production code;
-            if production code races, fix the production code. Do not add retries, sleeps, longer timeouts,
-            [Retry]/[Ignore]/[Explicit] attributes, or category exclusions, and do not weaken assertions.
-            Do not change .github/, .agents/, scripts/, AGENTS.md, CLAUDE.md, *.props, *.targets, *.csproj, global.json or NuGet.Config: such changes are rejected.
-            Follow AGENTS.md, CONTRIBUTING.md and .agents/rules/.
+            For each failed test, compare with recent runs (`gh run list --workflow "Nethermind/Ethereum tests"`)
+            to decide if it is flaky: it fails only sometimes and passes on the same or neighbouring commits.
+            Skip a test that fails consistently, and a test that already has an open PR
+            (`gh pr list --label flaky-test --search "<test name>"`). If no test is left, stop without changes.
 
-            Verify before you finish:
-              dotnet build src/Nethermind/${{ env.PROJECT }}/${{ env.PROJECT }}.csproj -c release
-              python3 scripts/ci/flaky_tests.py repeat --project ${{ env.PROJECT }} --filter "${{ steps.baseline.outputs.filter }}" --runs 200 --budget 1800 --stop-after 1 --out-dir ${{ runner.temp }}/claude/reruns
-            Iterate until it reports 0 failures.
+            For one flaky test, find the root cause and fix it with the smallest change. The bug may be in the test
+            or in production code. Do not add retries, sleeps, longer timeouts, [Retry]/[Ignore]/[Explicit] attributes
+            or category exclusions, and do not weaken assertions. Do not change .github/, .agents/, scripts/, AGENTS.md,
+            CLAUDE.md, *.props, *.targets, *.csproj, global.json or NuGet.Config. Follow AGENTS.md and .agents/rules/.
+            Build and run the test with `dotnet test --project <project> -c release -- --filter <filter>`.
 
-            Do not commit or push. Write `${{ runner.temp }}/claude/report.md` for the PR description: the root cause
-            (how the failure happens, with file:line references), the fix, and why it removes the race.
+            Do not commit or push. Write `${{ runner.temp }}/claude/pr.md`: the first line is the PR title
+            `Fix flaky <test name>`, then the failed run link, why the test is flaky, the root cause with file:line
+            references, and the fix.
           claude_args: |
             --model opus
             --add-dir ${{ runner.temp }}/claude
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(dotnet build:*),Bash(python3 scripts/ci/flaky_tests.py:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(gh api:*),Bash(gh run list:*),Bash(gh pr list:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
 
       - name: Check the change
-        if: steps.slot.outputs.taken == 'true'
         id: check
         run: |
           git add -A
-          git diff --cached --quiet && { echo "::error::Claude produced no change"; exit 1; }
-          git diff --cached --no-renames --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
-          mkdir -p "$RUNNER_TEMP/patch"
-          git diff --cached --binary > "$RUNNER_TEMP/patch/fix.patch"
-          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if git diff --cached --quiet || [ ! -s "$RUNNER_TEMP/claude/pr.md" ]; then exit 0; fi
+          if git diff --cached --no-renames --name-only |
+            grep -E '^(\.github|\.agents|scripts)/|^(AGENTS|CLAUDE)\.md$|\.(props|targets|csproj)$|(^|/)(global\.json|NuGet\.Config)$'; then
+            echo "::error::Protected paths changed"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/fix"
+          git diff --cached --binary > "$RUNNER_TEMP/fix/fix.patch"
+          cp "$RUNNER_TEMP/claude/pr.md" "$RUNNER_TEMP/fix/pr.md"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
 
-      - if: steps.check.outcome == 'success'
+      - if: steps.check.outputs.changed == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: flaky-fix-patch
-          path: ${{ runner.temp }}/patch/fix.patch
-
-      - name: Verify the fix independently
-        if: steps.check.outcome == 'success'
-        id: verify
-        env:
-          FILTER: ${{ steps.baseline.outputs.filter }}
-          FAILURES: ${{ steps.baseline.outputs.failures }}
-          RUNS: ${{ steps.baseline.outputs.runs }}
-          SECONDS_TAKEN: ${{ steps.baseline.outputs.seconds }}
-        run: |
-          tool="$RUNNER_TEMP/flaky_tests.py"
-          dotnet build "src/Nethermind/$PROJECT/$PROJECT.csproj" -c release
-          plan=$(python3 "$tool" required-runs "$RUNS" "$FAILURES" "$SECONDS_TAKEN")
-          runs=$(jq -r .runs <<< "$plan")
-          python3 "$tool" repeat --project "$PROJECT" --filter "$FILTER" \
-            --runs "$runs" --budget "$(jq -r .budget <<< "$plan")" --stop-after 1 --out-dir "$RUNNER_TEMP/verify" | tee "$RUNNER_TEMP/verify.json"
-          [ "$(jq -r .failures "$RUNNER_TEMP/verify.json")" = 0 ] && [ "$(jq -r .runs "$RUNNER_TEMP/verify.json")" = "$runs" ]
-
-      - name: Write the PR description
-        if: steps.verify.outcome == 'success'
-        env:
-          FILTER: ${{ steps.baseline.outputs.filter }}
-          BEFORE: ${{ steps.baseline.outputs.failures }}/${{ steps.baseline.outputs.runs }}
-          AFTER: ${{ steps.verify.outputs.failures }}/${{ steps.verify.outputs.runs }}
-          FAILED_RUN: ${{ github.event.workflow_run.html_url || inputs.run_id }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/body"
-          {
-            if [ -f "$RUNNER_TEMP/claude/report.md" ]; then cat "$RUNNER_TEMP/claude/report.md"; else echo "_Claude did not write a root-cause report._"; fi
-            printf '\n## Evidence\n\n- Project: `%s`\n- Test filter: `%s`\n- Failed on master: %s\n- Before: %s reruns failed under CPU load\n- After: %s reruns failed\n' \
-              "$PROJECT" "$FILTER" "$FAILED_RUN" "$BEFORE" "$AFTER"
-          } > "$RUNNER_TEMP/body/body.md"
-
-      - if: steps.verify.outcome == 'success'
-        uses: actions/upload-artifact@v7
-        with:
-          name: flaky-fix-body
-          path: ${{ runner.temp }}/body/body.md
-
-      - name: Record a failed fix attempt
-        if: (failure() || cancelled()) && steps.baseline.outcome != 'skipped'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TEST: ${{ needs.detect.outputs.test }}
-          FAILED_RUN: ${{ github.event.workflow_run.html_url || inputs.run_id }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
-          gh issue create --label "$LABEL" --title "Flaky test: $METHOD" --body "$(printf \
-            '`%s` in `%s` failed on master (%s). The automatic reproduction or fix did not finish: %s\n' \
-            "$TEST" "$PROJECT" "$FAILED_RUN" "$RUN_URL")"
+          name: flaky-fix
+          path: ${{ runner.temp }}/fix
 
   publish:
-    needs: [detect, fix]
-    if: needs.fix.outputs.verified == 'true'
+    needs: fix
+    if: needs.fix.outputs.changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
     env:
-      METHOD: ${{ needs.detect.outputs.method }}
-      BRANCH: ${{ needs.detect.outputs.branch }}
+      BRANCH: test/flaky-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.fix.outputs.base }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: flaky-fix-*
-          merge-multiple: true
+          name: flaky-fix
           path: ${{ runner.temp }}/fix
-
-      - name: Apply the verified change
-        run: |
-          cp scripts/ci/flaky_tests.py "$RUNNER_TEMP/flaky_tests.py"
-          git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
-          git diff --cached --no-renames --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
 
       - name: Authenticate App
         id: gh-app
@@ -315,12 +125,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
-          gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
+          git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
+          title=$(head -n 1 "$RUNNER_TEMP/fix/pr.md")
+          tail -n +2 "$RUNNER_TEMP/fix/pr.md" > "$RUNNER_TEMP/body.md"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git -c core.hooksPath=/dev/null commit -m "Fix flaky $METHOD"
+          git -c core.hooksPath=/dev/null commit -m "$title"
           git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
-          gh pr create --draft --base master --head "$BRANCH" --label "$LABEL" \
-            --title "Fix flaky $METHOD" --body-file "$RUNNER_TEMP/fix/body.md"
-
+          gh label create flaky-test --color FBCA04 --description "Flaky test" 2>/dev/null || true
+          gh pr create --draft --base master --head "$BRANCH" --label flaky-test --title "$title" --body-file "$RUNNER_TEMP/body.md"
