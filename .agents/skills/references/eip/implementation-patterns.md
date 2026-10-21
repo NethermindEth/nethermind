@@ -28,16 +28,17 @@
 
 ### EVM
 
-- `Nethermind.Evm/Instruction.cs` — `enum Instruction : byte` + `InstructionExtensions`
-- `Nethermind.Evm/Instructions/EvmInstructions.cs` — opcode dispatch table
-- `Nethermind.Evm/Instructions/EvmInstructions.*.cs` — partial classes by category (Math, Storage, Call, Bitwise, Stack, etc.)
-- `Nethermind.Evm/GasCostOf.cs` — gas cost constants
+- `Nethermind.Evm/Instruction.cs` — `enum Instruction : byte`
+- `Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs` — opcode dispatch table, handlers registered per spec flag
+- `Nethermind.Evm/Instructions/EvmInstructions.*.cs` — partial classes by category (Arith256, Storage, Call, Bitwise, Stack, Environment, etc.)
+- `Nethermind.Core/GasCostOf.cs` — gas cost constants
 
 ### Precompiles
 
 - `Nethermind.Evm/Precompiles/IPrecompile.cs` — interface
 - `Nethermind.Evm.Precompiles/*.cs` — one file per precompile
-- `Nethermind.Evm.Precompiles/Extensions.cs` — `ListPrecompiles()` registration
+- `Nethermind.Evm.Precompiles/Extensions.cs` — `ListPrecompiles()` registration (address → name, used by `eth_config`)
+- `Nethermind.Blockchain/EthereumPrecompileProvider.cs` — address → precompile instance map used for execution
 
 ### Transactions
 
@@ -60,7 +61,7 @@
 
 ### Test infrastructure (update when adding new opcodes, header fields, or tx types)
 
-- `Nethermind.Evm/ByteCodeBuilderExtensions.cs` — fluent bytecode builder; add a method for each new opcode (e.g., `SLOTNUM()`)
+- `Nethermind.Evm/BytecodeBuilder.cs` — fluent bytecode builder; add a method for each new opcode (e.g., `SLOTNUM()`)
 - `Nethermind.Core.Test/Builders/BlockBuilder.cs` — add `With{FieldName}()` for each new header field
 - `Nethermind.Evm.Test/InvalidOpcodeTests.cs` — update fork opcode validation when adding new opcodes
 
@@ -68,7 +69,7 @@
 
 ### Adding an EIP flag to a fork
 
-Every consensus EIP that needs a feature flag requires changes in **10 files** across 5 layers:
+Every consensus EIP that needs a feature flag requires changes in about **10 files** across 5 layers:
 
 **Layer 1 — Core interface + implementations (3 files):**
 
@@ -76,36 +77,50 @@ Every consensus EIP that needs a feature flag requires changes in **10 files** a
 2. `Nethermind.Specs/ReleaseSpec.cs` — add `public bool IsEipXXXXEnabled { get; set; }`
 3. `Nethermind.Core/Specs/ReleaseSpecDecorator.cs` — add `public virtual bool IsEipXXXXEnabled => spec.IsEipXXXXEnabled;`
 
-**Layer 2 — Test infrastructure (1 file):** 4. `Nethermind.Specs.Test/OverridableReleaseSpec.cs` — add `public bool IsEipXXXXEnabled { get; set; } = spec.IsEipXXXXEnabled;`
+**Layer 2 — Test infrastructure (1 file):**
 
-**Layer 3 — Fork definition (1 file):** 5. `Nethermind.Specs/Forks/XX_ForkName.cs` — set `IsEipXXXXEnabled = true;` in fork constructor
+4. `Nethermind.Specs.Test/OverridableReleaseSpec.cs` — add `public bool IsEipXXXXEnabled { get; set; } = spec.IsEipXXXXEnabled;`
 
-**Layer 4 — Chain spec pipeline (4 files):** 6. `Nethermind.Specs/ChainSpecStyle/Json/ChainSpecParamsJson.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }` 7. `Nethermind.Specs/ChainSpecStyle/ChainParameters.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }` 8. `Nethermind.Specs/ChainSpecStyle/ChainSpecLoader.cs` — map: `EipXXXXTransitionTimestamp = chainSpecJson.Params.EipXXXXTransitionTimestamp,` 9. `Nethermind.Specs/ChainSpecStyle/ChainSpecBasedSpecProvider.cs` — activate: `releaseSpec.IsEipXXXXEnabled = (chainSpec.Parameters.EipXXXXTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;`
+**Layer 3 — Fork definition (1 file):**
 
-**Layer 5 — Spec provider tests (1-2 files):** 10. `Nethermind.Specs.Test/MainnetSpecProviderTests.cs` — update the fork's EIP test method to cover the new flag 11. `Nethermind.Specs.Test/ChainSpecStyle/ChainSpecBasedSpecProviderTests.cs` — if the EIP overrides a spec **value** (e.g., `MaxCodeSize`, gas constants) in `ChainSpecBasedSpecProvider`, add a test here verifying the value is set correctly when the flag activates
+5. `Nethermind.Specs/Forks/XX_ForkName.cs` — add `spec.IsEipXXXXEnabled = true;` in the fork's `Apply(NamedReleaseSpec spec)` override
 
-**If the EIP is the first in a new fork**, also update: 11. `Nethermind.Specs/MainnetSpecProvider.cs` — add activation timestamp, `TransitionActivations` entry, and spec switch expression for the new fork
+**Layer 4 — Chain spec pipeline (4 files):**
+
+6. `Nethermind.Specs/ChainSpecStyle/Json/ChainSpecParamsJson.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }`
+7. `Nethermind.Specs/ChainSpecStyle/ChainParameters.cs` — add `public ulong? EipXXXXTransitionTimestamp { get; set; }`
+8. `Nethermind.Specs/ChainSpecStyle/ChainSpecLoader.cs` — map: `EipXXXXTransitionTimestamp = chainSpecJson.Params.EipXXXXTransitionTimestamp,`
+9. `Nethermind.Specs/ChainSpecStyle/ChainSpecBasedSpecProvider.cs` — activate: `releaseSpec.IsEipXXXXEnabled = (chainSpec.Parameters.EipXXXXTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;`
+
+**Layer 5 — Spec provider tests (1-2 files):**
+
+10. `Nethermind.Specs.Test/MainnetSpecProviderTests.cs` — update the fork's EIP test method to cover the new flag
+11. `Nethermind.Specs.Test/ChainSpecStyle/ChainSpecBasedSpecProviderTests.cs` — if the EIP overrides a spec **value** (e.g., `MaxCodeSize`, gas constants) in `ChainSpecBasedSpecProvider`, add a test here verifying the value is set correctly when the flag activates
+
+**If the target fork does not exist yet**, use the `fork-creator` skill first.
 
 **Exceptions:**
 
 - Receipt-only EIPs may use `IReceiptSpec` instead of `IReleaseSpec`
-- Networking protocol versions (e.g., eth/70) skip `IReleaseSpec` entirely — use dynamic capability registration in `MergePlugin.cs`
+- Networking protocol versions (e.g., eth/70) skip `IReleaseSpec` entirely — register the message serializers and protocol handler in `Nethermind.Init/Modules/NetworkModule.cs`
 
 ### Adding a new opcode
 
 1. Add enum value to `Nethermind.Evm/Instruction.cs`
 2. Implement handler in the appropriate `Nethermind.Evm/Instructions/EvmInstructions.*.cs` partial class
-3. Add gas cost constant to `Nethermind.Evm/GasCostOf.cs` if needed
-4. Update `InstructionExtensions.StackRequirements()` in `Instruction.cs`
-5. Add fluent method to `Nethermind.Evm/ByteCodeBuilderExtensions.cs` (e.g., `.SLOTNUM()`)
-6. Update `Nethermind.Evm.Test/InvalidOpcodeTests.cs` — add new opcode to the fork's valid opcode set
+3. Register the handler in `Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs`, gated by `spec.IsEipXXXXEnabled`
+4. Add gas cost constant to `Nethermind.Core/GasCostOf.cs` if needed
+5. Add name and stack inputs/outputs to the opcode table in `Nethermind.Blockchain/Tracing/ExecutionFailureText.cs`
+6. Add fluent method to `Nethermind.Evm/BytecodeBuilder.cs` (e.g., `.SLOTNUM()`)
+7. Update `Nethermind.Evm.Test/InvalidOpcodeTests.cs` — add new opcode to the fork's valid opcode set
+8. Grep for a recent opcode (e.g., `Instruction.SLOTNUM`) to find other switches that list opcodes (tracers, L2 gas tables) and decide for each one whether the new opcode belongs there
 
 ### Adding a new precompile
 
 1. Create class implementing `IPrecompile<T>` in `Nethermind.Evm.Precompiles/`
 2. Implement all members of `IPrecompile<T>` — **read the interface** for current requirements
 3. Add EIP flag to `IReleaseSpec` and set it in the fork
-4. Register in `ReleaseSpec.BuildPrecompilesCache()` and `Extensions.ListPrecompiles()`
+4. Register in `ReleaseSpec.BuildPrecompilesCache()`, `Extensions.ListPrecompiles()` and `Nethermind.Blockchain/EthereumPrecompileProvider.cs`
 
 ### Adding a new transaction type
 
@@ -124,7 +139,7 @@ Every consensus EIP that needs a feature flag requires changes in **10 files** a
 
 High blast radius — expect 20+ files. Key areas:
 
-1. `Nethermind.Evm/GasCostOf.cs` — new gas constants
+1. `Nethermind.Core/GasCostOf.cs` — new gas constants
 2. `Nethermind.Evm/GasPolicy/IGasPolicy.cs` — interface changes (new methods like `ConsumeStateGas`)
 3. `Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs` — implementation
 4. `Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs` — validation, execution budget, `Refund()`
@@ -139,12 +154,12 @@ Consensus-critical — changes the receipt Merkle root.
 
 1. `Nethermind.Core/TransactionReceipt.cs` — add field to both `TxReceipt` and `TxReceiptStructRef`
 2. `Nethermind.Serialization.Rlp/RlpBehaviors.cs` — add a new flag with the next available power-of-2 value (**read existing flags** to determine it)
-3. `Nethermind.Serialization.Rlp/Decoders/ReceiptMessageDecoder.cs` — encode/decode when flag set
-4. `Nethermind.Serialization.Rlp/Decoders/ReceiptStorageDecoder.cs` — storage format
-5. `Nethermind.Serialization.Rlp/Decoders/CompactReceiptStorageDecoder.cs` — compact format
+3. `Nethermind.Serialization.Rlp/ReceiptMessageDecoder.cs` — encode/decode when flag set
+4. `Nethermind.Serialization.Rlp/ReceiptStorageDecoder.cs` — storage format
+5. `Nethermind.Serialization.Rlp/CompactReceiptStorageDecoder.cs` — compact format
 6. `Nethermind.State/Proofs/ReceiptTrie.cs` — **consensus-critical**: include flag when computing receipt root
-7. `Nethermind.JsonRpc/.../ReceiptForRpc.cs` — add to JSON-RPC response
-8. **Test:** add encode→decode roundtrip in `ReceiptDecoderTests.cs` with the new field present and absent
+7. `Nethermind.JsonRpc/Data/ReceiptForRpc.cs` — add to JSON-RPC response
+8. **Test:** add encode→decode roundtrip in `Nethermind.Core.Test/Encoding/ReceiptDecoderTests.cs` with the new field present and absent
 
 ### New header field
 

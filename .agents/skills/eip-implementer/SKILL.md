@@ -1,7 +1,7 @@
 ---
 name: eip-implementer
 description: Use when the user says "implement EIP-XXXX", "add support for EIP-XXXX", "/eip-implementer XXXX", or asks to plan an EIP implementation in the Nethermind codebase.
-allowed-tools: [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Bash(git status*), Read, Grep, Glob, WebFetch]
+allowed-tools: [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Bash(git status*), Bash(dotnet build*), Bash(dotnet test*), Bash(dotnet format*), Read, Grep, Glob, Edit, Write, WebFetch]
 ---
 
 # EIP Implementer
@@ -182,7 +182,7 @@ If either review returns CRITICAL or HIGH findings:
 | Mistake                                | Fix                                                                                                                                                      |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Writing code before user approves plan | Always wait for explicit confirmation after Step 4                                                                                                       |
-| Forgetting flag registration files     | EIP flags need 10 files across 5 layers, not just IReleaseSpec — see reference doc                                                                       |
+| Forgetting flag registration files     | EIP flags need about 10 files across 5 layers, not just IReleaseSpec — see reference doc                                                                 |
 | Skipping build verification            | Always run Step 6 before claiming implementation is complete                                                                                             |
 | Breaking unrelated tests               | If your EIP changes gas costs or tx validation, **check whether existing tests break** — disable the flag in affected tests via `OverridableReleaseSpec` |
 | Breaking behavior when new flag is off | New code must be fully gated behind `IsEip{number}Enabled` — test the flag-off path to confirm existing behavior is unchanged                            |

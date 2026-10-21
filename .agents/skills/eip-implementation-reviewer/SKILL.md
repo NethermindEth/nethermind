@@ -77,16 +77,17 @@ This check is **not optional**. You must include a pattern checklist table in yo
 
 1. Read `../references/eip/implementation-patterns.md`
 2. Identify which patterns apply to this EIP (new opcode, new header field, new tx type, etc.)
-3. For each applicable pattern, list **every numbered item** and whether the **diff modifies** that file. A pre-existing file that is not modified by the diff counts as MISSING — the EIP's changes need to reach it:
+3. For each applicable pattern, inspect the resulting implementation and classify every numbered item as CHANGED, SATISFIED_EXISTING, NOT_APPLICABLE, or MISSING. Cite the implementing code for SATISFIED_EXISTING and explain NOT_APPLICABLE. Report MISSING only when a required behavior is actually absent; an unchanged file is not itself evidence of a missing implementation:
 
 ```
 Pattern: "New header field" (items 1-12)
- 1. BlockHeader.cs — PRESENT in diff
- 2. Block.cs — PRESENT in diff
- 3. HeaderDecoder.cs — PRESENT in diff
+ 1. BlockHeader.cs — CHANGED
+ 2. Block.cs — CHANGED
+ 3. HeaderDecoder.cs — CHANGED
  ...
- 8. EngineRpcModule.{ForkName}.cs — MISSING ← finding
- 9. IEngineRpcModule.{ForkName}.cs — MISSING ← finding
+ 8. EngineRpcModule.{ForkName}.cs — SATISFIED_EXISTING (engine_newPayloadV5 added in an earlier PR)
+ 9. IEngineRpcModule.{ForkName}.cs — MISSING ← finding: no engine_getPayloadVN returns the new field
+11. ChainSpecGenesisJson.cs — NOT_APPLICABLE (field is not in genesis)
 ```
 
 ## Step 4 — Score + Report
