@@ -109,6 +109,23 @@ public class GuestRawKeyWriteTests
         AssertSameTrie(tree.RootRef, reference.RootRef);
     }
 
+    [Test]
+    public void Spliced_branch_encodes_as_the_branch_of_its_new_children([Values(0, 1, 9, 13, 15)] int changedIndex)
+    {
+        byte[]?[] children = new byte[TrieNode.BranchesCount][];
+        for (int i = 0; i < children.Length; i += 3) children[i] = new Hash256(RawKey((byte)i)).BytesToArray();
+        children[13] = [0xc2, 0x20, 0x01];
+        TrieNode branch = new(NodeType.Unknown, GuestLeafKeyTests.SparseBranchRlp(children));
+        branch.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+
+        TrieNode child = TrieNodeFactory.CreateLeaf([1, 2], new CappedArray<byte>([7]));
+        TrieNode changed = branch.Clone();
+        changed[changedIndex] = child;
+        children[changedIndex] = Encode(child);
+
+        Assert.That(Encode(changed), Is.EqualTo(GuestLeafKeyTests.SparseBranchRlp(children)));
+    }
+
     private static void Write(PatriciaTree tree, PatriciaTree reference, byte[] key, byte[] value)
     {
         tree.Set(key, value);

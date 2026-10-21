@@ -84,6 +84,7 @@ public partial class PatriciaTree
     /// <remarks>
     /// A branch takes its nibble from the key's bytes, and a leaf keeping its key in hex-prefix form is compared, split and
     /// created in that form, so neither the key nor the leaf's key is expanded. Other node keys are read as nibbles.
+    /// It repeats the steps of <see cref="SetNew"/>, so a change to either belongs in both.
     /// </remarks>
     private TrieNode? SetByRawKey(TraverseStack traverseStack, ReadOnlySpan<byte> key, CappedArray<byte> value, ref TreePath path, TrieNode? node)
     {

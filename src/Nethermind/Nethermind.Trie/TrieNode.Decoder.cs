@@ -1199,7 +1199,11 @@ namespace Nethermind.Trie
             /// whose branch RLPs all come from the witness, under the parent block's state root, or from this encoder.
             /// </remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static int CanonicalChildRlpLength(int prefix) => prefix - 0x7F - (prefix & 0x40);
+            private static int CanonicalChildRlpLength(int prefix)
+            {
+                Debug.Assert(prefix is 0x80 or 0xa0 or (>= 0xc0 and < 0xe0), "A branch child is an empty string, a hash or an embedded node shorter than a hash");
+                return prefix - 0x7F - (prefix & 0x40);
+            }
 
             /// <summary>Resolves the key of <paramref name="data"/>, the child in slot <paramref name="index"/>, and returns the length of the item encoding it in its parent.</summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

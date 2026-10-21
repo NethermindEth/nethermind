@@ -121,7 +121,7 @@ public class GuestLeafKeyTests
     }
 
     /// <summary>A branch RLP holding <paramref name="children"/>, each a hash or an embedded node, and no value.</summary>
-    private static byte[] SparseBranchRlp(byte[]?[] children)
+    internal static byte[] SparseBranchRlp(byte[]?[] children)
     {
         List<byte> content = [];
         foreach (byte[]? child in children)
