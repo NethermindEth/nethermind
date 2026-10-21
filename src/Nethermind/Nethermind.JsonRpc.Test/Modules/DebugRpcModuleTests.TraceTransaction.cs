@@ -28,10 +28,9 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
-    [TestCase("valid")]
-    [TestCase("bad")]
-    [TestCase("prefix-error")]
-    public async Task Debug_traceTransaction_validates_timeout_after_prefix_before_stream_commit(string scenario)
+    [Test]
+    public async Task Debug_traceTransaction_validates_timeout_after_prefix_before_stream_commit(
+        [Values("valid", "bad", "prefix-error")] string scenario)
     {
         bool invalidTimeout = scenario != "valid";
         ExecutionCount counter = new();
@@ -101,15 +100,15 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("unknown")]
-    [TestCase("native")]
-    [TestCase("config")]
-    [TestCase("config-valid-timeout")]
-    [TestCase("native-valid-timeout")]
-    [TestCase("type")]
-    [TestCase("oversized")]
-    [TestCase("extension")]
-    public async Task Debug_traceTransaction_semantic_timeout_phase(string scenario)
+    private static readonly string[] TraceTransactionSemanticTimeoutScenarios =
+    [
+        "unknown", "native", "config", "config-valid-timeout",
+        "native-valid-timeout", "type", "oversized", "extension"
+    ];
+
+    [Test]
+    public async Task Debug_traceTransaction_semantic_timeout_phase(
+        [ValueSource(nameof(TraceTransactionSemanticTimeoutScenarios))] string scenario)
     {
         using Context context = await Context.Create();
         Transaction transaction = await AddBlockWithTransfer(context);

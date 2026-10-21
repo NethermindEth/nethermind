@@ -132,9 +132,9 @@ public partial class DebugRpcModuleTests
         return [replayed, indexed];
     }
 
-    [TestCase("debug_traceCall")]
-    [TestCase("debug_traceCallMany")]
-    public async Task Debug_traceCall_and_traceCallMany_reject_malformed_timeout_before_execution(string method)
+    [Test]
+    public async Task Debug_traceCall_and_traceCallMany_reject_malformed_timeout_before_execution(
+        [Values("debug_traceCall", "debug_traceCallMany")] string method)
     {
         ExecutionCount counter = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -151,9 +151,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Debug_traceTransaction_applies_seed_before_timeout_validation_and_disarms(bool invalidTimeout)
+    [Test]
+    public async Task Debug_traceTransaction_applies_seed_before_timeout_validation_and_disarms([Values] bool invalidTimeout)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
