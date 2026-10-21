@@ -8,7 +8,6 @@ namespace Nethermind.JsonRpc.Modules
     public static class ModuleType
     {
         public const string Admin = nameof(Admin);
-        public const string Clique = nameof(Clique);
         public const string Db = nameof(Db);
         public const string Debug = nameof(Debug);
         public const string Deposit = nameof(Deposit);

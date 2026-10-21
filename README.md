@@ -17,7 +17,7 @@ Runs on Linux, Windows, and macOS.
 
 ### Supported networks
 
-**Ethereum** · **Gnosis** · **Optimism** · **Taiko** · **World Chain** · **Linea** · **Energy Web**
+**Ethereum** · **Gnosis** · **Optimism** · **Taiko** · **World Chain** · **Energy Web**
 
 ### Documentation
 

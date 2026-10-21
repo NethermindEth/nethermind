@@ -90,7 +90,6 @@ jobs:
           - name: Nethermind tests 4
             list: >-
               Nethermind.Blockchain.Test
-              Nethermind.Clique.Test
               Nethermind.EthStats.Test
               Nethermind.Flashbots.Test
               Nethermind.Logging.NLog.Test

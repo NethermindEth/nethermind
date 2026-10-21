@@ -77,7 +77,6 @@ jobs:
               Nethermind.Api.Test
               Nethermind.BalRecorder.Test
               Nethermind.CensorshipDetector.Plugin.Test
-              Nethermind.Clique.Test
               Nethermind.Config.Test
               Nethermind.Core.Test
               Nethermind.EraE.Test

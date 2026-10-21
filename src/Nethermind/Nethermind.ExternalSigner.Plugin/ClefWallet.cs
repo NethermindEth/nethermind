@@ -3,12 +3,10 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Client;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -18,8 +16,6 @@ namespace Nethermind.ExternalSigner.Plugin
 {
     public class ClefWallet(IJsonRpcClient rpcClient) : IWallet
     {
-        private readonly HeaderDecoder _headerDecoder = new();
-
         public event EventHandler<AccountLockedEventArgs> AccountLocked
         {
             add { }
@@ -95,31 +91,6 @@ namespace Nethermind.ExternalSigner.Plugin
                 return false;
             }
             signature = new Signature(Bytes.FromHexString(signed));
-            return true;
-        }
-
-        public bool TrySign(BlockHeader header, Address address, [NotNullWhen(true)] out Signature signature)
-        {
-            ArgumentNullException.ThrowIfNull(header);
-
-            using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header, RlpBehaviors.None);
-            string? signed = rpcClient.Post<string>(
-                "account_signData",
-                "application/x-clique-header",
-                address.ToString(),
-                ((ReadOnlySpan<byte>)rlp).ToHexString(true))
-                .GetAwaiter().GetResult();
-            if (signed is null)
-            {
-                signature = null!;
-                return false;
-            }
-
-            byte[] bytes = Bytes.FromHexString(signed);
-            // Clef sets recid to 0/1 without the v-offset.
-            signature = bytes.Length == 65 && (bytes[64] == 0 || bytes[64] == 1)
-                ? new Signature(bytes.AsSpan(0, 64), bytes[64])
-                : new Signature(bytes);
             return true;
         }
 
