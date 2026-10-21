@@ -1313,9 +1313,8 @@ namespace Nethermind.Trie
 
         /// <summary>Resolves child <paramref name="i"/> from this node's RLP and caches it in <paramref name="data"/>, its slot.</summary>
         /// <remarks>
-        /// Out of line so the resolved-child check above stays small enough to inline into every walk. A hashed child of
-        /// a full branch, the most common case, is resolved here; every other shape goes to
-        /// <see cref="ResolveChildFromAnyRlp"/>, whose item scan would otherwise make this frame save every register.
+        /// A hashed child of a full branch, the most common case, is resolved here; every other shape goes to
+        /// <see cref="ResolveChildFromSparseRlp"/>, so that no item scan makes this frame save every register.
         /// </remarks>
         [MethodImpl(ResolveChildFromRlpInlining)]
         private object? ResolveChildFromRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i)
