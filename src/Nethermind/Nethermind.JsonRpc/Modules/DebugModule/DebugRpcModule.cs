@@ -164,8 +164,8 @@ public class DebugRpcModule(
             Array.Sort(addresses);
             foreach (Address address in addresses)
             {
-                AccountOverride accountOverride = stateOverrides[address];
-                if (accountOverride.MovePrecompileToAddress is { } destination)
+                AccountOverride? accountOverride = stateOverrides[address];
+                if (accountOverride?.MovePrecompileToAddress is { } destination)
                 {
                     string? moveError = StateOverridesExtensions.GetPrecompileMoveError(address, destination,
                         codeInfoRepository.GetPrecompile(address, spec) is not null, stateOverrides);
