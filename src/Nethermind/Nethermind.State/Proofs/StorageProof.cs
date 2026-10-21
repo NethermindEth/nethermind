@@ -13,10 +13,6 @@ namespace Nethermind.State.Proofs;
 public class StorageProof
 {
     /// <summary>The requested storage key, big-endian.</summary>
-    /// <remarks>
-    /// 32 bytes for a key sent with 63 or more hex digits, which execution-apis <c>eth_getProof</c> echoes as 32 bytes;
-    /// otherwise without leading zeros, echoed as a quantity.
-    /// </remarks>
     [JsonConverter(typeof(ProofStorageKeyConverter))]
     public byte[]? Key { get; set; }
     public byte[][] Proof { get; set; } = [];

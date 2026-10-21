@@ -1157,7 +1157,7 @@ public partial class EthRpcModule(
         using RentedTimeout timeout = _rpcConfig.RentTimeout();
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
-        return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
+        return ResultWrapper<AccountProof>.Success(EchoStorageKeys(accountProofCollector.BuildResult(), storageKeys));
     }
 
     public ResultWrapper<ulong> eth_chainId()
@@ -1317,6 +1317,21 @@ public partial class EthRpcModule(
 
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+
+    /// <summary>Trims each proof key that was not sent full width, so it is echoed as a quantity.</summary>
+    internal static AccountProof EchoStorageKeys(AccountProof proof, StorageKeys storageKeys)
+    {
+        StorageProof[] storageProofs = proof.StorageProofs;
+        for (int i = 0; i < storageProofs.Length; i++)
+        {
+            if (!storageKeys.IsFullWidth(i))
+            {
+                storageProofs[i].Key = storageProofs[i].Key!.WithoutLeadingZeros().ToArray();
+            }
+        }
+
+        return proof;
+    }
 
     /// <remarks>
     /// Blocks ahead of the processed head and side-chain blocks may simply never have been processed.
