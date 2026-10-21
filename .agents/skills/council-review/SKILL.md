@@ -23,7 +23,7 @@ allowed-tools:
 
 Run the same diff past **two independent reviewers — Claude and Codex (OpenAI)** — then have Claude act as chairman and synthesize a single report. The value is disagreement: findings only one model raises are the ones a single-model review would have missed.
 
-**v1 scope (this file):** two models, run **locally**, CLI-based. Wiring it into the `pull_request` CI workflow is a deliberate follow-up (see "Running in CI" at the bottom) — do not attempt that here.
+**Scope:** two models, CLI-based. Run locally or through the opt-in council workflow (see "Running in CI" at the bottom); automatic `pull_request` reviews remain single-model.
 
 Only surface findings with **high confidence** (see the `review` skill's threshold). A noisy council is worse than a single good review.
 
