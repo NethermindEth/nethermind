@@ -13,6 +13,9 @@ concurrency:
   group: flaky-test-fix
   cancel-in-progress: false
 
+env:
+  PROTECTED: '^(\.github|\.agents|scripts)/|^(AGENTS|CLAUDE)\.md$|\.(props|targets|csproj)$|(^|/)(global\.json|nuget\.config)$|^\.gitmodules$|^src/(tests|bench_precompiles)$'
+
 defaults:
   run:
     shell: bash
@@ -33,7 +36,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow flaky-test-fix.yml -L 100 --created ">=$(date -u +%F)" \
-            --json conclusion --jq '[.[] | select(.conclusion == "success" or .conclusion == "failure")] | length')
+            --json conclusion --jq '[.[] | select(.conclusion != "" and .conclusion != "skipped" and .conclusion != "cancelled")] | length')
           [ "$runs" -lt 3 ] && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "Daily limit reached"
 
   fix:
@@ -98,7 +101,7 @@ jobs:
           git add -A
           if git diff --cached --quiet || [ ! -s "$RUNNER_TEMP/claude/pr.md" ]; then exit 0; fi
           if git diff --cached --no-renames --name-only |
-            grep -E '^(\.github|\.agents|scripts)/|^(AGENTS|CLAUDE)\.md$|\.(props|targets|csproj)$|(^|/)(global\.json|NuGet\.Config)$'; then
+            grep -iE "$PROTECTED"; then
             echo "::error::Protected paths changed"
             exit 1
           fi
@@ -148,7 +151,7 @@ jobs:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
           git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
-          if git diff --cached --no-renames --name-only | grep -E '^(\.github|\.agents|scripts)/|^(AGENTS|CLAUDE)\.md$|\.(props|targets|csproj)$|(^|/)(global\.json|NuGet\.Config)$'; then
+          if git diff --cached --no-renames --name-only | grep -iE "$PROTECTED"; then
             echo "::error::Protected paths changed"
             exit 1
           fi
