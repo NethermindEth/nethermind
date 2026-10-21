@@ -58,6 +58,8 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
         run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || exit 1
+          [[ "$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '[.name, .event, .head_branch] | join("|")')" == "Nethermind/Ethereum tests|push|master" ]] || exit 1
           mkdir -p "$RUNNER_TEMP/logs"
           gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
             --jq '.jobs[] | select(.conclusion == "failure") | .id' |

@@ -106,6 +106,18 @@ class FilterTests(unittest.TestCase):
                          r"FullyQualifiedName~Other.Fixture&Name=Run_twice")
 
 
+class FindSourceTests(unittest.TestCase):
+    def test_returns_the_file_that_declares_the_method_not_a_call_site(self):
+        with tempfile.TemporaryDirectory() as root:
+            project = Path(root) / "Nethermind.Sample.Test"
+            project.mkdir()
+            (project / "A_Caller.cs").write_text("class Caller\n{\n    void Use() { helper.Run_twice(1); }\n}\n", encoding="utf-8")
+            (project / "B_Fixture.cs").write_text("class Fixture\n{\n    public async Task<int> Run_twice(int x) { }\n}\n", encoding="utf-8")
+            with mock.patch.object(flaky_tests, "SOURCE_ROOT", Path(root)):
+                found = flaky_tests.find_source("Nethermind.Sample.Test", "Run_twice")
+        self.assertEqual(Path(found).name, "B_Fixture.cs")
+
+
 class GuardTests(unittest.TestCase):
     def test_blocks_ci_and_build_configuration(self):
         paths = [".github/workflows/x.yml", "scripts/ci/flaky_tests.py", "src/Directory.Build.props",

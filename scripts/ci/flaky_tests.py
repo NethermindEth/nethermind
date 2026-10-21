@@ -88,8 +88,12 @@ def is_eligible(failure):
     return bool(failure["project"] and PROJECT.match(failure["project"]) and METHOD.match(failure["method"]))
 
 
+def declaration_pattern(method):
+    return re.compile(rf"^[ \t]*(?:(?:public|private|protected|internal|static|async|virtual|override|sealed|unsafe|new)\s+)+[^\n(;=]+?\s+{re.escape(method)}\s*\(", re.MULTILINE)
+
+
 def find_source(project, method):
-    pattern = re.compile(rf"\b{re.escape(method)}\s*\(")
+    pattern = declaration_pattern(method)
     for path in sorted((SOURCE_ROOT / project).rglob("*.cs")):
         if pattern.search(path.read_text(encoding="utf-8", errors="replace")):
             return path.as_posix()
@@ -103,7 +107,7 @@ def test_class(failure):
     if not failure.get("source"):
         return None
     text = Path(failure["source"]).read_text(encoding="utf-8", errors="replace")
-    declaration = re.search(rf"\b{re.escape(failure['method'])}\s*\(", text)
+    declaration = declaration_pattern(failure["method"]).search(text)
     namespace = NAMESPACE.search(text)
     classes = CLASS.findall(text[:declaration.start()]) if declaration else []
     if not (namespace and classes):
