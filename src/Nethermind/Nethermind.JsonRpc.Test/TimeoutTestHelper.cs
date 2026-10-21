@@ -7,53 +7,25 @@ namespace Nethermind.JsonRpc.Test;
 
 internal static class TimeoutTestHelper
 {
-    private const int TimeoutCancellationTokenPoolSize = 64;
-
+    /// <summary>Creates the source the next timeout rent in the calling async flow will receive.</summary>
     internal static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
     {
-        foreach (CancellationTokenSource drained in DrainPool())
-        {
-            drained.Dispose();
-        }
-
         TrackingCancellationTokenSource timeout = new();
-        JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        JsonRpcConfigExtension.UseForNextTimeoutInFlow(timeout);
         return timeout;
     }
 
-    /// <summary>Empties the timeout pool, disposing what it held, and reports whether <paramref name="timeout"/> was in it.</summary>
-    /// <remarks>Other tests return sources to the shared pool at any time, so the planted source need not be the next one rented.</remarks>
-    internal static bool DisposeIfPooled(TrackingCancellationTokenSource timeout)
-    {
-        bool pooled = false;
-        foreach (CancellationTokenSource drained in DrainPool())
-        {
-            pooled |= ReferenceEquals(drained, timeout);
-            drained.Dispose();
-        }
-
-        return pooled;
-    }
+    /// <summary>Whether a request rented <paramref name="timeout"/> and returned it for reuse.</summary>
+    internal static bool WasReturned(CancellationTokenSource timeout) => JsonRpcConfigExtension.EndTimeoutInFlow(timeout);
 
     internal static void DisposeIfNotAlreadyObserved(TrackingCancellationTokenSource timeout)
     {
-        if (timeout.DisposeCount == 0)
+        // Only a source returned within the flow is held by nobody: one returned from another flow is in the shared pool,
+        // where disposing it would fail the next rent anywhere in the process.
+        if (JsonRpcConfigExtension.EndTimeoutInFlow(timeout) && timeout.DisposeCount == 0)
         {
-            // Not pooled means a concurrent test rented it, and disposing it would fail that renter, so it is left to the GC.
-            DisposeIfPooled(timeout);
+            timeout.Dispose();
         }
-    }
-
-    private static CancellationTokenSource[] DrainPool()
-    {
-        JsonRpcConfig config = new();
-        CancellationTokenSource[] drained = new CancellationTokenSource[TimeoutCancellationTokenPoolSize];
-        for (int i = 0; i < drained.Length; i++)
-        {
-            drained[i] = config.BuildTimeoutCancellationToken();
-        }
-
-        return drained;
     }
 
     internal sealed class TrackingCancellationTokenSource : CancellationTokenSource

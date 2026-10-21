@@ -210,6 +210,28 @@ public class InvalidChainTrackerTest
     }
 
     [Test]
+    public void givenAnInvalidBlock_whenParentIsAlreadyInvalid_thenLastValidHashIsTheParents(
+        [Values] bool alreadyLinked, [Values] bool zeroLastValidHash)
+    {
+        Hash256 lastValid = zeroLastValidHash ? Keccak.Zero : Keccak.Compute("A");
+        Hash256 parent = Keccak.Compute("B");
+        Hash256 invalidBlock = Keccak.Compute("C");
+        Hash256 descendant = Keccak.Compute("D");
+
+        _tracker.OnInvalidBlock(parent, lastValid);
+        if (alreadyLinked) _tracker.SetChildParent(invalidBlock, parent);
+        _tracker.SetChildParent(descendant, invalidBlock);
+
+        _tracker.OnInvalidBlock(invalidBlock, parent);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertInvalid(invalidBlock, lastValid);
+            AssertInvalid(descendant, lastValid);
+        }
+    }
+
+    [Test]
     public void queryingValidHashes_shouldNotEvictRecordedInvalidChainNode()
     {
         List<Hash256> hashes = MakeChain(3);

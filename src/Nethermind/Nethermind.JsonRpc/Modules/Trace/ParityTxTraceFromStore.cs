@@ -124,14 +124,20 @@ namespace Nethermind.JsonRpc.Modules.Trace
         [JsonConverter(typeof(ULongRawJsonConverter))]
         public ulong BlockNumber { get; set; }
 
+        /// <summary>The frame's result, written as null for a halted frame, a suicide and a reward.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public ParityTraceResult Result { get; set; }
 
         public int Subtraces { get; set; }
 
         public CappedArray<int> TraceAddress { get; set; } = default;
 
+        /// <summary>The transaction's hash, written as null for a reward, which belongs to no transaction.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Hash256 TransactionHash { get; set; }
 
+        /// <summary>The transaction's position in its block, written as null for a reward.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public int? TransactionPosition { get; set; }
         public string Type { get; set; }
         public string? Error { get; set; }
