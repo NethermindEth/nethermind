@@ -1045,10 +1045,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (keyLength <= 0 || keys.Length < keyLength || !_prefetches.TryBegin()) return;
         bool pending = false;
         int count = keys.Length / keyLength;
+        IColumnFamilyHandle[]? families = null;
         try
         {
-            // The binding copies the keys before it returns and never copies a value out.
-            Task read = _db.PrefetchAsync(keys[..(count * keyLength)], keyLength, cf, readOptions);
+            Task read;
+            if (Volatile.Read(ref BenchPrefetchThroughMultiGet))
+            {
+                // The binding copies the keys and handles before it returns, so this thread's arrays serve the next batch.
+                byte[][] keyArrays = PrefetchBuffers.Keys(keyLength, count);
+                families = cf is null ? null : PrefetchBuffers.Families(count);
+                for (int i = 0; i < count; i++) keys.Slice(i * keyLength, keyLength).CopyTo(keyArrays[i]);
+                if (families is not null) Array.Fill(families, cf);
+                read = _db.MultiGetAsync(keyArrays, families, readOptions).AsTask();
+            }
+            else
+            {
+                // The binding copies the keys before it returns and never copies a value out.
+                read = _db.PrefetchAsync(keys[..(count * keyLength)], keyLength, cf, readOptions);
+            }
             Db.Metrics.IncrementPrefetchedKeys(count);
             if (read.IsCompleted)
             {
@@ -1067,6 +1081,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         finally
         {
+            // A reused array must not keep a disposed database's column family reachable.
+            if (families is not null) Array.Clear(families);
             if (!pending) _prefetches.End();
         }
     }
@@ -1082,8 +1098,74 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (_logger.IsDebug) _logger.Debug($"DB {Name} prefetch failed: {e.Message}");
     }
 
+    /// <summary>
+    /// MEASUREMENT BRANCH ONLY (bench/prefetch-async-ab), never part of a product change: true sends prefetches through
+    /// the released MultiGetAsync path, false through the local-feed PrefetchAsync, so one binary measures both.
+    /// </summary>
+    public static bool BenchPrefetchThroughMultiGet;
+
     /// <summary>The prefetch reads that have started and not completed.</summary>
     internal int PrefetchesInFlight => _prefetches.Count;
+
+    /// <summary>
+    /// Per-thread key and column family arrays for <see cref="Prefetch"/>, one exact-length array per batch size, so
+    /// a batch allocates nothing on the caller side. Batches larger than <see cref="MaxReusedKeys"/> allocate.
+    /// </summary>
+    /// <remarks>Each array is made the first time a thread uses its batch size, so a thread keeps only the sizes it uses.</remarks>
+    private static class PrefetchBuffers
+    {
+        private const int MaxReusedKeys = 64;
+        private const int MaxReusedKeyLengths = 4;
+
+        [ThreadStatic] private static KeyArrays?[]? t_keys;
+        [ThreadStatic] private static IColumnFamilyHandle[]?[]? t_families;
+
+        public static byte[][] Keys(int keyLength, int count)
+        {
+            if (count > MaxReusedKeys) return NewKeys(keyLength, count);
+            KeyArrays?[] byLength = t_keys ??= new KeyArrays?[MaxReusedKeyLengths];
+            for (int i = 0; i < byLength.Length; i++)
+            {
+                KeyArrays? keys = byLength[i];
+                if (keys is null) return (byLength[i] = new KeyArrays(keyLength)).ForCount(count);
+                if (keys.KeyLength == keyLength) return keys.ForCount(count);
+            }
+
+            return NewKeys(keyLength, count);
+        }
+
+        public static IColumnFamilyHandle[] Families(int count)
+        {
+            if (count > MaxReusedKeys) return new IColumnFamilyHandle[count];
+            IColumnFamilyHandle[]?[] byCount = t_families ??= new IColumnFamilyHandle[MaxReusedKeys + 1][];
+            return byCount[count] ??= new IColumnFamilyHandle[count];
+        }
+
+        private static byte[][] NewKeys(int keyLength, int count)
+        {
+            byte[][] keys = new byte[count][];
+            for (int i = 0; i < keys.Length; i++) keys[i] = new byte[keyLength];
+            return keys;
+        }
+
+        /// <summary>One set of key buffers; the array for each batch size references the first buffers of the set.</summary>
+        private sealed class KeyArrays(int keyLength)
+        {
+            private readonly byte[]?[] _keys = new byte[MaxReusedKeys][];
+            private readonly byte[][]?[] _byCount = new byte[MaxReusedKeys + 1][][];
+
+            public int KeyLength { get; } = keyLength;
+
+            public byte[][] ForCount(int count) => _byCount[count] ?? CreateForCount(count);
+
+            private byte[][] CreateForCount(int count)
+            {
+                byte[][] keys = new byte[count][];
+                for (int i = 0; i < count; i++) keys[i] = _keys[i] ??= new byte[KeyLength];
+                return _byCount[count] = keys;
+            }
+        }
+    }
 
     /// <summary>
     /// Whether a read of <paramref name="key"/> is served from the memtables or block cache. The probe runs at the
