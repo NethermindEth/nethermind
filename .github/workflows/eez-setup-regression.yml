@@ -1,0 +1,50 @@
+name: EEZ setup reorg regression
+
+on:
+  push:
+    branches: [diagnostics/eez-setup-reorg]
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: eez-association/eez-core-protocol
+          ref: 53abe7173e8fc509ea62f23521275c61529dc790
+          path: core
+          persist-credentials: false
+      - name: Install runner dependencies
+        run: sudo apt-get update && sudo apt-get install -y bc jq
+      - name: Require the regression to fail before the fix
+        run: |
+          mkdir -p artifacts/setup-regression
+          git -C core apply --include=script/e2e/tests/test_network_setup.py ../scripts/eez/devnet/core-setup.patch
+          set +e
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s core/script/e2e/tests -p test_network_setup.py -k trigger_preparation > artifacts/setup-regression/before.log 2>&1
+          baseline_status=$?
+          set -e
+          cat artifacts/setup-regression/before.log
+          test "$baseline_status" = 1
+          grep -F -- '--nonce 4 ' artifacts/setup-regression/before.log
+          grep -F -- '--nonce 3 ' artifacts/setup-regression/before.log
+      - name: Apply the fix and run runner regressions
+        run: |
+          git -C core apply --exclude=script/e2e/tests/test_network_setup.py ../scripts/eez/devnet/core-setup.patch
+          for script in core/script/e2e/lib/*.sh; do bash -n "$script"; done
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s core/script/e2e/tests -v 2>&1 | tee artifacts/setup-regression/after.log
+          sha256sum scripts/eez/devnet/core-setup.patch > artifacts/setup-regression/patch.sha256
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eez-setup-regression
+          path: artifacts/setup-regression
+          if-no-files-found: error
+          retention-days: 7

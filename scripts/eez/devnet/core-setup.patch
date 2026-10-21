@@ -1,0 +1,337 @@
+diff --git a/script/e2e/README.md b/script/e2e/README.md
+index 7dc7034..0c7df31 100644
+--- a/script/e2e/README.md
++++ b/script/e2e/README.md
+@@ -63,6 +63,17 @@ retry for up to `E2E_NONCE_TIMEOUT` seconds (default 30); they never substitute
+ zero. The L1 catch-up loop shares a 120-second deadline across retries. The staged
+ plan path retains its existing batched deployment barrier.
+ 
++Classic network preparation records L2 setup transaction hashes in a private
++worker broadcast directory. Before signing a trigger, it refreshes their receipts
++and requires successful canonical inclusion at or below the L2 `safe` head.
++Settlement reconciliation can replace unsafe blocks, so a successful Forge
++broadcast alone is not a stable setup boundary. Missing or orphaned receipts wait
++for reinclusion; a settled revert fails preparation. `E2E_SETUP_TIMEOUT` bounds
++this wait (default 180 seconds). The network must settle ordinary L2 activity
++without requiring the scenario's cross-chain trigger. Unsupported `safe` or stalled
++settlement fails preparation; it never falls back to a pending or invented nonce.
++This barrier does not provide L1 finality or change the staged plan path.
++
+ The 22 call-pattern scenarios added in PR #54 are explicit-only pending live
+ validation. Their `E2E_EXCLUDE_FROM_ALL` markers exclude them from `all`, `all:N`
+ and default local runs; named scenarios and category selections remain available.
+diff --git a/script/e2e/lib/E2EBase.sh b/script/e2e/lib/E2EBase.sh
+index 5b1d99d..adc7719 100755
+--- a/script/e2e/lib/E2EBase.sh
++++ b/script/e2e/lib/E2EBase.sh
+@@ -12,6 +12,7 @@ PK="${PK:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
+ # ── PIDs to clean up on exit ──
+ _E2E_PIDS=()
+ _E2E_AUTOMINE_RPCS=()
++_E2E_TEMP_DIRS=()
+ 
+ cleanup() {
+     for pid in "${_E2E_PIDS[@]}"; do
+@@ -20,6 +21,9 @@ cleanup() {
+     for rpc in "${_E2E_AUTOMINE_RPCS[@]}"; do
+         cast rpc evm_setAutomine true --rpc-url "$rpc" > /dev/null 2>&1 || true
+     done
++    for directory in "${_E2E_TEMP_DIRS[@]}"; do
++        rm -rf -- "$directory"
++    done
+ }
+ trap cleanup EXIT
+ 
+@@ -116,6 +120,7 @@ _export_outputs() {
+ # Contracts with "L2" in name → L2 RPC, others → L1 RPC
+ deploy_contracts() {
+     local sol="$1" l1_rpc="$2" l2_rpc="$3" pk="$4"
++    local l2_transactions="${5:-}"
+     local contracts
+     contracts=$(grep -oE '^contract Deploy[A-Za-z0-9_]* ' "$sol" | awk '{print $2}')
+     [[ -z "$contracts" ]] && { echo "No Deploy* contracts found"; return 1; }
+@@ -133,6 +138,14 @@ deploy_contracts() {
+             echo "$out" | tail -25
+             return 1
+         fi
++        if [[ -n "$l2_transactions" && "$label" == L2 ]]; then
++            local broadcast
++            broadcast=$(_broadcast_json "$sol" "$rpc") || return 1
++            jq -er '.transactions | select(type=="array" and length>0) |
++                if all(.[]; (.hash|type)=="string" and (.hash|test("^0x[0-9a-fA-F]{64}$")))
++                then .[].hash else error("Invalid setup transaction hash") end' \
++                "$broadcast" >> "$l2_transactions" || return 1
++        fi
+         _export_outputs "$out" --echo
+         # Staged prepare: persist the outputs — the deferred verify stage runs in
+         # a fresh process and reloads them from this file.
+@@ -607,7 +620,7 @@ _broadcast_json() {
+     local sol="$1" rpc="$2"
+     local chain_id
+     chain_id=$(cast chain-id --rpc-url "$rpc" 2>/dev/null) || return 1
+-    echo "broadcast/$(basename "$sol")/${chain_id}/run-latest.json"
++    echo "${FOUNDRY_BROADCAST:-broadcast}/$(basename "$sol")/${chain_id}/run-latest.json"
+ }
+ 
+ # ── Get block number from forge broadcast JSON ──
+diff --git a/script/e2e/lib/network-scenario.sh b/script/e2e/lib/network-scenario.sh
+index 1610bac..27f74d6 100755
+--- a/script/e2e/lib/network-scenario.sh
++++ b/script/e2e/lib/network-scenario.sh
+@@ -47,6 +47,7 @@ if [[ "$_CLI_ROLLUPS" != true || "$_CLI_MANAGER_L2" != true ]]; then
+     load_network_env "${DEVNET_ENV:-}" || exit 1
+ fi
+ source "$(dirname "$0")/E2EBase.sh"
++source "$(dirname "$0")/network-setup.sh"
+ source "$(dirname "$0")/settlement-target.sh"
+ source "$(dirname "$0")/network-links.sh"
+ 
+@@ -199,7 +200,7 @@ if [[ "$E2E_STAGE" == "prepare" && "${E2E_PREPARE_STEP:-}" == "plan" ]]; then
+ fi
+ network_trigger_front "$SOL" >/dev/null || exit 1
+ echo "====== Deploy ======"
+-deploy_contracts "$SOL" "$RPC" "$L2_RPC" "$PK"
++network_deploy_setup "$SOL" "$RPC" "$L2_RPC" "$PK"
+ 
+ # ══════════════════════════════════════════════
+ #  2. Create signed raw transaction
+diff --git a/script/e2e/lib/network-setup.sh b/script/e2e/lib/network-setup.sh
+new file mode 100644
+index 0000000..066596d
+--- /dev/null
++++ b/script/e2e/lib/network-setup.sh
+@@ -0,0 +1,67 @@
++#!/usr/bin/env bash
++
++network_deploy_setup() {
++    local directory
++    directory=$(mktemp -d "${TMPDIR:-/tmp}/eez-setup.XXXXXXXX") || return 1
++    _E2E_TEMP_DIRS+=("$directory")
++    local FOUNDRY_BROADCAST="$directory/broadcast"
++    export FOUNDRY_BROADCAST
++    local transactions="$directory/l2-transactions.txt"
++    : > "$transactions" || return 1
++    deploy_contracts "$@" "$transactions" || return 1
++    network_wait_setup "$3" "$transactions"
++}
++
++# A successful unsafe receipt can disappear during settlement reconciliation.
++# Refresh exact setup hashes and require canonical inclusion at or below safe.
++network_wait_setup() {
++    local rpc="$1" transactions="$2" timeout="${E2E_SETUP_TIMEOUT:-180}" hashes status
++    [[ -s "$transactions" ]] || return 0
++    [[ "$timeout" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid E2E_SETUP_TIMEOUT' >&2; return 1; }
++    local NETWORK_VERIFY_DEADLINE=$(( $(date +%s) + timeout ))
++    hashes=$(jq -Rsc 'split("\n") | map(select(length>0)) | unique' "$transactions") || return 1
++    while network_time_left >/dev/null; do
++        if network_setup_settled "$rpc" "$hashes"; then return 0; else status=$?; fi
++        [[ "$status" != 1 ]] || return 1
++        network_retry 'L2 setup transactions are not canonically settled' || return 1
++    done
++    echo 'L2 setup settlement deadline expired' >&2
++    return 1
++}
++
++network_setup_settled() {
++    local rpc="$1" hashes="$2" safe receipts headers params status number safe_number
++    if safe=$(network_rpc "$rpc" eth_getBlockByNumber '["safe",false]'); then :
++    else
++        status=$?
++        [[ "$status" != 3 ]] || { echo 'L2 setup requires the safe block tag' >&2; return 1; }
++        return "$status"
++    fi
++    [[ "$safe" != null ]] || return 2
++    jq -e 'type=="object" and (.number|test("^0x[0-9a-fA-F]+$")) and
++        (.hash|test("^0x[0-9a-fA-F]{64}$"))' <<< "$safe" >/dev/null || return 1
++    safe_number=$(jq -r .number <<< "$safe")
++    params=$(jq -c 'map([.])' <<< "$hashes") || return 1
++    receipts=$(network_batch_rpc "$rpc" eth_getTransactionReceipt "$params") || return $?
++    jq -e 'all(.[]; .!=null)' <<< "$receipts" >/dev/null || return 2
++    jq -e --argjson hashes "$hashes" 'length==($hashes|length) and all(to_entries[];
++        .key as $i | .value | type=="object" and .transactionHash==$hashes[$i] and
++        (.blockHash|test("^0x[0-9a-fA-F]{64}$")) and
++        (.blockNumber|test("^0x[0-9a-fA-F]+$")) and (.status=="0x0" or .status=="0x1"))' \
++        <<< "$receipts" >/dev/null || return 1
++    while read -r number; do
++        (( number <= safe_number )) || return 2
++    done < <(jq -r '.[].blockNumber' <<< "$receipts")
++    params=$(jq -c --arg safe "$safe_number" 'map([.blockNumber,false])+[[$safe,false]]' \
++        <<< "$receipts") || return 1
++    headers=$(network_batch_rpc "$rpc" eth_getBlockByNumber "$params") || return $?
++    jq -e --argjson receipts "$receipts" --argjson safe "$safe" '
++        length==($receipts|length)+1 and .[-1].hash==$safe.hash and .[-1].number==$safe.number and
++        all(to_entries[] | select(.key<($receipts|length));
++            .key as $i | .value | .hash==$receipts[$i].blockHash and .number==$receipts[$i].blockNumber)' \
++        <<< "$headers" >/dev/null || return 2
++    jq -e 'all(.[]; .status=="0x1")' <<< "$receipts" >/dev/null || {
++        echo 'L2 setup transaction reverted in settled canonical history' >&2
++        return 1
++    }
++}
+diff --git a/script/e2e/tests/test_network_setup.py b/script/e2e/tests/test_network_setup.py
+new file mode 100644
+index 0000000..946213b
+--- /dev/null
++++ b/script/e2e/tests/test_network_setup.py
+@@ -0,0 +1,161 @@
++"""Setup receipts can move before trigger preparation; use the settled inclusion."""
++import json
++import os
++from pathlib import Path
++import subprocess
++import tempfile
++import unittest
++
++LIB = Path(__file__).resolve().parents[1] / "lib"
++TX = "0x" + "1" * 64
++OLD_BLOCK = "0x" + "2" * 64
++NEW_BLOCK = "0x" + "3" * 64
++
++TRANSPORT = r'''#!/usr/bin/env python3
++import json, os, pathlib, sys
++root = pathlib.Path(os.environ["TEST_ROOT"])
++clock = int((root / "clock").read_text())
++mode = os.environ.get("TEST_MODE", "reorg")
++args = sys.argv[1:]
++payload = args[args.index("--data") + 1]
++if payload == "@-": payload = sys.stdin.read()
++request = json.loads(payload)
++def respond(item):
++    method, params = item["method"], item["params"]
++    with (root / "rpc-calls").open("a") as output:
++        output.write(json.dumps([clock, method, params]) + "\n")
++    result = None
++    if method == "eth_getBlockByNumber":
++        if mode == "unsupported" and params[0] == "safe":
++            return {"jsonrpc":"2.0", "id":item["id"], "error":{"code":-32602,"message":"unsupported safe"}}
++        if mode == "malformed": result = {"number":"invalid", "hash":"0x"}
++        else:
++            number = 9 if params[0] == "safe" and (clock < 1004 or mode == "stalled") else 10
++            if params[0] != "safe": number = int(params[0], 16)
++            block_hash = "0x" + ("3" if number == 10 else "4") * 64
++            if mode == "orphaned" and params[0] != "safe" and number == 10: block_hash = "0x" + "5" * 64
++            result = {"number":hex(number), "hash":block_hash}
++    elif method == "eth_getTransactionReceipt":
++        if mode != "missing" and clock >= 1002:
++            result = {"transactionHash":params[0], "blockNumber":"0xa",
++                      "blockHash":"0x" + "3" * 64, "status":"0x0" if mode == "reverted" else "0x1"}
++        if mode == "wrong_hash" and result: result["transactionHash"] = "0x" + "9" * 64
++    else: raise AssertionError(item)
++    return {"jsonrpc":"2.0", "id":item["id"], "result":result}
++print(json.dumps([respond(item) for item in reversed(request)] if isinstance(request,list) else respond(request)))
++'''
++
++COMMANDS = r'''
++RPC=l1 L1_RPC=l1 L2_RPC=l2 L1_FRONT=l1 L2_FRONT=l2
++SOL=scenario.sol
++PK=test-key
++date() { cat "$TEST_ROOT/clock"; }
++sleep() { echo "$(( $(cat "$TEST_ROOT/clock") + $1 ))" > "$TEST_ROOT/clock"; }
++cast() {
++    case "$1" in
++        wallet) echo 0x1111111111111111111111111111111111111111 ;;
++        chain-id) echo 2 ;;
++        nonce)
++            if (( $(cat "$TEST_ROOT/clock") < 1004 )); then echo 3; else echo 4; fi ;;
++        mktx) printf '%s\n' "$*" >> "$TEST_ROOT/signs"; echo 0x1234 ;;
++        *) echo "Unexpected cast: $*" >&2; return 99 ;;
++    esac
++}
++forge() {
++    if [[ "$*" == *' --broadcast '* ]]; then
++        local path="${FOUNDRY_BROADCAST:-broadcast}/scenario.sol/2"
++        mkdir -p "$path"
++        printf '{"transactions":[{"hash":"%s"}],"receipts":[{"transactionHash":"%s","blockHash":"%s","blockNumber":"0xa","status":"0x1"}]}\n' \
++            "$SETUP_TX" "$SETUP_TX" "$OLD_BLOCK" > "$path/run-latest.json"
++        printf '%s\n' "$path" >> "$TEST_ROOT/broadcast-paths"
++        echo 'APP=0x1111111111111111111111111111111111111111'
++    else
++        printf 'TARGET=0x1111111111111111111111111111111111111111\nVALUE=0\nCALLDATA=0x1234\n'
++    fi
++}
++'''
++
++
++class NetworkSetupTests(unittest.TestCase):
++    def setUp(self):
++        self.directory = tempfile.TemporaryDirectory()
++        self.addCleanup(self.directory.cleanup)
++        self.root = Path(self.directory.name)
++        (self.root / "clock").write_text("1000")
++        (self.root / "bin").mkdir()
++        transport = self.root / "bin/curl"
++        transport.write_text(TRANSPORT)
++        transport.chmod(0o755)
++        (self.root / "scenario.sol").write_text("contract DeployL2 {}\ncontract ExecuteNetworkL2 {}\n")
++
++    def run_shell(self, script, mode="reorg", **env):
++        prefix = 'source "$LIB/E2EBase.sh"\n'
++        prefix += '[[ ! -f "$LIB/network-setup.sh" ]] || source "$LIB/network-setup.sh"\n'
++        return subprocess.run(["bash", "-c", prefix + COMMANDS + script], cwd=self.root,
++            env={**os.environ, "LIB":str(LIB), "TEST_ROOT":str(self.root), "TEST_MODE":mode,
++                 "SETUP_TX":TX, "OLD_BLOCK":OLD_BLOCK, "E2E_SETUP_TIMEOUT":"6",
++                 "TMPDIR":str(self.root), "PATH":str(self.root / "bin") + os.pathsep + os.environ["PATH"], **env},
++            text=True, capture_output=True, timeout=15)
++
++    def prepare_trigger(self, mode="reorg", **env):
++        source = (LIB / "network-scenario.sh").read_text()
++        start = source.index('network_trigger_front "$SOL" >/dev/null')
++        end = source.index('\n# ═', source.index('build_trigger_txs "$SOL" network', start))
++        return self.run_shell(source[start:end], mode, **env)
++
++    def calls(self):
++        return [json.loads(line) for line in (self.root / "rpc-calls").read_text().splitlines()]
++
++    def test_trigger_preparation_after_setup_reorg_waits_for_settled_reinclusion(self):
++        result = self.prepare_trigger()
++        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
++        self.assertIn("--nonce 4 ", (self.root / "signs").read_text())
++        self.assertEqual((self.root / "clock").read_text().strip(), "1004")
++        receipt_calls = [call for call in self.calls() if call[1] == "eth_getTransactionReceipt"]
++        self.assertTrue(receipt_calls)
++        self.assertTrue(all(call[2] == [TX] for call in receipt_calls))
++        self.assertNotIn(OLD_BLOCK, json.dumps(self.calls()))
++
++    def test_missing_unsafe_or_orphaned_setup_never_signs(self):
++        for mode in ("missing", "stalled", "orphaned"):
++            with self.subTest(mode=mode):
++                (self.root / "clock").write_text("1000")
++                result = self.prepare_trigger(mode)
++                self.assertNotEqual(result.returncode, 0, result.stdout)
++                self.assertFalse((self.root / "signs").exists())
++                self.assertEqual((self.root / "clock").read_text().strip(), "1006")
++
++    def test_reverted_malformed_or_unsupported_setup_fails_without_signing(self):
++        for mode in ("reverted", "malformed", "unsupported", "wrong_hash"):
++            with self.subTest(mode=mode):
++                (self.root / "clock").write_text("1000")
++                result = self.prepare_trigger(mode)
++                self.assertNotEqual(result.returncode, 0, result.stdout)
++                self.assertFalse((self.root / "signs").exists())
++                self.assertLess(int((self.root / "clock").read_text()), 1006)
++
++    def test_invalid_setup_timeout_never_signs(self):
++        result = self.prepare_trigger(E2E_SETUP_TIMEOUT="0")
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("Invalid E2E_SETUP_TIMEOUT", result.stderr)
++        self.assertFalse((self.root / "signs").exists())
++
++    def test_repeated_scenarios_use_private_broadcast_directories_and_remove_them(self):
++        result = self.run_shell('network_deploy_setup scenario.sol l1 l2 "$PK"\n'
++                                'network_deploy_setup scenario.sol l1 l2 "$PK"')
++        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
++        paths = (self.root / "broadcast-paths").read_text().splitlines()
++        self.assertEqual(len(paths), 2)
++        self.assertNotEqual(paths[0], paths[1])
++        self.assertTrue(all(not Path(path).exists() for path in paths))
++        self.assertFalse((self.root / "broadcast").exists())
++
++    def test_l1_only_setup_does_not_require_l2_safe_support(self):
++        (self.root / "scenario.sol").write_text("contract DeployL1 {}\ncontract ExecuteNetwork {}\n")
++        result = self.run_shell('network_deploy_setup scenario.sol l1 l2 "$PK"', "unsupported")
++        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
++        self.assertFalse((self.root / "rpc-calls").exists())
++
++
++if __name__ == "__main__":
++    unittest.main()
