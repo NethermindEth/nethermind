@@ -634,6 +634,42 @@ public class DebugRpcModule(
         }
     }
 
+    public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, GethTraceOptions? options = null)
+    {
+        Block? block = debugBridge.GetBadBlocks().FirstOrDefault(b => b.Hash == blockHash);
+        if (block is null)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"bad block {blockHash} not found", ErrorCodes.ResourceNotFound);
+        }
+
+        if (block.IsGenesis)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
+        }
+
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? stateError = CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(block.Header);
+        if (stateError is not null)
+        {
+            return stateError;
+        }
+
+        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
+
+        if (CanStreamBlockTrace(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
+                (writer, pipeWriter, token) => debugBridge.GetBlockTrace(block, token, effective, writer, pipeWriter)));
+        }
+
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
+        IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(block, timeout.Token, WithBufferedLimit(options));
+
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBadBlock)} request {blockHash}, result: {blockTrace}");
+
+        return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+    }
+
     public ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null)
     {
         BlockHeader? header = TryGetHeader<IReadOnlyCollection<Hash256>>(blockHash, out ResultWrapper<IReadOnlyCollection<Hash256>>? headerError, searchBadBlocks: true, requireBody: true);

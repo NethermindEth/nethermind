@@ -55,6 +55,9 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash,
         [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null);
 
+    [JsonRpcMethod(Description = "Similar to debug_traceBlockByHash, but replays a block that has been rejected as invalid and is held in the bad-block store.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, GethTraceOptions? options = null);
+
     [JsonRpcMethod(Description = "Replays a block and returns the world-state root after each transaction in execution order. EIP-4788/EIP-2935 system calls and withdrawals do not produce an entry. Failed transactions still produce a root (geth partial-result semantics). The block must be canonical or in the bad-block store.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null);
 
