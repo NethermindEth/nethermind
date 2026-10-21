@@ -346,6 +346,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
+    [SkipLocalsInit]
     public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
 
         VmState<TGasPolicy> vmState,
@@ -851,6 +852,7 @@ public partial class VirtualMachine<TGasPolicy>(
             executionDepositCost, stateDepositCost, invalidCode, callResult.Output);
     }
 
+    [SkipLocalsInit]
     protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
     {
         if (callResult.ShouldRevert)
@@ -1543,6 +1545,7 @@ public partial class VirtualMachine<TGasPolicy>(
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
 
+    [SkipLocalsInit]
     private CallResult RunPrecompile<Eip158, Eip8360>(VmState<TGasPolicy> state)
         where Eip158 : struct, IFlag
         where Eip8360 : struct, IFlag

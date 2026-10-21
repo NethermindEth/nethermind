@@ -48,7 +48,8 @@ public class DebugRpcModule(
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
-    IBlockForRpcFactory blockForRpcFactory)
+    IBlockForRpcFactory blockForRpcFactory,
+    ICodeInfoRepository codeInfoRepository)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
@@ -146,10 +147,23 @@ public class DebugRpcModule(
         if (options?.BlockOverrides?.BeaconRoot is not null)
             return ResultWrapper<GethLikeTxTrace>.Fail("block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput);
 
+        // The call converts against the fork it runs in, which a block override can change.
+        IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
         if (options?.StateOverrides is { } stateOverrides)
         {
-            foreach ((Address address, AccountOverride accountOverride) in stateOverrides)
+            Address[] addresses = new Address[stateOverrides.Count];
+            stateOverrides.Keys.CopyTo(addresses, 0);
+            Array.Sort(addresses);
+            foreach (Address address in addresses)
             {
+                AccountOverride accountOverride = stateOverrides[address];
+                if (accountOverride.MovePrecompileToAddress is { } destination)
+                {
+                    string? moveError = StateOverridesExtensions.GetPrecompileMoveError(address, destination,
+                        codeInfoRepository.GetPrecompile(address, spec) is not null, stateOverrides);
+                    if (moveError is not null)
+                        return ResultWrapper<GethLikeTxTrace>.Fail(moveError, ErrorCodes.InvalidInput);
+                }
                 if (accountOverride is { State: not null, StateDiff: not null })
                     return ResultWrapper<GethLikeTxTrace>.Fail($"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
             }
@@ -158,8 +172,6 @@ public class DebugRpcModule(
         if (call is LegacyTransactionForRpc { ChainId: { } requestedChainId } && requestedChainId != specProvider.ChainId)
             return ResultWrapper<GethLikeTxTrace>.Fail($"chainId does not match node's (have={requestedChainId}, want={specProvider.ChainId})", ErrorCodes.InvalidInput);
 
-        // The call converts against the fork it runs in, which a block override can change.
-        IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
         Result<Transaction> txResult = ToTraceCallTransaction(call, spec);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
@@ -240,23 +252,20 @@ public class DebugRpcModule(
         return options?.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode;
     }
 
-    /// <remarks>Throws when a native tracer's config is malformed, so it fails as a JSON-RPC error before the stream opens.</remarks>
+    /// <remarks>
+    /// A malformed native config is not streamed: the buffered path fails it as a JSON-RPC error before any output,
+    /// and never parses it for an empty block.
+    /// </remarks>
     private bool CanStreamBlockTrace(GethTraceOptions? options)
     {
         if (!(options?.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode)) return false;
         if (string.IsNullOrEmpty(options?.Tracer)) return true;
         if (options.TxHash is not null || !GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)) return false;
 
-        GethLikeNativeTracerFactory.ValidateTracerConfig(options);
-        return true;
-    }
-
-    /// <remarks>Malformed configs must reach the real constructor so empty and filtered blocks retain their behavior.</remarks>
-    private bool CanStreamBlockByNumberTrace(GethTraceOptions? options)
-    {
         try
         {
-            return CanStreamBlockTrace(options);
+            GethLikeNativeTracerFactory.ValidateTracerConfig(options);
+            return true;
         }
         catch (NativeTracerConfigException)
         {
@@ -543,7 +552,7 @@ public class DebugRpcModule(
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         // A malformed native duration must reach the real constructor before it can fail.
-        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockByNumberTrace(options))
+        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
             return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
 
         if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)

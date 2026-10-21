@@ -150,6 +150,10 @@ namespace Nethermind.Evm.TransactionProcessing
         }
     }
 
+    /// <remarks>Locals are not zero-initialized anywhere in this type: both partials, nested types, lambdas, local
+    /// functions and iterators. A <c>stackalloc</c> buffer, a local after <c>Unsafe.SkipInit</c>, or an <c>out</c> local
+    /// a callee may leave unwritten must be fully written before it is read.</remarks>
+    [SkipLocalsInit]
     public abstract partial class TransactionProcessorBase<TGasPolicy> : TransactionProcessorBase, ITransactionProcessor
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
@@ -308,7 +312,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        [SkipLocalsInit]
         private TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas)
         {
             // restore is CallAndRestore - previous call, we will restore state after the execution
@@ -410,7 +413,6 @@ namespace Nethermind.Evm.TransactionProcessing
             return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress) ? recipient : null;
         }
 
-        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
         private TransactionResult ExecuteEvmTransaction(
             Transaction tx,
@@ -560,7 +562,6 @@ namespace Nethermind.Evm.TransactionProcessing
             return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, env.ExecutingAccount, in substate, spentGas, statusCode);
         }
 
-        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
         private TransactionResult ExecuteSimpleTransfer(
             Transaction tx,
@@ -762,7 +763,6 @@ namespace Nethermind.Evm.TransactionProcessing
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
         }
 
-        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
         private TransactionResult FinalizeTransaction(
             Transaction tx,
@@ -1400,7 +1400,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void DecrementNonce(Transaction tx) => WorldState.DecrementNonce(tx.SenderAddress!);
 
-        [SkipLocalsInit]
         private TransactionResult BuildExecutionEnvironment(
             Transaction tx,
             IReleaseSpec spec,
