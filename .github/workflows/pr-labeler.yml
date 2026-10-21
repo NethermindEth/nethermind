@@ -20,22 +20,11 @@ jobs:
 
       # Labels added with the default GITHUB_TOKEN do not emit workflow-triggering events, so
       # label-triggered runs (e.g. the reproducible benchmarks) never fired on auto-labeling.
-      - name: Apply labels from PR template checkboxes
+      - name: Apply labels from PR title and changed files
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.gh-app.outputs.token }}
           script: |
-            // --- Checkbox rules ---
-            const checkboxToLabel = {
-              'Bugfix (a non-breaking change that fixes an issue)': 'bug fix + reliability',
-              'New feature (a non-breaking change that adds functionality)': 'new feature',
-              'Breaking change (a change that causes existing functionality not to work as expected)': 'BREAKING',
-              'Optimization': 'performance is good',
-              'Refactoring': 'refactoring',
-              'Documentation update': 'docs',
-              'Build-related changes': 'build changes',
-            };
-
             // --- Title prefix rules (conventional commits) ---
             const prefixToLabel = {
               'fix': 'bug fix + reliability',
@@ -76,41 +65,28 @@ jobs:
             // test label: applied when ALL changed files are in a .Test project
             const testOnlyLabel = 'test';
 
-            const checkboxLabels = new Set(Object.values(checkboxToLabel));
+            const breakingLabel = 'BREAKING';
+
             const prefixLabels = new Set(Object.values(prefixToLabel));
             const pathLabels = new Set(pathToLabel.map(r => r.label));
-            const managedLabels = new Set([...checkboxLabels, ...prefixLabels, ...pathLabels, testOnlyLabel, 'cleanup', 'snap sync']);
+            const managedLabels = new Set([...prefixLabels, ...pathLabels, testOnlyLabel, breakingLabel, 'cleanup', 'snap sync']);
 
-            const body = context.payload.pull_request.body || '';
             const title = context.payload.pull_request.title || '';
 
             const desiredLabels = new Set();
 
-            // Evaluate checkboxes
-            for (const [text, label] of Object.entries(checkboxToLabel)) {
-              const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              if (new RegExp(`-\\s*\\[\\s*[xX]\\s*\\]\\s*${escaped}`).test(body)) {
-                desiredLabels.add(label);
-              }
-            }
-
-            // Evaluate "Other" checkbox with keyword matching
-            const otherMatch = body.match(/-\s*\[\s*[xX]\s*\]\s*Other:\s*(.+)/);
-            if (otherMatch) {
-              const otherText = otherMatch[1].toLowerCase();
-              if (/\btest/.test(otherText)) desiredLabels.add('test');
-              if (/\btool/.test(otherText)) desiredLabels.add('tools');
-              if (/\bagent/.test(otherText)) desiredLabels.add('agentic 🤖');
-              if (/\bdoc/.test(otherText)) desiredLabels.add('docs');
-            }
-
-            // Evaluate title prefix: supports "fix:", "fix(scope):", "(fix)", "[fix]"
-            const prefixMatch = title.match(/^[(\[]?(\w+)[)\]]?[\s(:/]/)
+            // Evaluate title prefix: supports "fix:", "fix(scope):", "fix!:", "(fix)", "[fix]"
+            const prefixMatch = title.match(/^[(\[]?(\w+)[)\]]?[\s(:/!]/)
             if (prefixMatch) {
               const prefix = prefixMatch[1].toLowerCase();
               if (prefixToLabel[prefix]) {
                 desiredLabels.add(prefixToLabel[prefix]);
               }
+            }
+
+            // Evaluate breaking-change marker: "feat!:", "feat(scope)!:"
+            if (/^\w+(\([^)]*\))?!:/.test(title)) {
+              desiredLabels.add(breakingLabel);
             }
 
             // Evaluate title for EIP mentions (eip-1234, EIP 1234, eip1234, etc.)
