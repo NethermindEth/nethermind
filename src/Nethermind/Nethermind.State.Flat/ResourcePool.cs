@@ -219,8 +219,8 @@ public class ResourcePool : IResourcePool
         {
             if (DeterministicBenchmark.Enabled)
             {
-                transientResource.Dispose();
                 _cachedResourceMetrics.OnReturned(_cachedResourcePool.PooledItemCount);
+                transientResource.Dispose();
                 return;
             }
 
