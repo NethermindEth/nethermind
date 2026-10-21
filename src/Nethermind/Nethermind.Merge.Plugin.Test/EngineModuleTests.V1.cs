@@ -559,6 +559,35 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test, NonParallelizable]
+    public async Task known_invalid_payload_waits_for_its_valid_parent_to_commit()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block parent = Sibling(chain.BlockTree.Head!);
+        Block child = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).WithNonce(0).WithDifficulty(0)
+            .WithGasLimit(parent.GasLimit).WithGasUsed(parent.GasLimit + 1).TestObject;
+        ExecutionPayload payload = ExecutionPayload.Create(child);
+
+        ResultWrapper<PayloadStatusV1> orphanResult = await rpc.engine_newPayloadV1(payload);
+        Assert.That(orphanResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+
+        using CommitGate parentCommit = new(chain.BranchProcessor, parent.Hash!);
+        ResultWrapper<PayloadStatusV1> parentResult = await rpc.engine_newPayloadV1(ExecutionPayload.Create(parent));
+        Assert.That(parentResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await parentCommit.VerdictGiven.WaitAsync(GateTimeout);
+        Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
+
+        Task<ResultWrapper<PayloadStatusV1>> repeated = rpc.engine_newPayloadV1(payload);
+        parentCommit.Release();
+        ResultWrapper<PayloadStatusV1> result = await repeated.WaitAsync(GateTimeout);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(result.Data.LatestValidHash, Is.EqualTo(parent.Hash));
+        }
+    }
+
     [Test]
     public async Task executePayloadV1_invalid_suggested_records_bad_block()
     {
