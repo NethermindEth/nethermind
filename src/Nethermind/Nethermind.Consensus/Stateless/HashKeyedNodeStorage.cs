@@ -28,9 +28,10 @@ namespace Nethermind.Consensus.Stateless;
 /// witness entries consume separate slots, and overflow entries remain retained in both representations.
 /// </para>
 /// <para>
-/// Only the zkEVM guest uses this (see <c>WitnessNodeStorage.zkevm.cs</c>). It is not thread-safe, and
+/// Only the zkEVM guest's tries use this (see <c>WitnessNodeStorage.zkevm.cs</c>). It is not thread-safe, and
 /// the host commits storage tries in parallel — <c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>
-/// — so the host keeps the <c>MemDb</c> form, whose dictionary is concurrent.
+/// — so the host keeps the <c>MemDb</c> form, whose dictionary is concurrent, and reads one of these only for
+/// <see cref="WitnessTrieStoreScopeProvider"/>'s walk of the witness.
 /// </para>
 /// </remarks>
 internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
@@ -130,7 +131,16 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// holds its four words in callee-saved registers across the whole inlined resolve.
     /// </remarks>
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-        => Find(in Unsafe.As<ValueHash256, NodeKey>(ref Unsafe.AsRef(in keccak)));
+    {
+        // Ahead of the load, whose witness tag the trie node reads straight after it.
+        if (address is not null) StorageNodeLoading?.Invoke(keccak);
+
+        return Find(in Unsafe.As<ValueHash256, NodeKey>(ref Unsafe.AsRef(in keccak)));
+    }
+
+    /// <summary>Called with the keccak of a storage trie's node before <see cref="Get"/> loads it.</summary>
+    /// <remarks>By keccak alone: the guest's trie leaves the path untracked, as nothing here reads it.</remarks>
+    internal Action<ValueHash256>? StorageNodeLoading { get; set; }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte[]? Find(in NodeKey key)
@@ -147,6 +157,216 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
             }
         return null;
     }
+
+    /// <summary>Gets the node whose keccak is <paramref name="keccak"/>, as <see cref="Get"/> does.</summary>
+    /// <remarks>
+    /// Until the first write this probes the keccak in place rather than copying it into a <see cref="NodeKey"/>: the
+    /// keccak's leading four bytes pick its bit of <see cref="_filter"/> and its bucket, and reject most of the bucket's
+    /// entries before the full comparison.
+    /// <para>Unlike <see cref="Get"/>, the probe tags no load: it serves no trie node.</para>
+    /// </remarks>
+    internal byte[]? Find(ReadOnlySpan<byte> keccak) =>
+        _nodes is null
+            ? new HeldProbe(this, _filter ??= BuildFilter()).Find(ref MemoryMarshal.GetReference(keccak))
+            : Find(new NodeKey(new ValueHash256(keccak)));
+
+    /// <summary>Finds which children of a branch node this storage holds, for a branch whose sixteen children are each
+    /// a keccak or empty and whose value is empty, the shape of nearly every branch.</summary>
+    /// <param name="rlp">The RLP of the node.</param>
+    /// <param name="held">Receives the offset in <paramref name="rlp"/> of each held child's keccak, in child order.</param>
+    /// <param name="nodes">Receives each held child, at its index in <paramref name="held"/>.</param>
+    /// <returns>How many offsets were written to <paramref name="held"/>, or -1 if <paramref name="rlp"/> is not a list
+    /// of that shape.</returns>
+    /// <remarks>Probes as <see cref="Find(ReadOnlySpan{byte})"/> does, while parsing: a branch references sixteen
+    /// children, few of which a witness holds, so a bit of <see cref="_filter"/> rejects most of them first.</remarks>
+    internal int FindHeldBranchChildren(ReadOnlySpan<byte> rlp, Span<int> held, Span<byte[]?> nodes)
+    {
+        ulong[] filter = _filter ??= BuildFilter();
+        if (_nodes is null && rlp.Length == FullBranchLength && rlp[0] == 0xf9 && rlp[1] == 0x02 && rlp[2] == 0x11 && rlp[^1] == EmptyItem)
+        {
+            int count = FindHeldFullBranchChildren(ref MemoryMarshal.GetReference(rlp), filter, held, nodes);
+            if (count >= 0) return count;
+        }
+
+        return FindHeldListChildren(rlp, filter, held, nodes);
+    }
+
+    /// <summary><see cref="FindHeldBranchChildren"/> for a node of <see cref="FullBranchLength"/> bytes, starting at
+    /// <paramref name="first"/>, before the first write.</summary>
+    /// <remarks>Apart from the general case, which would make every call save the registers of its own parsing.</remarks>
+    private int FindHeldFullBranchChildren(ref byte first, ulong[] filter, Span<int> held, Span<byte[]?> nodes)
+    {
+        int candidates = FilterFullBranchChildren(ref first, filter);
+        if (candidates <= 0) return candidates;
+
+        HeldProbe probe = new(this, filter);
+        int count = 0;
+        do
+        {
+            int offset = FullBranchFirstKeccak + BitOperations.TrailingZeroCount(candidates) * KeccakItemLength;
+            byte[]? node = probe.FindFiltered(ref Unsafe.Add(ref first, offset));
+            if (node is not null)
+            {
+                held[count] = offset;
+                nodes[count++] = node;
+            }
+
+            candidates &= candidates - 1;
+        } while (candidates != 0);
+
+        return count;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int FindHeldListChildren(ReadOnlySpan<byte> rlp, ulong[] filter, Span<int> held, Span<byte[]?> nodes)
+    {
+        if (rlp.IsEmpty) return -1;
+
+        HeldProbe probe = new(this, filter);
+        ref byte first = ref MemoryMarshal.GetReference(rlp);
+        int count = 0;
+        byte[]? node;
+
+        (int start, int length) = rlp[0] switch
+        {
+            < 0xc0 => (-1, 0),
+            <= 0xf7 => (1, rlp[0] - 0xc0),
+            0xf8 when rlp.Length > 1 => (2, rlp[1]),
+            0xf9 when rlp.Length > 2 => (3, rlp[1] << 8 | rlp[2]),
+            _ => (-1, 0)
+        };
+        if (start < 0 || start + length != rlp.Length) return -1;
+
+        int end = rlp.Length;
+        int position = start;
+        for (int i = 0; i < BranchChildren; i++)
+        {
+            if (position >= end) return -1;
+
+            byte prefix = Unsafe.Add(ref first, position);
+            if (prefix == EmptyItem)
+            {
+                position++;
+                continue;
+            }
+
+            if (prefix != KeccakItem || position + KeccakItemLength > end) return -1;
+
+            if ((node = probe.Find(ref Unsafe.Add(ref first, position + 1))) is not null)
+            {
+                held[count] = position + 1;
+                nodes[count++] = node;
+            }
+
+            position += KeccakItemLength;
+        }
+
+        // Only an empty value ends the list there.
+        return position == end - 1 && Unsafe.Add(ref first, position) == EmptyItem ? count : -1;
+    }
+
+    private const int BranchChildren = 16;
+    private const byte EmptyItem = 0x80;
+    private const byte KeccakItem = 0x80 + Hash256.Size;
+    private const int KeccakItemLength = 1 + Hash256.Size;
+    // A list prefix of three bytes, sixteen keccaks and an empty value.
+    private const int FullBranchLength = KeccakHash.Hash532InputLength;
+    private const int FullBranchFirstKeccak = 4;
+    // Enough bits that a keccak the witness lacks rarely finds its bit set.
+    private const int FilterBitsPerNode = 16;
+
+    // Of the keccaks' leading bits, one per witness node; built on first use, as only the witness walk reads it.
+    private ulong[]? _filter;
+
+    /// <summary>Gets which children of a node of <see cref="FullBranchLength"/> bytes, starting at
+    /// <paramref name="first"/>, have their bit of <paramref name="filter"/> set, as a bitmask over the children.</summary>
+    /// <returns>The bitmask, or -1 if an item is not a keccak: its length and list prefix alone would not tell a branch
+    /// of sixteen keccaks, as other items could add up to the same length.</returns>
+    /// <remarks>A pass of its own, keeping only the filter live: with the probe's arrays too, the loop spills.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FilterFullBranchChildren(ref byte first, ulong[] filter)
+    {
+        ref ulong words = ref MemoryMarshal.GetArrayDataReference(filter);
+        nint mask = filter.Length * 64 - 1;
+        ref byte keccak = ref Unsafe.Add(ref first, FullBranchFirstKeccak);
+        int candidates = 0;
+        // Any bit but the keccak prefix's, collected rather than branched on.
+        int otherPrefixBits = 0;
+        for (int child = 0; child < BranchChildren; child++)
+        {
+            otherPrefixBits |= Unsafe.Add(ref keccak, -1) ^ KeccakItem;
+            nint bit = (nint)Unsafe.ReadUnaligned<uint>(ref keccak) & mask;
+            candidates |= (int)(Unsafe.Add(ref words, bit >> 6) >> (int)(bit & 63) & 1) << child;
+            keccak = ref Unsafe.Add(ref keccak, KeccakItemLength);
+        }
+
+        return otherPrefixBits == 0 ? candidates : -1;
+    }
+
+    private ulong[] BuildFilter()
+    {
+        int bits = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(64, _keys.Length * FilterBitsPerNode));
+        ulong[] filter = new ulong[bits / 64];
+        nint mask = bits - 1;
+        foreach (NodeKey key in _keys)
+        {
+            nint bit = (nint)key.Leading & mask;
+            filter[bit >> 6] |= 1UL << (int)(bit & 63);
+        }
+
+        return filter;
+    }
+
+    /// <summary>Finds nodes by keccak with the storage's arrays in locals, which a loop would otherwise reload for every
+    /// keccak.</summary>
+    private readonly ref struct HeldProbe(HashKeyedNodeStorage storage, ulong[] filter)
+    {
+        private readonly HashKeyedNodeStorage _storage = storage;
+        private readonly bool _unwritten = storage._nodes is null;
+        private readonly ref ulong _filter = ref MemoryMarshal.GetArrayDataReference(filter);
+        private readonly nint _filterMask = filter.Length * 64 - 1;
+        private readonly ref nint _heads = ref MemoryMarshal.GetArrayDataReference(storage._heads);
+        private readonly nint _bucketMask = storage._bucketMask;
+        private readonly ref nint _next = ref MemoryMarshal.GetArrayDataReference(storage._next);
+        private readonly ref NodeKey _keys = ref MemoryMarshal.GetArrayDataReference(storage._keys);
+        private readonly ref byte[] _values = ref MemoryMarshal.GetArrayDataReference(storage._values);
+
+        /// <param name="keccak">The first of the keccak's 32 bytes.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public byte[]? Find(ref byte keccak)
+        {
+            // The filter has only the witness' own nodes.
+            if (!_unwritten) return _storage.Find(MemoryMarshal.CreateReadOnlySpan(ref keccak, Hash256.Size));
+
+            // Unaligned: a child reference lies at an odd offset of its node. Four bytes cover both masks, which an array
+            // length bounds below 2^31.
+            nint bit = (nint)Unsafe.ReadUnaligned<uint>(ref keccak) & _filterMask;
+            return (Unsafe.Add(ref _filter, bit >> 6) >> (int)(bit & 63) & 1) == 0 ? null : FindFiltered(ref keccak);
+        }
+
+        /// <summary>Finds a keccak whose bit of the filter is set, before the first write.</summary>
+        /// <param name="keccak">The first of the keccak's 32 bytes.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public byte[]? FindFiltered(ref byte keccak)
+        {
+            uint leading = Unsafe.ReadUnaligned<uint>(ref keccak);
+            nint head = Unsafe.Add(ref _heads, (nint)leading & _bucketMask);
+            if (head == Overflowed) return _storage.FindOverflowed(ref keccak);
+
+            for (nint entry = (nint)((nuint)head >> LengthBits); entry != 0; entry = Unsafe.Add(ref _next, entry - 1))
+            {
+                ref readonly NodeKey key = ref Unsafe.Add(ref _keys, entry - 1);
+                if (key.Leading == leading && key.Equals(MemoryMarshal.CreateReadOnlySpan(ref keccak, Hash256.Size)))
+                    return Unsafe.Add(ref _values, entry - 1);
+            }
+
+            return null;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private byte[]? FindOverflowed(ref byte keccak) =>
+        _overflow.TryGetValue(new NodeKey(new ValueHash256(MemoryMarshal.CreateReadOnlySpan(ref keccak, Hash256.Size))), out byte[]? overflowed) ? overflowed : null;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -220,6 +440,12 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         private readonly ValueHash256 _hash = hash;
 
         internal nint Bucket(nint mask) => (nint)Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
+
+        /// <summary>The keccak's leading four bytes, little-endian.</summary>
+        internal uint Leading => Unsafe.As<ValueHash256, uint>(ref Unsafe.AsRef(in _hash));
+
+        public bool Equals(ReadOnlySpan<byte> keccak) =>
+            MemoryMarshal.AsBytes(new ReadOnlySpan<ValueHash256>(in _hash)).SequenceEqual(keccak);
 
         public bool Equals(NodeKey other)
         {
