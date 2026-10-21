@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: flaky-test-fix
-  cancel-in-progress: false
-
 env:
   PROTECTED: '^(\.github|\.agents|scripts)/|^(AGENTS|CLAUDE)\.md$|\.(props|targets|csproj)$|(^|/)(global\.json|nuget\.config)$|^\.gitmodules$|^src/(tests|bench_precompiles)$'
 
@@ -44,6 +40,9 @@ jobs:
     if: needs.limit.outputs.ok == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    concurrency:
+      group: flaky-test-fix
+      cancel-in-progress: false
     permissions:
       actions: read
       contents: read
@@ -61,6 +60,8 @@ jobs:
           submodules: recursive
 
       - uses: actions/setup-dotnet@v5
+
+      - run: mkdir -p "$RUNNER_TEMP/claude"
 
       - name: Fix the flaky test
         timeout-minutes: 90
@@ -99,7 +100,11 @@ jobs:
         id: check
         run: |
           git add -A
-          if git diff --cached --quiet || [ ! -s "$RUNNER_TEMP/claude/pr.md" ]; then exit 0; fi
+          diff=true pr=true
+          git diff --cached --quiet && diff=false
+          [ -s "$RUNNER_TEMP/claude/pr.md" ] || pr=false
+          if [ "$diff" = false ] && [ "$pr" = false ]; then echo "No flaky test to fix"; exit 0; fi
+          if [ "$diff" != "$pr" ]; then echo "::warning::Claude left a change without pr.md or pr.md without a change"; exit 0; fi
           if git diff --cached --no-renames --name-only |
             grep -iE "$PROTECTED"; then
             echo "::error::Protected paths changed"
