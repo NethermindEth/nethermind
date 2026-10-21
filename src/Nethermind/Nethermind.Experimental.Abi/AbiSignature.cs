@@ -5,6 +5,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Experimental.Abi;
 
+/// <param name="name">
+/// <see langword="null"/> for a signature without a method ID, whose encoding and decoding cover only the arguments, as for return data, event data and indexed topics.
+/// An empty name still has a method ID, derived from the bare parameter list.
+/// </param>
 public sealed class AbiSignature(string? name = null)
 {
     public const int MethodIdLength = 4;
