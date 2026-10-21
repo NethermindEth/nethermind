@@ -72,6 +72,7 @@ public ref struct BinarySpanReader
 
             int headSize = checked(length * element.HeadSize);
             if (headSize > r.Remaining) throw new AbiException();
+            if (length == 0) return [];
 
             T[] values = new T[length];
             int next = headSize;
