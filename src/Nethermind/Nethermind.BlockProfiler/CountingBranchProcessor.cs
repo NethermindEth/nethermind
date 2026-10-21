@@ -76,9 +76,22 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _inner.BranchProcessingCompleted += OnBranchProcessingCompleted;
         // Optional: without a block processor the block still counts, only without the execution split.
         if (_blockProcessor is not null) _blockProcessor.TransactionsExecuted += OnTransactionsExecuted;
+    }
 
-        // Branch processors are scoped; report once per process whether the counters work.
-        if (Interlocked.Exchange(ref s_armedLogged, 1) == 0)
+    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token = default)
+    {
+        if (!ProcessingThread.IsBlockProcessingThread) return _inner.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
+
+        using ThreadInstructionCounter.Scope scope = ThreadInstructionCounter.BeginScope();
+        return _inner.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
+    }
+
+    private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
+    {
+        _counting = ProcessingThread.IsBlockProcessingThread;
+        if (!_counting) return;
+
+        if (ThreadInstructionCounter.InScope && Interlocked.Exchange(ref s_armedLogged, 1) == 0)
         {
             if (ThreadInstructionCounter.TryRead(out _))
             {
@@ -89,15 +102,6 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
                 _logger.Warn($"EXPB-COUNT unavailable: {ThreadInstructionCounter.Error}");
             }
         }
-    }
-
-    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token = default)
-        => _inner.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
-
-    private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
-    {
-        _counting = ProcessingThread.IsBlockProcessingThread;
-        if (!_counting) return;
 
         _forcedGCExclusion = GCScheduler.Instance.ExcludeForcedGC();
         if (s_pinCpu >= 0 && DeterministicBenchmark.Enabled) PinProcessingThread();
