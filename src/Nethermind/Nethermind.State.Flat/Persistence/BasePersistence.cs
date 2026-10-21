@@ -473,7 +473,8 @@ public static class BasePersistence
 
     public struct ToHashedFlatReader<TFlatReader>(
         TFlatReader flatReader,
-        bool useFlatAccount = true
+        bool useFlatAccount = true,
+        PrefetchSampling? sampling = null
     ) : IFlatReader
         where TFlatReader : struct, IHashedFlatReader
     {
@@ -579,10 +580,15 @@ public static class BasePersistence
             {
                 ValueHash256 path = accounts[SampleIndex(sample, sampleCount, accounts.Length)].ToAccountPath;
                 if (_flatReader.IsAccountCached(path)) continue;
+                if (sampling?.Accounts.TrustMissAsDiskRead() == true) return false;
 
                 long start = Stopwatch.GetTimestamp();
                 _flatReader.GetAccount(path, value);
-                if (IsDiskRead(start, Stopwatch.GetTimestamp())) return false;
+                if (IsDiskRead(start, Stopwatch.GetTimestamp()))
+                {
+                    sampling?.Accounts.RecordDiskRead();
+                    return false;
+                }
             }
             return true;
         }
@@ -597,11 +603,16 @@ public static class BasePersistence
                 ValueHash256 slotHash = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
                 if (_flatReader.IsSlotCached(path, slotHash)) continue;
+                if (sampling?.Slots.TrustMissAsDiskRead() == true) return false;
 
                 UInt256 value = default;
                 long start = Stopwatch.GetTimestamp();
                 _flatReader.TryGetStorage(path, slotHash, ref value);
-                if (IsDiskRead(start, Stopwatch.GetTimestamp())) return false;
+                if (IsDiskRead(start, Stopwatch.GetTimestamp()))
+                {
+                    sampling?.Slots.RecordDiskRead();
+                    return false;
+                }
             }
             return true;
         }

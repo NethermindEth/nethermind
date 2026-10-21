@@ -186,6 +186,50 @@ public class BaseFlatPersistenceReaderTests
         }
     }
 
+    // After one disk read, a column trusts the next misses to be disk reads: the next DiskRecheckInterval blocks send
+    // the prefetch without a timed read, and the block after them is timed again.
+    [Test]
+    public void Prefetch_AfterADiskRead_SendsWithoutTimingUntilTheRecheck()
+    {
+        RecordingStore accountStore = new();
+        PrefetchSampling sampling = new();
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
+            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: sampling);
+        Address[] accounts = Accounts(70);
+        List<int> timedReads = [];
+
+        for (int block = 0; block < PrefetchSampling.DiskRecheckInterval + 2; block++)
+        {
+            accountStore.ReadKeys.Clear();
+            int prefetchedBefore = accountStore.PrefetchedKeys.Count;
+            reader.Prefetch(accounts, [], CancellationToken.None);
+            Assert.That(accountStore.PrefetchedKeys.Count - prefetchedBefore, Is.EqualTo(accounts.Length), $"block {block}");
+            timedReads.Add(accountStore.ReadKeys.Count);
+        }
+
+        int[] expected = new int[PrefetchSampling.DiskRecheckInterval + 2];
+        expected[0] = 1;
+        expected[PrefetchSampling.DiskRecheckInterval + 1] = 1;
+        Assert.That(timedReads, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void PrefetchSampling_TrustsDiskReadsForTheRecheckIntervalPerColumn()
+    {
+        PrefetchSampling sampling = new();
+
+        Assert.That(sampling.Accounts.TrustMissAsDiskRead(), Is.False);
+        sampling.Accounts.RecordDiskRead();
+        int trusted = 0;
+        while (sampling.Accounts.TrustMissAsDiskRead()) trusted++;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trusted, Is.EqualTo(PrefetchSampling.DiskRecheckInterval));
+            Assert.That(sampling.Slots.TrustMissAsDiskRead(), Is.False);
+        }
+    }
+
     [Test]
     public void IsDiskRead_CountsOnlyReadsLongerThanTheMemoryLimit()
     {
