@@ -476,6 +476,25 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
+    public async Task Observer_that_throws_does_not_change_the_response([Values] bool deferred)
+    {
+        using JsonRpcSuccessResponse unobserved = new() { Id = new JsonRpcId(7L), Result = new ChunkedResult(), Streaming = deferred ? CreateStreamingContext() : null };
+        using JsonRpcSuccessResponse observed = new() { Id = new JsonRpcId(7L), Result = new ChunkedResult(), Streaming = deferred ? CreateStreamingContext() : null };
+        ThrowingObserver observer = new();
+        observed.ObserveStreamedResult(observer);
+
+        string expected = await WriteAsync(TransportKind.Pipe, unobserved, isBatch: false);
+        string actual = await WriteAsync(TransportKind.Pipe, observed, isBatch: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(observer.Chunks, Is.EqualTo(1));
+            Assert.That(observer.Succeeded, Is.False);
+        }
+    }
+
+    [Test]
     public async Task Observer_receives_a_deferred_block_trace_as_the_client_received_it()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
@@ -545,6 +564,25 @@ public class JsonRpcResponseWriterStreamingIdTests
         {
             Assert.That(Succeeded, Is.Null, "completed once");
             Succeeded = succeeded;
+        }
+    }
+
+    private sealed class ThrowingObserver : IStreamedResultObserver
+    {
+        public int Chunks { get; private set; }
+
+        public bool? Succeeded { get; private set; }
+
+        public void OnWritten(ReadOnlySpan<byte> utf8Json)
+        {
+            Chunks++;
+            throw new InvalidOperationException();
+        }
+
+        public void OnCompleted(bool succeeded)
+        {
+            Succeeded = succeeded;
+            throw new InvalidOperationException();
         }
     }
 

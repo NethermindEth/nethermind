@@ -9,7 +9,8 @@ namespace Nethermind.JsonRpc;
 /// <remarks>
 /// Only the result value is reported, without the envelope or the id. Bytes are reported as they are written, which can
 /// be before the transport has them, so a result the writer replaces with an error has been partly reported when
-/// <see cref="OnCompleted"/> says it did not succeed.
+/// <see cref="OnCompleted"/> says it did not succeed. An exception the observer throws does not change the response: the
+/// observer gets no more chunks, and <see cref="OnCompleted"/> says the result did not succeed.
 /// </remarks>
 public interface IStreamedResultObserver
 {

@@ -13,18 +13,42 @@ namespace Nethermind.JsonRpc;
 internal sealed class StreamedResultObservation(IStreamedResultObserver observer)
 {
     private bool _resultComplete;
+    private bool _observerFailed;
 
     /// <summary>A writer that forwards to <paramref name="writer"/> and reports what is written to the observer.</summary>
     /// <remarks>A counting writer stays a counting writer, since results such as the logs stream size themselves by it.</remarks>
     public PipeWriter Wrap(PipeWriter writer) => writer is CountingWriter counting
-        ? new ObservingCountingWriter(counting, observer)
-        : new ObservingPipeWriter(writer, observer);
+        ? new ObservingCountingWriter(counting, this)
+        : new ObservingPipeWriter(writer, this);
 
     public void ResultWritten(StreamableResultStatus? status) => _resultComplete = status is null or StreamableResultStatus.Complete;
 
-    public void Complete(bool written) => observer.OnCompleted(written && _resultComplete);
+    public void Complete(bool written)
+    {
+        try
+        {
+            observer.OnCompleted(written && _resultComplete && !_observerFailed);
+        }
+        catch
+        {
+        }
+    }
 
-    private sealed class ObservingPipeWriter(PipeWriter writer, IStreamedResultObserver observer) : PipeWriter
+    private void Written(ReadOnlySpan<byte> utf8Json)
+    {
+        if (_observerFailed || utf8Json.IsEmpty) return;
+
+        try
+        {
+            observer.OnWritten(utf8Json);
+        }
+        catch
+        {
+            _observerFailed = true;
+        }
+    }
+
+    private sealed class ObservingPipeWriter(PipeWriter writer, StreamedResultObservation observation) : PipeWriter
     {
         private Memory<byte> _memory;
 
@@ -34,7 +58,7 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
 
         public override void Advance(int bytes)
         {
-            observer.OnWritten(_memory.Span[..bytes]);
+            observation.Written(_memory.Span[..bytes]);
             _memory = default;
             writer.Advance(bytes);
         }
@@ -53,13 +77,13 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
     private sealed class ObservingCountingWriter : CountingWriter
     {
         private readonly CountingWriter _writer;
-        private readonly IStreamedResultObserver _observer;
+        private readonly StreamedResultObservation _observation;
         private Memory<byte> _memory;
 
-        public ObservingCountingWriter(CountingWriter writer, IStreamedResultObserver observer)
+        public ObservingCountingWriter(CountingWriter writer, StreamedResultObservation observation)
         {
             _writer = writer;
-            _observer = observer;
+            _observation = observation;
             WrittenCount = writer.WrittenCount;
         }
 
@@ -69,7 +93,7 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
 
         public override void Advance(int bytes)
         {
-            _observer.OnWritten(_memory.Span[..bytes]);
+            _observation.Written(_memory.Span[..bytes]);
             _memory = default;
             _writer.Advance(bytes);
             WrittenCount += bytes;
