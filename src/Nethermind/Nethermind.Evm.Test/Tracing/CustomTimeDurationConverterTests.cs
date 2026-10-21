@@ -108,6 +108,25 @@ public class CustomTimeDurationConverterTests
         }
     }
 
+    [TestCase("1s", 1000)]
+    [TestCase("-1s", -1000)]
+    [NonParallelizable]
+    public void read_integer_ignores_current_culture_number_format(string text, int milliseconds)
+    {
+        CultureInfo culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.PositiveSign = "1";
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = culture;
+        try
+        {
+            Assert.That(Deserialize($"\"{text}\""), Is.EqualTo(TimeSpan.FromMilliseconds(milliseconds)));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
     [TestCase("5s", 50_000_000L)]
     [TestCase("\\u0035s", 50_000_000L)]
     [TestCase("500µs", 5_000L)]

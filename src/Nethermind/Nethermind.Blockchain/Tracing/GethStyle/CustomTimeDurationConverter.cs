@@ -259,7 +259,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         ReadOnlySpan<char> digits = TakeDigits(ref s);
         hasInt = !digits.IsEmpty;
         if (!hasInt) { v = 0; return true; }
-        return ulong.TryParse(digits, out v) && v <= MaxNs;
+        return ulong.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out v) && v <= MaxNs;
     }
 
     private static void TakeFraction(ref ReadOnlySpan<char> s, out ulong f, out double scale, out bool hasFrac)
