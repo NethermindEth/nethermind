@@ -431,10 +431,9 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
-    [TestCase("{\"beaconRoot\":\"0x01\"}")]
-    [TestCase("{\"beaconRoot\":true}")]
-    [TestCase("{\"beaconRoot\":null,\"BEACONROOT\":null}")]
-    public async Task Simulate_rejects_invalid_beacon_root_overrides(string overrideJson)
+    [Test]
+    public async Task Simulate_rejects_invalid_beacon_root_overrides(
+        [Values("{\"beaconRoot\":\"0x01\"}", "{\"beaconRoot\":true}", "{\"beaconRoot\":null,\"BEACONROOT\":null}")] string overrideJson)
     {
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson($"{{\"blockOverrides\":{overrideJson},{Calls}}}"), "latest");
