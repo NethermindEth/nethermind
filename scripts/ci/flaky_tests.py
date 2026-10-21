@@ -197,7 +197,8 @@ def repeat(project, test_filter, runs, budget, stop_after, out_dir, host=None, l
                                         text=True, timeout=run_timeout)
                 code, output = result.returncode, result.stdout + result.stderr
             except subprocess.TimeoutExpired as expired:
-                code, output = -1, f"timed out after {run_timeout}s\n{expired.stdout or ''}"
+                partial = expired.stdout or b""
+                code, output = -1, f"timed out after {run_timeout}s\n{partial.decode(errors='replace')}"
             if code == ZERO_TESTS_RAN:
                 raise SystemExit(f"filter {test_filter!r} matched no tests in {project}")
             done += 1
