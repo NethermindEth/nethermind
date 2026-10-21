@@ -64,24 +64,21 @@ public interface IPersistence
         /// </summary>
         /// <param name="accountSamples">Up to <see cref="BasePersistence.PrefetchSamples"/> accounts spread over the block's accounts; may be filtered in place.</param>
         /// <param name="slotSamples">Up to <see cref="BasePersistence.PrefetchSamples"/> slots spread over the block's slots; may be filtered in place.</param>
-        /// <remarks>
-        /// Prefetches nothing by default: a wrapper that does not forward the plan loses the prefetch, it never sends one
-        /// a cached block did not need.
-        /// </remarks>
-        PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) => PrefetchColumns.None;
+        PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples);
 
-        /// <summary>Starts reading <paramref name="accounts"/> and <paramref name="slots"/> from the store so later reads find them in memory.</summary>
+        /// <summary>Starts reading the <paramref name="columns"/> of <paramref name="accounts"/> and <paramref name="slots"/> from the store so later reads find them in memory.</summary>
+        /// <param name="columns">The columns <see cref="PlanPrefetch"/> chose; the others are not read.</param>
         /// <param name="accounts">The accounts to read ahead. The reader may reorder, filter or overwrite them in place.</param>
         /// <param name="slots">The slots to read ahead. The reader may reorder, filter or overwrite them in place.</param>
         /// <remarks>
         /// Best effort: the call returns without waiting for the reads, never reports a failed read, and does not change
         /// what later reads return. The spans are used only during the call and are not kept.
         /// </remarks>
-        void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken);
+        void Prefetch(PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken);
 
         /// <summary>Whether <see cref="Prefetch"/> reads anything ahead. A wrapper reports what the reader it wraps reports,
         /// so a caller that gets false skips collecting the keys.</summary>
-        bool SupportsPrefetch => true;
+        bool SupportsPrefetch { get; }
     }
 
     /// <summary>The columns of one block that <see cref="IPrefetchingReader.PlanPrefetch"/> decided to prefetch.</summary>

@@ -98,7 +98,7 @@ public class BaseFlatPersistenceReaderTests
         accountStore.ReadKeys.Clear();
         storageStore.ReadKeys.Clear();
         UInt256 value = default;
-        foreach (Address address in accounts) reader.GetAccount(address);
+        foreach (Address address in accounts) reader.GetAccountRaw(address.ToAccountPath);
         foreach (StorageCell slot in slots) reader.TryGetSlot(slot.Address, slot.Index, ref value);
 
         using (Assert.EnterMultipleScope())
@@ -224,6 +224,111 @@ public class BaseFlatPersistenceReaderTests
         }
     }
 
+    // Absent keys, such as slots a block writes for the first time, are read fast through the filter but are not
+    // counted: one slow existing key among them still decides disk.
+    [Test]
+    public void Prefetch_MostlyAbsentKeysAndOneSlowExistingKey_SendsThePrefetch()
+    {
+        Address[] accounts = Accounts(70);
+        string existing = AccountKey(accounts[35]);
+        RecordingStore accountStore = new(missDelay: TimeSpan.Zero, slowKey: existing, absent: k => k != existing);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+
+        PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
+
+        Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
+    }
+
+    // A block whose misses are all absent keys gives no evidence: nothing is sent, and neither a page-cache outcome nor
+    // a cached run is started, so the next blocks decide in full again.
+    [Test]
+    public void Plan_OnlyAbsentKeysMissing_KeepsNoPageCacheOutcome()
+    {
+        RecordingStore accountStore = new(missDelay: TimeSpan.Zero, absent: static _ => true);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
+            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: new PrefetchSampling());
+        Address[] accounts = Accounts(70);
+
+        List<int> probes = [];
+        for (int block = 0; block < PrefetchSampling.CachedBlocksForRun + 1; block++)
+        {
+            accountStore.ProbedKeys.Clear();
+            PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
+            probes.Add(accountStore.ProbedKeys.Count);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountStore.PrefetchedKeys, Is.Empty);
+            // Neither a page-cache outcome nor a cached run: every block probes all eight.
+            Assert.That(probes, Is.All.EqualTo(BasePersistence.PrefetchSamples));
+        }
+    }
+
+    // The quarter rule at its boundary: one slow read among four timed misses decides disk, among five it does not.
+    [TestCase(4, true)]
+    [TestCase(5, false)]
+    [Retry(3)]
+    public void Prefetch_OneSlowReadIsDiskUpToAQuarterOfTheMisses(int missCount, bool expectPrefetch)
+    {
+        Address[] accounts = Accounts(70);
+        // Samples of 70 keys are at 0, 8, 17, 26, 35, 43, 52 and 61; the first missCount of them miss, the first is slow.
+        int[] sampleIndexes = [0, 8, 17, 26, 35, 43, 52, 61];
+        string[] misses = [.. sampleIndexes.Take(missCount).Select(i => AccountKey(accounts[i]))];
+        RecordingStore accountStore = new(cached: k => !misses.Contains(k), missDelay: TimeSpan.Zero, slowKey: misses[0]);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+
+        PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
+
+        Assert.That(accountStore.PrefetchedKeys, expectPrefetch ? Has.Count.EqualTo(accounts.Length) : Is.Empty);
+    }
+
+    // The slot column counts absent keys the same way: one slow existing slot among absent ones still decides disk.
+    [Test]
+    public void Prefetch_MostlyAbsentSlotsAndOneSlowExistingSlot_SendsThePrefetch()
+    {
+        Address[] accounts = Accounts(70);
+        StorageCell[] slots = accounts.Select(static (address, i) => new StorageCell(address, (UInt256)i)).ToArray();
+        RecordingStore probe = new();
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> keyReader = new(new BaseFlatPersistence.Reader(new RecordingStore(), probe));
+        UInt256 unused = default;
+        keyReader.TryGetSlot(slots[35].Address, slots[35].Index, ref unused);
+        string existing = probe.ReadKeys[0];
+        RecordingStore storageStore = new(missDelay: TimeSpan.Zero, slowKey: existing, absent: k => k != existing);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(new RecordingStore(cached: static _ => true), storageStore));
+
+        PlanAndPrefetch(reader, accounts, slots, CancellationToken.None);
+
+        Assert.That(storageStore.PrefetchedKeys, Has.Count.EqualTo(slots.Length));
+    }
+
+    // Under a page-cache outcome the single probe still catches disk: a slow read of it makes the block decide in full,
+    // and two slow misses then send the prefetch at once instead of after the trust runs out.
+    [Test]
+    [Retry(3)]
+    public void Plan_UnderPageCacheTrust_ASlowProbeDecidesInFull()
+    {
+        RecordingStore accountStore = new(missDelay: TimeSpan.Zero);
+        RecordingStore diskStore = new();
+        PrefetchSampling sampling = new();
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> pageCache = new(
+            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: sampling);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> disk = new(
+            new BaseFlatPersistence.Reader(diskStore, new RecordingStore()), sampling: sampling);
+        Address[] accounts = Accounts(70);
+
+        PlanAndPrefetch(pageCache, accounts, [], CancellationToken.None);
+        PlanAndPrefetch(disk, accounts, [], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountStore.PrefetchedKeys, Is.Empty);
+            // The single probe, then a full decision stopped by its two slow reads.
+            Assert.That(diskStore.ReadKeys, Has.Count.EqualTo(3));
+            Assert.That(diskStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
+        }
+    }
+
     // A block whose only miss is slow decides disk: there is no second miss to confirm it.
     [Test]
     public void Prefetch_OnlyMissReadAtDiskSpeed_SendsThePrefetch()
@@ -287,11 +392,11 @@ public class BaseFlatPersistenceReaderTests
         }
     }
 
-    // After a block whose misses were read from the page cache, the next MemoryRecheckInterval blocks skip the decision
-    // without a probe or a read, and the block after them decides again.
+    // After a block whose misses were read from the page cache, the next MemoryRecheckInterval blocks probe a single
+    // sample, which is read fast here, so they send nothing; the block after them decides in full again.
     [Test]
     [Retry(3)]
-    public void Plan_AfterPageCacheReads_SkipsWithoutProbesUntilTheRecheck()
+    public void Plan_AfterPageCacheReads_ProbesOneSampleUntilTheRecheck()
     {
         RecordingStore accountStore = new(missDelay: TimeSpan.Zero);
         PrefetchSampling sampling = new();
@@ -307,9 +412,7 @@ public class BaseFlatPersistenceReaderTests
             probes.Add(accountStore.ProbedKeys.Count);
         }
 
-        int[] expected = new int[PrefetchSampling.MemoryRecheckInterval + 2];
-        expected[0] = BasePersistence.PrefetchSamples;
-        expected[PrefetchSampling.MemoryRecheckInterval + 1] = BasePersistence.PrefetchSamples;
+        int[] expected = [BasePersistence.PrefetchSamples, .. Enumerable.Repeat(1, PrefetchSampling.MemoryRecheckInterval), BasePersistence.PrefetchSamples];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(probes, Is.EqualTo(expected));
@@ -317,9 +420,9 @@ public class BaseFlatPersistenceReaderTests
         }
     }
 
-    // While blocks are fully cached the next block probes two samples; a miss among them restores all eight.
+    // After two fully cached blocks the next block probes two samples; a miss among them restores all eight.
     [Test]
-    public void Plan_AfterAFullyCachedBlock_ProbesTwoSamples()
+    public void Plan_AfterTwoFullyCachedBlocks_ProbesTwoSamples()
     {
         bool cold = false;
         RecordingStore accountStore = new(cached: _ => !cold);
@@ -339,16 +442,16 @@ public class BaseFlatPersistenceReaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            // Cached, cached run, a cold block confirmed by both of its two probes, then all eight again.
-            Assert.That(probes, Is.EqualTo(new[] { 8, 2, 2, 8 }));
+            // Two cached blocks start the run, a cold block is confirmed by both of its two probes, then all eight again.
+            Assert.That(probes, Is.EqualTo(new[] { 8, 8, 2, 8 }));
             Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
         }
     }
 
-    // A block whose eight samples are all cached starts a run of CachedRunBlocks blocks that probe two; the run does
-    // not extend itself, so the block after it probes all eight again.
+    // CachedBlocksForRun blocks in a row whose eight samples are all cached start a run of CachedRunBlocks blocks that
+    // probe two; the run does not extend itself, so the blocks after it probe all eight again.
     [Test]
-    public void Plan_CachedRun_LastsCachedRunBlocksThenProbesAllSamples()
+    public void Plan_CachedRun_StartsAfterAFullyCachedStreakAndEnds()
     {
         RecordingStore accountStore = new(cached: static _ => true);
         BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
@@ -356,14 +459,15 @@ public class BaseFlatPersistenceReaderTests
         Address[] accounts = Accounts(70);
         List<int> probes = [];
 
-        for (int block = 0; block < PrefetchSampling.CachedRunBlocks + 2; block++)
+        for (int block = 0; block < PrefetchSampling.CachedBlocksForRun * 2 + PrefetchSampling.CachedRunBlocks; block++)
         {
             accountStore.ProbedKeys.Clear();
             PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
             probes.Add(accountStore.ProbedKeys.Count);
         }
 
-        int[] expected = [8, .. Enumerable.Repeat(2, PrefetchSampling.CachedRunBlocks), 8];
+        int[] full = [.. Enumerable.Repeat(8, PrefetchSampling.CachedBlocksForRun)];
+        int[] expected = [.. full, .. Enumerable.Repeat(2, PrefetchSampling.CachedRunBlocks), .. full];
         Assert.That(probes, Is.EqualTo(expected));
     }
 
@@ -456,11 +560,11 @@ public class BaseFlatPersistenceReaderTests
         int accountCount = BasePersistence.FillSamples<Address>(accounts, accountSamples);
         int slotCount = BasePersistence.FillSamples<StorageCell>(slots, slotSamples);
         IPersistence.PrefetchColumns columns = reader.PlanPrefetch(accountSamples.AsSpan(0, accountCount), slotSamples.AsSpan(0, slotCount));
-        reader.Prefetch(
-            (columns & IPersistence.PrefetchColumns.Accounts) != 0 ? accounts : default,
-            (columns & IPersistence.PrefetchColumns.Slots) != 0 ? slots : default,
-            cancellationToken);
+        reader.Prefetch(columns, accounts, slots, cancellationToken);
     }
+
+    private static string AccountKey(Address address) =>
+        Convert.ToHexString(BaseFlatPersistence.EncodeAccountKeyHashed(new byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath));
 
     private static Address[] Accounts(int count)
     {
@@ -470,10 +574,12 @@ public class BaseFlatPersistenceReaderTests
     }
 
     /// <summary>
-    /// Records the keys of scalar reads and prefetches; every read misses. A read of a key that is not cached takes
-    /// <paramref name="missDelay"/>, 1 ms by default, as a disk read does; <paramref name="slowKey"/> always takes 1 ms.
+    /// Records the keys of scalar reads and prefetches. Every key holds a one-byte value unless <paramref name="absent"/>
+    /// says it does not exist. A read of a key that is not cached takes <paramref name="missDelay"/>, 1 ms by default, as
+    /// a disk read does; <paramref name="slowKey"/> always takes 1 ms.
     /// </summary>
-    private sealed class RecordingStore(Func<string, bool>? cached = null, Action? onPrefetch = null, TimeSpan? missDelay = null, string? slowKey = null)
+    private sealed class RecordingStore(Func<string, bool>? cached = null, Action? onPrefetch = null, TimeSpan? missDelay = null, string? slowKey = null,
+        Func<string, bool>? absent = null)
         : ISortedKeyValueStore, IReadPrefetcher
     {
         private static readonly TimeSpan DiskRead = TimeSpan.FromMilliseconds(1);
@@ -483,24 +589,23 @@ public class BaseFlatPersistenceReaderTests
         public List<string> PrefetchedKeys { get; } = [];
         public List<int> PrefetchBatches { get; } = [];
 
-        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            Read(key);
-            return null;
-        }
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Read(key) ? [1] : null;
 
         public int Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags = ReadFlags.None)
         {
-            Read(key);
-            return 0;
+            if (!Read(key)) return 0;
+            output[0] = 1;
+            return 1;
         }
 
-        private void Read(ReadOnlySpan<byte> key)
+        /// <returns>Whether the key exists.</returns>
+        private bool Read(ReadOnlySpan<byte> key)
         {
             string hex = Convert.ToHexString(key);
             ReadKeys.Add(hex);
             TimeSpan delay = hex == slowKey ? DiskRead : cached?.Invoke(hex) == true ? TimeSpan.Zero : missDelay ?? DiskRead;
             if (delay > TimeSpan.Zero) Thread.Sleep(delay);
+            return absent?.Invoke(hex) != true;
         }
 
         public bool IsCached(ReadOnlySpan<byte> key)

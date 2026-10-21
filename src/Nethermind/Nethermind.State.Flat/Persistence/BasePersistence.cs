@@ -400,12 +400,12 @@ public static class BasePersistence
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
 
-        /// <summary>Which columns of a block are worth prefetching, decided from sampled keys; none by default.</summary>
+        /// <summary>Prefetches no column by default; see <see cref="IPersistence.IPrefetchingReader.PlanPrefetch"/>.</summary>
         public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) => IPersistence.PrefetchColumns.None;
 
         /// <summary>Starts reading accounts and slots ahead of use; does nothing by default.</summary>
         /// <remarks>The spans are the caller's scratch: readers may filter them in place.</remarks>
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
+        public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
 
         /// <summary>Whether <see cref="Prefetch"/> reads anything ahead; false by default, where it does nothing.</summary>
         public bool SupportsPrefetch => false;
@@ -551,9 +551,11 @@ public static class BasePersistence
             return columns;
         }
 
-        /// <summary>Sends the keys; <see cref="PlanPrefetch"/> has already decided that their columns are worth it.</summary>
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        /// <summary>Sends the keys of the <paramref name="columns"/> that <see cref="PlanPrefetch"/> chose.</summary>
+        public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
+            if ((columns & IPersistence.PrefetchColumns.Accounts) == 0) accounts = default;
+            if ((columns & IPersistence.PrefetchColumns.Slots) == 0) slots = default;
             if (cancellationToken.IsCancellationRequested || (accounts.IsEmpty && slots.IsEmpty)) return;
             HashingPrefetchKeys keys = new(accounts, slots);
             _flatReader.Prefetch(ref keys, cancellationToken);
@@ -594,29 +596,42 @@ public static class BasePersistence
         private bool AccountsNeedPrefetch(ReadOnlySpan<Address> samples)
         {
             PrefetchSampling.Column? column = sampling?.Accounts;
-            if (column?.TrustMissesInMemory() == true) return false;
-
             Span<byte> value = stackalloc byte[_accountSpanBufferSize];
+            // Under a page-cache outcome one probe is kept; only a slow read of it makes the block decide in full.
+            if (column?.TrustMissesInMemory() == true && !IsSlowAccountMiss(samples[samples.Length / 2].ToAccountPath, value)) return false;
+
             int probes = column?.TryProbeFewer() == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
             MissTimings misses = default;
             for (int i = 0; i < probes; i++)
             {
                 ValueHash256 path = samples[SampleIndex(i, probes, samples.Length)].ToAccountPath;
                 if (_flatReader.IsAccountCached(path)) continue;
-                if (misses.Timed == 0 && column?.TrustMissAsDiskRead() == true) return true;
+                if (misses.Missed++ == 0 && column?.TrustMissAsDiskRead() == true) return true;
 
                 long start = Stopwatch.GetTimestamp();
-                _flatReader.GetAccount(path, value);
-                if (misses.Add(IsDiskRead(start, Stopwatch.GetTimestamp()))) break;
+                int length = _flatReader.GetAccount(path, value);
+                long end = Stopwatch.GetTimestamp();
+                // An absent key, such as a new account, is answered by the filter and says nothing about where the
+                // existing keys live, so its time is not counted.
+                if (length != 0 && misses.Add(IsDiskRead(start, end))) break;
             }
 
             return Decide(column, misses, probes == samples.Length);
         }
 
+        private bool IsSlowAccountMiss(in ValueHash256 path, Span<byte> value)
+        {
+            if (_flatReader.IsAccountCached(path)) return false;
+            long start = Stopwatch.GetTimestamp();
+            int length = _flatReader.GetAccount(path, value);
+            return length != 0 && IsDiskRead(start, Stopwatch.GetTimestamp());
+        }
+
         private bool SlotsNeedPrefetch(ReadOnlySpan<StorageCell> samples)
         {
             PrefetchSampling.Column? column = sampling?.Slots;
-            if (column?.TrustMissesInMemory() == true) return false;
+            // Under a page-cache outcome one probe is kept; only a slow read of it makes the block decide in full.
+            if (column?.TrustMissesInMemory() == true && !IsSlowSlotMiss(samples[samples.Length / 2])) return false;
 
             int probes = column?.TryProbeFewer() == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
             MissTimings misses = default;
@@ -627,15 +642,30 @@ public static class BasePersistence
                 ValueHash256 slotHash = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
                 if (_flatReader.IsSlotCached(path, slotHash)) continue;
-                if (misses.Timed == 0 && column?.TrustMissAsDiskRead() == true) return true;
+                if (misses.Missed++ == 0 && column?.TrustMissAsDiskRead() == true) return true;
 
                 UInt256 value = default;
                 long start = Stopwatch.GetTimestamp();
-                _flatReader.TryGetStorage(path, slotHash, ref value);
-                if (misses.Add(IsDiskRead(start, Stopwatch.GetTimestamp()))) break;
+                bool found = _flatReader.TryGetStorage(path, slotHash, ref value);
+                long end = Stopwatch.GetTimestamp();
+                // An absent key, such as a slot written for the first time, is answered by the filter and says nothing
+                // about where the existing keys live, so its time is not counted.
+                if (found && misses.Add(IsDiskRead(start, end))) break;
             }
 
             return Decide(column, misses, probes == samples.Length);
+        }
+
+        private bool IsSlowSlotMiss(in StorageCell cell)
+        {
+            ValueHash256 path = cell.Address.ToAccountPath;
+            ValueHash256 slotHash = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
+            if (_flatReader.IsSlotCached(path, slotHash)) return false;
+            UInt256 value = default;
+            long start = Stopwatch.GetTimestamp();
+            bool found = _flatReader.TryGetStorage(path, slotHash, ref value);
+            return found && IsDiskRead(start, Stopwatch.GetTimestamp());
         }
 
         private static bool Decide(PrefetchSampling.Column? column, in MissTimings misses, bool allSamples)
@@ -646,20 +676,24 @@ public static class BasePersistence
                 return true;
             }
 
-            column?.RecordInMemory(misses.Timed != 0, allSamples);
+            if (misses.Timed != 0) column?.RecordPageCacheReads();
+            else column?.RecordNoTimedMiss(fullyCached: allSamples && misses.Missed == 0);
             return false;
         }
 
         /// <summary>
-        /// The timed reads of one column's sampled misses. Two slow reads mean disk, and so does one slow read that is
-        /// at least a quarter of the timed misses, as in a partly cold block. One slow read among many fast ones is a
-        /// scheduler delay or a large page-cache block, and a wrong disk outcome is trusted for
-        /// <see cref="PrefetchSampling.RecheckInterval"/> blocks.
+        /// The sampled misses of one column and the timed reads of the existing ones. Two slow reads mean disk, and so does
+        /// one slow read that is at least a quarter of the timed misses, as in a partly cold block. One slow read among
+        /// many fast ones is a scheduler delay or a large page-cache block, and a wrong disk outcome is trusted for
+        /// <see cref="PrefetchSampling.RecheckInterval"/> blocks with a miss.
         /// </summary>
         private struct MissTimings
         {
             private const int SlowReadsForDisk = 2;
             private const int MissesPerSlowRead = 4;
+
+            /// <summary>The sampled keys that missed the block cache, absent ones included.</summary>
+            public int Missed;
 
             public int Timed { get; private set; }
             private int _slow;
@@ -723,8 +757,8 @@ public static class BasePersistence
         public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) =>
             _flatReader.PlanPrefetch(accountSamples, slotSamples);
 
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
-            _flatReader.Prefetch(accounts, slots, cancellationToken);
+        public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
+            _flatReader.Prefetch(columns, accounts, slots, cancellationToken);
     }
 
     public class WriteBatch<TFlatWriteBatch, TTrieWriteBatch>(

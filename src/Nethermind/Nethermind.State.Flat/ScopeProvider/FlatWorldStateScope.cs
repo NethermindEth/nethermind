@@ -385,8 +385,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
             slotCount += changes.StorageChanges.Length + changes.StorageReads.Length;
 
-        // Decided from a few keys before the rest are collected: a StorageCell computes its hash when it is made, so a
-        // block that needs no prefetch makes only its samples.
+        // Planning may read sampled keys from disk, so a hint cancelled by now does not start it.
+        if (cancellationToken.IsCancellationRequested) return;
+
+        // Decided from a few keys before the rest are collected, so a block that needs no prefetch rents no arrays and
+        // copies no key beyond its samples.
         SampleBuffers samples = default;
         Span<Address> accountSamples = samples.Accounts;
         Span<StorageCell> slotSamples = samples.Slots;
@@ -395,14 +398,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IPersistence.PrefetchColumns columns = _snapshotBundle.PlanPrefetch(accountSamples, slotSamples);
         if (columns == IPersistence.PrefetchColumns.None) return;
 
-        bool collectAccounts = (columns & IPersistence.PrefetchColumns.Accounts) != 0;
-        bool collectSlots = (columns & IPersistence.PrefetchColumns.Slots) != 0;
         // The one copy of the keys: the access list holds them per account, the batched read needs them contiguous.
         // An account's slots stay adjacent, so its hash is computed once below.
-        Address[] accounts = ArrayPool<Address>.Shared.Rent(collectAccounts ? accountChanges.Count : 0);
-        StorageCell[] slots = ArrayPool<StorageCell>.Shared.Rent(collectSlots ? slotCount : 0);
-        if (CollectBalKeys(accountChanges, accounts, slots, cancellationToken, out int accountCount, out int collectedSlots, collectAccounts, collectSlots))
-            _snapshotBundle.Prefetch(accounts.AsSpan(0, accountCount), slots.AsSpan(0, collectedSlots), cancellationToken);
+        Address[] accounts = ArrayPool<Address>.Shared.Rent((columns & IPersistence.PrefetchColumns.Accounts) != 0 ? accountChanges.Count : 0);
+        StorageCell[] slots = ArrayPool<StorageCell>.Shared.Rent((columns & IPersistence.PrefetchColumns.Slots) != 0 ? slotCount : 0);
+        if (CollectBalKeys(accountChanges, accounts, slots, cancellationToken, out int accountCount, out int collectedSlots, columns))
+            _snapshotBundle.Prefetch(columns, accounts.AsSpan(0, accountCount), slots.AsSpan(0, collectedSlots), cancellationToken);
 
         ArrayPool<Address>.Shared.Return(accounts, clearArray: true);
         ArrayPool<StorageCell>.Shared.Return(slots, clearArray: true);
@@ -413,8 +414,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     /// <returns>False when <paramref name="cancellationToken"/> is cancelled before every key is copied.</returns>
     internal static bool CollectBalKeys(ArrayPoolList<ReadOnlyAccountChanges> accountChanges, Address[] accounts, StorageCell[] slots,
-        CancellationToken cancellationToken, out int accountCount, out int slotCount, bool collectAccounts = true, bool collectSlots = true)
+        CancellationToken cancellationToken, out int accountCount, out int slotCount, IPersistence.PrefetchColumns columns = IPersistence.PrefetchColumns.All)
     {
+        bool collectAccounts = (columns & IPersistence.PrefetchColumns.Accounts) != 0;
+        bool collectSlots = (columns & IPersistence.PrefetchColumns.Slots) != 0;
         accountCount = 0;
         slotCount = 0;
         foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
@@ -598,18 +601,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
     {
+        // Planning may read sampled keys from disk, so a cancelled call does not start it.
+        if (cancellationToken.IsCancellationRequested) return;
         SampleBuffers samples = default;
         Span<Address> accountSamples = samples.Accounts;
         Span<StorageCell> slotSamples = samples.Slots;
         accountSamples = accountSamples[..BasePersistence.FillSamples<Address>(accounts, accountSamples)];
         slotSamples = slotSamples[..BasePersistence.FillSamples<StorageCell>(slots, slotSamples)];
         IPersistence.PrefetchColumns columns = _snapshotBundle.PlanPrefetch(accountSamples, slotSamples);
-        if (columns == IPersistence.PrefetchColumns.None) return;
-
-        _snapshotBundle.Prefetch(
-            (columns & IPersistence.PrefetchColumns.Accounts) != 0 ? accounts : default,
-            (columns & IPersistence.PrefetchColumns.Slots) != 0 ? slots : default,
-            cancellationToken);
+        if (columns != IPersistence.PrefetchColumns.None) _snapshotBundle.Prefetch(columns, accounts, slots, cancellationToken);
     }
 
     public bool SupportsPrefetch => _snapshotBundle.SupportsPrefetch;

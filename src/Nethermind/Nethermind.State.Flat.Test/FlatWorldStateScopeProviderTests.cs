@@ -1974,12 +1974,12 @@ public class FlatWorldStateScopeProviderTests
             return Plan;
         }
 
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
             lock (Accounts)
             {
-                Accounts.AddRange(accounts);
-                Slots.AddRange(slots);
+                if ((columns & IPersistence.PrefetchColumns.Accounts) != 0) Accounts.AddRange(accounts);
+                if ((columns & IPersistence.PrefetchColumns.Slots) != 0) Slots.AddRange(slots);
             }
         }
 
@@ -2135,6 +2135,43 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(reader.SlotSamples, Is.EquivalentTo(new[] { new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressB, 1) }));
             Assert.That(reader.Accounts, (plan & IPersistence.PrefetchColumns.Accounts) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
             Assert.That(reader.Slots, (plan & IPersistence.PrefetchColumns.Slots) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+        }
+    }
+
+    // The address warmer's prefetch plans on samples of its keys and sends only the columns the plan chose.
+    [Test]
+    public void Prefetch_SendsOnlyThePlannedColumns([Values(IPersistence.PrefetchColumns.None, IPersistence.PrefetchColumns.Accounts,
+        IPersistence.PrefetchColumns.Slots, IPersistence.PrefetchColumns.All)] IPersistence.PrefetchColumns plan)
+    {
+        PrefetchRecordingReader reader = new() { Plan = plan };
+        using TestContext ctx = new(persistenceReader: reader);
+
+        ctx.Scope.Prefetch([TestItem.AddressA, TestItem.AddressB], [new StorageCell(TestItem.AddressA, 1)], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.AccountSamples, Has.Count.EqualTo(2));
+            Assert.That(reader.Accounts, (plan & IPersistence.PrefetchColumns.Accounts) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+            Assert.That(reader.Slots, (plan & IPersistence.PrefetchColumns.Slots) != 0 ? Has.Count.EqualTo(1) : Is.Empty);
+        }
+    }
+
+    // Planning may read sampled keys from disk, so a cancelled prefetch neither plans nor sends.
+    [Test]
+    public void Prefetch_CancelledBeforeItStarts_PlansAndSendsNothing([Values] bool cancelled)
+    {
+        PrefetchRecordingReader reader = new();
+        using TestContext ctx = new(persistenceReader: reader);
+        Address[] accounts = [TestItem.AddressA, TestItem.AddressB];
+        StorageCell[] slots = [new(TestItem.AddressA, 1)];
+
+        ctx.Scope.Prefetch(accounts, slots, new CancellationToken(cancelled));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.AccountSamples, cancelled ? Is.Empty : Has.Count.EqualTo(2));
+            Assert.That(reader.Accounts, cancelled ? Is.Empty : Has.Count.EqualTo(2));
+            Assert.That(reader.Slots, cancelled ? Is.Empty : Has.Count.EqualTo(1));
         }
     }
 

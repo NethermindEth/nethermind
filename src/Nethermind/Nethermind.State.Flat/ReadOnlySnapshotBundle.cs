@@ -71,10 +71,10 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
 
     /// <summary>Starts reading persisted accounts and slots ahead of use. Keys held by the in-memory snapshots are read from there later, so a prefetch of them only warms a cache.</summary>
-    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+    public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
     {
         GuardDispose();
-        if (persistenceReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots, cancellationToken);
+        if (persistenceReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(columns, accounts, slots, cancellationToken);
     }
 
     /// <summary>Which columns of a block are worth prefetching, decided from sampled keys; see <see cref="IPersistence.IPrefetchingReader.PlanPrefetch"/>.</summary>

@@ -311,11 +311,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
 
         /// <summary>Forwards only the keys this cache cannot serve, so a prefetch never reads what a later read finds here.</summary>
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
             if (inner is not IPersistence.IPrefetchingReader prefetcher) return;
             if (parent.IsCurrent(generation)) DropCached(ref accounts, ref slots);
-            prefetcher.Prefetch(accounts, slots, cancellationToken);
+            prefetcher.Prefetch(columns, accounts, slots, cancellationToken);
         }
 
         private void DropCached(ref Span<Address> accounts, ref Span<StorageCell> slots)
