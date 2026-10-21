@@ -1,0 +1,305 @@
+name: Flaky test auto-fix
+
+on:
+  workflow_run:
+    workflows: ["Nethermind/Ethereum tests"]
+    types: [completed]
+    branches: [master]
+  status:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Failed "Nethermind/Ethereum tests" run to analyze
+        required: true
+
+concurrency:
+  group: flaky-test-fix-${{ github.event_name == 'status' && github.event.sha || 'detect' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  LABEL: flaky-test
+  BASELINE_RUNS: 200
+  BASELINE_SECONDS: 2400
+  MAX_REVIEW_ROUNDS: 3
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  detect:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' &&
+        github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      found: ${{ steps.select.outputs.found }}
+      project: ${{ steps.select.outputs.project }}
+      method: ${{ steps.select.outputs.method }}
+      test: ${{ steps.select.outputs.test }}
+      source: ${{ steps.select.outputs.source }}
+      branch: ${{ steps.select.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download failed job logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/logs"
+          gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "failure") | .id' |
+          while read -r job; do
+            gh api "repos/$REPO/actions/jobs/$job/logs" > "$RUNNER_TEMP/logs/$job.log" || true
+          done
+
+      - name: Select a flaky test candidate
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/ci/flaky_tests.py select --log-dir "$RUNNER_TEMP/logs" --repo "$GITHUB_REPOSITORY" \
+            --label "$LABEL" --out "$RUNNER_TEMP/candidate.json"
+
+      - if: steps.select.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: flaky-candidate
+          path: ${{ runner.temp }}/candidate.json
+
+  fix:
+    needs: detect
+    if: needs.detect.outputs.found == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: ${{ needs.detect.outputs.project }}
+      METHOD: ${{ needs.detect.outputs.method }}
+      BRANCH: ${{ needs.detect.outputs.branch }}
+    steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v6
+        with:
+          ref: master
+          token: ${{ steps.gh-app.outputs.token }}
+
+      - uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: flaky-candidate
+          path: ${{ runner.temp }}
+
+      - name: Build the test project
+        run: dotnet build "src/Nethermind/$PROJECT/$PROJECT.csproj" -c release
+
+      - name: Reproduce
+        id: baseline
+        run: |
+          python3 scripts/ci/flaky_tests.py repeat --project "$PROJECT" --filter "Name~$METHOD" \
+            --runs "$BASELINE_RUNS" --budget "$BASELINE_SECONDS" --out-dir "$RUNNER_TEMP/baseline"
+
+      - name: Record a test that did not reproduce
+        if: steps.baseline.outputs.verdict == 'not-reproduced'
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          RUNS: ${{ steps.baseline.outputs.runs }}
+          TEST: ${{ needs.detect.outputs.test }}
+          FAILED_RUN: ${{ github.event.workflow_run.html_url || inputs.run_id }}
+        run: |
+          gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
+          excerpt=$(jq -r .excerpt "$RUNNER_TEMP/candidate.json")
+          gh issue create --label "$LABEL" --title "Flaky test: $METHOD" --body "$(printf \
+            '`%s` in `%s` failed on master (%s) and passed %s reruns under CPU load in this workflow.\n\n```\n%s\n```\n' \
+            "$TEST" "$PROJECT" "$FAILED_RUN" "$RUNS" "$excerpt")"
+
+      - name: Fix the root cause
+        if: steps.baseline.outputs.verdict == 'flaky'
+        timeout-minutes: 90
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          prompt: |
+            The test `${{ needs.detect.outputs.test }}` in `${{ env.PROJECT }}` (source: `${{ needs.detect.outputs.source }}`)
+            is flaky on master: it failed ${{ steps.baseline.outputs.failures }} of ${{ steps.baseline.outputs.runs }} reruns under CPU load.
+            The original CI failure is in `${{ runner.temp }}/candidate.json` (field `excerpt`); logs of failing reruns are in
+            `${{ runner.temp }}/baseline/failure-*.log`.
+
+            Find the root cause and fix it with the smallest change. The bug may be in the test or in production code;
+            if production code races, fix the production code. Do not add retries, sleeps, longer timeouts,
+            [Retry]/[Ignore]/[Explicit] attributes, or category exclusions, and do not weaken assertions.
+            Follow AGENTS.md, CONTRIBUTING.md and .agents/rules/.
+
+            Verify before you finish:
+              dotnet build src/Nethermind/${{ env.PROJECT }}/${{ env.PROJECT }}.csproj -c release
+              python3 scripts/ci/flaky_tests.py repeat --project ${{ env.PROJECT }} --filter "Name~${{ env.METHOD }}" --runs 200 --budget 1800 --stop-after 1 --out-dir ${{ runner.temp }}/claude
+            Iterate until it reports 0 failures.
+
+            Do not commit or push. Write `${{ runner.temp }}/report.md` for the PR description: the root cause
+            (how the failure happens, with file:line references), the fix, and why it removes the race.
+          claude_args: |
+            --model opus
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(dotnet build:*),Bash(python3 scripts/ci/flaky_tests.py:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
+
+      - name: Verify the fix independently
+        if: steps.baseline.outputs.verdict == 'flaky'
+        id: verify
+        env:
+          FAILURES: ${{ steps.baseline.outputs.failures }}
+          RUNS: ${{ steps.baseline.outputs.runs }}
+        run: |
+          git diff --quiet && { echo "::error::Claude produced no change"; exit 1; }
+          dotnet build "src/Nethermind/$PROJECT/$PROJECT.csproj" -c release
+          runs=$(python3 scripts/ci/flaky_tests.py required-runs "$RUNS" "$FAILURES")
+          python3 scripts/ci/flaky_tests.py repeat --project "$PROJECT" --filter "Name~$METHOD" \
+            --runs "$runs" --budget 3600 --stop-after 1 --out-dir "$RUNNER_TEMP/verify" | tee "$RUNNER_TEMP/verify.json"
+          [ "$(jq -r .failures "$RUNNER_TEMP/verify.json")" = 0 ] && [ "$(jq -r .runs "$RUNNER_TEMP/verify.json")" = "$runs" ]
+
+      - name: Open a draft PR
+        if: steps.verify.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          BEFORE: ${{ steps.baseline.outputs.failures }}/${{ steps.baseline.outputs.runs }}
+          AFTER: ${{ steps.verify.outputs.failures }}/${{ steps.verify.outputs.runs }}
+          FAILED_RUN: ${{ github.event.workflow_run.html_url || inputs.run_id }}
+        run: |
+          gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git commit -am "Fix flaky $METHOD"
+          git push origin "$BRANCH"
+          {
+            cat "$RUNNER_TEMP/report.md" 2>/dev/null
+            printf '\n## Evidence\n\n- Failed on master: %s\n- Before: %s reruns failed under CPU load\n- After: %s reruns failed\n' \
+              "$FAILED_RUN" "$BEFORE" "$AFTER"
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --draft --base master --head "$BRANCH" --label "$LABEL" \
+            --title "Fix flaky $METHOD" --body-file "$RUNNER_TEMP/body.md"
+
+  follow-up:
+    if: |
+      github.event_name == 'status' && github.event.context == 'claude-review/reviewed' &&
+      (github.event.state == 'success' || github.event.state == 'failure') &&
+      startsWith(github.event.branches[0].name, 'test/flaky-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SHA: ${{ github.event.sha }}
+      BRANCH: ${{ github.event.branches[0].name }}
+    steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Find the PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --label "$LABEL" --state open \
+            --json number,isDraft,headRefOid,commits --jq '.[0] // empty')
+          [ -n "$pr" ] || exit 0
+          [ "$(jq -r .headRefOid <<< "$pr")" = "$SHA" ] || exit 0
+          [ "$(jq -r .isDraft <<< "$pr")" = true ] || exit 0
+          echo "number=$(jq -r .number <<< "$pr")" >> "$GITHUB_OUTPUT"
+          echo "rounds=$(( $(jq '.commits | length' <<< "$pr") - 1 ))" >> "$GITHUB_OUTPUT"
+
+      - name: Send for review
+        if: steps.pr.outputs.number && github.event.state == 'success'
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: gh pr ready "$PR" --repo "$GITHUB_REPOSITORY"
+
+      - name: Hand over after too many review rounds
+        id: limit
+        if: steps.pr.outputs.number && github.event.state == 'failure' && steps.pr.outputs.rounds >= fromJSON(env.MAX_REVIEW_ROUNDS)
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
+            --body "Claude review still has blocking findings after $MAX_REVIEW_ROUNDS rounds; leaving this draft for a maintainer."
+
+      - uses: actions/checkout@v6
+        if: steps.pr.outputs.number && github.event.state == 'failure' && steps.limit.outcome == 'skipped'
+        with:
+          ref: ${{ env.BRANCH }}
+          token: ${{ steps.gh-app.outputs.token }}
+
+      - if: steps.pr.outputs.number && github.event.state == 'failure' && steps.limit.outcome == 'skipped'
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - if: steps.pr.outputs.number && github.event.state == 'failure' && steps.limit.outcome == 'skipped'
+        uses: actions/setup-dotnet@v5
+
+      - name: Address review findings
+        if: steps.pr.outputs.number && github.event.state == 'failure' && steps.limit.outcome == 'skipped'
+        timeout-minutes: 60
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          prompt: |
+            PR #${{ steps.pr.outputs.number }} in ${{ github.repository }} fixes a flaky test. Claude review marked it
+            not mergeable. Read the review comments (`gh pr view ${{ steps.pr.outputs.number }} --comments` and
+            `gh api repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}/comments`) and fix every
+            unresolved Critical, High and Medium finding. Keep the flaky-test fix intact; follow AGENTS.md,
+            CONTRIBUTING.md and .agents/rules/.
+
+            The PR body names the test and its project. Rebuild that project with `dotnet build ... -c release` and rerun
+            `python3 scripts/ci/flaky_tests.py repeat --project <project> --filter "Name~<method>" --runs 200 --budget 1800 --stop-after 1`
+            until it reports 0 failures. Do not commit or push.
+          claude_args: |
+            --model opus
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(gh pr view:*),Bash(gh api:*),Bash(dotnet build:*),Bash(python3 scripts/ci/flaky_tests.py:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
+
+      - name: Push and request a new review
+        if: steps.pr.outputs.number && github.event.state == 'failure' && steps.limit.outcome == 'skipped'
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          git diff --quiet && { echo "::error::Claude produced no change"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Address review findings"
+          git push origin "HEAD:$BRANCH"
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-label wip
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label wip
