@@ -33,6 +33,14 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
+    private readonly record struct ProducerThreadState(
+        int BeforeThreadId,
+        int AfterThreadId,
+        ThreadPriority BeforePriority,
+        ThreadPriority AfterPriority,
+        bool BeforeIsMainProcessingThread,
+        bool AfterIsMainProcessingThread);
+
     [Test]
     public void LogDiagnosticTrace_does_not_throw_for_edge_cases([Values("null_hash", "default_either")] string variant)
     {
@@ -202,6 +210,8 @@ public class BlockchainProcessorTests
             private readonly ConcurrentDictionary<Hash256, object> _allowedToFail = new();
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
+            public event Action<Block>? Recovering;
+
             public void Allow(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to recover");
@@ -229,6 +239,8 @@ public class BlockchainProcessorTests
                     _logger.Info($"Data was already there for {block.ToString(Block.Format.Short)}");
                     return;
                 }
+
+                Recovering?.Invoke(block);
 
                 while (true)
                 {
@@ -471,6 +483,22 @@ public class BlockchainProcessorTests
         public Task SuggestAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
             Task.Run(() => _blockTree.SuggestBlock(block, options));
 
+        public Task<ProducerThreadState> SuggestAsyncWithProducerState(Block block, BlockTreeSuggestOptions options) =>
+            Task.Run(() =>
+            {
+                Thread producer = Thread.CurrentThread;
+                ThreadPriority beforePriority = producer.Priority;
+                bool beforeIsMainProcessingThread = BlockchainProcessor.IsMainProcessingThread;
+                _blockTree.SuggestBlock(block, options);
+                return new ProducerThreadState(
+                    producer.ManagedThreadId,
+                    Thread.CurrentThread.ManagedThreadId,
+                    beforePriority,
+                    producer.Priority,
+                    beforeIsMainProcessingThread,
+                    BlockchainProcessor.IsMainProcessingThread);
+            });
+
         public ProcessingTestContext SuggestedWithoutProcessingAndMoveToMain(Block block)
         {
             AddBlockResult result = _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None);
@@ -501,6 +529,12 @@ public class BlockchainProcessorTests
         public ProcessingTestContext Recovered(Block block)
         {
             _recoveryStep.Allow(block.Hash!);
+            return this;
+        }
+
+        public ProcessingTestContext OnRecovery(Action<Block> action)
+        {
+            _recoveryStep.Recovering += action;
             return this;
         }
 
@@ -610,6 +644,12 @@ public class BlockchainProcessorTests
         {
             _queueEmptyResetEvent.WaitOne(ProcessingWait);
             Assert.That(_processingQueueEmptyFired, Is.EqualTo(count), $"Processing queue fired {_processingQueueEmptyFired} times.");
+            return this;
+        }
+
+        public ProcessingTestContext AssertGenesis(Block block)
+        {
+            Assert.That(_blockTree.Genesis?.Hash, Is.EqualTo(block.Hash), "genesis");
             return this;
         }
 
@@ -1120,6 +1160,127 @@ public class BlockchainProcessorTests
             context.AllowedToProcess(first);
             if (enqueue is not null)
                 await enqueue.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    [TestCase(false, TestName = "Default_event_driven_suggestion_restores_producer_thread_state")]
+    [TestCase(true, TestName = "Opted_in_event_driven_suggestion_preserves_producer_thread_state")]
+    [MaxTime(Timeout.MaxTestTime)]
+    public async Task Event_driven_suggestion_preserves_producer_thread_state(bool nonBlockingProcessing)
+    {
+        Block first = _block0;
+        using ManualResetEventSlim processing = new(false);
+        await using ProcessingTestContext context = new ProcessingTestContext(true, startProcessorOnThreadPool: true)
+            .OnBlockProcessing(block =>
+            {
+                if (block.Hash == first.Hash) processing.Set();
+            });
+
+        Task<ProducerThreadState>? suggestion = null;
+        bool recoveryReleased = false;
+        try
+        {
+            context.QueueIsEmpty(1);
+            Task<ProducerThreadState> producerSuggestion = context.SuggestAsyncWithProducerState(
+                first,
+                nonBlockingProcessing
+                    ? BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.NonBlockingProcessing
+                    : BlockTreeSuggestOptions.ShouldProcess);
+            suggestion = producerSuggestion;
+            context.Recovered(first);
+            recoveryReleased = true;
+            Assert.That(processing.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first block never started processing");
+            Task removed = context.WaitUntilRemoved(first);
+            if (!nonBlockingProcessing) context.AllowedToProcess(first);
+            ProducerThreadState state = await producerSuggestion.WaitAsync(TimeSpan.FromSeconds(10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(state.BeforeThreadId, Is.EqualTo(state.AfterThreadId));
+                Assert.That(state.BeforePriority, Is.EqualTo(state.AfterPriority));
+                Assert.That(state.BeforeIsMainProcessingThread, Is.EqualTo(state.AfterIsMainProcessingThread));
+            }
+
+            context.AllowedToProcess(first);
+            await removed.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            if (!recoveryReleased) context.Recovered(first);
+            context.AllowedToProcess(first);
+            if (suggestion is not null) await suggestion.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Non_blocking_suggestion_remains_async_when_recovery_releases_the_queue()
+    {
+        Block prior = _block1D2;
+        Block recovered = _block2D4;
+        Block recoveredBehindIt = _block3D6;
+        using ManualResetEventSlim priorProcessing = new(false);
+        using ManualResetEventSlim recoveredProcessing = new(false);
+        using ManualResetEventSlim laterRecovery = new(false);
+
+        await using ProcessingTestContext context = new ProcessingTestContext(true, startProcessorOnThreadPool: true)
+            .OnRecovery(block =>
+            {
+                if (block.Hash == recoveredBehindIt.Hash) laterRecovery.Set();
+            })
+            .OnBlockProcessing(block =>
+            {
+                if (block.Hash == prior.Hash) priorProcessing.Set();
+                if (block.Hash == recovered.Hash) recoveredProcessing.Set();
+            });
+
+        Task? genesisSuggestion = null;
+        Task? priorSuggestion = null;
+        try
+        {
+            context.QueueIsEmpty(1);
+            context.Recovered(_block0).AllowedToProcess(_block0);
+            genesisSuggestion = context.SuggestAsync(_block0);
+            await genesisSuggestion.WaitAsync(TimeSpan.FromSeconds(10));
+            await context.WaitUntilRemoved(_block0).WaitAsync(TimeSpan.FromSeconds(10));
+            context.AssertGenesis(_block0).QueueIsEmpty(2);
+
+            context.Recovered(prior);
+            priorSuggestion = context.SuggestAsync(prior);
+            Assert.That(priorProcessing.Wait(TimeSpan.FromSeconds(10)), Is.True, "the prior block never started processing");
+            context.Suggested(recovered, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.NonBlockingProcessing);
+            context.Suggested(recoveredBehindIt, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.NonBlockingProcessing);
+            context.CountIs(3);
+            Task priorRemoved = context.WaitUntilRemoved(prior);
+            context.AllowedToProcess(prior);
+            await priorSuggestion.WaitAsync(TimeSpan.FromSeconds(10));
+            await priorRemoved.WaitAsync(TimeSpan.FromSeconds(10));
+
+            context.Recovered(recovered);
+            Assert.That(recoveredProcessing.Wait(TimeSpan.FromSeconds(10)), Is.True, "the recovered block never started processing");
+
+            // The recovered block is held at the branch processor gate. If it ran inline on the recovery writer,
+            // that writer could not reach the block behind it. Reaching the later recovery callback proves the loop
+            // continued while processing the first recovered block was still blocked.
+            context.Recovered(recoveredBehindIt);
+            Assert.That(laterRecovery.Wait(TimeSpan.FromSeconds(10)), Is.True,
+                "the recovery writer was blocked by processing the preceding non-blocking suggestion");
+
+            context.AllowedToProcess(recovered);
+            await context.WaitUntilRemoved(recovered).WaitAsync(TimeSpan.FromSeconds(10));
+            context.AllowedToProcess(recoveredBehindIt);
+            await context.WaitUntilRemoved(recoveredBehindIt).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            context.Recovered(_block0);
+            context.Recovered(recovered);
+            context.Recovered(recoveredBehindIt);
+            context.AllowedToProcess(_block0);
+            context.AllowedToProcess(prior);
+            context.AllowedToProcess(recovered);
+            context.AllowedToProcess(recoveredBehindIt);
+            if (genesisSuggestion is not null) await genesisSuggestion.WaitAsync(TimeSpan.FromSeconds(10));
+            if (priorSuggestion is not null) await priorSuggestion.WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 

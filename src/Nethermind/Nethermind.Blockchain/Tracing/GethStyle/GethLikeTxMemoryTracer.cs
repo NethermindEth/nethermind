@@ -26,6 +26,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
+        options.ResolveTimeout();
     }
 
     /// <inheritdoc/>
@@ -44,6 +45,21 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
         int? storageCount = entry.StorageDelta.HasValue ? ++_storageUpdates : null;
         _resultSize += GethLikeTxTraceConverter.EstimateEntrySize(entry, storageCount);
+    }
+
+    /// <inheritdoc/>
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (CurrentTraceEntry?.Opcode == "INVALID")
+        {
+            CurrentTraceEntry.GasCost = 0;
+            return;
+        }
+        if (error == EvmExceptionType.BadInstruction && CurrentTraceEntry is not null)
+            CurrentTraceEntry.GasCost = 0;
+        if (error == EvmExceptionType.StaticCallViolation && CurrentTraceEntry?.Opcode == "SSTORE")
+            CurrentTraceEntry.Error = "out of gas: write protection";
+        if (!IsExecutionFault(error)) base.ReportOperationError(error);
     }
 
     public override GethLikeTxTrace BuildResult()

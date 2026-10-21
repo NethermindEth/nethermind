@@ -196,11 +196,6 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
                     : DisconnectReason.Exception;
             _session.InitiateDisconnect(reason, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
         }
-        else if (exception is SocketException { SocketErrorCode: SocketError.ConnectionReset })
-        {
-            // Session ignores this transient disconnect reason for privileged peers, so close the transport directly.
-            _ = context.CloseAsync();
-        }
         else
         {
             base.ExceptionCaught(context, exception);

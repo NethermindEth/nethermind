@@ -234,21 +234,22 @@ public class MessageDictionaryTests
     }
 
     [Test]
-    public void Expired_request_id_can_be_reused_and_scope_exception_releases_gate()
+    public void Claimed_response_does_not_remove_reused_request_id()
     {
         MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> dictionary = CreateExpiringDictionary();
-        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> expired = CreateRequest(111);
-        dictionary.Send(expired);
-        Assert.That(SpinWait.SpinUntil(() => expired.Elapsed > TimeSpan.Zero, 1000), Is.True);
-        Assert.That(dictionary.TryExpireRequest(111), Is.True);
-
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> claimed = CreateRequest(111);
+        dictionary.Send(claimed);
         Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> replacement = CreateRequest(111);
-        dictionary.Send(replacement);
         using (DisposableByteBuffer content = UndecodableResponse.Create(111).AsDisposable())
         {
             using MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>.ResponseScope response =
                 dictionary.BeginResponse(content);
-            Assert.That(response.IsExpired, Is.False);
+            Task<bool> expireTask = Task.Run(() => dictionary.TryExpireRequest(111));
+            Assert.That(expireTask.Wait(1000), Is.True);
+            Assert.That(expireTask.Result, Is.False);
+            Task sendTask = Task.Run(() => dictionary.Send(replacement));
+            Assert.That(sendTask.Wait(1000), Is.True);
+
             try
             {
                 response.Complete(112, new[] { Build.A.BlockHeader.TestObject }.ToPooledList(), 100);
@@ -259,12 +260,9 @@ public class MessageDictionaryTests
             }
         }
 
-        using (DisposableByteBuffer pendingContent = UndecodableResponse.Create(111).AsDisposable())
-        {
-            Assert.That(dictionary.GetPendingRequest(pendingContent), Is.SameAs(replacement.Message));
-        }
         using IOwnedReadOnlyList<BlockHeader> responseData = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
         dictionary.Handle(111, responseData, 100);
+        Assert.That(claimed.CompletionSource.Task.IsFaulted, Is.True);
         Assert.That(replacement.CompletionSource.Task.Result, Is.SameAs(responseData));
     }
 
@@ -303,41 +301,20 @@ public class MessageDictionaryTests
     }
 
     [Test]
-    public void Response_scope_releases_gate_after_rejected_completion()
+    public void Response_scope_releases_gate_before_completion()
     {
         MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> dictionary = CreateExpiringDictionary();
         Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
         dictionary.Send(request);
         using DisposableByteBuffer content = UndecodableResponse.Create(111).AsDisposable();
 
-        using ManualResetEventSlim started = new();
-        using ManualResetEventSlim acquired = new();
-        Exception? backgroundException = null;
-        Task waiter;
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> replacement = CreateRequest(112);
         IOwnedReadOnlyList<BlockHeader> rejectedData = Substitute.For<IOwnedReadOnlyList<BlockHeader>>();
         using (MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>.ResponseScope response =
                dictionary.BeginResponse(content))
         {
-            waiter = Task.Run(() =>
-            {
-                using DisposableByteBuffer probe = UndecodableResponse.Create(111).AsDisposable();
-                started.Set();
-                try
-                {
-                    _ = dictionary.GetPendingRequest(probe);
-                }
-                catch (Exception exception)
-                {
-                    backgroundException = exception;
-                }
-                finally
-                {
-                    acquired.Set();
-                }
-            });
-
-            Assert.That(started.Wait(1000), Is.True);
-            Assert.That(acquired.IsSet, Is.False);
+            Task sendTask = Task.Run(() => dictionary.Send(replacement));
+            Assert.That(sendTask.Wait(1000), Is.True);
             try
             {
                 response.Complete(112, rejectedData, 100);
@@ -348,10 +325,34 @@ public class MessageDictionaryTests
             }
         }
 
-        Assert.That(acquired.Wait(1000), Is.True);
-        waiter.GetAwaiter().GetResult();
-        Assert.That(backgroundException, Is.Null);
         rejectedData.Received(1).Dispose();
+        using IOwnedReadOnlyList<BlockHeader> responseData = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
+        dictionary.Handle(112, responseData, 100);
+        Assert.That(replacement.CompletionSource.Task.Result, Is.SameAs(responseData));
+        Assert.That(request.CompletionSource.Task.IsFaulted, Is.True);
+    }
+
+    [Test]
+    public void Aborted_response_scope_cancels_claimed_request()
+    {
+        MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> dictionary = CreateExpiringDictionary();
+        TrackingHeadersMessage message = new(111, new GetBlockHeadersMessage());
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = new(message);
+        dictionary.Send(request);
+
+        using DisposableByteBuffer content = UndecodableResponse.Create(111).AsDisposable();
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>.ResponseScope response =
+                dictionary.BeginResponse(content);
+            throw new InvalidOperationException("decoder failed");
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.CompletionSource.Task.IsCanceled, Is.True);
+            Assert.That(message.IsDisposed, Is.True);
+        }
     }
 
     [Test]

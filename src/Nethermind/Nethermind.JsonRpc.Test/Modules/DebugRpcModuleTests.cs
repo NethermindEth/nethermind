@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -684,6 +685,33 @@ public partial class DebugRpcModuleTests
             Assert.That((JArray?)result["result"]?["structLogs"], Has.Count.EqualTo(expected ?? 6), response);
     }
 
+    [TestCase("6000600060006000600073000000000000000000000000000000000000beef6000f1", 23000UL, "out of gas: out of gas")]
+    [TestCase("600060006000600060017300000000000000000000000000000000000056786000f1", 29548UL, "out of gas: out of gas")]
+    [TestCase("6001600055", 23306UL, "out of gas: not enough gas for reentrancy sentry")]
+    [TestCase("6001600101", 21006UL, "out of gas")]
+    public async Task Debug_traceCall_preserves_out_of_gas_reason(string bytecode, ulong gasLimit, string expectedError)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        string sender = TestItem.AddressA.ToString();
+        string contract = TestItem.AddressC.ToString();
+        const string balance = "0x100000000000000000000";
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [sender] = new { balance, code = "0x", nonce = "0x1" },
+            [contract] = new { balance, code = "0x" + bytecode, nonce = "0x1", state = new Dictionary<string, string>() }
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = sender, to = contract, gas = $"0x{gasLimit:x}" }, "latest",
+            new { tracer = "callTracer", stateOverrides });
+        JToken result = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)result["result"]?["error"], Is.EqualTo(expectedError), response);
+            Assert.That((string?)result["result"]?["gasUsed"], Is.EqualTo($"0x{gasLimit:x}"), response);
+            Assert.That(result["error"], Is.Null, response);
+        }
+    }
+
     [Test]
     public async Task Debug_traceCall_named_tracer_ignores_opcode_logger_limit([Values(-1, 1)] long limit)
     {
@@ -786,6 +814,320 @@ public partial class DebugRpcModuleTests
         RpcTest.AssertSuccess(response);
     }
 
+    [Test]
+    public async Task Debug_traceCall_validates_requested_chain_id(
+        [Values(null, false, true)] bool? mismatch, [Values(null, "callTracer")] string? tracer)
+    {
+        TestSpecProvider provider = new(Cancun.Instance);
+        using Context ctx = await Context.Create(provider);
+        ulong requested = mismatch == true ? provider.ChainId + 1 : provider.ChainId;
+        Dictionary<string, object> transaction = new() { ["to"] = TestItem.AddressC.ToString(), ["gas"] = "0x186a0" };
+        if (mismatch is not null) transaction["chainId"] = "0x" + requested.ToString("x");
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            transaction, "latest", new { tracer });
+        JToken json = JToken.Parse(response);
+        if (mismatch == true)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(json["error"]?["message"]?.Value<string>(), Is.EqualTo($"chainId does not match node's (have={requested}, want={provider.ChainId})"));
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null);
+                Assert.That(json["result"], Is.Not.Null);
+            }
+        }
+    }
+
+    [TestCase(TxType.SetCode, null, null)]
+    [TestCase(TxType.SetCode, null, "0x0")]
+    [TestCase(TxType.Blob, "0x0", null)]
+    [TestCase(TxType.Blob, "0x0", "0x0")]
+    [TestCase(TxType.Blob, "0x1", null)]
+    [TestCase(TxType.Blob, "0x1", "0x0")]
+    public async Task Debug_traceCall_rejects_transaction_types_before_activation(TxType type, string? blobFeeCap, string? txIndex)
+    {
+        IReleaseSpec spec = type == TxType.SetCode ? Cancun.Instance : Shanghai.Instance;
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+        Dictionary<string, object> call = new()
+        {
+            ["to"] = TestItem.AddressC.ToString(),
+            ["gas"] = "0x186a0",
+            ["type"] = "0x" + ((byte)type).ToString("x")
+        };
+        if (type == TxType.SetCode)
+            call["authorizationList"] = new[] { new { chainId = "0x1", address = TestItem.AddressB.ToString(), nonce = "0x0", yParity = "0x0", r = "0x1", s = "0x1" } };
+        else
+        {
+            call["maxFeePerBlobGas"] = blobFeeCap!;
+            call["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) };
+        }
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest", new { txIndex });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(TxErrorMessages.InvalidTxType(spec.Name)), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> UnsupportedBlockOverrides()
+    {
+        (string Json, string? Error, int? Code)[] cases =
+        [
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput),
+            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":null,\"withdrawals\":null}", null, null)
+        ];
+        foreach ((string json, string? error, int? code) in cases)
+            foreach (string? tracer in new string?[] { null, "callTracer" })
+                yield return new TestCaseData(json, error, code, tracer);
+    }
+
+    [TestCaseSource(nameof(UnsupportedBlockOverrides))]
+    public async Task Debug_traceCall_validates_unsupported_block_overrides(string overrides, string? expectedError, int? expectedCode, string? tracer)
+    {
+        using Context ctx = await Context.Create();
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
+            new { tracer, blockOverrides = JsonSerializer.Deserialize<JsonElement>(overrides) });
+        JToken json = JToken.Parse(response);
+        if (expectedError is null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null);
+                Assert.That(json["result"], Is.Not.Null);
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"]?["code"]?.Value<int>(), Is.EqualTo(expectedCode));
+                Assert.That(json["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError));
+            }
+        }
+    }
+
+    [TestCase("0x4a60005260206000f3", "blobBaseFee", "0x9", null)]
+    [TestCase("0x4a60005260206000f3", "blobBaseFee", "0x9", "0x0")]
+    [TestCase("0x4460005260206000f3", "prevRandao", "0x0000000000000000000000000000000000000000000000000000000000000000", null)]
+    [TestCase("0x4460005260206000f3", "prevRandao", "0x0000000000000000000000000000000000000000000000000000000000000000", "0x0")]
+    [TestCase("0x4460005260206000f3", "prevRandao", "0x0000000000000000000000000000000000000000000000000000000000000009", null)]
+    [TestCase("0x4460005260206000f3", "prevRandao", "0x0000000000000000000000000000000000000000000000000000000000000009", "0x0")]
+    public async Task Debug_traceCall_applies_execution_context_override(string code, string field, string value, string? txIndex)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        ctx.Blockchain.BlockTree.Head!.Header.ExcessBlobGas = 0;
+        const string address = "0xc200000000000000000000000000000000000000";
+        object stateOverrides = JsonSerializer.Deserialize<object>("{\"" + address + "\":{\"code\":\"" + code + "\"}}")!;
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = address, gas = "0x186a0" }, "latest",
+            new { stateOverrides, blockOverrides = new Dictionary<string, string> { [field] = value }, txIndex });
+        JToken result = JToken.Parse(response)["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]!.Value<bool>(), Is.False);
+            Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(Bytes.FromHexString(value).ToUInt256()));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_mux_accepts_empty_configuration([Values(null, "null", "{}")] string? config)
+    {
+        using Context ctx = await Context.Create();
+        Dictionary<string, object> options = new() { ["tracer"] = "muxTracer" };
+        if (config is not null) options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>(config);
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+
+        Assert.That(JToken.Parse(response)["result"], Is.EqualTo(JObject.Parse("{}")).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Debug_traceCall_mux_matches_individual_native_and_nested_tracers([Values(null, "0x0")] string? txIndex)
+    {
+        using Context ctx = await Context.Create();
+        Dictionary<string, object> children = new()
+        {
+            ["callTracer"] = new { withLog = true },
+            ["prestateTracer"] = new { includeEmpty = true },
+            ["4byteTracer"] = new { },
+            ["muxTracer"] = new { noopTracer = new { } }
+        };
+        object stateOverrides = new Dictionary<string, object>
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x60006000a000" }
+        };
+        object transaction = new { to = TestItem.AddressC.ToString(), gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction,
+            "latest", new { tracer = "muxTracer", tracerConfig = children, stateOverrides, txIndex });
+        JToken result = JToken.Parse(response)["result"]!;
+
+        foreach ((string tracer, object tracerConfig) in children)
+        {
+            string individual = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction,
+                "latest", new { tracer, tracerConfig, stateOverrides, txIndex });
+            Assert.That(result[tracer], Is.EqualTo(JToken.Parse(individual)["result"]).Using(JToken.EqualityComparer), tracer);
+        }
+        Assert.That(result["callTracer"]!["logs"]![0]!["index"]!.Value<string>(), Is.EqualTo("0x0"));
+    }
+
+    [Test]
+    public async Task Debug_traceCall_mux_keeps_each_javascript_engine_selected()
+    {
+        using Context ctx = await Context.Create();
+        const string first = "{step:function(log){this.address=toHex(log.contract.getAddress());},fault:function(){},result:function(ctx){return {address:this.address,from:toHex(ctx.from),value:ctx.value.toString(10)};}}";
+        const string second = "{setup:function(config){this.config=JSON.parse(config);},step:function(log){this.balance=log.stack.length() ? log.stack.peek(0).toString(10) : '0';},fault:function(){},result:function(ctx,db){return {balance:this.balance,from:toHex(ctx.from),nonce:db.getNonce(ctx.from),config:this.config};}}";
+        Dictionary<string, object> children = new()
+        {
+            [first] = new { },
+            ["muxTracer"] = new Dictionary<string, object> { [second] = new { enabled = true } },
+            ["noopTracer"] = new { }
+        };
+        object stateOverrides = new Dictionary<string, object>
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x600100" }
+        };
+        object transaction = new { to = TestItem.AddressC.ToString(), gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction,
+            "latest", new { tracer = "muxTracer", tracerConfig = children, stateOverrides });
+        JToken result = JToken.Parse(response)["result"]!;
+
+        foreach ((string tracer, object tracerConfig) in children)
+        {
+            string individual = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction,
+                "latest", new { tracer, tracerConfig, stateOverrides });
+            Assert.That(result[tracer], Is.EqualTo(JToken.Parse(individual)["result"]).Using(JToken.EqualityComparer), tracer);
+        }
+    }
+
+    [TestCase("[]", "json: cannot unmarshal array into Go value of type map[string]jsontext.Value")]
+    [TestCase("1", "json: cannot unmarshal number into Go value of type map[string]jsontext.Value")]
+    [TestCase("true", "json: cannot unmarshal bool into Go value of type map[string]jsontext.Value")]
+    [TestCase("\"x\"", "json: cannot unmarshal string into Go value of type map[string]jsontext.Value")]
+    [TestCase("{\"prestateTracer\":{\"diffMode\":true,\"includeEmpty\":true}}", "cannot use diffMode with includeEmpty")]
+    [TestCase("{\"\":{}}", "SyntaxError: SyntaxError: (anonymous): Line 1:3 Unexpected token )")]
+    public async Task Debug_traceCall_mux_rejects_invalid_configuration(string config, string message)
+    {
+        using Context ctx = await Context.Create();
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest",
+            new { tracer = "muxTracer", tracerConfig = JsonSerializer.Deserialize<JsonElement>(config) });
+        JToken json = JToken.Parse(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null);
+            Assert.That(json["error"]!["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(json["error"]!["message"]!.Value<string>(), Is.EqualTo(message));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Debug_traceCall_mux_disposes_started_native_children_when_initialization_fails()
+    {
+        using Context ctx = await Context.Create();
+        int disposed = 0;
+        string name = "mux_disposal_" + Guid.NewGuid().ToString("N");
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory.RegisterTracer(name,
+            (options, _, _, _) => new MuxDisposalTracer(options, () => disposed++));
+        Dictionary<string, object> children = new()
+        {
+            [name] = new { },
+            ["prestateTracer"] = new { diffMode = true, includeEmpty = true }
+        };
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", new { tracer = "muxTracer", tracerConfig = children });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Is.EqualTo("cannot use diffMode with includeEmpty"));
+            Assert.That(disposed, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class MuxDisposalTracer(GethTraceOptions options, Action disposed, bool failResult = false)
+        : Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTxTracer(options)
+    {
+        public override GethLikeTxTrace BuildResult() => failResult
+            ? throw new InvalidDataException("mux child result failure")
+            : base.BuildResult();
+
+        public override void Dispose() => disposed();
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Debug_traceCall_mux_releases_children_when_a_child_fails([Values] bool resultFailure)
+    {
+        using Context ctx = await Context.Create();
+        int disposed = 0;
+        string first = "mux_disposal_first_" + Guid.NewGuid().ToString("N");
+        string failing = "mux_disposal_failing_" + Guid.NewGuid().ToString("N");
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory.RegisterTracer(first,
+            (options, _, _, _) => new MuxDisposalTracer(options, () => disposed++));
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory.RegisterTracer(failing,
+            (options, _, _, _) => new MuxDisposalTracer(options, () => disposed++, failResult: true));
+        Dictionary<string, object> children = new()
+        {
+            [first] = new { },
+            [resultFailure ? failing : "prestateTracer"] = resultFailure ? new { } : new { diffMode = true, includeEmpty = true }
+        };
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", new { tracer = "muxTracer", tracerConfig = children });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["error"], Is.Not.Null);
+            Assert.That(disposed, Is.EqualTo(resultFailure ? 2 : 1));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_rejects_prestate_diff_with_include_empty([Values(null, "0x0")] string? txIndex)
+    {
+        using Context ctx = await Context.Create();
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressB.ToString() }, "latest",
+            new { tracer = "prestateTracer", tracerConfig = new { diffMode = true, includeEmpty = true }, txIndex });
+        JToken error = JToken.Parse(response)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(error["message"]!.Value<string>(), Is.EqualTo("cannot use diffMode with includeEmpty"));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_rejects_conflicting_storage_overrides([Values(null, "callTracer")] string? tracer)
+    {
+        using Context ctx = await Context.Create();
+        const string address = "0xc200000000000000000000000000000000000000";
+        object stateOverrides = JsonSerializer.Deserialize<object>("{\"" + address + "\":{\"state\":{},\"stateDiff\":{}}}")!;
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = address }, "latest", new { stateOverrides, tracer });
+        JToken error = JToken.Parse(response)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(error["message"]!.Value<string>(), Is.EqualTo($"account {address} has both 'state' and 'stateDiff'"));
+        }
+    }
+
     [TestCase(false, false, false, TestName = "Debug_traceCall_without_gas_pricing_uses_zero_base_fee")]
     [TestCase(false, false, true, TestName = "Debug_traceCall_without_gas_pricing_ignores_base_fee_override")]
     [TestCase(true, true, false, TestName = "Debug_traceCall_with_max_fee_uses_live_base_fee")]
@@ -867,11 +1209,11 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
-        [Values("pending", "missing", "unavailable", "unavailable-parent")] string selection, [Values] bool streaming)
+        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals")] string selection, [Values] bool streaming)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
-        if (selection == "unavailable") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
+        if (selection is "unavailable" or "unavailable-with-withdrawals") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
         if (selection == "unavailable-parent")
         {
             Block parent = chain.BlockTree.Head!;
@@ -889,10 +1231,12 @@ public partial class DebugRpcModuleTests
             new
             {
                 txIndex = selection == "unavailable-parent" ? "0x0" : null,
+                blockOverrides = selection == "unavailable-with-withdrawals" ? new { withdrawals = Array.Empty<object>() } : null,
                 stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } }
             });
         (int code, string message) = selection switch
         {
+            "unavailable-with-withdrawals" => (ErrorCodes.InvalidParams, BlockOverride.WithdrawalsNotSupported),
             "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
             "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
             _ => (ErrorCodes.ResourceUnavailable, "No state available")
@@ -1250,7 +1594,7 @@ public partial class DebugRpcModuleTests
         };
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { from = sender, to = touch == "transaction" ? address : contract, gas = "0x186a0", value = "0x0" }, "latest",
-            new { tracer = "prestateTracer", tracerConfig = new { diffMode }, stateOverrides = overrides });
+            new { tracer = "prestateTracer", tracerConfig = new { diffMode, includeEmpty = !diffMode }, stateOverrides = overrides });
 
         JObject result = JObject.Parse(response);
         Assert.That(result["error"], Is.Null, response);

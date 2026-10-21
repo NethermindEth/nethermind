@@ -20,7 +20,6 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
-using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
@@ -418,77 +417,6 @@ public class RlpxHostIntegrationTests
             await cleared.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.That(listenerState.RlpxAddress, Is.Null);
-        }
-        finally
-        {
-            await host.Shutdown();
-        }
-    }
-
-    [Test]
-    public async Task ConnectAsync_closes_privileged_session_when_transport_closes([Values] bool isStatic)
-    {
-        using TcpListener listener = new(IPAddress.Loopback, 0);
-        listener.Start();
-        int listeningPort = ((IPEndPoint)listener.LocalEndpoint).Port;
-        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
-        RlpxHost host = container.Resolve<RlpxHost>();
-        TaskCompletionSource<ISession> firstSessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource<ISession> secondSessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource<(ISession Session, DisconnectEventArgs Args)> sessionDisconnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        int sessionCount = 0;
-        host.SessionCreated += (_, args) =>
-        {
-            switch (Interlocked.Increment(ref sessionCount))
-            {
-                case 1:
-                    firstSessionCreated.TrySetResult(args.Session);
-                    break;
-                case 2:
-                    secondSessionCreated.TrySetResult(args.Session);
-                    break;
-            }
-        };
-        host.SessionDisconnected += (_, session, args) => sessionDisconnected.TrySetResult((session, args));
-        Node node = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), listeningPort)
-        {
-            IsStatic = isStatic,
-            IsTrusted = !isStatic
-        };
-
-        try
-        {
-            await host.Init();
-            Task<Socket> acceptTask = listener.AcceptSocketAsync();
-
-            Assert.That(await host.ConnectAsync(node), Is.True);
-            ISession session = await firstSessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            using Socket accepted = await acceptTask.WaitAsync(TimeSpan.FromSeconds(5));
-            accepted.LingerState = new LingerOption(true, 0);
-
-            accepted.Dispose();
-
-            (ISession disconnectedSession, DisconnectEventArgs args) = await sessionDisconnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(disconnectedSession, Is.SameAs(session));
-                Assert.That(disconnectedSession.IsChannelClosed, Is.True);
-                Assert.That(disconnectedSession.Node.IsStatic, Is.EqualTo(isStatic));
-                Assert.That(disconnectedSession.Node.IsTrusted, Is.EqualTo(!isStatic));
-                Assert.That(args.DisconnectReason, Is.EqualTo(DisconnectReason.ConnectionClosed));
-            }
-
-            Task<Socket> secondAcceptTask = listener.AcceptSocketAsync();
-            Assert.That(await host.ConnectAsync(node), Is.True);
-            ISession secondSession = await secondSessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            using Socket secondAccepted = await secondAcceptTask.WaitAsync(TimeSpan.FromSeconds(5));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(secondSession, Is.Not.SameAs(session));
-                Assert.That(secondSession.SessionId, Is.Not.EqualTo(session.SessionId));
-                Assert.That(secondSession.Node.IsStatic, Is.EqualTo(isStatic));
-                Assert.That(secondSession.Node.IsTrusted, Is.EqualTo(!isStatic));
-            }
         }
         finally
         {

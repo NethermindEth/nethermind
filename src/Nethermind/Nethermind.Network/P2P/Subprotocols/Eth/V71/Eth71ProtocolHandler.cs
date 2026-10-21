@@ -32,6 +32,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V71;
 public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProtocolInfo
 {
     private readonly MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage> _balRequests;
+    private static readonly Func<BlockAccessListsMessage, int, BlockAccessListsMessage> SelectBlockAccessLists =
+        static (message, _) => message;
 
     /// <summary>
     /// Recommended soft limit for BlockAccessLists responses (2 MiB per EIP-8159).
@@ -73,23 +75,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
                 HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Eth71MessageCode.BlockAccessLists:
-                long balLateId = 0;
-                bool balLate = false;
-                using (MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>.ResponseScope response = _balRequests.BeginResponse(message.Content))
-                {
-                    if (response.IsExpired)
-                    {
-                        balLate = true;
-                        balLateId = response.RequestId;
-                    }
-                    else
-                    {
-                        BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content);
-                        ReportIn(balMsg, size);
-                        response.Complete(balMsg.RequestId, balMsg, size);
-                    }
-                }
-                if (balLate) _balRequests.TraceLateResponse(balLateId);
+                HandleCorrelatedResponse(_balRequests, message.Content, size, SelectBlockAccessLists);
                 return true;
             default:
                 return base.HandleMessageCore(message);

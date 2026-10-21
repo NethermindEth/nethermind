@@ -66,7 +66,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             // Optimize for single reader concurrency
             SingleReader = true,
-            // If queues are empty we want the block processing to continue on NewPayload thread and inherit its priority
+            // Default and direct enqueue keep inline processing on the producer; NonBlockingProcessing yields first.
             AllowSynchronousContinuations = true,
         });
 

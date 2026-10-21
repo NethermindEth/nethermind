@@ -55,11 +55,7 @@ public partial class BlockProcessor(
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     protected readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
-    private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
-        new(
-            beaconBlockRootHandler,
-            balManager
-        ));
+    private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() => new(balManager));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private ISystemContractHandler _systemContractHandler;
@@ -316,6 +312,11 @@ public partial class BlockProcessor(
             header.Hash = header.CalculateHash();
         }
 
+        if (BlockchainProcessor.IsMainProcessingThread)
+        {
+            Evm.Metrics.PublishBlockGasPrices(block.Transactions, spec.IsEip1559Enabled, header.BaseFeePerGas);
+        }
+
         return receipts;
     }
 
@@ -474,18 +475,6 @@ public partial class BlockProcessor(
             {
                 if (bal.GetAccountChanges(address) is not { HasStateChanges: true }) balChanges.Add(address);
             }
-        }
-    }
-
-    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
-    {
-        try
-        {
-            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Storing beacon block root for block {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
         }
     }
 
