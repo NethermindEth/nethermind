@@ -14,6 +14,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.LightClient.Test;
 
@@ -89,13 +91,17 @@ public class HostTests
 
     [Test]
     [NonParallelizable]
-    public async Task Ctrl_C_cancels_checkpoint_fetch_before_the_rpc_host_starts()
+    public async Task Ctrl_C_cancels_checkpoint_fetch_while_the_status_listener_is_running()
     {
-        string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
+        string directory = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             "NethermindLightClientShutdownTests", Guid.NewGuid().ToString("N"));
         using TcpListener provider = new(IPAddress.Loopback, 0);
         provider.Start();
         int port = ((IPEndPoint)provider.LocalEndpoint).Port;
+        using TcpListener reservation = new(IPAddress.Loopback, 0);
+        reservation.Start();
+        string rpcUrl = $"http://127.0.0.1:{((IPEndPoint)reservation.LocalEndpoint).Port}";
+        reservation.Stop();
         string assembly = typeof(LightClientHost).Assembly.Location;
         string application = Path.GetDirectoryName(assembly)!;
         ProcessStartInfo start = new("dotnet") { UseShellExecute = OperatingSystem.IsWindows() };
@@ -104,13 +110,21 @@ public class HostTests
         {
             "exec", "--runtimeconfig", Path.Combine(application, "Nethermind.LightClient.runtimeconfig.json"),
             "--depsfile", Path.Combine(application, "Nethermind.LightClient.deps.json"), assembly,
-            "--checkpoint-url", $"https://127.0.0.1:{port}", "--urls", "http://127.0.0.1:0", "--data-dir", directory,
+            "--checkpoint-url", $"https://127.0.0.1:{port}", "--urls", rpcUrl, "--data-dir", directory,
         }) start.ArgumentList.Add(argument);
         using Process client = Process.Start(start)!;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
         try
         {
             using TcpClient connection = await provider.AcceptTcpClientAsync(timeout.Token);
+            using HttpClient rpc = new();
+            using JsonDocument progress = JsonDocument.Parse(await rpc.GetStringAsync(rpcUrl + "/status", timeout.Token));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(progress.RootElement.GetProperty("startupStage").GetString(), Is.EqualTo("checkpoint"));
+                Assert.That(progress.RootElement.GetProperty("rpcInitialized").GetBoolean(), Is.False);
+                Assert.That(progress.RootElement.GetProperty("latest").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            }
             using CancellationTokenSource shutdownDeadline = new(TimeSpan.FromSeconds(5));
             await SendInterruptAsync(client.Id, shutdownDeadline.Token);
             await client.WaitForExitAsync(shutdownDeadline.Token);
@@ -152,9 +166,10 @@ public class HostTests
         LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
         app.MapGet("/", () => "ok");
         app.MapGet("/ws", () => "ok");
+        app.MapGet("/status", () => "ok");
         await app.StartAsync();
         using HttpClient client = new();
-        foreach (string path in new[] { "/", "/ws" })
+        foreach (string path in new[] { "/", "/ws", "/status" })
         {
             using HttpRequestMessage request = new(HttpMethod.Get, app.Urls.Single() + path);
             if (requestOrigin is not null) request.Headers.Add("Origin", requestOrigin == "local" ? app.Urls.Single() : requestOrigin);
@@ -172,7 +187,7 @@ public class HostTests
         await using WebApplication app = CreateApp("http://127.0.0.1:0");
         LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
         using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
-        app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, rpc, NullLogger.Instance));
+        app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance));
         await app.StartAsync();
         using HttpClient client = new();
         using HttpRequestMessage preflight = new(HttpMethod.Options, app.Urls.Single());
@@ -261,6 +276,112 @@ public class HostTests
     }
 
     [Test]
+    public async Task Failed_initialization_stops_the_listener([Values] bool synchronous)
+    {
+        await using WebApplication app = CreateApp("http://127.0.0.1:0");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => LightClientHost.RunAsync(app, _ => synchronous
+            ? throw new InvalidDataException("bootstrap failed")
+            : Task.FromException(new InvalidDataException("bootstrap failed"))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(app.Lifetime.ApplicationStopping.IsCancellationRequested, Is.True);
+            Assert.That(app.Lifetime.ApplicationStopped.IsCancellationRequested, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Initialization_timeout_is_not_reclassified_as_normal_application_shutdown()
+    {
+        await using WebApplication app = CreateApp("http://127.0.0.1:0");
+
+        InvalidOperationException? failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            LightClientHost.RunAsync(app, _ => Task.FromCanceled(new CancellationToken(canceled: true))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure!.InnerException, Is.InstanceOf<OperationCanceledException>());
+            Assert.That(app.Lifetime.ApplicationStopping.IsCancellationRequested, Is.True);
+            Assert.That(app.Lifetime.ApplicationStopped.IsCancellationRequested, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Listener_serves_startup_rpc_and_progress_during_blocked_initialization()
+    {
+        await using WebApplication app = CreateApp("http://127.0.0.1:0");
+        LightClientStatus status = new(11155111, [], _ => false, _ => false);
+        LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
+        app.UseWebSockets();
+        app.MapGet("/status", status.Read);
+        app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, status.InvokeAsync, NullLogger.Instance));
+        app.MapGet("/ws", status.HandleWebSocketAsync);
+        TaskCompletionSource initialized = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task run = LightClientHost.RunAsync(app, async token =>
+        {
+            status.SetStage(StartupStage.Bootstrap);
+            initialized.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+        });
+        try
+        {
+            await initialized.Task;
+            using HttpClient client = new();
+            using JsonDocument progress = JsonDocument.Parse(await client.GetStringAsync(app.Urls.Single() + "/status"));
+            using StringContent request = new("""{"jsonrpc":"2.0","id":1,"method":"eth_syncing","params":[]}""", Encoding.UTF8, "application/json");
+            using HttpResponseMessage response = await client.PostAsync(app.Urls.Single(), request);
+            using JsonDocument syncing = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            using HttpRequestMessage upgrade = new(HttpMethod.Get, app.Urls.Single() + "/ws");
+            upgrade.Headers.Add("Connection", "Upgrade");
+            upgrade.Headers.Add("Upgrade", "websocket");
+            upgrade.Headers.Add("Sec-WebSocket-Version", "13");
+            upgrade.Headers.Add("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==");
+            using HttpResponseMessage unavailable = await client.SendAsync(upgrade);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(run.IsCompleted, Is.False);
+                Assert.That(progress.RootElement.GetProperty("startupStage").GetString(), Is.EqualTo("bootstrap"));
+                Assert.That(progress.RootElement.GetProperty("latest").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(syncing.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Object));
+                Assert.That(syncing.RootElement.GetProperty("result").EnumerateObject().Select(item => item.Name),
+                    Is.EquivalentTo(new[] { "startingBlock", "currentBlock", "highestBlock" }));
+                Assert.That(unavailable.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
+            }
+        }
+        finally
+        {
+            app.Lifetime.StopApplication();
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await run);
+        }
+    }
+
+    [Test]
+    public async Task Application_shutdown_cancels_pending_rpc_work()
+    {
+        DefaultHttpContext context = new();
+        using MemoryStream input = new(Encoding.UTF8.GetBytes("""{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":[]}"""));
+        context.Request.Body = input;
+        using MemoryStream output = new();
+        context.Response.Body = output;
+        using CancellationTokenSource stopping = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task pending = RpcEndpoint.HandleAsync(context, async (_, _, token) =>
+        {
+            entered.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return false;
+        }, NullLogger.Instance, stoppingToken: stopping.Token);
+        await entered.Task;
+
+        await stopping.CancelAsync();
+
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await pending);
+        Assert.That(output.Length, Is.Zero, "Shutdown must not manufacture a successful response.");
+    }
+
+    [Test]
     public async Task Host_waits_for_consensus_work_before_disposal([Values] bool failSync)
     {
         await using WebApplication app = CreateApp("http://127.0.0.1:0");
@@ -344,5 +465,135 @@ public class HostTests
             if (!sender.HasExited) sender.Kill(entireProcessTree: true);
             await sender.WaitForExitAsync();
         }
+    }
+}
+
+public class LightClientStatusTests
+{
+    private static readonly Address HostedAddress = new("0x1000000000000000000000000000000000000001");
+    private static readonly VerifiedHead Head = new(400, 200, Keccak.Compute("head"), Keccak.Compute("state"));
+
+    [Test]
+    public void Startup_reports_unknown_heads_and_individual_waiting_accounts(
+        [Values("checkpoint", "beacon", "bootstrap", "execution")] string stageName)
+    {
+        StartupStage stage = Enum.Parse<StartupStage>(stageName, ignoreCase: true);
+        LightClientStatus status = new(11155111, [HostedAddress], _ => false, _ => false);
+        status.SetStage(stage);
+
+        ClientProgress progress = status.Read();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(progress.StartupStage, Is.EqualTo(stage.ToString().ToLowerInvariant()));
+            Assert.That(progress.RpcInitialized, Is.False);
+            Assert.That(progress.Latest, Is.Null);
+            Assert.That(progress.Finalized, Is.Null);
+            Assert.That(progress.History, Is.Null);
+            Assert.That(progress.HostedAccounts, Has.Length.EqualTo(1));
+            Assert.That(progress.HostedAccounts[0], Is.EqualTo(new HostedAccountProgress(HostedAddress.ToString(),
+                null, null, null, 0, 0, false, "waiting", null, null)));
+        }
+    }
+
+    [TestCase("eth_chainId", "[]", "\"0xaa36a7\"")]
+    [TestCase("eth_syncing", "[]", "{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x0\",\"highestBlock\":\"0x0\"}")]
+    public async Task Startup_metadata_preserves_standard_rpc_shapes(string method, string parameters, string expected)
+    {
+        LightClientStatus status = new(11155111, [], _ => false, _ => false);
+        using JsonDocument input = JsonDocument.Parse(parameters);
+
+        object result = await status.InvokeAsync(method, input.RootElement, CancellationToken.None);
+
+        Assert.That(JsonSerializer.Serialize(result), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Startup_metadata_rejects_invalid_parameters(
+        [Values("eth_chainId", "eth_syncing")] string method, [Values("null", "{}", "[1]")] string parameters)
+    {
+        LightClientStatus status = new(11155111, [], _ => false, _ => false);
+        using JsonDocument input = JsonDocument.Parse(parameters);
+
+        Assert.That(async () => await status.InvokeAsync(method, input.RootElement, CancellationToken.None),
+            Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32602));
+    }
+
+    [Test]
+    public void Startup_data_requests_return_an_actionable_error(
+        [Values("eth_blockNumber", "eth_getBalance", "eth_getLogs", "eth_sendRawTransaction")] string method)
+    {
+        LightClientStatus status = new(11155111, [], _ => false, _ => false);
+        status.SetStage(StartupStage.Bootstrap);
+
+        Assert.That(async () => await status.InvokeAsync(method, default, CancellationToken.None),
+            Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32000)
+                .And.Message.Contains("bootstrap").And.Message.Contains("GET /status"));
+    }
+
+    [Test]
+    public async Task Running_status_keeps_freshness_cache_and_history_coverage_separate()
+    {
+        ulong slot = Head.Slot;
+        LightClientStatus status = new(11155111, [HostedAddress],
+            head => head?.IsFresh(slot, 10) ?? false, head => head?.IsFresh(slot, 300) ?? false);
+        HostedAccountProgress account = new(HostedAddress.ToString(), Head.Number - 1, Keccak.Compute("previous").ToString(),
+            Head.StateRoot.ToString(), 3, 4, true, "complete", null, null);
+        HistoryProgress history = new(100, 200, 50, 200, true, null);
+        bool invoked = false;
+        status.Initialize((_, _, _) => { invoked = true; return Task.FromResult<object>("verified"); },
+            _ => Task.CompletedTask, () => Head, () => Head, target =>
+            {
+                Assert.That(target, Is.EqualTo(Head));
+                return [account];
+            }, () => history);
+
+        ClientProgress current = status.Read();
+        slot += 11;
+        ClientProgress staleLatest = status.Read();
+        slot += 290;
+        ClientProgress staleFinalized = status.Read();
+        object result = await status.InvokeAsync("eth_blockNumber", default, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(current.StartupStage, Is.EqualTo("running"));
+            Assert.That(current.RpcInitialized, Is.True);
+            Assert.That(current.Latest!.BlockNumber, Is.EqualTo(Head.Number));
+            Assert.That(current.Latest.Fresh, Is.True);
+            Assert.That(staleLatest.Latest!.Fresh, Is.False);
+            Assert.That(staleLatest.Finalized!.Fresh, Is.True);
+            Assert.That(staleFinalized.Finalized!.Fresh, Is.False);
+            Assert.That(staleLatest.HostedAccounts, Is.EqualTo(new[] { account }));
+            Assert.That(staleLatest.History, Is.SameAs(history));
+            Assert.That(invoked, Is.True);
+            Assert.That(result, Is.EqualTo("verified"));
+        }
+    }
+
+    [Test]
+    public void Stopped_or_failed_runtime_rejects_data_without_touching_disposed_services(
+        [Values("stopping", "failed")] string stageName)
+    {
+        StartupStage stage = Enum.Parse<StartupStage>(stageName, ignoreCase: true);
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        status.Initialize((_, _, _) => throw new AssertionException("Disposed RPC must not be called."),
+            _ => throw new AssertionException("Disposed subscriptions must not be called."),
+            () => null, () => null, _ => [], () => new(null, null, null, null, false, null));
+        status.SetStage(stage);
+
+        Assert.That(async () => await status.InvokeAsync("eth_getBalance", default, CancellationToken.None),
+            Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32000));
+    }
+
+    [Test]
+    public void Startup_rpc_observes_request_cancellation()
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        using CancellationTokenSource stop = new();
+        stop.Cancel();
+
+        Assert.That(async () => await status.InvokeAsync("eth_syncing", default, stop.Token),
+            Throws.TypeOf<OperationCanceledException>());
     }
 }

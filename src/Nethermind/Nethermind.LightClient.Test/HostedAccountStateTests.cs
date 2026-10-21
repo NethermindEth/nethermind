@@ -60,6 +60,12 @@ public class HostedAccountStateTests
             Assert.That(source.AccountFetches, Is.EqualTo(1));
             Assert.That(source.StorageFetches, Is.EqualTo(1));
             Assert.That(source.CodeFetches, Is.EqualTo(1));
+            Assert.That(hosted.GetProgress(FirstHead), Is.EqualTo(new[]
+            {
+                new HostedAccountProgress(HostedAddress.ToString(), FirstHead.Number, FirstHead.BlockHash.ToString(),
+                    FirstHead.StateRoot.ToString(), source.Storage.Count, source.Code.Length, true, "complete", null, null),
+            }));
+            Assert.That(hosted.GetProgress(NextHead)[0].Current, Is.False);
         }
     }
 
@@ -231,12 +237,23 @@ public class HostedAccountStateTests
             Assert.That(hosted.TryGetAccount(NextHead, HostedAddress, out _), Is.False);
             Assert.That(hosted.TryGetStorage(HostedAddress, previous, 1, out UInt256 value), Is.True);
             Assert.That(value, Is.EqualTo((UInt256)42));
+            Assert.That(hosted.GetProgress(NextHead)[0].Stage, Is.EqualTo("failed"));
+            Assert.That(hosted.GetProgress(NextHead)[0].BlockNumber, Is.EqualTo(FirstHead.Number));
+            Assert.That(hosted.GetProgress(NextHead)[0].RefreshBlock, Is.EqualTo(NextHead.Number));
+            Assert.That(hosted.GetProgress(NextHead)[0].Current, Is.False);
+            Assert.That(hosted.GetProgress(NextHead)[0].LastError, Is.Not.Null.And.Not.Empty);
         }
 
         source.FailStage = null;
         source.Account = source.Account.WithChangedCodeHash(Keccak.Compute(source.Code));
         await hosted.RefreshAsync(NextHead, CancellationToken.None);
         Assert.That(hosted.TryGetAccount(NextHead, HostedAddress, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hosted.GetProgress(NextHead)[0].Stage, Is.EqualTo("complete"));
+            Assert.That(hosted.GetProgress(NextHead)[0].Current, Is.True);
+            Assert.That(hosted.GetProgress(NextHead)[0].LastError, Is.Null);
+        }
     }
 
     [Test]
@@ -362,6 +379,10 @@ public class HostedAccountStateTests
             Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.True);
             Assert.That(hosted.TryGetStorage(HostedAddress, previous, 1, out UInt256 value), Is.True);
             Assert.That(value, Is.EqualTo((UInt256)42));
+            Assert.That(hosted.GetProgress(NextHead)[0].Stage, Is.EqualTo("refreshing"));
+            Assert.That(hosted.GetProgress(NextHead)[0].BlockNumber, Is.EqualTo(FirstHead.Number));
+            Assert.That(hosted.GetProgress(NextHead)[0].Current, Is.False);
+            Assert.That(hosted.GetProgress(NextHead)[0].RefreshBlock, Is.EqualTo(NextHead.Number));
         }
         source.StorageGate.SetResult();
         await refresh;
@@ -381,11 +402,18 @@ public class HostedAccountStateTests
         HostedAccountState hosted = Create(source);
         using CancellationTokenSource stop = new();
         Task refresh = hosted.RefreshAsync(FirstHead, stop.Token);
+        Assert.That(hosted.GetProgress(FirstHead)[0].Stage, Is.EqualTo("refreshing"));
 
         await stop.CancelAsync();
 
         await Assert.ThrowsAsync<TaskCanceledException>(async () => await refresh);
         Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hosted.GetProgress(FirstHead)[0].Stage, Is.EqualTo("canceled"));
+            Assert.That(hosted.GetProgress(FirstHead)[0].BlockNumber, Is.Null);
+            Assert.That(hosted.GetProgress(FirstHead)[0].Current, Is.False);
+        }
     }
 
     [Test]

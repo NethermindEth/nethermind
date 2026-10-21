@@ -83,6 +83,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     internal string DiscoveryDomain => _services.Resolve<INetworkConfig>().DiscoveryDns ?? "<unset>";
     internal HistoryProgress LogHistoryProgress => _logHistory.IsValueCreated ? _logHistory.Value.Progress
         : new(null, null, null, null, false, null);
+    internal HostedAccountProgress[] GetHostedAccountProgress(VerifiedHead? target) =>
+        _hostedAccounts?.GetProgress(target) ?? [];
 
     internal ExecutionPeerTransport(string network, ILogManager logManager, VerifiedHead head, ulong timestamp,
         string? dataDirectory = null, Address[]? hostedAccounts = null, bool hostedAccountsBal = false, int port = 30307)

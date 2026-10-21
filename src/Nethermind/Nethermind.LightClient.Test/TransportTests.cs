@@ -143,7 +143,7 @@ public class TransportTests
     private static IContainer Services(ExecutionPeerTransport transport) => (IContainer)typeof(ExecutionPeerTransport)
         .GetField("_services", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(transport)!;
 
-    private static string PeerTestDirectory() => Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
+    private static string PeerTestDirectory() => Path.Combine(TestContext.CurrentContext.WorkDirectory, "artifacts",
         "NethermindLightClientPeerTests", Guid.NewGuid().ToString("N"));
 
     [Test]
@@ -435,7 +435,7 @@ public class TransportTests
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
         context.Response.Body = new MemoryStream();
         using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
-        await RpcEndpoint.HandleAsync(context, rpc, NullLogger.Instance);
+        await RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance);
         Assert.That(context.Response.StatusCode, Is.EqualTo(transaction ? 200 : StatusCodes.Status413PayloadTooLarge));
         if (transaction)
         {
@@ -455,7 +455,8 @@ public class TransportTests
         context.Response.Body = new MemoryStream();
         RecordingLogger logger = new();
 
-        await RpcEndpoint.HandleAsync(context, new VerifiedRpc(null!, () => throw new AssertionException("Unexpected head read."), 1), logger);
+        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        await RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, logger);
 
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
@@ -479,7 +480,7 @@ public class TransportTests
                 DefaultHttpContext context = new();
                 context.Request.Body = bodies[i];
                 context.Response.Body = new MemoryStream();
-                active[i] = RpcEndpoint.HandleAsync(context, rpc, NullLogger.Instance);
+                active[i] = RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance);
             }
 
             for (int i = 0; i < bodies.Length; i++)
@@ -509,7 +510,7 @@ public class TransportTests
             "[{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"],\"id\":1},{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":2}]"));
         context.Response.Body = new MemoryStream();
 
-        Task pending = RpcEndpoint.HandleAsync(context, rpc, NullLogger.Instance, clock);
+        Task pending = RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance, clock);
         await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(clock.DueTime, Is.EqualTo(TimeSpan.FromSeconds(90)));
         clock.Expire();
@@ -536,7 +537,7 @@ public class TransportTests
             "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"]}"));
         context.Response.Body = new MemoryStream();
 
-        Task pending = RpcEndpoint.HandleAsync(context, rpc, NullLogger.Instance, clock);
+        Task pending = RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance, clock);
         await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
         clock.Expire();
         source.Complete();
@@ -555,7 +556,7 @@ public class TransportTests
         DefaultHttpContext context = new();
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(request));
         context.Response.Body = new MemoryStream();
-        await RpcEndpoint.HandleAsync(context, rpc, logger ?? NullLogger.Instance);
+        await RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, logger ?? NullLogger.Instance);
         return context;
     }
 

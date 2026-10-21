@@ -64,11 +64,27 @@ internal static class LightClientHost
         await app.StartAsync(lifetime.ApplicationStopping);
         if (logger is not null)
             foreach (string url in app.Urls)
-                logger.LogInformation("Verified RPC listening at {Url}", url);
+                logger.LogInformation("Light-client RPC and status listening at {Url}", url);
         Task server = app.WaitForShutdownAsync();
-        Task sync = synchronize(lifetime.ApplicationStopping);
-        await Task.WhenAny(server, sync);
-        lifetime.StopApplication();
-        await Task.WhenAll(server, sync);
+        Task? sync = null;
+        try
+        {
+            sync = SynchronizeAsync();
+            await Task.WhenAny(server, sync);
+        }
+        finally
+        {
+            lifetime.StopApplication();
+            await Task.WhenAll(server, sync ?? Task.CompletedTask);
+        }
+
+        async Task SynchronizeAsync()
+        {
+            try { await synchronize(lifetime.ApplicationStopping); }
+            catch (OperationCanceledException exception) when (!lifetime.ApplicationStopping.IsCancellationRequested)
+            {
+                throw new InvalidOperationException("Light-client startup or synchronization was canceled before application shutdown.", exception);
+            }
+        }
     }
 }

@@ -17,7 +17,9 @@ internal static class RpcEndpoint
     private static readonly SemaphoreSlim ActiveRequests = new(MaxActiveRequests);
     private static readonly SemaphoreSlim LargeRequests = new(4, 4);
 
-    internal static async Task HandleAsync(HttpContext context, VerifiedRpc rpc, ILogger logger, TimeProvider? clock = null)
+    internal static async Task HandleAsync(HttpContext context,
+        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, TimeProvider? clock = null,
+        CancellationToken stoppingToken = default)
     {
         if (!ActiveRequests.Wait(0))
         {
@@ -29,8 +31,8 @@ internal static class RpcEndpoint
         try
         {
             using CancellationTokenSource timeout = new(RequestDeadline, clock ?? TimeProvider.System);
-            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, context.RequestAborted);
-            try { await HandleCoreAsync(context, rpc, logger, cancellation.Token); }
+            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, context.RequestAborted, stoppingToken);
+            try { await HandleCoreAsync(context, invoke, logger, cancellation.Token); }
             catch (OperationCanceledException) when (timeout.IsCancellationRequested && !context.RequestAborted.IsCancellationRequested)
             {
                 if (context.Response.HasStarted) context.Abort();
@@ -41,7 +43,8 @@ internal static class RpcEndpoint
         finally { ActiveRequests.Release(); }
     }
 
-    private static async Task HandleCoreAsync(HttpContext context, VerifiedRpc rpc, ILogger logger, CancellationToken cancellationToken)
+    private static async Task HandleCoreAsync(HttpContext context,
+        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken)
     {
         long started = Stopwatch.GetTimestamp();
         bool large = false;
@@ -103,11 +106,11 @@ internal static class RpcEndpoint
                         await context.Response.WriteAsJsonAsync(Error(null, -32600, "Batch must contain between 1 and 32 requests"), cancellationToken);
                         return;
                     }
-                    await WriteBatchAsync(context, request, rpc.InvokeAsync, logger, cancellationToken);
+                    await WriteBatchAsync(context, request, invoke, logger, cancellationToken);
                 }
                 else
                 {
-                    object? response = await InvokeAsync(request, rpc, logger, cancellationToken);
+                    object? response = await InvokeAsync(request, invoke, logger, cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
                     if (response is null) context.Response.StatusCode = StatusCodes.Status204NoContent;
                     else await context.Response.WriteAsJsonAsync(response, cancellationToken);
@@ -116,9 +119,6 @@ internal static class RpcEndpoint
         }
         finally { if (large) LargeRequests.Release(); }
     }
-
-    private static Task<object?> InvokeAsync(JsonElement request, VerifiedRpc rpc, ILogger logger, CancellationToken cancellationToken) =>
-        InvokeAsync(request, rpc.InvokeAsync, logger, cancellationToken);
 
     internal static async Task WriteBatchAsync(HttpContext context, JsonElement requests,
         Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken)

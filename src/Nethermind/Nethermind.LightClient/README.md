@@ -57,13 +57,34 @@ selection and before a cross-check.
 
 `--network` accepts `mainnet` (default), `hoodi` and `sepolia`. The listener defaults to
 `http://127.0.0.1:8545`; `--urls` overrides it. `--help` prints the options.
-To use MetaMask or another browser wallet extension, wait for `Verified RPC
-listening`, then select `http://127.0.0.1:8545` as the RPC URL for Ethereum
+To use MetaMask or another browser wallet extension, select
+`http://127.0.0.1:8545` as the RPC URL for Ethereum
 Mainnet (chain ID `1`), or Sepolia (chain ID `11155111`). In MetaMask's network
 settings, edit the existing network and add the local endpoint to its RPC URLs;
 see the [wallet setup guide](https://support.metamask.io/configure/networks/how-to-add-a-custom-network-rpc#adding-or-editing-rpc-urls).
 HTTP RPC and WebSocket subscriptions share the port; the WebSocket URL is
 `ws://127.0.0.1:8545/ws`.
+
+The HTTP listener starts before checkpoint selection, beacon bootstrap and
+execution discovery. `GET /status` reports the startup stage (`checkpoint`,
+`beacon`, `bootstrap`, `execution`, then `running`), whether RPC initialization
+has completed, authenticated latest/finalized heights and freshness, each hosted
+account's retained snapshot and refresh outcome, and authenticated history
+coverage/backfill progress. Unknown authenticated heads are `null`; listening
+or `running` alone does not mean wallet data is ready. The `latest.fresh` policy
+is 120 seconds and the `finalized.fresh` policy is one hour. A hosted account's
+`current` flag means its complete retained state matches the reported latest
+state root; check latest freshness separately. History coverage is independent
+of these flags and grows on demand.
+
+During initialization, `eth_chainId` is available and `eth_syncing` returns the
+standard `startingBlock`, `currentBlock`, `highestBlock` quantity object. Its
+zero heights mean execution progress is unknown; `/status` supplies the startup
+stage. Other RPC requests return an actionable startup error instead of a
+success-shaped placeholder. WebSocket upgrades return HTTP 503 until RPC
+initialization completes. After initialization, `eth_syncing` follows the
+authenticated latest head; it does not promise all configured accounts or
+requested history have finished downloading.
 
 Loopback listeners reject non-loopback Host headers. Requests from browser
 extensions (`chrome-extension://` or `moz-extension://`) are allowed, including
@@ -128,7 +149,7 @@ Set `--beacon-quic-port 0` to disable QUIC.
 QUIC uses mutually authenticated TLS 1.3 and its own stream multiplexing. Signed beacon
 ENRs advertise the separate QUIC port; discovered QUIC addresses are tried
 before TCP, with TCP fallback when QUIC cannot connect. All libp2p components
-use version 1.0.4, including its recent TLS, channel, cancellation and yamux fixes.
+use version 1.1.0.
 Outbound connections to public beacon and execution peers must be
 permitted. The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
@@ -239,14 +260,17 @@ older finalized block. Use `"finalized"` explicitly when finality is required.
 `"latest"` state, block, log, fee and transaction-preparation requests require
 an authenticated head within ten beacon slots (120 seconds on supported networks)
 of the current slot; future or older heads return `-32001`. Explicit block
-numbers and hashes are outside this latest-head freshness gate and retain their
-separate history bounds and finalized-head availability checks.
+numbers and hashes are outside these time-based freshness gates and retain their
+separate authenticated-history bounds. Explicit `"finalized"` selectors require
+finality within one hour; an older authenticated finalized anchor can still
+authenticate explicit historical selectors and ancestry.
 `eth_blockNumber` reports the last known height and is not a freshness check.
 `eth_syncing` takes no parameters and reports `startingBlock`, `currentBlock`,
 and `highestBlock` as hex quantities while waiting for a fresh head. The starting
 height is fixed when the RPC is created; the highest height is the known
 verified tip, so it can equal the current height when the remote target is unknown.
-This status is available once the RPC listener starts after checkpoint bootstrap.
+This status is available before checkpoint bootstrap; unknown execution heights
+are initially zero.
 A `false` result describes consensus freshness, not hosted-cache completeness or
 historical log coverage; requested data still has to be fetched and verified.
 Historical state selectors are limited to 32 ancestors of either the finalized
@@ -256,13 +280,29 @@ still an ancestor in that window; orphan hashes fail canonical validation.
 availability within that range still depends on a SNAP peer retaining the state root.
 At most two historical state requests run concurrently; excess requests fail promptly,
 leaving SNAP and HTTP capacity for current-head reads.
-Block and receipt selectors and single-block log hash
-selectors retain a separate 256-ancestor window anchored to either head.
-Log ranges can include finalized and optimistic blocks on one pinned authenticated
-chain, up to 256 ancestors behind the selected head (257 blocks including that
-head). Omitted bounds select authenticated `"latest"`; crossing finality verifies
-the finalized block hash on the selected chain. Older history needs a separate
-backfill and is not served by extending this recent window.
+Block and receipt selectors retain a separate 256-ancestor window anchored to
+either head. Log queries accept at most 512 inclusive blocks, including ranges
+crossing finality on one pinned authenticated chain. Omitted bounds select
+authenticated `"latest"`; crossing finality verifies the finalized block hash
+on the selected chain. Optimistic ancestry is transient and bounded to 512
+parent steps behind the pinned optimistic head. Older finalized ranges and log
+`blockHash` selectors use an on-demand authenticated header cache retaining at
+most 262,144 headers, including the finalized anchor. Bodies and receipts must
+still be fetched and verified for each selected block; cached headers alone do not establish complete log results.
+
+Finalized log headers persist under `<data-dir>/el/<network>/log-history` in
+bounded RocksDB slots with synchronous WAL writes and a 1 GiB disk-write
+admission limit; RocksDB compaction can temporarily exceed that disk footprint.
+On restart, cached RLP headers are reattached to current
+authenticated finality before use; saved metadata is not a trust anchor.
+Missing or corrupt records are fetched and verified again. A single background
+backfill combines outstanding requests and continues after an individual HTTP
+wait times out, with a 30-minute worker deadline. A later request resumes
+retained progress after failure. `/status.history` reports verified coverage,
+the requested target, backfill activity and errors. A cold old-history request
+can exceed the HTTP deadline while backfill continues; retry after coverage
+reaches the requested range. Shutdown cancels and joins the worker before
+closing its database.
 `pending`, `safe` and `earliest` return an explicit unavailable error (`-32001`):
 execution peers do not authenticate pending state, a distinct safe execution head
 is not available, and genesis is outside the bounded history. The optimistic head can be reorganized,
@@ -326,8 +366,8 @@ Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/js
 
 JSON-RPC 2.0 batches (up to 32 requests) and notifications are supported.
 No request is forwarded without verification. Receipt/log queries fail when
-any block body or receipt set is unavailable; log ranges are capped at 16
-finalized blocks and 10,000 matches.
+any block body or receipt set is unavailable; log ranges are capped at 512
+inclusive blocks and 10,000 matches.
 Verified block, transaction, receipt, log, fee-history and proof results have an
 8 MiB UTF-8 JSON limit. At most four execution-data requests may fetch and render
 at once; excess work receives `-32005` immediately. HTTP batches have a 16 MiB
@@ -390,8 +430,11 @@ afterwards, including blob-schedule digest changes. Gossip payloads are capped
 at 16 KiB decoded and 32 pending validations; signatures and branches are
 checked before accepted messages are forwarded. Updates share a serialized
 consensus/journal owner with polling, and RPC publication reads only durably
-recorded headers. A one-minute request/response poll repairs missed messages
-and committee gaps while gossip advances the heads between polls.
+recorded headers. Request/response repair runs every minute while healthy,
+checking each beacon slot whether the retained optimistic head is more than
+two slots old or in the future. A stale head triggers the next repair after at
+most one slot of waiting. Committee catch-up runs first, followed by optimistic
+and finality requests, while gossip advances the heads between repairs.
 Each finality and optimistic repair poll waits for reconnecting peers within its
 15-second request budget instead of failing on an empty peer snapshot.
 The execution side uses
@@ -436,8 +479,8 @@ The client implements Electra, Fulu and Gloas wire formats with built-in
 mainnet, Hoodi and Sepolia schedules. Gloas authenticates an execution block
 hash through the payload bid; the client then retrieves the matching execution
 header by hash before serving its state. Gloas has synthetic fork-boundary
-tests, but live Sepolia bootstrap was not obtained from connected peers during
-the integration attempt, so Gloas interoperability is not yet demonstrated.
+tests and has authenticated native Sepolia bootstrap and subsequent optimistic
+updates from connected peers.
 Pre-Electra is refused. Future network schedules must be maintained locally
 rather than accepted from peers.
 
@@ -445,7 +488,7 @@ This has the checkpoint and sync-committee security assumptions of an Ethereum
 light client, rather than independent validation of every execution block.
 Peers can withhold data, but forged proof results fail verification.
 Synchronization retries with bounded per-request deadlines and retains the last verified head on
-failure. Finalized state reads fail once verified finality is over one hour old;
+failure. Explicit `"finalized"` reads fail once verified finality is over one hour old;
 optimistic `"latest"` reads require a signed head within ten current beacon slots. Local time must be accurate.
 The verified committee chain and latest finalized head are persisted with
 atomic writes and revalidated from the original checkpoint on restart.

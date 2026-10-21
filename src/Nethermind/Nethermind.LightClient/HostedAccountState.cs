@@ -9,6 +9,9 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.LightClient;
 
+internal sealed record HostedAccountProgress(string Address, ulong? BlockNumber, string? BlockHash, string? StateRoot,
+    int StorageSlots, int CodeBytes, bool Current, string Stage, ulong? RefreshBlock, string? LastError);
+
 /// <summary>Retains one complete authenticated account snapshot per configured address without cache eviction.</summary>
 internal sealed class HostedAccountState
 {
@@ -47,7 +50,7 @@ internal sealed class HostedAccountState
 
     internal bool TryGetAccount(VerifiedHead head, Address address, out Account account)
     {
-        if (_accounts.TryGetValue(address, out Entry? entry) && Volatile.Read(ref entry.Current) is Snapshot snapshot &&
+        if (_accounts.TryGetValue(address, out Entry? entry) && Volatile.Read(ref entry.State).Snapshot is Snapshot snapshot &&
             snapshot.Head.StateRoot == head.StateRoot)
         {
             account = snapshot.Account;
@@ -59,7 +62,7 @@ internal sealed class HostedAccountState
 
     internal bool TryGetStorage(Address address, Account authenticatedAccount, UInt256 slot, out UInt256 value)
     {
-        if (_accounts.TryGetValue(address, out Entry? entry) && Volatile.Read(ref entry.Current) is Snapshot snapshot &&
+        if (_accounts.TryGetValue(address, out Entry? entry) && Volatile.Read(ref entry.State).Snapshot is Snapshot snapshot &&
             snapshot.Account.StorageRoot == authenticatedAccount.StorageRoot)
         {
             Span<byte> slotBytes = stackalloc byte[32];
@@ -75,7 +78,7 @@ internal sealed class HostedAccountState
     {
         foreach (Entry entry in _accounts.Values)
         {
-            if (Volatile.Read(ref entry.Current) is Snapshot snapshot && snapshot.Account.CodeHash == authenticatedAccount.CodeHash)
+            if (Volatile.Read(ref entry.State).Snapshot is Snapshot snapshot && snapshot.Account.CodeHash == authenticatedAccount.CodeHash)
             {
                 code = snapshot.Code.AsSpan().ToArray();
                 return true;
@@ -85,13 +88,30 @@ internal sealed class HostedAccountState
         return false;
     }
 
+    internal HostedAccountProgress[] GetProgress(VerifiedHead? target)
+    {
+        HostedAccountProgress[] progress = new HostedAccountProgress[_accounts.Count];
+        int index = 0;
+        foreach ((Address address, Entry entry) in _accounts)
+        {
+            EntryState state = Volatile.Read(ref entry.State);
+            Snapshot? snapshot = state.Snapshot;
+            progress[index++] = new(address.ToString(), snapshot?.Head.Number, snapshot?.Head.BlockHash.ToString(),
+                snapshot?.Head.StateRoot.ToString(), snapshot?.Storage.Count ?? 0, snapshot?.Code.Length ?? 0,
+                snapshot is not null && target is not null && snapshot.Head.StateRoot == target.StateRoot,
+                state.Stage, state.RefreshBlock, state.LastError);
+        }
+        return progress;
+    }
+
     internal async Task RefreshAsync(VerifiedHead head, CancellationToken cancellationToken)
     {
         foreach ((Address address, Entry entry) in _accounts)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Snapshot? previous = Volatile.Read(ref entry.Current);
+            Snapshot? previous = Volatile.Read(ref entry.State).Snapshot;
             if (previous?.Head.StateRoot == head.StateRoot) continue;
+            Volatile.Write(ref entry.State, new(previous, "refreshing", head.Number, null));
             try
             {
                 Account account = await _execution.GetAccountAsync(head, address, cancellationToken);
@@ -115,12 +135,18 @@ internal sealed class HostedAccountState
                     ExecutionProofVerifier.VerifyCode(account.CodeHash, code);
                 }
                 cancellationToken.ThrowIfCancellationRequested();
-                Volatile.Write(ref entry.Current, new Snapshot(head, account, storage, code));
+                Volatile.Write(ref entry.State, new(new Snapshot(head, account, storage, code), "complete", null, null));
                 if (_logger.IsInfo) _logger.Info($"Hosted account {address} at block {head.Number}: {storage.Count} storage slots, {code.Length} code bytes.");
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                Volatile.Write(ref entry.State, new(previous, "canceled", head.Number, null));
+                throw;
+            }
             catch (Exception exception)
             {
+                Volatile.Write(ref entry.State, new(previous, "failed", head.Number,
+                    exception.Message.Length <= 512 ? exception.Message : exception.Message[..512]));
                 if (_logger.IsWarn) _logger.Warn($"Could not refresh hosted account {address} at block {head.Number}; retaining its last verified snapshot: {exception.Message}");
             }
         }
@@ -138,8 +164,10 @@ internal sealed class HostedAccountState
 
     private sealed class Entry
     {
-        internal Snapshot? Current;
+        internal EntryState State = new(null, "waiting", null, null);
     }
+
+    private sealed record EntryState(Snapshot? Snapshot, string Stage, ulong? RefreshBlock, string? LastError);
 
     private sealed record Snapshot(VerifiedHead Head, Account Account, FrozenDictionary<ValueHash256, UInt256> Storage, byte[] Code);
 }
