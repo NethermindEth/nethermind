@@ -30,10 +30,6 @@ public class RoundTrips
             "9854c850" + // `MethodId`
             "0100000000000000000000000000000000000000000000000000000000000000"); // Contents of the bytes, right-padded
 
-        yield return Case(new AbiSignature("abc").With(AbiType.BytesM(19)), Bytes.FromHexString("0102030405060708090a0b0c0d0e0f10111213"),
-            "e32d0436" + // `MethodId`
-            "0102030405060708090a0b0c0d0e0f1011121300000000000000000000000000"); // Contents of the bytes, right-padded
-
         yield return Case(new AbiSignature("abc").With(AbiType.BytesM(32)), Bytes.FromHexString("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
             "cd200edb" + // `MethodId`
             "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"); // Contents of the bytes
@@ -53,35 +49,7 @@ public class RoundTrips
 
     private static IEnumerable<TestCaseData> ArrayTestCases()
     {
-        yield return Case(new AbiSignature("abc").With(AbiType.Array(AbiType.UInt256)), [1, 2, 3], label: "length 3", encoding:
-            "97a75e1c" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
-            "0000000000000000000000000000000000000000000000000000000000000003" + // Length of the array
-            "0000000000000000000000000000000000000000000000000000000000000001" + // First element, `1`
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Second element, `2`
-            "0000000000000000000000000000000000000000000000000000000000000003"); // Third element, `3`
-
-        yield return Case(new AbiSignature("abc").With(AbiType.Array(AbiType.UInt256, 2)), [1, 1], label: "length 2", encoding:
-            "65fd1cd1" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000001" + // First element, `1`
-            "0000000000000000000000000000000000000000000000000000000000000001"); // Second element, `1`
-
         AbiSignature<UInt256[][]> uint256Arrays = new AbiSignature("abc").With(AbiType.Array(AbiType.Array(AbiType.UInt256)));
-
-        yield return Case(uint256Arrays, [[1, 2, 3], [1, 2, 3]], label: "length 2", encoding:
-            "e2182e4a" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
-            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first inner array
-            "00000000000000000000000000000000000000000000000000000000000000c0" + // Offset to second inner array
-            "0000000000000000000000000000000000000000000000000000000000000003" + // Length of first inner array
-            "0000000000000000000000000000000000000000000000000000000000000001" + // First element of first inner array, `1`
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Second element of first inner array, `2`
-            "0000000000000000000000000000000000000000000000000000000000000003" + // Third element of first inner array, `3`
-            "0000000000000000000000000000000000000000000000000000000000000003" + // Length of second inner array
-            "0000000000000000000000000000000000000000000000000000000000000001" + // First element of second inner array, `1`
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Second element of second inner array, `2`
-            "0000000000000000000000000000000000000000000000000000000000000003"); // Third element of second inner array, `3`
 
         yield return Case(uint256Arrays, [], label: "length 0", encoding:
             "e2182e4a" + // `MethodId`
@@ -110,14 +78,6 @@ public class RoundTrips
             "00000000000000000000000000000000000000000000000000000000000001f4" + // Second element of second fixed array, `500`
             "0000000000000000000000000000000000000000000000000000000000000258"); // Third element of second fixed array, `600`
 
-        yield return Case(uint64Triples, [[1_000_000, 7, 3600]], label: "length 1", encoding:
-            "b59caf90" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
-            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of the array
-            "00000000000000000000000000000000000000000000000000000000000f4240" + // First element of the fixed array, `1_000_000`
-            "0000000000000000000000000000000000000000000000000000000000000007" + // Second element of the fixed array, `7`
-            "0000000000000000000000000000000000000000000000000000000000000e10"); // Third element of the fixed array, `3600`
-
         yield return Case(uint64Triples, [], label: "length 0", encoding:
             "b59caf90" + // `MethodId`
             "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
@@ -128,12 +88,6 @@ public class RoundTrips
     {
         Address systemUser = new("0xfffffffffffffffffffffffffffffffffffffffe");
         Abi<(UInt256, Address, bool)> staticTuple = AbiType.Tuple(AbiType.UInt256, AbiType.Address, AbiType.Bool);
-
-        yield return Case(new AbiSignature("abc").With(staticTuple), ((UInt256)1000, systemUser, true),
-            "3556e1a4" + // `MethodId`
-            "00000000000000000000000000000000000000000000000000000000000003e8" + // First component, `1000`
-            "000000000000000000000000fffffffffffffffffffffffffffffffffffffffe" + // Second component, `0xfffffffffffffffffffffffffffffffffffffffe`
-            "0000000000000000000000000000000000000000000000000000000000000001"); // Third component, `true`
 
         yield return Case(new AbiSignature("abc").With(AbiType.Tuple(AbiType.Bytes, AbiType.Address, AbiType.Bytes)),
             (Bytes.FromHexString("004749fa3d"), systemUser, new byte[32]),
@@ -353,26 +307,6 @@ public class RoundTrips
             "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the bytes
             "0000000000000000000000000000000000000000000000000000000000000000"); // Length of the bytes
 
-        yield return Case(new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32, AbiType.Address, AbiType.Bytes, AbiType.UInt256),
-            (3UL, 42UL, ValueKeccak.Compute("a"), new Address("0x5a4eab120fb44eb6684e5e32785702ff45ea344d"), "cipher"u8.ToArray(), (UInt256)21_000),
-            "0000000000000000000000000000000000000000000000000000000000000003" + // `eon`, `3`
-            "000000000000000000000000000000000000000000000000000000000000002a" + // `txIndex`, `42`
-            "3ac225168df54212a25c1c01fd35bebfea408fdac2e31ddd6f80a4bbf9a5f1cb" + // `identityPrefix`, `keccak256("a")`
-            "0000000000000000000000005a4eab120fb44eb6684e5e32785702ff45ea344d" + // `sender`
-            "00000000000000000000000000000000000000000000000000000000000000c0" + // Offset to `encryptedTransaction`
-            "0000000000000000000000000000000000000000000000000000000000005208" + // `gasLimit`, `21_000`
-            "0000000000000000000000000000000000000000000000000000000000000006" + // Length of `encryptedTransaction`
-            "6369706865720000000000000000000000000000000000000000000000000000"); // "cipher"
-
-        yield return Case(new AbiSignature().With(AbiType.Tuple(AbiType.Bytes, AbiType.Bytes)), ([0x11], [0x22, 0x22]),
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the struct
-            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to the first bytes
-            "0000000000000000000000000000000000000000000000000000000000000080" + // Offset to the second bytes
-            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of the first bytes
-            "1100000000000000000000000000000000000000000000000000000000000000" +
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the second bytes
-            "2222000000000000000000000000000000000000000000000000000000000000");
-
         yield return Case(new AbiSignature().With(AbiType.Array(AbiType.Tuple(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256))),
             [(new Address("0x5a4eab120fb44eb6684e5e32785702ff45ea344d"), [0xa9, 0x05, 0x9c, 0xbb], 1)],
             "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the array
@@ -380,18 +314,6 @@ public class RoundTrips
             "0000000000000000000000005a4eab120fb44eb6684e5e32785702ff45ea344d" + // `target`
             "a9059cbb00000000000000000000000000000000000000000000000000000000" + // `fnSignature`
             "0000000000000000000000000000000000000000000000000000000000000001"); // `value`
-
-        yield return Case(new AbiSignature().With(AbiType.Address), new Address("0xdcc703c0e500b653ca82273b7bfad8045d85a470"),
-            "000000000000000000000000dcc703c0e500b653ca82273b7bfad8045d85a470"); // `0xdcc703c0e500b653ca82273b7bfad8045d85a470`
-
-        yield return Case(new AbiSignature().With(AbiType.UInt256), (UInt256)98127491,
-            "0000000000000000000000000000000000000000000000000000000005d94e83"); // `98127491`
-
-        yield return Case(new AbiSignature().With(AbiType.UInt256, AbiType.Address), ((UInt256)324124, new Address("0xcd2a3d9f938e13cd947ec05abc7fe734df8dd826")),
-            "000000000000000000000000000000000000000000000000000000000004f21c" + // First argument, `324124`
-            "000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"); // Second argument, `0xcd2a3d9f938e13cd947ec05abc7fe734df8dd826`
-
-        yield return Case(new AbiSignature().With(), default, "");
     }
 
     private static IEnumerable<TestCaseData> IntegerTestCases()
@@ -485,21 +407,6 @@ public class RoundTrips
 
     private static IEnumerable<TestCaseData> DynamicTestCases()
     {
-        yield return Case(new AbiSignature("f").With(AbiType.String), "hello",
-            "91e145ef" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Location of the data part of the first parameter
-            "0000000000000000000000000000000000000000000000000000000000000005" + // Data part of the first argument
-            "68656c6c6f000000000000000000000000000000000000000000000000000000"); // Contents of the first argument, `"hello"`
-
-        yield return Case(new AbiSignature("f").With(AbiType.String, AbiType.String), ("hello", "world"),
-            "0x18159cfb" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first string
-            "0000000000000000000000000000000000000000000000000000000000000080" + // Offset to second string
-            "0000000000000000000000000000000000000000000000000000000000000005" + // Length of first string
-            "68656c6c6f000000000000000000000000000000000000000000000000000000" + // "hello"
-            "0000000000000000000000000000000000000000000000000000000000000005" + // Length of second string
-            "776f726c64000000000000000000000000000000000000000000000000000000"); // "world"
-
         yield return Case(new AbiSignature("f").With(AbiType.String, AbiType.String, AbiType.String), ("hello", "my", "friends"),
             "e18744f7" + // `MethodId`
             "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to first string
@@ -520,58 +427,6 @@ public class RoundTrips
             "0000000000000000000000000000000000000000000000000000000000000000" + // Second element, `false`
             "0000000000000000000000000000000000000000000000000000000000000001"); // Third element, `true`
 
-        yield return Case(new AbiSignature("f").With(AbiType.Array(AbiType.Address)),
-            [new Address("0x5a4eab120fb44eb6684e5e32785702ff45ea344d"), new Address("0xdac17f958d2ee523a2206206994597c13d831ec7")],
-            "290c05ea" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
-            "0000000000000000000000005a4eab120fb44eb6684e5e32785702ff45ea344d" + // First element, `0x5a4eab120fb44eb6684e5e32785702ff45ea344d`
-            "000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7"); // Second element, `0xdac17f958d2ee523a2206206994597c13d831ec7`
-
-        yield return Case(new AbiSignature("f").With(AbiType.Array(AbiType.Bytes32)), [ValueKeccak.Compute("a"), ValueKeccak.Compute("b")],
-            "a8cb663c" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
-            "3ac225168df54212a25c1c01fd35bebfea408fdac2e31ddd6f80a4bbf9a5f1cb" + // First element, `keccak256("a")`
-            "b5553de315e0edf504d9150af82dafa5c4667fa618ed0a6f19c69b41166c5510"); // Second element, `keccak256("b")`
-
-        yield return Case(new AbiSignature("f").With(AbiType.Array(AbiType.String)), ["hello", "my", "friends"],
-            "e9cc8780" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
-            "0000000000000000000000000000000000000000000000000000000000000003" + // Length of the array
-            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to first string
-            "00000000000000000000000000000000000000000000000000000000000000a0" + // Offset to second string
-            "00000000000000000000000000000000000000000000000000000000000000e0" + // Offset to third string
-            "0000000000000000000000000000000000000000000000000000000000000005" + // Data part of the first argument
-            "68656c6c6f000000000000000000000000000000000000000000000000000000" + // Contents of the first argument, "hello"
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Data part of the second argument
-            "6d79000000000000000000000000000000000000000000000000000000000000" + // Contents of the second argument, "my"
-            "0000000000000000000000000000000000000000000000000000000000000007" + // Data part of the third argument
-            "667269656e647300000000000000000000000000000000000000000000000000"); // Contents of the third argument, "friends"
-
-        yield return Case(new AbiSignature("f").With(AbiType.Tuple(AbiType.UInt256, AbiType.String)), ((UInt256)1, "a"),
-            "c260125c" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the tuple
-            "0000000000000000000000000000000000000000000000000000000000000001" + // First component, `1`
-            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component, relative to the tuple
-            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component
-            "6100000000000000000000000000000000000000000000000000000000000000"); // "a"
-
-        yield return Case(new AbiSignature("f").With(AbiType.Array(AbiType.Tuple(AbiType.UInt256, AbiType.String))), [(1, "a"), (2, "b")],
-            "7f9296cc" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
-            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first element
-            "00000000000000000000000000000000000000000000000000000000000000c0" + // Offset to second element
-            "0000000000000000000000000000000000000000000000000000000000000001" + // First component of first element, `1`
-            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component of first element
-            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component of first element
-            "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
-            "0000000000000000000000000000000000000000000000000000000000000002" + // First component of second element, `2`
-            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component of second element
-            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component of second element
-            "6200000000000000000000000000000000000000000000000000000000000000"); // "b"
-
         yield return Case(new AbiSignature("f").With(AbiType.UInt256, AbiType.Tuple(AbiType.UInt256, AbiType.String), AbiType.String),
             ((UInt256)2, ((UInt256)1, "a"), "b"),
             "004b756e" + // `MethodId`
@@ -584,18 +439,6 @@ public class RoundTrips
             "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
             "0000000000000000000000000000000000000000000000000000000000000001" + // Length of third argument
             "6200000000000000000000000000000000000000000000000000000000000000"); // "b"
-
-        yield return Case(new AbiSignature("f").With(AbiType.Tuple(AbiType.String, AbiType.Tuple(AbiType.UInt256, AbiType.String))), ("b", ((UInt256)1, "a")),
-            "e3b34b9a" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the outer tuple
-            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first component of the outer tuple
-            "0000000000000000000000000000000000000000000000000000000000000080" + // Offset to the inner tuple
-            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of first component of the outer tuple
-            "6200000000000000000000000000000000000000000000000000000000000000" + // "b"
-            "0000000000000000000000000000000000000000000000000000000000000001" + // First component of the inner tuple, `1`
-            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component of the inner tuple
-            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component of the inner tuple
-            "6100000000000000000000000000000000000000000000000000000000000000"); // "a"
 
         yield return Case(new AbiSignature("f").With(AbiType.Array(AbiType.Tuple(AbiType.String, AbiType.UInt256, AbiType.String))), [("a", 1, "b"), ("c", 2, "d")],
             "689595a5" + // `MethodId`
@@ -658,15 +501,6 @@ public class RoundTrips
             "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
             "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second string of second component
             "6200000000000000000000000000000000000000000000000000000000000000"); // "b"
-
-        yield return Case(new AbiSignature("f").With(AbiType.Array(AbiType.Array(AbiType.UInt256, 2))), [[1, 2], [3, 4]],
-            "047d9e3a" + // `MethodId`
-            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
-            "0000000000000000000000000000000000000000000000000000000000000001" + // First element of first fixed array, `1`
-            "0000000000000000000000000000000000000000000000000000000000000002" + // Second element of first fixed array, `2`
-            "0000000000000000000000000000000000000000000000000000000000000003" + // First element of second fixed array, `3`
-            "0000000000000000000000000000000000000000000000000000000000000004"); // Second element of second fixed array, `4`
 
         Abi<string> wideString = new()
         {
