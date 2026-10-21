@@ -32,13 +32,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 /// </remarks>
 /// <typeparam name="TKey">The type of the filter keys.</typeparam>
 /// <param name="payloadCount">The number of payloads an event can have, each addressed by its position.</param>
-/// <param name="keyComparer">The comparer of filter keys, or <c>null</c> for the default one.</param>
-internal sealed class ReceiptsEventPayloadCache<TKey>(Func<ReceiptsEventArgs, int> payloadCount, IEqualityComparer<TKey>? keyComparer = null)
-    where TKey : class
+internal sealed class ReceiptsEventPayloadCache<TKey>(Func<ReceiptsEventArgs, int> payloadCount)
+    where TKey : struct, IEquatable<TKey>
 {
     private readonly ConditionalWeakTable<ReceiptsEventArgs, Lazy<byte[]>?[]> _payloads = [];
     private readonly ConditionalWeakTable<ReceiptsEventArgs, Lazy<byte[]>?[]>.CreateValueCallback _createSlots = e => new Lazy<byte[]>?[payloadCount(e)];
-    private readonly Dictionary<TKey, Group> _groups = new(keyComparer);
+    private readonly Dictionary<TKey, Group> _groups = [];
     private readonly Group _unfiltered = new(null);
     private readonly Lock _lock = new();
     private int _members;
@@ -50,9 +49,9 @@ internal sealed class ReceiptsEventPayloadCache<TKey>(Func<ReceiptsEventArgs, in
         lock (_lock)
         {
             Group group = _unfiltered;
-            if (filterKey is not null && !_groups.TryGetValue(filterKey, out group!))
+            if (filterKey is { } key && !_groups.TryGetValue(key, out group!))
             {
-                _groups.Add(filterKey, group = new Group(filterKey));
+                _groups.Add(key, group = new Group(key));
             }
 
             group.Count++;
@@ -66,7 +65,7 @@ internal sealed class ReceiptsEventPayloadCache<TKey>(Func<ReceiptsEventArgs, in
         lock (_lock)
         {
             _members--;
-            if (--group.Count == 0 && group.Key is not null) _groups.Remove(group.Key);
+            if (--group.Count == 0 && group.Key is { } key) _groups.Remove(key);
         }
     }
 

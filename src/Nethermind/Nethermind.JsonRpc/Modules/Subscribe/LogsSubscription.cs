@@ -112,21 +112,20 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         /// <summary>The parts of a <see cref="Filter"/> that decide which logs it accepts.</summary>
         /// <remarks>Addresses are compared as a set; topics position by position, in order.</remarks>
-        internal sealed class FilterKey(Filter filter) : IEquatable<FilterKey>
+        internal readonly struct FilterKey(Filter filter) : IEquatable<FilterKey>
         {
             private readonly BlockParameter _fromBlock = filter.FromBlock;
             private readonly BlockParameter _toBlock = filter.ToBlock;
             private readonly HashSet<AddressAsKey>? _addresses = filter.Address;
             private readonly Hash256[]?[] _topics = filter.Topics?.ToArray() ?? [];
 
-            public bool Equals(FilterKey? other) =>
-                other is not null
-                && _fromBlock == other._fromBlock
+            public bool Equals(FilterKey other) =>
+                _fromBlock == other._fromBlock
                 && _toBlock == other._toBlock
                 && (_addresses is null ? other._addresses is null : other._addresses is not null && _addresses.SetEquals(other._addresses))
                 && _topics.AsSpan().SequenceEqual(other._topics, TopicComparer.Instance);
 
-            public override bool Equals(object? obj) => Equals(obj as FilterKey);
+            public override bool Equals(object? obj) => obj is FilterKey other && Equals(other);
 
             public override int GetHashCode()
             {
