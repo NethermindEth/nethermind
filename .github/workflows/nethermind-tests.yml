@@ -206,7 +206,8 @@ jobs:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
-    timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
+    # The in-job build takes about 10 minutes on macOS, so a single project needs more than the Linux budget.
+    timeout-minutes: ${{ matrix.project.list && 25 || 20 }}
     env:
       DOTNET_GCConserveMemory: 9
     strategy:
