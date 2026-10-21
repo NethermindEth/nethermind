@@ -150,8 +150,9 @@ namespace Nethermind.Evm.TransactionProcessing
         }
     }
 
-    /// <remarks>Locals are not zero-initialized anywhere in this type, its <c>FrameTx</c> partial or its lambdas, so a
-    /// <c>stackalloc</c> buffer here must be fully written before it is read.</remarks>
+    /// <remarks>Locals are not zero-initialized anywhere in this type: both partials, nested types, lambdas, local
+    /// functions and iterators. A <c>stackalloc</c> buffer, a local after <c>Unsafe.SkipInit</c>, or an <c>out</c> local
+    /// a callee may leave unwritten must be fully written before it is read.</remarks>
     [SkipLocalsInit]
     public abstract partial class TransactionProcessorBase<TGasPolicy> : TransactionProcessorBase, ITransactionProcessor
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
