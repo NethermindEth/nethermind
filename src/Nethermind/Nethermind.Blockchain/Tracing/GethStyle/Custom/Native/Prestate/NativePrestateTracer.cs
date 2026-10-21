@@ -44,6 +44,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly bool _isEip5920Enabled;
     private readonly bool _isEip7702Enabled;
     private readonly bool _isEip8298Enabled;
+    // EIP-4758: SELFDESTRUCT acts as SENDALL and never deletes the executing account.
+    private readonly bool _isEip4758Enabled;
     // EIP-6780: SELFDESTRUCT deletes only an account created in the same transaction.
     private readonly bool _isEip6780Enabled;
     // EIP-8246: a self-destructed account that ends the transaction with a balance survives.
@@ -75,6 +77,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _isEip7702Enabled = releaseSpec?.IsEip7702Enabled ?? false;
         _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
         _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
+        _isEip4758Enabled = releaseSpec?.IsEip4758Enabled == true;
         _isEip6780Enabled = releaseSpec?.IsEip6780Enabled == true;
         _isEip8246Enabled = releaseSpec?.IsEip8246Enabled == true;
         UInt256 instructionMask = CaptureMask;
@@ -270,8 +273,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     address = stack.PeekAddress(0);
                     LookupAccount(address);
                     // As in geth, the executing account is deleted when the opcode runs, but after EIP-6780 only if
-                    // it was created in this transaction.
-                    if (_diffMode && _op == Instruction.SELFDESTRUCT
+                    // it was created in this transaction, and never under EIP-4758 (SENDALL).
+                    if (_diffMode && _op == Instruction.SELFDESTRUCT && !_isEip4758Enabled
                         && (!_isEip6780Enabled || _createdAccounts.Contains(_executingAccount!)))
                         _deletedAccounts.Add(_executingAccount!);
                 }

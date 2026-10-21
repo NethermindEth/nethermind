@@ -583,7 +583,7 @@ jobs:
           # fork and parameterisation but cannot tell apart two fixture files that define the same
           # test. An explicit `filter` input overrides this.
           KNOWN_FAILURES=()
-          if [ "$TEST_TYPE" = "focilTest" ]; then
+          if [ "$TEST_TYPE" = "focilTest" ] && [[ "$RESOLVED_EEST_VERSION" == tests-focil-devnet@* ]]; then
             KNOWN_FAILURES+=(
               # The v0.3.0 release corrects the inclusion-list engine fixtures, so the patterns this
               # lane carried for ethereum/execution-specs#3582, #3406, the EIP-7610 collision scenario
@@ -604,6 +604,16 @@ jobs:
               'test_invalid_block_blob_count.*inclusion_list'
               'test_invalid_tx_max_fee_per_blob_gas.*inclusion_list'
             )
+            # v0.3 expects blob-only IL omissions to fail; remove these skips when upgrading to Heze v2.
+            if [ "$RESOLVED_EEST_VERSION" = "tests-focil-devnet@v0.3.0" ]; then
+              KNOWN_FAILURES+=(
+                'test_block_with_pending_blob_il_tx_is_valid\[fork_Bogota-blockchain_test_engine\]$'
+                'test_transaction_validity_type_3\[fork_Bogota-blockchain_test_engine_inclusion_list_from_state_test-type_3-.*-(exact|extra)_gas-floor_gas_.*\]$'
+                'test_trailing_tx_admission_all_transaction_types\[fork_Bogota-tx_type_3-refund_type_RefundTypes\.STORAGE_CLEAR-blockchain_test_engine_inclusion_list-(exact|extra)_block_gas_limit-typed_trailing_tx\]$'
+                'test_tx_gas_limit_block_boundary\[fork_Bogota-blockchain_test_engine_inclusion_list-type_3_blob-bgl_(0x01ffffe|0x0fffffd)-gas_(equal|one_below)\]$'
+                'test_tx_total_gas_limit_cap\[fork_Bogota-tx_type_3-blockchain_test_engine_inclusion_list_from_state_test-at_cap\]$'
+              )
+            fi
           elif [ "$SCOPE" = "frames" ]; then
             KNOWN_FAILURES+=(
               # The v1.1.0 release also carries the APPROVE changes of ethereum/execution-specs#3801,
