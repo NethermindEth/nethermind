@@ -598,25 +598,19 @@ public static class BasePersistence
 
             Span<byte> value = stackalloc byte[_accountSpanBufferSize];
             int probes = column?.LastBlockCached == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
-            bool missed = false;
+            MissTimings misses = default;
             for (int i = 0; i < probes; i++)
             {
                 ValueHash256 path = samples[SampleIndex(i, probes, samples.Length)].ToAccountPath;
                 if (_flatReader.IsAccountCached(path)) continue;
-                if (!missed && column?.TrustMissAsDiskRead() == true) return true;
-                missed = true;
+                if (misses.Timed == 0 && column?.TrustMissAsDiskRead() == true) return true;
 
                 long start = Stopwatch.GetTimestamp();
                 _flatReader.GetAccount(path, value);
-                if (IsDiskRead(start, Stopwatch.GetTimestamp()))
-                {
-                    column?.RecordDiskRead();
-                    return true;
-                }
+                if (misses.Add(IsDiskRead(start, Stopwatch.GetTimestamp()))) break;
             }
 
-            column?.RecordInMemory(missed);
-            return false;
+            return Decide(column, misses);
         }
 
         private bool SlotsNeedPrefetch(ReadOnlySpan<StorageCell> samples)
@@ -625,7 +619,7 @@ public static class BasePersistence
             if (column?.TrustMissesInMemory() == true) return false;
 
             int probes = column?.LastBlockCached == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
-            bool missed = false;
+            MissTimings misses = default;
             for (int i = 0; i < probes; i++)
             {
                 ref readonly StorageCell cell = ref samples[SampleIndex(i, probes, samples.Length)];
@@ -633,21 +627,50 @@ public static class BasePersistence
                 ValueHash256 slotHash = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
                 if (_flatReader.IsSlotCached(path, slotHash)) continue;
-                if (!missed && column?.TrustMissAsDiskRead() == true) return true;
-                missed = true;
+                if (misses.Timed == 0 && column?.TrustMissAsDiskRead() == true) return true;
 
                 UInt256 value = default;
                 long start = Stopwatch.GetTimestamp();
                 _flatReader.TryGetStorage(path, slotHash, ref value);
-                if (IsDiskRead(start, Stopwatch.GetTimestamp()))
-                {
-                    column?.RecordDiskRead();
-                    return true;
-                }
+                if (misses.Add(IsDiskRead(start, Stopwatch.GetTimestamp()))) break;
             }
 
-            column?.RecordInMemory(missed);
+            return Decide(column, misses);
+        }
+
+        private static bool Decide(PrefetchSampling.Column? column, in MissTimings misses)
+        {
+            if (misses.IsDisk)
+            {
+                column?.RecordDiskRead();
+                return true;
+            }
+
+            column?.RecordInMemory(misses.Timed != 0);
             return false;
+        }
+
+        /// <summary>
+        /// The timed reads of one column's sampled misses. Two slow reads mean disk; one slow read counts only when it
+        /// is the column's only miss, since a scheduler delay or a large page-cache block can slow a single read, and
+        /// a wrong disk outcome is trusted for <see cref="PrefetchSampling.RecheckInterval"/> blocks.
+        /// </summary>
+        private struct MissTimings
+        {
+            private const int SlowReadsForDisk = 2;
+
+            public int Timed { get; private set; }
+            private int _slow;
+
+            /// <returns>True when the outcome is decided as disk and no further sample needs a read.</returns>
+            public bool Add(bool slow)
+            {
+                Timed++;
+                if (slow) _slow++;
+                return _slow == SlowReadsForDisk;
+            }
+
+            public readonly bool IsDisk => _slow == SlowReadsForDisk || (_slow == 1 && Timed == 1);
         }
     }
 

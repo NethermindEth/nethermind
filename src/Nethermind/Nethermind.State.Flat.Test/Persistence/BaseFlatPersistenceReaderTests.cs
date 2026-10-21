@@ -164,9 +164,10 @@ public class BaseFlatPersistenceReaderTests
         }
     }
 
-    // One sampled key read at disk speed sends the prefetch for its column; samples after it are not read.
+    // One slow read among fast misses is taken as noise, a scheduler delay or a large page-cache block: no prefetch.
     [Test]
-    public void Prefetch_OneMissedSampleReadAtDiskSpeed_SendsThePrefetch()
+    [Retry(3)]
+    public void Prefetch_OneSlowReadAmongFastMisses_SendsNothing()
     {
         const int count = 70;
         Address[] accounts = Accounts(count);
@@ -180,9 +181,45 @@ public class BaseFlatPersistenceReaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(accountStore.ReadKeys, Has.Count.EqualTo(5));
-            Assert.That(accountStore.ReadKeys[^1], Is.EqualTo(slowKey));
-            Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(count));
+            Assert.That(accountStore.ReadKeys, Has.Count.EqualTo(BasePersistence.PrefetchSamples));
+            Assert.That(accountStore.ReadKeys, Does.Contain(slowKey));
+            Assert.That(accountStore.PrefetchedKeys, Is.Empty);
+        }
+    }
+
+    // Two misses read at disk speed decide disk: the prefetch is sent and later samples are not read.
+    [Test]
+    public void Prefetch_TwoMissesReadAtDiskSpeed_SendThePrefetch()
+    {
+        RecordingStore accountStore = new();
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+        Address[] accounts = Accounts(70);
+
+        PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountStore.ReadKeys, Has.Count.EqualTo(2));
+            Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
+        }
+    }
+
+    // A block whose only miss is slow decides disk: there is no second miss to confirm it.
+    [Test]
+    public void Prefetch_OnlyMissReadAtDiskSpeed_SendsThePrefetch()
+    {
+        Address[] accounts = Accounts(70);
+        Span<byte> key = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        string coldKey = Convert.ToHexString(BaseFlatPersistence.EncodeAccountKeyHashed(key, accounts[35].ToAccountPath));
+        RecordingStore accountStore = new(cached: k => k != coldKey);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+
+        PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountStore.ReadKeys, Is.EqualTo(new[] { coldKey }));
+            Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
         }
     }
 
@@ -208,8 +245,8 @@ public class BaseFlatPersistenceReaderTests
         }
 
         int[] expected = new int[PrefetchSampling.RecheckInterval + 2];
-        expected[0] = 1;
-        expected[PrefetchSampling.RecheckInterval + 1] = 1;
+        expected[0] = 2;
+        expected[PrefetchSampling.RecheckInterval + 1] = 2;
         Assert.That(timedReads, Is.EqualTo(expected));
     }
 
@@ -282,8 +319,8 @@ public class BaseFlatPersistenceReaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            // Cached, cached run, cold block found by its first of two probes, then all eight again.
-            Assert.That(probes, Is.EqualTo(new[] { 8, 2, 1, 8 }));
+            // Cached, cached run, a cold block confirmed by both of its two probes, then all eight again.
+            Assert.That(probes, Is.EqualTo(new[] { 8, 2, 2, 8 }));
             Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
         }
     }
