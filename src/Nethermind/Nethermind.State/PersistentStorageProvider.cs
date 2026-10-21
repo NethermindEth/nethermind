@@ -266,6 +266,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// Used for persistent storage specific logic
     /// </summary>
     /// <param name="tracer">Storage tracer</param>
+    [SkipLocalsInit]
     protected override void CommitCore(IStorageTracer tracer)
     {
         if (_logger.IsTrace) _logger.Trace("Committing storage changes");
@@ -788,6 +789,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// still read this round: those reads must be reported to storage tracers and the round's
     /// original-value capture must be cleared, which the change-driven commit otherwise does.
     /// </summary>
+    [SkipLocalsInit]
     public override void Commit(IStorageTracer tracer)
     {
         if (_changes.Count == 0)
@@ -1457,6 +1459,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// value cannot go stale; the round is part of the key, so the first read of each round still
         /// captures its original.
         /// </remarks>
+        [SkipLocalsInit]
         public void LoadFromTree(in StorageCell storageCell, out UInt256 value)
         {
             PersistentStorageProvider provider = Provider;
