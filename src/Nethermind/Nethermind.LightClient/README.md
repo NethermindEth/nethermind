@@ -437,6 +437,9 @@ most one slot of waiting. Committee catch-up runs first, followed by optimistic
 and finality requests, while gossip advances the heads between repairs.
 Each finality and optimistic repair poll waits for reconnecting peers within its
 15-second request budget instead of failing on an empty peer snapshot.
+Optimistic repair processes valid responses and tries the next peer when the
+authenticated optimistic head does not advance, without penalizing that peer.
+Finality repair accepts a valid response even when its finalized head is unchanged.
 The execution side uses
 [SNAP account/storage ranges and bytecode](https://github.com/ethereum/devp2p/blob/master/caps/snap.md).
 It runs Nethermind's discv5 execution discovery, RLPx, `eth/68`–`eth/72` and

@@ -108,14 +108,14 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     internal Task<LightClientUpdate> UpdateAsync(ulong period, Func<LightClientUpdate, CancellationToken, Task> validate, CancellationToken token) =>
         RequestAsync((peer, peerToken) => peer.RequestLightClientUpdateAsync(period, peerToken), validate, token);
 
-    internal Task<LightClientFinalityUpdate?> PollFinalityAsync(Func<LightClientFinalityUpdate, CancellationToken, Task> validate, CancellationToken token) =>
+    internal Task<LightClientFinalityUpdate?> PollFinalityAsync(Func<LightClientFinalityUpdate, CancellationToken, Task<bool>> validate, CancellationToken token) =>
         PollFromPeersAsync(() => _peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientFinalityAsync(peerToken), validate, token);
 
-    internal Task<LightClientOptimisticUpdate?> PollOptimisticAsync(Func<LightClientOptimisticUpdate, CancellationToken, Task> validate, CancellationToken token) =>
+    internal Task<LightClientOptimisticUpdate?> PollOptimisticAsync(Func<LightClientOptimisticUpdate, CancellationToken, Task<bool>> validate, CancellationToken token) =>
         PollFromPeersAsync(() => _peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientOptimisticAsync(peerToken), validate, token);
 
     internal static async Task<T?> PollFromPeersAsync<T>(Func<IReadOnlyList<IBeaconSyncPeer>> getPeers,
-        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task> validate, CancellationToken token,
+        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task<bool>> validate, CancellationToken token,
         TimeProvider? timeProvider = null) where T : class
     {
         token.ThrowIfCancellationRequested();
@@ -130,11 +130,16 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     private async Task<T> RequestAsync<T>(Func<IBeaconSyncPeer, CancellationToken, Task<T>> request,
         Func<T, CancellationToken, Task> validate, CancellationToken token) where T : class
     {
+        Func<T, CancellationToken, Task<bool>> validateAndAccept = async (response, cancellationToken) =>
+        {
+            await validate(response, cancellationToken);
+            return true;
+        };
         long lastStatus = Stopwatch.GetTimestamp();
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            (T? response, _) = await RequestFromPeersAsync(_peers.GetBestPeers(0), request, validate, token);
+            (T? response, _) = await RequestFromPeersAsync(_peers.GetBestPeers(0), request, validateAndAccept, token);
             if (response is not null) return response;
 
             if (Stopwatch.GetElapsedTime(lastStatus) >= TimeSpan.FromSeconds(10))
@@ -148,7 +153,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     }
 
     internal static async Task<(T? Response, bool SawInapplicable)> RequestFromPeersAsync<T>(IReadOnlyList<IBeaconSyncPeer> peers,
-        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task> validate, CancellationToken token,
+        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task<bool>> validate, CancellationToken token,
         TimeProvider? timeProvider = null) where T : class
     {
         bool sawInapplicable = false;
@@ -173,7 +178,15 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 peer.ReportFailure(PeerFailureReason.RequestFailed, exception.Message);
                 continue;
             }
-            try { await validate(response, token); }
+            try
+            {
+                if (!await validate(response, token))
+                {
+                    token.ThrowIfCancellationRequested();
+                    sawInapplicable = true;
+                    continue;
+                }
+            }
             catch (IrrelevantLightClientUpdateException) { sawInapplicable = true; continue; }
             catch (LightClientLocalStateException) { sawInapplicable = true; continue; }
             catch (InvalidDataException exception)

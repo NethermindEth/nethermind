@@ -408,7 +408,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                await beacon.PollOptimisticAsync(async (update, token) => { await ProcessOptimisticAsync(update, token); }, attempt.Token);
+                await beacon.PollOptimisticAsync(ProcessOptimisticAsync, attempt.Token);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -418,7 +418,11 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                await beacon.PollFinalityAsync(async (update, token) => { await ProcessFinalityAsync(update, token); }, attempt.Token);
+                await beacon.PollFinalityAsync(async (update, token) =>
+                {
+                    await ProcessFinalityAsync(update, token);
+                    return true;
+                }, attempt.Token);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
