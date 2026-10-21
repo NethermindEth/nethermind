@@ -59,7 +59,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions/setup-dotnet@v5
+      - uses: ./.github/actions/setup-dotnet
 
       - run: mkdir -p "$RUNNER_TEMP/claude"
 
