@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -81,7 +82,7 @@ public class CustomTimeDurationConverterTests
             ("ms", 10_000), ("s", 10_000_000), ("m", 599_999_999), ("h", 36_000_000_000)];
         foreach ((string unit, long ticks) in units)
             foreach (int digits in new[] { 18, 19, 28 })
-                if (unit != "h" || digits != 18)
+                if (unit != "h" || digits != 18) // rounds to exactly 1h, covered by fractional_hour_rounds_to_tick
                     yield return new TestCaseData($"\"0.{new string('9', digits)}{unit}\"", TimeSpan.FromTicks(ticks));
     }
 
@@ -89,6 +90,23 @@ public class CustomTimeDurationConverterTests
     [TestCaseSource(nameof(FractionalUnitCases))]
     public void read_go_duration_format_parses_correctly(string json, TimeSpan? expected) =>
         Assert.That(Deserialize(json), Is.EqualTo(expected));
+
+    [Test]
+    public void read_fraction_ignores_current_culture_number_format()
+    {
+        CultureInfo culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.PositiveSign = "1";
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = culture;
+        try
+        {
+            Assert.That(Deserialize("\"0.1s\""), Is.EqualTo(TimeSpan.FromMilliseconds(100)));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
 
     [TestCase("5s", 50_000_000L)]
     [TestCase("\\u0035s", 50_000_000L)]

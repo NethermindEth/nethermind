@@ -45,6 +45,18 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     private static readonly SearchValues<char> Digits = SearchValues.Create("0123456789");
     private static readonly SearchValues<char> UnitTerminators = SearchValues.Create(".0123456789");
 
+    // Go scales fractions by repeated *= 10; Math.Pow(10, k) can round differently once k > 22.
+    // Inputs are capped at MaxInputBytes, so a fraction never has that many digits.
+    private static readonly double[] FractionScales = CreateFractionScales();
+
+    private static double[] CreateFractionScales()
+    {
+        double[] scales = new double[MaxInputBytes];
+        scales[0] = 1;
+        for (int i = 1; i < scales.Length; i++) scales[i] = scales[i - 1] * 10;
+        return scales;
+    }
+
     public override TimeSpan? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null) return null;
@@ -263,15 +275,14 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         // 18 significant digits always fit, a 19th only if the result stays <= 1<<63.
         ReadOnlySpan<char> significant = digits[leadingZeros..];
         int taken = Math.Min(significant.Length, 19);
-        ulong.TryParse(significant[..taken], out f); // <= 19 digits always fits in ulong
+        ulong.TryParse(significant[..taken], NumberStyles.None, CultureInfo.InvariantCulture, out f); // <= 19 ASCII digits always fit in ulong
         if (f > MaxNs)
         {
             f /= 10;
             taken--;
         }
 
-        // Go scales by repeated *= 10, which drifts from Math.Pow(10, k) from k = 23.
-        for (int i = leadingZeros + taken; i > 0; i--) scale *= 10;
+        scale = FractionScales[leadingZeros + taken];
     }
 
     private static ReadOnlySpan<char> TakeDigits(ref ReadOnlySpan<char> s)
