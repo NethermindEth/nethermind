@@ -34,23 +34,29 @@ public static class SubscriptionFactoryExtensions
         IReceiptMonitor receiptMonitor,
         FilterStore? filterStore,
         IBlockTree? blockTree,
-        ILogManager? logManager
-        ) => subscriptionFactory.RegisterSubscriptionType<Filter?>(
+        ILogManager? logManager)
+    {
+        ReceiptsEventPayloadCache payloads = LogsSubscription.CreatePayloadCache();
+        subscriptionFactory.RegisterSubscriptionType<Filter?>(
             SubscriptionType.EthSubscription.Logs,
             (jsonRpcDuplexClient, filter) =>
-            new LogsSubscription(jsonRpcDuplexClient, receiptMonitor, filterStore, blockTree, logManager, filter)
+            new LogsSubscription(jsonRpcDuplexClient, receiptMonitor, filterStore, blockTree, logManager, payloads, filter)
             );
+    }
 
     public static void RegisterTransactionReceiptsSubscription(
         this ISubscriptionFactory subscriptionFactory,
         IReceiptMonitor receiptMonitor,
         IBlockTree? blockTree,
-        ILogManager? logManager
-        ) => subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
+        ILogManager? logManager)
+    {
+        ReceiptsEventPayloadCache payloads = TransactionReceiptsSubscription.CreatePayloadCache();
+        subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
             SubscriptionType.EthSubscription.TransactionReceipts,
             (jsonRpcDuplexClient, filter) =>
-            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, logManager, filter)
+            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, logManager, payloads, filter)
             );
+    }
 
     public static void RegisterNewPendingTransactionsSubscription(
         this ISubscriptionFactory subscriptionFactory,

@@ -3,12 +3,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
@@ -20,6 +23,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
         private readonly bool _isBlockHashFilter;
+        private readonly ReceiptsEventPayloadCache.Membership _payloads;
 
         public LogsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -27,6 +31,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             FilterStore? store,
             IBlockTree? blockTree,
             ILogManager? logManager,
+            Filter? filter = null)
+            : this(jsonRpcDuplexClient, receiptCanonicalityMonitor, store, blockTree, logManager, CreatePayloadCache(), filter)
+        {
+        }
+
+        internal LogsSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IReceiptMonitor receiptCanonicalityMonitor,
+            FilterStore? store,
+            IBlockTree? blockTree,
+            ILogManager? logManager,
+            ReceiptsEventPayloadCache payloads,
             Filter? filter = null)
             : base(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
@@ -53,6 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
 
             _isBlockHashFilter = _filter.FromBlock.Equals(_filter.ToBlock);
+            _payloads = payloads.Join(GetFilterKey(filter));
             _receiptCanonicalityMonitor.ReceiptsInserted += OnReceiptsInserted;
             if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
@@ -77,14 +94,58 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
+        /// <summary>Creates the cache the logs subscriptions of one factory share their serialized logs through.</summary>
+        internal static ReceiptsEventPayloadCache CreatePayloadCache() => new(static e =>
+        {
+            int logs = 0;
+            foreach (TxReceipt receipt in e.TxReceipts) logs += receipt.Logs?.Length ?? 0;
+            return logs;
+        });
+
+        /// <summary>
+        /// A key equal for filters accepting the same logs of the same blocks, or <c>null</c> for one accepting every log
+        /// of every block.
+        /// </summary>
+        private static string? GetFilterKey(Filter? filter)
+        {
+            if (filter is null || (filter.Address is null && filter.Topics is null
+                && filter.FromBlock.Type == BlockParameterType.Latest && filter.ToBlock.Type == BlockParameterType.Latest))
+            {
+                return null;
+            }
+
+            StringBuilder key = new();
+            key.Append(filter.FromBlock).Append('|').Append(filter.ToBlock).Append('|');
+            if (filter.Address is not null) key.AppendJoin(',', filter.Address.Select(static a => a.Value.ToString()).Order(StringComparer.Ordinal));
+            foreach (Hash256[]? topics in filter.Topics ?? [])
+            {
+                key.Append('|');
+                if (topics is null) key.Append('*');
+                else key.AppendJoin(',', topics.Select(static t => t.ToString()).Order(StringComparer.Ordinal));
+            }
+
+            return key.ToString();
+        }
+
         private async Task PublishLogs(ReceiptsEventArgs e)
         {
-            foreach (FilterLog filterLog in GetFilterLogs(e.BlockHeader, e.TxReceipts, e.WasRemoved, e.LogIndexPerReceipt))
+            foreach (object log in GetFilterLogs(e))
             {
-                using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
+                using JsonRpcResult result = log is byte[] payload
+                    ? CreateSubscriptionMessage(new SerializedJson(payload))
+                    : CreateSubscriptionMessage((FilterLog)log);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
             }
+        }
+
+        /// <returns>The log's shared serialized payload, or the <see cref="FilterLog"/> itself when it is not shared.</returns>
+        private static object GetFilterLog(EventPayloads payloads, int position, ReceiptsEventArgs e, long logIndex, TxReceipt receipt, LogEntry log)
+        {
+            if (payloads.TryGet(position, out SerializedJson payload)) return payload.Utf8Json;
+
+            FilterLog filterLog = new(logIndex, receipt, log, e.BlockHeader.Timestamp, e.WasRemoved);
+            return payloads.Stores ? payloads.Store(position, filterLog).Utf8Json : filterLog;
         }
 
         /// <summary>
@@ -123,15 +184,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             return false;
         }
 
-        private IEnumerable<FilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts, bool removed, bool logIndexPerReceipt)
+        /// <returns>Each accepted log, as <see cref="GetFilterLog"/> gives it.</returns>
+        private IEnumerable<object> GetFilterLogs(ReceiptsEventArgs e)
         {
-            if (_filter.Matches(blockHeader.Bloom!))
+            if (_filter.Matches(e.BlockHeader.Bloom!))
             {
+                EventPayloads payloads = _payloads.ForEvent(e);
+                int position = 0;
                 int logIndex = 0;
-                for (int i = 0; i < receipts.Length; i++)
+                for (int i = 0; i < e.TxReceipts.Length; i++)
                 {
-                    TxReceipt receipt = receipts[i];
-                    if (logIndexPerReceipt) logIndex = 0;
+                    TxReceipt receipt = e.TxReceipts[i];
+                    if (e.LogIndexPerReceipt) logIndex = 0;
                     if (_filter.Matches(receipt.Bloom!))
                     {
                         for (int j = 0; j < receipt.Logs!.Length; j++)
@@ -139,12 +203,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                             LogEntry receiptLog = receipt.Logs[j];
                             if (_filter.Accepts(receiptLog))
                             {
-                                yield return new FilterLog(
-                                    logIndex,
-                                    receipt,
-                                    receiptLog,
-                                    blockHeader.Timestamp,
-                                    removed);
+                                yield return GetFilterLog(payloads, position + j, e, logIndex, receipt, receiptLog);
                             }
 
                             logIndex++;
@@ -154,6 +213,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     {
                         logIndex += receipt.Logs.Length;
                     }
+
+                    position += receipt.Logs.Length;
                 }
             }
         }
@@ -162,6 +223,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public override void Dispose()
         {
             _receiptCanonicalityMonitor.ReceiptsInserted -= OnReceiptsInserted;
+            _payloads.Dispose();
             base.Dispose();
             if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will no longer track ReceiptsInserted.");
         }

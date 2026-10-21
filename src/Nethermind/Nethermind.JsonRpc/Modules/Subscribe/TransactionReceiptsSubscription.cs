@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -22,12 +23,24 @@ public class TransactionReceiptsSubscription : Subscription
     private readonly IReceiptMonitor _receiptMonitor;
     private readonly IBlockTree _blockTree;
     private readonly HashSet<ValueHash256>? _filterHashes;
+    private readonly ReceiptsEventPayloadCache.Membership _payloads;
 
     public TransactionReceiptsSubscription(
         IJsonRpcDuplexClient jsonRpcDuplexClient,
         IReceiptMonitor receiptCanonicalityMonitor,
         IBlockTree blockTree,
         ILogManager logManager,
+        TransactionHashesFilter? filter)
+        : this(jsonRpcDuplexClient, receiptCanonicalityMonitor, blockTree, logManager, CreatePayloadCache(), filter)
+    {
+    }
+
+    internal TransactionReceiptsSubscription(
+        IJsonRpcDuplexClient jsonRpcDuplexClient,
+        IReceiptMonitor receiptCanonicalityMonitor,
+        IBlockTree blockTree,
+        ILogManager logManager,
+        ReceiptsEventPayloadCache payloads,
         TransactionHashesFilter? filter)
         : base(jsonRpcDuplexClient, MaxQueuedBlocks)
     {
@@ -47,9 +60,13 @@ public class TransactionReceiptsSubscription : Subscription
 
         _filterHashes = filter?.TransactionHashes;
 
+        _payloads = payloads.Join(_filterHashes is null ? null : string.Join(',', _filterHashes.Select(static h => h.ToString()).Order(StringComparer.Ordinal)));
         _receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} will track ReceiptsInserted.");
     }
+
+    /// <summary>Creates the cache the receipts subscriptions of one factory share their serialized receipts through.</summary>
+    internal static ReceiptsEventPayloadCache CreatePayloadCache() => new(static e => e.TxReceipts.Length);
 
     private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => ScheduleAction(() => TryPublishReceipts(e));
 
@@ -70,6 +87,8 @@ public class TransactionReceiptsSubscription : Subscription
         }
 
         int cumulativeLogIndex = 0;
+        EventPayloads payloads = default;
+        bool payloadsResolved = false;
 
         for (int i = 0; i < e.TxReceipts.Length; i++)
         {
@@ -84,18 +103,14 @@ public class TransactionReceiptsSubscription : Subscription
                 continue;
             }
 
-            // Create receipt for RPC
-            // Using basic TxGasInfo with null values since tests don't check gas info
-            ReceiptForRpc receiptForRpc = new(
-                receipt.TxHash!,
-                receipt,
-                e.BlockHeader.Timestamp,
-                _emptyGasInfo,
-                cumulativeLogIndex
-            );
+            if (!payloadsResolved)
+            {
+                payloads = _payloads.ForEvent(e);
+                payloadsResolved = true;
+            }
 
             // Send the receipt
-            using JsonRpcResult result = CreateSubscriptionMessage(receiptForRpc);
+            using JsonRpcResult result = CreateReceiptMessage(payloads, i, e, receipt, cumulativeLogIndex);
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
 
             if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} sent receipt for tx {receipt.TxHash}.");
@@ -105,11 +120,29 @@ public class TransactionReceiptsSubscription : Subscription
         }
     }
 
+    private JsonRpcResult CreateReceiptMessage(EventPayloads payloads, int position, ReceiptsEventArgs e, TxReceipt receipt, int cumulativeLogIndex)
+    {
+        if (payloads.TryGet(position, out SerializedJson payload)) return CreateSubscriptionMessage(payload);
+
+        // Create receipt for RPC
+        // Using basic TxGasInfo with null values since tests don't check gas info
+        ReceiptForRpc receiptForRpc = new(
+            receipt.TxHash!,
+            receipt,
+            e.BlockHeader.Timestamp,
+            _emptyGasInfo,
+            cumulativeLogIndex
+        );
+
+        return payloads.Stores ? CreateSubscriptionMessage(payloads.Store(position, receiptForRpc)) : CreateSubscriptionMessage(receiptForRpc);
+    }
+
     public override string Type => SubscriptionType.EthSubscription.TransactionReceipts;
 
     public override void Dispose()
     {
         _receiptMonitor.ReceiptsInserted -= OnReceiptsInserted;
+        _payloads.Dispose();
         base.Dispose();
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} will no longer track ReceiptsInserted.");
     }
