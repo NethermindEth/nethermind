@@ -295,5 +295,5 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
-            --body "Claude addressed the review findings, but the change could not be pushed: $RUN_URL. Handing this over to the code owners."
+            --body "Claude addressed the review findings, but the push step failed: $RUN_URL. Handing this over to the code owners."
           gh pr ready "$PR" --repo "$GITHUB_REPOSITORY"
