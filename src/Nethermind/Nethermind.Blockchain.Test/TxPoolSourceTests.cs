@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Eip2930;
 using Nethermind.Consensus.Validators;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using System.Linq;
@@ -434,6 +435,49 @@ public class TxPoolSourceTests
         };
         tx.Hash = tx.CalculateHash();
         return tx;
+    }
+
+    // EIP-7999: the pool's per-gas view of a max_fee leaves out intrinsic gas, so it can clear the base fee while the
+    // budget does not cover required_max_fee. Block building checks the budget execution checks.
+    [Test]
+    public void GetTransactions_selects_max_fee_frame_tx_only_when_it_covers_the_required_max_fee([Values] bool blobs, [Values] bool coversBudget)
+    {
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip7999Enabled = true };
+        TestSingleReleaseSpecProvider specProvider = new(spec);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).WithBaseFee(1.GWei).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).TestObject;
+        UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
+        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(0, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas), Is.True);
+
+        Transaction tx = BuildFrameBlobTxWithSidecar(senderByte: 1, blobCount: blobs ? 1 : 0);
+        if (!blobs) tx.NetworkWrapper = null;
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+        tx.MaxFeePerBlobGas = null;
+        tx.MaxFee = 0;
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas), Is.True);
+        UInt256 requiredMaxFee = (UInt256)maxGas * baseFee + (UInt256)tx.GetBlobGas() * feePerBlobGas;
+        UInt256 maxFee = coversBudget ? requiredMaxFee : requiredMaxFee - 1;
+        tx.MaxFee = maxFee;
+        tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(maxFee, tx.GasLimit);
+        tx.Hash = tx.CalculateHash();
+
+        ITxPool txPool = Substitute.For<ITxPool>();
+        Dictionary<AddressAsKey, Transaction[]> pending = new() { { tx.SenderAddress!, [tx] } };
+        SetPendingForProduction(txPool, transactions: blobs ? null : pending, blobTransactions: blobs ? pending : null);
+        txPool.SupportsBlobs.Returns(true);
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
+
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.CanPayBaseFee(baseFee), Is.True, "the per-gas view clears the base fee either way");
+            Assert.That(result.Contains(tx), Is.EqualTo(coversBudget));
+        }
     }
 
     [Test]

@@ -62,7 +62,10 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
+            // EIP-7999: the pool ranks a max_fee by a per-gas view that leaves out intrinsic gas, so the budget the
+            // processor checks is checked here too, rather than failing at execution in every block built.
+            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec)
+                && FrameTxValidation.CoversRequiredMaxFee(tx, spec, baseFee, UInt256.Zero);
             bool BlobFilter(Transaction tx) => HasFullBlobData(tx) && filter(tx);
             // A revalidated pool has already rejected everything whose validity changes with the target spec.
             Func<Transaction, bool> pendingTxFilter = isRevalidatedForTarget
@@ -193,6 +196,12 @@ namespace Nethermind.Consensus.Producers
                     if (feePerBlobGas > blobTx.MaxFeePerBlobGas)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, data gas fee is too low.");
+                        continue;
+                    }
+
+                    if (!FrameTxValidation.CoversRequiredMaxFee(blobTx, spec, baseFee, feePerBlobGas))
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, max fee is below the required max fee.");
                         continue;
                     }
 

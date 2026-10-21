@@ -707,6 +707,25 @@ public static class FrameTxValidation
         return true;
     }
 
+    /// <summary>Whether an EIP-7999 <c>max_fee</c> covers <c>required_max_fee</c> at the given base fees; always
+    /// <see langword="true"/> for per-gas fees.</summary>
+    /// <remarks>The inclusion check execution makes, for block building to skip a transaction that would fail it.
+    /// A pooled blob record carries no frames, so there the frame gas sum, a lower bound on <c>max_gas</c>, stands in.</remarks>
+    public static bool CoversRequiredMaxFee(Transaction transaction, IReleaseSpec spec, in UInt256 baseFee, in UInt256 feePerBlobGas)
+    {
+        if (transaction.MaxFee is not { } maxFee)
+        {
+            return true;
+        }
+
+        ulong maxGas = transaction.Frames is not null && TryCalculateGasBudget(transaction, spec, out _, out _, out ulong gasBudget)
+            ? gasBudget
+            : transaction.GasLimit;
+        return !UInt256.MultiplyOverflow((UInt256)transaction.GetBlobGas(), feePerBlobGas, out UInt256 blobFee)
+            && FrameTxFeeBudget.TryCalculate(in maxFee, in transaction.MaxPriorityFeePerGas, maxGas, in baseFee, in blobFee, out UInt256 requiredMaxFee, out _)
+            && maxFee >= requiredMaxFee;
+    }
+
     private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
     {
         intrinsicGas = 0;
