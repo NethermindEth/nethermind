@@ -166,6 +166,13 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             : null;
     }
 
+    /// <summary>Records a nonce change and captures <paramref name="before"/> as the pre-tx nonce on the first one.</summary>
+    public void AddNonceChange(Address address, ulong before, ulong after)
+    {
+        if (after != 0) GetOrAddAccountChanges(address).PreTxNonce ??= before;
+        AddNonceChange(address, after);
+    }
+
     public void AddNonceChange(Address address, ulong newNonce)
     {
         if (newNonce == 0)
