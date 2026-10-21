@@ -26,7 +26,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 /// Membership changes while events are delivered, but a payload depends only on its event and position, so a stale
 /// view only shares less or stores a payload no one reads. Payloads are attached to the event, which every subscription
 /// receives as the same instance and its queued sends keep alive, so a lagging subscription still finds them and they
-/// are collected with the event.
+/// are collected with the event. As a result, a lagging subscription also keeps alive the shared payloads of each
+/// event in its queue, up to its queued-block limit.
 /// </para>
 /// </remarks>
 /// <param name="payloadCount">The number of payloads an event can have, each addressed by its position.</param>
