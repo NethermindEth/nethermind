@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// of every block.
         /// </summary>
         private FilterKey? GetFilterKey(Filter? filter) =>
-            filter is null || (_filter.AcceptsAnyBlock && _filter.FromBlock.Type == BlockParameterType.Latest && _filter.ToBlock.Type == BlockParameterType.Latest)
+            filter is null || _filter is { AcceptsAnyBlock: true, FromBlock.Type: BlockParameterType.Latest, ToBlock.Type: BlockParameterType.Latest }
                 ? null
                 : new FilterKey(filter);
 
@@ -114,24 +114,21 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// <remarks>Addresses are compared as a set; topics position by position, in order.</remarks>
         internal readonly struct FilterKey(Filter filter) : IEquatable<FilterKey>
         {
-            private readonly BlockParameter _fromBlock = filter.FromBlock;
-            private readonly BlockParameter _toBlock = filter.ToBlock;
-            private readonly HashSet<AddressAsKey>? _addresses = filter.Address;
-            private readonly Hash256[]?[] _topics = filter.Topics?.ToArray() ?? [];
+            private readonly Filter _filter = filter;
 
             public bool Equals(FilterKey other) =>
-                _fromBlock == other._fromBlock
-                && _toBlock == other._toBlock
-                && (_addresses is null ? other._addresses is null : other._addresses is not null && _addresses.SetEquals(other._addresses))
-                && _topics.AsSpan().SequenceEqual(other._topics, TopicComparer.Instance);
+                _filter.FromBlock == other._filter.FromBlock
+                && _filter.ToBlock == other._filter.ToBlock
+                && (_filter.Address is null ? other._filter.Address is null : other._filter.Address is not null && _filter.Address.SetEquals(other._filter.Address))
+                && (_filter.Topics ?? []).SequenceEqual(other._filter.Topics ?? [], TopicComparer.Instance);
 
             public override bool Equals(object? obj) => obj is FilterKey other && Equals(other);
 
             public override int GetHashCode()
             {
                 int addresses = 0;
-                foreach (AddressAsKey address in _addresses ?? []) addresses += address.GetHashCode();
-                return HashCode.Combine(_fromBlock, _toBlock, addresses, _topics.Length);
+                foreach (AddressAsKey address in _filter.Address ?? []) addresses += address.GetHashCode();
+                return HashCode.Combine(_filter.FromBlock, _filter.ToBlock, addresses);
             }
 
             private sealed class TopicComparer : IEqualityComparer<Hash256[]?>
