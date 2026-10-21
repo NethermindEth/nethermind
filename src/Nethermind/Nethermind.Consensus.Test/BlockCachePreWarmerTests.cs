@@ -313,40 +313,6 @@ public class BlockCachePreWarmerTests
         }
     }
 
-    [Test]
-    public void SortUnique_KeepsEachSlotOnceWithEachAccountsSlotsAdjacent()
-    {
-        StorageCell[] slots =
-        [
-            new(TestItem.AddressB, 2), new(TestItem.AddressA, 7), new(TestItem.AddressB, 1),
-            new(TestItem.AddressA, 7), new(TestItem.AddressB, 2), new(TestItem.AddressA, 3)
-        ];
-
-        Span<StorageCell> unique = BlockCachePreWarmer.SortUnique(slots.AsSpan(), default(StorageCellComparer));
-
-        Address first = TestItem.AddressA.CompareTo(TestItem.AddressB) < 0 ? TestItem.AddressA : TestItem.AddressB;
-        Address second = first == TestItem.AddressA ? TestItem.AddressB : TestItem.AddressA;
-        UInt256[] firstIndexes = first == TestItem.AddressA ? [3, 7] : [1, 2];
-        UInt256[] secondIndexes = first == TestItem.AddressA ? [1, 2] : [3, 7];
-        Assert.That(unique.ToArray(), Is.EqualTo(new StorageCell[]
-        {
-            new(first, firstIndexes[0]), new(first, firstIndexes[1]), new(second, secondIndexes[0]), new(second, secondIndexes[1])
-        }));
-    }
-
-    [Test]
-    public void SortUnique_KeepsEachAccountOnce([Values(0, 1, 5)] int repeats)
-    {
-        Address[] accounts = new Address[3 * (repeats + 1)];
-        for (int i = 0; i < accounts.Length; i++) accounts[i] = (i % 3) switch { 0 => TestItem.AddressC, 1 => TestItem.AddressA, _ => TestItem.AddressB };
-
-        Span<Address> unique = BlockCachePreWarmer.SortUnique(accounts.AsSpan(), default(AddressComparer));
-
-        Address[] expected = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
-        Array.Sort(expected);
-        Assert.That(unique.ToArray(), Is.EqualTo(expected));
-    }
-
     /// <summary>Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.</summary>
     [Test]
     public void CollectCalldataAddresses_ScansInclusionListTransactionsAfterTheBlocks()

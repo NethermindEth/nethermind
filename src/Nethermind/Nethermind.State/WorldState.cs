@@ -200,11 +200,6 @@ namespace Nethermind.State
         }
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
-
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
-            _currentScope?.Prefetch(accounts, slots, cancellationToken);
-
-        public bool SupportsPrefetch => _currentScope?.SupportsPrefetch ?? false;
         public void ClearStorage(Address address)
         {
             DebugGuardInScope();
