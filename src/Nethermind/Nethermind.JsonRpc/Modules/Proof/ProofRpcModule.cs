@@ -171,7 +171,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             return ResultWrapper<AccountProofWithMeta>.Success(new AccountProofWithMeta
             {
-                Proof = accountProofCollector.BuildResult(),
+                Proof = EthRpcModule.EchoStorageKeys(accountProofCollector.BuildResult(), storageKeys),
                 Meta = new ProofMeta
                 {
                     NodeLookups = diagnostics.NodeLookups,
