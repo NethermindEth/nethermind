@@ -68,7 +68,6 @@ public enum Instruction : byte
     BLOBHASH = 0x49,
     BLOBBASEFEE = 0x4a,
     SLOTNUM = 0x4b,
-    SETCODEFROM = 0x4c, // EIP-8298 (opcode provisional; TBD in spec)
 
     POP = 0x50,
     MLOAD = 0x51,
@@ -159,6 +158,9 @@ public enum Instruction : byte
     LOG2 = 0xa2,
     LOG3 = 0xa3,
     LOG4 = 0xa4,
+
+    // EIP-8298
+    SETCODEFROM = 0xa7,
 
     // EIP-8141 frame transactions
     APPROVE = 0xaa,

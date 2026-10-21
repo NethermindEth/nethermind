@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
@@ -40,6 +41,7 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
     /// <returns><see langword="true"/> when the cell was cold.</returns>
     public readonly bool WarmUp(in StorageCell storageCell) => _trackingState.WarmUp(in storageCell);
 
+    [SkipLocalsInit]
     public readonly void WarmUp(AccessList? accessList)
     {
         if (accessList?.IsEmpty == false)

@@ -10,6 +10,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Specs.Forks;
@@ -48,6 +49,7 @@ public class DevBlockProducerTests
         Assert.That(await trigger.BuildBlock(), Is.Not.Null, "produced");
         Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "1");
         Assert.That(blockTree.Head!.Number, Is.EqualTo(1));
+        Assert.That(blockTree.Head.ParentBeaconBlockRoot, Is.EqualTo(Hash256.Zero));
     }
 
     private class EmptyTxSourceFactory : IBlockProducerTxSourceFactory
