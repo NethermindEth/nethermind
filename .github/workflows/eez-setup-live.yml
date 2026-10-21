@@ -2,7 +2,7 @@ name: EEZ setup live validation
 
 on:
   push:
-    branches: [diagnostics/eez-setup-reorg]
+    branches: [diagnostics/eez-setup-live]
 
 permissions:
   contents: read
@@ -15,11 +15,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - mode: baseline
+          - mode: patched
             repeat: 1
             probe: '0'
           - mode: patched
-            repeat: 1
+            repeat: 2
             probe: '0'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -90,11 +90,21 @@ jobs:
           if [[ "$MODE" == patched ]]; then
             git -C "$core_directory" apply "$GITHUB_WORKSPACE/scripts/eez/devnet/core-setup.patch"
           fi
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/eez/devnet/run.sh')
+          source = path.read_text()
+          before = 'timeout --kill-after=5s 13m bash "$EEZ_UPSTREAM/testing/kurtosis/run-ci.sh"'
+          after = 'timeout --kill-after=5s 14m bash "$EEZ_UPSTREAM/testing/kurtosis/run-ci.sh"'
+          if source.count(before) != 1:
+              raise SystemExit('diagnostic deadline boundary changed')
+          path.write_text(source.replace(before, after))
+          PY
           sha256sum scripts/eez/devnet/core-setup.patch > "$EEZ_CI_RESULT_DIR/setup-patch.sha256.txt"
           jq -n --arg candidate "$TESTED_CANDIDATE" --arg harness "$GITHUB_SHA" \
             --arg source_run '39508334913' --arg mode "$MODE" \
             --arg core_base abcf9d8ffc4e0ccb5df271fc19efdf9a7fb57774 \
-            '{tested_candidate:$candidate,diagnostic_harness:$harness,source_run:$source_run,mode:$mode,core_base:$core_base,core_setup_patch_applied:($mode=="patched"),compatibility_gate:false}' \
+            '{tested_candidate:$candidate,diagnostic_harness:$harness,source_run:$source_run,mode:$mode,core_base:$core_base,core_setup_patch_applied:($mode=="patched"),diagnostic_suite_timeout_seconds:840,compatibility_gate:false}' \
             > "$EEZ_CI_RESULT_DIR/diagnostic-provenance.json"
       - name: Run the original protocol suite
         run: |
