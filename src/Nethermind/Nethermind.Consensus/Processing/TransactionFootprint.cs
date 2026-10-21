@@ -104,7 +104,7 @@ internal sealed class TransactionFootprint(
         foreach (ref readonly StateEffect effect in effects.AsSpan())
         {
             if (effect.Kind is not (EffectKind.SetStorage or EffectKind.AddToBalance or EffectKind.AddToBalanceAndCreateIfNotExists
-                or EffectKind.SubtractFromBalance or EffectKind.IncrementNonce)) return false;
+                or EffectKind.SubtractFromBalance or EffectKind.IncrementNonce or EffectKind.SetNonce)) return false;
         }
 
         return true;

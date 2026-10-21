@@ -79,8 +79,8 @@ public class PrewarmerSharedCommitTests(IReleaseSpec spec) : PrewarmerHandoffTes
             Call(TestItem.PrivateKeyD, 0, Logger),
             Call(TestItem.PrivateKeyA, 1, Counter),
             // Reads the balance the transfer changed, so it is executed, on the state the shared commit leaves.
-            Call(TestItem.PrivateKeyB, 1, BalanceReader),
-            Call(TestItem.PrivateKeyD, 1, Reverter),
+            Call(TestItem.PrivateKeyD, 1, BalanceReader),
+            Call(TestItem.PrivateKeyB, 1, Reverter),
             Transfer(TestItem.PrivateKeyA, 2, TestItem.AddressD, 1.Wei),
         ];
         if (Spec.IsEip1153Enabled) transactions.Add(Call(TestItem.PrivateKeyC, 0, Transient));
@@ -208,7 +208,7 @@ public class PrewarmerSharedCommitTests(IReleaseSpec spec) : PrewarmerHandoffTes
     public void Randomized_blocks_end_in_the_state_and_receipts_of_executing_them()
     {
         const int seed = 0x4e4d_0c0d;
-        const int blocks = 150;
+        const int blocks = 400;
         int shared = 0;
         int replayed = 0;
         for (int i = 0; i < blocks; i++)
