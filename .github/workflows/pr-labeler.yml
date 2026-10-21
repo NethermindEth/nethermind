@@ -81,12 +81,12 @@ jobs:
               const prefix = prefixMatch[1].toLowerCase();
               if (prefixToLabel[prefix]) {
                 desiredLabels.add(prefixToLabel[prefix]);
-              }
-            }
 
-            // Evaluate breaking-change marker: "feat!:", "feat(scope)!:"
-            if (/^\w+(\([^)]*\))?!:/.test(title)) {
-              desiredLabels.add(breakingLabel);
+                // Evaluate breaking-change marker: "feat!:", "feat(scope)!:"
+                if (/^\w+(\([^)]*\))?!:/.test(title)) {
+                  desiredLabels.add(breakingLabel);
+                }
+              }
             }
 
             // Evaluate title for EIP mentions (eip-1234, EIP 1234, eip1234, etc.)
