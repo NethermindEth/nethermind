@@ -34,7 +34,7 @@ There is no exception unwinding in the zkVM runtime. A throw goes to `ZkvmThrow`
 
 ## Build and run
 
-The [shared guest guide](../../../src/Nethermind/Nethermind.Stateless.Guest.Shared/README.md) covers the commands, expected outputs, the framing each zkVM expects, and proving. In short, from a guest directory:
+The [shared guest guide](../../../src/Nethermind/Nethermind.Stateless.Guest/README.md) covers the commands, expected outputs, the framing each zkVM expects, and proving. In short, from a guest directory:
 
 ```bash
 make build                      # dotnet build -p:EnableZkEvm=true, then bflat in Docker -> bin/nethermind

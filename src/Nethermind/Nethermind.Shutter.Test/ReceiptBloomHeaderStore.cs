@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -18,10 +17,12 @@ namespace Nethermind.Shutter.Test;
 /// <remarks>
 /// <see cref="ShutterApiSimulator"/> stores sequencer logs as receipts of blocks built without them, so the stored
 /// headers carry no bloom for those logs and the log finder would skip the blocks. Deriving the bloom on every read
-/// covers each header instance the block tree hands out, whether cached or decoded again. The receipt storage is
-/// resolved lazily because it depends on the block tree, which depends on this store.
+/// covers each header instance the block tree hands out, whether cached or decoded again. Headers are cached as
+/// copies, so no lookup returns an instance the block tree holds, such as its head block's header, even when a
+/// background lookup re-caches one. The receipt storage is resolved lazily because it depends on the block tree,
+/// which depends on this store.
 /// </remarks>
-internal sealed class ReceiptBloomHeaderStore(IHeaderStore headerStore, Lazy<IReceiptStorage> receiptStorage) : IHeaderStore, IClearableCache
+internal sealed class ReceiptBloomHeaderStore(IHeaderStore headerStore, Lazy<IReceiptStorage> receiptStorage) : IHeaderStore
 {
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache, ulong? blockNumber = null) =>
         WithReceiptBloom(headerStore.Get(blockHash, shouldCache, blockNumber));
@@ -33,7 +34,7 @@ internal sealed class ReceiptBloomHeaderStore(IHeaderStore headerStore, Lazy<IRe
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers) => headerStore.BulkInsert(headers);
 
-    public void Cache(BlockHeader header) => headerStore.Cache(header);
+    public void Cache(BlockHeader header) => headerStore.Cache(header.Clone());
 
     public void Delete(Hash256 blockHash) => headerStore.Delete(blockHash);
 
@@ -46,8 +47,6 @@ internal sealed class ReceiptBloomHeaderStore(IHeaderStore headerStore, Lazy<IRe
 
     public Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive) =>
         headerStore.PrefetchByNumberRange(fromInclusive, toExclusive);
-
-    public void ClearCache() => (headerStore as IClearableCache)?.ClearCache();
 
     private BlockHeader? WithReceiptBloom(BlockHeader? header)
     {

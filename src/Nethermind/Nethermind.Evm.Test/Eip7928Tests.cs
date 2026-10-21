@@ -1433,18 +1433,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .TestObject;
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
 
-        SystemCall systemCall = new()
-        {
-            Data = parentHash.BytesToArray(),
-            GasLimit = systemCallGasLimit,
-            GasPrice = header.BaseFeePerGas,
-            SenderAddress = Address.SystemUser,
-            To = Eip2935Constants.BlockHashHistoryAddress,
-            Value = 0ul,
-        };
-        systemCall.Hash = systemCall.CalculateHash();
-
-        processor.Execute(systemCall, NullTxTracer.Instance);
+        processor.Execute(BuildSystemCall(Eip2935Constants.BlockHashHistoryAddress, parentHash.BytesToArray(), systemCallGasLimit, header), NullTxTracer.Instance);
 
         AccountChangesAtIndex? accountChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress);
         Assert.That(accountChanges, Is.Not.Null);
@@ -1471,6 +1460,59 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 Assert.That(accountChanges.StorageReads, Is.Empty);
             }
         }
+    }
+
+    /// <summary>
+    /// EIP-7928: SYSTEM_ADDRESS stays out of the BAL unless the system contract's own code accesses it.
+    /// Canonical predeploy bytecode only uses <c>CALLER</c>; non-canonical code may read the caller's account.
+    /// </summary>
+    [Test]
+    public void System_call_records_system_address_only_when_code_reads_it([Values] bool codeReadsCaller)
+    {
+        InitWorldState(TestState);
+        Address predeploy = Eip7251Constants.ConsolidationRequestPredeployAddress;
+        if (codeReadsCaller)
+        {
+            byte[] readCallerBalance = Prepare.EvmCode
+                .Op(Instruction.CALLER)
+                .Op(Instruction.BALANCE)
+                .Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+            TestState.InsertCode(predeploy, ValueKeccak.Compute(readCallerBalance), readCallerBalance, SpecProvider.GenesisSpec);
+        }
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithGasLimit(120_000_000ul)
+            .WithBaseFee(1.GWei)
+            .TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+
+        processor.Execute(BuildSystemCall(predeploy, [], 30_000_000ul, header), NullTxTracer.Instance);
+
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bal.GetAccountChanges(predeploy), Is.Not.Null);
+            Assert.That(bal.GetAccountChanges(Address.SystemUser), codeReadsCaller ? Is.Not.Null : Is.Null);
+        }
+    }
+
+    private static SystemCall BuildSystemCall(Address to, byte[] data, ulong gasLimit, BlockHeader header)
+    {
+        SystemCall systemCall = new()
+        {
+            Data = data,
+            GasLimit = gasLimit,
+            GasPrice = header.BaseFeePerGas,
+            SenderAddress = Address.SystemUser,
+            To = to,
+            Value = 0ul,
+        };
+        systemCall.Hash = systemCall.CalculateHash();
+        return systemCall;
     }
 
     private static IEnumerable<TestCaseData> CodeTestSource

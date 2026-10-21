@@ -8,10 +8,14 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
@@ -149,6 +153,77 @@ public class HeaderStoreTests
         Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
         context.Header.Number = 300;
         Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
+    }
+
+    [Test]
+    public void GetIfBloomMatches_decodes_only_a_header_whose_bloom_matches(
+        [Values] bool cached, [Values] bool legacyKey, [Values] bool matches)
+    {
+        CountingHeaderDecoder decoder = new();
+        MemDb headerDb = new();
+        HeaderStore store = new(headerDb, new MemDb(), decoder);
+        Bloom bloom = new();
+        bloom.Set(TestItem.AddressA.Bytes);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithBloom(bloom).TestObject;
+        if (legacyKey) headerDb.Set(header.Hash!, decoder.Encode(header).Bytes);
+        else store.Insert(header);
+        if (cached) store.Cache(header);
+        Address address = matches ? TestItem.AddressA : TestItem.AddressB;
+
+        BlockHeader? result = store.GetIfBloomMatches(header.Hash!, header.Number, b => new BloomStructRef(b).Matches(address.Bytes), out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result?.Hash, Is.EqualTo(matches ? header.Hash : null));
+            Assert.That(result?.Bloom, Is.EqualTo(matches ? bloom : null));
+            Assert.That(decoder.Decodes, Is.EqualTo(matches && !cached ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void GetIfBloomMatches_reports_a_missing_header()
+    {
+        HeaderStore store = new(new MemDb(), new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        bool tested = false;
+
+        BlockHeader? result = store.GetIfBloomMatches(header.Hash!, header.Number, _ => tested = true, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(found, Is.False);
+            Assert.That(tested, Is.False);
+        }
+    }
+
+    [Test]
+    public void GetIfBloomMatches_passes_a_zero_length_bloom_as_empty()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true };
+        HeaderStore store = new(new MemDb(), new MemDb(), new HeaderDecoder(new TestSingleReleaseSpecProvider(spec)));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithBloom(Bloom.ZeroLength).TestObject;
+        store.Insert(header);
+
+        BlockHeader? result = store.GetIfBloomMatches(header.Hash!, header.Number, static b => b.IsEmpty, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result?.Bloom, Is.SameAs(Bloom.ZeroLength));
+        }
+    }
+
+    private sealed class CountingHeaderDecoder : HeaderDecoder
+    {
+        public int Decodes { get; private set; }
+
+        protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            Decodes++;
+            return base.DecodeInternal(ref decoderContext, rlpBehaviors);
+        }
     }
 
     private sealed class HeaderStoreFixture : IDisposable

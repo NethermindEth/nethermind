@@ -12,6 +12,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class KzgPointEvaluationPrecompile
 {
+    public static Address Address { get; } = Address.FromNumber(0x0a);
+
     // The top three bits of a compressed BLS12-381 point: compression, infinity and the sign of y.
     private const byte FlagsMask = 0b1110_0000;
     private const byte Uncompressed = 0b0000_0000;

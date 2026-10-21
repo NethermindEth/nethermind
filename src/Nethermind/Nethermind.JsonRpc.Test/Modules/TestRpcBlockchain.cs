@@ -193,7 +193,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.Bridge,
             @this.BlockFinder,
             @this.BlockTree,
-            @this.ReceiptFinder,
+            @this.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
             @this.StateReader,
             @this.TxPool,
             @this.TxSender,
@@ -217,7 +217,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
-            @this.Container.ResolveOptional<HashesOnlyBlockReader>());
+            @this.Container.ResolveOptional<HashesOnlyBlockReader>(),
+            @this.ReceiptFinder);
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
@@ -277,7 +278,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newProcessor = new(BlockTree, BranchProcessor,
-                SpecProvider, BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>());
+                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>());
             _currentBlockchainProcessor = newProcessor;
             newProcessor.Start();
         }

@@ -62,6 +62,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+    private readonly TimeProvider _timeProvider;
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
@@ -93,7 +94,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager)
+        ILogManager logManager,
+        TimeProvider? timeProvider = null)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -112,6 +114,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
+        _timeProvider = timeProvider ?? TimeProvider.System;
         if (mergeConfig.NewPayloadCacheSize > 0)
             _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
@@ -135,17 +138,20 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
         // Every wait this request takes comes out of one budget, taken here.
-        long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
+        long deadline = _timeProvider.GetTimestamp() + (long)(_timeout.TotalSeconds * _timeProvider.TimestampFrequency);
 
         using ExecutionPayloadPreparation preparation = new(request);
+        using CancellationTokenSource senderRecoveryCancellation = new();
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
+            // Started before TryGetBlock so recovery overlaps the background transactions-root job it waits for.
+            StartSenderRecovery(request, senderRecoveryCancellation.Token);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
-            if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {
+            senderRecoveryCancellation.Cancel();
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
@@ -166,6 +172,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // IBlockValidator.ValidateSuggestedBlock for payload types that take those roots off the wire instead.
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
+            senderRecoveryCancellation.Cancel();
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
             Nethermind.Blockchain.Metrics.BadBlocks++;
             if (block.IsByNethermindNode()) Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
@@ -177,6 +184,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
+            // A queued ancestor can still fail execution and move latestValidHash backwards.
+            if (lastValidHash is not null && !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
+            {
+                return NewPayloadV1Result.Syncing;
+            }
+
+            // Queue removal publishes invalidation before completing, so refresh the earlier snapshot.
+            _invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out lastValidHash);
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $". The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
@@ -238,7 +253,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // A re-executed block is already marked processed, so it can become head before its restored state
                 // commits; wait for that commit before reading the state again.
                 if (IsVerdictServiceable(block)
-                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && IsVerdictServiceable(block)))
+                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider) && IsVerdictServiceable(block)))
                 {
                     if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
                     return NewPayloadV1Result.Valid(block.Hash);
@@ -258,7 +273,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
                 // The re-execution restoring this state may still be committing, so wait for it before judging.
                 if (_stateReader.HasStateForBlock(block.Header)
-                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
+                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider) && _stateReader.HasStateForBlock(block.Header)))
                 {
                     if (EvaluateInclusionListFromState(block) is { } fromState)
                     {
@@ -656,7 +671,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private void StartSenderRecovery(ExecutionPayload request)
+    private void StartSenderRecovery(ExecutionPayload request, CancellationToken cancellationToken)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
         // the senders; they recover in the processing queue as before.
@@ -671,7 +686,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
         try
         {
-            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec, request.Transactions, cancellationToken);
         }
         catch (Exception e)
         {
@@ -690,7 +705,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Hash256 parentHash = parent.GetOrCalculateHash();
         if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
 
-        bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline));
+        bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline), _timeProvider);
         if (!inTime && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
         return inTime;
     }
@@ -702,7 +717,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </remarks>
     private TimeSpan RemainingBudget(long deadline)
     {
-        TimeSpan left = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline);
+        TimeSpan left = _timeProvider.GetElapsedTime(_timeProvider.GetTimestamp(), deadline);
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
@@ -753,7 +768,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             using CancellationTokenSource cts = new();
-            Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
+            Task timeoutTask = Task.Delay(RemainingBudget(deadline), _timeProvider, cts.Token);
 
             Task<AddBlockResult> suggest = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask();
             AddBlockResult addResult;

@@ -8,16 +8,22 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
+    [GenerateJsonWriter]
     public class ReceiptForRpc
     {
         public ReceiptForRpc()
         {
         }
 
-        public ReceiptForRpc(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, int logIndexStart = 0)
+        public ReceiptForRpc(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, int logIndexStart = 0) =>
+            Populate(txHash, receipt, blockTimestamp, gasInfo, logIndexStart);
+
+        /// <summary>Sets the fields the constructor sets, so a writer can refill one instance per receipt.</summary>
+        protected internal void Populate(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, int logIndexStart)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -31,12 +37,14 @@ namespace Nethermind.JsonRpc.Data
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
-            ReceiptLogsForRpc logs = new(receipt, blockTimestamp, logIndexStart);
-            Logs = logs;
+            if (Logs is ReceiptLogsForRpc logs) logs.Reset(receipt, blockTimestamp, logIndexStart);
+            else Logs = logs = new(receipt, blockTimestamp, logIndexStart);
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;
             Type = receipt.TxType;
+            Payer = null;
+            FrameReceipts = null;
 
             if (receipt.TxType == TxType.FrameTx)
             {

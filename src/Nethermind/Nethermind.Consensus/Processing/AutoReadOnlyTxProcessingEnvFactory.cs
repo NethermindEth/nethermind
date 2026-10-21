@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -25,7 +26,8 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
     public IReadOnlyTxProcessorSource Create() => Create(forReadOnlyQueries: false);
 
     /// <param name="forReadOnlyQueries">When true the envs read state through
-    /// <see cref="IWorldStateManager.CreateReadOnlyQueryWorldState"/>.</param>
+    /// <see cref="IWorldStateManager.CreateReadOnlyQueryWorldState"/> and load the <see cref="ReadOnlyQueryKind.Call"/>
+    /// <see cref="IReadOnlyQueryModule"/>s registered in the parent scope.</param>
     public IReadOnlyTxProcessorSource Create(bool forReadOnlyQueries)
     {
         IWorldStateScopeProvider worldState = forReadOnlyQueries
@@ -35,6 +37,7 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
         // where a diff can actually be read.
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
+        IReadOnlyQueryModule[]? readOnlyQueryModules = forReadOnlyQueries ? parentLifetime.Resolve<IReadOnlyQueryModule[]>() : null;
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
@@ -50,6 +53,8 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
                 // At scope level so the tx processor and the code repository share one slice.
                 builder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
             }
+
+            builder.AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Call);
         });
 
         return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();

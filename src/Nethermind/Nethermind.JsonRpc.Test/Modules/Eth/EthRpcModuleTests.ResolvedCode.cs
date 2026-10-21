@@ -29,6 +29,8 @@ public partial class EthRpcModuleTests
     private static readonly Address CodeProbe = new("0xc2000000000000000000000000000000000000a1");
     private static readonly Address DeployAndRevert = new("0xc2000000000000000000000000000000000000a2");
     private static readonly Address DelegateProbe = new("0xc2000000000000000000000000000000000000a3");
+    private static readonly Address AdoptingProbe = new("0xc2000000000000000000000000000000000000a4");
+    private static readonly Address AdoptedSource = new("0xc2000000000000000000000000000000000000a5");
     private static readonly byte[] ProbeSalt = new byte[32];
 
     // Returns 42.
@@ -166,6 +168,42 @@ public partial class EthRpcModuleTests
         }
 
         string serialized = await test.TestEthRpc(method, transaction, "latest", stateOverride);
+
+        if (revertOnMismatch)
+            AssertExecutedWithoutError(serialized);
+        else
+            Assert.That(JToken.Parse(serialized)["result"]?.Value<string>(), Is.EqualTo(Bytes.Concat(expected).ToHexString(true)), serialized);
+    }
+
+    [Test]
+    public async Task Code_adopted_by_SETCODEFROM_is_read_back_after_the_old_code_ran(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values("Amsterdam", "Amsterdam+EIP-7906")] string fork)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(ResolvedCodeSpec(fork)) { IsEip8298Enabled = true };
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+        bool revertOnMismatch = method != "eth_call";
+
+        // The first call resolves the adopter's code, which then replaces itself with the source's through the world
+        // state, not the code repository; the reads after it must see the adopted code.
+        Address adopter = AdoptingProbe;
+        byte[] adopterCode = Prepare.EvmCode.SETCODEFROM(AdoptedSource).Op(Instruction.POP)
+            .PushData(7).PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done;
+        byte[][] expected = [((UInt256)ProbeRuntime.Length).ToBigEndian(), ProbeRuntime.PadRight(32), ((UInt256)42).ToBigEndian()];
+        Prepare probe = Prepare.EvmCode.Call(adopter, 300_000).Op(Instruction.POP);
+        StoreCodeSize(probe, adopter, 0);
+        probe.PushData(32).PushData(0).PushData(ProbeWord(1)).PushData(adopter).Op(Instruction.EXTCODECOPY)
+            .PushData(32).PushData(ProbeWord(2)).PushData(0).PushData(0).PushData(adopter).PushData(100_000).Op(Instruction.STATICCALL).Op(Instruction.POP);
+        if (revertOnMismatch) RevertUnlessWordsMatch(probe, expected);
+        probe.Return(expected.Length * 32, ProbeOutput);
+        Dictionary<Address, AccountOverride> stateOverride = new()
+        {
+            [CodeProbe] = new() { Code = probe.Done },
+            [adopter] = new() { Code = adopterCode },
+            [AdoptedSource] = new() { Code = ProbeRuntime },
+        };
+
+        string serialized = await ctx.Test.TestEthRpc(method, ProbeCall(CodeProbe, gasPrice: 0), "latest", stateOverride);
 
         if (revertOnMismatch)
             AssertExecutedWithoutError(serialized);

@@ -13,6 +13,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -211,7 +212,7 @@ public class PruningTrieStoreModuleTests
     {
         FlatStateActivationPolicyTests.SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
         if (flags.HasFlag(Flags.FlatHasData))
-            new RocksDbPersistence(flatDb, LimboLogs.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
+            new RocksDbPersistence(flatDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
         if (flags.HasFlag(Flags.WipedForSync))
             FlatStateActivationPolicyTests.MarkWipedForSync(flatDb);
         return flatDb;

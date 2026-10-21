@@ -18,8 +18,6 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 
     public static BN254AddPrecompile Instance { get; } = new();
 
-    public static Address Address { get; } = Address.FromNumber(6);
-
     /// <see href="https://eips.ethereum.org/EIPS/eip-7910" />
     public string Name => "BN254_ADD";
 

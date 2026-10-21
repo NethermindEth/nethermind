@@ -149,7 +149,8 @@ public class XdcModule : Module
 
             .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
             .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>()
-            .RegisterSingletonJsonRpcModule<IXdcMasternodeEthRpcModule, XdcMasternodeEthModule>();
+            .RegisterSingletonJsonRpcModule<IXdcMasternodeEthRpcModule, XdcMasternodeEthModule>()
+            .OnBuild(static _ => XdcBlockParameterConverter.Register());
 
         RegisterRewardCalculatorSource(builder);
         builder.RegisterType<RewardsStore>().As<IRewardsStore>().As<IStartable>().WithAttributeFiltering().SingleInstance();
@@ -197,7 +198,8 @@ public class XdcModule : Module
                 new MinGasPriceFilter(chainHeadInfoProvider, specProvider, logManager)
             ],
             true,
-            frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>());
+            frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+            stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(

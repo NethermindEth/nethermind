@@ -235,6 +235,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip8246Enabled { get; set; }
     public bool IsEip8253Enabled { get; set; }
     public bool IsEip2780Enabled { get; set; }
+    public bool IsEip5920Enabled { get; set; }
     public bool IsEip8360Enabled { get; set; }
     public bool IsEip3298Enabled { get; set; }
 

@@ -60,7 +60,7 @@ public class Filter : IJsonRpcParam
             {
                 FromBlock = hasFromBlock && fromBlockElement.ValueKind != JsonValueKind.Null
                     ? BlockParameterConverter.GetBlockParameter(fromBlockElement.ToString())
-                    : BlockParameter.Earliest;
+                    : BlockParameter.Latest;
                 ToBlock = hasToBlock && toBlockElement.ValueKind != JsonValueKind.Null
                     ? BlockParameterConverter.GetBlockParameter(toBlockElement.ToString())
                     : BlockParameter.Latest;
@@ -94,6 +94,8 @@ public class Filter : IJsonRpcParam
 
     private const int MaxAddressCount = 1000;
     private const int MaxTopicValuesPerSlot = 1000;
+    // LOG4 is the widest log, so a 5th slot can never match; the log index also has one db per slot.
+    private const int MaxTopicSlots = 4;
 
     private static HashSet<AddressAsKey>? GetAddress(JsonElement token, JsonSerializerOptions options)
     {
@@ -130,6 +132,11 @@ public class Filter : IJsonRpcParam
         }
 
         int topicSlotCount = array.Value.GetArrayLength();
+        if (topicSlotCount > MaxTopicSlots)
+        {
+            throw new JsonException($"Too many topics ({topicSlotCount}). Max is {MaxTopicSlots}.");
+        }
+
         Hash256[]?[] topics = new Hash256[]?[topicSlotCount];
         int slotIndex = 0;
         foreach (JsonElement token in array.Value.EnumerateArray())

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
@@ -165,7 +164,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
+            using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
             AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);

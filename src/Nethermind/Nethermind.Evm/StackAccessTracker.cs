@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct StackAccessTracker(bool isTracingAccess) : IDisposable
+public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
 {
     public StackAccessTracker() : this(false) { }
 
@@ -24,10 +24,11 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private readonly bool _isTracingAccess = isTracingAccess;
     private TrackingState _trackingState = TrackingState.RentState();
 
-    private int _addressesSnapshots;
-    private int _storageKeysSnapshots;
-    private int _destroyListSnapshots;
-    private int _logsSnapshots;
+    // Word-sized: every call frame stores all four, and zkVMs charge a 32-bit store several times a 64-bit one.
+    private nint _addressesSnapshots;
+    private nint _storageKeysSnapshots;
+    private nint _destroyListSnapshots;
+    private nint _logsSnapshots;
 
     public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
 
@@ -103,12 +104,12 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         // The generated list will pre-warm all touched addresses.
         if (!_isTracingAccess)
         {
-            _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
-            _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+            _trackingState.AccessedAddresses.Restore((int)_addressesSnapshots);
+            _trackingState.AccessedStorageCells.Restore((int)_storageKeysSnapshots);
             _trackingState.ForgetWarm();
         }
-        _trackingState.DestroyList.Restore(_destroyListSnapshots);
-        _trackingState.Logs.Restore(_logsSnapshots);
+        _trackingState.DestroyList.Restore((int)_destroyListSnapshots);
+        _trackingState.Logs.Restore((int)_logsSnapshots);
     }
 
     public void Dispose()
@@ -118,12 +119,8 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         TrackingState.ResetAndReturn(state);
     }
 
-    private sealed class TrackingState
+    private sealed partial class TrackingState
     {
-        // Rented once per top-level execution, not per frame, so one slot per thread is the whole win;
-        // the collections a returned state keeps sized would otherwise be retained a slot at a time.
-        private static readonly EvmObjectPool<TrackingState> _trackerPool = new(localCapacity: 1);
-
         public static TrackingState RentState()
         {
             if (_trackerPool.TryDequeue(out TrackingState? tracker)) return tracker;

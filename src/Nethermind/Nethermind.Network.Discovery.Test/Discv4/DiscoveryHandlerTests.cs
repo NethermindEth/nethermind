@@ -433,6 +433,32 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public async Task GlobalInboundRateLimiter_IsNotSpentByAHostThePerIpLimiterRejects()
+        {
+            // The per-IP burst is 8; a single host sending far more must not use up the global budget for everyone else.
+            (IKademliaAdapter adapter, DiscoveryHandler handler, List<byte[]> forwarded, IMessageSerializationService service) = CreateHandler(globalInboundMessageBurst: 10);
+            using SemaphoreSlim called = new(0);
+            adapter.When(x => x.OnIncomingMsg(Arg.Any<DiscoveryMsg>())).Do(_ => called.Release());
+
+            byte[] data = SerializePing(service);
+            for (int i = 0; i < 100; i++)
+            {
+                handler.Receive(PooledUdpReceiveResult.Copy((byte[])data.Clone(), _address2));
+            }
+
+            IPEndPoint otherHost = new(IPAddress.Parse("127.0.3.1"), _address2.Port);
+            handler.Receive(PooledUdpReceiveResult.Copy((byte[])data.Clone(), otherHost));
+
+            for (int i = 0; i < 9; i++)
+            {
+                Assert.That(await called.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            }
+            await Task.Delay(50);
+
+            await adapter.Received(9).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
         public async Task InboundDispatchQueue_Drops_Messages_WhenFull()
         {
             IMessageSerializationService innerService = Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject;

@@ -458,7 +458,20 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.Violated, Is.True);
     }
 
-    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, 0x4C is
+    [Test]
+    public void Simulate_PrefixUsesPay_RecordsViolationOnlyWhenEip5920Enabled([Values] bool enabled)
+    {
+        UseSpec(new Bogota { IsEip8141Enabled = true, IsEip5920Enabled = enabled });
+        byte[] deployed = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.PAY)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.ViolationReason, enabled ? Is.EqualTo("banned opcode PAY in validation prefix") : Is.Null);
+    }
+
+    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, SETCODEFROM is
     // undefined, so the prefix must fare exactly as with another undefined opcode (0xF6).
     [Test]
     public void Simulate_PrefixUsesSetCodeFrom_BannedOnlyUnderEip8298([Values] bool eip8298, [Values] bool inDeployFrame)

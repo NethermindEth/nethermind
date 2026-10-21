@@ -48,6 +48,28 @@ public class JsonRpcGeneratorTests
         }
     }
 
+    [Test]
+    public void Trace_callMany_documents_calls_as_wire_array_of_pairs()
+    {
+        string doc = File.ReadAllText(Path.Combine(RpcDirectory, "trace.md"));
+        int start = doc.IndexOf("### trace_callMany\n", StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0));
+        int end = doc.IndexOf("\n### ", start + 1, StringComparison.Ordinal);
+        string methodDoc = end < 0 ? doc[start..] : doc[start..end];
+        int parametersStart = methodDoc.IndexOf("<TabItem value=\"params\"", StringComparison.Ordinal);
+        Assert.That(parametersStart, Is.GreaterThanOrEqualTo(0));
+        int parametersEnd = methodDoc.IndexOf("</TabItem>", parametersStart, StringComparison.Ordinal);
+        Assert.That(parametersEnd, Is.GreaterThan(parametersStart));
+        string parameters = methodDoc[parametersStart..parametersEnd];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parameters, Does.Contain("1. `calls`: array of [_object_ (transaction, same as `call` in `trace_call`), array of _string_ (trace type)] pairs"));
+            Assert.That(parameters, Does.Not.Contain("- `calls`:"));
+            Assert.That(parameters, Does.Contain("2. `blockParameter`: _string_"));
+        }
+    }
+
     [TestCase("call", null)]
     [TestCase("create", null)]
     [TestCase("reward", null)]

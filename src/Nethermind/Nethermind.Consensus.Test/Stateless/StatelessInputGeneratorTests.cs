@@ -40,7 +40,6 @@ using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
 using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
@@ -142,7 +141,7 @@ public class StatelessInputGeneratorTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(100).WithParent(grandparent).TestObject;
         BlockHeader current = Build.A.BlockHeader.WithNumber(101).WithParent(parent).TestObject;
         StatelessBlockTree blockTree = new([grandparent, parent]);
-        BlockhashProvider provider = new(blockTree, Substitute.For<IWorldState>(), NullLogManager.Instance);
+        BlockhashProvider provider = new(blockTree, NullLogManager.Instance);
 
         using (Assert.EnterMultipleScope())
         {

@@ -17,10 +17,21 @@ env:
 
 jobs:
   build:
-    name: Build
+    name: Build ${{ matrix.vm }} guest
     runs-on: ubuntu-latest
-    env:
-      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vm: zisk
+            project: Nethermind.Stateless.ZiskGuest
+          - vm: sp1
+            project: Nethermind.Stateless.Sp1Guest
+          - vm: openvm
+            project: Nethermind.Stateless.OpenVMGuest
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -28,24 +39,34 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
+
       - name: Log in to Docker Hub
-        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
-        # that don't pass it); those runs pull anonymously as before.
-        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
+        # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
+        # id-token: write); those runs pull anonymously as before.
+        if: steps.dockerhub.outputs.available == 'true'
         uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          # The longest lifetime docker/login-action accepts; the pinned images are pulled once and then cached
+          DOCKERHUB_OIDC_EXPIREIN: 3600
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
       - name: Build Nethermind
-        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
+        working-directory: src/Nethermind/${{ matrix.project }}
         run: make build
 
       - name: Upload guest binary
         uses: actions/upload-artifact@v7
         with:
-          name: nethermind
-          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
+          name: nethermind-${{ matrix.vm }}
+          path: src/Nethermind/${{ matrix.project }}/bin/nethermind
           if-no-files-found: error
           retention-days: 1
 
@@ -57,6 +78,7 @@ jobs:
       selected_count: ${{ steps.select.outputs.selected_count }}
     env:
       SUMMARY_DIR: /tmp/stateless-glamsterdam
+      RUN_NUMBER: ${{ github.run_number }}
     steps:
       - name: Select block batches
         id: select
@@ -71,15 +93,28 @@ jobs:
           python3 - "$SUMMARY_DIR/batches.jsonl" "$GITHUB_OUTPUT" <<'PY'
           import json
           import math
+          import os
           import sys
 
-          # A GitHub Actions matrix generates at most 256 jobs, so pack the batches
-          # into at most that many chunks and let each job process a chunk.
-          MAX_JOBS = 256
-
-          # Per-block time budget; the job timeout scales with the chunk's block count
-          # but is capped at GitHub's 360-minute hosted-runner limit.
-          MINUTES_PER_BLOCK = 3
+          # A GitHub Actions matrix generates at most 256 jobs, so split them between
+          # the guests, pack each guest's batches into at most its share of chunks and
+          # let each job process a chunk.
+          #
+          # Running every block on every guest does not fit the 12-hour schedule, so
+          # SP1 and OpenVM take every batch_stride-th batch, rotated by the run number
+          # so consecutive runs cover different batches. SP1 is the slowest: each
+          # execution spends about a minute setting up before the guest starts.
+          #
+          # minutes_per_block is the per-block time budget; the job timeout scales with
+          # the chunk's block count but is capped at GitHub's 360-minute hosted-runner
+          # limit. block_timeout bounds a single guest execution.
+          #
+          # Jobs start in matrix order, so the guests with the longest jobs come first.
+          GUESTS = [
+              {"vm": "sp1", "project": "Nethermind.Stateless.Sp1Guest", "max_jobs": 48, "batch_stride": 50, "minutes_per_block": 3, "block_timeout": "15m"},
+              {"vm": "openvm", "project": "Nethermind.Stateless.OpenVMGuest", "max_jobs": 48, "batch_stride": 2, "minutes_per_block": 3, "block_timeout": "5m"},
+              {"vm": "zisk", "project": "Nethermind.Stateless.ZiskGuest", "max_jobs": 160, "batch_stride": 1, "minutes_per_block": 3, "block_timeout": "5m"},
+          ]
           MAX_TIMEOUT_MINUTES = 360
 
           batches_path, output_path = sys.argv[1:]
@@ -89,25 +124,29 @@ jobs:
           if not batches:
               sys.exit("No block batches found in the catalog")
 
-          chunk_size = math.ceil(len(batches) / MAX_JOBS)
-          chunks = [batches[i:i + chunk_size] for i in range(0, len(batches), chunk_size)]
-
-          matrix = {
-              "include": [
-                  {
+          run_number = int(os.environ["RUN_NUMBER"])
+          include = []
+          for guest in GUESTS:
+              stride = guest["batch_stride"]
+              selected = batches[run_number % stride::stride]
+              chunk_size = math.ceil(len(selected) / guest["max_jobs"])
+              for i in range(0, len(selected), chunk_size):
+                  chunk = selected[i:i + chunk_size]
+                  include.append({
+                      "vm": guest["vm"],
+                      "project": guest["project"],
+                      "block_timeout": guest["block_timeout"],
+                      "selection": "all available batches" if stride == 1 else f"1 in {stride} batches, offset {run_number % stride}",
                       "range": f"{chunk[0]['batchStartBlock']}-{chunk[-1]['batchEndBlock']}",
-                      "timeout": min(MAX_TIMEOUT_MINUTES, sum(batch["artifactCount"] for batch in chunk) * MINUTES_PER_BLOCK),
+                      "timeout": min(MAX_TIMEOUT_MINUTES, sum(batch["artifactCount"] for batch in chunk) * guest["minutes_per_block"]),
                       "batches": [
                           {"path": batch["path"], "sha256": batch["sha256"]}
                           for batch in chunk
                       ],
-                  }
-                  for chunk in chunks
-              ]
-          }
+                  })
 
           outputs = {
-              "matrix": json.dumps(matrix, separators=(",", ":")),
+              "matrix": json.dumps({"include": include}, separators=(",", ":")),
               "selected_count": str(len(batches)),
           }
 
@@ -117,7 +156,7 @@ jobs:
           PY
 
   test:
-    name: Run blocks ${{ matrix.range }}
+    name: Run ${{ matrix.vm }} blocks ${{ matrix.range }}
     needs: [build, select-batches]
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.timeout }}
@@ -125,9 +164,11 @@ jobs:
       fail-fast: false
       max-parallel: 32
       matrix: ${{ fromJSON(needs.select-batches.outputs.matrix) }}
+    permissions:
+      contents: read
+      id-token: write
     env:
-      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
-      SUMMARY_DIR: /tmp/stateless-glamsterdam-${{ matrix.range }}
+      SUMMARY_DIR: /tmp/stateless-glamsterdam-${{ matrix.vm }}-${{ matrix.range }}
       MATRIX_BATCH_COUNT: ${{ needs.select-batches.outputs.selected_count }}
     steps:
       - name: Check out repository
@@ -136,26 +177,46 @@ jobs:
       - name: Download guest binary
         uses: actions/download-artifact@v8
         with:
-          name: nethermind
-          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
+          name: nethermind-${{ matrix.vm }}
+          path: src/Nethermind/${{ matrix.project }}/bin
+
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
 
       - name: Log in to Docker Hub
-        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
-        # that don't pass it); those runs pull anonymously as before.
-        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
+        # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
+        # id-token: write); those runs pull anonymously as before.
+        if: steps.dockerhub.outputs.available == 'true'
         uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          # The longest lifetime docker/login-action accepts; the pinned images are pulled once and then cached
+          DOCKERHUB_OIDC_EXPIREIN: 3600
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
+
+      - name: Install Keccak-256
+        if: matrix.vm == 'openvm'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/keccak"
+          "$RUNNER_TEMP/keccak/bin/pip" install --quiet pycryptodome==3.23.0
 
       - name: Run blocks
         env:
+          GUEST_VM: ${{ matrix.vm }}
+          GUEST_PROJECT: ${{ matrix.project }}
+          SELECTION: ${{ matrix.selection }}
+          BLOCK_TIMEOUT: ${{ matrix.block_timeout }}
           BATCH_RANGE: ${{ matrix.range }}
           BATCHES_JSON: ${{ toJSON(matrix.batches) }}
         run: |
           set -euo pipefail
 
-          guest_dir="src/Nethermind/Nethermind.Stateless.ZiskGuest"
+          guest_dir="src/Nethermind/$GUEST_PROJECT"
 
           rm -rf "$SUMMARY_DIR"
           mkdir -p "$SUMMARY_DIR"/{archives,extracted,logs}
@@ -174,7 +235,8 @@ jobs:
             echo "- Network: $network"
             echo "- Available batches: $batch_total"
             echo "- Available block artifacts: $artifact_count"
-            echo "- Selected batches: all available batches"
+            echo "- Guest: $GUEST_VM"
+            echo "- Selected batches: $SELECTION"
             echo "- Matrix batches: $MATRIX_BATCH_COUNT"
             echo "- Current chunk: $BATCH_RANGE"
             echo
@@ -186,6 +248,10 @@ jobs:
 
           passed=0
           failed=0
+
+          keccak256() {
+            "$RUNNER_TEMP/keccak/bin/python" -c 'import sys; from Crypto.Hash import keccak; print(keccak.new(digest_bits=256, data=bytes.fromhex(sys.argv[1])).hexdigest())' "$1"
+          }
 
           record_failure() {
             local block_number="$1"
@@ -297,7 +363,7 @@ jobs:
 
               echo "Running block $block_number ($block_hash)"
               set +e
-              timeout 5m make -C "$guest_dir" run INPUT="$block_number.ssz" 2>&1 | tee "$log_file"
+              timeout "$BLOCK_TIMEOUT" make -C "$guest_dir" run INPUT="$block_number.ssz" 2>&1 | tee "$log_file"
               run_status=${PIPESTATUS[0]}
               set -e
 
@@ -311,12 +377,17 @@ jobs:
                 record_failure "$block_number" "$block_hash" "stateless result was not successful"
               elif [ "$output_hex" != "$expected_output_hex" ]; then
                 record_failure "$block_number" "$block_hash" "output $output_hex does not match statelessOutputBytes $expected_output_hex"
+              # The printed result is a debug line on OpenVM; what it proves is the
+              # Keccak-256 of the result in its 32-byte public-values window.
+              # Not anchored at line start: the runner's stderr can land on the same line.
+              elif [ "$GUEST_VM" = openvm ] && ! grep -q "public_values=$(keccak256 "$expected_output_hex")\$" "$log_file"; then
+                record_failure "$block_number" "$block_hash" "public values do not match the Keccak-256 of statelessOutputBytes"
               else
                 echo "| $block_number | \`$block_hash\` | passed |" >> "$summary"
                 passed=$((passed + 1))
               fi
 
-              rm -f "$input_file" "$raw_input_file" "$input_hex_file" "$payload_json"
+              rm -f "$input_file" "$input_file.raw" "$raw_input_file" "$input_hex_file" "$payload_json"
             done < <(jq -c '.artifacts[]' "$batch_manifest")
 
             rm -rf "$archive" "$batch_dir"
@@ -347,7 +418,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: stateless-glamsterdam-${{ matrix.range }}-logs
+          name: stateless-glamsterdam-${{ matrix.vm }}-${{ matrix.range }}-logs
           path: |
             ${{ env.SUMMARY_DIR }}/summary.md
             ${{ env.SUMMARY_DIR }}/manifest.json

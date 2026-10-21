@@ -10,7 +10,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Tracing;
 
@@ -24,11 +23,31 @@ public sealed class TransactionTraceExecutor(
     StateReadOverlaySlot? readOverlay = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
+    private const int OverlayUnprobed = 0;
+    private const int OverlayAccepted = 1;
+    private const int OverlayRefused = 2;
+    private int _overlaySupport;
+
     /// <summary>Probes basic overlay support without requiring full BAL construction.</summary>
-    /// <remarks>Applies an empty overlay on a fresh scope, which may invalidate account caches. This does not
-    /// guarantee that a populated overlay will be accepted; conditional refusal falls back to prefix replay.</remarks>
-    public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList
-        && state.TryApplyAccountOverlay(EmptyOverlay.Instance);
+    /// <remarks>Applies an empty overlay once per environment, which may invalidate account caches; the state the
+    /// environment was built with keeps its answer for every later rent. This does not guarantee that a populated
+    /// overlay will be accepted; conditional refusal falls back to prefix replay.</remarks>
+    public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList && StateAcceptsOverlay();
+
+    private bool StateAcceptsOverlay()
+    {
+        int support = Volatile.Read(ref _overlaySupport);
+        if (support == OverlayUnprobed)
+        {
+            support = state.TryApplyAccountOverlay(EmptyOverlay.Instance) ? OverlayAccepted : OverlayRefused;
+            Volatile.Write(ref _overlaySupport, support);
+        }
+
+        return support == OverlayAccepted;
+    }
+
+    /// <summary>Whether processed transactions are reported with their receipts.</summary>
+    internal bool ReportsProcessedTransactions => transactionProcessed is not null;
 
     /// <inheritdoc />
     public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
@@ -46,7 +65,6 @@ public sealed class TransactionTraceExecutor(
         if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || (boundary.IsTracingRewards && !boundary.SkipsTransactions))
             return inner.ProcessTransactions(block, options, tracer, token);
 
-        Metrics.ResetBlockStats();
         inner.SetupTxTimingMetrics(block);
         if (balManager.Enabled) balManager.NextTransaction();
 
@@ -119,7 +137,8 @@ public sealed class TransactionTraceExecutor(
             // With a seeded prefix the receipts tracer numbers receipts from the first executed transaction, so the
             // receipt of transaction i carries index i - first and a cumulative gas that leaves out the prefix; a
             // handler keyed on either would be told about the wrong transaction, so it is told nothing.
-            if (first == 0) transactionProcessed?.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i]));
+            if (first == 0 && transactionProcessed is { HasSubscribers: true } handler)
+                handler.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i]));
             if (balManager.Enabled)
             {
                 balManager.NextTransaction();
@@ -128,8 +147,6 @@ public sealed class TransactionTraceExecutor(
             if (boundary.IsComplete) break;
         }
 
-        Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
-        Metrics.PublishBlockGasPriceGauges();
         // The receipts of what executed: with a seeded prefix that is the tail from the target on, not the block's.
         return [.. tracer.TxReceipts];
     }

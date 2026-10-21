@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -25,15 +26,34 @@ namespace Nethermind.Consensus.Processing;
 /// standard Ethereum implementations only at manual construction sites (stateless envs, tests) — in
 /// container scopes the registered services are always injected.
 /// </remarks>
+/// <param name="frameCodeRunner">Attached to every machine the factory creates, as the container attaches it to the
+/// scope's <see cref="IVirtualMachine"/>: a block with block-level access lists runs its transactions and system calls
+/// on these machines rather than on that one.</param>
+[method: Experimental("NMEVM0001")]
 public class BalTxProcessorFactory(
     IBlockhashProvider blockHashProvider,
     ISpecProvider specProvider,
     ILogManager logManager,
-    CodeInfoRepositoryFactory? codeInfoRepositoryFactory = null,
-    TransactionProcessorAdapterFactory? txProcessorAdapterFactory = null,
-    ITransactionProcessorFactory? transactionProcessorFactory = null,
-    ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator = null)
+    CodeInfoRepositoryFactory? codeInfoRepositoryFactory,
+    TransactionProcessorAdapterFactory? txProcessorAdapterFactory,
+    ITransactionProcessorFactory? transactionProcessorFactory,
+    ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
+    FrameCodeRunner<EthereumGasPolicy>? frameCodeRunner)
 {
+    /// <summary>A factory whose machines run without a frame code runner.</summary>
+    public BalTxProcessorFactory(
+        IBlockhashProvider blockHashProvider,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        CodeInfoRepositoryFactory? codeInfoRepositoryFactory = null,
+        TransactionProcessorAdapterFactory? txProcessorAdapterFactory = null,
+        ITransactionProcessorFactory? transactionProcessorFactory = null,
+        ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator = null)
+        : this(blockHashProvider, specProvider, logManager, codeInfoRepositoryFactory, txProcessorAdapterFactory,
+            transactionProcessorFactory, blobBaseFeeCalculator, frameCodeRunner: null)
+    {
+    }
+
     private static readonly CodeInfoRepositoryFactory DefaultCodeInfoRepositoryFactory =
         static worldState => new EthereumCodeInfoRepository(worldState);
     private static readonly TransactionProcessorAdapterFactory DefaultTxProcessorAdapterFactory =
@@ -47,7 +67,7 @@ public class BalTxProcessorFactory(
     /// <remarks>The caller owns the returned virtual machine and disposes it once it stops using the processor.</remarks>
     public (ITransactionProcessor Processor, ITransactionProcessorAdapter Adapter, IDisposable VirtualMachine) Create(IWorldState worldState, bool parallel)
     {
-        VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+        VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager, frameCodeRunner);
         ITransactionProcessor processor = _transactionProcessorFactory.Create(
             _blobBaseFeeCalculator, specProvider, worldState, virtualMachine,
             _codeInfoRepositoryFactory(worldState), logManager, parallel);

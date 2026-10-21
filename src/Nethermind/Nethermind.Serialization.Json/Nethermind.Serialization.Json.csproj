@@ -8,6 +8,7 @@
   <ItemGroup>
     <!-- Generated JSON writers derive from internal runtime types; JsonWriterGeneratorProbe is the generator tests' in-memory compilation. -->
     <InternalsVisibleTo Include="Nethermind.Facade" />
+    <InternalsVisibleTo Include="Nethermind.JsonRpc" />
     <InternalsVisibleTo Include="Nethermind.JsonRpc.Benchmark" />
     <InternalsVisibleTo Include="Nethermind.JsonRpc.Test" />
     <InternalsVisibleTo Include="Nethermind.Runner.Test" />

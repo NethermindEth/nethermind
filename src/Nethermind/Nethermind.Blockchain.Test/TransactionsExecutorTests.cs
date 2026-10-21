@@ -415,6 +415,86 @@ namespace Nethermind.Blockchain.Test
             Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
         }
 
+        // The middle transaction passes the picker but the processor rejects it, either before its receipt is
+        // written (intrinsic gas too low, as every real failure does today) or, simulated, after it.
+        [Test]
+        public void BlockProductionTransactionsExecutor_discarded_transaction_leaves_no_trace_in_receipts_or_gas_used(
+            [Values] bool amsterdam,
+            [Values] bool failsAfterReceipt)
+        {
+            IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
+
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+            stateProvider.CreateAccount(TestItem.AddressB, 1.Ether);
+            stateProvider.CreateAccount(TestItem.AddressC, 1.Ether);
+            stateProvider.Commit(spec);
+            stateProvider.CommitTree(0);
+
+            Transaction first = BuildTransfer(TestItem.PrivateKeyA, GasCostOf.Transaction);
+            Transaction discarded = BuildTransfer(TestItem.PrivateKeyB, failsAfterReceipt ? GasCostOf.Transaction : GasCostOf.Transaction - 1);
+            Transaction last = BuildTransfer(TestItem.PrivateKeyC, GasCostOf.Transaction);
+
+            Block block = Build.A.Block
+                .WithNumber(1)
+                .WithBaseFeePerGas(1)
+                .WithExcessBlobGas(0)
+                .WithGasLimit(30_000_000)
+                .WithTransactions(first, discarded, last)
+                .TestObject;
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+
+            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+            ITransactionProcessorAdapter adapter = new BuildUpTransactionProcessorAdapter(new EthereumTransactionProcessor(
+                BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine,
+                new EthereumCodeInfoRepository(stateProvider), LimboLogs.Instance));
+            if (failsAfterReceipt) adapter = new LateFailureTxProcessorAdapter(adapter, discarded);
+
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                adapter,
+                stateProvider,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider),
+                LimboLogs.Instance,
+                NullBlockAccessListManager.Instance,
+                NullTxPool.Instance);
+
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.StartNewBlockTrace(blockToProduce);
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(blockToProduce.Header, spec));
+            TxReceipt[] receipts = txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockToProduce.Transactions, Is.EqualTo(new[] { first, last }));
+                Assert.That(receipts.Select(static r => r.TxHash), Is.EqualTo(new[] { first.Hash, last.Hash }));
+                Assert.That(receipts.Select(static r => r.Index), Is.EqualTo(new[] { 0, 1 }));
+                Assert.That(blockToProduce.Header.GasUsed, Is.EqualTo(2 * GasCostOf.Transaction));
+            }
+
+            static Transaction BuildTransfer(PrivateKey sender, ulong gasLimit) => Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithTo(TestItem.AddressD)
+                .WithMaxFeePerGas(1)
+                .WithGasLimit(gasLimit)
+                .SignedAndResolved(sender)
+                .TestObject;
+        }
+
+        /// <summary>Executes the transaction, then reports it as failed — a processor failure after its receipt.</summary>
+        private sealed class LateFailureTxProcessorAdapter(ITransactionProcessorAdapter inner, Transaction failing) : ITransactionProcessorAdapter
+        {
+            public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+            {
+                TransactionResult result = inner.Execute(transaction, txTracer);
+                return result && ReferenceEquals(transaction, failing) ? TransactionResult.MalformedTransaction : result;
+            }
+
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
+                inner.SetBlockExecutionContext(in blockExecutionContext);
+        }
+
         // EIP-8141: the pool exempts frame transactions from EIP-3607, so without the same exemption
         // here a smart account's own transaction is admitted and gossiped but never built into a block.
         [TestCase(TxType.EIP1559, "Sender is contract", TestName = "CanAddTransaction_ContractSender_OrdinaryTx_Skipped")]

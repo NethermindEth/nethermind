@@ -48,7 +48,8 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block number as well as \"latest\" or \"finalized\" and replays the block that is already present in the database.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockParameter, GethTraceOptions options = null);
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockParameter,
+        [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block hash and replays the block that is already present in the database.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null);
@@ -99,7 +100,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Get raw block access list format.")]
     ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter);
 
-    [JsonRpcMethod(Description = "Get Raw Receipt format.")]
+    [JsonRpcMethod(Description = "Get Raw Receipt format.", ResultCanBeNull = true)]
     ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Header format.")]
@@ -119,8 +120,13 @@ public interface IDebugRpcModule : IRpcModule
         IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
 
-    [JsonRpcMethod(Description = "Return list of invalid blocks.")]
-    ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
+    /// <summary>
+    /// Returns the stored invalid blocks, or writes them as JSON to <paramref name="file"/> when it is given.
+    /// </summary>
+    /// <param name="file">Optional absolute local path (not a UNC or device path) of a new file to write the list to; an existing file is never overwritten.</param>
+    /// <returns>The list of invalid blocks, or <c>null</c> when it was written to <paramref name="file"/>.</returns>
+    [JsonRpcMethod(Description = "Return list of invalid blocks. If an absolute local file path is given, writes the list to that new file and returns null.")]
+    ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null);
 
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks",
         IsSharable = true)]

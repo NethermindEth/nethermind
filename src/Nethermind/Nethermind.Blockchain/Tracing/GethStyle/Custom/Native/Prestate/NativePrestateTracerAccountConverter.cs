@@ -31,10 +31,16 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
                 TypeInfoJsonSerializer.Serialize(writer, value.Nonce, options);
             }
 
-            if (!value.Code.IsEmpty)
+            if (!value.Code.IsEmpty || value.IncludeEmptyCode)
             {
                 writer.WritePropertyName("code"u8);
                 ByteArrayConverter.Convert(writer, value.Code.Span, skipLeadingZeros: false);
+            }
+
+            if (value.CodeHash is { } codeHash)
+            {
+                writer.WritePropertyName("codeHash"u8);
+                HexWriter.WriteFixed32HexRawValue(writer, codeHash.Bytes);
             }
 
             ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
