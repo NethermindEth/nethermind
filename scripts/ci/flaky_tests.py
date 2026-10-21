@@ -49,6 +49,10 @@ VERIFY_BUDGET_MARGIN = 1.5
 CONFIDENCE_FACTOR = 3
 SEARCH_ATTEMPTS = 3
 SEARCH_BACKOFF_SECONDS = 60
+SEARCH_PAGE_SIZE = 100
+SEARCH_RESULT_LIMIT = 1000
+CLAUDE_SLOT_PREFIX = "flaky-claude-"
+DAILY_CLAUDE_RUNS = 3
 SPINNER = "import os, sys\nparent = int(sys.argv[1])\nwhile os.getppid() == parent: pass"
 
 
@@ -113,9 +117,10 @@ def test_filter(failure):
     return f"FullyQualifiedName~{owner}&{name}" if owner else name
 
 
-def gh_search(query):
+def gh_search(query, page=1):
     for attempt in range(SEARCH_ATTEMPTS):
-        result = subprocess.run(["gh", "api", "-X", "GET", "search/issues", "-f", f"q={query}", "-f", "per_page=100"],
+        result = subprocess.run(["gh", "api", "-X", "GET", "search/issues", "-f", f"q={query}",
+                                 "-f", f"per_page={SEARCH_PAGE_SIZE}", "-f", f"page={page}"],
                                 capture_output=True, text=True)
         if result.returncode == 0:
             return json.loads(result.stdout)
@@ -125,10 +130,16 @@ def gh_search(query):
 
 
 def is_known(repo, method, since):
-    for item in gh_search(f'repo:{repo} "{method}"')["items"]:
-        merged_at = (item.get("pull_request") or {}).get("merged_at") or ""
-        if item["state"] == "open" or merged_at[:10] >= since:
+    for page in range(1, SEARCH_RESULT_LIMIT // SEARCH_PAGE_SIZE + 1):
+        result = gh_search(f'repo:{repo} "{method}"', page)
+        if result["total_count"] > SEARCH_RESULT_LIMIT:
             return True
+        for item in result["items"]:
+            merged_at = (item.get("pull_request") or {}).get("merged_at") or ""
+            if item["state"] == "open" or merged_at[:10] >= since:
+                return True
+        if page * SEARCH_PAGE_SIZE >= result["total_count"]:
+            return False
     return False
 
 
@@ -148,13 +159,39 @@ def branch_exists(branch):
     return result.returncode == 0
 
 
-def opened_today(repo, label, today):
-    return gh_search(f"repo:{repo} label:{label} created:>={today}")["total_count"]
+def claude_slot(today, slot):
+    return f"{CLAUDE_SLOT_PREFIX}{today}-{slot}"
 
 
-def select(log_dir, repo, label, daily_limit, lookback_days, today=None):
+def claude_slots_used(repo, today, limit):
+    return sum(subprocess.run(["gh", "api", f"repos/{repo}/labels/{claude_slot(today, slot)}", "--silent"],
+                              capture_output=True).returncode == 0 for slot in range(1, limit + 1))
+
+
+def take_claude_slot(repo, today, limit):
+    for slot in range(1, limit + 1):
+        name = claude_slot(today, slot)
+        result = subprocess.run(["gh", "api", "-X", "POST", f"repos/{repo}/labels", "-f", f"name={name}",
+                                 "-f", "color=EDEDED", "-f", "description=Flaky test auto-fix: one Claude run"],
+                                capture_output=True, text=True)
+        if result.returncode == 0:
+            return name
+        if "already_exists" not in result.stdout + result.stderr:
+            raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+    return None
+
+
+def prune_claude_slots(repo, today):
+    result = subprocess.run(["gh", "api", "--paginate", f"repos/{repo}/labels?per_page=100", "--jq", ".[].name"],
+                            capture_output=True, text=True, check=True)
+    for name in result.stdout.split():
+        if name.startswith(CLAUDE_SLOT_PREFIX) and not name.startswith(f"{CLAUDE_SLOT_PREFIX}{today}-"):
+            subprocess.run(["gh", "api", "-X", "DELETE", f"repos/{repo}/labels/{name}", "--silent"], capture_output=True)
+
+
+def select(log_dir, repo, daily_limit, lookback_days, today=None):
     today = today or datetime.date.today()
-    if opened_today(repo, label, today.isoformat()) >= daily_limit:
+    if claude_slots_used(repo, today.isoformat(), daily_limit) >= daily_limit:
         return None, "daily limit reached"
     since = (today - datetime.timedelta(days=lookback_days)).isoformat()
     seen = set()
@@ -283,8 +320,7 @@ def main(argv=None):
     select_parser = commands.add_parser("select")
     select_parser.add_argument("--log-dir", required=True)
     select_parser.add_argument("--repo", required=True)
-    select_parser.add_argument("--label", default="flaky-test")
-    select_parser.add_argument("--daily-limit", type=int, default=3)
+    select_parser.add_argument("--daily-limit", type=int, default=DAILY_CLAUDE_RUNS)
     select_parser.add_argument("--lookback-days", type=int, default=14)
     select_parser.add_argument("--out", default="flaky-candidate.json")
 
@@ -302,6 +338,10 @@ def main(argv=None):
     runs_parser.add_argument("failures", type=int)
     runs_parser.add_argument("seconds", type=int)
 
+    slot_parser = commands.add_parser("claude-slot")
+    slot_parser.add_argument("--repo", required=True)
+    slot_parser.add_argument("--daily-limit", type=int, default=DAILY_CLAUDE_RUNS)
+
     guard_parser = commands.add_parser("guard")
     guard_parser.add_argument("paths", nargs="*")
 
@@ -312,7 +352,7 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
     if args.command == "select":
-        candidate, reason = select(args.log_dir, args.repo, args.label, args.daily_limit, args.lookback_days)
+        candidate, reason = select(args.log_dir, args.repo, args.daily_limit, args.lookback_days)
         if candidate is None:
             print(reason)
             write_outputs({"found": "false", "reason": reason})
@@ -326,6 +366,12 @@ def main(argv=None):
                         load=args.load)
         print(json.dumps(result))
         write_outputs(result)
+    elif args.command == "claude-slot":
+        today = datetime.date.today().isoformat()
+        prune_claude_slots(args.repo, today)
+        slot = take_claude_slot(args.repo, today, args.daily_limit)
+        print(slot or "daily limit reached")
+        write_outputs({"taken": "true" if slot else "false"})
     elif args.command == "guard":
         blocked = blocked_paths(args.paths)
         for path in blocked:

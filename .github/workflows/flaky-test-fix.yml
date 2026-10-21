@@ -71,7 +71,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/ci/flaky_tests.py select --log-dir "$RUNNER_TEMP/logs" --repo "$GITHUB_REPOSITORY" \
-            --label "$LABEL" --out "$RUNNER_TEMP/candidate.json"
+            --out "$RUNNER_TEMP/candidate.json"
 
       - if: steps.select.outputs.found == 'true'
         uses: actions/upload-artifact@v7
@@ -164,8 +164,15 @@ jobs:
             '`%s` in `%s` failed on master (%s) and failed %s of %s reruns under CPU load in this workflow.\n\n%s\n' \
             "$TEST" "$PROJECT" "$FAILED_RUN" "$FAILURES" "$RUNS" "$excerpt")"
 
-      - name: Fix the root cause
+      - name: Take one of today's Claude runs
         if: steps.baseline.outputs.verdict == 'flaky'
+        id: slot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 "$RUNNER_TEMP/flaky_tests.py" claude-slot --repo "$GITHUB_REPOSITORY"
+
+      - name: Fix the root cause
+        if: steps.slot.outputs.taken == 'true'
         timeout-minutes: 90
         uses: anthropics/claude-code-action@v1
         with:
@@ -196,7 +203,7 @@ jobs:
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(dotnet build:*),Bash(python3 scripts/ci/flaky_tests.py:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
 
       - name: Check the change
-        if: steps.baseline.outputs.verdict == 'flaky'
+        if: steps.slot.outputs.taken == 'true'
         id: check
         run: |
           git add -A

@@ -3,6 +3,7 @@
 
 import datetime
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -54,7 +55,7 @@ class SelectTests(unittest.TestCase):
         source.parent.mkdir(parents=True)
         source.write_text("public void Geth_blob_schedule_entry(Fork fork) { }", encoding="utf-8")
         self.patch("SOURCE_ROOT", new=self.work / "src")
-        self.patch("opened_today", return_value=0)
+        self.patch("claude_slots_used", return_value=0)
         self.patch("branch_exists", return_value=False)
         self.known = self.patch("is_known", return_value=False)
 
@@ -65,7 +66,7 @@ class SelectTests(unittest.TestCase):
         return value
 
     def select(self):
-        return flaky_tests.select(self.work / "logs", "o/r", "flaky-test", 3, 14, datetime.date(2026, 10, 21))
+        return flaky_tests.select(self.work / "logs", "o/r", 3, 14, datetime.date(2026, 10, 21))
 
     def test_returns_first_new_candidate_with_source_and_branch(self):
         candidate, reason = self.select()
@@ -81,7 +82,7 @@ class SelectTests(unittest.TestCase):
         self.assertEqual(self.select(), (None, "no new flaky test candidate"))
 
     def test_stops_at_the_daily_limit(self):
-        with mock.patch.object(flaky_tests, "opened_today", return_value=3):
+        with mock.patch.object(flaky_tests, "claude_slots_used", return_value=3):
             self.assertEqual(self.select(), (None, "daily limit reached"))
 
 
@@ -137,7 +138,7 @@ class FeedbackTests(unittest.TestCase):
 class SearchTests(unittest.TestCase):
     def test_known_when_open_or_merged_since(self):
         def known(*items):
-            with mock.patch.object(flaky_tests, "gh_search", return_value={"items": list(items)}):
+            with mock.patch.object(flaky_tests, "gh_search", return_value={"total_count": len(items), "items": list(items)}):
                 return flaky_tests.is_known("o/r", "Run_twice", "2026-10-07")
 
         self.assertTrue(known({"state": "open"}))
@@ -145,9 +146,33 @@ class SearchTests(unittest.TestCase):
         self.assertFalse(known({"state": "closed", "pull_request": {"merged_at": "2026-10-01T00:00:00Z"}},
                                {"state": "closed", "pull_request": {"merged_at": None}}, {"state": "closed"}))
 
+    def test_reads_every_page_and_treats_too_many_matches_as_known(self):
+        old = {"state": "closed"}
+        pages = {1: {"total_count": 150, "items": [old] * 100}, 2: {"total_count": 150, "items": [old] * 49 + [{"state": "open"}]}}
+        with mock.patch.object(flaky_tests, "gh_search", side_effect=lambda query, page: pages[page]) as search:
+            self.assertTrue(flaky_tests.is_known("o/r", "Run_twice", "2026-10-07"))
+        self.assertEqual(search.call_count, 2)
+        with mock.patch.object(flaky_tests, "gh_search", return_value={"total_count": 1001, "items": []}):
+            self.assertTrue(flaky_tests.is_known("o/r", "Run_twice", "2026-10-07"))
+
     def test_fences_excerpt_and_breaks_mentions(self):
         self.assertEqual(flaky_tests.markdown_block("a ``` b @x"), "````\na ``` b @\u200bx\n````")
         self.assertEqual(flaky_tests.markdown_block("plain"), "```\nplain\n```")
+
+
+class ClaudeSlotTests(unittest.TestCase):
+    def test_takes_the_first_free_slot_and_stops_at_the_limit(self):
+        taken = {"flaky-claude-2026-10-21-1"}
+
+        def create(args, **kwargs):
+            name = args[args.index("-f") + 1].removeprefix("name=")
+            exists = name in taken
+            taken.add(name)
+            return subprocess.CompletedProcess(args, 1 if exists else 0, "already_exists" if exists else "", "")
+
+        with mock.patch.object(flaky_tests.subprocess, "run", side_effect=create):
+            self.assertEqual(flaky_tests.take_claude_slot("o/r", "2026-10-21", 2), "flaky-claude-2026-10-21-2")
+            self.assertIsNone(flaky_tests.take_claude_slot("o/r", "2026-10-21", 2))
 
 
 class VerdictTests(unittest.TestCase):
