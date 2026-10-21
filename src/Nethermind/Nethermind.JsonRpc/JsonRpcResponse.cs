@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc
 {
@@ -38,11 +39,13 @@ namespace Nethermind.JsonRpc
         internal StreamedResultObservation? StreamedResultObservation { get; private set; }
 
         /// <summary>Reports this response's result to <paramref name="observer"/> as it is written, when the result is streamed.</summary>
+        /// <param name="observer">The observer to report to.</param>
+        /// <param name="logger">Logs what <paramref name="observer"/> throws.</param>
         /// <remarks>Has no effect on a result that is not streamed. A later call replaces the observer.</remarks>
-        public void ObserveStreamedResult(IStreamedResultObserver observer)
+        public void ObserveStreamedResult(IStreamedResultObserver observer, ILogger logger)
         {
             ArgumentNullException.ThrowIfNull(observer);
-            StreamedResultObservation = new StreamedResultObservation(observer);
+            StreamedResultObservation = new StreamedResultObservation(observer, logger);
         }
 
         internal virtual bool IsResourceUnavailableError => false;

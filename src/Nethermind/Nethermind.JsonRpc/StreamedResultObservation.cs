@@ -5,12 +5,13 @@ using System;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
 /// <summary>One response's <see cref="IStreamedResultObserver"/> and what its result ended with.</summary>
-internal sealed class StreamedResultObservation(IStreamedResultObserver observer)
+internal sealed class StreamedResultObservation(IStreamedResultObserver observer, ILogger logger)
 {
     private bool _resultComplete;
     private bool _observerFailed;
@@ -29,8 +30,9 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
         {
             observer.OnCompleted(written && _resultComplete && !_observerFailed);
         }
-        catch
+        catch (Exception e)
         {
+            if (logger.IsError) logger.Error($"{observer.GetType().Name} failed to complete a streamed result", e);
         }
     }
 
@@ -42,9 +44,10 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
         {
             observer.OnWritten(utf8Json);
         }
-        catch
+        catch (Exception e)
         {
             _observerFailed = true;
+            if (logger.IsError) logger.Error($"{observer.GetType().Name} failed to observe a streamed result", e);
         }
     }
 

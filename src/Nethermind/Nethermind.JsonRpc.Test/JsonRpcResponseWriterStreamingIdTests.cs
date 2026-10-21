@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -420,7 +421,7 @@ public class JsonRpcResponseWriterStreamingIdTests
     {
         RecordingObserver observer = new();
         using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(7L), Result = new ChunkedResult(), Streaming = deferred ? CreateStreamingContext() : null };
-        response.ObserveStreamedResult(observer);
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
 
         string envelope = await WriteAsync(transport, response, isBatch);
 
@@ -438,7 +439,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         CountingStreamPipeWriter transport = new(stream, initialWrittenCount: 1234);
         CountingResult result = new();
         using JsonRpcSuccessResponse response = new() { Result = result };
-        response.ObserveStreamedResult(new RecordingObserver());
+        response.ObserveStreamedResult(new RecordingObserver(), NullLogger.Instance);
 
         await JsonRpcResponseWriter.WriteAsync(transport, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
         await transport.CompleteAsync();
@@ -452,7 +453,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
         RecordingObserver observer = new();
         using JsonRpcSuccessResponse response = replaced ? CreateInvalidTransactionResponse(commitMode: 0) : new() { Result = new TruncatedResult() };
-        response.ObserveStreamedResult(observer);
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
 
         await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
         await pipe.Writer.CompleteAsync();
@@ -466,7 +467,7 @@ public class JsonRpcResponseWriterStreamingIdTests
     {
         RecordingObserver observer = new();
         using JsonRpcSuccessResponse response = new() { Result = new StubStreamable() };
-        response.ObserveStreamedResult(observer);
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
 
         Assert.That(async () => await JsonRpcResponseWriter.WriteAsync(
                 cancelled ? new Pipe().Writer : new FailingPipeWriter(), response, EthereumJsonSerializer.JsonOptions,
@@ -481,7 +482,8 @@ public class JsonRpcResponseWriterStreamingIdTests
         using JsonRpcSuccessResponse unobserved = new() { Id = new JsonRpcId(7L), Result = new ChunkedResult(), Streaming = deferred ? CreateStreamingContext() : null };
         using JsonRpcSuccessResponse observed = new() { Id = new JsonRpcId(7L), Result = new ChunkedResult(), Streaming = deferred ? CreateStreamingContext() : null };
         ThrowingObserver observer = new();
-        observed.ObserveStreamedResult(observer);
+        TestLogger logger = new();
+        observed.ObserveStreamedResult(observer, new ILogger(logger));
 
         string expected = await WriteAsync(TransportKind.Pipe, unobserved, isBatch: false);
         string actual = await WriteAsync(TransportKind.Pipe, observed, isBatch: false);
@@ -491,6 +493,7 @@ public class JsonRpcResponseWriterStreamingIdTests
             Assert.That(actual, Is.EqualTo(expected));
             Assert.That(observer.Chunks, Is.EqualTo(1));
             Assert.That(observer.Succeeded, Is.False);
+            Assert.That(logger.LogList, Has.Count.EqualTo(2));
         }
     }
 
@@ -508,7 +511,7 @@ public class JsonRpcResponseWriterStreamingIdTests
 
         using JsonRpcResponse response = await service.SendRequestAsync(
             RpcTest.BuildJsonRequest("debug_traceBlockByNumber", "latest", new { tracer = "callTracer" }), new JsonRpcContext(RpcEndpoint.Http));
-        response.ObserveStreamedResult(observer);
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
         string envelope = await WriteAsync(TransportKind.Pipe, response, isBatch: false);
 
         using (Assert.EnterMultipleScope())
