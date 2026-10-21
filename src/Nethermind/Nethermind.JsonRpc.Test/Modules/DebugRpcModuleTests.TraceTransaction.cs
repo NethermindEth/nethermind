@@ -165,10 +165,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceTransaction_timeout_wire_contract(
-        [Values("bad", "type", "oversized", "5s", "0s", "-1s", "4294968s")] string duration,
-        [Values(null, false, true)] bool? streamMode,
-        [Values(null, "noopTracer")] string? tracer,
-        [Values] bool known)
+        [Values("bad", "type", "oversized", "5s", "0s", "-1s", "4294968s")] string duration)
     {
         using Context context = await Context.Create();
         Transaction transaction = await AddBlockWithTransfer(context);
@@ -178,19 +175,29 @@ public partial class DebugRpcModuleTests
             "oversized" => new string('x', 65),
             _ => duration
         };
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
-            known ? transaction.Hash! : TestItem.KeccakD, new { timeout, streamMode, tracer });
-        string expected = duration is "type" or "oversized"
-            ? """{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}"""
-            : !known
-                ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""
-                : duration == "bad"
-                    ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}"""
-                    : tracer is null
-                        ? """{"jsonrpc":"2.0","result":{"structLogs":[],"gas":21000,"failed":false,"returnValue":"0x"},"id":67}"""
-                        : """{"jsonrpc":"2.0","result":{},"id":67}""";
 
-        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (bool? streamMode in new bool?[] { null, false, true })
+                foreach (string? tracer in new[] { null, "noopTracer" })
+                    foreach (bool known in new[] { false, true })
+                    {
+                        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
+                            known ? transaction.Hash! : TestItem.KeccakD, new { timeout, streamMode, tracer });
+                        string expected = duration is "type" or "oversized"
+                            ? """{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}"""
+                            : !known
+                                ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""
+                                : duration == "bad"
+                                    ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}"""
+                                    : tracer is null
+                                        ? """{"jsonrpc":"2.0","result":{"structLogs":[],"gas":21000,"failed":false,"returnValue":"0x"},"id":67}"""
+                                        : """{"jsonrpc":"2.0","result":{},"id":67}""";
+
+                        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer),
+                            $"streamMode={streamMode}, tracer={tracer}, known={known}");
+                    }
+        }
     }
 
     [Test]
