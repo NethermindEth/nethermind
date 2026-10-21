@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -24,6 +26,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
@@ -467,6 +471,26 @@ public class HistoryPrunerTests
             Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(expectedCutoff));
             // The CL serves from the start of epoch (head epoch - N).
             Assert.That(pruner.CutoffBlockNumber, Is.LessThanOrEqualTo((head / 32 - expectedEpochs) * 32));
+        }
+    }
+
+    [Test]
+    public void Geth_retention_upper_bound_preserves_history([Values("4294967295", "\"0xffffffff\"")] string retentionEpochs)
+    {
+        using MemoryStream genesis = new(Encoding.UTF8.GetBytes($$"""
+            { "config": { "chainId": 1, "minHistoryRetentionEpochs": {{retentionEpochs}} }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }
+            """));
+        ChainSpecBasedSpecProvider specProvider = new(new GethGenesisLoader(new EthereumJsonSerializer()).Load(genesis));
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(2_000_000).TestObject);
+
+        HistoryPruner pruner = CreatePruner(blockTree, specProvider, new HistoryConfig { Pruning = PruningModes.Rolling });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.RetentionEpochs, Is.EqualTo((ulong)uint.MaxValue));
+            Assert.That(pruner.GetRetentionBlocks(pruner.RetentionEpochs), Is.EqualTo(137_438_953_440UL));
+            Assert.That(pruner.CutoffBlockNumber, Is.Zero);
         }
     }
 

@@ -49,6 +49,7 @@ public class SpecFlagsTests
         ("Eip2780", nameof(IReleaseSpec.IsEip2780Enabled), static s => s.IsEip2780Enabled),
         ("Eip2929", "UseHotAndColdStorage", static s => s.UseHotAndColdStorage),
         ("Eip3860", nameof(IReleaseSpec.IsEip3860Enabled), static s => s.IsEip3860Enabled),
+        ("Eip4758", nameof(IReleaseSpec.IsEip4758Enabled), static s => s.IsEip4758Enabled),
         ("Eip6780", "SelfdestructOnlyOnSameTransaction", static s => s.SelfdestructOnlyOnSameTransaction),
         ("Eip7708", nameof(IReleaseSpec.IsEip7708Enabled), static s => s.IsEip7708Enabled),
         ("Eip8037", nameof(IReleaseSpec.IsEip8037Enabled), static s => s.IsEip8037Enabled),

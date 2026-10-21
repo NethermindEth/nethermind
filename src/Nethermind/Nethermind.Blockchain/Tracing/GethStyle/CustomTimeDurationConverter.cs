@@ -5,10 +5,15 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
+
+internal sealed class TraceDurationFormatException(string message) : FormatException(message);
+
+internal readonly record struct ParsedTraceDuration(TimeSpan? Value, string? Error = null, string? RawText = null);
 
 /// <summary>
 /// Deserializes a JSON string as a <see cref="TimeSpan"/> using Go's time.ParseDuration format
@@ -39,7 +44,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     // Largest possible Format output is "-256204778h59m59.999999999s" = 27 chars.
     private const int FormatBufferSize = 32;
 
-    private const int MaxInputChars = 64;
+    private const int MaxInputBytes = 64;
 
     private static readonly SearchValues<char> Digits = SearchValues.Create("0123456789");
     private static readonly SearchValues<char> UnitTerminators = SearchValues.Create(".0123456789");
@@ -58,22 +63,34 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         if (reader.TokenType == JsonTokenType.Null) return null;
         if (reader.TokenType != JsonTokenType.String) throw new JsonException("Expected string duration or null.");
 
+        ParsedTraceDuration parsed = ReadDuration(ref reader);
+        return parsed.Error is null ? parsed.Value : throw new JsonException(parsed.Error, new TraceDurationFormatException(parsed.Error));
+    }
+
+    internal static ParsedTraceDuration ReadDuration(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType == JsonTokenType.Null) return default;
+        if (reader.TokenType != JsonTokenType.String) throw new JsonException("Expected string duration or null.");
+
+        ValidateLength(ref reader);
+        Span<char> buffer = stackalloc char[MaxInputBytes];
+        return Parse(buffer[..reader.CopyString(buffer)]);
+    }
+
+    private static void ValidateLength(ref Utf8JsonReader reader)
+    {
         long byteLen = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
-        if (byteLen > MaxInputChars) throw new JsonException($"Duration string exceeds {MaxInputChars} characters.");
-
-        return ReadFromStackBuffer(ref reader);
+        if (byteLen > MaxInputBytes) throw new JsonException($"Duration string exceeds {MaxInputBytes} bytes.");
     }
 
-    private static TimeSpan ReadFromStackBuffer(ref Utf8JsonReader reader)
-    {
-        Span<char> stackBuf = stackalloc char[MaxInputChars];
-        return ParseOrThrow(stackBuf[..reader.CopyString(stackBuf)]);
-    }
+    internal static ParsedTraceDuration Parse(string value) => Encoding.UTF8.GetByteCount(value) > MaxInputBytes
+        ? new(null, $"Duration string exceeds {MaxInputBytes} bytes.")
+        : Parse(value.AsSpan());
 
-    private static TimeSpan ParseOrThrow(ReadOnlySpan<char> s)
+    private static ParsedTraceDuration Parse(ReadOnlySpan<char> value)
     {
-        if (TryParseGoDuration(s, out TimeSpan result) || TimeSpan.TryParse(s, CultureInfo.InvariantCulture, out result)) return result;
-        throw new JsonException($"Cannot parse '{s}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').");
+        if (TryParseGoDuration(value, out TimeSpan result) || TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out result)) return new(result);
+        return new(null, $"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').", new string(value));
     }
 
     public override void Write(Utf8JsonWriter writer, TimeSpan? value, JsonSerializerOptions options)
@@ -82,7 +99,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         else WriteFormatted(writer, value.Value);
     }
 
-    private static void WriteFormatted(Utf8JsonWriter writer, TimeSpan value)
+    internal static void WriteFormatted(Utf8JsonWriter writer, TimeSpan value)
     {
         Span<char> buf = stackalloc char[FormatBufferSize];
         writer.WriteStringValue(Format(value, buf));
