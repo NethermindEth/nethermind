@@ -160,7 +160,8 @@ jobs:
             echo "::error::Protected paths changed"
             exit 1
           fi
-          title=$(head -n 1 "$RUNNER_TEMP/fix/pr.md")
+          title=$(head -n 1 "$RUNNER_TEMP/fix/pr.md" | sed -E 's/^#+[[:space:]]*//; s/[[:space:]]+$//')
+          [ -n "$title" ] || { echo "::error::pr.md has an empty title line"; exit 1; }
           tail -n +2 "$RUNNER_TEMP/fix/pr.md" > "$RUNNER_TEMP/body.md"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
