@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
@@ -203,9 +204,17 @@ public sealed class EraImporter(
 
     private async Task SuggestAndProcessBlock(Block block)
     {
+        // The block tree recomputes TD from the local parent instead of trusting archive metadata.
         block.Header.TotalDifficulty = null;
 
-        if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
+        const string unknownParentError = "Unknown parent for block in EraE archive.";
+
+        // Processing recomputes only the execution results, so the parent-relative header rules and the body
+        // roots are checked here, as they are for every other block handed to the processor.
+        BlockHeader parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)
+            ?? throw new EraImportException(unknownParentError);
+
+        if (!blockValidator.ValidateSuggestedBlock(block, parent, out string? error))
             throw new EraVerificationException($"Block validation failed: {error}");
 
         AddBlockResult addResult = await blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
@@ -216,7 +225,7 @@ public sealed class EraImporter(
             case AddBlockResult.CannotAccept:
                 throw new EraImportException("Block rejected from EraE archive.");
             case AddBlockResult.UnknownParent:
-                throw new EraImportException("Unknown parent for block in EraE archive.");
+                throw new EraImportException(unknownParentError);
             case AddBlockResult.InvalidBlock:
                 throw new EraImportException("Invalid block in EraE archive.");
             case AddBlockResult.Added:

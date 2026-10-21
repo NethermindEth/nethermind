@@ -136,11 +136,11 @@ public class BlockStore : IBlockStore, IClearableCache
         {
             if (_pending is not null)
             {
-                _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks"));
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
             }
             else
             {
-                _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks");
+                _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
             }
 
             removedAny |= fromInclusive < toExclusive;

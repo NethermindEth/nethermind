@@ -786,8 +786,8 @@
   },
   {
     "pname": "Nethermind.MclBindings",
-    "version": "4.20.0.114",
-    "hash": "sha256-YrJzxpq2hXJLLfixNjvny+N/gt9B4/IkLxUSfZ9j9Aw="
+    "version": "4.30.0.119",
+    "hash": "sha256-X/NGefftZllJBt7DOhVJcTc3bq+kiJBpF3annajayhQ="
   },
   {
     "pname": "Nethermind.Multiformats.Address",
@@ -806,13 +806,13 @@
   },
   {
     "pname": "Nethermind.Numerics.Int256",
-    "version": "1.11.0",
-    "hash": "sha256-gGjIx/rXNkWtwF7oJzLOZMhiDIo9qyddbIi23ONy9HM="
+    "version": "1.12.0",
+    "hash": "sha256-1YlkcuOsuaEbQWCNhMTbK8jUWaCfvnjsyn9xpglqfrk="
   },
   {
     "pname": "Nethermind.RocksDbBindings",
-    "version": "11.8.1.153",
-    "hash": "sha256-W4U/0Elmw9RVRnVYGdeTpSkA5hQscZoRb6z0GTzvbxs="
+    "version": "11.8.1.183",
+    "hash": "sha256-lSFzU2M+LkX2O29BbM6OEcVdBLE5U/CmiAFVH8hGLVo="
   },
   {
     "pname": "Nethermind.TurboPForBindings",
