@@ -615,9 +615,9 @@ public class JsonRpcServiceTests
         {
             Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(expected));
             pool.DidNotReceive().ReturnModule(rpcModule);
-            response.Dispose();
-            pool.Received(1).ReturnModule(rpcModule);
         }
+        response.Dispose();
+        pool.Received(1).ReturnModule(rpcModule);
     }
 
     [Test]
