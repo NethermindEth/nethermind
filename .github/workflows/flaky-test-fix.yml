@@ -84,7 +84,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.found == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 270
     concurrency:
       group: flaky-test-fix
       cancel-in-progress: false
@@ -194,15 +194,17 @@ jobs:
         env:
           FAILURES: ${{ steps.baseline.outputs.failures }}
           RUNS: ${{ steps.baseline.outputs.runs }}
+          SECONDS_TAKEN: ${{ steps.baseline.outputs.seconds }}
         run: |
           tool="$RUNNER_TEMP/flaky_tests.py"
           git add -A
           git diff --cached --quiet && { echo "::error::Claude produced no change"; exit 1; }
           git diff --cached --name-only -z | xargs -0 python3 "$tool" guard
           dotnet build "src/Nethermind/$PROJECT/$PROJECT.csproj" -c release
-          runs=$(python3 "$tool" required-runs "$RUNS" "$FAILURES")
+          plan=$(python3 "$tool" required-runs "$RUNS" "$FAILURES" "$SECONDS_TAKEN")
+          runs=$(jq -r .runs <<< "$plan")
           python3 "$tool" repeat --project "$PROJECT" --filter "$FILTER" \
-            --runs "$runs" --budget 3600 --stop-after 1 --out-dir "$RUNNER_TEMP/verify" | tee "$RUNNER_TEMP/verify.json"
+            --runs "$runs" --budget "$(jq -r .budget <<< "$plan")" --stop-after 1 --out-dir "$RUNNER_TEMP/verify" | tee "$RUNNER_TEMP/verify.json"
           [ "$(jq -r .failures "$RUNNER_TEMP/verify.json")" = 0 ] && [ "$(jq -r .runs "$RUNNER_TEMP/verify.json")" = "$runs" ]
 
       - name: Authenticate App
@@ -236,18 +238,17 @@ jobs:
             --title "Fix flaky $METHOD" --body-file "$RUNNER_TEMP/body.md"
 
       - name: Record a failed fix attempt
-        if: failure() && steps.baseline.outcome == 'success'
+        if: failure() && steps.baseline.outcome != 'skipped'
         env:
           GH_TOKEN: ${{ github.token }}
           TEST: ${{ needs.detect.outputs.test }}
-          FAILURES: ${{ steps.baseline.outputs.failures }}
-          RUNS: ${{ steps.baseline.outputs.runs }}
+          FAILED_RUN: ${{ github.event.workflow_run.html_url || inputs.run_id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
           gh issue create --label "$LABEL" --title "Flaky test: $METHOD" --body "$(printf \
-            '`%s` in `%s` failed %s of %s reruns under CPU load. The automatic fix did not pass: %s\n' \
-            "$TEST" "$PROJECT" "$FAILURES" "$RUNS" "$RUN_URL")"
+            '`%s` in `%s` failed on master (%s). The automatic reproduction or fix did not finish: %s\n' \
+            "$TEST" "$PROJECT" "$FAILED_RUN" "$RUN_URL")"
 
   follow-up:
     if: |

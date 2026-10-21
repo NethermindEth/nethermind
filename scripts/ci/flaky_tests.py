@@ -43,6 +43,9 @@ SOURCE_ROOT = Path("src/Nethermind")
 ZERO_TESTS_RAN = 8
 MIN_VERIFY_RUNS = 50
 MAX_VERIFY_RUNS = 1000
+MIN_VERIFY_SECONDS = 3600
+MAX_VERIFY_SECONDS = 5400
+VERIFY_BUDGET_MARGIN = 1.5
 CONFIDENCE_FACTOR = 3
 
 
@@ -102,10 +105,9 @@ def test_class(failure):
 
 
 def test_filter(failure):
-    method = failure["method"]
-    name = f"(Name={method}|Name~{method}\\()"
+    name = f"Name={failure['method']}"
     owner = test_class(failure)
-    return f"FullyQualifiedName~{owner}.{method}&{name}" if owner else name
+    return f"FullyQualifiedName~{owner}&{name}" if owner else name
 
 
 def gh_count(*args):
@@ -161,6 +163,11 @@ def required_runs(runs, failures):
     if failures <= 0:
         return MAX_VERIFY_RUNS
     return max(MIN_VERIFY_RUNS, min(MAX_VERIFY_RUNS, math.ceil(CONFIDENCE_FACTOR * runs / failures)))
+
+
+def verify_budget(baseline_runs, baseline_seconds, verify_runs):
+    expected = math.ceil(baseline_seconds / max(baseline_runs, 1) * verify_runs * VERIFY_BUDGET_MARGIN)
+    return max(MIN_VERIFY_SECONDS, min(MAX_VERIFY_SECONDS, expected))
 
 
 def classify(runs, failures):
@@ -273,6 +280,7 @@ def main(argv=None):
     runs_parser = commands.add_parser("required-runs")
     runs_parser.add_argument("runs", type=int)
     runs_parser.add_argument("failures", type=int)
+    runs_parser.add_argument("seconds", type=int)
 
     guard_parser = commands.add_parser("guard")
     guard_parser.add_argument("paths", nargs="*")
@@ -306,8 +314,9 @@ def main(argv=None):
         Path(args.out).write_text(fetch_feedback(args.repo, args.pr), encoding="utf-8")
     else:
         runs = required_runs(args.runs, args.failures)
-        print(runs)
-        write_outputs({"runs": runs})
+        budget = verify_budget(args.runs, args.seconds, runs)
+        print(json.dumps({"runs": runs, "budget": budget}))
+        write_outputs({"runs": runs, "budget": budget})
     return 0
 
 

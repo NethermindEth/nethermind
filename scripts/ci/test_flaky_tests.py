@@ -98,11 +98,11 @@ class FilterTests(unittest.TestCase):
         return flaky_tests.test_filter({"method": "Run_twice", "excerpt": excerpt, "source": self.source.as_posix()})
 
     def test_scopes_to_the_declaring_class_and_skips_prefix_siblings(self):
-        self.assertEqual(self.filter(), r"FullyQualifiedName~Ns.Test.Fixture.Run_twice&(Name=Run_twice|Name~Run_twice\()")
+        self.assertEqual(self.filter(), r"FullyQualifiedName~Ns.Test.Fixture&Name=Run_twice")
 
     def test_prefers_the_class_from_the_stack_trace(self):
         self.assertEqual(self.filter("   at Other.Fixture.Run_twice(Int32 x)"),
-                         r"FullyQualifiedName~Other.Fixture.Run_twice&(Name=Run_twice|Name~Run_twice\()")
+                         r"FullyQualifiedName~Other.Fixture&Name=Run_twice")
 
 
 class GuardTests(unittest.TestCase):
@@ -143,6 +143,11 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(flaky_tests.required_runs(200, 100), 50)
         self.assertEqual(flaky_tests.required_runs(200, 1), 600)
         self.assertEqual(flaky_tests.required_runs(200, 0), 1000)
+
+    def test_scales_verify_budget_with_baseline_speed(self):
+        self.assertEqual(flaky_tests.verify_budget(200, 100, 600), 3600)
+        self.assertEqual(flaky_tests.verify_budget(200, 1000, 600), 4500)
+        self.assertEqual(flaky_tests.verify_budget(200, 2400, 1000), 5400)
 
 
 if __name__ == "__main__":
