@@ -548,8 +548,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     }
 
     /// <summary>Exchanges <c>status</c> with the peer, preferring v2 and falling back to v1 (with <c>earliest_available_slot</c> of 0).</summary>
-    /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered, which is how an unsupported
-    /// protocol surfaces once the peer answers <c>na</c>; any other failure propagates.</remarks>
+    /// <remarks>Falls back when v2 is rejected on a live session, fails as an exchange (<see cref="Eth2ReqRespException"/>) or goes unanswered.
+    /// Caller cancellation, a closed session and unrelated local failures propagate.</remarks>
     public async Task<StatusMessageV2> RequestStatusAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
     {
         try
@@ -557,7 +557,8 @@ public sealed class BeaconP2P : IAsyncDisposable
             using CancellationTokenSource cts = Timeout(session, token);
             return await ExchangeAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(session, () => Tracked(timing, CopyOf(_statusSource.CurrentStatus)), cts, token, timing);
         }
-        catch (Exception e) when (IsExchangeFailure(e) || e is TimeoutException || e is OperationCanceledException && !token.IsCancellationRequested)
+        catch (Exception e) when (!token.IsCancellationRequested && (IsExchangeFailure(e) || e is TimeoutException or OperationCanceledException
+            || e is ChannelClosedException && !session.Closed.IsCancellationRequested))
         {
             if (_logger.IsTrace) _logger.Trace($"Status v2 with {session.RemoteAddress} failed ({e.Message}), falling back to v1");
             timing?.Restart();

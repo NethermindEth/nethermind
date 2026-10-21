@@ -12,6 +12,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Exceptions;
+using Nethermind.Libp2p.Protocols;
 using Nethermind.Logging;
 using NSubstitute;
 
@@ -26,6 +28,10 @@ public class StatusFallbackTests
         ExchangeFailure,
         ExchangeFailureAsTheSessionDeliversIt,
         Unanswered,
+        Rejected,
+        RejectedAsCallerCancels,
+        ExchangeFailureAsCallerCancels,
+        SessionClosed,
         LocalFault,
         LocalFaultAsTheSessionDeliversIt,
         CallerCancelled,
@@ -34,17 +40,23 @@ public class StatusFallbackTests
     [TestCase(V2Failure.ExchangeFailure, true)]
     [TestCase(V2Failure.ExchangeFailureAsTheSessionDeliversIt, true)]
     [TestCase(V2Failure.Unanswered, true)]
+    [TestCase(V2Failure.Rejected, true)]
+    [TestCase(V2Failure.RejectedAsCallerCancels, false)]
+    [TestCase(V2Failure.ExchangeFailureAsCallerCancels, false)]
+    [TestCase(V2Failure.SessionClosed, false)]
     [TestCase(V2Failure.LocalFault, false)]
     [TestCase(V2Failure.LocalFaultAsTheSessionDeliversIt, false)]
     [TestCase(V2Failure.CallerCancelled, false)]
     public async Task Status_v2_falls_back_to_v1_only_for_a_failed_or_unanswered_exchange(V2Failure failure, bool fallsBack)
     {
         using CancellationTokenSource caller = new();
+        using CancellationTokenSource closed = new();
         Exception v2Error = failure switch
         {
-            V2Failure.ExchangeFailure => new Eth2ReqRespException("Peer responded with error code 2"),
+            V2Failure.ExchangeFailure or V2Failure.ExchangeFailureAsCallerCancels => new Eth2ReqRespException("Peer responded with error code 2"),
             V2Failure.ExchangeFailureAsTheSessionDeliversIt => new AggregateException(new Eth2ReqRespException("Peer responded with error code 2")),
             V2Failure.Unanswered or V2Failure.CallerCancelled => new TaskCanceledException(),
+            V2Failure.Rejected or V2Failure.RejectedAsCallerCancels or V2Failure.SessionClosed => new ChannelClosedException(),
             V2Failure.LocalFault => new IOException("Failed to half-close the request stream"),
             V2Failure.LocalFaultAsTheSessionDeliversIt => new AggregateException(new IOException("Failed to half-close the request stream")),
             _ => throw new ArgumentOutOfRangeException(nameof(failure)),
@@ -54,13 +66,73 @@ public class StatusFallbackTests
             await caller.CancelAsync();
         }
 
-        (Exception? thrown, StatusMessageV2? answer, ISession session) = await RequestStatusAsync(v2Error, caller.Token);
+        Action? beforeFailure = failure switch
+        {
+            V2Failure.RejectedAsCallerCancels or V2Failure.ExchangeFailureAsCallerCancels => caller.Cancel,
+            V2Failure.SessionClosed => closed.Cancel,
+            _ => null,
+        };
+        (Exception? thrown, StatusMessageV2? answer, ISession session) = await RequestStatusAsync(v2Error, caller.Token, beforeFailure, closed.Token);
 
         int v1Dials = session.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(ISession.DialAsync) && c.GetMethodInfo().GetGenericArguments()[0] == typeof(StatusProtocolV1));
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(v1Dials, Is.EqualTo(fallsBack ? 1 : 0), "v1 dials");
         Assert.That(answer?.HeadSlot, Is.EqualTo(fallsBack ? V1Answer.HeadSlot : null), "the v1 answer is returned when v1 is tried");
-        Assert.That(thrown, fallsBack ? Is.Null : Is.SameAs(v2Error), "a failure that is no reason to try v1 reaches the caller unchanged");
+        if (failure == V2Failure.SessionClosed)
+        {
+            Assert.That(thrown, Is.TypeOf<PeerSessionClosedException>());
+            Assert.That(thrown?.InnerException, Is.SameAs(v2Error), "a disconnected session retains its actual cause");
+        }
+        else
+        {
+            Assert.That(thrown, fallsBack ? Is.Null : Is.SameAs(v2Error), "a failure that is no reason to try v1 reaches the caller unchanged");
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_v1_only_peer_answers_status_promptly_and_keeps_the_session_usable(CancellationToken token)
+    {
+        StatusMessageV2 published = new()
+        {
+            ForkDigest = [1, 2, 3, 4],
+            FinalizedRoot = Keccak.Compute("v1-finalized"),
+            FinalizedEpoch = 3,
+            HeadRoot = Keccak.Compute("v1-head"),
+            HeadSlot = 77,
+            EarliestAvailableSlot = 12,
+        };
+        IBeaconChainStatusSource source = Substitute.For<IBeaconChainStatusSource>();
+        source.CurrentStatus.Returns(published);
+        await using PlainPeer peer = await PlainPeer.StartAsync(settings => new IdentifyProtocol(settings), token,
+            additionalProtocol: new StatusProtocolV1(source));
+        await using BeaconP2P node = PeerSessionNodes.Create().P2P;
+        await node.StartAsync(token);
+        ISession session = await node.DialPeerAsync(peer.Address, token);
+        using CancellationTokenSource request = CancellationTokenSource.CreateLinkedTokenSource(token);
+        request.CancelAfter(TimeSpan.FromSeconds(5));
+        Task<StatusMessageV2> pending = node.RequestStatusAsync(session, request.Token);
+        StatusMessageV2 answer;
+        try
+        {
+            answer = await pending.WaitAsync(TimeSpan.FromSeconds(2), token);
+            Assert.That(request.IsCancellationRequested, Is.False, "v2 rejection must reach the v1 answer before the caller's deadline");
+        }
+        finally
+        {
+            request.Cancel();
+            await ((Task)pending).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+        await session.DialAsync<PingProtocol>(token);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(answer.ForkDigest, Is.EqualTo(published.ForkDigest));
+        Assert.That(answer.FinalizedRoot, Is.EqualTo(published.FinalizedRoot));
+        Assert.That(answer.FinalizedEpoch, Is.EqualTo(published.FinalizedEpoch));
+        Assert.That(answer.HeadRoot, Is.EqualTo(published.HeadRoot));
+        Assert.That(answer.HeadSlot, Is.EqualTo(published.HeadSlot));
+        Assert.That(answer.EarliestAvailableSlot, Is.Zero, "v1 does not carry earliest_available_slot");
+        Assert.That(session.Closed.IsCancellationRequested, Is.False);
     }
 
     [Test]
@@ -105,10 +177,16 @@ public class StatusFallbackTests
         Assert.That(holder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(earliestSource ? 11 : 10));
     }
 
-    private static async Task<(Exception? Thrown, StatusMessageV2? Answer, ISession Session)> RequestStatusAsync(Exception v2Error, CancellationToken token)
+    private static async Task<(Exception? Thrown, StatusMessageV2? Answer, ISession Session)> RequestStatusAsync(Exception v2Error, CancellationToken token,
+        Action? beforeFailure = null, CancellationToken closed = default)
     {
         ISession session = Substitute.For<ISession>();
-        session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(Task.FromException<StatusMessageV2>(v2Error));
+        session.Closed.Returns(closed);
+        session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(_ =>
+        {
+            beforeFailure?.Invoke();
+            return Task.FromException<StatusMessageV2>(v2Error);
+        });
         session.DialAsync<StatusProtocolV1, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(Task.FromResult(V1Answer));
         await using BeaconP2P p2p = CreateNode();
         try

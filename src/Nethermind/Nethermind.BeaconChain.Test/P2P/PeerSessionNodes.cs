@@ -179,7 +179,7 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
     public Multiaddress Address => peer.ListenAddresses.First();
 
     public static async Task<PlainPeer> StartAsync(Func<IProtocolStackSettings, IdentifyProtocol> identify, CancellationToken token, IBeaconChainStatusSource? statusSource = null,
-        bool pingOnDial = false, Identity? identity = null)
+        bool pingOnDial = false, Identity? identity = null, IProtocol? additionalProtocol = null)
     {
         ServiceCollection collection = new();
         collection.AddSingleton<Microsoft.Extensions.Logging.ILoggerFactory>(new Logging.Microsoft.NethermindLoggerFactory(LimboLogs.Instance));
@@ -190,7 +190,11 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
         }
 
         ServiceProvider services = collection
-            .AddLibp2p(builder => statusSource is null ? builder : builder.AddProtocol<StatusProtocolV2>())
+            .AddLibp2p(builder =>
+            {
+                IPeerFactoryBuilder configured = statusSource is null ? builder : builder.AddProtocol<StatusProtocolV2>();
+                return additionalProtocol is null ? configured : configured.AddProtocol(additionalProtocol);
+            })
             .BuildServiceProvider();
         // Building the factory is what fills the stack settings the peer runs on.
         services.GetRequiredService<IPeerFactory>();
@@ -211,5 +215,18 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
         protected override Task ConnectedTo(ISession session, bool isDialer) => pingOnDial && isDialer
             ? session.DialAsync<PingProtocol>()
             : Task.CompletedTask;
+    }
+}
+
+internal sealed class StallingMetadataProtocol : ISessionProtocol
+{
+    public string Id => "/eth2/beacon_chain/req/metadata/3/ssz_snappy";
+    public TaskCompletionSource Requested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task DialAsync(IChannel downChannel, ISessionContext context) => throw new InvalidOperationException("The fixture only receives requests.");
+
+    public async Task ListenAsync(IChannel downChannel, ISessionContext context)
+    {
+        Requested.TrySetResult();
+        await downChannel;
     }
 }

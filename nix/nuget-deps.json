@@ -680,11 +680,6 @@
     "hash": "sha256-XvNw7WWKQYoDAOmBWpk41Pd9PPMEkSyaJLm4NHGpWc8="
   },
   {
-    "pname": "Nethermind.Libp2p.Protocols.Multistream",
-    "version": "1.1.0",
-    "hash": "sha256-D65UqF0L63SdoCywckJDI1SzrXCkjYTNN4fJn8ygMhM="
-  },
-  {
     "pname": "Nethermind.Libp2p.Protocols.Noise",
     "version": "1.1.0",
     "hash": "sha256-1eWiqRmUHcJqEyt9psb5HfEyUTAAWBrbq/uhzgP6Sjs="

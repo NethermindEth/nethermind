@@ -69,7 +69,7 @@ public class SampledColumnCustodianTests
     }
 
     [Test]
-    public async Task A_dialed_peer_whose_metadata_never_answers_custodies_what_its_enr_advertises(CancellationToken token)
+    public async Task A_dialed_peer_without_metadata_support_custodies_what_its_enr_advertises(CancellationToken token)
     {
         using PrivateKey supernodeKey = new(SupernodeKey);
         Node client = CreateNode();

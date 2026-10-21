@@ -930,7 +930,6 @@
           "Nethermind.Libp2p.Core": "[1.1.0, )",
           "Nethermind.Libp2p.Protocols.Identify": "[1.1.0, )",
           "Nethermind.Libp2p.Protocols.IpTcp": "[1.1.0, )",
-          "Nethermind.Libp2p.Protocols.Multistream": "[1.1.0, )",
           "Nethermind.Libp2p.Protocols.Noise": "[1.1.0, )",
           "Nethermind.Libp2p.Protocols.Ping": "[1.1.0, )",
           "Nethermind.Libp2p.Protocols.Pubsub": "[1.1.0, )",
@@ -1503,15 +1502,6 @@
         "requested": "[1.1.0, )",
         "resolved": "1.1.0",
         "contentHash": "QM/OnS2lkLX+MUYPC9+m9WcuSSjGLG3e5WCnCL2yIuRUKcJDnKFOUPpNZEUFrsLVPMsaknjEoK83cjUCV0ajdg==",
-        "dependencies": {
-          "Nethermind.Libp2p.Core": "1.1.0"
-        }
-      },
-      "Nethermind.Libp2p.Protocols.Multistream": {
-        "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "DRoxGLON/EzOLGjwIHe4x5AM090q1QKkUWk9NuJE7oOmLGzFtCTKyFfnL4NwLnk46jOoAmg0dt1ifKG8OXlUAQ==",
         "dependencies": {
           "Nethermind.Libp2p.Core": "1.1.0"
         }
