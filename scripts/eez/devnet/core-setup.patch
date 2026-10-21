@@ -196,10 +196,10 @@ index 0000000..066596d
 +}
 diff --git a/script/e2e/tests/test_network_setup.py b/script/e2e/tests/test_network_setup.py
 new file mode 100644
-index 0000000..9c2f6b3
+index 0000000..6ef37dc
 --- /dev/null
 +++ b/script/e2e/tests/test_network_setup.py
-@@ -0,0 +1,176 @@
+@@ -0,0 +1,177 @@
 +"""Setup receipts can move before trigger preparation; use the settled inclusion."""
 +import json
 +import os
@@ -234,6 +234,7 @@ index 0000000..9c2f6b3
 +        if mode == "malformed": result = {"number":"invalid", "hash":"0x"}
 +        else:
 +            number = 9 if params[0] == "safe" and (clock < 1004 or mode == "stalled") else 10
++            if mode in ("orphaned", "safe_reorg") and params[0] == "safe": number = 10
 +            if params[0] != "safe": number = int(params[0], 16)
 +            block_hash = "0x" + ("3" if number == 10 else "4") * 64
 +            if params[0] != "safe" and ((mode == "orphaned" and number == 9) or
