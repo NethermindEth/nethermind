@@ -46,8 +46,7 @@ public static class IndexProofEngine
     /// </summary>
     /// <remarks>
     /// Callers needing more than one proof from a table must use this overload rather than calling
-    /// <see cref="GenerateProof"/> repeatedly: the latter rehashes every entry and rebuilds the whole
-    /// tree per proof, which is quadratic in the table size for queries matching many entries.
+    /// <see cref="GenerateProof"/> repeatedly: the latter rehashes every entry per call, which is quadratic in the table size for queries matching many entries.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">If any leaf index is out of range.</exception>
     public static IndexEntryProof[] GenerateProofs(IReadOnlyList<IndexEntry> sortedEntries, IReadOnlyList<int> leafIndices)

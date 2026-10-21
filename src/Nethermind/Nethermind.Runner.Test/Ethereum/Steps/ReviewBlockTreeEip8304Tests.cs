@@ -66,10 +66,22 @@ public class ReviewBlockTreeEip8304Tests
             throws ? Throws.InstanceOf<InvalidConfigurationException>() : Throws.Nothing);
     }
 
-    private static async Task ExecuteStep(BlockTree tree, ulong activationTimestamp, ISyncConfig syncConfig, IReceiptStorage receiptStorage)
+    [TestCase(true, false, false)]
+    [TestCase(false, false, true)]
+    [TestCase(true, true, true)]
+    public async Task Startup_rejects_receipt_config_that_skips_stored_receipts(bool storeReceipts, bool deriveFromState, bool throws)
+    {
+        BlockTree tree = CoreBuild.A.BlockTree().OfChainLength(1).TestObject;
+        ReceiptConfig receiptConfig = new() { StoreReceipts = storeReceipts, DeriveFromState = deriveFromState };
+
+        await Assert.ThatAsync(() => ExecuteStep(tree, activationTimestamp: 0, new SyncConfig(), new InMemoryReceiptStorage(), receiptConfig),
+            throws ? Throws.InstanceOf<InvalidConfigurationException>() : Throws.Nothing);
+    }
+
+    private static async Task ExecuteStep(BlockTree tree, ulong activationTimestamp, ISyncConfig syncConfig, IReceiptStorage receiptStorage, IReceiptConfig receiptConfig = null)
     {
         await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(syncConfig, new InitConfig { ProcessingEnabled = false }))
+            .AddModule(new TestNethermindModule(syncConfig, new InitConfig { ProcessingEnabled = false }, receiptConfig ?? new ReceiptConfig()))
             .AddSingleton(new ChainSpec { Parameters = new ChainParameters { Eip8304TransitionTimestamp = activationTimestamp } })
             .AddSingleton<IBlockTree>(tree)
             .AddSingleton(receiptStorage)

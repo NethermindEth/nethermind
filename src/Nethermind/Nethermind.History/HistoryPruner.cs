@@ -203,9 +203,17 @@ public class HistoryPruner : IHistoryPruner
 
             return _historyConfig.Pruning == PruningModes.UseAncientBarriers
                 ? AncientBarrierCutoff()
-                // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
-                : CalculateRollingCutoff(RetentionEpochs + 1);
+                : RollingCutoff();
         }
+    }
+
+    private ulong? RollingCutoff()
+    {
+        // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
+        ulong? cutoff = CalculateRollingCutoff(RetentionEpochs + 1);
+        return cutoff is { } value && _blockTree.Head is { } head
+            ? ulong.Min(value, head.Number.SaturatingSub(_syncConfig.RequiredHistoryBelowPivot))
+            : cutoff;
     }
 
     // The configured barrier is fixed before the sync pivot resolves, so it can sit inside the history the node still needs.

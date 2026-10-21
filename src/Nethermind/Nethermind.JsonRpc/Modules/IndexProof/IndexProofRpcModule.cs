@@ -60,7 +60,7 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree blockTree) :
             }
         }
 
-        // One tree build for the whole result set; per-proof generation is quadratic in table size.
+        // One pass over the table for the whole result set; per-proof generation is quadratic in table size.
         IndexEntryProof[] proofs = IndexProofEngine.GenerateProofs(entries, leafIndices);
 
         IndexProofResult[] results = new IndexProofResult[proofs.Length];

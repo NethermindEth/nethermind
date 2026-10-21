@@ -416,7 +416,7 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public async Task Ancient_barrier_cutoff_keeps_required_history_below_sync_pivot()
+    public async Task Cutoff_keeps_required_history_below_sync_pivot([Values(PruningModes.UseAncientBarriers, PruningModes.Rolling)] PruningModes pruning)
     {
         SyncConfig syncConfig = new()
         {
@@ -427,7 +427,7 @@ public class HistoryPrunerTests
             RequiredHistoryBelowPivot = 70
         };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(
-            new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0 }, blocks: 100, syncPivot: 100, syncConfig: syncConfig);
+            new HistoryConfig { Pruning = pruning, RetentionEpochs = 1, PruningInterval = 0 }, blocks: 100, syncPivot: 100, syncConfig: syncConfig);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 

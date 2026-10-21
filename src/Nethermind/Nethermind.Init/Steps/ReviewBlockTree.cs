@@ -57,6 +57,9 @@ namespace Nethermind.Init.Steps
             if (receiptConfig is not null && !receiptConfig.StoreReceipts)
                 throw Incompatible($"Receipt.{nameof(IReceiptConfig.StoreReceipts)} is disabled");
 
+            if (receiptConfig?.DeriveFromState == true)
+                throw Incompatible($"Receipt.{nameof(IReceiptConfig.DeriveFromState)} is enabled");
+
             if (syncConfig.FastSync && (!syncConfig.DownloadBodiesInFastSync || !syncConfig.DownloadReceiptsInFastSync))
                 throw Incompatible($"Sync.{nameof(ISyncConfig.DownloadBodiesInFastSync)} or Sync.{nameof(ISyncConfig.DownloadReceiptsInFastSync)} is disabled");
 
