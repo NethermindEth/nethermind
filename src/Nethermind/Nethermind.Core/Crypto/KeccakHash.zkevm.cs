@@ -206,7 +206,8 @@ public sealed partial class KeccakHash
     /// bytes, so that <see cref="ComputeHash256OfEdited"/> can resume it.</summary>
     /// <remarks>A full branch always. A shorter one of at least two whole rate blocks only on ZisK, where the state copies
     /// that keeping them takes are DMA moves; on SP1 they go lane by lane and cost more than the permutations they save. A
-    /// branch of a single whole block is edited too rarely to repay them anywhere.</remarks>
+    /// branch of a single whole block is edited too rarely to repay them anywhere. <see cref="TryAbsorbEdited"/> relies on
+    /// this two-block floor: it compares the second block without a length check.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsResumable(int length) =>
         length == Hash532InputLength || ZiskFlag.IsActive && length >= 2 * HASH_DATA_AREA;
