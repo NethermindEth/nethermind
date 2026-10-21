@@ -302,6 +302,10 @@ namespace Nethermind.TxPool
         [Description("Number of blob transactions in pool.")]
         public static long BlobTransactionCount { get; set; }
 
+        [CounterMetric]
+        [Description("Number of blobs served to engine_getBlobs from the processed rows of recently included transactions.")]
+        public static long IncludedBlobsServed;
+
         [Description("Number of pending transactions rejected due to excessive size.")]
         public static long PendingTransactionsSizeTooLarge { get; set; }
 

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -138,6 +139,7 @@ public abstract partial class ForkScheduleSpecProvider : IForkAwareSpecProvider
     public IReleaseSpec GenesisSpec => ForkSchedule[0].Spec;
     public virtual ulong? DaoBlockNumber => null;
     public virtual ulong ChainId => NetworkId;
+    public virtual string SealEngine => SealEngineType.Ethash;
     public ForkActivation[] TransitionActivations { get; protected set; } = [];
 
     public abstract ulong TimestampFork { get; }

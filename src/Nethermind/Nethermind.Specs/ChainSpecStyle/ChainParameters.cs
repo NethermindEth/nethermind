@@ -226,4 +226,6 @@ public class ChainParameters
     public ulong? Eip8279TransitionTimestamp { get; set; }
     public ulong? Eip7805TransitionTimestamp { get; set; }
     public ulong? Eip8298TransitionTimestamp { get; set; }
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? Eip4758TransitionTimestamp { get; set; }
 }

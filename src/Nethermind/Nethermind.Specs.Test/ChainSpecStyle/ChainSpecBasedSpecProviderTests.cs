@@ -1091,6 +1091,26 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
+    public void Eip4758_activates_only_at_its_transition_timestamp()
+    {
+        const ulong eip4758Timestamp = 70;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip4758TransitionTimestamp = eip4758Timestamp },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip4758Timestamp - 1)).IsEip4758Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip4758Timestamp)).IsEip4758Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip4758Timestamp)).GasCosts.DestroyRefund, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Eip8360_activates_only_at_its_transition_timestamp()
     {
         const ulong eip8360Timestamp = 70;

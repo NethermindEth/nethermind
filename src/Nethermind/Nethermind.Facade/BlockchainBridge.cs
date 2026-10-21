@@ -12,6 +12,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -512,22 +513,6 @@ namespace Nethermind.Facade
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
 
-            // EIP-7981 and the EIP-8131 content floor bill access-list bytes at the floor rate, so a pre-warmed
-            // entry can cost more than the cold access it saves and the gas-minimal list is empty. Return it
-            // only when it reaches the same outcome with strictly less gas, so removing entries that
-            // alter execution (e.g. gasleft branching) can't swap in a failing or costlier run.
-            if (optimize && (spec.IsEip7981Enabled || spec.IsEip8131Enabled) && result.TransactionExecuted && accessTracer.AccessList is { IsEmpty: false })
-            {
-                CallOutputTracer emptyOutputTracer = new();
-                CancellationTxTracer emptyTracer = emptyOutputTracer.WithCancellation(cancellationToken);
-                tx.AccessList = null;
-                TransactionResult emptyResult = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, emptyTracer, rejectsTipAboveFeeCap: true);
-                if (emptyResult.TransactionExecuted
-                    && emptyOutputTracer.StatusCode == outputTracer.StatusCode
-                    && emptyOutputTracer.GasSpent < outputTracer.GasSpent)
-                    return BuildCallOutput(emptyResult, emptyOutputTracer, AccessList.Empty);
-            }
-
             return BuildCallOutput(result, outputTracer, accessTracer.AccessList);
         }
 
@@ -886,6 +871,9 @@ namespace Nethermind.Facade
         int overridableEnvPoolSize
     ) : IBlockchainBridgeFactory
     {
+        // Read once: the root scope's registrations do not change after it is built.
+        private IReadOnlyQueryModule[]? _readOnlyQueryModules;
+
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = new(
@@ -909,6 +897,7 @@ namespace Nethermind.Facade
         internal IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
         {
             IOverridableEnv env = envFactory.Create();
+            IReadOnlyQueryModule[] readOnlyQueryModules = _readOnlyQueryModules ??= rootLifetimeScope.Resolve<IReadOnlyQueryModule[]>();
             // Only SETCODEFROM writes code past the code repository, so the extra world-state layer is skipped otherwise.
             bool adoptsCode = rootLifetimeScope.Resolve<ISpecProvider>().GetFinalSpec().IsEip8298Enabled;
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) =>
@@ -923,7 +912,9 @@ namespace Nethermind.Facade
                     .AddScoped<ResolvedCodeMemo>()
                     .AddDecorator<ICodeInfoRepository, MemoizingCodeInfoRepository>()
                     .AddDecorator<ITransactionProcessor, ResolvedCodeClearingTransactionProcessor>()
-                    .Add<BlockchainBridge.BlockProcessingComponents>();
+                    .Add<BlockchainBridge.BlockProcessingComponents>()
+                    // Calls with state, block or blob overrides run here rather than in the shared read-only envs.
+                    .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Call);
                 if (adoptsCode)
                 {
                     builder.AddDecorator<IWorldState, ResolvedCodeForgettingWorldState>();

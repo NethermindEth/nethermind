@@ -1009,19 +1009,19 @@ public partial class EthRpcModule(
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
                 }
             case FilterType.PendingTransactionFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
                 }
             case FilterType.LogFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
                 }
             default:
                 {
@@ -1042,7 +1042,7 @@ public partial class EthRpcModule(
             bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
             if (id < 0 || !filterFound)
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
             }
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
@@ -53,16 +54,16 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
         else if (o is IArrayBufferView buffer)
         {
             int size = (int)buffer.Size;
-            if (size == 0)
-            {
-                TypeInfoJsonSerializer.Serialize(writer, Array.Empty<int>(), options);
-                return;
-            }
-
             using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] array);
-
-            buffer.ReadBytes(buffer.Offset, buffer.Size, array, 0);
-            ByteArrayConverter.Convert(writer, array.AsSpan(0, size), skipLeadingZeros: false);
+            buffer.ReadBytes(0, buffer.Size, array, 0);
+            writer.WriteStartObject();
+            Span<byte> propertyName = stackalloc byte[10];
+            for (int i = 0; i < size; i++)
+            {
+                Utf8Formatter.TryFormat(i, propertyName, out int written);
+                writer.WriteNumber(propertyName[..written], array[i]);
+            }
+            writer.WriteEndObject();
         }
         else
         {
