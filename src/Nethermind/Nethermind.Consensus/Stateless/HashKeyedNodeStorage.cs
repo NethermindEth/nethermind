@@ -276,8 +276,9 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
             for (int child = 0; child < BranchChildren; child++)
             {
                 otherPrefixBits |= (nuint)(Unsafe.Add(ref keccak, -1) ^ KeccakItem);
-                nuint bit = Unsafe.ReadUnaligned<uint>(ref keccak) & mask;
-                candidates = candidates << 1 | (nuint)(Unsafe.Add(ref words, (nint)(bit >> 6)) >> (int)bit) & 1;
+                // Sign-extended: the mask is below 2^31, and a zero-extension would cost the guest an instruction.
+                nuint bit = (nuint)Unsafe.ReadUnaligned<int>(ref keccak) & mask;
+                candidates = candidates * 2 + ((nuint)(Unsafe.Add(ref words, (nint)(bit >> 6)) >> (int)bit) & 1);
                 keccak = ref Unsafe.Subtract(ref keccak, KeccakItemLength);
             }
 
