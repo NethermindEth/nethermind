@@ -49,6 +49,12 @@ namespace Nethermind.Init.Steps
             ValidateEip8304History();
         }
 
+        /// <summary>
+        /// Refuses to start when the configuration cannot keep the history that EIP-8304 index tables are merged from.
+        /// </summary>
+        /// <remarks>
+        /// Applies as soon as a transition timestamp is scheduled, also before activation: a node synced before activation crosses it without a restart.
+        /// </remarks>
         private void ValidateEip8304Config()
         {
             if (chainSpec?.Parameters.Eip8304TransitionTimestamp is not ulong transitionTimestamp)
