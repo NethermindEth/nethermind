@@ -904,6 +904,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         if (_codeInsertJournal.Count != 0 || _transientCode is { Count: > 0 }) return false;
 
         ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+        // From the first change after the snapshot. For a prewarm takeover that change is its sender's: a run's first
+        // effect is the gas debit or the nonce of its sender, whose nonce it also sets, so the change it leaves is not
+        // empty, and a later SetNonce of the sender rewrites it in place. It is checked all the same: nothing here relies
+        // on who made it.
         for (int i = snapshot + 1; i < changes.Length; i++)
         {
             ref readonly Change change = ref changes[i];
@@ -913,6 +917,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                     break;
                 case ChangeType.Update when change.Account is { IsEmpty: false }:
                     break;
+                // PrevIdx is defence in depth: a creation over an earlier change of the account follows its removal, as
+                // a read or an update leaves the account existing and only a missing one is created, and the removal
+                // fails this check itself, here or in the transaction that made it, which then committed.
                 case ChangeType.New when change.PrevIdx == -1 && change.Account is { IsEmpty: false }:
                     break;
                 default:

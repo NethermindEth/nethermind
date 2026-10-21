@@ -124,6 +124,13 @@ public class PrewarmerTxAdapter(
 
         // Any other takeover is matched, replayed and committed on committed state, as without sharing.
         bool mayShare = _sharedCommitState is not null && footprint.MayShareCommit;
+        // Defence in depth. Without this commit the takeover would still end the shared one: its deletion, creation over an
+        // account, code or storage clear never commits as read, so TryShareCommit is not reached or refuses. Matched and
+        // replayed over the pending changes it would read the same state, as those commit as they read, and the one commit
+        // would leave the same state: the pending changes are non-empty updates and creations of accounts that did not
+        // exist, so a later removal of one of them finds the account absent before the commit either way, and a storage
+        // clear drops the pending slot writes of the account as it drops its committed ones. Committing first keeps these
+        // takeovers on the journal they have without sharing, so none of that has to hold.
         if (!mayShare && _uncommitted != 0) CommitTakeovers();
 
         if (!footprint.Matches(worldState))
