@@ -23,8 +23,10 @@ public interface IInvalidChainTracker : IDisposable
     void OnInvalidBlock(Hash256 failedBlock, Hash256? parent);
 
     /// <summary>
-    /// Return last valid hash if this block is known to be on an invalid chain.
-    /// Return null otherwise
+    /// Determines whether a block belongs to a known invalid chain.
     /// </summary>
+    /// <param name="blockHash">The block to check.</param>
+    /// <param name="lastValidHash">The recorded last valid hash, or null if the block is not known to be invalid.</param>
+    /// <returns>True if the block is known to be on an invalid chain; otherwise, false.</returns>
     bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash);
 }

@@ -198,7 +198,8 @@ public class XdcModule : Module
                 new MinGasPriceFilter(chainHeadInfoProvider, specProvider, logManager)
             ],
             true,
-            frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>());
+            frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+            stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(

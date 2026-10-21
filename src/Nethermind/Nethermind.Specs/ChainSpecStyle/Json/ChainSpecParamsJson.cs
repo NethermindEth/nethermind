@@ -221,6 +221,9 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? Eip8298TransitionTimestamp { get; set; }
 
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? Eip4758TransitionTimestamp { get; set; }
+
     /// <summary>
     /// Catch-all for top-level chainspec params keys that don't map to an explicit property —
     /// in practice the hardfork shorthand labels (<c>shanghai</c>, <c>cancun</c>, <c>prague</c>,
