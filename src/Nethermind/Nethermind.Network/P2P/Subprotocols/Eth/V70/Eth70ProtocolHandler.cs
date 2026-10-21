@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -33,6 +34,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V70;
 public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 {
     private static readonly ReceiptMessageDecoder69 ReceiptMessageDecoder = new();
+    private static readonly Func<ReceiptsMessage70, int, ReceiptsMessage70> SelectReceipts =
+        static (message, _) => message;
+    private static readonly Action<IByteBuffer, GetReceiptsMessage70> ValidateReceipts =
+        static (content, request) => ReceiptsResponseBudget.ThrowIfExceeded(content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
 
     /// <summary>Sentinel for <c>lastBlockNumber</c> meaning no receipt block has been seen yet.</summary>
     private const ulong NoBlockSeen = ulong.MaxValue;
@@ -73,25 +78,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         switch (message.PacketType)
         {
             case Eth70MessageCode.Receipts:
-                long receiptsLateId = 0;
-                bool receiptsLate = false;
-                using (MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>.ResponseScope response = _receiptsRequests70.BeginResponse(message.Content))
-                {
-                    if (response.IsExpired)
-                    {
-                        receiptsLate = true;
-                        receiptsLateId = response.RequestId;
-                    }
-                    else
-                    {
-                        GetReceiptsMessage70 request = response.Message;
-                        ReceiptsResponseBudget.ThrowIfExceeded(message.Content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
-                        ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
-                        ReportIn(receiptsMessage, size);
-                        response.Complete(receiptsMessage.RequestId, receiptsMessage, size);
-                    }
-                }
-                if (receiptsLate) _receiptsRequests70.TraceLateResponse(receiptsLateId);
+                HandleCorrelatedResponse(_receiptsRequests70, message.Content, size, SelectReceipts, ValidateReceipts);
                 return true;
             case Eth70MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage70, ReceiptsMessage70>(message, Handle);

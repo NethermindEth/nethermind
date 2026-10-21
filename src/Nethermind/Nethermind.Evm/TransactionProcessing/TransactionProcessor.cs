@@ -63,7 +63,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 totalBlobBaseFee = UInt256.Zero;
                 return false;
             }
-            return BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out totalBlobBaseFee);
+            return !UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(transaction), feePerBlobGas, out totalBlobBaseFee);
         }
     }
 
@@ -322,8 +322,6 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
-
-            UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
@@ -972,16 +970,6 @@ namespace Nethermind.Evm.TransactionProcessing
             Logger.Debug($"Delegation {authorizationTuple} is invalid with error: {error}");
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
-
-        private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
-        {
-            // Block production (BuildUp) is excluded: payload builds run concurrently with block import
-            // on the same process-wide gas aggregates, and the gauges describe imported blocks, not candidates.
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
-            {
-                Metrics.UpdateBlockGasPrice(effectiveGasPrice);
-            }
-        }
 
         /// <summary>
         /// Validates the transaction, in a static manner (i.e. without accessing state/storage).

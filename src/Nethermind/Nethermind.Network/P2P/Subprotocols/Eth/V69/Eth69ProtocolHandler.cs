@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -45,6 +46,11 @@ public class Eth69ProtocolHandler(
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
         gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
 {
+    private static readonly Func<ReceiptsMessage69, int, (IOwnedReadOnlyList<TxReceipt[]>, long)> SelectReceipts =
+        static (message, size) => (message.EthMessage.TxReceipts, size);
+    private static readonly Action<IByteBuffer, GetReceiptsMessage> ValidateReceipts =
+        static (content, request) => ThrowIfReceiptsExceedRequest(content, 1, request.EthMessage);
+
     public override string Name => "eth69";
 
     public new static byte Version => EthVersions.Eth69;
@@ -70,24 +76,7 @@ public class Eth69ProtocolHandler(
                 Handle(statusMsg);
                 return true;
             case Eth69MessageCode.Receipts:
-                long receiptsLateId = 0;
-                bool receiptsLate = false;
-                using (MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>.ResponseScope response = BeginReceiptsResponse(message.Content))
-                {
-                    if (response.IsExpired)
-                    {
-                        receiptsLate = true;
-                        receiptsLateId = response.RequestId;
-                    }
-                    else
-                    {
-                        ThrowIfReceiptsExceedRequest(message.Content, 1, response.Message.EthMessage);
-                        ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
-                        ReportIn(receiptsMessage, size);
-                        response.Complete(receiptsMessage.RequestId, (receiptsMessage.EthMessage.TxReceipts, size), size);
-                    }
-                }
-                if (receiptsLate) TraceLateReceiptsResponse(receiptsLateId);
+                HandleCorrelatedResponse(_receiptsRequests66, message.Content, size, SelectReceipts, ValidateReceipts);
                 return true;
             case Eth69MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);

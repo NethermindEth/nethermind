@@ -873,6 +873,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await using IContainer client = await CreateNode(TestItem.PrivateKeyF, (cfg, spec) =>
             {
                 EnableBlockAccessListsFromGenesis(spec);
+                cfg.GetConfig<ISyncConfig>().ReconstructFinalizedStateFromBlockAccessLists = true;
                 ConfigureLocalNetwork(cfg, AllocatePort());
                 return Task.CompletedTask;
             }, serverKey);

@@ -1839,7 +1839,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void Parallel_validation_parent_reader_scope_is_per_worker_and_released_when_the_block_finishes([Values] bool finishBlock)
+    public void Parallel_validation_parent_reader_scope_is_per_worker_and_released_at_the_block_end_when_a_slot_is_never_rented([Values] bool finishBlock)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         Hash256 parentStateRoot;
@@ -1867,12 +1867,15 @@ public partial class BlockProcessorTests
             new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
+        // The third transaction is never rented, as when a block is rejected or runs out of gas, so the workers never see
+        // the last rent and the readers are released at the end of the block instead.
         Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
         Transaction secondTx = Build.A.Transaction.WithNonce(1).TestObject;
+        Transaction thirdTx = Build.A.Transaction.WithNonce(2).TestObject;
         Block block = Build.A.Block
             .WithNumber(7)
             .WithParentHash(parentHash)
-            .WithTransactions(firstTx, secondTx)
+            .WithTransactions(firstTx, secondTx, thirdTx)
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
@@ -1917,6 +1920,40 @@ public partial class BlockProcessorTests
         Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2), "for a block that failed before its post-execution slice, the next block's setup releases the kept parent readers");
     }
 
+    /// <summary>Once the last transaction is rented, each worker releases the reader of the processor it returns, and the
+    /// first one also releases the reader an idle processor kept, all before the post-execution slice.</summary>
+    /// <param name="idleProcessor">Whether a processor is back in the pool, keeping its reader, when the last transaction is
+    /// rented; otherwise all three processors are still running then and each worker releases its own.</param>
+    [Test]
+    public void Parallel_validation_workers_release_parent_readers_after_the_last_rent([Values] bool idleProcessor)
+    {
+        using BlockAccessListManager balManager = CreateParallelParentReaderManager(
+            out IWorldState stateProvider, out BlockHeader parentHeader, out TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory);
+        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
+        Block block = BuildParallelBlock(parentHeader.Hash!, 3);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        _ = balManager.GetTxProcessor(1);
+        _ = balManager.GetTxProcessor(2);
+        if (idleProcessor)
+        {
+            balManager.ReturnTxProcessor(1);
+            balManager.ReturnTxProcessor(2);
+            int pooled = Math.Min(2, Environment.ProcessorCount);
+            Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2 - pooled), "before the last rent a pooled processor keeps its reader");
+            _ = balManager.GetTxProcessor(3);
+            balManager.ReturnTxProcessor(3);
+        }
+        else
+        {
+            _ = balManager.GetTxProcessor(3);
+            for (uint i = 1; i <= 3; i++) balManager.ReturnTxProcessor(i);
+        }
+
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(parentReaderFactory.BuiltHeaders.Count),
+            "after the last rent the returning workers release their readers and the idle processor's, before the post-execution slice");
+    }
+
     /// <summary>A block that does not run in parallel releases the parent readers an earlier parallel block kept.</summary>
     [Test]
     public void Sequential_block_releases_parent_reader_scopes_kept_by_an_earlier_parallel_block()
@@ -1926,7 +1963,8 @@ public partial class BlockProcessorTests
             out IWorldState stateProvider, out BlockHeader parentHeader, out TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory);
         using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
 
-        Block block = BuildParallelBlock(parentHeader.Hash!, 2 * poolSize);
+        // One transaction more than the loop rents: the block never reaches its last rent, so the processors keep their readers.
+        Block block = BuildParallelBlock(parentHeader.Hash!, 2 * poolSize + 1);
         PrepareSetup(balManager, block, Amsterdam.Instance);
         for (uint i = 1; i <= 2 * poolSize; i++)
         {
@@ -1954,7 +1992,8 @@ public partial class BlockProcessorTests
             out IWorldState stateProvider, out BlockHeader parentHeader, out TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory);
         using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
 
-        Block block = BuildParallelBlock(parentHeader.Hash!, txCount);
+        // One transaction more than the loop rents: the block never reaches its last rent, so the processors keep their readers.
+        Block block = BuildParallelBlock(parentHeader.Hash!, txCount + 1);
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
         for (uint i = 1; i <= txCount; i++)
@@ -1993,7 +2032,8 @@ public partial class BlockProcessorTests
             out IWorldState stateProvider, out BlockHeader parentHeader, out TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory);
         using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
 
-        Block block = BuildParallelBlock(parentHeader.Hash!, processors);
+        // One transaction more than the loop rents: the block never reaches its last rent, so the processors keep their readers.
+        Block block = BuildParallelBlock(parentHeader.Hash!, processors + 1);
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
         for (uint i = 1; i <= processors; i++) _ = balManager.GetTxProcessor(i);
@@ -2473,6 +2513,45 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void ProcessOne_OnOrOffTheMainProcessingThread_PublishesBlockGasPricesOnlyOnIt([Values] bool isBlockProcessingThread)
+    {
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+        transactionsExecutor.ProcessTransactions(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<BlockReceiptsTracer>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<TxReceipt>());
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(HoodiSpecProvider.Instance)
+            .Build();
+        using ILifetimeScope lifetime = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState)
+            .AddSingleton(Substitute.For<ITransactionProcessor>())
+            .AddSingleton(transactionsExecutor)
+            .AddSingleton<IBlockAccessListManager>(new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>())));
+        IWorldState stateProvider = lifetime.Resolve<IWorldState>();
+        IBlockProcessor processor = lifetime.Resolve<IBlockProcessor>();
+        ulong baseFeeGwei = isBlockProcessingThread ? 4_242UL : 4_243UL;
+        Block block = Build.A.Block.WithBaseFeePerGas(baseFeeGwei * 1_000_000_000UL).TestObject;
+
+        using IDisposable scope = stateProvider.BeginScope(null);
+        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = isBlockProcessingThread;
+        try
+        {
+            processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None);
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+        }
+
+        if (isBlockProcessingThread)
+            Assert.That(Nethermind.Evm.Metrics.GasPriceMax, Is.EqualTo((float)baseFeeGwei), "the main processing thread publishes the block's gauges");
+        else
+            Assert.That(Nethermind.Evm.Metrics.GasPriceMax, Is.Not.EqualTo((float)baseFeeGwei), "a trace or simulate replay must not touch the import gauges");
+    }
+
+    [Test]
     [MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_cancels_and_drains_prewarmer_before_clearing_caches(
         [Values(2, 3)] int transactionCount, [Values] bool startSession)
@@ -2756,11 +2835,10 @@ public partial class BlockProcessorTests
             public void Dispose() => owner.SessionDisposals++;
         }
 
-        public CacheType ClearCaches()
+        public void ClearCaches()
         {
             Clears++;
             ClearedBeforeDrain |= StartSession && SessionDisposals == 0;
-            return default;
         }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;

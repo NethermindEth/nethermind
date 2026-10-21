@@ -38,7 +38,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
 
     private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
     private readonly Dictionary<long, Request<T66Msg, TData>> _requests = new(MaxConcurrentRequest);
-    private readonly ClockCache<long, byte> _expiredRequests = new(ExpiredRequestCacheCapacity, lockPartition: 1);
+    private ClockCache<long, byte>? _expiredRequests;
     private readonly Lock _lock = new();
     private readonly CancellationToken _cancellationToken = cancellationToken;
     private Task _cleanOldRequestTask = Task.CompletedTask;
@@ -57,7 +57,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
             }
             else if (!_requests.ContainsKey(request.Message.RequestId))
             {
-                _expiredRequests.Delete(request.Message.RequestId);
+                _expiredRequests?.Delete(request.Message.RequestId);
                 _requests.Add(request.Message.RequestId, request);
                 _requestCount++;
                 request.StartMeasuringTime();
@@ -136,7 +136,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
             }
 
             _requestCount--;
-            _expiredRequests.Set(id, 0);
+            (_expiredRequests ??= new ClockCache<long, byte>(ExpiredRequestCacheCapacity, lockPartition: 1)).Set(id, 0);
         }
 
         request.Message.TryDispose();
@@ -158,7 +158,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
             }
             else
             {
-                expired = _expiredRequests.Delete(id);
+                expired = _expiredRequests?.Delete(id) == true;
             }
         }
 
@@ -183,37 +183,32 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
     }
 
     /// <summary>
-    /// Starts handling a response while retaining the dictionary gate through validation, deserialization, and completion.
+    /// Claims a response while retaining only the request lookup under the dictionary gate.
     /// </summary>
     /// <remarks>
     /// A known expired response consumes its one-use tombstone and can be discarded without deserializing the payload.
     /// </remarks>
     internal ResponseScope BeginResponse(IByteBuffer content)
     {
-        Lock.Scope scope = _lock.EnterScope();
-        try
+        using (Lock.Scope scope = _lock.EnterScope())
         {
             if (!Eth66RequestId.TryPeek(content, out long id))
             {
                 ThrowNotRequested();
             }
 
-            if (_requests.TryGetValue(id, out Request<T66Msg, TData>? request))
+            if (_requests.Remove(id, out Request<T66Msg, TData>? request))
             {
-                return new ResponseScope(this, scope, request, id, expired: false);
+                _requestCount--;
+                return new ResponseScope(request, id, expired: false);
             }
 
-            if (_expiredRequests.Delete(id))
+            if (_expiredRequests?.Delete(id) == true)
             {
-                return new ResponseScope(this, scope, request: null, id, expired: true);
+                return new ResponseScope(null, id, expired: true);
             }
 
             ThrowNotRequested();
-        }
-        catch
-        {
-            scope.Dispose();
-            throw;
         }
 
         throw new InvalidOperationException();
@@ -259,21 +254,21 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
 
     internal ref struct ResponseScope
     {
-        private readonly MessageDictionary<T66Msg, TData> _owner;
-        private Lock.Scope _lockScope;
         private readonly Request<T66Msg, TData>? _request;
         private readonly long _requestId;
         private readonly bool _expired;
+        private bool _completed;
+        private bool _disposed;
         private bool _disposeData;
         private TData _data;
 
-        internal ResponseScope(MessageDictionary<T66Msg, TData> owner, Lock.Scope lockScope, Request<T66Msg, TData>? request, long requestId, bool expired)
+        internal ResponseScope(Request<T66Msg, TData>? request, long requestId, bool expired)
         {
-            _owner = owner;
-            _lockScope = lockScope;
             _request = request;
             _requestId = requestId;
             _expired = expired;
+            _completed = false;
+            _disposed = false;
             _disposeData = false;
             _data = default!;
         }
@@ -284,13 +279,20 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
 
         internal void Complete(long id, TData data, long size)
         {
-            if (_expired || _request is null || id != _requestId || !_owner._requests.Remove(id))
+            if (_completed || _disposed)
             {
                 SetDataForDisposal(data);
                 ThrowNotRequested();
             }
 
-            _owner._requestCount--;
+            if (_expired || _request is null || id != _requestId)
+            {
+                SetDataForDisposal(data);
+                FailClaimedRequest();
+                ThrowNotRequested();
+            }
+
+            _completed = true;
             _request.ResponseSize = size;
             if (!_request.CompletionSource.TrySetResult(data))
             {
@@ -300,15 +302,48 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
 
         internal void Dispose()
         {
-            _lockScope.Dispose();
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            if (!_completed && !_expired && _request is not null)
+            {
+                _completed = true;
+                if (_request.CompletionSource.TrySetCanceled())
+                {
+                    _request.Message.TryDispose();
+                }
+            }
+
             if (_disposeData)
             {
+                _disposeData = false;
                 _data.TryDispose();
+            }
+        }
+
+        private void FailClaimedRequest()
+        {
+            if (_request is not null)
+            {
+                _completed = true;
+                if (_request.CompletionSource.TrySetException(new SubprotocolException("Response request ID did not match the claimed request")))
+                {
+                    _request.Message.TryDispose();
+                }
             }
         }
 
         private void SetDataForDisposal(TData data)
         {
+            if (_disposeData)
+            {
+                data.TryDispose();
+                return;
+            }
+
             _disposeData = true;
             _data = data;
         }

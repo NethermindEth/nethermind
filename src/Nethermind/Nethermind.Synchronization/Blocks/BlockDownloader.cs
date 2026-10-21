@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -47,6 +48,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IForwardHeaderProvider _forwardHeaderProvider;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IBlockProcessingQueue _processingQueue;
+        private readonly BlockAccessListServingWindow _balServingWindow;
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
@@ -63,6 +65,9 @@ namespace Nethermind.Synchronization.Blocks
         // On the off chance that something goes wrong somewhere, request completely hang for example. Retry
         // the request.
         private static readonly TimeSpan RequestHardTimeout = TimeSpan.FromSeconds(30);
+
+        private const long UnservedAccessListWarningIntervalMs = 60_000;
+        private long _nextUnservedAccessListWarningMs;
 
         // The forward lookup size determine the buffer size of concurrent download. Estimated from the _maxTxInBuffer
         // and _estimateTxPerBlock. It is capped because of memory limit and to reduce workload by `_forwardHeaderProvider`.
@@ -85,6 +90,7 @@ namespace Nethermind.Synchronization.Blocks
             IReceiptsRecovery receiptsRecovery,
             IBlockProcessingQueue processingQueue,
             ISyncConfig syncConfig,
+            BlockAccessListServingWindow balServingWindow,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -102,6 +108,7 @@ namespace Nethermind.Synchronization.Blocks
             _maxTxInInProcessingQueue = (int)(syncConfig.ForwardSyncBlockProcessingQueueMemoryBudget / 1000);
             _receiptsRecovery = receiptsRecovery;
             _processingQueue = processingQueue;
+            _balServingWindow = balServingWindow;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
@@ -645,6 +652,20 @@ namespace Nethermind.Synchronization.Blocks
             {
                 entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
+                bool mustServe = _balServingWindow.MustServe(header, peer?.HeadNumber ?? 0);
+                // Outside the serving window (e.g. full sync resuming far behind after downtime) a required list may be
+                // pruned on every peer, so the answer is not proof of withholding.
+                if (mustServe || !entry.CanExecuteMissingData)
+                {
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    WarnUnservedAccessList(header, peer, mustServe);
+                    // The peer that served this block's body or receipts has the block, so it is withholding the list.
+                    // When processing can go ahead without the list, a peer still backfilling lists is not worth dropping.
+                    if (mustServe && !entry.CanExecuteMissingData && peer is not null && ReferenceEquals(entry.PeerInfo, peer))
+                    {
+                        _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"withheld block access list. Block: {header.ToString(BlockHeader.Format.Short)}");
+                    }
+                }
                 return false;
             }
 
@@ -667,6 +688,20 @@ namespace Nethermind.Synchronization.Blocks
 
             entry.PeerInfo = peer;
             return true;
+        }
+
+        /// <summary>Warns, at most once a minute, that a static or trusted peer did not serve a required block access list.</summary>
+        /// <remarks>Only an operator-chosen peer is worth a warning: with it as the sole peer, sync cannot pass the block.</remarks>
+        private void WarnUnservedAccessList(BlockHeader header, PeerInfo? peer, bool insideServingWindow)
+        {
+            if (!_logger.IsWarn || peer?.SyncPeer.Node is not { } node || !(node.IsStatic || node.IsTrusted)) return;
+
+            long now = Environment.TickCount64;
+            long next = Interlocked.Read(ref _nextUnservedAccessListWarningMs);
+            if (now < next || Interlocked.CompareExchange(ref _nextUnservedAccessListWarningMs, now + UnservedAccessListWarningIntervalMs, next) != next) return;
+
+            string reason = insideServingWindow ? "withheld" : "withheld or past the retention window";
+            _logger.Warn($"{(node.IsStatic ? "Static" : "Trusted")} peer {peer} did not serve the block access list of {header.ToString(BlockHeader.Format.Short)} ({reason}); sync cannot pass this block until another peer serves it.");
         }
 
         private enum BlocksRequestContentType

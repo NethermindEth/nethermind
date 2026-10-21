@@ -324,8 +324,9 @@ public static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionRevert<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionRevert<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
     {
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
@@ -334,6 +335,9 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
+        if (DispatchFlags.ConstTracing && TTracingInst.IsActive)
+            vm.TraceMemoryOperationGasCost(in position, in length);
+
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
         {
             goto OutOfGas;

@@ -2,12 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Consensus.Tracing;
+using Nethermind.Core.Container;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Precompiles;
@@ -16,6 +26,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 using Testably.Abstractions.Testing;
 using Nethermind.Core;
@@ -24,6 +36,58 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
 {
+    [TestCase(0)]
+    [TestCase(1)]
+    public async Task Bad_file_trace_validates_the_bad_store_body_signed_nonce(int nonceDelta)
+    {
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder.AddSingleton<IFileSystem>(fileSystem));
+        Block parent = chain.BlockTree.Head!;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent.Header, TestItem.AddressA);
+        Block canonical = await chain.AddBlock();
+        Transaction transaction = Build.A.Transaction.WithNonce(nonce + (ulong)nonceDelta).WithValue(1)
+            .WithCode(Prepare.EvmCode.STOP().Done).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block bad = new(canonical.Header.Clone(), [transaction], canonical.Uncles, canonical.Withdrawals);
+        Assert.That(canonical.Transactions, Is.Empty);
+        Assert.That(bad.Hash, Is.EqualTo(canonical.Hash));
+        chain.Container.Resolve<IBadBlockStore>().Insert(bad);
+        IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
+            .AddModule(validation)
+            .AddModule(new TransactionTraceModule(validation))
+            .AddModule(env)
+            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
+            .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(static adapter => adapter.ForProcessor));
+        IGethStyleTracer tracer = scope.Resolve<IGethStyleTracer>();
+        try
+        {
+            if (nonceDelta == 0)
+            {
+                string[] files = tracer.TraceBadBlockToFile(bad.Hash!, GethTraceOptions.Default, CancellationToken.None).ToArray();
+                Assert.That(files, Has.Length.EqualTo(1), "the empty canonical body must not replace the full bad-store body");
+                Assert.That(fileSystem.File.ReadAllText(files[0]), Does.Contain("\"opName\":\"STOP\""));
+            }
+            else
+            {
+                InvalidTransactionException? error = Assert.Throws<InvalidTransactionException>(() =>
+                    tracer.TraceBadBlockToFile(bad.Hash!, GethTraceOptions.Default, CancellationToken.None).ToArray());
+                Assert.That(error!.Message, Does.Contain("nonce too high"));
+            }
+        }
+        finally
+        {
+            string[] writtenFiles = fileSystem.Directory.GetFiles(fileSystem.Path.GetTempPath(), "block_*.jsonl");
+            Assert.That(writtenFiles, Has.Length.EqualTo(1));
+            foreach (string file in writtenFiles)
+            {
+                using FileSystemStream ownedRead = fileSystem.File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
+            Assert.That(chain.WorldStateManager.GlobalStateReader.GetNonce(canonical.Header, TestItem.AddressA), Is.EqualTo(nonce));
+        }
+    }
+
     [Test]
     public void File_summary_uses_unprefixed_output_and_line_feed([Values] bool returnsData)
     {
