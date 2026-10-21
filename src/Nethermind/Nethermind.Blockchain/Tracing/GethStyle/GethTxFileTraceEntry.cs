@@ -11,8 +11,6 @@ public class GethTxFileTraceEntry : GethTxTraceEntry
 
     public Instruction? OpcodeRaw { get; set; }
 
-    public long? Refund { get; set; }
-
     internal override void UpdateMemorySize(ulong size)
     {
         base.UpdateMemorySize(size);

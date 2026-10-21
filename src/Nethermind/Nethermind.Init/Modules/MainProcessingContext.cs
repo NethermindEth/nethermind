@@ -5,8 +5,8 @@ using System;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -21,13 +21,12 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
 {
     public MainProcessingContext(
         ILifetimeScope rootLifetimeScope,
-        IReceiptConfig receiptConfig,
         IInitConfig initConfig,
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
-        CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
-        IBlockTree blockTree,
+        IProcessExitSource processExitSource,
+        InvalidBlockDiagnostics invalidBlockDiagnostics,
         ILogManager logManager)
     {
 
@@ -36,6 +35,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         {
             worldState = new WorldStateScopeOperationLogger(worldStateManager.GlobalWorldState, logManager);
         }
+
+        worldState = new WorldStateMetricsScopeProvider(worldState, static time => Blockchain.Metrics.StateMerkleizationTime = time);
 
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
@@ -46,38 +47,37 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
-                    new BlockchainProcessor(
-                        blockTree,
-                        branchProcessor,
-                        compositeBlockPreprocessorStep,
-                        worldStateManager.GlobalStateReader,
-                        logManager,
-                        new BlockchainProcessor.Options
-                        {
-                            StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                            DumpOptions = initConfig.AutoDump
-                        },
-                        processingStats)
-                    {
-                        IsMainProcessor = true // Manual construction because of this flag
-                    })
-                .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
-                .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
+                .AddScoped<BlockchainProcessor.Options, IReceiptConfig, IBlocksConfig>((receiptConfig, blocksConfig) => new()
+                {
+                    StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                    ProcessingCores = blocksConfig.ProcessingCores,
+                    BlockProcessingTimeoutMs = blocksConfig.BlockProcessingTimeoutMs
+                })
+                .AddScoped<BlockchainProcessor>()
+                .Bind<IBlockchainProcessor, BlockchainProcessor>()
+                .Bind<IBlockProcessingQueue, BlockchainProcessor>()
                 // And finally, to wrap things up.
                 .AddScoped<Components>()
                 ;
         });
 
         _components = innerScope.Resolve<Components>();
+        _components.BlockProcessingQueue.InvalidBlock += invalidBlockDiagnostics.OnInvalidBlock;
+
+        if (initConfig.ExitOnInvalidBlock)
+        {
+            ILogger exitLogger = logManager.GetClassLogger<MainProcessingContext>();
+            _components.BlockProcessingQueue.InvalidBlock += (_, _) =>
+            {
+                if (exitLogger.IsInfo) exitLogger.Info("Exiting on invalid block");
+                processExitSource.Exit(ExitCodes.InvalidBlock);
+            };
+        }
 
         LifetimeScope = innerScope;
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await LifetimeScope.DisposeAsync();
-    }
+    public async ValueTask DisposeAsync() => await LifetimeScope.DisposeAsync();
 
     private readonly Components _components;
     public ILifetimeScope LifetimeScope { get; init; }
@@ -89,10 +89,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public ITransactionProcessor TransactionProcessor => _components.TransactionProcessor;
     public IGenesisLoader GenesisLoader => _components.GenesisLoader;
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
-    public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs)
-    {
-        TransactionProcessed?.Invoke(this, txProcessedEventArgs);
-    }
+    public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs) => TransactionProcessed?.Invoke(this, txProcessedEventArgs);
+    public bool HasSubscribers => TransactionProcessed is not null;
 
     private record Components(
         ITransactionProcessor TransactionProcessor,

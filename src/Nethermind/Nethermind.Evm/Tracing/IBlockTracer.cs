@@ -61,4 +61,17 @@ namespace Nethermind.Evm.Tracing
     {
         IReadOnlyCollection<TTrace> BuildResult();
     }
+
+    /// <summary>
+    /// Marker for block tracers that support concurrent transaction tracing callbacks for one active block.
+    /// Implementations must allow <see cref="IBlockTracer.StartNewTxTrace"/> and
+    /// <see cref="IBlockTracer.EndTxTrace"/> to run concurrently on worker threads between
+    /// one <see cref="IBlockTracer.StartNewBlockTrace"/> and the matching
+    /// <see cref="IBlockTracer.EndBlockTrace"/> call. Per-transaction state must be isolated
+    /// by returned tracer instance or by thread/instance key, and <c>EndBlockTrace</c> must
+    /// publish all completed transaction traces.
+    /// </summary>
+    public interface IParallelSafeBlockTracer : IBlockTracer
+    {
+    }
 }

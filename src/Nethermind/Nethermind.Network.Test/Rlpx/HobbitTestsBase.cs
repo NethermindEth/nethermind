@@ -3,19 +3,14 @@
 
 using System;
 using DotNetty.Buffers;
-using DotNetty.Common;
-using DotNetty.Common.Internal.Logging;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
-using Microsoft.Extensions.Logging.Console;
-using Microsoft.Extensions.Options;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
-using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Test.Rlpx;
 
@@ -32,7 +27,7 @@ public abstract class HobbitTestsBase
     [SetUp]
     public void Setup()
     {
-        var (A, B) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets A, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         _frameCipherA = new FrameCipher(A.AesSecret);
         _macProcessorA = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);
@@ -42,14 +37,6 @@ public abstract class HobbitTestsBase
 
         _frame = new byte[16 + 16 + 16 + 16];
         _frame[2] = 16; // size
-
-        InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider(new ConsoleLoggerOptionsMonitor(
-            new ConsoleLoggerOptions
-            {
-                FormatterName = ConsoleFormatterNames.Simple,
-                LogToStandardErrorThreshold = LogLevel.Trace
-            })));
-        ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
     }
 
     [TearDown]
@@ -117,21 +104,16 @@ public abstract class HobbitTestsBase
 
         IChannelHandler decoder = new ZeroFrameDecoder(_frameCipherB, _macProcessorB);
         IChannelHandler merger = new ZeroFrameMerger(LimboLogs.Instance);
-        IChannelHandler encoder = new ZeroFrameEncoder(_frameCipherA, _macProcessorA);
-        IFramingAware splitter = new ZeroPacketSplitter();
-
-        Assert.That(splitter.MaxFrameSize, Is.EqualTo(Frame.DefaultMaxFrameSize), "default max frame size");
+        ZeroPacketSplitter splitter = new(_frameCipherA, _macProcessorA);
 
         if (!framingEnabled)
         {
             splitter.DisableFraming();
-            Assert.That(splitter.MaxFrameSize, Is.EqualTo(int.MaxValue), "max frame size when framing disabled");
         }
 
         EmbeddedChannel embeddedChannel = new();
         embeddedChannel.Pipeline.AddLast(decoder);
         embeddedChannel.Pipeline.AddLast(merger);
-        embeddedChannel.Pipeline.AddLast(encoder);
         embeddedChannel.Pipeline.AddLast(splitter);
 
         return embeddedChannel;
@@ -140,24 +122,5 @@ public abstract class HobbitTestsBase
     public enum StackType
     {
         Zero
-    }
-
-    private class ConsoleLoggerOptionsMonitor : IOptionsMonitor<ConsoleLoggerOptions>
-    {
-        public ConsoleLoggerOptionsMonitor(ConsoleLoggerOptions currentValue)
-        {
-            CurrentValue = currentValue;
-        }
-
-        public ConsoleLoggerOptions CurrentValue { get; }
-
-        public ConsoleLoggerOptions Get(string? name) => CurrentValue;
-
-        public IDisposable OnChange(Action<ConsoleLoggerOptions, string> listener) => new Empty();
-
-        private class Empty : IDisposable
-        {
-            public void Dispose() { }
-        }
     }
 }

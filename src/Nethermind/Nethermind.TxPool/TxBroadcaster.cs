@@ -4,16 +4,18 @@
 using System;
 using NonBlocking;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.TxPool
@@ -26,7 +28,6 @@ namespace Nethermind.TxPool
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly Func<Transaction, bool> _gossipFilter;
 
         /// <summary>
         /// Timer for rebroadcasting pending own transactions.
@@ -53,6 +54,7 @@ namespace Nethermind.TxPool
         /// </summary>
         private ResettableList<Transaction> _txsToSend;
 
+        private readonly Lock _accumulatedTxsLock = new();
 
         /// <summary>
         /// Minimal value of MaxFeePerGas of local tx to be broadcasted immediately after receiving it
@@ -66,6 +68,10 @@ namespace Nethermind.TxPool
         private DateTimeOffset _lastPersistedTxBroadcast = DateTimeOffset.UnixEpoch;
 
         private readonly TimeSpan _minTimeBetweenPersistedTxBroadcast = TimeSpan.FromSeconds(1);
+
+        /// <summary>Persistent txs carrying an EIP-8141 expiry deadline; zero lets the per-head sweep skip the walk.</summary>
+        /// <remarks>Maintained from the pool's own insert and removal events, so no mutation path can bypass it.</remarks>
+        private int _expiringFrameTxCount;
 
         private readonly ILogger _logger;
         private readonly ITimestamper _timestamper;
@@ -82,10 +88,10 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider;
             _timestamper = timestamper ?? Timestamper.Default;
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
-            // Allocate closure once
-            _gossipFilter = _txGossipPolicy.ShouldGossipTransaction;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<TxBroadcaster>() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
+            _persistentTxs.Inserted += OnInsertedTx;
+            _persistentTxs.Removed += OnRemovedTx;
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
             _txsToSend = new ResettableList<Transaction>(512, 4);
 
@@ -118,12 +124,15 @@ namespace Nethermind.TxPool
             // (70% by default). Otherwise only add to persistent txs and broadcast when tx will be ready for inclusion
 
             if (tx is not null
-                && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
-                && _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
-                && removed?.Hash != tx.Hash)
+                && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree()))
             {
-                NotifyPeersAboutLocalTx(tx);
-                return true;
+                Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
+                if (_persistentTxs.TryInsert(tx.Hash, broadcastTx, out Transaction? removed)
+                    && removed?.Hash != tx.Hash)
+                {
+                    NotifyPeersAboutLocalTx(broadcastTx);
+                    return true;
+                }
             }
 
             return false;
@@ -131,25 +140,81 @@ namespace Nethermind.TxPool
 
         private void BroadcastOnce(Transaction tx)
         {
-            lock (_accumulatedTemporaryTxs)
+            Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
+            lock (_accumulatedTxsLock)
             {
-                _accumulatedTemporaryTxs.Add(tx);
+                _accumulatedTemporaryTxs.Add(broadcastTx);
             }
         }
 
+        private static Transaction PrecomputeBlobAnnouncement(Transaction tx) =>
+            tx.CarriesBlobs && tx is not LightTransaction ? new LightTransaction(tx) : tx;
+
         public void AnnounceOnce(ITxPoolPeer peer, Transaction[] txs)
         {
-            if (txs.Length > 0)
+            if (txs.Length > 0 && CanGossipTransactions)
             {
-                Notify(peer, txs, false);
+                using ArrayPoolListRef<Transaction> gossipable = GetGossipable(txs);
+                Notify(peer, gossipable.AsSpan(), false);
             }
         }
 
         public void OnNewHead(object? sender, Block block)
         {
             _baseFeeThreshold = CalculateBaseFeeThreshold();
+            StopBroadcastingExpiredFrameTxs(block.Timestamp);
             BroadcastPersistentTxs();
         }
+
+        /// <summary>Stops broadcasting EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>
+        /// <remarks>
+        /// The pool's own expiry pass reaches only the pending pools, so a locally submitted frame tx that has since
+        /// been evicted from them survives here alone and would be re-announced every head for the rest of the node's
+        /// life. Such a transaction can never be included: the expiry-verifier predeploy reverts once
+        /// <c>block.timestamp &gt; deadline</c>, and the comparison is strict here to match that condition exactly.
+        /// No fork gate is needed — only a frame transaction ever carries a deadline.
+        /// </remarks>
+        private void StopBroadcastingExpiredFrameTxs(ulong timestamp)
+        {
+            if (Volatile.Read(ref _expiringFrameTxCount) == 0)
+            {
+                return;
+            }
+
+            foreach (Transaction tx in _persistentTxs.GetSnapshot())
+            {
+                if (tx.SupportsFrames
+                    && FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
+                    && timestamp > deadline)
+                {
+                    StopBroadcast(tx.Hash!);
+                    // The only signal that the node stopped announcing a transaction its own user submitted.
+                    if (_logger.IsDebug) _logger.Debug($"Stopped broadcasting expired frame transaction {tx.Hash} (deadline {deadline} < head timestamp {timestamp}).");
+                }
+            }
+        }
+
+        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
+        {
+            if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+        }
+
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        {
+            if (HasExpiryDeadline(args.Value))
+            {
+                int remaining = Interlocked.Decrement(ref _expiringFrameTxCount);
+                AssertExpiringFrameTxCountNotNegative(remaining);
+            }
+        }
+
+        // Drift that would defeat the fast path for good. Judged on the decrement's own result, because
+        // re-reading the field lets a concurrent insert hide the excursion.
+        [Conditional("DEBUG")]
+        private static void AssertExpiringFrameTxCountNotNegative(int remaining) =>
+            Debug.Assert(remaining >= 0, "Expiring frame transaction count went negative.");
+
+        private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
 
         internal UInt256 CalculateBaseFeeThreshold()
         {
@@ -191,10 +256,7 @@ namespace Nethermind.TxPool
                 {
                     if (_logger.IsTrace) _logger.Trace($"Broadcasting {transactionsToSend.Count} persistent transactions to all peers.");
 
-                    foreach ((_, ITxPoolPeer peer) in _peers)
-                    {
-                        Notify(peer, transactionsToSend, true);
-                    }
+                    NotifyAllPeers(transactionsToSend, true);
                 }
                 else
                 {
@@ -205,10 +267,7 @@ namespace Nethermind.TxPool
                 {
                     if (_logger.IsTrace) _logger.Trace($"Announcing {hashesToSend.Count} hashes of persistent transactions to all peers.");
 
-                    foreach ((_, ITxPoolPeer peer) in _peers)
-                    {
-                        Notify(peer, hashesToSend, false);
-                    }
+                    NotifyAllPeers(hashesToSend, false);
                 }
             }
             else
@@ -280,13 +339,23 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void EnsureStopBroadcastUpToNonce(Address address, UInt256 nonce)
+        /// <summary>Stops announcing the sender's persistent transactions that <paramref name="includedTx"/>
+        /// has made unmineable.</summary>
+        /// <remarks>Inclusion consumes every EIP-8250 key the transaction names, so a persistent entry is
+        /// superseded when it shares any of them: sequences in the sender's disjoint domains advance
+        /// independently and stay announceable at the same numeric value.</remarks>
+        public void EnsureStopBroadcastUpToNonce(Transaction includedTx)
         {
             if (_persistentTxs.Count != 0)
             {
-                foreach (Transaction tx in _persistentTxs.TakeWhile(address, t => t.Nonce <= nonce))
+                ulong nonce = includedTx.Nonce;
+                // Ascending nonce order bounds the scan; the domain decides which of those entries is superseded.
+                foreach (Transaction tx in _persistentTxs.TakeWhile(includedTx.SenderAddress!, t => t.Nonce <= nonce))
                 {
-                    StopBroadcast(tx.Hash!);
+                    if (CompetingTransactionEqualityComparer.OverlapsNonceDomain(includedTx, tx))
+                    {
+                        StopBroadcast(tx.Hash!);
+                    }
                 }
             }
         }
@@ -296,14 +365,14 @@ namespace Nethermind.TxPool
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             void NotifyPeers()
             {
-                _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
+                lock (_accumulatedTxsLock)
+                {
+                    (_accumulatedTemporaryTxs, _txsToSend) = (_txsToSend, _accumulatedTemporaryTxs);
+                }
 
                 if (_logger.IsTrace) _logger.Trace($"Broadcasting transactions to all peers");
 
-                foreach ((_, ITxPoolPeer peer) in _peers)
-                {
-                    Notify(peer, _txsToSend, false);
-                }
+                NotifyAllPeers(_txsToSend, false);
 
                 _txsToSend.Reset();
             }
@@ -318,26 +387,64 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
+        private bool CanGossipTransactions => _txGossipPolicy.CanGossipTransactions;
 
-        private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs, bool sendFullTx)
+        private void NotifyAllPeers(IList<Transaction> txs, bool sendFullTx)
         {
-            if (_txGossipPolicy.CanGossipTransactions)
+            if (!CanGossipTransactions || _peers.IsEmpty) return;
+
+            using ArrayPoolListRef<Transaction> gossipable = GetGossipable(txs);
+            foreach ((_, ITxPoolPeer peer) in _peers)
+            {
+                Notify(peer, gossipable.AsSpan(), sendFullTx);
+            }
+        }
+
+        /// <summary>Filters with the gossip policy once, so every peer is handed the same span.</summary>
+        /// <remarks>A throwing policy yields an empty batch, so it cannot stop the broadcast timer.</remarks>
+        private ArrayPoolListRef<Transaction> GetGossipable(IList<Transaction> txs)
+        {
+            ArrayPoolListRef<Transaction> gossipable = new(txs.Count);
+            try
+            {
+                for (int i = 0; i < txs.Count; i++)
+                {
+                    Transaction tx = txs[i];
+                    if (_txGossipPolicy.ShouldGossipTransaction(tx)) gossipable.Add(tx);
+                }
+            }
+            catch (Exception e)
+            {
+                gossipable.Clear();
+                if (_logger.IsError) _logger.Error("Failed to apply the transaction gossip policy.", e);
+            }
+            return gossipable;
+        }
+
+        private void Notify(ITxPoolPeer peer, ReadOnlySpan<Transaction> txs, bool sendFullTx)
+        {
+            if (CanGossipTransactions)
             {
                 try
                 {
-                    peer.SendNewTransactions(txs.Where(_gossipFilter), sendFullTx);
-                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
+                    peer.SendNewTransactions(txs, sendFullTx);
+                    if (_logger.IsTrace) TracePeerSend(peer);
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transactions.", e);
+                    if (_logger.IsError) ErrorPeerSend(peer, e);
                 }
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TracePeerSend(ITxPoolPeer peer) => _logger.Trace($"Notified {peer} about transactions.");
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void ErrorPeerSend(ITxPoolPeer peer, Exception e) => _logger.Error($"Failed to notify {peer} about transactions.", e);
         }
 
         private void NotifyPeersAboutLocalTx(Transaction tx)
         {
-            if (!_txGossipPolicy.CanGossipTransactions || !_txGossipPolicy.ShouldGossipTransaction(tx)) return;
+            if (!CanGossipTransactions || !_txGossipPolicy.ShouldGossipTransaction(tx)) return;
 
             if (_logger.IsTrace) _logger.Trace($"Broadcasting new local transaction {tx.Hash} to all peers");
 
@@ -355,9 +462,9 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Hash256 hash, out Transaction? transaction)
+        public bool TryGetPersistentTx(in ValueHash256 hash, out Transaction? transaction)
         {
-            if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.SupportsBlobs)
+            if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.CarriesBlobs)
             {
                 return true;
             }
@@ -368,19 +475,12 @@ namespace Nethermind.TxPool
 
         public bool ContainsTx(Hash256 hash) => _persistentTxs.ContainsKey(hash);
 
-        public bool AddPeer(ITxPoolPeer peer)
-        {
-            return _peers.TryAdd(peer.Id, peer);
-        }
+        public long GetRemovalGeneration(Address sender) => _persistentTxs.GetRemovalGeneration(sender);
 
-        public bool RemovePeer(PublicKey nodeId)
-        {
-            return _peers.TryRemove(nodeId, out _);
-        }
+        public bool AddPeer(ITxPoolPeer peer) => _peers.TryAdd(peer.Id, peer);
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public bool RemovePeer(PublicKey nodeId) => _peers.TryRemove(nodeId, out _);
+
+        public void Dispose() => _timer.Dispose();
     }
 }

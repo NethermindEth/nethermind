@@ -19,10 +19,7 @@ namespace Nethermind.Benchmarks.State
 
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _tracer = new StorageTracer();
-        }
+        public void Setup() => _tracer = new StorageTracer();
 
         [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
         public void Parameter_Passing()
@@ -45,9 +42,6 @@ namespace Nethermind.Benchmarks.State
         private class StorageTracer : IStorageTracer
         {
             public bool IsTracingStorage => throw new NotImplementedException();
-
-            public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
-                throw new NotImplementedException();
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }

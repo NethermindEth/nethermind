@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -54,22 +55,21 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        public void Dispose()
+        protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
-            BlockTree.NewHeadBlock -= OnNewHeadBlock;
+            BlockHeader header = base.PrepareBlockHeader(parent, payloadAttributes);
+            // EIP-4788 requires the field once Cancun is active; there is no beacon chain to supply it
+            if (_specProvider.GetSpec(header).IsBeaconBlockRootAvailable) header.ParentBeaconBlockRoot ??= Hash256.Zero;
+            return header;
         }
 
-        private class RandomizedDifficultyCalculator : IDifficultyCalculator
-        {
-            private readonly IBlocksConfig _blocksConfig;
-            private readonly IDifficultyCalculator _fallbackDifficultyCalculator;
-            private readonly Random _random = new();
+        public void Dispose() => BlockTree.NewHeadBlock -= OnNewHeadBlock;
 
-            public RandomizedDifficultyCalculator(IBlocksConfig blocksConfig, IDifficultyCalculator fallbackDifficultyCalculator)
-            {
-                _blocksConfig = blocksConfig;
-                _fallbackDifficultyCalculator = fallbackDifficultyCalculator;
-            }
+        private class RandomizedDifficultyCalculator(IBlocksConfig blocksConfig, IDifficultyCalculator fallbackDifficultyCalculator) : IDifficultyCalculator
+        {
+            private readonly IBlocksConfig _blocksConfig = blocksConfig;
+            private readonly IDifficultyCalculator _fallbackDifficultyCalculator = fallbackDifficultyCalculator;
+            private readonly Random _random = new();
 
             public UInt256 Calculate(BlockHeader header, BlockHeader parent)
             {

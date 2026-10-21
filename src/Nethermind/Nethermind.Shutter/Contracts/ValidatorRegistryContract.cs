@@ -26,7 +26,7 @@ public class ValidatorRegistryContract(
     ulong messageVersion)
     : CallableContract(transactionProcessor, abiEncoder, contractAddress), IValidatorRegistryContract
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ValidatorRegistryContract>();
 
     public UInt256 GetNumUpdates(BlockHeader header) => (UInt256)Call(header, nameof(GetNumUpdates), Address.Zero, [])[0];
 
@@ -162,12 +162,12 @@ public class ValidatorRegistryContract(
     internal readonly ref struct Message
     {
         public const int Sz = 46;
-        public readonly byte Version { get; init; }
         public readonly ulong ChainId { get; init; }
         public readonly ReadOnlySpan<byte> ContractAddress { get; init; }
         public readonly ulong StartValidatorIndex { get; init; }
         public readonly uint Count { get; init; }
         public readonly uint Nonce { get; init; }
+        public readonly byte Version { get; init; }
         public readonly bool IsRegistration { get; init; }
 
         public Message(Span<byte> encodedMessage)

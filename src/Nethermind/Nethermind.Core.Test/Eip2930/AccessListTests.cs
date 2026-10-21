@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -13,6 +12,35 @@ namespace Nethermind.Core.Test.Eip2930;
 
 public class AccessListTests
 {
+    [Test]
+    public void Concrete_storage_enumeration_preserves_entry_boundaries([Values(0, 1, 32)] int keyCount)
+    {
+        AccessList.Builder builder = new();
+        for (int entry = 0; entry < 3; entry++)
+        {
+            builder.AddAddress(TestItem.AddressA);
+            for (int key = 0; key < keyCount; key++)
+                builder.AddStorage((UInt256)(entry * keyCount + key));
+        }
+
+        int index = 0;
+        foreach ((Address _, AccessList.StorageKeysEnumerable keys) in builder.Build())
+        {
+            List<UInt256> actual = [];
+            foreach (UInt256 key in keys) actual.Add(key);
+
+            List<UInt256> expected = [];
+            for (int key = 0; key < keyCount; key++) expected.Add((UInt256)(index * keyCount + key));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(expected));
+                Assert.That((IEnumerable<UInt256>)keys, Is.EqualTo(actual));
+            }
+            index++;
+        }
+        Assert.That(index, Is.EqualTo(3));
+    }
+
     [Test]
     public void Single_address_with_multiple_storage_keys()
     {
@@ -33,7 +61,7 @@ public class AccessListTests
             (address, new[] { storageKey1, storageKey2, storageKey3 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -57,7 +85,7 @@ public class AccessListTests
             (address, new[] { storageKey1, storageKey2, storageKey3, storageKey1 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -82,7 +110,7 @@ public class AccessListTests
             (address, new[] { storageKey3 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -108,7 +136,7 @@ public class AccessListTests
             (address, new[] { storageKey1, storageKey3 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -128,7 +156,7 @@ public class AccessListTests
             (address2, Array.Empty<UInt256>())
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -154,7 +182,7 @@ public class AccessListTests
             (address2, new[] { storageKey3 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -185,16 +213,13 @@ public class AccessListTests
             (address2, Array.Empty<UInt256>()),
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
-    public void Invalid_storage_when_no_previous_address()
+    public void Invalid_storage_when_no_previous_address() => Assert.Throws<InvalidOperationException>(static () =>
     {
-        Assert.Throws<InvalidOperationException>(static () =>
-        {
-            AccessList.Builder _ = new AccessList.Builder()
-                .AddStorage(UInt256.Zero);
-        });
-    }
+        AccessList.Builder _ = new AccessList.Builder()
+            .AddStorage(UInt256.Zero);
+    });
 }

@@ -7,10 +7,12 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Taiko.Rpc;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
@@ -33,11 +35,12 @@ public class TaikoHeaderValidator(
 
     private static readonly UInt256 ShastaInitialBaseFee = 25_000_000;
     private static readonly UInt256 MinBaseFeeShasta = 5_000_000;
+    private static readonly UInt256 MinBaseFeeShastaMainnet = 10_000_000;
     private static readonly UInt256 MaxBaseFeeShasta = 1_000_000_000;
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash)
     {
         if (header.UnclesHash != Keccak.OfAnEmptySequenceRlp)
         {
@@ -53,16 +56,16 @@ public class TaikoHeaderValidator(
             return false;
         }
 
-        return base.Validate<TOrphaned>(header, parent, isUncle, out error);
+        return base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash);
     }
 
     protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
     {
-        var taikoSpec = (ITaikoReleaseSpec)spec;
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
-        if (taikoSpec.IsShastaEnabled && header.ExtraData is { Length: < TaikoHeaderHelper.ShastaExtraDataLen })
+        if (taikoSpec.IsShastaEnabled && header.ExtraData.Length != TaikoHeaderHelper.ShastaExtraDataLen)
         {
-            error = $"ExtraData must be at least {TaikoHeaderHelper.ShastaExtraDataLen} bytes for Shasta, but got {header.ExtraData.Length}";
+            error = $"ExtraData must be {TaikoHeaderHelper.ShastaExtraDataLen} bytes for Shasta, but got {header.ExtraData.Length}";
             if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
             return false;
         }
@@ -78,7 +81,7 @@ public class TaikoHeaderValidator(
             return false;
         }
 
-        var taikoSpec = (ITaikoReleaseSpec)spec;
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
         if (taikoSpec.IsShastaEnabled)
         {
             return ValidateEip4396Header(header, parent, spec, ref error);
@@ -107,7 +110,8 @@ public class TaikoHeaderValidator(
         }
 
         // Calculate expected base fee using EIP-4396
-        UInt256 expectedBaseFee = CalculateEip4396BaseFee(parent, parentBlockTime, spec);
+        UInt256 minBaseFee = _specProvider.ChainId == BatchLookupThresholds.TaikoMainnetChainId ? MinBaseFeeShastaMainnet : MinBaseFeeShasta;
+        UInt256 expectedBaseFee = CalculateEip4396BaseFee(parent, parentBlockTime, spec, minBaseFee);
 
         if (header.BaseFeePerGas != expectedBaseFee)
         {
@@ -120,7 +124,7 @@ public class TaikoHeaderValidator(
         return true;
     }
 
-    private static UInt256 CalculateEip4396BaseFee(BlockHeader parent, ulong parentBlockTime, IReleaseSpec spec)
+    private static UInt256 CalculateEip4396BaseFee(BlockHeader parent, ulong parentBlockTime, IReleaseSpec spec, in UInt256 minBaseFee)
     {
         // If the parent is genesis, use the initial base fee for the first post-genesis block
         if (parent.Number == 0)
@@ -129,12 +133,12 @@ public class TaikoHeaderValidator(
         }
 
         IEip1559Spec eip1559Spec = spec;
-        ulong parentGasTarget = (ulong)(parent.GasLimit / eip1559Spec.ElasticityMultiplier);
+        ulong parentGasTarget = parent.GasLimit / eip1559Spec.ElasticityMultiplier;
         ulong parentAdjustedGasTarget = Math.Min(parentGasTarget * parentBlockTime / BlockTimeTarget,
-            (ulong)parent.GasLimit * MaxGasTargetPercentage / 100);
+            parent.GasLimit * MaxGasTargetPercentage / 100);
 
         // If the parent gasUsed is the same as the adjusted target, the baseFee remains unchanged
-        if ((ulong)parent.GasUsed == parentAdjustedGasTarget)
+        if (parent.GasUsed == parentAdjustedGasTarget)
         {
             return parent.BaseFeePerGas;
         }
@@ -142,7 +146,7 @@ public class TaikoHeaderValidator(
         UInt256 baseFee;
         UInt256 baseFeeChangeDenominator = eip1559Spec.BaseFeeMaxChangeDenominator;
 
-        if ((ulong)parent.GasUsed > parentAdjustedGasTarget)
+        if (parent.GasUsed > parentAdjustedGasTarget)
         {
             // If the parent block used more gas than its target, the baseFee should increase
             // max(1, parentBaseFee * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator)
@@ -153,7 +157,7 @@ public class TaikoHeaderValidator(
             }
             else
             {
-                UInt256 gasUsedDelta = (ulong)parent.GasUsed - parentAdjustedGasTarget;
+                UInt256 gasUsedDelta = parent.GasUsed - parentAdjustedGasTarget;
                 feeDelta = parent.BaseFeePerGas * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator;
                 if (feeDelta < 1)
                 {
@@ -174,7 +178,7 @@ public class TaikoHeaderValidator(
             }
             else
             {
-                UInt256 gasUsedDelta = parentAdjustedGasTarget - (ulong)parent.GasUsed;
+                UInt256 gasUsedDelta = parentAdjustedGasTarget - parent.GasUsed;
                 feeDelta = parent.BaseFeePerGas * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator;
             }
 
@@ -182,14 +186,14 @@ public class TaikoHeaderValidator(
         }
 
         // Clamp the base fee to be within min and max limits for Shasta blocks
-        return ClampEip4396BaseFeeShasta(baseFee);
+        return ClampEip4396BaseFeeShasta(baseFee, minBaseFee);
     }
 
-    private static UInt256 ClampEip4396BaseFeeShasta(UInt256 baseFee)
+    private static UInt256 ClampEip4396BaseFeeShasta(UInt256 baseFee, in UInt256 minBaseFee)
     {
-        if (baseFee < MinBaseFeeShasta)
+        if (baseFee < minBaseFee)
         {
-            return MinBaseFeeShasta;
+            return minBaseFee;
         }
 
         return baseFee > MaxBaseFeeShasta ? MaxBaseFeeShasta : baseFee;
@@ -197,7 +201,7 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
     {
-        var taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
 
         // Shasta fork enforces a strict timestamp increase, while other forks allow equal timestamps
         // (multiple L2 blocks per L1 block scenario).
@@ -245,14 +249,81 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
     {
-        if (header.Difficulty != 0 || header.TotalDifficulty != 0 && header.TotalDifficulty != null)
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
+
+        // On Taiko, TotalDifficulty is consensus-irrelevant — Difficulty is repurposed (zk gas
+        // in Unzen, must be 0 pre-Unzen). The block tree may have populated TotalDifficulty via
+        // the cumulative path (parent.TD + Difficulty) before this validation runs; normalize it
+        // to zero rather than rejecting the block, since the announced TD is never authoritative.
+        header.TotalDifficulty = UInt256.Zero;
+
+        if (taikoSpec.IsUnzenEnabled)
+        {
+            // Unzen allows non-zero difficulty (stores ZK gas used).
+            return true;
+        }
+
+        if (header.Difficulty != 0)
         {
             error = BlockErrorMessages.InvalidTotalDifficulty;
-            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - incorrect difficulty or total difficulty");
+            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - non-zero difficulty in pre-Unzen header");
             return false;
         }
         return true;
     }
 
-    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true; // not validated in taiko-geth
+    protected override bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+    {
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
+
+        if (taikoSpec.IsUnzenEnabled)
+        {
+            // Unzen pins RequestsHash to EMPTY_REQUESTS_HASH even though Prague system contracts aren't active
+            if (header.RequestsHash != ExecutionRequestExtensions.EmptyRequestsHash)
+            {
+                error = $"Unzen header must have RequestsHash={ExecutionRequestExtensions.EmptyRequestsHash}, got {header.RequestsHash}";
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+                return false;
+            }
+            return true;
+        }
+
+        return base.ValidateRequestsHash(header, spec, ref error);
+    }
+
+    protected override bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error)
+    {
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
+
+        if (taikoSpec.IsUnzenEnabled)
+        {
+            if (header.BlobGasUsed != 0)
+            {
+                error = $"Unzen header must have BlobGasUsed=0, got {header.BlobGasUsed?.ToString() ?? "<null>"}";
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+                return false;
+            }
+
+            if (header.ExcessBlobGas != 0)
+            {
+                error = $"Unzen header must have ExcessBlobGas=0, got {header.ExcessBlobGas?.ToString() ?? "<null>"}";
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+                return false;
+            }
+
+            if (header.ParentBeaconBlockRoot != Keccak.Zero)
+            {
+                error = $"Unzen header must have ParentBeaconBlockRoot=zero, got {header.ParentBeaconBlockRoot?.ToString() ?? "<null>"}";
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+                return false;
+            }
+
+            return true;
+        }
+
+        return base.ValidateBlobGasFields(header, spec, ref error);
+    }
+
+    protected override bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) =>
+        ((ITaikoReleaseSpec)spec).IsUnzenEnabled || base.ValidateExcessBlobGas(header, parent, spec, ref error);
 }

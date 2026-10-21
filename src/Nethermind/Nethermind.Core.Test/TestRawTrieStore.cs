@@ -51,8 +51,8 @@ public class TestRawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false)
 
     public TrieStore.StableLockScope PrepareStableState(CancellationToken cancellationToken)
     {
-        var scopeLockScope = _scopeLock.EnterScope();
-        var pruneLockScope = _pruneLock.EnterScope();
+        Lock.Scope scopeLockScope = _scopeLock.EnterScope();
+        Lock.Scope pruneLockScope = _pruneLock.EnterScope();
 
         return new TrieStore.StableLockScope
         {

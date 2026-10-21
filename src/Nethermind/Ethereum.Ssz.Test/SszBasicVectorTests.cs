@@ -4,10 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
+using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 using NUnit.Framework;
-using SszEncoder = Nethermind.Serialization.Ssz.Ssz;
 
 namespace Ethereum.Ssz.Test;
 
@@ -73,7 +74,7 @@ public class SszBasicVectorTests
 
         // Decode and re-encode to verify round-trip
         byte[] reEncoded = new byte[expectedByteLength];
-        VerifyDecodeReencode(elementType, ssz, reEncoded);
+        VerifyDecodeReencode(elementType, ssz, reEncoded, expectedByteLength);
         Assert.That(reEncoded, Is.EqualTo(ssz), $"Re-encoded SSZ does not match original for {caseName}");
 
         // Verify hash tree root
@@ -102,60 +103,66 @@ public class SszBasicVectorTests
         if (ssz.Length != expectedByteLength)
         {
             byte[] reEncoded = new byte[ssz.Length];
-            Assert.That(() => VerifyDecodeReencode(elementType, ssz, reEncoded), Throws.InstanceOf<Exception>(),
+            Assert.That(() => VerifyDecodeReencode(elementType, ssz, reEncoded, expectedByteLength), Throws.InstanceOf<Exception>(),
                 $"Decoder should reject wrong-length input for {caseName}");
             return;
         }
 
-        // Correct length but invalid values (e.g. bool > 1): DecodeBools doesn't validate yet
+        // Correct length but invalid values, for example bool > 1.
         if (elementType == TypeBool)
         {
-            bool hasInvalidBool = false;
-            for (int i = 0; i < ssz.Length; i++)
-            {
-                if (ssz[i] > 1)
-                {
-                    hasInvalidBool = true;
-                    break;
-                }
-            }
-            Assert.That(hasInvalidBool, Is.True, $"Expected out-of-range boolean value for {caseName}");
+            byte[] reEncoded = new byte[ssz.Length];
+            Assert.That(() => VerifyDecodeReencode(elementType, ssz, reEncoded, expectedByteLength), Throws.InstanceOf<InvalidDataException>(),
+                $"Decoder should reject out-of-range boolean values for {caseName}");
             return;
         }
 
         Assert.Fail($"Unhandled invalid basic_vector case: {caseName}");
     }
 
-    private static void VerifyDecodeReencode(string elementType, byte[] ssz, byte[] reEncoded)
+    private static void VerifyDecodeReencode(string elementType, byte[] ssz, byte[] reEncoded, int expectedByteLength)
     {
+        // Basic element decoders are length-agnostic; vector tests must enforce the exact byte length.
+        if (ssz.Length != expectedByteLength)
+        {
+            throw new InvalidDataException(
+                $"Invalid SSZ length for basic_vector<{elementType}>: expected {expectedByteLength} bytes but got {ssz.Length}");
+        }
+
         switch (elementType)
         {
             case TypeBool:
-                Span<bool> decodedBools = SszEncoder.DecodeBools(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedBools);
+                bool[] decodedBools = new bool[ssz.Length];
+                BooleanSszBasicTypeConverter.FromSpan(ssz, decodedBools);
+                BooleanSszBasicTypeConverter.ToSpan(reEncoded, decodedBools);
                 break;
             case TypeUint8:
-                SszEncoder.Encode(reEncoded.AsSpan(), (ReadOnlySpan<byte>)ssz);
+                ByteSszBasicTypeConverter.ToSpan(reEncoded, ssz);
                 break;
             case TypeUint16:
-                Span<ushort> decodedUshorts = SszEncoder.DecodeUShorts(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUshorts);
+                ushort[] decodedUshorts = new ushort[ssz.Length / UInt16SszBasicTypeConverter.Length];
+                UInt16SszBasicTypeConverter.FromSpan(ssz, decodedUshorts);
+                UInt16SszBasicTypeConverter.ToSpan(reEncoded, decodedUshorts);
                 break;
             case TypeUint32:
-                Span<uint> decodedUints = SszEncoder.DecodeUInts(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUints);
+                uint[] decodedUints = new uint[ssz.Length / UInt32SszBasicTypeConverter.Length];
+                UInt32SszBasicTypeConverter.FromSpan(ssz, decodedUints);
+                UInt32SszBasicTypeConverter.ToSpan(reEncoded, decodedUints);
                 break;
             case TypeUint64:
-                Span<ulong> decodedUlongs = SszEncoder.DecodeULongs(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUlongs);
+                ulong[] decodedUlongs = new ulong[ssz.Length / UInt64SszBasicTypeConverter.Length];
+                UInt64SszBasicTypeConverter.FromSpan(ssz, decodedUlongs);
+                UInt64SszBasicTypeConverter.ToSpan(reEncoded, decodedUlongs);
                 break;
             case TypeUint128:
-                UInt128[] decodedUint128S = SszEncoder.DecodeUInts128(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUint128S);
+                UInt128[] decodedUint128s = new UInt128[ssz.Length / UInt128SszBasicTypeConverter.Length];
+                UInt128SszBasicTypeConverter.FromSpan(ssz, decodedUint128s);
+                UInt128SszBasicTypeConverter.ToSpan(reEncoded, decodedUint128s);
                 break;
             case TypeUint256:
-                UInt256[] decodedUint256S = SszEncoder.DecodeUInts256(ssz);
-                SszEncoder.Encode(reEncoded.AsSpan(), decodedUint256S);
+                UInt256[] decodedUInt256s = new UInt256[ssz.Length / UInt256SszBasicTypeConverter.Length];
+                UInt256SszBasicTypeConverter.FromSpan(ssz, decodedUInt256s);
+                UInt256SszBasicTypeConverter.ToSpan(reEncoded, decodedUInt256s);
                 break;
             default:
                 Assert.Fail($"Unsupported element type: {elementType}");
@@ -163,15 +170,9 @@ public class SszBasicVectorTests
         }
     }
 
-    private static IEnumerable<TestCaseData> ValidCases()
-    {
-        return GetCases("basic_vector", "valid");
-    }
+    private static IEnumerable<TestCaseData> ValidCases() => GetCases("basic_vector", "valid");
 
-    private static IEnumerable<TestCaseData> InvalidCases()
-    {
-        return GetCases("basic_vector", "invalid");
-    }
+    private static IEnumerable<TestCaseData> InvalidCases() => GetCases("basic_vector", "invalid");
 
     private static IEnumerable<TestCaseData> GetCases(string handler, string validity)
     {

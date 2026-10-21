@@ -26,9 +26,7 @@ public static class NethermindBuffers
     /// </summary>
     public static IByteBufferAllocator DiscoveryAllocator = PooledByteBufferAllocator.Default;
 
-    public static IByteBufferAllocator CreateAllocator(int arenaOrder, uint arenaCount)
-    {
-        return new PooledByteBufferAllocator(
+    public static IByteBufferAllocator CreateAllocator(int arenaOrder, uint arenaCount) => new PooledByteBufferAllocator(
             preferDirect: PlatformDependent.DirectBufferPreferred,
             nHeapArena: (int)arenaCount,
             nDirectArena: (int)arenaCount,
@@ -38,7 +36,6 @@ public static class NethermindBuffers
             smallCacheSize: PooledByteBufferAllocator.DefaultSmallCacheSize,
             normalCacheSize: PooledByteBufferAllocator.DefaultNormalCacheSize
         );
-    }
 }
 
 public static class Metrics

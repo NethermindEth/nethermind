@@ -5,10 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-public sealed class NullDiagnosticListener : DiagnosticListener
+public sealed class NullDiagnosticListener(string name) : DiagnosticListener(name)
 {
     public static NullDiagnosticListener Instance { get; } = new("");
-    public NullDiagnosticListener(string name) : base(name) { }
+
     public override void Dispose() { }
     public override bool IsEnabled(string name) => false;
     public override bool IsEnabled(string name, object? arg1, object? arg2 = null) => false;

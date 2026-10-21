@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -25,7 +25,7 @@ namespace Nethermind.Facade.Test
         {
             _txPool = Substitute.For<ITxPool>();
             _txSigner = Substitute.For<ITxSigner>();
-            _nonceManager = new NonceManager(Substitute.For<IAccountStateProvider>());
+            _nonceManager = new NonceManager(Substitute.For<IChainHeadInfoProvider>(), Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
             _ecdsa = Substitute.For<IEthereumEcdsa>();
             _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default), _nonceManager, _ecdsa);
         }
@@ -42,7 +42,7 @@ namespace Nethermind.Facade.Test
         public void get_transaction_returns_null_when_transaction_not_found()
         {
             _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction tx);
-            tx.Should().Be(null);
+            Assert.That(tx, Is.EqualTo(null));
         }
     }
 }

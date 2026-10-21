@@ -1,11 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -40,10 +46,350 @@ namespace Nethermind.JsonRpc.Test.Data
 
             UInt256 effectiveGasPrice = new(5526);
             ReceiptForRpc receiptForRpc = new(txHash, receipt1, 0, new(effectiveGasPrice));
-            long?[] indexes = receiptForRpc.Logs.Select(static log => log.LogIndex).ToArray();
+            long?[] indexes = receiptForRpc.Logs!.Select(static log => log.LogIndex).ToArray();
             long?[] expected = { 0, 1, 2 };
 
             Assert.That(indexes, Is.EqualTo(expected));
         }
+
+        [Test]
+        public void Serializing_receipt_does_not_allocate_per_log([Values] bool throughTxReceiptConverter)
+        {
+            const int logCount = 1024;
+            LogEntry[] logEntries = new LogEntry[logCount];
+            Array.Fill(logEntries, Build.A.LogEntry.TestObject);
+            TxReceipt receipt = Build.A.Receipt.WithLogs(logEntries).TestObject;
+            receipt.TxHash = Keccak.OfAnEmptyString;
+            ArrayBufferWriter<byte> buffer = new(1 << 20);
+            JsonSerializerOptions options = throughTxReceiptConverter
+                ? new(EthereumJsonSerializer.JsonOptions) { Converters = { new TxReceiptConverter() } }
+                : EthereumJsonSerializer.JsonOptions;
+            WriteReceipt(receipt, buffer, options, throughTxReceiptConverter);
+
+            // The minimum over a few runs filters a one-off runtime allocation (seen on CI); per-log materialization would show in every run.
+            long allocated = long.MaxValue;
+            for (int i = 0; i < 5; i++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                WriteReceipt(receipt, buffer, options, throughTxReceiptConverter);
+                allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+
+            Assert.That(allocated, Is.LessThan(logCount * 8), "receipt logs must be written from the stored entries, not materialized per log");
+        }
+
+        [Test]
+        public void Serializing_built_receipt_does_not_allocate([Values(0, 1, 3)] int logCount)
+        {
+            ReceiptForRpc receipt = BuildReceiptForRpc(TestItem.KeccakA, logCount);
+            ArrayBufferWriter<byte> buffer = new(1 << 16);
+            using Utf8JsonWriter writer = new(buffer);
+            Write(receipt, buffer, writer);
+
+            long allocated = long.MaxValue;
+            for (int i = 0; i < 5; i++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Write(receipt, buffer, writer);
+                allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+
+            Assert.That(allocated, Is.Zero, "writing a built receipt must not allocate a log entry");
+        }
+
+        // Receipts written one after another share the thread's log entry, so nothing of one may leak into the next.
+        [Test]
+        public void Serializes_logs_as_materialized_entries([Values(0, 1, 3)] int logCount)
+        {
+            ReceiptForRpc[] receipts = [BuildReceiptForRpc(TestItem.KeccakA, logCount), BuildReceiptForRpc(TestItem.KeccakB, 2), BuildReceiptForRpc(TestItem.KeccakA, logCount)];
+            EthereumJsonSerializer serializer = new();
+
+            foreach (ReceiptForRpc receipt in receipts)
+            {
+                string json = serializer.Serialize(receipt);
+                receipt.Logs = receipt.Logs!.ToArray();
+                Assert.That(json, Is.EqualTo(serializer.Serialize(receipt)));
+            }
+        }
+
+        [Test]
+        public void Serializing_receipt_does_not_retain_its_logs()
+        {
+            new EthereumJsonSerializer().Serialize(BuildReceiptForRpc(TestItem.KeccakA, 2));
+
+            LogEntryForRpc entry = (LogEntryForRpc)typeof(ReceiptLogsForRpc).GetField("_writeEntry", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry.TransactionHash, Is.Null);
+                Assert.That(entry.BlockHash, Is.Null);
+                Assert.That(entry.Address, Is.Null);
+                Assert.That(entry.Data, Is.Null);
+                Assert.That(entry.Topics, Is.Null);
+            }
+        }
+
+        private static ReceiptForRpc BuildReceiptForRpc(Hash256 blockHash, int logCount)
+        {
+            TxReceipt receipt = Build.A.Receipt
+                .WithLogs(Enumerable.Range(0, logCount).Select(i => Build.A.LogEntry.WithAddress(TestItem.Addresses[i]).WithTopics(TestItem.Keccaks[i]).WithData([(byte)i]).TestObject).ToArray())
+                .TestObject;
+            receipt.TxHash = blockHash;
+            receipt.BlockHash = blockHash;
+            receipt.BlockNumber = (ulong)logCount + 1;
+            receipt.Index = logCount;
+            return new ReceiptForRpc(blockHash, receipt, (ulong)logCount, new(UInt256.One), logIndexStart: logCount);
+        }
+
+        private static void Write(ReceiptForRpc receipt, ArrayBufferWriter<byte> buffer, Utf8JsonWriter writer)
+        {
+            buffer.ResetWrittenCount();
+            writer.Reset(buffer);
+            JsonSerializer.Serialize(writer, receipt, EthereumJsonSerializer.JsonOptions);
+        }
+
+        private static void WriteReceipt(TxReceipt receipt, ArrayBufferWriter<byte> buffer, JsonSerializerOptions options, bool throughTxReceiptConverter)
+        {
+            buffer.ResetWrittenCount();
+            using Utf8JsonWriter writer = new(buffer);
+            if (throughTxReceiptConverter)
+            {
+                JsonSerializer.Serialize(writer, receipt, options);
+            }
+            else
+            {
+                JsonSerializer.Serialize(writer, new ReceiptForRpc(Keccak.OfAnEmptyString, receipt, 0, new(UInt256.One)), options);
+            }
+        }
+
+        [Test]
+        public void Diagnostic_receipt_json_keeps_block_gas_breakdown()
+        {
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            string serialized = SerializeReceipt(receipt);
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            JsonElement root = document.RootElement;
+
+            Assert.That(root.GetProperty("effectiveGasPrice").GetString(), Is.EqualTo("0x7"));
+            Assert.That(root.GetProperty("blockGasUsed").GetString(), Is.EqualTo("0xa"));
+            Assert.That(root.GetProperty("executionGasUsed").GetString(), Is.EqualTo("0xb"));
+            Assert.That(root.GetProperty("storageGasUsed").GetString(), Is.EqualTo("0xc"));
+        }
+
+        [TestCase("StateGasSpill", "stateGasSpill")]
+        [TestCase("StateGasSpillRefunded", "stateGasSpillRefunded")]
+        public void Diagnostic_receipt_surface_does_not_include_internal_spill_counters(string clrPropertyName, string jsonPropertyName)
+        {
+            Assert.That(typeof(TxReceipt).GetProperty(clrPropertyName), Is.Null);
+
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            string serialized = SerializeReceipt(receipt);
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            Assert.That(document.RootElement.TryGetProperty(jsonPropertyName, out _), Is.False);
+        }
+
+        private const string LeadingZeroRootHex = "0x0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+        private const string LeadingZeroByteRootHex = "0x009ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+
+        [TestCase(LeadingZeroRootHex, LeadingZeroRootHex)]
+        [TestCase(LeadingZeroByteRootHex, LeadingZeroByteRootHex)]
+        public void Serializes_root_as_full_width_data(string rootHex, string expectedRoot)
+        {
+            // A receipt root is DATA per EIP-1474. The writer must keep all 64 digits.
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.PostTransactionState = new Hash256(rootHex);
+
+            string serialized = SerializeReceipt(receipt);
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo(expectedRoot));
+        }
+
+        [Test]
+        public void Receipt_with_no_logs_survives_the_converter_round_trip()
+        {
+            // Write emits "logs": null for an empty log set, and the deserializer honours it.
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
+
+            TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(roundTripped!.Logs, Is.Empty);
+                Assert.That(roundTripped.BlockGasUsed, Is.EqualTo(10));
+                Assert.That(roundTripped.ExecutionGasUsed, Is.EqualTo(11));
+                Assert.That(roundTripped.StorageGasUsed, Is.EqualTo(12));
+            }
+        }
+
+        // blockGasUsed is gated on its own value while executionGasUsed/storageGasUsed are written as a pair,
+        // so a zero of the pair is emitted explicitly where a zero blockGasUsed is omitted.
+        [TestCase(0ul, 0ul, 0ul)]
+        [TestCase(10ul, 11ul, 0ul)]
+        [TestCase(0ul, 0ul, 12ul)]
+        public void Block_gas_breakdown_survives_the_converter_round_trip(ulong blockGasUsed, ulong executionGasUsed, ulong storageGasUsed)
+        {
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.BlockGasUsed = blockGasUsed;
+            receipt.ExecutionGasUsed = executionGasUsed;
+            receipt.StorageGasUsed = storageGasUsed;
+            EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
+
+            string serialized = serializer.Serialize(receipt);
+            TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serialized);
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(document.RootElement.TryGetProperty("blockGasUsed", out _), Is.EqualTo(blockGasUsed > 0));
+                bool pairEmitted = executionGasUsed > 0 || storageGasUsed > 0;
+                Assert.That(document.RootElement.TryGetProperty("executionGasUsed", out _), Is.EqualTo(pairEmitted));
+                Assert.That(document.RootElement.TryGetProperty("storageGasUsed", out _), Is.EqualTo(pairEmitted));
+                Assert.That(roundTripped!.BlockGasUsed, Is.EqualTo(blockGasUsed));
+                Assert.That(roundTripped.ExecutionGasUsed, Is.EqualTo(executionGasUsed));
+                Assert.That(roundTripped.StorageGasUsed, Is.EqualTo(storageGasUsed));
+            }
+        }
+
+        [Test]
+        public void Serializes_transaction_index_as_hex_quantity([Values(0, 1, 255, int.MaxValue)] int index)
+        {
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.Index = index;
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+
+            Assert.That(document.RootElement.GetProperty("transactionIndex").GetString(), Is.EqualTo($"0x{index:x}"));
+        }
+
+        [Test]
+        public void Error_field_is_not_serialized()
+        {
+            Hash256 txHash = Keccak.OfAnEmptyString;
+            TxReceipt receipt = new()
+            {
+                Bloom = Bloom.Empty,
+                Index = 0,
+                Recipient = TestItem.AddressA,
+                Sender = TestItem.AddressB,
+                BlockHash = TestItem.KeccakA,
+                BlockNumber = 1,
+                GasUsed = 1000,
+                TxHash = txHash,
+                StatusCode = 0,
+                GasUsedTotal = 1000,
+                Logs = [],
+                Error = "Reverted: INSUFFICIENT_OUTPUT"
+            };
+
+            ReceiptForRpc receiptForRpc = new(txHash, receipt, 0, new(new UInt256(1)));
+            string json = new EthereumJsonSerializer().Serialize(receiptForRpc);
+
+            Assert.That(json, Does.Not.Contain("\"error\""));
+            Assert.That(json, Does.Not.Contain("INSUFFICIENT_OUTPUT"));
+        }
+
+        [Test]
+        public void Error_field_is_not_deserialized()
+        {
+            const string json = """
+            {
+                "transactionHash": "0xc55e2b90168af6972193c1f86fa4d7d7b31a29c156665d15b9cd48618b5177ef",
+                "transactionIndex": "0x0",
+                "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+                "blockNumber": "0x1",
+                "cumulativeGasUsed": "0x3e8",
+                "gasUsed": "0x3e8",
+                "from": "0x0000000000000000000000000000000000000001",
+                "to": "0x0000000000000000000000000000000000000002",
+                "contractAddress": null,
+                "logs": [],
+                "logsBloom": "0x00",
+                "status": "0x0",
+                "error": "Reverted: INSUFFICIENT_OUTPUT",
+                "type": "0x0"
+            }
+            """;
+
+            ReceiptForRpc? receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>(json);
+
+            Assert.That(receiptForRpc, Is.Not.Null);
+            Assert.That(receiptForRpc!.ToReceipt().Error, Is.Null);
+        }
+
+        [Test]
+        public void Post_byzantium_receipt_serializes_status_without_root()
+        {
+            TxReceipt receipt = new()
+            {
+                Bloom = Bloom.Empty,
+                Index = 0,
+                Recipient = TestItem.AddressA,
+                Sender = TestItem.AddressB,
+                BlockHash = TestItem.KeccakA,
+                BlockNumber = 1,
+                GasUsed = 1000,
+                TxHash = Keccak.OfAnEmptyString,
+                StatusCode = 1,
+                GasUsedTotal = 1000,
+                Logs = []
+            };
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+            JsonElement root = document.RootElement;
+
+            Assert.That(root.TryGetProperty("root", out _), Is.False);
+            Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+        }
+
+        [Test]
+        public void Pre_byzantium_receipt_serializes_root_without_status()
+        {
+            TxReceipt receipt = new()
+            {
+                Bloom = Bloom.Empty,
+                Index = 0,
+                Recipient = TestItem.AddressA,
+                Sender = TestItem.AddressB,
+                BlockHash = TestItem.KeccakA,
+                BlockNumber = 1,
+                GasUsed = 1000,
+                TxHash = Keccak.OfAnEmptyString,
+                PostTransactionState = TestItem.KeccakB,
+                GasUsedTotal = 1000,
+                Logs = []
+            };
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+            JsonElement root = document.RootElement;
+
+            Assert.That(root.TryGetProperty("status", out _), Is.False);
+            Assert.That(root.GetProperty("root").GetString(), Is.EqualTo(TestItem.KeccakB.ToString()));
+        }
+
+        private static TxReceipt CreateDiagnosticReceipt()
+            => new()
+            {
+                TxType = TxType.EIP1559,
+                StatusCode = 1,
+                TxHash = TestItem.KeccakA,
+                BlockHash = TestItem.KeccakB,
+                BlockNumber = 1,
+                Index = 2,
+                GasUsed = 3,
+                GasUsedTotal = 4,
+                BlockGasUsed = 10,
+                ExecutionGasUsed = 11,
+                StorageGasUsed = 12,
+                EffectiveGasPrice = new UInt256(7),
+                Sender = TestItem.AddressA,
+                Recipient = TestItem.AddressB,
+                Logs = []
+            };
+
+        private static string SerializeReceipt(TxReceipt receipt)
+            => new EthereumJsonSerializer(new JsonConverter[] { new TxReceiptConverter() }).Serialize(receipt);
     }
 }

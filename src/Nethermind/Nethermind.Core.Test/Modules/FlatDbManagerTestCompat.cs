@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
-using Nethermind.Trie.Pruning;
-using NUnit.Framework;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -17,40 +15,38 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="flatDbManager"></param>
 internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbManager
 {
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
-    {
-        IgnoreOnInvalidState(baseBlock);
-        return flatDbManager.GatherSnapshotBundle(baseBlock, usage);
-    }
+    public SnapshotBundle GatherSnapshotBundle(in StateId stateId, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(stateId, usage, filterInMemorySlotReads: false);
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
-    {
-        IgnoreOnInvalidState(baseBlock);
-        return flatDbManager.GatherReadOnlySnapshotBundle(baseBlock);
-    }
+    public SnapshotBundle GatherSnapshotBundle(in StateId stateId, ResourcePool.Usage usage, bool filterInMemorySlotReads) =>
+        flatDbManager.GatherSnapshotBundle(NormalizeState(stateId), usage, filterInMemorySlotReads);
+
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId stateId) => flatDbManager.GatherReadOnlySnapshotBundle(NormalizeState(stateId));
+
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId stateId, ReaderFlags readerFlags) => flatDbManager.GatherReadOnlySnapshotBundle(NormalizeState(stateId), readerFlags);
 
     public bool HasStateForBlock(in StateId stateId)
     {
-        IgnoreOnInvalidState(stateId);
+        if (stateId.StateRoot == Keccak.EmptyTreeHash) return true;
         return flatDbManager.HasStateForBlock(stateId);
     }
 
-    private void IgnoreOnInvalidState(StateId stateId)
+    public bool HasStateForBlock(in StateId stateId, ResourcePool.Usage usage) =>
+        stateId.StateRoot == Keccak.EmptyTreeHash || flatDbManager.HasStateForBlock(stateId, usage);
+
+    public bool IsHistoricalState(in StateId stateId) => flatDbManager.IsHistoricalState(NormalizeState(stateId));
+
+    private StateId NormalizeState(StateId stateId)
     {
-        if (stateId.StateRoot == Keccak.EmptyTreeHash && stateId.BlockNumber != -1 &&
+        if (stateId.StateRoot == Keccak.EmptyTreeHash && stateId.BlockNumber != StateId.PreGenesis.BlockNumber &&
             !flatDbManager.HasStateForBlock(stateId))
-        {
-            Assert.Ignore("Incompatible test");
-        }
+            return StateId.PreGenesis;
+        return stateId;
     }
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 
-    public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) => flatDbManager.AddSnapshot(snapshot, transientResource);
+    public void DropStateNotReachableFrom(in StateId head) => flatDbManager.DropStateNotReachableFrom(head);
 
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
-    {
-        add => flatDbManager.ReorgBoundaryReached += value;
-        remove => flatDbManager.ReorgBoundaryReached -= value;
-    }
+    public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) => flatDbManager.AddSnapshot(snapshot, transientResource);
 }

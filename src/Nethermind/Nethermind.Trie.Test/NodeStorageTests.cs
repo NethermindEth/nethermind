@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -19,52 +18,52 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
     [Test]
     public void Should_StoreAndRead()
     {
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
-        nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA).Should().BeFalse();
+        Assert.That(nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.False);
         nodeStorage.Set(null, TreePath.Empty, TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
-        nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
-        nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA).Should().BeTrue();
+        Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+        Assert.That(nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.True);
 
         if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
         {
-            testDb[TestItem.KeccakA.Bytes].Should().NotBeNull();
+            Assert.That(testDb[TestItem.KeccakA.Bytes], Is.Not.Null);
         }
         else if (currentKeyScheme == INodeStorage.KeyScheme.HalfPath)
         {
-            testDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, TestItem.KeccakA)].Should().NotBeNull();
+            Assert.That(testDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, TestItem.KeccakA)], Is.Not.Null);
         }
     }
 
     [Test]
     public void Should_StoreAndRead_WithStorage()
     {
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
-        nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeFalse();
+        Assert.That(nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.False);
         nodeStorage.Set(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
-        nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
-        nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeTrue();
+        Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+        Assert.That(nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.True);
 
         if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
         {
-            testDb[TestItem.KeccakA.Bytes].Should().NotBeNull();
+            Assert.That(testDb[TestItem.KeccakA.Bytes], Is.Not.Null);
         }
         else if (currentKeyScheme == INodeStorage.KeyScheme.HalfPath)
         {
-            testDb[NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA)].Should().NotBeNull();
+            Assert.That(testDb[NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA)], Is.Not.Null);
         }
     }
 
     [Test]
     public void When_KeyNotExist_Should_TryBothKeyType()
     {
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
-        nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeNull();
+        Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.Null);
 
         testDb.KeyWasRead(TestItem.KeccakA.Bytes.ToArray());
         testDb.KeyWasRead(NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA));
@@ -73,8 +72,8 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
     [Test]
     public void When_EntryOfDifferentScheme_Should_StillBeAbleToRead()
     {
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
         if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
         {
@@ -86,7 +85,7 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
             testDb[TestItem.KeccakA.Bytes] = TestItem.KeccakA.BytesToArray();
         }
 
-        nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
+        Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
     }
 
     [TestCase(false, 0, "000000000000000000003333333333333333333333333333333333333333333333333333333333333333")]
@@ -111,12 +110,12 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
             address = new Hash256("1111111111111111111111111111111111111111111111111111111111111111");
         }
 
-        TreePath path = new TreePath(new Hash256("2222222222222222222222222222222222222222222222222222222222222222"), 64);
+        TreePath path = new(new Hash256("2222222222222222222222222222222222222222222222222222222222222222"), 64);
         path.TruncateMut(pathLength);
 
-        Hash256? hash = new Hash256("3333333333333333333333333333333333333333333333333333333333333333");
+        Hash256? hash = new("3333333333333333333333333333333333333333333333333333333333333333");
 
-        NodeStorage.GetHalfPathNodeStoragePath(address, path, hash).ToHexString().Should().Be(expectedKey);
+        Assert.That(NodeStorage.GetHalfPathNodeStoragePath(address, path, hash).ToHexString(), Is.EqualTo(expectedKey));
     }
 
     [TestCase(false, 3, ReadFlags.HintReadAhead)]
@@ -126,8 +125,8 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
     {
         if (currentKeyScheme == INodeStorage.KeyScheme.Hash) return;
 
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
         Hash256? address = null;
         if (hasAddress)
@@ -135,7 +134,7 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
             address = new Hash256("1111111111111111111111111111111111111111111111111111111111111111");
         }
 
-        TreePath path = new TreePath(new Hash256("2222222222222222222222222222222222222222222222222222222222222222"), 64);
+        TreePath path = new(new Hash256("2222222222222222222222222222222222222222222222222222222222222222"), 64);
         path.TruncateMut(pathLength);
 
         nodeStorage.Get(address, path, Keccak.Zero, ReadFlags.HintReadAhead);

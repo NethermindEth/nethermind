@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -53,7 +52,7 @@ namespace Nethermind.AuRa.Test
             {
                 ValidatorType = validatorType,
                 Addresses = new[] { Address.Zero },
-                Validators = new Dictionary<long, AuRaParameters.Validator>()
+                Validators = new Dictionary<ulong, AuRaParameters.Validator>()
                 {
                     {
                         0, new AuRaParameters.Validator()
@@ -66,7 +65,7 @@ namespace Nethermind.AuRa.Test
 
             IAuRaValidator result = factory.CreateValidatorProcessor(validator);
 
-            result.Should().BeOfType(expectedType);
+            Assert.That(result, Is.TypeOf(expectedType));
         }
     }
 }

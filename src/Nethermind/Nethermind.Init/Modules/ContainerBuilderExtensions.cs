@@ -21,9 +21,7 @@ public static class ContainerBuilderExtensions
     /// <param name="dbName">Service key</param>
     /// <param name="storePath">Path relative to BaseDbPath to store db</param>
     /// <returns></returns>
-    public static ContainerBuilder AddNetworkStorage(this ContainerBuilder builder, string dbName, string storePath)
-    {
-        return builder
+    public static ContainerBuilder AddNetworkStorage(this ContainerBuilder builder, string dbName, string storePath) => builder
             .AddKeyedSingleton<IFullDb>(dbName, ctx =>
             {
                 ILogManager logManager = ctx.Resolve<ILogManager>();
@@ -41,7 +39,6 @@ public static class ContainerBuilderExtensions
                 IFullDb db = ctx.ResolveKeyed<IFullDb>(dbName);
                 return new NetworkStorage(db, logManager);
             });
-    }
 
     // Note: The convention for `dbName` is that it is camelCase.
     // this is not necessarily true for plugins. More importantly, this is also the path. Use the second overload for a more
@@ -53,10 +50,14 @@ public static class ContainerBuilderExtensions
         .AddKeyedSingleton<IDb>(keyName, (ctx) => ctx.Resolve<IDbFactory>()
             .CreateDb(new DbSettings(dbName, path)));
 
-    public static ContainerBuilder AddColumnDatabase<T>(this ContainerBuilder builder, string dbName) where T : struct, Enum =>
+    public static ContainerBuilder AddColumnDatabase<T>(this ContainerBuilder builder, string dbName, Action<DbSettings>? configure = null) where T : struct, Enum =>
         builder
-            .AddSingleton<IColumnsDb<T>>((ctx) => ctx.Resolve<IDbFactory>()
-                .CreateColumnsDb<T>(new DbSettings(GetTitleDbName(dbName), dbName)))
+            .AddSingleton<IColumnsDb<T>>((ctx) =>
+            {
+                DbSettings settings = new(GetTitleDbName(dbName), dbName);
+                configure?.Invoke(settings);
+                return ctx.Resolve<IDbFactory>().CreateColumnsDb<T>(settings);
+            })
 
             .AddKeyedSingleton<ITunableDb>(dbName, (ctx) =>
             {
@@ -65,5 +66,5 @@ public static class ContainerBuilderExtensions
                 return new NoopTunableDb();
             });
 
-    private static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
+    internal static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
 }

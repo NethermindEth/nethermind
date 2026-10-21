@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -12,62 +11,71 @@ namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
-    public sealed class ReceiptMessageDecoder : RlpValueDecoder<TxReceipt>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
+    public sealed partial class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpDecoder<TxReceipt>
     {
-        // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
-        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
-        private readonly bool _skipStateAndStatus;
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
-        public ReceiptMessageDecoder(bool skipStateAndStatus = false)
+        [return: MaybeNull]
+        protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            _skipStateAndStatus = skipStateAndStatus;
-        }
-        protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (ctx.IsNextItemEmptyList())
-            {
-                ctx.ReadByte();
-                return null;
-            }
+            if (ctx.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
             TxReceipt txReceipt = new();
-            if (!ctx.IsSequenceNext())
+            int wrapperEnd = -1;
+            if (!rlp.IsSequenceNext(position))
             {
-                ctx.SkipLength();
-                txReceipt.TxType = (TxType)ctx.ReadByte();
+                (int prefixLength, int contentLength) = rlp.PeekPrefixAndContentLength(position);
+                position += prefixLength;
+                if (prefixLength != 0) wrapperEnd = position + contentLength;
+                txReceipt.TxType = (TxType)rlp.Data[position++];
             }
 
-            int sequenceLength = ctx.ReadSequenceLength();
-            int receiptEnd = ctx.Position + sequenceLength;
-            byte[] firstItem = ctx.DecodeByteArray();
+            rlp.ReadSequenceLength(ref position, out int sequenceLength);
+            int receiptEnd = position + sequenceLength;
+            if (wrapperEnd >= 0) RlpHelpers.Check(receiptEnd, wrapperEnd);
+
+            if (txReceipt.TxType == TxType.FrameTx)
+            {
+                ctx.Position = position;
+                FrameReceiptRlp.DecodePayload(ref ctx, txReceipt, receiptEnd, rlpBehaviors);
+                return txReceipt;
+            }
+
+            rlp.DecodeByteArray(ref position, out byte[] firstItem);
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
                 txReceipt.StatusCode = firstItem[0];
-                txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
+                txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
             }
             else if (firstItem.Length is >= 1 and <= 4)
             {
-                txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
+                txReceipt.GasUsedTotal = firstItem.ToULong();
             }
             else
             {
+                if (firstItem.Length != 0 && firstItem.Length != Hash256.Size)
+                {
+                    ThrowUnexpectedPostStateLength(firstItem.Length);
+                }
+
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-                txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
+                txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
             }
 
-            txReceipt.Bloom = ctx.DecodeBloom();
-
-            int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
-
-            int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
-            ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
-            LogEntry[] entries = new LogEntry[numberOfReceipts];
-            for (int i = 0; i < numberOfReceipts; i++)
+            // When skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
+            if (!skipBloom)
             {
-                entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+                txReceipt.Bloom = rlp.DecodeBloomNonNull(ref position, rlpBehaviors);
             }
-            txReceipt.Logs = entries;
+
+            rlp.ReadSequenceLength(ref position, out int logsLength);
+            int lastCheck = position + logsLength;
+
+            ctx.Position = position;
+            txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref ctx, lastCheck);
+
+            // The item count only requires a log to start before the declared end, so an under-declared
+            // logs header is only caught here; the logs are last, so the receipt end lands on it.
+            ctx.Check(lastCheck);
 
             // Handle any remaining extra bytes
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
@@ -86,27 +94,39 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
 
             [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedPostStateLength(int length)
+                => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
+
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedReceiptField()
                 => throw new RlpException("Unexpected receipt field");
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:
+        /// the per-frame receipts for a frame transaction, the logs for every other type.</summary>
+        private (int Total, int Inner) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
                 return (0, 0);
             }
 
+            if (item.TxType == TxType.FrameTx)
+            {
+                return (FrameReceiptRlp.GetPayloadLength(item, out int framesLength), framesLength);
+            }
+
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
-            contentLength += Rlp.LengthOf(item.Bloom);
+            if (!skipBloom)
+                contentLength += Rlp.LengthOf(GetBloom(item, rlpBehaviors));
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-            if (!_skipStateAndStatus)
+            if (!skipStateAndStatus)
             {
                 contentLength += isEip658Receipts
                     ? Rlp.LengthOf(item.StatusCode)
@@ -119,19 +139,35 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            for (var i = 0; i < item.Logs.Length; i++)
+            LogEntry[] logs = GetLogs(item);
+            for (int i = 0; i < logs.Length; i++)
             {
-                logsLength += Rlp.LengthOf(item.Logs[i]);
+                logsLength += Rlp.LengthOf(logs[i]);
             }
 
             return logsLength;
         }
 
+        private static Bloom GetBloom(TxReceipt item, RlpBehaviors rlpBehaviors)
+            => (rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0 ? Bloom.ZeroLength : item.Bloom;
+
+        private static LogEntry[] GetLogs(TxReceipt item)
+            => item.Logs ?? throw new RlpException("Receipt logs are null.");
+
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
+            if (item is null)
+            {
+                return Rlp.OfEmptyList.Length;
+            }
+
+            int length = -1;
+            if (!skipStateAndStatus && !skipBloom) GetLengthInOnePass(item, rlpBehaviors, ref length);
+            if (length >= 0) return length;
+
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
@@ -152,20 +188,30 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int length = GetLength(item, rlpBehaviors);
-            RlpStream stream = new(length);
-            Encode(stream, item, rlpBehaviors);
-            return stream.Data.ToArray();
+            byte[] bytes = new byte[length];
+            RlpWriter writer = new(bytes);
+            Encode(ref writer, item, rlpBehaviors);
+            return bytes;
         }
 
-        public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        partial void GetLengthInOnePass(TxReceipt item, RlpBehaviors rlpBehaviors, ref int length);
+
+        partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors, ref bool encoded)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct;
+
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                rlpStream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
-            (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
+            bool encoded = false;
+            if (!skipStateAndStatus && !skipBloom) EncodeInOnePass(ref writer, item, rlpBehaviors, ref encoded);
+            if (encoded) return;
+
+            (int totalContentLength, int innerLength) = GetContentLength(item, rlpBehaviors);
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
@@ -174,33 +220,42 @@ namespace Nethermind.Serialization.Rlp
             {
                 if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
                 {
-                    rlpStream.StartByteArray(sequenceLength + 1, false);
+                    writer.StartByteArray(sequenceLength + 1, false);
                 }
 
-                rlpStream.WriteByte((byte)item.TxType);
+                writer.WriteByte((byte)item.TxType);
             }
 
-            rlpStream.StartSequence(totalContentLength);
-            if (!_skipStateAndStatus)
+            writer.StartSequence(totalContentLength);
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                FrameReceiptRlp.EncodePayload(ref writer, item, innerLength);
+                return;
+            }
+
+            if (!skipStateAndStatus)
             {
                 if (isEip658Receipts)
                 {
-                    rlpStream.Encode(item.StatusCode);
+                    writer.Encode(item.StatusCode);
                 }
                 else
                 {
-                    rlpStream.Encode(item.PostTransactionState);
+                    writer.Encode(item.PostTransactionState);
                 }
             }
 
-            rlpStream.Encode(item.GasUsedTotal);
-            rlpStream.Encode(item.Bloom);
+            writer.Encode(item.GasUsedTotal);
+            if (!skipBloom)
+                writer.Encode(GetBloom(item, rlpBehaviors));
 
-            rlpStream.StartSequence(logsLength);
-            LogEntry[] logs = item.Logs;
-            for (var i = 0; i < logs.Length; i++)
+            writer.StartSequence(innerLength);
+            LogEntry[] logs = GetLogs(item);
+            LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
+            for (int i = 0; i < logs.Length; i++)
             {
-                rlpStream.Encode(logs[i]);
+                logEntryDecoder.Encode(ref writer, logs[i]);
             }
         }
     }

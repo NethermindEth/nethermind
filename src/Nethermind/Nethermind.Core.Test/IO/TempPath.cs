@@ -8,10 +8,7 @@ namespace Nethermind.Core.Test.IO
 {
     public class TempPath : IDisposable
     {
-        private TempPath(string path)
-        {
-            Path = path;
-        }
+        private TempPath(string path) => Path = path;
 
         public string Path { get; }
 

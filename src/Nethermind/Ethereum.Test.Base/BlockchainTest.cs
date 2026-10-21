@@ -11,6 +11,7 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTest : EthereumTest
     {
+        public string? ForkName { get; set; }
         public IReleaseSpec? Network { get; set; }
         public IReleaseSpec? NetworkAfterTransition { get; set; }
         public ForkActivation? TransitionForkActivation { get; set; }
@@ -25,9 +26,6 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState>? PostState { get; set; }
         public Hash256? PostStateRoot { get; set; }
 
-        public override string? ToString()
-        {
-            return Name;
-        }
+        public override string? ToString() => Name;
     }
 }

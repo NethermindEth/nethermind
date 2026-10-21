@@ -9,9 +9,9 @@ namespace Nethermind.State.Snap
         Hash256 rootHash,
         ValueHash256 startingHash,
         ValueHash256? limitHash = null,
-        long? blockNumber = null)
+        ulong? blockNumber = null)
     {
-        public long? BlockNumber { get; } = blockNumber;
+        public ulong? BlockNumber { get; } = blockNumber;
 
         /// <summary>
         /// Root hash of the account trie to serve
@@ -28,9 +28,6 @@ namespace Nethermind.State.Snap
         /// </summary>
         public ValueHash256? LimitHash { get; } = limitHash;
 
-        public override string ToString()
-        {
-            return $"AccountRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
-        }
+        public override string ToString() => $"AccountRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
     }
 }

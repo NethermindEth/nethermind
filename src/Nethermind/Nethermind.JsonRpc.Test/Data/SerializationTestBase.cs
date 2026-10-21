@@ -17,7 +17,7 @@ public class SerializationTestBase
         IJsonSerializer serializer = BuildSerializer();
 
         string result = serializer.Serialize(item);
-        T deserialized = serializer.Deserialize<T>(result);
+        T deserialized = serializer.Deserialize<T>(result)!;
 
         if (equalityComparer is null)
         {
@@ -35,31 +35,22 @@ public class SerializationTestBase
         IJsonSerializer serializer = BuildSerializer();
 
         string result = serializer.Serialize(dictionary);
-        Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result);
+        Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result)!;
 
-        Assert.That(deserialized, Is.EquivalentTo(dictionary));
+        Assert.That(deserialized, Is.EqualTo(dictionary));
     }
 
-    protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null)
-    {
-        TestRoundtrip(item, static (a, b) => a!.Equals(b), converter, description);
-    }
+    protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null) => TestRoundtrip(item, static (a, b) => a!.Equals(b), converter, description);
 
-    protected void TestRoundtrip<T>(T item, string description)
-    {
-        TestRoundtrip(item, null, null, description);
-    }
+    protected void TestRoundtrip<T>(T item, string description) => TestRoundtrip(item, null, null, description);
 
-    protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, string? description = null)
-    {
-        TestRoundtrip(item, equalityComparer, null, description);
-    }
+    protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, string? description = null) => TestRoundtrip(item, equalityComparer, null, description);
 
     protected void TestRoundtrip<T>(string json, params JsonConverter[] converters)
     {
         IJsonSerializer serializer = BuildSerializer(converters);
 
-        T deserialized = serializer.Deserialize<T>(json);
+        T deserialized = serializer.Deserialize<T>(json)!;
         string result = serializer.Serialize(deserialized);
         Assert.That(result, Is.EqualTo(json));
     }

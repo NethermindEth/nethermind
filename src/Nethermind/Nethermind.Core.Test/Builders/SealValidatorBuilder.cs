@@ -10,10 +10,7 @@ namespace Nethermind.Core.Test.Builders
     {
         private bool _alwaysTrue;
 
-        public SealValidatorBuilder()
-        {
-            TestObject = Substitute.For<ISealValidator>();
-        }
+        public SealValidatorBuilder() => TestObject = Substitute.For<ISealValidator>();
 
         public SealValidatorBuilder ThatAlwaysReturnsFalse
         {

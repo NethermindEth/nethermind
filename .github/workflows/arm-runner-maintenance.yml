@@ -1,0 +1,239 @@
+name: ARM Runner Maintenance
+
+# Frees disk on the reproducible-benchmarks-arm runner after benchmark runs fill it
+# (docker layer churn, leftover containers/networks, runner diag/work debris).
+# By default never removes tagged images - the pinned armbench-*/master-* A/B images must survive.
+# prune_unused_images=true additionally drops unreferenced tags older than 96h, which is the only
+# thing that reclaims this box's containerd-backed image store (see that step for why).
+
+on:
+  # push registers the workflow for dispatch on this branch (dispatch-only workflows on
+  # non-default branches never register) and doubles as the first cleanup run.
+  push:
+    branches: [feature/jsonbench-extra-eth-calls]
+    paths: [.github/workflows/arm-runner-maintenance.yml]
+  # No `schedule:` here on purpose — cron only fires for workflows on the default branch, so it would be
+  # dead config until this file reaches master. Until then the benchmark job reclaims per run, and the
+  # tagged-image backlog is cleared by dispatching this with prune_unused_images=true.
+  workflow_dispatch:
+    inputs:
+      prune_unused_images:
+        description: Also remove images unused by any container and older than 96h (docker image prune -a --filter until=96h). Tagged benchmark images newer than that survive.
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  clean:
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    timeout-minutes: 30
+    steps:
+      - name: Disk usage before
+        shell: bash
+        run: |
+          set -uo pipefail
+          df -h /
+          docker system df || true
+          du -xsh /root/actions-runner/_diag /root/actions-runner/_work /tmp /var/lib/docker 2>/dev/null | sort -rh || true
+
+      - name: Reap leftover benchmark containers and networks
+        shell: bash
+        run: |
+          set -uo pipefail
+          # 'container prune' below only reaps exited containers, so a hard-cancelled run's
+          # still-running one is named and labelled out explicitly: it holds the snapshot overlay
+          # the next step unmounts, plus its deterministic name and bound ports.
+          for filter in name=expb label=expb name=rpcbench- name=nethermind-rpcbench name=ethcallchaos-bench name=jsonbench-; do
+            docker ps -aq --filter "${filter}" | xargs -r docker rm -f || true
+          done
+          # Exited expb/benchmark containers of any name
+          docker container prune -f || true
+          # Orphaned expb networks block scenario re-runs with a 409 on name collision
+          docker network prune -f || true
+          # 'volume prune' only removes anonymous volumes; named expb volumes survive and
+          # keep pointing at deleted per-run output dirs, failing later mounts with a 500.
+          docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
+          docker volume prune -f || true
+
+      - name: Reap stale expb overlay mounts
+        shell: bash
+        env:
+          EXPB_DATA_DIR: /data/expb-data
+        run: |
+          set -uo pipefail
+          # A cancelled run never unmounts its snapshot overlay, so the next `mount -t overlay` over the
+          # same path fails with exit status 32 and the benchmark dies ~90s in; container, network and
+          # volume pruning all leave the mount in place. Anchored on the benchmark data dir rather than on
+          # expb's `paths.work` leaf, so renaming that cannot silently turn this into a no-op, and
+          # rpc-bench's scratch overlays on the same box get swept too.
+          #
+          # This body is duplicated verbatim in arm-runner-maintenance.yml and in both benchmark jobs of
+          # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
+          # actions/checkout, which none of the three jobs has and which arm-runner-maintenance.yml must
+          # not depend on - it is the workflow you dispatch when the disk is full.
+          # scripts/ci/test_reap_stale_overlays.py asserts the three copies are byte-identical and drives
+          # this body against synthetic mount tables.
+          # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
+          # script path, so only that test can point this at a table it wrote.
+          MOUNTS="${1:-/proc/self/mounts}"
+          as_root() { if [[ "$(id -u)" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+          # Any mount left on this target, whatever its type - the check that an unmount actually took.
+          still_mounted() { awk -v t="$1" '$2 == t { found = 1 } END { exit !found }' "${MOUNTS}"; }
+
+          # The sweep root is what every rm -rf below is bounded by, so canonicalize it - '..' or a
+          # trailing slash must not widen it - and refuse '/' or a single top-level component outright.
+          root="${EXPB_DATA_DIR:-}"
+          [[ -n "${root}" ]] || { echo "::warning::EXPB_DATA_DIR is empty - skipping overlay reap."; exit 0; }
+          root="$(realpath -m -- "${root}")" || { echo "::warning::cannot canonicalize EXPB_DATA_DIR - skipping overlay reap."; exit 0; }
+          case "${root}" in
+            /?*/?*) ;;
+            *) echo "::warning::EXPB_DATA_DIR '${root}' is too shallow for a recursive sweep - skipping."; exit 0 ;;
+          esac
+
+          # Deepest first, so nested mounts unwind. Options are kept per mount line rather than per target:
+          # stacked overlays share a target and `umount` pops one layer at a time, so a target's scratch
+          # dirs must not be deleted until every layer on it is gone.
+          declare -A scratch=()
+          targets=()
+          while IFS=$'\t' read -r mp opts; do
+            [[ -n "${scratch[${mp}]+set}" ]] || targets+=("${mp}")
+            scratch["${mp}"]+="${opts}"$'\n'
+          done < <(awk -v d="${root}" -v OFS='\t' '$3 == "overlay" && index($2, d "/") == 1 { print $2, $4 }' "${MOUNTS}" | sort -r)
+
+          if [[ "${#targets[@]}" -eq 0 ]]; then
+            echo "No stale expb overlay mounts under ${root}."
+            # Surface what we did not match, so layout drift shows up in the log instead of a reassuring
+            # "clean"; docker's own overlays live under /var/lib and are not ours. Capped inside awk
+            # rather than piped into `head`, whose early exit would SIGPIPE awk and - under the errexit
+            # GitHub runs this body with - abort the step before the trailing `exit 0`.
+            awk '$3 == "overlay" && index($2, "/var/lib/") != 1 && ++n <= 20 { print "  unmatched overlay: " $2 }' "${MOUNTS}"
+            exit 0
+          fi
+
+          for mp in "${targets[@]}"; do
+            # An octal-escaped target is unusable twice over: `awk -v` decodes the escape back, so
+            # still_mounted cannot find the line and would report a phantom success, and `umount`
+            # cannot address the literal path either. Refuse it like an escaped scratch path.
+            if [[ "${mp}" == *"\\"* ]]; then
+              echo "::warning::refusing escaped overlay mount target: ${mp}"
+              continue
+            fi
+            # Plain unmount first: `umount -l` can report success while a container-held reference still
+            # blocks the next mount. Lazy is the fallback for that case. The loop is bounded so that
+            # stacked layers unwind and a `umount` that returns 0 without detaching cannot spin the step.
+            for _ in 1 2 3 4 5 6 7 8; do
+              still_mounted "${mp}" || break
+              as_root umount "${mp}" 2>/dev/null || as_root umount -l "${mp}" 2>/dev/null || break
+            done
+            if still_mounted "${mp}"; then
+              echo "::warning::${mp} is still mounted - leaving its overlay scratch dirs in place"
+              continue
+            fi
+            echo "unmounted ${mp}"
+            # upper/work hold the cancelled run's writes: the GB the unmount alone leaves behind, and state
+            # the next overlay would silently layer on top of its snapshot. The paths come from the kernel's
+            # own mount options rather than being guessed.
+            while IFS= read -r d; do
+              [[ -n "${d}" ]] || continue
+              # /proc/self/mounts octal-escapes space, tab and backslash in paths; refuse rather than point
+              # rm -rf at a path whose decoding we would have to assume.
+              if [[ "${d}" == *"\\"* ]]; then
+                echo "::warning::refusing escaped overlay scratch path: ${d}"
+                continue
+              fi
+              c="$(realpath -m -- "${d}")" || { echo "::warning::cannot canonicalize scratch path: ${d}"; continue; }
+              # Strict descendant only - a plain '$root/*' glob also matches the data dir itself, which
+              # holds the snapshots this box exists for.
+              if [[ "${c}" != "${root}"/?* ]]; then
+                echo "::warning::refusing overlay scratch path outside ${root}: ${d}"
+                continue
+              fi
+              if as_root rm -rf -- "${c}"; then
+                echo "removed ${c}"
+              else
+                echo "::warning::failed to remove ${c}"
+              fi
+            done < <(printf '%s' "${scratch[${mp}]}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p' | sort -u)
+          done
+          exit 0
+
+      - name: Prune docker caches and dangling images
+        shell: bash
+        env:
+          PRUNE_UNUSED_IMAGES: ${{ inputs.prune_unused_images }}
+        run: |
+          set -uo pipefail
+          docker builder prune -af || true
+          docker image prune -f || true
+          if [[ "${PRUNE_UNUSED_IMAGES}" == "true" ]]; then
+            # Docker here uses the CONTAINERD image store, so image content lives in /var/lib/containerd
+            # rather than /var/lib/docker, and `image prune -a --filter until=` reports 0B against it
+            # (`docker system df` even reports a negative reclaimable). Only an explicit rmi frees it,
+            # so age-filter the tags ourselves and remove those no container references.
+            cutoff=$(( $(date +%s) - 96*3600 ))
+            while IFS=$'	' read -r created img; do
+              [[ -z "${img:-}" || "${img}" == *'<none>'* ]] && continue
+              ts=$(date -d "${created% *}" +%s 2>/dev/null) || continue
+              (( ts > cutoff )) && continue
+              [[ -n "$(docker ps -aq --filter "ancestor=${img}" 2>/dev/null)" ]] && continue
+              docker rmi "${img}" >/dev/null 2>&1 && echo "removed ${img} (created ${created})"
+            done < <(docker images --format '{{.CreatedAt}}	{{.Repository}}:{{.Tag}}')
+          fi
+
+      - name: Trim runner diag and work debris
+        shell: bash
+        run: |
+          set -uo pipefail
+          find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete || true
+          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
+          find /tmp -maxdepth 1 -user root -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+
+      - name: Ensure host packages
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Minimal box: benchmark workflows shell out to zip (artifact archiving) and file.
+          missing=""
+          for c in zip unzip file; do command -v "$c" >/dev/null 2>&1 || missing="$missing $c"; done
+          if [[ -n "${missing}" ]]; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ${missing}
+          fi
+          echo "zip: $(command -v zip || echo MISSING)"
+
+      - name: Ensure dotnet SDK on the host
+        shell: bash
+        run: |
+          set -uo pipefail
+          # expb's dotTrace/dotnet-trace integration drives host-side dotnet global tools;
+          # this box was provisioned without the SDK (the x64 twin has it). Idempotent.
+          # Probe from a neutral cwd with --list-sdks: the runner's leftover repo checkout
+          # carries a global.json pinning an SDK we don't ship, which fails 'dotnet --version'
+          # (exit 145) regardless of install health. Probes are time-bounded because a broken
+          # wrapper/symlink pair can exec-loop forever.
+          cd /tmp
+          if timeout 20 dotnet --list-sdks 2>/dev/null | grep -q .; then
+            echo "dotnet SDKs present:"; timeout 20 dotnet --list-sdks
+            exit 0
+          fi
+          echo "--- healing ---"
+          pkill -9 -f '/usr/local/share/dotnet' 2>/dev/null || true
+          # Remove any old symlink BEFORE writing the wrapper: a redirect through a symlink
+          # into the install dir overwrites the real muxer.
+          rm -f /usr/local/bin/dotnet
+          if ! head -c4 /usr/local/share/dotnet/dotnet 2>/dev/null | grep -q ELF; then
+            echo "muxer missing or not ELF - reinstalling SDK"
+            rm -rf /usr/local/share/dotnet
+            curl -sSL --max-time 120 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+            timeout 600 bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/local/share/dotnet
+          fi
+          printf '#!/bin/sh\nexport DOTNET_ROOT=/usr/local/share/dotnet\nexec /usr/local/share/dotnet/dotnet "$@"\n' > /usr/local/bin/dotnet
+          chmod +x /usr/local/bin/dotnet
+          timeout 60 dotnet --list-sdks
+
+      - name: Disk usage after
+        shell: bash
+        run: |
+          set -uo pipefail
+          df -h /
+          docker system df || true

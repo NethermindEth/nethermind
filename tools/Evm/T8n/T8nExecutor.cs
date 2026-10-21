@@ -34,6 +34,7 @@ public static class T8nExecutor
         KzgPolynomialCommitments.InitializeAsync().Wait();
 
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
@@ -53,7 +54,7 @@ public static class T8nExecutor
         GeneralStateTestBase.InitializeTestState(test.Alloc, stateProvider, test.SpecProvider);
 
         Block block = test.ConstructBlock();
-        var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
+        WithdrawalProcessor withdrawalProcessor = new(stateProvider, _logManager);
         withdrawalProcessor.ProcessWithdrawals(block, test.Spec);
 
         ApplyRewards(block, stateProvider, test.Spec, test.SpecProvider);
@@ -64,7 +65,11 @@ public static class T8nExecutor
         compositeBlockTracer.Add(storageTxTracer);
         if (test.IsTraceEnabled)
         {
-            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new RealFileSystem()));
+            compositeBlockTracer.Add(new GethLikeBlockFileTracer(
+                block,
+                test.GethTraceOptions,
+                new RealFileSystem(),
+                test.Spec));
         }
 
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -80,7 +85,7 @@ public static class T8nExecutor
 
         int txIndex = 0;
         TransactionExecutionReport transactionExecutionReport = new();
-        var txValidator = new TxValidator(test.StateChainId);
+        TxValidator txValidator = new(test.StateChainId);
 
         foreach (Transaction transaction in test.Transactions)
         {
@@ -90,7 +95,7 @@ public static class T8nExecutor
             {
                 if (txIsValid.Error is not null)
                 {
-                    var error = GethErrorMappings.GetErrorMapping(txIsValid.Error);
+                    string error = GethErrorMappings.GetErrorMapping(txIsValid.Error);
                     transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, error));
                 }
                 continue;
@@ -113,7 +118,7 @@ public static class T8nExecutor
             }
             else if (!transactionResult.TransactionExecuted && transaction.SenderAddress is not null)
             {
-                var error = GethErrorMappings.GetErrorMapping(transactionResult.ErrorDescription,
+                string error = GethErrorMappings.GetErrorMapping(transactionResult.ErrorDescription,
                     transaction.SenderAddress.ToString(true),
                     transaction.Nonce, stateProvider.GetNonce(transaction.SenderAddress));
 
@@ -134,11 +139,11 @@ public static class T8nExecutor
     }
 
     private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test) =>
-        new T8nBlockHashProvider(test.BlockHashes.ToDictionary(kvp => long.Parse(kvp.Key), kvp => kvp.Value));
+        new T8nBlockHashProvider(test.BlockHashes.ToDictionary(kvp => ulong.Parse(kvp.Key), kvp => kvp.Value));
 
     private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {
-        var rewardCalculator = new RewardCalculator(specProvider);
+        RewardCalculator rewardCalculator = new(specProvider);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
 
         foreach (BlockReward reward in rewards)

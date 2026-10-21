@@ -14,7 +14,7 @@ namespace Nethermind.Core.Cpu;
 /// </summary>
 internal static class WmicCpuInfoProvider
 {
-    internal static readonly Lazy<CpuInfo?> WmicCpuInfo = new Lazy<CpuInfo?>(Load);
+    internal static readonly Lazy<CpuInfo?> WmicCpuInfo = new(Load);
 
     private static CpuInfo? Load()
     {

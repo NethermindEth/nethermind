@@ -12,22 +12,16 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P;
 
-public class PacketSender : ChannelHandlerAdapter, IPacketSender
+public class PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager,
+    TimeSpan sendLatency) : ChannelHandlerAdapter, IPacketSender
 {
-    private readonly IMessageSerializationService _messageSerializationService;
-    private readonly ILogger _logger;
-    private readonly TimeSpan _sendLatency;
+    private readonly IMessageSerializationService _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
+    private readonly ILogger _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly TimeSpan _sendLatency = sendLatency;
+    private readonly CancellationTokenSource _cts = new();
     private IChannelHandlerContext _context;
     private Action<Task, object?> _delayThenWrite;
     private Action<Task, object?> _observeWriteCompletion;
-
-    public PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager,
-        TimeSpan sendLatency)
-    {
-        _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-        _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
-        _sendLatency = sendLatency;
-    }
 
     // Thread-safe: Netty guarantees single-threaded channel event delivery,
     // so ??= is never racing on these fields.
@@ -56,12 +50,8 @@ public class PacketSender : ChannelHandlerAdapter, IPacketSender
         {
             if (_sendLatency != TimeSpan.Zero)
             {
-                Task delayTask = Task.Delay(_sendLatency);
-                if (delayTask.IsCompletedSuccessfully)
-                {
-                    StartWrite(buffer);
-                }
-                else
+                Task delayTask = Task.Delay(_sendLatency, _cts.Token);
+                if (!delayTask.IsCompletedSuccessfully)
                 {
                     _ = delayTask.ContinueWith(
                         DelayThenWriteAction,
@@ -69,29 +59,32 @@ public class PacketSender : ChannelHandlerAdapter, IPacketSender
                         CancellationToken.None,
                         TaskContinuationOptions.ExecuteSynchronously,
                         TaskScheduler.Default);
+                    return;
                 }
-
-                return;
             }
-
-            StartWrite(buffer);
         }
         catch (Exception exception)
         {
+            buffer.Release();
             HandleSendFailure(exception);
+            return;
         }
+
+        StartWrite(buffer);
     }
 
     private void DelayThenWrite(Task delayTask, object? state)
     {
         if (delayTask.IsFaulted)
         {
+            ((IByteBuffer)state!).Release();
             HandleSendFailure(delayTask.Exception?.GetBaseException() ?? delayTask.Exception!);
             return;
         }
 
         if (delayTask.IsCanceled)
         {
+            ((IByteBuffer)state!).Release();
             HandleSendFailure(new TaskCanceledException(delayTask));
             return;
         }
@@ -164,8 +157,11 @@ public class PacketSender : ChannelHandlerAdapter, IPacketSender
         void LogTrace(Exception exception) => _logger.Trace($"Channel is not active - {exception.Message}");
     }
 
-    public override void HandlerAdded(IChannelHandlerContext context)
+    public override void HandlerAdded(IChannelHandlerContext context) => _context = context;
+
+    public override void HandlerRemoved(IChannelHandlerContext context)
     {
-        _context = context;
+        _cts.Cancel();
+        _cts.Dispose();
     }
 }

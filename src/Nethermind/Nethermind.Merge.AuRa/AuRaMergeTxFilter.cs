@@ -9,18 +9,11 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa
 {
-    public class AuRaMergeTxFilter : ITxFilter
+    public class AuRaMergeTxFilter(IPoSSwitcher poSSwitcher, ITxFilter preMergeTxFilter, ITxFilter? postMergeTxFilter = null) : ITxFilter
     {
-        private readonly IPoSSwitcher _poSSwitcher;
-        private readonly ITxFilter _preMergeTxFilter;
-        private readonly ITxFilter _postMergeTxFilter;
-
-        public AuRaMergeTxFilter(IPoSSwitcher poSSwitcher, ITxFilter preMergeTxFilter, ITxFilter? postMergeTxFilter = null)
-        {
-            _poSSwitcher = poSSwitcher;
-            _preMergeTxFilter = preMergeTxFilter;
-            _postMergeTxFilter = postMergeTxFilter ?? NullTxFilter.Instance;
-        }
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
+        private readonly ITxFilter _preMergeTxFilter = preMergeTxFilter;
+        private readonly ITxFilter _postMergeTxFilter = postMergeTxFilter ?? NullTxFilter.Instance;
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec) =>
             _poSSwitcher.IsPostMerge(parentHeader)

@@ -14,15 +14,9 @@ namespace Nethermind.Monitoring
 
         public static IMonitoringService Instance { get; } = new NullMonitoringService();
 
-        public Task StartAsync()
-        {
-            return Task.CompletedTask;
-        }
+        public Task StartAsync() => Task.CompletedTask;
 
-        public Task StopAsync()
-        {
-            return Task.CompletedTask;
-        }
+        public Task StopAsync() => Task.CompletedTask;
 
         public void AddMetricsUpdateAction(Action callback) { }
     }

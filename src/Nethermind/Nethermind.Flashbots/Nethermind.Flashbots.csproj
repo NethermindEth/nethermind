@@ -3,6 +3,8 @@
   <PropertyGroup>
     <RootNamespace>Nethermind.Flashbots</RootNamespace>
     <Nullable>enable</Nullable>
+    <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

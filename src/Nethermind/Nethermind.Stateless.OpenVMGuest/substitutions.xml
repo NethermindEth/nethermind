@@ -1,0 +1,29 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+  SPDX-License-Identifier: LGPL-3.0-only
+
+  Substitutions only this guest applies, on top of the shared
+  ../Nethermind.Stateless.Guest/substitutions.xml.
+-->
+<linker>
+  <assembly fullname="Nethermind.Core">
+    <!-- The shared build leaves the flag off and this guest turns it on, switching on what only OpenVM offers:
+         the XORIN instruction Keccak absorbs aligned input with, and the division hint MULMOD takes its quotient
+         and remainder from. -->
+    <type fullname="Nethermind.Core.OpenVmFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+  <assembly fullname="Nethermind.Evm">
+    <!-- mul.S multiplies on the bigint extension. -->
+    <type fullname="Nethermind.Evm.GuestMulFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+  <assembly fullname="Nethermind.Serialization.Ssz">
+    <!-- Merkleization hashes pairs with the three-operand zkvm_sha256_compress only OpenVM's runtime exports; SP1's takes two. -->
+    <type fullname="Nethermind.Serialization.Ssz.Merkleization.OpenVmSha256Flag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+</linker>

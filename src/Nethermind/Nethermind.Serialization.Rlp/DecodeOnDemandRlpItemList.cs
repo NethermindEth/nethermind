@@ -37,7 +37,8 @@ public abstract class DecodeOnDemandRlpItemList<T>(IRlpItemList inner) : IOwnedR
 
     public int RlpLength => inner.RlpLength;
 
-    public void Write(RlpStream stream) => inner.Write(stream);
+    public void Write<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct => inner.Write(ref writer);
 
     public void Dispose() => inner.Dispose();
 

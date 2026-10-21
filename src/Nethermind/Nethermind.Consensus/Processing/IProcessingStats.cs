@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Processing;
@@ -27,10 +28,15 @@ public interface IProcessingStats
     void CaptureStartStats();
 
     /// <summary>
-    /// Update statistics after a block has been processed.
+    /// Update statistics after blocks have been processed.
     /// </summary>
-    /// <param name="block">The processed block.</param>
+    /// <param name="blocks">The processed blocks.</param>
     /// <param name="baseBlock">The parent block header.</param>
     /// <param name="blockProcessingTimeInMicros">Processing time in microseconds.</param>
-    void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros);
+    /// <remarks>
+    /// Uses <see cref="IReadOnlyList{T}"/> rather than <see cref="ReadOnlySpan{T}"/> so that
+    /// dynamic-proxy mocks (NSubstitute, Moq) can generate proxies — ref-struct parameters
+    /// break dynamic proxy generation, which in turn aborts block processing in tests.
+    /// </remarks>
+    void UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros);
 }

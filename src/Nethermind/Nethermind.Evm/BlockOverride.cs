@@ -11,12 +11,32 @@ namespace Nethermind.Evm;
 public class BlockOverride
 {
     public ulong? Number { get; set; }
-    public Hash256 PrevRandao { get; set; } = Keccak.Zero;
+    public Hash256? PrevRandao { get; set; }
     public ulong? Time { get; set; }
     public ulong? GasLimit { get; set; }
     public Address? FeeRecipient { get; set; }
     public UInt256? BaseFeePerGas { get; set; }
     public UInt256? BlobBaseFee { get; set; }
+
+    /// <summary>
+    /// The withdrawals of a block of <c>eth_simulateV1</c>, processed after its calls from Shanghai on. Methods that run
+    /// a single call reject them, see <see cref="WithdrawalsNotSupported"/>.
+    /// </summary>
+    public Withdrawal[]? Withdrawals { get; set; }
+
+    /// <summary>The error of a single-call method given <see cref="Withdrawals"/>: it builds no block to process them in.</summary>
+    public const string WithdrawalsNotSupported = "block override \"withdrawals\" is not supported for this RPC method";
+
+    /// <summary>A copy of <paramref name="header"/> with these overrides applied.</summary>
+    public BlockHeader ApplyTo(BlockHeader header)
+    {
+        BlockHeader result = header.Clone();
+        ApplyOverrides(result);
+        return result;
+    }
+
+    /// <summary>Gets or sets the requested beacon root, which debug_traceCall rejects as unsupported.</summary>
+    public Hash256? BeaconRoot { get; set; }
 
     public void ApplyOverrides(BlockHeader result)
     {
@@ -25,14 +45,30 @@ public class BlockOverride
         {
             if (GasLimit > long.MaxValue)
             {
-                throw new OverflowException($"GasLimit value is too large, max value {ulong.MaxValue}");
+                throw new OverflowException($"GasLimit value is too large, max value {long.MaxValue}");
             }
-            result.GasLimit = (long)GasLimit.Value;
+            result.GasLimit = GasLimit.Value;
         }
 
-        if (Number is not null) result.Number = (long)Number.Value;
-        if (FeeRecipient is not null) result.Beneficiary = FeeRecipient;
+        if (Number is not null)
+            result.Number = Number.Value;
+        if (FeeRecipient is not null)
+        {
+            // Set Author as well because GasBeneficiary = Author ?? Beneficiary.
+            // Mirrors geth: blockCtx.Coinbase = *o.FeeRecipient.
+            result.Beneficiary = result.Author = FeeRecipient;
+        }
         if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
-        if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
+        if (PrevRandao is not null) result.MixHash = PrevRandao;
+        // BlobBaseFee is not a direct header field — it is derived from ExcessBlobGas via the
+        // EIP-4844 formula. The override is applied via BlobBaseFeeOverrideCalculatorDecorator
+        // (and for simulate via IBlobBaseFeeOverrideProvider) instead.
+    }
+
+    public BlockOverride WithBaseFee(UInt256 baseFee)
+    {
+        BlockOverride copy = (BlockOverride)MemberwiseClone();
+        copy.BaseFeePerGas = baseFee;
+        return copy;
     }
 }

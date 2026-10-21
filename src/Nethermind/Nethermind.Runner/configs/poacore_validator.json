@@ -25,10 +25,10 @@
   "Metrics": {
     "NodeName": "POA Core Validator"
   },
-  "Bloom": {
-    "Index": false
-  },
   "Merge": {
+    "Enabled": false
+  },
+  "FlatDb": {
     "Enabled": false
   },
   "Mining":

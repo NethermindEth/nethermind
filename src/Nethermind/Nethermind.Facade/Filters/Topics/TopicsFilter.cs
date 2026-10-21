@@ -4,7 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Facade.Filters.Topics
 {
     public abstract class TopicsFilter
     {

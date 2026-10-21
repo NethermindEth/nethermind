@@ -37,7 +37,7 @@ namespace Nethermind.Core.Extensions
                 if (!CreateDirectorySilent(topDir))
                     return [];
             }
-            HashSet<IDriveInfo> driveInfos = new();
+            HashSet<IDriveInfo> driveInfos = [];
             //the following processing is to overcome specific behaviour on linux where creating DriveInfo for multiple paths on same logical drive
             //gives instances with these paths (and not logical drive)
             // DriveInfo.GetDrives() crashes with a fatal AccessViolationException

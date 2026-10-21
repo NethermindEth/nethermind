@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 using Nethermind.Config;
@@ -20,7 +19,7 @@ public class ChainSpecFileLoader
 
     public ChainSpecFileLoader(IJsonSerializer serializer, ILogManager logManager)
     {
-        var jsonLoader = new ChainSpecLoader(serializer, logManager);
+        AutoDetectingChainSpecLoader jsonLoader = new(serializer, logManager);
         _chainSpecLoaders = new Dictionary<string, IChainSpecLoader>
         {
             { ".json", jsonLoader },
@@ -32,11 +31,11 @@ public class ChainSpecFileLoader
     public ChainSpec LoadEmbeddedOrFromFile(string fileName)
     {
         fileName = NormalizeFileName(fileName);
-        var extension = Path.GetExtension(fileName);
+        string extension = Path.GetExtension(fileName);
 
         string resourceName = FileNameToResource(fileName);
         Assembly assembly = typeof(IConfig).Assembly;
-        using Stream stream = assembly.GetManifestResourceStream(resourceName);
+        using Stream? stream = assembly.GetManifestResourceStream(resourceName);
         if (stream is not null)
         {
             if (_logger.IsInfo) _logger.Info("Loading ChainSpec from embedded resources");
@@ -51,7 +50,7 @@ public class ChainSpecFileLoader
 
     private static string FileNameToResource(string fileName)
     {
-        var sb = new StringBuilder();
+        StringBuilder sb = new();
         sb.Append("Nethermind.Config.");
         if (!fileName.Contains('/'))
         {
@@ -65,7 +64,7 @@ public class ChainSpecFileLoader
 
     private static string NormalizeFileName(string fileName)
     {
-        var extension = Path.GetExtension(fileName);
+        string extension = Path.GetExtension(fileName);
         return extension == "" ? $"{fileName}.json" : fileName;
     }
 
@@ -87,11 +86,16 @@ public class ChainSpecFileLoader
             try
             {
                 missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
-                string[] jsonFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.json");
-                string[] zstdFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.zst");
+                string directoryName = Path.GetDirectoryName(filePath) ?? ".";
+                string[] jsonFiles = Directory.GetFiles(directoryName, "*.json");
+                string[] zstdFiles = Directory.GetFiles(directoryName, "*.zst");
 
-                var configFiles = Enumerable.Empty<string>().Concat(jsonFiles).Concat(zstdFiles);
-                foreach (var configFile in configFiles)
+                foreach (string configFile in jsonFiles)
+                {
+                    missingChainspecFileMessage.AppendLine($"  * {configFile}");
+                }
+
+                foreach (string configFile in zstdFiles)
                 {
                     missingChainspecFileMessage.AppendLine($"  * {configFile}");
                 }

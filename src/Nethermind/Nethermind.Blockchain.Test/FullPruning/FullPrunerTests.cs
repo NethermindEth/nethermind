@@ -3,15 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -58,10 +57,10 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             currentKeyScheme: currentKeyScheme,
             preferredKeyScheme: newKeyScheme);
 
-        test.NodeStorage.Scheme.Should().Be(currentKeyScheme);
+        Assert.That(test.NodeStorage.Scheme, Is.EqualTo(currentKeyScheme));
         await test.RunFullPruning();
         test.ShouldCopyAllValuesWhenVisitingTrie();
-        test.NodeStorage.Scheme.Should().Be(expectedNewScheme);
+        Assert.That(test.NodeStorage.Scheme, Is.EqualTo(expectedNewScheme));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -69,7 +68,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     {
         TestContext test = CreateTest(clearPrunedDb: true);
         await test.RunFullPruning();
-        test.TrieDb.Count.Should().Be(0);
+        Assert.That(test.TrieDb.Count, Is.EqualTo(0));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -78,7 +77,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestContext test = CreateTest(false);
         int count = test.TrieDb.Count;
         await test.RunFullPruning();
-        test.TrieDb.Count.Should().Be(count);
+        Assert.That(test.TrieDb.Count, Is.EqualTo(count));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -86,7 +85,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     {
         TestContext test = CreateTest(false);
         await test.RunFullPruning();
-        test.CopyDb.Count.Should().Be(0);
+        Assert.That(test.CopyDb.Count, Is.EqualTo(0));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -95,7 +94,29 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestContext test = CreateTest();
         int count = test.TrieDb.Count;
         await test.RunFullPruning();
-        test.CopyDb.Count.Should().Be(count);
+        Assert.That(test.CopyDb.Count, Is.EqualTo(count));
+    }
+
+    [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
+    public async Task records_duration_and_count_on_success()
+    {
+        long countBefore = Nethermind.Db.Metrics.FullPruningCount;
+        // Seed a sentinel so the assertion proves RecordPruningMetrics actually wrote the duration
+        // (a sub-second test prune truncates to 0, which would otherwise be indistinguishable from unset).
+        Nethermind.Db.Metrics.FullPruningLastDurationSeconds = -1;
+        TestContext test = CreateTest();
+        await test.RunFullPruning();
+        Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore + 1));
+        Assert.That(Nethermind.Db.Metrics.FullPruningLastDurationSeconds, Is.GreaterThanOrEqualTo(0));
+    }
+
+    [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
+    public async Task does_not_record_count_on_unsuccessful_pruning()
+    {
+        long countBefore = Nethermind.Db.Metrics.FullPruningCount;
+        TestContext test = CreateTest(successfulPruning: false);
+        await test.RunFullPruning();
+        Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -105,14 +126,17 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     [TestCase(false, FullPruningCompletionBehavior.None, false)]
     [TestCase(false, FullPruningCompletionBehavior.ShutdownOnSuccess, false)]
     [TestCase(false, FullPruningCompletionBehavior.AlwaysShutdown, true)]
-    [Retry(10)]
     public async Task pruning_shuts_down_node(bool success, FullPruningCompletionBehavior behavior, bool expectedShutdown)
     {
         TestContext test = CreateTest(successfulPruning: success, completionBehavior: behavior);
+        TaskCompletionSource exitCalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.ProcessExitSource.When(s => s.Exit(Arg.Any<int>())).Do(_ => exitCalled.TrySetResult());
+
         await test.RunFullPruning();
 
         if (expectedShutdown)
         {
+            await exitCalled.Task.WaitAsync(TimeSpan.FromSeconds(30));
             test.ProcessExitSource.Received(1).Exit(ExitCodes.Ok);
         }
         else
@@ -121,18 +145,59 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         }
     }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(false, PruningStatus.Starting, 0, TestName = "available_space_check_disabled_skips_the_probe_and_starts_pruning_despite_low_space")]
+    [TestCase(true, PruningStatus.NotEnoughDiskSpace, 1, TestName = "available_space_check_enabled_probes_and_blocks_pruning_on_low_space")]
+    public async Task available_space_check_enabled_controls_whether_disk_space_is_probed(bool availableSpaceCheckEnabled, PruningStatus expectedStatus, int expectedWarnings)
+    {
+        IChainEstimations chainEstimations = Substitute.For<IChainEstimations>();
+        chainEstimations.PruningSize.Returns(1000L);
+        TestLogger logger = new();
+
+        TestContext test = new(
+            true,
+            false,
+            FullPruningCompletionBehavior.None,
+            fullPrunerMemoryBudgetMb,
+            degreeOfParallelism,
+            availableSpaceCheckEnabled: availableSpaceCheckEnabled,
+            chainEstimations: chainEstimations,
+            logManager: new OneLoggerLogManager(new(logger)));
+        test.DriveInfo.AvailableFreeSpace.Returns(500L); // below the 1300-byte requirement (1000 * 130 / 100)
+
+        PruningTriggerEventArgs? capturedArgs = null;
+        test.PruningTrigger.Prune += (_, e) => capturedArgs = e;
+
+        if (availableSpaceCheckEnabled)
+        {
+            test.TriggerPruningViaEvent();
+        }
+        else
+        {
+            // Skipping the probe actually starts pruning, so run it to the end: an abandoned run
+            // parks on WaitForMainChainChange forever, keeping the databases and the logger alive.
+            await test.RunFullPruning();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedArgs!.Status, Is.EqualTo(expectedStatus));
+            Assert.That(logger.LogList, Has.Exactly(expectedWarnings).Contains("Not enough disk space to run full pruning"), "disk space warning");
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task can_not_start_pruning_when_other_is_in_progress()
     {
         TestContext test = CreateTest();
-        test.FullPruningDb.CanStartPruning.Should().BeTrue();
+        Assert.That(test.FullPruningDb.CanStartPruning, Is.True);
 
         test.TriggerPruningViaEvent();
         TestFullPruningDb.TestPruningContext pruningContext = await test.WaitForPruningStart();
-        test.FullPruningDb.CanStartPruning.Should().BeFalse();
+        Assert.That(test.FullPruningDb.CanStartPruning, Is.False);
         await test.WaitForPruningEnd(pruningContext);
 
-        test.FullPruningDb.CanStartPruning.Should().BeTrue();
+        Assert.That(test.FullPruningDb.CanStartPruning, Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -143,7 +208,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestFullPruningDb.TestPruningContext ctx = await test.WaitForPruningStart();
         test.TriggerPruningViaEvent();
         await test.WaitForPruningEnd(ctx);
-        test.FullPruningDb.PruningStarted.Should().Be(1);
+        Assert.That(test.FullPruningDb.PruningStarted, Is.EqualTo(1));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -153,10 +218,9 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestFullPruningDb.TestPruningContext ctx = await test.WaitForPruningStart();
         byte[] key = { 1, 2, 3 };
         test.FullPruningDb[key] = key;
-        test.FullPruningDb.Context.WaitForFinish.Set();
 
-        await test.WaitForPruningEnd(ctx);
-        test.FullPruningDb[key].Should().BeEquivalentTo(key);
+        Assert.That(await test.WaitForPruningEnd(ctx), Is.True);
+        Assert.That(test.FullPruningDb[key], Is.EqualTo(key));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -173,7 +237,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
         await test.WaitForPruningEnd(context);
 
-        test.FullPruningDb[key].Should().BeEquivalentTo(key);
+        Assert.That(test.FullPruningDb[key], Is.EqualTo(key));
     }
 
     private TestContext CreateTest(
@@ -191,10 +255,11 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     {
         private readonly bool _clearPrunedDb;
         private readonly Hash256 _stateRoot;
-        private long _head;
+        private ulong _head;
         public TestFullPruningDb FullPruningDb { get; }
         public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
         public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
+        public IStateBoundary StateBoundary { get; } = Substitute.For<IStateBoundary>();
         public IStateReader StateReader { get; }
         public FullPruner Pruner { get; }
         public MemDb TrieDb { get; }
@@ -212,24 +277,27 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             int fullScanMemoryBudgetMb = 0,
             int degreeOfParallelism = 0,
             INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
-            INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
+            INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current,
+            bool availableSpaceCheckEnabled = true,
+            IChainEstimations? chainEstimations = null,
+            ILogManager? logManager = null)
         {
-            BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
+            BlockTree.OnUpdateMainChain += (_, e) => _head = e.Headers[^1].Number;
             _clearPrunedDb = clearPrunedDb;
             TrieDb = new TestMemDb();
             CopyDb = new TestMemDb();
             IDbFactory dbFactory = Substitute.For<IDbFactory>();
             dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
 
-            NodeStorage storageForWrite = new NodeStorage(TrieDb, currentKeyScheme);
+            NodeStorage storageForWrite = new(TrieDb, currentKeyScheme);
             PatriciaTree trie = Build.A.Trie(storageForWrite).WithAccountsByIndex(0, 100).TestObject;
             _stateRoot = trie.RootHash;
             FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), dbFactory, successfulPruning, clearPrunedDb);
-            NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
+            NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
             nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
             NodeStorage = nodeStorageFactory.WrapKeyValueStore(FullPruningDb);
 
-            var trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
+            TestRawTrieStore trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
             StateReader = new StateReader(trieStore, new TestMemDb(), LimboLogs.Instance);
 
             Pruner = new(
@@ -241,15 +309,18 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 {
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
-                    FullPruningCompletionBehavior = completionBehavior
+                    FullPruningCompletionBehavior = completionBehavior,
+                    AvailableSpaceCheckEnabled = availableSpaceCheckEnabled
                 },
                 BlockTree,
+                Substitute.For<IStateBoundaryWriter>(),
+                StateBoundary,
                 StateReader,
                 ProcessExitSource,
-                _chainEstimations,
+                chainEstimations ?? _chainEstimations,
                 DriveInfo,
                 trieStore,
-                LimboLogs.Instance);
+                logManager ?? LimboLogs.Instance);
         }
 
         public async Task RunFullPruning()
@@ -258,25 +329,23 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             await WaitForPruningEnd(ctx);
         }
 
-        public void TriggerPruningViaEvent()
-        {
+        public void TriggerPruningViaEvent() =>
             PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
-        }
 
         public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
         {
-            while (!await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(1), CancellationToken.None))
+            while (await Task.WhenAny(context.WaitForFinish.Task, Task.Delay(1)) != context.WaitForFinish.Task)
             {
                 AddBlocks(1);
             }
             AddBlocks(1);
-            return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
+            return await Task.WhenAny(context.DisposeEvent.Task, Task.Delay(Timeout.MaxWaitTime * 5)) == context.DisposeEvent.Task;
         }
 
         public async Task<TestFullPruningDb.TestPruningContext> WaitForPruningStart()
         {
             TriggerPruningViaEvent();
-            using CancellationTokenSource cts = new CancellationTokenSource();
+            using CancellationTokenSource cts = new();
             Task addBlockTasks = Task.Run(() =>
             {
                 while (!cts.IsCancellationRequested)
@@ -303,48 +372,41 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         {
             for (int i = 0; i < count; i++)
             {
-                long number = _head + 1;
-                BlockTree.BestPersistedState.Returns(_head);
+                ulong number = _head + 1ul;
+                StateBoundary.BestPersistedState.Returns(_head);
                 Block head = Build.A.Block.WithStateRoot(_stateRoot).WithNumber(number).TestObject;
                 BlockTree.Head.Returns(head);
                 BlockTree.FindHeader(number).Returns(head.Header);
-                BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
+                BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<BlockHeader>() { head.Header }, true));
                 Thread.Sleep(1); // Need to add a little sleep as the wait for event in full pruner is async.
             }
         }
 
         public void ShouldCopyAllValuesWhenVisitingTrie()
         {
-            PatriciaTree trie = new PatriciaTree(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
-            TrieCopiedNodeVisitor visitor = new TrieCopiedNodeVisitor(new NodeStorage(CopyDb));
+            PatriciaTree trie = new(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
+            TrieCopiedNodeVisitor visitor = new(new NodeStorage(CopyDb));
             trie.Accept(visitor, BlockTree.Head!.StateRoot!);
         }
 
         public void ShouldCopyAllValues()
         {
-            foreach (KeyValuePair<byte[], byte[]?> keyValuePair in TrieDb.GetAll())
+            foreach (KeyValuePair<byte[], byte[]> keyValuePair in TrieDb.GetAll())
             {
-                CopyDb[keyValuePair.Key].Should().BeEquivalentTo(keyValuePair.Value);
+                Assert.That(CopyDb[keyValuePair.Key], Is.EqualTo(keyValuePair.Value));
                 CopyDb.KeyWasWrittenWithFlags(keyValuePair.Key, WriteFlags.LowPriority | WriteFlags.DisableWAL);
             }
         }
     }
 
-    private class TestFullPruningDb : FullPruningDb
+    private class TestFullPruningDb(DbSettings settings, IDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false) : FullPruningDb(settings, dbFactory)
     {
-        private readonly bool _successfulPruning;
-        private readonly bool _clearPrunedDb;
+        private readonly bool _successfulPruning = successfulPruning;
+        private readonly bool _clearPrunedDb = clearPrunedDb;
 
         public TestPruningContext Context { get; set; } = null!;
         public new int PruningStarted { get; private set; }
         public ManualResetEvent WaitForClearDb { get; } = new(false);
-
-        public TestFullPruningDb(DbSettings settings, IDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false)
-            : base(settings, dbFactory)
-        {
-            _successfulPruning = successfulPruning;
-            _clearPrunedDb = clearPrunedDb;
-        }
 
         protected override void ClearOldDb(IDb oldDb)
         {
@@ -355,7 +417,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             }
         }
 
-        public override bool TryStartPruning(bool duplicateReads, out IPruningContext context)
+        public override bool TryStartPruning(bool duplicateReads, [NotNullWhen(true)] out IPruningContext? context)
         {
             if (base.TryStartPruning(duplicateReads, out context))
             {
@@ -366,24 +428,18 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             return false;
         }
 
-        internal class TestPruningContext : IPruningContext
+        internal class TestPruningContext(IPruningContext context, bool successfulPruning) : IPruningContext
         {
-            private readonly IPruningContext _context;
-            private readonly bool _successfulPruning;
+            private readonly IPruningContext _context = context;
+            private readonly bool _successfulPruning = successfulPruning;
 
-            public ManualResetEvent DisposeEvent { get; } = new(false);
-            public ManualResetEvent WaitForFinish { get; } = new(false);
-
-            public TestPruningContext(IPruningContext context, bool successfulPruning)
-            {
-                _context = context;
-                _successfulPruning = successfulPruning;
-            }
+            public TaskCompletionSource DisposeEvent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            public TaskCompletionSource WaitForFinish { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             public void Dispose()
             {
                 _context.Dispose();
-                DisposeEvent.Set();
+                DisposeEvent.TrySetResult();
                 CancellationTokenSource.Dispose();
             }
 
@@ -393,52 +449,33 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 set => _context[key] = value;
             }
 
-            public IWriteBatch StartWriteBatch()
-            {
-                return _context.StartWriteBatch();
-            }
+            public IWriteBatch StartWriteBatch() => _context.StartWriteBatch();
 
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-            {
-                _context.Set(key, value, flags);
-            }
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _context.Set(key, value, flags);
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            {
-                return _context.Get(key, flags);
-            }
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _context.Get(key, flags);
 
             public void Commit()
             {
-                WaitForFinish.Set();
+                WaitForFinish.TrySetResult();
                 if (_successfulPruning)
                 {
                     _context.Commit();
                 }
             }
 
-            public void MarkStart()
-            {
-                _context.MarkStart();
-            }
+            public void MarkStart() => _context.MarkStart();
 
             public CancellationTokenSource CancellationTokenSource { get; } = new();
         }
     }
 
-    class TrieCopiedNodeVisitor : ITreeVisitor<TreePathContextWithStorage>
+    class TrieCopiedNodeVisitor(INodeStorage nodeStorage) : ITreeVisitor<TreePathContextWithStorage>
     {
-        private readonly INodeStorage _nodeStorageToCompareTo;
+        private readonly INodeStorage _nodeStorageToCompareTo = nodeStorage;
 
-        public TrieCopiedNodeVisitor(INodeStorage nodeStorage)
-        {
-            _nodeStorageToCompareTo = nodeStorage;
-        }
-
-        private void CheckNode(Hash256? storage, in TreePath path, TrieNode node)
-        {
-            _nodeStorageToCompareTo.KeyExists(storage, path, node.Keccak).Should().BeTrue();
-        }
+        private void CheckNode(Hash256? storage, in TreePath path, TrieNode node) =>
+            Assert.That(_nodeStorageToCompareTo.KeyExists(storage, path, node.Keccak), Is.True);
 
         public bool IsFullDbScan => true;
         public bool ShouldVisit(in TreePathContextWithStorage ctx, in ValueHash256 nextNode) => true;
@@ -451,20 +488,13 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         {
         }
 
-        public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node)
-        {
+        public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node) =>
             CheckNode(ctx.Storage, ctx.Path, node);
-        }
 
-        public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node)
-        {
+        public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node) =>
             CheckNode(ctx.Storage, ctx.Path, node);
-        }
 
-        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node)
-        {
-            CheckNode(ctx.Storage, ctx.Path, node);
-        }
+        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node) => CheckNode(ctx.Storage, ctx.Path, node);
 
         public void VisitAccount(in TreePathContextWithStorage ctx, TrieNode node, in AccountStruct account)
         {

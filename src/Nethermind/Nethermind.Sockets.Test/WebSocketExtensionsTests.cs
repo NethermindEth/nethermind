@@ -3,10 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
+using System.Net;
 using System.Net.WebSockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -14,50 +20,34 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
-using NSubstitute.Extensions;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Sockets.Test;
 
 public class WebSocketExtensionsTests
 {
-    private class WebSocketMock : WebSocket
+    private class WebSocketMock(Queue<WebSocketReceiveResult> receiveResults) : WebSocket
     {
-        private readonly Queue<WebSocketReceiveResult> _receiveResults;
+        private readonly Queue<WebSocketReceiveResult> _receiveResults = receiveResults;
 
-        public WebSocketMock(Queue<WebSocketReceiveResult> receiveResults)
-        {
-            _receiveResults = receiveResults;
-        }
+        public override void Abort() => throw new NotImplementedException();
 
-        public override void Abort()
-        {
-            throw new NotImplementedException();
-        }
+        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken) => throw new NotImplementedException();
 
-        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override void Dispose()
-        {
-            throw new NotImplementedException();
-        }
+        public override void Dispose() => throw new NotImplementedException();
 
         public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
         {
             // Had to use Array.Fill as it is more performant
             Array.Fill(buffer.Array, (byte)0, buffer.Offset, buffer.Count);
+            Payload?.CopyTo(buffer.Array, buffer.Offset);
 
             if (_receiveResults.Count == 0 && ReturnTaskWithFaultOnEmptyQueue)
             {
-                Task<WebSocketReceiveResult> a = new Task<WebSocketReceiveResult>(static () => throw new Exception());
+                Task<WebSocketReceiveResult> a = new(static () => throw new Exception());
                 a.Start();
                 return a;
             }
@@ -65,16 +55,27 @@ public class WebSocketExtensionsTests
             return Task.FromResult(_receiveResults.Dequeue());
         }
 
+        public long SentBytes { get; private set; }
+        public int SentEndMessages { get; private set; }
+
         public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            SentBytes += buffer.Count;
+            if (endOfMessage)
+            {
+                SentEndMessages++;
+            }
+
+            return Task.CompletedTask;
         }
 
         public override WebSocketCloseStatus? CloseStatus { get; }
         public override string CloseStatusDescription { get; }
-        public override WebSocketState State { get; } = WebSocketState.Open;
+        public override WebSocketState State => CurrentState;
+        public WebSocketState CurrentState { get; set; } = WebSocketState.Open;
         public override string SubProtocol { get; }
         public bool ReturnTaskWithFaultOnEmptyQueue { get; set; }
+        public byte[] Payload { get; init; }
     }
 
     [SetUp]
@@ -85,7 +86,7 @@ public class WebSocketExtensionsTests
     [Test]
     public async Task Can_receive_whole_message()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         receiveResult.Enqueue(new WebSocketReceiveResult(4096, WebSocketMessageType.Text, false));
         receiveResult.Enqueue(new WebSocketReceiveResult(4096, WebSocketMessageType.Text, false));
         receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, true));
@@ -113,58 +114,112 @@ public class WebSocketExtensionsTests
     [Test]
     public async Task Updates_Metrics_And_Stats_Successfully()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, true));
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
         WebSocketMock mock = new(receiveResult);
 
-        var processor = Substitute.For<IJsonRpcProcessor>();
-        processor.ProcessAsync(default, default).ReturnsForAnyArgs(static (x) => new List<JsonRpcResult>()
+        IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
+        static async ValueTask WriteResponses(CallInfo callInfo)
         {
-            (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport())),
-            (JsonRpcResult.Collection(new JsonRpcBatchResult(static (e, c) =>
-                new List<JsonRpcResult.Entry>()
+            IJsonRpcResponseSink sink = callInfo.Arg<IJsonRpcResponseSink>();
+            CancellationToken cancellationToken = callInfo.Arg<CancellationToken>();
+
+            await sink.WriteSingleAsync(new JsonRpcResponse(), new RpcReport("single", 0, true), cancellationToken);
+            await sink.BeginBatchAsync(cancellationToken);
+            for (int index = 0; index < 3; index++)
             {
-                new(new JsonRpcResponse(), new RpcReport()),
-                new(new JsonRpcResponse(), new RpcReport()),
-                new(new JsonRpcResponse(), new RpcReport()),
-            }.ToAsyncEnumerable().GetAsyncEnumerator(c))))
-        }.ToAsyncEnumerable());
+                await sink.WriteBatchItemAsync(new JsonRpcResponse(), new RpcReport("batch", 0, true), cancellationToken);
+            }
+            await sink.EndBatchAsync(cancellationToken);
+        }
 
-        var service = Substitute.For<IJsonRpcService>();
+        processor
+            .ProcessAsync(
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                Arg.Any<JsonRpcContext>(),
+                Arg.Any<IJsonRpcResponseSink>(),
+                Arg.Any<JsonRpcProcessingOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(WriteResponses);
 
-        var localStats = Substitute.For<IJsonRpcLocalStats>();
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
 
-        var webSocketsClient = Substitute.ForPartsOf<JsonRpcSocketsClient<WebSocketMessageStream>>(
+        IJsonRpcLocalStats localStats = Substitute.For<IJsonRpcLocalStats>();
+        localStats.IsEnabled.Returns(true);
+        long receivedBefore = Metrics.JsonRpcBytesReceivedWebSockets;
+        long sentBefore = Metrics.JsonRpcBytesSentWebSockets;
+
+        JsonRpcSocketsClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<JsonRpcSocketsClient<WebSocketMessageStream>>(
             "TestClient",
             new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
             RpcEndpoint.Ws,
             processor,
             localStats,
-            Substitute.For<IJsonSerializer>(),
+            new EthereumJsonSerializer(),
             null,
             30.MB,
-            1);
-
-        webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(static async x =>
-        {
-            var par = x.Arg<JsonRpcResult>();
-            return await Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
-        });
+            1,
+            null,
+            null,
+            null);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
 
-        Assert.That(Metrics.JsonRpcBytesReceivedWebSockets, Is.EqualTo(1024));
-        Assert.That(Metrics.JsonRpcBytesSentWebSockets, Is.EqualTo(400));
-        await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
-        await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.JsonRpcBytesReceivedWebSockets - receivedBefore, Is.EqualTo(1024));
+            Assert.That(Metrics.JsonRpcBytesSentWebSockets - sentBefore, Is.EqualTo(mock.SentBytes));
+            Assert.That(mock.SentEndMessages, Is.EqualTo(2));
+        }
+        localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method != "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
+        localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method == "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
+        localStats.Received(3).ReportCall(Arg.Any<RpcReport>());
+    }
+
+    [TestCase(null, " from 203.0.113.7 Data")]
+    [TestCase("198.51.100.1", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1) Data")]
+    public async Task Created_client_logs_caller_address(string forwardedFor, string expectedFragment)
+    {
+        const string request = "{";
+        Queue<WebSocketReceiveResult> receiveResult = new();
+        receiveResult.Enqueue(new WebSocketReceiveResult(request.Length, WebSocketMessageType.Text, true));
+        receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
+        WebSocketMock mock = new(receiveResult) { Payload = Encoding.UTF8.GetBytes(request) };
+
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<string>()).Returns(new JsonRpcErrorResponse { Error = new Error() });
+        JsonRpcConfig config = new() { Enabled = true };
+        JsonRpcWebSocketsModule module = new(
+            new JsonRpcProcessor(service, config, Substitute.For<IFileSystem>(), new OneLoggerLogManager(new ILogger(logger))),
+            service,
+            Substitute.For<IJsonRpcLocalStats>(),
+            LimboLogs.Instance,
+            new EthereumJsonSerializer(),
+            new JsonRpcUrlCollection(LimboLogs.Instance, config, true),
+            Substitute.For<IRpcAuthentication>(),
+            null,
+            1);
+
+        DefaultHttpContext context = new();
+        context.Connection.LocalPort = config.Port;
+        context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.7");
+        if (forwardedFor is not null) context.Request.Headers["X-Forwarded-For"] = forwardedFor;
+
+        using ISocketsClient client = await module.CreateClient(mock, "TestClient", context);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        await client.ReceiveLoopAsync(cts.Token);
+
+        Assert.That(logger.ReceivedCalls().SelectMany(static call => call.GetArguments()).OfType<string>(), Has.Some.Contains(expectedFragment));
     }
 
     [Test]
     public async Task Can_receive_many_messages()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         for (int i = 0; i < 1000; i++)
         {
             receiveResult.Enqueue(new WebSocketReceiveResult(1234, WebSocketMessageType.Text, true));
@@ -187,7 +242,7 @@ public class WebSocketExtensionsTests
     [Test]
     public async Task Can_receive_whole_message_non_buffer_sizes()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         for (int i = 0; i < 6; i++)
         {
             receiveResult.Enqueue(new WebSocketReceiveResult(2000, WebSocketMessageType.Text, false));
@@ -212,7 +267,7 @@ public class WebSocketExtensionsTests
     [Test]
     public async Task Throws_on_too_long_message()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         for (int i = 0; i < 2 * 1024; i++)
         {
             receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, false));
@@ -229,14 +284,14 @@ public class WebSocketExtensionsTests
             (int)1.MB);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveLoopAsync(cts.Token));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveLoopAsync(cts.Token));
         await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<ArraySegment<byte>>(), cts.Token);
     }
 
     [Test, MaxTime(5000)]
     public async Task Stops_on_dirty_disconnect()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));
         WebSocketMock mock = new(receiveResult);
         mock.ReturnTaskWithFaultOnEmptyQueue = true;
@@ -252,9 +307,27 @@ public class WebSocketExtensionsTests
     }
 
     [Test]
+    public async Task Writes_to_a_closed_socket_fail_the_same_way([Values] bool endOfMessage)
+    {
+        WebSocketMock mock = new(new Queue<WebSocketReceiveResult>()) { CurrentState = WebSocketState.Closed };
+        WebSocketMessageStream stream = new(mock, Substitute.For<ILogManager>());
+        ReadOnlyMemory<byte> data = "{}"u8.ToArray();
+
+        await Assert.ThatAsync(async () =>
+        {
+            if (endOfMessage) await stream.WriteEndOfMessageAsync(data, CancellationToken.None);
+            else await stream.WriteAsync(data, CancellationToken.None);
+        }, Throws.TypeOf<IOException>());
+        Assert.That(mock.SentBytes, Is.Zero);
+    }
+
+    [Test]
     public void Correct_isnull_on_result()
     {
-        Assert.That(new ReceiveResult().IsNull, Is.False);
-        Assert.That(default(ReceiveResult).IsNull, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ReceiveResult().IsNull, Is.False);
+            Assert.That(default(ReceiveResult).IsNull, Is.True);
+        }
     }
 }

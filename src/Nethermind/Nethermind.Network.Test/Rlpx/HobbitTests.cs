@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(256, 8, StackType.Zero, StackType.Zero, false, Ignore = "Values >255 are not supported yet")]
         public void High_packet_type_there_and_back(int packetType, int dataSize, StackType inbound, StackType outbound, bool framingEnabled)
         {
-            var data = Enumerable.Range(0, dataSize).Select(i => (byte)i).ToArray();
+            byte[] data = Enumerable.Range(0, dataSize).Select(i => (byte)i).ToArray();
             Run(new Packet("eth", packetType, data), inbound, outbound, framingEnabled);
         }
 

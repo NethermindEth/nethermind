@@ -7,6 +7,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Xdc.P2P;
 
 namespace Nethermind.Xdc;
 
@@ -19,16 +20,12 @@ public class XdcStateSyncAllocationStrategyFactory : StaticPeerAllocationStrateg
     {
     }
 
-    internal class AllocationStrategy : FilterPeerAllocationStrategy
+    internal class AllocationStrategy(IPeerAllocationStrategy strategy) : FilterPeerAllocationStrategy(strategy)
     {
-        public AllocationStrategy(IPeerAllocationStrategy strategy) : base(strategy)
-        {
-        }
-
-        protected override bool Filter(PeerInfo peerInfo)
-        {
-            return peerInfo.CanGetSnapData() || peerInfo.SyncPeer.ProtocolVersion == 100;
-        }
+        // Every XDC version serves GetNodeData - the eth/67 removal was never applied - but PeerInfoExtensions
+        // gates that on a mainline version comparison that XDC's numbering sits above.
+        protected override bool Filter(PeerInfo peerInfo) =>
+            peerInfo.CanGetTrieNodes() || XdcProtocolVersions.IsXdcVersion(peerInfo.SyncPeer.ProtocolVersion);
     }
 }
 

@@ -17,7 +17,7 @@ namespace Nethermind.Logging
     /// </summary>
     public class LimboTraceLogger : InterfaceLogger
     {
-        private static LimboTraceLogger _instance;
+        private static LimboTraceLogger? _instance;
 
         public static ILogger Instance
         {
@@ -40,7 +40,7 @@ namespace Nethermind.Logging
         {
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
         }
 

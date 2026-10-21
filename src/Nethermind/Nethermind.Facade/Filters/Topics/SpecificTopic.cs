@@ -4,41 +4,23 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Facade.Filters.Topics
 {
-    public class SpecificTopic : TopicExpression
+    public class SpecificTopic(Hash256 topic) : TopicExpression
     {
-        private readonly Hash256 _topic;
-        private Bloom.BloomExtract _bloomExtract;
+        private readonly Hash256 _topic = topic;
+        private readonly Bloom.BloomExtract _bloomExtract = Bloom.GetExtract(topic);
 
         public Hash256 Topic => _topic;
         public override bool AcceptsAnyBlock => false;
-
-        public SpecificTopic(Hash256 topic)
-        {
-            _topic = topic;
-        }
-
-        private ref readonly Bloom.BloomExtract BloomExtract
-        {
-            get
-            {
-                if (_bloomExtract.IsZero())
-                {
-                    _bloomExtract = Bloom.GetExtract(_topic);
-                }
-
-                return ref _bloomExtract;
-            }
-        }
 
         public override bool Accepts(Hash256 topic) => topic == _topic;
 
         public override bool Accepts(ref Hash256StructRef topic) => topic == _topic;
 
-        public override bool Matches(Bloom bloom) => bloom.Matches(BloomExtract);
+        public override bool Matches(Bloom bloom) => bloom.Matches(_bloomExtract);
 
-        public override bool Matches(ref BloomStructRef bloom) => bloom.Matches(BloomExtract);
+        public override bool Matches(ref BloomStructRef bloom) => bloom.Matches(_bloomExtract);
 
         private bool Equals(SpecificTopic other) => _topic.Equals(other._topic);
 

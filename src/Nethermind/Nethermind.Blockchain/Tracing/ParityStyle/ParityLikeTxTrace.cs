@@ -15,8 +15,8 @@ public class ParityLikeTxTrace
 
     public Hash256? BlockHash { get; set; }
 
-    [JsonConverter(typeof(LongRawJsonConverter))]
-    public long BlockNumber { get; set; }
+    [JsonConverter(typeof(ULongRawJsonConverter))]
+    public ulong BlockNumber { get; set; }
 
     public int? TransactionPosition { get; set; }
 
@@ -26,5 +26,6 @@ public class ParityLikeTxTrace
 
     public ParityTraceAction? Action { get; set; }
 
+    [JsonPropertyName("stateDiff")]
     public Dictionary<Address, ParityAccountStateChange>? StateChanges { get; set; }
 }

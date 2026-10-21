@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using Nethermind.Core.Test.Builders;
@@ -39,7 +40,6 @@ public class TaikoEngineApiTests
 
         TaikoForkchoiceUpdatedHandler forkchoiceUpdatedHandler = new(
             blockTree,
-            Substitute.For<IManualBlockFinalizationManager>(),
             Substitute.For<IPoSSwitcher>(),
             Substitute.For<IPayloadPreparationService>(),
             Substitute.For<IBlockProcessingQueue>(),
@@ -51,7 +51,10 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
-            Substitute.For<ILogManager>()
+            Substitute.For<ILogManager>(),
+            Substitute.For<IBlockProcessingPauseControl>(),
+            new BlockTreeMutationLock(),
+            StateReaderWithEveryState()
         );
 
         ResultWrapper<ForkchoiceUpdatedV1Result> beforeNewBlockAdded = await forkchoiceUpdatedHandler.Handle(new ForkchoiceStateV1(genesisBlock.Hash!, futureBlock.Hash!, futureBlock.Hash!), null, 2);
@@ -64,11 +67,18 @@ public class TaikoEngineApiTests
 
         static void AddBlock(IBlockTree blockTree, Block block)
         {
-            blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block);
+            blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block.Header);
             blockTree.GetInfo(block.Number, block.Hash!).Returns((new BlockInfo(block.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
             blockTree.Head.Returns(block);
             blockTree.HeadHash.Returns(block.Hash!);
         }
+    }
+
+    private static IStateReader StateReaderWithEveryState()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        return stateReader;
     }
 
     [TestCase(100ul, 100ul, true, TestName = "Equal timestamps allowed for Pacaya")]
@@ -80,7 +90,7 @@ public class TaikoEngineApiTests
 
         Block headBlock = Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject;
 
-        blockTree.FindBlock(headBlock.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(headBlock);
+        blockTree.FindHeader(headBlock.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(headBlock.Header);
         blockTree.GetInfo(headBlock.Number, headBlock.Hash!).Returns((new BlockInfo(headBlock.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
         blockTree.Head.Returns(headBlock);
         blockTree.HeadHash.Returns(headBlock.Hash!);
@@ -88,7 +98,6 @@ public class TaikoEngineApiTests
 
         TaikoForkchoiceUpdatedHandler handler = new(
             blockTree,
-            Substitute.For<IManualBlockFinalizationManager>(),
             Substitute.For<IPoSSwitcher>(),
             Substitute.For<IPayloadPreparationService>(),
             Substitute.For<IBlockProcessingQueue>(),
@@ -100,7 +109,10 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
-            Substitute.For<ILogManager>()
+            Substitute.For<ILogManager>(),
+            Substitute.For<IBlockProcessingPauseControl>(),
+            new BlockTreeMutationLock(),
+            StateReaderWithEveryState()
         );
 
         PayloadAttributes payloadAttributes = new()

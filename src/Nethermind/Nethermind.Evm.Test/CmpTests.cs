@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class CmpTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         [TestCase(Instruction.GT,
             "0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0ff",
@@ -24,6 +24,52 @@ namespace Nethermind.Evm.Test
         [TestCase(Instruction.EQ,
             "0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
             "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+            "0x0000000000000000000000000000000000000000000000000000000000000000")]
+        [TestCase(Instruction.LT,
+            "0x0000000000000000000000000000000000000000000000000000000000000002",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.GT,
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000001000000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.LT,
+            "0x0000000000000000000000000000000100000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.GT,
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000010000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.SLT,
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x8000000000000000000000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.SGT,
+            "0x8000000000000000000000000000000000000000000000000000000000000000",
+            "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        // Only the most significant 64 bits carry the sign; every lower group compares unsigned.
+        // Each case below sets the top bit of a lower group, so comparing it signed flips the answer.
+        [TestCase(Instruction.SGT,
+            "0xffffffffffffffff7fffffffffffffffffffffffffffffffffffffffffffffff",
+            "0xffffffffffffffff800000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.SLT,
+            "0x0000000000000000000000000000000080000000000000000000000000000000",
+            "0x000000000000000000000000000000007fffffffffffffffffffffffffffffff",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.SGT,
+            "0xffffffffffffffffffffffffffffffffffffffffffffffff7fffffffffffffff",
+            "0xffffffffffffffffffffffffffffffffffffffffffffffff8000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.GT,
+            "0x000000000000000000000000000000007fffffffffffffffffffffffffffffff",
+            "0x0000000000000000000000000000000080000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.SLT,
+            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
             "0x0000000000000000000000000000000000000000000000000000000000000000")]
         public void Comparison_operations(Instruction instruction, string aHex, string bHex, string resultHex)
         {
@@ -49,7 +95,7 @@ namespace Nethermind.Evm.Test
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
         }
 
-        private const long ZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset;
-        private const long NonZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet;
+        private const ulong ZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset;
+        private const ulong NonZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet;
     }
 }

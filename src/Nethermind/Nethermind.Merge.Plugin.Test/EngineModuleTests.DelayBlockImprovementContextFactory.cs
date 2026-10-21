@@ -9,28 +9,19 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    private class DelayBlockImprovementContextFactory : IBlockImprovementContextFactory
+    private class DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay, Action<CancellationToken>? onBuildStarted = null)
+        : IBlockImprovementContextFactory
     {
-        private readonly IBlockProducer _blockProducer;
-        private readonly TimeSpan _timeout;
-        private readonly TimeSpan _delay;
-
-        public DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay)
-        {
-            _blockProducer = blockProducer;
-            _timeout = timeout;
-            _delay = delay;
-        }
-
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
-        UInt256 currentBlockFees, CancellationTokenSource cts) =>
-            new DelayBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _delay, startDateTime, cts);
+        public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
+        UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
+            new DelayBlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, delay, startDateTime, cts, onBuildStarted);
     }
 
     /// <summary>
@@ -38,14 +29,13 @@ public partial class EngineModuleTests
     /// Subsequent contexts block indefinitely until cancelled, making tests
     /// deterministic without artificial time delays.
     /// </summary>
-    private class FirstOnlyBlockImprovementContextFactory(
-        IBlockProducer blockProducer, TimeSpan timeout) : IBlockImprovementContextFactory
+    private class FirstOnlyBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout) : IBlockImprovementContextFactory
     {
         private int _callCount;
 
         public IBlockImprovementContext StartBlockImprovementContext(
-            Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
-            DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
+            Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
+            DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             TimeSpan delay = Interlocked.Increment(ref _callCount) == 1
                 ? TimeSpan.Zero
@@ -58,24 +48,30 @@ public partial class EngineModuleTests
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
-        private readonly CancellationTokenSource _improvementCancellation;
+        private readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private volatile BlockProductionSnapshot _best;
+        private readonly SharedCancellationTokenSource _improvementCancellation;
         private CancellationTokenSource? _timeOutCancellation;
         private CancellationTokenSource? _linkedCancellation;
 
-        public DelayBlockImprovementContext(Block currentBestBlock,
+        public DelayBlockImprovementContext(Block? currentBestBlock,
             IBlockProducer blockProducer,
             TimeSpan timeout,
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
             TimeSpan delay,
             DateTimeOffset startDateTime,
-            CancellationTokenSource cts)
+            SharedCancellationTokenSource cts,
+            Action<CancellationToken>? onBuildStarted = null)
         {
-            CurrentBestBlock = currentBestBlock;
+            _best = new(currentBestBlock, UInt256.Zero);
             StartDateTime = startDateTime;
             _improvementCancellation = cts;
             _timeOutCancellation = new CancellationTokenSource(timeout);
             _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
+            // Publishes the production token, so a test-side tx source can abort a blocking
+            // wait when this improvement is cancelled.
+            onBuildStarted?.Invoke(_linkedCancellation.Token);
             ImprovementTask = BuildBlock(blockProducer, parentHeader, payloadAttributes, delay, _linkedCancellation.Token);
         }
 
@@ -90,25 +86,26 @@ public partial class EngineModuleTests
             Block? block = await blockProducer.BuildBlock(parentHeader, NullBlockTracer.Instance, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
             if (block is not null)
             {
-                CurrentBestBlock = block;
+                _best = new(block, UInt256.Zero);
             }
 
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
 
         public Task<Block?> ImprovementTask { get; }
-        public Block? CurrentBestBlock { get; private set; }
-        public UInt256 BlockFees { get; }
+        public BlockProductionSnapshot Best => _best;
         public bool Disposed { get; private set; }
+        public Task DisposalCompleted => _disposed.Task;
         public DateTimeOffset StartDateTime { get; }
 
-        public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
+        public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
 
         public void Dispose()
         {
             Disposed = true;
             CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
             CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
+            _disposed.TrySetResult();
         }
     }
 }

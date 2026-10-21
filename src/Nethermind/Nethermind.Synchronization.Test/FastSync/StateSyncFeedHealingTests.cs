@@ -13,7 +13,6 @@ using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
-using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
@@ -34,7 +33,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Hash256 rootHash = remote.StateTree.RootHash;
 
         await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 2000);
-        var local = container.Resolve<IStateSyncTestOperation>();
+        IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
         ProcessAccountRange(remote.StateTree, snapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
@@ -64,18 +63,18 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             byte[] key = new byte[32];
             // Snap can't actually use GetTrieNodes where the path is exactly 64 nibble. So *255.
             ((UInt256)(i * 255)).ToBigEndian(key);
-            Hash256 keccak = new Hash256(key);
+            Hash256 keccak = new(key);
             pathPool[i] = keccak;
         }
 
-        int blockJumps = 5;
+        ulong blockJumps = 5;
 
         // Store accounts snapshot at each block number
         SortedDictionary<Hash256, Account>[] accountsAtBlock = new SortedDictionary<Hash256, Account>[blockJumps + 1];
         Hash256[] rootHashAtBlock = new Hash256[blockJumps + 1];
 
         // Initialize accounts
-        SortedDictionary<Hash256, Account> accounts = new();
+        SortedDictionary<Hash256, Account> accounts = [];
 
         // Generate initial Remote Tree (block 0)
         for (int accountIndex = 0; accountIndex < 10000; accountIndex++)
@@ -90,7 +89,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         remote.StateTree.Commit();
 
         // Pre-build all blocks and store state at each block
-        for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
+        for (ulong blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Store snapshot of accounts and root hash at this block
             accountsAtBlock[blockNumber] = new SortedDictionary<Hash256, Account>(accounts);
@@ -129,14 +128,14 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Hash256 finalRootHash = remote.StateTree.RootHash;
 
         await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 1000);
-        var local = container.Resolve<IStateSyncTestOperation>();
+        IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
         int startingHashIndex = 0;
         int endHashIndex;
 
         // Now process account ranges using stored snapshots
-        for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
+        for (ulong blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Set remote tree to the state at this block number
             remote.StateTree.RootHash = rootHashAtBlock[blockNumber];
@@ -182,7 +181,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Assert.That(data.RequestedNodesCount, Is.LessThan(accounts.Count / 2));
     }
 
-    private static void ProcessAccountRange(StateTree remoteStateTree, ISnapTrieFactory snapTrieFactory, int blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
+    private static void ProcessAccountRange(StateTree remoteStateTree, ISnapTrieFactory snapTrieFactory, ulong blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
     {
         ValueHash256 startingHash = accounts.First().Path;
         ValueHash256 endHash = accounts.Last().Path;
@@ -190,10 +189,10 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         AccountProofCollector accountProofCollector = new(startingHash.Bytes);
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
-        byte[][] firstProof = accountProofCollector.BuildResult().Proof!;
+        byte[][] firstProof = accountProofCollector.BuildResult().Proof;
         accountProofCollector = new(endHash.Bytes);
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
-        byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
+        byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
         _ = SnapProviderHelper.AddAccountRange(snapTrieFactory, blockNumber, rootHash, startingHash, limitHash, accounts, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
     }

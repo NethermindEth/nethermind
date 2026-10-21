@@ -7,7 +7,7 @@
     "PeerManagerEnabled": false,
     "ChainSpecPath": "chainspec/spaceneth.json",
     "BaseDbPath": "spaceneth_db",
-    "LogFileName": "spaceneth.log",
+    "LogFileName": "spaceneth_persistent.log",
     "DiagnosticMode": "None",
     "MemoryHint": 128000000
   },

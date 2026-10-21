@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
@@ -25,19 +24,16 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
 {
     private readonly IReleaseSpec? _releaseSpec;
 
-    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(new ConfigProvider())
-    {
-        _releaseSpec = releaseSpec;
-    }
+    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(DefaultConfigProvider()) => _releaseSpec = releaseSpec;
 
-    public TestNethermindModule(params IConfig[] configs) : this(new ConfigProvider(configs))
+    public TestNethermindModule(params IConfig[] configs) : this(DefaultConfigProvider(configs))
     {
     }
 
     public TestNethermindModule(IConfigProvider configProvider) : this(configProvider, new ChainSpec()
     {
         Parameters = new ChainParameters(),
-        Allocations = new Dictionary<Address, ChainSpecAllocation>(),
+        Allocations = [],
         Genesis = Build.A.Block
             .WithBlobGasUsed(0) // Non null post 4844
             .TestObject
@@ -45,16 +41,25 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
     {
     }
 
-    public TestNethermindModule(ChainSpec chainSpec) : this(new ConfigProvider(), chainSpec)
+    public TestNethermindModule(ChainSpec chainSpec) : this(DefaultConfigProvider(), chainSpec)
     {
     }
 
     public static TestNethermindModule CreateWithRealChainSpec()
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
-        return new TestNethermindModule(new ConfigProvider(), spec, useTestSpecProvider: false);
+        return new TestNethermindModule(DefaultConfigProvider(), spec, useTestSpecProvider: false);
     }
+
+    /// <summary>
+    /// Builds a config provider this module owns, with the suite-wide state backend applied
+    /// (<see cref="TestStateBackend"/>). A caller that passes its own <see cref="IFlatDbConfig"/> here — or
+    /// that constructs the <see cref="IConfigProvider"/> itself and uses the provider overload — keeps full
+    /// control of the backend.
+    /// </summary>
+    private static ConfigProvider DefaultConfigProvider(params IConfig[] configs) =>
+        TestStateBackend.ApplyDefaultBackend(new ConfigProvider(configs), configs);
 
     protected override void Load(ContainerBuilder builder)
     {

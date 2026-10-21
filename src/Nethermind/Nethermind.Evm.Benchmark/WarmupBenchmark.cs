@@ -5,7 +5,6 @@ using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using Nethermind.Blockchain;
@@ -15,7 +14,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -46,7 +44,7 @@ public class WarmupBenchmark
     {
         public WarmupConfig()
         {
-            AddJob(Job.MediumRun.WithToolchain(InProcessNoEmitToolchain.Default));
+            AddJob(Job.MediumRun.WithToolchain(InProcessNoEmitToolchain.Instance));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
             AddColumn(StatisticColumn.Median);
@@ -86,7 +84,7 @@ public class WarmupBenchmark
     [GlobalSetup]
     public void GlobalSetup()
     {
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateProvider = TestWorldStateFactory.CreateForTest(logManager: NullLogManager.Instance);
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
 
         _stateProvider.CreateAccount(TestItem.AddressA, 1_000_000_000.Ether);
@@ -106,14 +104,14 @@ public class WarmupBenchmark
         EthereumVirtualMachine vm = new(
             new TestBlockhashProvider(),
             SpecProvider,
-            LimboLogs.Instance);
+            NullLogManager.Instance);
         _processor = new EthereumTransactionProcessor(
             BlobBaseFeeCalculator.Instance,
             SpecProvider,
             _stateProvider,
             vm,
             codeInfo,
-            LimboLogs.Instance);
+            NullLogManager.Instance);
 
         _simpleTx = Build.A.Transaction
             .WithTo(TestItem.AddressC)

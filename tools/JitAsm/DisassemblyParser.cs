@@ -24,8 +24,8 @@ internal static partial class DisassemblyParser
             return string.Empty;
         }
 
-        var result = new StringBuilder();
-        var matches = MethodHeaderPattern().Matches(jitOutput);
+        StringBuilder result = new();
+        MatchCollection matches = MethodHeaderPattern().Matches(jitOutput);
 
         if (matches.Count == 0)
         {
@@ -43,21 +43,21 @@ internal static partial class DisassemblyParser
 
         for (int i = startIdx; i < matches.Count; i++)
         {
-            var match = matches[i];
-            var startIndex = match.Index;
+            Match match = matches[i];
+            int startIndex = match.Index;
 
             // Find the end of this method's disassembly
             int endIndex = (i + 1 < matches.Count) ? matches[i + 1].Index : jitOutput.Length;
 
             // Extract this method's disassembly
-            var methodAsm = jitOutput[startIndex..endIndex].TrimEnd();
+            string methodAsm = jitOutput[startIndex..endIndex].TrimEnd();
 
             // Find "Total bytes of code" line and include it
-            var totalBytesMatch = MethodEndPattern().Match(methodAsm);
+            Match totalBytesMatch = MethodEndPattern().Match(methodAsm);
             if (totalBytesMatch.Success)
             {
                 // Find end of line after "Total bytes of code"
-                var lineEnd = methodAsm.IndexOf('\n', totalBytesMatch.Index);
+                int lineEnd = methodAsm.IndexOf('\n', totalBytesMatch.Index);
                 if (lineEnd > 0)
                 {
                     methodAsm = methodAsm[..(lineEnd + 1)].TrimEnd();
@@ -84,17 +84,17 @@ internal static partial class DisassemblyParser
             yield break;
         }
 
-        var matches = MethodHeaderPattern().Matches(jitOutput);
+        MatchCollection matches = MethodHeaderPattern().Matches(jitOutput);
 
         for (int i = 0; i < matches.Count; i++)
         {
-            var match = matches[i];
-            var methodName = match.Groups["method"].Value;
-            var startIndex = match.Index;
+            Match match = matches[i];
+            string methodName = match.Groups["method"].Value;
+            int startIndex = match.Index;
 
             int endIndex = (i + 1 < matches.Count) ? matches[i + 1].Index : jitOutput.Length;
 
-            var methodAsm = jitOutput[startIndex..endIndex].TrimEnd();
+            string methodAsm = jitOutput[startIndex..endIndex].TrimEnd();
 
             yield return new MethodDisassembly
             {

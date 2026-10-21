@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -52,7 +51,7 @@ public class ReceiptSyncFeedTests
         _syncingToBlockTree = Build.A.BlockTree()
             .TestObject;
 
-        for (int i = 1; i < 100; i++)
+        for (ulong i = 1; i < 100; i++)
         {
             Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
             _syncingToBlockTree.Insert(block.Header);
@@ -111,9 +110,9 @@ public class ReceiptSyncFeedTests
             });
 
         Func<SyncResponseHandlingResult> act = () => _feed.HandleResponse(req);
-        act.Should().Throw<Exception>();
+        Assert.That(act, Throws.TypeOf<Exception>());
         using ReceiptsSyncBatch req2 = (await _feed.PrepareRequest())!;
-        req2.Infos[0]!.BlockNumber.Should().Be(95);
+        Assert.That(req2.Infos[0]!.BlockNumber, Is.EqualTo(95));
     }
 
     [Test]
@@ -125,18 +124,16 @@ public class ReceiptSyncFeedTests
 
         using ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
 
-        req.Infos
+        Assert.That(req.Infos
             .Where(static (bi) => bi is not null)
             .Select(static (bi) => bi!.BlockNumber)
-            .Take(4)
-            .Should()
-            .BeEquivalentTo([
+            .Take(4), Is.EqualTo([
                 _pivotBlock.Number,
                 _pivotBlock.Number - 1,
                 // Skipped
                 _pivotBlock.Number - 3,
                 // Skipped
-                _pivotBlock.Number - 5]);
+                _pivotBlock.Number - 5]));
     }
 
     [Test]
@@ -146,6 +143,6 @@ public class ReceiptSyncFeedTests
         _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Receipts, default)
             .Returns(Task.FromResult<int?>(5));
         ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
-        req.Infos.Length.Should().Be(5);
+        Assert.That(req.Infos.Length, Is.EqualTo(5));
     }
 }

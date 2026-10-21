@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -15,16 +13,58 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
+    private readonly long _limit;
+    private long _resultSize;
+    private int _storageUpdates;
 
-    public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
+    private bool LimitReached => _limit != 0 && _resultSize > _limit;
+
+    public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options, long destroyRefund = 0) : base(options, destroyRefund)
     {
         _transaction = transaction;
+        _limit = options.Limit;
         IsTracingMemory = IsTracingFullMemory;
+        IsTracingRefunds = true;
+        IsTracingActions = true;
+        options.ResolveTimeout();
+    }
+
+    /// <inheritdoc/>
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+    {
+        if (LimitReached) return;
+        base.StartOperation(pc, opcode, gas, in env);
+        if (LimitReached)
+            CurrentTraceEntry = null;
+    }
+
+    protected override void AddTraceEntry(GethTxMemoryTraceEntry entry)
+    {
+        base.AddTraceEntry(entry);
+        if (_limit <= 0) return;
+
+        int? storageCount = entry.StorageDelta.HasValue ? ++_storageUpdates : null;
+        _resultSize += GethLikeTxTraceConverter.EstimateEntrySize(entry, storageCount);
+    }
+
+    /// <inheritdoc/>
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (CurrentTraceEntry?.Opcode == "INVALID")
+        {
+            CurrentTraceEntry.GasCost = 0;
+            return;
+        }
+        if (error == EvmExceptionType.BadInstruction && CurrentTraceEntry is not null)
+            CurrentTraceEntry.GasCost = 0;
+        if (error == EvmExceptionType.StaticCallViolation && CurrentTraceEntry?.Opcode == "SSTORE")
+            CurrentTraceEntry.Error = "out of gas: write protection";
+        if (!IsExecutionFault(error)) base.ReportOperationError(error);
     }
 
     public override GethLikeTxTrace BuildResult()
     {
-        var trace = base.BuildResult();
+        GethLikeTxTrace trace = base.BuildResult();
 
         trace.TxHash = _transaction?.Hash;
 
@@ -38,45 +78,25 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         Trace.Gas = gasSpent.SpentGas;
     }
 
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        base.LoadOperationStorage(address, storageIndex, value);
+
+        RecordStorageSnapshot(address, storageIndex, value);
+    }
+
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
         base.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
-        byte[] bigEndian = new byte[32];
-
-        storageIndex.ToBigEndian(bigEndian);
-
-        CurrentTraceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left)
-            .ToArray()
-            .ToHexString(false);
+        RecordStorageSnapshot(address, storageIndex, newValue);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    private void RecordStorageSnapshot(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
-        var previousDepth = CurrentTraceEntry?.Depth ?? 0;
+        if (CurrentTraceEntry is null)
+            return;
 
-        base.StartOperation(pc, opcode, gas, env);
-
-        if (CurrentTraceEntry.Depth > previousDepth)
-        {
-            CurrentTraceEntry.Storage = new Dictionary<string, string>();
-
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? new() : previousTraceEntry.Storage);
-        }
-        else if (CurrentTraceEntry.Depth < previousDepth)
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
-        }
-        else
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on continuation.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
-        }
+        CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
     }
 }

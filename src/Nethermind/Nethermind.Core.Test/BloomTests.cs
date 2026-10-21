@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
+using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -28,38 +31,70 @@ namespace Nethermind.Core.Test
         [TestCase(10, 1)]
         [TestCase(10, 10)]
         [TestCase(100, 1)]
-        public void matches_previously_added_item(int count, int topicMax)
-        {
-            MatchingTest(() => GetLogEntries(count, topicMax), addedEntries => addedEntries, true);
-        }
+        public void matches_previously_added_item(int count, int topicMax) => MatchingTest(() => GetLogEntries(count, topicMax), addedEntries => addedEntries, true);
 
         [TestCase(1, 1)]
         [TestCase(1, 10)]
         [TestCase(10, 1)]
         [TestCase(10, 10)]
         [TestCase(100, 1)]
-        public void does_not_match_not_added_item(int count, int topicMax)
-        {
-            MatchingTest(() => GetLogEntries(count, topicMax),
+        public void does_not_match_not_added_item(int count, int topicMax) => MatchingTest(() => GetLogEntries(count, topicMax),
                 addedEntries => GetLogEntries(count, topicMax,
                 addedEntries.Sum(a => a.Topics.Length)), false);
+
+        [Test]
+        public void ZeroLength_matches_any_item()
+        {
+            LogEntry[] entries = GetLogEntries(10, 3);
+            Assert.That(entries.Select(static e => Bloom.ZeroLength.Matches(e)), Is.All.True);
         }
 
         [Test]
-        public void empty_does_not_match_any_item()
+        public void ZeroLength_is_zero_length_and_distinct_from_empty()
         {
-            MatchingTest(Array.Empty<LogEntry>, static addedEntries => GetLogEntries(100, 10), false);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Bloom.ZeroLength.ReadOnlyBytes.Length, Is.Zero);
+                Assert.That(Bloom.ZeroLength, Is.Not.EqualTo(Bloom.Empty));
+                Assert.That(Bloom.ZeroLength.Clone(), Is.SameAs(Bloom.ZeroLength));
+            }
         }
+
+        [Test]
+        public void ZeroLength_ssz_encodes_and_merkleizes_as_zero_bloom()
+        {
+            byte[] buffer = new byte[Bloom.ByteLength];
+            Array.Fill(buffer, byte.MaxValue);
+            BloomSszVectorTypeConverter.ToSpan(buffer, Bloom.ZeroLength);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(buffer, Is.All.Zero);
+                Assert.That(Root(Bloom.ZeroLength), Is.EqualTo(Root(Bloom.Empty)));
+            }
+
+            static UInt256 Root(Bloom bloom)
+            {
+                Span<UInt256> chunks = stackalloc UInt256[2];
+                Merkleizer merkleizer = new(chunks);
+                BloomSszVectorTypeConverter.Feed(ref merkleizer, bloom);
+                merkleizer.CalculateRoot(out UInt256 root);
+                return root;
+            }
+        }
+
+        [Test]
+        public void empty_does_not_match_any_item() => MatchingTest(Array.Empty<LogEntry>, static addedEntries => GetLogEntries(100, 10), false);
 
         public void MatchingTest(Func<LogEntry[]> addedEntries, Func<LogEntry[], LogEntry[]> testedEntries, bool isMatchExpectation)
         {
             Bloom bloom = new();
-            var entries = addedEntries();
+            LogEntry[] entries = addedEntries();
             bloom.Add(entries);
 
-            var testEntries = testedEntries(entries);
-            var results = testEntries.Select(e => bloom.Matches(e));
-            results.Should().AllBeEquivalentTo(isMatchExpectation);
+            LogEntry[] testEntries = testedEntries(entries);
+            IEnumerable<bool> results = testEntries.Select(e => bloom.Matches(e));
+            Assert.That(results, Is.All.EqualTo(isMatchExpectation));
         }
 
         [TestCase(1, 1, "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000002000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000400000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")]
@@ -73,17 +108,28 @@ namespace Nethermind.Core.Test
             Bloom bloom = new();
             bloom.Add(GetLogEntries(count, topicMax));
 
-            bloom.ToString().Should().Be(expectedValue);
+            Assert.That(bloom.ToString(), Is.EqualTo(expectedValue));
+        }
+
+        [Test]
+        [SuppressMessage("ReSharper", "SuspiciousTypeConversion.Global")]
+        public void Equals_object_returns_true_for_equal_bloom()
+        {
+            Bloom bloom = new();
+            bloom.Set(Keccak.OfAnEmptyString.Bytes);
+            BloomStructRef bloomStructRef = new(bloom.Bytes);
+
+            Assert.That(bloomStructRef.Equals((object)bloom), Is.True);
         }
 
         private static LogEntry[] GetLogEntries(int count, int topicsMax, int start = 0)
         {
-            var keccakGenerator = TestItem.Keccaks;
-            var entries = new LogEntry[count];
+            Hash256[] keccakGenerator = TestItem.Keccaks;
+            LogEntry[] entries = new LogEntry[count];
             for (int i = start; i < count + start; i++)
             {
                 int topicsCount = i % topicsMax + 1;
-                var topics = new Hash256[topicsCount];
+                Hash256[] topics = new Hash256[topicsCount];
                 for (int j = 0; j < topicsCount; j++)
                 {
                     topics[j] = keccakGenerator[i + j];

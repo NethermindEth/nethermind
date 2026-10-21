@@ -29,7 +29,7 @@ public class TransactionReceiptsSubscription : Subscription
         IBlockTree blockTree,
         ILogManager logManager,
         TransactionHashesFilter? filter)
-        : base(jsonRpcDuplexClient)
+        : base(jsonRpcDuplexClient, MaxQueuedBlocks)
     {
         ArgumentNullException.ThrowIfNull(receiptCanonicalityMonitor);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -37,7 +37,7 @@ public class TransactionReceiptsSubscription : Subscription
 
         _receiptMonitor = receiptCanonicalityMonitor;
         _blockTree = blockTree;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<TransactionReceiptsSubscription>();
 
         // Validate max 200 hashes
         if (filter?.TransactionHashes is not null && filter.TransactionHashes.Count > 200)
@@ -51,10 +51,7 @@ public class TransactionReceiptsSubscription : Subscription
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} will track ReceiptsInserted.");
     }
 
-    private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
-    {
-        ScheduleAction(async () => await TryPublishReceipts(e));
-    }
+    private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => ScheduleAction(() => TryPublishReceipts(e));
 
     private async Task TryPublishReceipts(ReceiptsEventArgs e)
     {
@@ -77,6 +74,7 @@ public class TransactionReceiptsSubscription : Subscription
         for (int i = 0; i < e.TxReceipts.Length; i++)
         {
             TxReceipt receipt = e.TxReceipts[i];
+            if (e.LogIndexPerReceipt) cumulativeLogIndex = 0;
 
             // Apply filter if set
             if (_filterHashes?.Contains((ValueHash256)receipt.TxHash!) == false)
@@ -88,7 +86,7 @@ public class TransactionReceiptsSubscription : Subscription
 
             // Create receipt for RPC
             // Using basic TxGasInfo with null values since tests don't check gas info
-            ReceiptForRpc receiptForRpc = new ReceiptForRpc(
+            ReceiptForRpc receiptForRpc = new(
                 receipt.TxHash!,
                 receipt,
                 e.BlockHeader.Timestamp,

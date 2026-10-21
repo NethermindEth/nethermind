@@ -22,19 +22,26 @@ public class ShutterEon(
     private IShutterEon.Info? _currentInfo;
     private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress!);
     private readonly Address _keyperSetManagerContractAddress = new(shutterConfig.KeyperSetManagerContractAddress!);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterEon>();
 
     public IShutterEon.Info? GetCurrentEonInfo() => _currentInfo;
 
     public void Update(BlockHeader header)
     {
-        using IReadOnlyTxProcessingScope scope = txSource.Build(blockTree.Head?.Header);
+        BlockHeader? head = blockTree.Head?.Header;
+        if (!txSource.TryBuild(head, out IReadOnlyTxProcessingScope? scope))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot update Shutter eon: no state available for block {head?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
+            return;
+        }
+
+        using IReadOnlyTxProcessingScope _ = scope;
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         try
         {
             KeyperSetManagerContract keyperSetManagerContract = new(processor, abiEncoder, _keyperSetManagerContractAddress);
-            ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, (ulong)header.Number + 1);
+            ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, header.Number + 1);
 
             if (_currentInfo is null || _currentInfo.Value.Eon != eon)
             {

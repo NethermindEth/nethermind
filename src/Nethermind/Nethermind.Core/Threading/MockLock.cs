@@ -5,7 +5,7 @@ namespace Nethermind.Core.Threading;
 
 public class MockLock
 {
-    public Disposable Acquire() => new();
+    public Disposable EnterScope() => new();
 
     public readonly ref struct Disposable
     {

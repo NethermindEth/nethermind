@@ -1,12 +1,12 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
@@ -30,7 +30,7 @@ public class KzgPointEvaluationPrecompileTests
     public bool Test_PointEvaluationPrecompile_Produces_Correct_Outputs(byte[] input)
     {
         (ReadOnlyMemory<byte> output, bool success) = KzgPointEvaluationPrecompile.Instance.Run(input, Cancun.Instance);
-        output.ToArray().Should().BeEquivalentTo(success ? _predefinedSuccessAnswer : _predefinedFailureAnswer);
+        Assert.That(output, Is.SequenceEqualTo(success ? _predefinedSuccessAnswer : _predefinedFailureAnswer));
         return success;
     }
 
@@ -56,21 +56,51 @@ public class KzgPointEvaluationPrecompileTests
     [TestCaseSource(nameof(GasTests))]
     public void Test_PointEvaluationPrecompile_Has_Specific_Constant_Gas_Cost(byte[] input)
     {
-        const long fixedGasCost = 50000;
-        long gasSpent = KzgPointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance) +
+        const ulong fixedGasCost = 50000;
+        ulong gasSpent = KzgPointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance) +
                         KzgPointEvaluationPrecompile.Instance.BaseGasCost(Cancun.Instance);
-        gasSpent.Should().Be(fixedGasCost);
+        Assert.That(gasSpent, Is.EqualTo(fixedGasCost));
     }
 
     public static IEnumerable<TestCaseData> GasTests => InvalidTestCases.Union(ValidTestCases);
 
+    [TestCaseSource(nameof(FailureReasonTests))]
+    public void Test_PointEvaluationPrecompile_Reports_The_Go_Ethereum_Reason(byte[] input, string error) =>
+        Assert.That(KzgPointEvaluationPrecompile.Instance.Run(input, Cancun.Instance).Error, Is.EqualTo(error));
+
+    private static IEnumerable<TestCaseData> FailureReasonTests
+    {
+        get
+        {
+            yield return new TestCaseData(CreateKzgTestInput("0100000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "mismatched versioned hash") { TestName = "Versioned hash of another commitment" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "error verifying kzg proof: scalar is not canonical when interpreted as a big integer in big-endian") { TestName = "Claimed value is the scalar field modulus" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", "0000000000000000000000000000000000000000000000000000000000000000", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "error verifying kzg proof: scalar is not canonical when interpreted as a big integer in big-endian") { TestName = "Evaluation point is the scalar field modulus" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "error verifying kzg proof: invalid point encoding") { TestName = "Commitment with flags 001" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "error verifying kzg proof: short buffer") { TestName = "Commitment with the uncompressed flags" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "error verifying kzg proof: invalid infinity point encoding") { TestName = "Commitment at infinity with a non-zero byte" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "9a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "error verifying kzg proof: invalid fp.Element encoding") { TestName = "Commitment x is the base field modulus" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "error verifying kzg proof: invalid compressed coordinate: square root doesn't exist") { TestName = "Commitment x off the curve" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "error verifying kzg proof: invalid point: subgroup check failed") { TestName = "Commitment outside the subgroup" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"), "error verifying kzg proof: invalid compressed coordinate: square root doesn't exist") { TestName = "Proof x off the curve" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", "9a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"), "error verifying kzg proof: invalid point encoding") { TestName = "Commitment rejected before the proof" };
+            yield return new TestCaseData(CreateVersionedKzgTestInput("0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), "error verifying kzg proof: can't verify opening proof") { TestName = "Proof that does not open the commitment" };
+        }
+    }
+
+    private static byte[] CreateVersionedKzgTestInput(string z, string y, string commitment, string proof)
+    {
+        byte[] versionedHash = new byte[32];
+        Assert.That(KzgPolynomialCommitments.TryComputeCommitmentHashV1(Bytes.FromHexString(commitment), versionedHash), Is.True);
+        return CreateKzgTestInput(versionedHash.ToHexString(), z, y, commitment, proof);
+    }
+
     private static byte[] CreateKzgTestInput(string versionedHash, string z, string y, string commitment, string proof)
     {
-        versionedHash.Length.Should().Be(64);
-        z.Length.Should().Be(64);
-        y.Length.Should().Be(64);
-        commitment.Length.Should().Be(96);
-        proof.Length.Should().Be(96);
+        Assert.That(versionedHash.Length, Is.EqualTo(64));
+        Assert.That(z.Length, Is.EqualTo(64));
+        Assert.That(y.Length, Is.EqualTo(64));
+        Assert.That(commitment.Length, Is.EqualTo(96));
+        Assert.That(proof.Length, Is.EqualTo(96));
         return Bytes.FromHexString(versionedHash + z + y + commitment + proof);
     }
 
@@ -106,6 +136,24 @@ public class KzgPointEvaluationPrecompileTests
                 "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
             {
                 TestName = "Y is out of range"
+            };
+            yield return new TestCaseData(CreateKzgTestInput(
+                "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",
+                "5eb7004fe57383e6c88b99d839937fddf3f99279353aaf8d5c9a75f91ce33c62",
+                "0000000000000000000000000000000000000000000000000000000000000001",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
+            {
+                TestName = "Zero polynomial evaluated to non-zero"
+            };
+            yield return new TestCaseData(CreateKzgTestInput(
+                "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
+            {
+                TestName = "Zero polynomial evaluated to the largest field element"
             };
             yield return new TestCaseData(CreateKzgTestInput(
                 "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",
@@ -211,6 +259,16 @@ public class KzgPointEvaluationPrecompileTests
                 "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
             {
                 TestName = "Verification passes 5"
+            };
+
+            yield return new TestCaseData(CreateKzgTestInput(
+                "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",
+                "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
+            {
+                TestName = "Zero polynomial at the largest field element"
             };
 
             yield return new TestCaseData(CreateKzgTestInput(

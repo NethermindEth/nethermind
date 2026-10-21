@@ -12,10 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         public IOwnedReadOnlyList<Hash256> Hashes { get; } = hashes ?? throw new ArgumentNullException(nameof(hashes));
 
-        public override string ToString()
-        {
-            return $"{GetType().Name}({Hashes.Count})";
-        }
+        public override string ToString() => $"{GetType().Name}({Hashes.Count})";
 
         public override void Dispose()
         {

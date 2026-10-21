@@ -37,5 +37,13 @@
   },
   "Merge": {
     "FinalTotalDifficulty": "58750003716598352816469"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "All"
+  },
+  "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

@@ -4,17 +4,20 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Facade.Filters;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,6 +30,7 @@ public class FilterManagerTests
     private FilterStore _filterStore = null!;
     private TestMainProcessingContext _mainProcessingContext = null!;
     private ITxPool _txPool = null!;
+    private IReceiptMonitor _receiptMonitor = null!;
     private ILogManager _logManager = null!;
     private FilterManager _filterManager = null!;
 
@@ -36,9 +40,10 @@ public class FilterManagerTests
     public void Setup()
     {
         _currentFilterId = 0;
-        _filterStore = new FilterStore(new TimerFactory(), 400, 100);
+        _filterStore = new FilterStore(new TimerFactory());
         _mainProcessingContext = new TestMainProcessingContext();
         _txPool = Substitute.For<ITxPool>();
+        _receiptMonitor = Substitute.For<IReceiptMonitor>();
         _logManager = LimboLogs.Instance;
     }
 
@@ -46,15 +51,21 @@ public class FilterManagerTests
     public void TearDown()
     {
         _filterStore.Dispose();
+        _receiptMonitor.Dispose();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task removing_filter_removes_data()
     {
+        // Only this test expects filters to expire. A fixture-wide short lifetime also drops the data of any
+        // other test whose filter goes unused for that long, which on a loaded runner is a matter of scheduling.
+        _filterStore.Dispose();
+        _filterStore = new FilterStore(new TimerFactory(), timeout: 400, cleanupInterval: 100);
+
         LogsShouldNotBeEmpty(static _ => { }, static _ => { });
-        _filterManager.GetLogs(0).Should().NotBeEmpty();
+        Assert.That(Drain(_filterManager.GetLogs(0)), Is.Not.Empty);
         await Task.Delay(600);
-        _filterManager.GetLogs(0).Should().BeEmpty();
+        Assert.That(Drain(_filterManager.GetLogs(0)), Is.Empty);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -260,7 +271,7 @@ public class FilterManagerTests
     {
         const int txCount = 10;
 
-        Assert(
+        AssertFilterLogs(
             filterBuilder: (builder, _) => builder
                 .FromBlock(1L)
                 .ToBlock(10L)
@@ -278,22 +289,22 @@ public class FilterManagerTests
                         .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject
                 ).ToArray()),
             receiptCount: txCount,
-            logsAssertion: logs => logs.Select(l => l.LogIndex).Should().BeEquivalentTo(Enumerable.Range(0, txCount * logsPerTx))
+            logsAssertion: logs => Assert.That(logs.Select(l => l.LogIndex), Is.EqualTo(Enumerable.Range(0, txCount * logsPerTx)))
         );
     }
 
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task concurrent_block_processing_and_poll_does_not_lose_data()
+    [Test, CancelAfter(Timeout.MaxTestTime)]
+    public async Task concurrent_block_processing_and_poll_does_not_lose_data(CancellationToken cancellationToken)
     {
         BlockFilter blockFilter = new(_currentFilterId++);
         _filterStore.SaveFilter(blockFilter);
-        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
 
         Block block = Build.A.Block.TestObject;
 
         _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
-        _filterManager.PollBlockHashes(blockFilter.Id);
+        _filterManager.PollBlockHashes(blockFilter.Id).Dispose();
 
         const int producerCount = 4;
         const int blocksPerProducer = 125;
@@ -314,11 +325,12 @@ public class FilterManagerTests
         {
             while (totalPolled < blockCount)
             {
-                Hash256[] polled = _filterManager.PollBlockHashes(blockFilter.Id);
-                totalPolled += polled.Length;
-                if (polled.Length == 0) await Task.Yield();
+                cancellationToken.ThrowIfCancellationRequested();
+                using ArrayPoolList<Hash256> polled = _filterManager.PollBlockHashes(blockFilter.Id);
+                totalPolled += polled.Count;
+                if (polled.Count == 0) await Task.Yield();
             }
-        });
+        }, cancellationToken);
 
         List<Task> allTasks = new(producerCount + 1);
         for (int p = 0; p < producerCount; p++)
@@ -326,7 +338,189 @@ public class FilterManagerTests
         allTasks.Add(consumer);
         await Task.WhenAll(allTasks);
 
-        totalPolled.Should().Be(blockCount);
+        Assert.That(totalPolled, Is.EqualTo(blockCount));
+    }
+
+    [Test]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void reorg_removed_logs_are_polled_as_removed([Values] bool explicitNumericRange)
+    {
+        Action<FilterBuilder> filterShape = explicitNumericRange
+            ? f => f.FromBlock(1L).ToBlock(10L)
+            : f => f.FromBlock(1L);
+        LogFilter filter = BuildFilter(filterShape);
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+
+        TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(2L));
+        Block block = RaiseBlockProcessed(receipt);
+
+        _receiptMonitor.ReceiptsInserted += Raise.EventWith(_receiptMonitor, new ReceiptsEventArgs(block.Header, [receipt], wasRemoved: true));
+
+        using ArrayPoolList<FilterLog> logs = _filterManager.PollLogs(filter.Id);
+        Assert.That(logs.Select(static l => (l.Removed, l.LogIndex, l.BlockNumber)),
+            Is.EqualTo(new[] { (false, 0L, 2UL), (true, 0L, 2UL) }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void block_whose_bloom_excludes_the_filter_is_skipped()
+    {
+        LogFilter filter = BuildFilter(static f => f.WithAddress(TestItem.AddressA));
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+
+        // The log matches the filter, so only the bloom check can drop it.
+        TxReceipt receipt = BuildReceipt(static r => r.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject));
+        Block block = Build.A.Block.WithBloom(new Bloom()).TestObject;
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, [receipt]));
+
+        Assert.That(Drain(_filterManager.PollLogs(filter.Id)), Is.Empty);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void receipt_whose_bloom_excludes_the_filter_is_skipped_without_shifting_log_indexes()
+    {
+        LogFilter filter = BuildFilter(static f => f.WithAddress(TestItem.AddressA));
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+
+        // Both logs match the filter, so only the first receipt's bloom can drop its log.
+        TxReceipt skipped = BuildReceipt(static r => r.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject).WithBloom(new Bloom()));
+        TxReceipt matched = BuildReceipt(static r => r.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject));
+        RaiseBlockProcessed(skipped, matched);
+
+        Assert.That(Drain(_filterManager.PollLogs(filter.Id)).Select(static l => l.LogIndex), Is.EqualTo(new[] { 1L }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void block_filter_polled_before_any_new_block_returns_the_last_processed_block_once()
+    {
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+        Block processedBeforeInstall = RaiseBlockProcessed();
+        BlockFilter blockFilter = new(_currentFilterId++);
+        _filterStore.SaveFilter(blockFilter);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Is.EqualTo(new[] { processedBeforeInstall.Hash }));
+            Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Is.Empty);
+        });
+
+        Block next = RaiseBlockProcessed();
+        Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Is.EqualTo(new[] { next.Hash }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void filter_sees_only_blocks_processed_after_it_was_installed()
+    {
+        LogFilter early = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(early);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+
+        RaiseBlockProcessed(BuildReceipt(static r => r.WithBlockNumber(1L)));
+        LogFilter late = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(late);
+        RaiseBlockProcessed(BuildReceipt(static r => r.WithBlockNumber(2L)));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Drain(_filterManager.PollLogs(early.Id)).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 1, 2 }));
+            Assert.That(Drain(_filterManager.PollLogs(late.Id)).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 2 }));
+            Assert.That(Drain(_filterManager.PollLogs(early.Id)), Is.Empty);
+        });
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void pending_transaction_filters_report_only_transactions_still_pending_and_drain_on_poll()
+    {
+        PendingTransactionFilter first = new(_currentFilterId++);
+        PendingTransactionFilter second = new(_currentFilterId++);
+        _filterStore.SaveFilter(first);
+        _filterStore.SaveFilter(second);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+
+        Transaction removed = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
+        Transaction kept = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(removed));
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(kept));
+        _txPool.ContainsTx(kept.Hash!, kept.Type).Returns(true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(first.Id)), Is.EqualTo(new[] { kept.Hash }));
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(first.Id)), Is.Empty);
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(second.Id)), Is.EqualTo(new[] { kept.Hash }));
+        });
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void pending_transaction_re_added_to_the_pool_is_reported_once_per_poll([Values] bool pollBeforeReAdd)
+    {
+        PendingTransactionFilter filter = new(_currentFilterId++);
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        _txPool.ContainsTx(transaction.Hash!, transaction.Type).Returns(true);
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(transaction));
+        Hash256[] beforeReAdd = pollBeforeReAdd ? Drain(_filterManager.PollPendingTransactionHashes(filter.Id)) : [];
+
+        // Removed from the pool and admitted again, e.g. included and then reorged out.
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(transaction));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(beforeReAdd, Is.EqualTo(pollBeforeReAdd ? new[] { transaction.Hash } : []));
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(filter.Id)), Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(filter.Id)), Is.Empty);
+        });
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void block_receipts_are_released_once_every_log_filter_has_read_them()
+    {
+        LogFilter polled = BuildFilter(static _ => { });
+        LogFilter lagging = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(polled);
+        _filterStore.SaveFilter(lagging);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+
+        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
+        _filterManager.PollLogs(polled.Id).Dispose();
+        Assert.That(IsCollected(receipt), Is.False, "the lagging filter has not read the block yet");
+
+        _filterStore.RemoveFilter(lagging.Id);
+        Assert.That(IsCollected(receipt), Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void block_filters_do_not_keep_receipts_alive()
+    {
+        BlockFilter blockFilter = new(_currentFilterId++);
+        _filterStore.SaveFilter(blockFilter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+
+        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(IsCollected(receipt), Is.True);
+            Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Has.Length.EqualTo(1));
+        });
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void pending_transactions_are_released_when_the_last_pending_filter_is_removed()
+    {
+        PendingTransactionFilter filter = new(_currentFilterId++);
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
+
+        WeakReference hash = RaiseNewPendingWithUnreferencedHash();
+        Assert.That(IsCollected(hash), Is.False, "the filter has not read the transaction yet");
+
+        _filterStore.RemoveFilter(filter.Id);
+        Assert.That(IsCollected(hash), Is.True);
     }
 
     private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
@@ -336,26 +530,26 @@ public class FilterManagerTests
         => LogsShouldBeEmpty([filterBuilder], [receiptBuilder]);
 
     private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().NotBeEmpty());
+        => AssertFilterLogs(filterBuilders, receiptBuilders, static logs => Assert.That(logs, Is.Not.Empty));
 
     private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().BeEmpty());
+        => AssertFilterLogs(filterBuilders, receiptBuilders, static logs => Assert.That(logs, Is.Empty));
 
-    private void Assert(Action<FilterBuilder, int> filterBuilder, int filterCount,
+    private void AssertFilterLogs(Action<FilterBuilder, int> filterBuilder, int filterCount,
         Action<ReceiptBuilder, int> receiptBuilder, int receiptCount,
         Action<IEnumerable<FilterLog>> logsAssertion)
-        => Assert(
+        => AssertFilterLogs(
             Enumerable.Range(0, filterCount).Select<int, Action<FilterBuilder>>(i => builder => filterBuilder(builder, i)),
             Enumerable.Range(0, receiptCount).Select<int, Action<ReceiptBuilder>>(i => builder => receiptBuilder(builder, i)),
             logsAssertion
         );
 
-    private void Assert(IEnumerable<Action<FilterBuilder>> filterBuilders,
+    private void AssertFilterLogs(IEnumerable<Action<FilterBuilder>> filterBuilders,
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
         Action<IEnumerable<FilterLog>> logsAssertion)
     {
-        List<FilterBase> filters = new List<FilterBase>();
-        List<TxReceipt> receipts = new List<TxReceipt>();
+        List<FilterBase> filters = [];
+        List<TxReceipt> receipts = [];
         foreach (Action<FilterBuilder> filterBuilder in filterBuilders)
         {
             filters.Add(BuildFilter(filterBuilder));
@@ -367,34 +561,25 @@ public class FilterManagerTests
         }
 
         // adding always a simple block filter and test
-        Block block = Build.A.Block.TestObject;
         BlockFilter blockFilter = new(_currentFilterId++);
         filters.Add(blockFilter);
 
         _filterStore.SaveFilters(filters.OfType<LogFilter>());
         _filterStore.SaveFilters(filters.OfType<BlockFilter>());
-        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager, MainnetSpecProvider.Instance);
 
-        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
+        RaiseBlockProcessed([.. receipts]);
 
-        int index = 1;
-        foreach (TxReceipt receipt in receipts)
-        {
-            _mainProcessingContext.RaiseTransactionProcessed(
-                new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, block.Header, receipt));
-            index++;
-        }
-
-        NUnit.Framework.Assert.Multiple(() =>
+        Assert.Multiple(() =>
         {
             foreach (LogFilter filter in filters.OfType<LogFilter>())
             {
-                FilterLog[] logs = _filterManager.GetLogs(filter.Id);
+                using ArrayPoolList<FilterLog> logs = _filterManager.GetLogs(filter.Id);
                 logsAssertion(logs);
             }
 
-            Hash256[] hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
-            NUnit.Framework.Assert.That(hashes.Length, Is.EqualTo(1));
+            using ArrayPoolList<Hash256> hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
+            Assert.That(hashes.Count, Is.EqualTo(1));
         });
     }
 
@@ -412,6 +597,48 @@ public class FilterManagerTests
         builder(builderInstance);
 
         return builderInstance.TestObject;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private WeakReference RaiseBlockProcessedWithUnreferencedReceipt()
+    {
+        TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(1L));
+        RaiseBlockProcessed(receipt);
+        return new WeakReference(receipt);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private WeakReference RaiseNewPendingWithUnreferencedHash()
+    {
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(transaction));
+        return new WeakReference(transaction.Hash);
+    }
+
+    private static T[] Drain<T>(ArrayPoolList<T> list)
+    {
+        using (list) return list.ToArray();
+    }
+
+    private static bool IsCollected(WeakReference reference)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        return !reference.IsAlive;
+    }
+
+    private Block RaiseBlockProcessed(params TxReceipt[] receipts)
+    {
+        Bloom bloom = new();
+        foreach (TxReceipt receipt in receipts)
+        {
+            if (receipt.Logs is not null) bloom.Add(receipt.Logs);
+        }
+
+        Block block = Build.A.Block.WithBloom(bloom).TestObject;
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, receipts));
+        return block;
     }
 }
 

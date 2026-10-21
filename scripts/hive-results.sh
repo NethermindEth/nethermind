@@ -5,24 +5,36 @@
 set -euo pipefail
 
 known_fails=$(cat ./nethermind/scripts/known-failing-hive-tests.txt)
+known_flaky=$(cat ./nethermind/scripts/known-flaky-hive-tests.txt)
 launch_test='client launch (nethermind)' # The launch test to ignore
 should_pass=()
 should_not_pass=()
 
 for passed in "true" "false"; do
   tmp=()
-  mapfile tmp < <(jq '.testCases
+  # Prefix test names with "suite/" for sync suites (snapsync, sync) to
+  # disambiguate tests that share the same name across different suites.
+  mapfile tmp < <(jq '
+    (.name) as $suite
+    | .testCases
     | map_values(select(.summaryResult.pass == $p))
-    | map(.name)
+    | map(if $suite == "snapsync" or $suite == "sync" then ($suite + "/" + .name) else .name end)
     | .[]' \
     --argjson p "$passed" -r $1)
   IFS=$'\n' results=($(sort -f <<<"${tmp[*]}")); unset IFS
+  for each in "${results[@]}"; do
+    if [[ "$each" != "$launch_test" ]]; then
+      total_cases=$(( ${total_cases:-0} + 1 ))
+    fi
+  done
 
   if [[ "$passed" == "true" ]]; then
     echo -e "\nPassed ${#results[@]}:\n"
 
     for each in "${results[@]}"; do
-      if grep -Fqx "$each" <<< "$known_fails" && [[ "$each" != "$launch_test" ]]; then
+      if grep -Fqx "$each" <<< "$known_flaky"; then
+        echo -e "\e[33m\u2714 $each (flaky)\e[0m"
+      elif grep -Fqx "$each" <<< "$known_fails" && [[ "$each" != "$launch_test" ]]; then
         should_not_pass+=("$each")
         echo -e "\e[90m\u2714 $each\e[0m"
       else
@@ -33,7 +45,9 @@ for passed in "true" "false"; do
     echo -e "\nFailed ${#results[@]}:\n"
 
     for each in "${results[@]}"; do
-      if ! grep -Fqx "$each" <<< "$known_fails" && [[ "$each" != "$launch_test" ]]; then
+      if grep -Fqx "$each" <<< "$known_flaky"; then
+        echo -e "\e[33m\u2716 $each (flaky)\e[0m"
+      elif ! grep -Fqx "$each" <<< "$known_fails" && [[ "$each" != "$launch_test" ]]; then
         should_pass+=("$each")
         echo -e "\e[31m\u2716\e[0m $each"
       else
@@ -42,6 +56,13 @@ for passed in "true" "false"; do
     done
   fi
 done
+
+# A simulator that never started, or stopped after launching the client, leaves no test results,
+# which would otherwise read as zero failures.
+if [[ ${total_cases:-0} -eq 0 ]]; then
+  echo "Hive ran no test cases."
+  exit 1
+fi
 
 echo -e "\n  Unexpected passes: ${#should_not_pass[@]}"
 echo "  Unexpected fails: ${#should_pass[@]}"

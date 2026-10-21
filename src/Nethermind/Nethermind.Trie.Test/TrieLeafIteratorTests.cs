@@ -33,15 +33,12 @@ public class TrieLeafIteratorTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _db.Dispose();
-    }
+    public void TearDown() => _db.Dispose();
 
     [Test]
     public void EmptyTrie_ReturnsNoLeaves()
     {
-        TrieLeafIterator iterator = new TrieLeafIterator(_trieStore, Keccak.EmptyTreeHash);
+        TrieLeafIterator iterator = new(_trieStore, Keccak.EmptyTreeHash);
 
         int count = 0;
         while (iterator.MoveNext())
@@ -58,7 +55,7 @@ public class TrieLeafIteratorTests
         _stateTree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(0));
         _stateTree.Commit();
 
-        TrieLeafIterator iterator = new TrieLeafIterator(_trieStore, _stateTree.RootHash);
+        TrieLeafIterator iterator = new(_trieStore, _stateTree.RootHash);
 
         int count = 0;
         while (iterator.MoveNext())
@@ -79,7 +76,7 @@ public class TrieLeafIteratorTests
         _stateTree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(2));
         _stateTree.Commit();
 
-        TrieLeafIterator iterator = new TrieLeafIterator(_trieStore, _stateTree.RootHash);
+        TrieLeafIterator iterator = new(_trieStore, _stateTree.RootHash);
 
         int count = 0;
         while (iterator.MoveNext())
@@ -103,7 +100,7 @@ public class TrieLeafIteratorTests
         _stateTree.Set(TestItem.AddressE, TestItem.GenerateIndexedAccount(4));
         _stateTree.Commit();
 
-        TrieLeafIterator iterator = new TrieLeafIterator(_trieStore, _stateTree.RootHash);
+        TrieLeafIterator iterator = new(_trieStore, _stateTree.RootHash);
 
         // Store copies of paths to avoid any ref struct sharing issues
         List<byte[]> paths = [];
@@ -127,7 +124,7 @@ public class TrieLeafIteratorTests
     [Test]
     public void NullRoot_ReturnsNoLeaves()
     {
-        TrieLeafIterator iterator = new TrieLeafIterator(_trieStore, null);
+        TrieLeafIterator iterator = new(_trieStore, null);
 
         int count = 0;
         while (iterator.MoveNext())
@@ -148,7 +145,7 @@ public class TrieLeafIteratorTests
         // Compute expected path
         Hash256 expectedPath = Keccak.Compute(address.Bytes);
 
-        TrieLeafIterator iterator = new TrieLeafIterator(_trieStore, _stateTree.RootHash);
+        TrieLeafIterator iterator = new(_trieStore, _stateTree.RootHash);
 
         Assert.That(iterator.MoveNext(), Is.True);
 

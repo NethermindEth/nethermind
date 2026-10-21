@@ -8,14 +8,20 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using TaskExtensions = Nethermind.Core.Extensions.TaskExtensions;
 
 namespace Nethermind.Network.P2P;
 
-public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null) where T66Msg : IEth66Message
+public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeSpan? oldRequestThreshold = null, CancellationToken cancellationToken = default)
+    where T66Msg : P2PMessage, IEth66Message
 {
     // The limit is largely to prevent unexpected OOM.
     // But the side effect is that if the peer did not respond with the message, eventually it will throw
@@ -31,7 +37,8 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
 
     private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
 
-    private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new();
+    private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new(concurrencyLevel: 1, capacity: MaxConcurrentRequest);
+    private readonly CancellationToken _cancellationToken = cancellationToken;
     private Task _cleanOldRequestTask = Task.CompletedTask;
     private int _requestCount = 0;
 
@@ -48,7 +55,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         {
             Interlocked.Increment(ref _requestCount);
             request.StartMeasuringTime();
-            send(request.Message);
+            handler.Send(request.Message);
 
             if (_cleanOldRequestTask.IsCompleted)
             {
@@ -61,17 +68,15 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         }
 
         [StackTraceHidden, DoesNotReturn]
-        static void ThrowTooManyOutstandingRequests()
-        {
-            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
-        }
+        static void ThrowTooManyOutstandingRequests() => throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
     }
 
     private async Task CleanOldRequests()
     {
         while (true)
         {
-            await Task.Delay(_oldRequestThreshold);
+            if (!await TaskExtensions.DelaySafe(_oldRequestThreshold, _cancellationToken))
+                break;
 
             foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
             {
@@ -80,6 +85,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
                     if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
                     {
                         Interlocked.Decrement(ref _requestCount);
+                        request.Message.TryDispose();
                         // Unblock waiting thread.
                         request.CompletionSource.TrySetException(new TimeoutException("No response received"));
                     }
@@ -96,12 +102,45 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         {
             Interlocked.Decrement(ref _requestCount);
             request.ResponseSize = size;
-            request.CompletionSource.TrySetResult(data);
+            if (!request.CompletionSource.TrySetResult(data))
+                data?.TryDispose();
         }
         else
         {
             data?.TryDispose();
-            throw new SubprotocolException($"Received a response to {nameof(T66Msg)} that has not been requested");
+            ThrowNotRequested();
         }
     }
+
+    /// <summary>
+    /// Throws unless the response in <paramref name="content"/> carries the request id of a pending request.
+    /// </summary>
+    /// <remarks>
+    /// Called before deserialization so an uncorrelated response is rejected without being decoded.
+    /// The request stays pending; <see cref="Handle"/> still claims it once the response is decoded.
+    /// </remarks>
+    /// <exception cref="SubprotocolException">The request id is unreadable or not pending.</exception>
+    public void ThrowIfNotRequested(IByteBuffer content) => GetPendingRequest(content);
+
+    /// <summary>
+    /// Returns the pending request that the response in <paramref name="content"/> answers.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="ThrowIfNotRequested"/>, called before deserialization; the request stays pending, so the
+    /// response can be checked against it before <see cref="Handle"/> claims it.
+    /// </remarks>
+    /// <exception cref="SubprotocolException">The request id is unreadable or not pending.</exception>
+    public T66Msg GetPendingRequest(IByteBuffer content)
+    {
+        Request<T66Msg, TData>? request = null;
+        if (!Eth66RequestId.TryPeek(content, out long id) || !_requests.TryGetValue(id, out request))
+        {
+            ThrowNotRequested();
+        }
+
+        return request.Message;
+    }
+
+    [StackTraceHidden, DoesNotReturn]
+    private static void ThrowNotRequested() => throw new SubprotocolException($"Received a response to {typeof(T66Msg).Name} that has not been requested");
 }

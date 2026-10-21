@@ -31,7 +31,7 @@ public static class T8nValidator
                 T8nErrorCodes.ErrorConfig);
         }
 
-        var parent = Build.A.BlockHeader.WithNumber(env.CurrentNumber - 1).WithBaseFee(env.ParentBaseFee.Value)
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(env.CurrentNumber - 1).WithBaseFee(env.ParentBaseFee.Value)
             .WithGasUsed(env.ParentGasUsed).WithGasLimit(env.ParentGasLimit).TestObject;
         env.CurrentBaseFee = BaseFeeCalculator.Calculate(parent, spec);
     }

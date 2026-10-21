@@ -9,14 +9,11 @@ namespace Nethermind.Core
     {
         private readonly DateTime? _constantDate;
 
-        public Timestamper(DateTime? constantDate = null)
-        {
-            _constantDate = constantDate;
-        }
+        public Timestamper(DateTime? constantDate = null) => _constantDate = constantDate;
 
         public Timestamper(long timestamp)
         {
-            var blockTime = DateTimeOffset.FromUnixTimeSeconds(timestamp);
+            DateTimeOffset blockTime = DateTimeOffset.FromUnixTimeSeconds(timestamp);
             _constantDate = blockTime.UtcDateTime;
         }
 

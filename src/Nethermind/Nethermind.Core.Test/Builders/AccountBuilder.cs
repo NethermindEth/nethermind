@@ -8,18 +8,15 @@ namespace Nethermind.Core.Test.Builders
 {
     public class AccountBuilder : BuilderBase<Account>
     {
-        public AccountBuilder()
-        {
-            TestObjectInternal = Account.TotallyEmpty;
-        }
+        public AccountBuilder() => TestObjectInternal = Account.TotallyEmpty;
 
         public AccountBuilder WithBalance(UInt256 balance)
         {
-            TestObjectInternal = TestObjectInternal.WithChangedBalance(balance);
+            TestObjectInternal = TestObjectInternal.WithChangedBalance((ulong)balance);
             return this;
         }
 
-        public AccountBuilder WithNonce(UInt256 nonce)
+        public AccountBuilder WithNonce(ulong nonce)
         {
             TestObjectInternal = TestObjectInternal.WithChangedNonce(nonce);
             return this;

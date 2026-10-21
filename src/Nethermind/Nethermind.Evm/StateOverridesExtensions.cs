@@ -15,6 +15,7 @@ namespace Nethermind.Evm;
 
 public static class StateOverridesExtensions
 {
+    private static readonly UInt256 MaxNonce = ulong.MaxValue;
 
     public static void ApplyStateOverridesNoCommit(
         this IWorldState state,
@@ -22,14 +23,21 @@ public static class StateOverridesExtensions
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec)
     {
+        // As in geth, each simulated block starts from the spec's precompiles, even one without overrides.
+        overridableCodeInfoRepository.ResetPrecompileOverrides(spec);
         if (overrides is not null)
         {
-            overridableCodeInfoRepository.ResetPrecompileOverrides();
             foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
+                if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
+                    throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
+
                 if (!state.TryGetAccount(address, out AccountStruct account))
                 {
-                    state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? UInt256.Zero);
+                    if (accountOverride.HasStateChanges)
+                    {
+                        state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? 0);
+                    }
                 }
                 else
                 {
@@ -37,7 +45,7 @@ public static class StateOverridesExtensions
                     state.UpdateNonce(account, accountOverride, address);
                 }
 
-                state.UpdateCode(overridableCodeInfoRepository, spec, accountOverride, address);
+                state.UpdateCode(overridableCodeInfoRepository, spec, overrides, accountOverride, address);
                 state.UpdateState(accountOverride, address);
             }
         }
@@ -48,10 +56,10 @@ public static class StateOverridesExtensions
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
-        long blockNumber)
+        ulong blockNumber)
     {
+        spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
-
         state.Commit(spec, commitRoots: true);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
@@ -63,7 +71,7 @@ public static class StateOverridesExtensions
         {
             foreach ((UInt256 index, Hash256 value) in diff)
             {
-                stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
+                stateProvider.Set(new StorageCell(address, index), value.ToUInt256());
             }
         }
 
@@ -78,19 +86,31 @@ public static class StateOverridesExtensions
         }
     }
 
+    /// <summary>
+    /// Returns the error for an invalid precompile move, or <see langword="null"/> if the move is valid.
+    /// </summary>
+    /// <param name="source">The account to move.</param>
+    /// <param name="destination">The account to move the precompile to.</param>
+    /// <param name="isPrecompile">Whether the caller's code repository resolves the source as a precompile.</param>
+    /// <param name="overrides">The account overrides to apply.</param>
+    public static string? GetPrecompileMoveError(Address source, Address destination, bool isPrecompile, Dictionary<Address, AccountOverride> overrides) =>
+        !isPrecompile ? $"Account {source} is not a precompile"
+        : overrides.ContainsKey(destination) ? $"account {destination} is already overridden"
+        : null;
+
     private static void UpdateCode(
         this IWorldState stateProvider,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         IReleaseSpec currentSpec,
+        Dictionary<Address, AccountOverride> overrides,
         AccountOverride accountOverride,
         Address address)
     {
         if (accountOverride.MovePrecompileToAddress is not null)
         {
-            if (!overridableCodeInfoRepository.GetCachedCodeInfo(address, currentSpec).IsPrecompile)
-            {
-                throw new ArgumentException($"Account {address} is not a precompile");
-            }
+            string? error = GetPrecompileMoveError(address, accountOverride.MovePrecompileToAddress,
+                overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile, overrides);
+            if (error is not null) throw new ArgumentException(error);
 
             overridableCodeInfoRepository.MovePrecompile(
                 currentSpec,
@@ -100,12 +120,18 @@ public static class StateOverridesExtensions
 
         if (accountOverride.Code is not null)
         {
-            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
+            OverrideCodeCache.Resolve(accountOverride.Code, out ValueHash256 codeHash, out CodeInfo codeInfo);
+            stateProvider.InsertCode(address, codeHash, accountOverride.Code, currentSpec);
 
             overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code));
+                codeInfo);
+        }
+        else if (accountOverride.MovePrecompileToAddress is null && overridableCodeInfoRepository.GetPrecompile(address, currentSpec) is not null)
+        {
+            // As in geth, any override of a precompile's address turns it into an ordinary account.
+            overridableCodeInfoRepository.SetCodeOverride(currentSpec, address, new CodeInfo(stateProvider.GetCode(address)));
         }
     }
 
@@ -117,13 +143,13 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.Nonce is not null)
         {
-            UInt256 nonce = account.Nonce;
-            UInt256 newNonce = accountOverride.Nonce.Value;
+            ulong nonce = account.Nonce;
+            ulong newNonce = accountOverride.Nonce.Value;
             if (nonce > newNonce)
             {
                 stateProvider.DecrementNonce(address, nonce - newNonce);
             }
-            else if (nonce < accountOverride.Nonce)
+            else if (nonce < newNonce)
             {
                 stateProvider.IncrementNonce(address, newNonce - nonce);
             }

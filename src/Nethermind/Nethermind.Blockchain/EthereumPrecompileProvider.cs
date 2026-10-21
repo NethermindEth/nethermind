@@ -23,7 +23,7 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
 
             [BN254AddPrecompile.Address] = new(BN254AddPrecompile.Instance),
             [BN254MulPrecompile.Address] = new(BN254MulPrecompile.Instance),
-            [BN254PairingPrecompile.Address] = new(BN254PairingPrecompile.Instance),
+            [BN254PairingCheckPrecompile.Address] = new(BN254PairingCheckPrecompile.Instance),
             [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
 
             [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
@@ -39,13 +39,8 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
             [KzgPointEvaluationPrecompile.Address] = new(KzgPointEvaluationPrecompile.Instance),
 
             [SecP256r1Precompile.Address] = new(SecP256r1Precompile.Instance),
-
-            [L1SloadPrecompile.Address] = new(L1SloadPrecompile.Instance),
         }.ToFrozenDictionary();
     }
 
-    public FrozenDictionary<AddressAsKey, CodeInfo> GetPrecompiles()
-    {
-        return Precompiles;
-    }
+    public FrozenDictionary<AddressAsKey, CodeInfo> GetPrecompiles() => Precompiles;
 }

@@ -16,15 +16,9 @@ namespace Nethermind.Config.Test
     {
         private static readonly JsonSerializerOptions _jsonOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-        public static void ValidateDefaultValues()
-        {
-            ForEachProperty(CheckDefault);
-        }
+        public static void ValidateDefaultValues() => ForEachProperty(CheckDefault);
 
-        public static void ValidateDescriptions()
-        {
-            ForEachProperty(CheckDescribedOrHidden);
-        }
+        public static void ValidateDescriptions() => ForEachProperty(CheckDescribedOrHidden);
 
         private static void ForEachProperty(Action<PropertyInfo, object?> verifier)
         {
@@ -77,7 +71,10 @@ namespace Nethermind.Config.Test
             }
         }
 
-        private static void CheckDefault(PropertyInfo property, object? instance)
+        /// <summary>
+        /// Verifies that a property's documented default agrees with its implementation.
+        /// </summary>
+        public static void CheckDefault(PropertyInfo property, object? instance)
         {
             ConfigItemAttribute? attribute = property.GetCustomAttribute<ConfigItemAttribute>();
             if (attribute is null || attribute.DisabledForCli)

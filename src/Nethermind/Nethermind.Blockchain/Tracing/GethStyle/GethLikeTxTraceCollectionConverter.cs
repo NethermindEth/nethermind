@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
@@ -21,7 +22,7 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
             throw new JsonException("Expected start of array");
         }
 
-        var traces = new List<GethLikeTxTrace>();
+        List<GethLikeTxTrace> traces = [];
 
         while (reader.Read())
         {
@@ -37,6 +38,7 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
 
             GethLikeTxTrace trace = null;
             Hash256? txHash = null;
+            string? error = null;
 
             while (reader.Read())
             {
@@ -53,20 +55,32 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
                 if (reader.ValueTextEquals("result"u8))
                 {
                     reader.Read();
-                    trace = JsonSerializer.Deserialize<GethLikeTxTrace>(ref reader, options);
+                    trace = TypeInfoJsonSerializer.Deserialize<GethLikeTxTrace>(ref reader, options);
+                    continue;
+                }
+
+                if (reader.ValueTextEquals("error"u8))
+                {
+                    reader.Read();
+                    error = reader.GetString();
                     continue;
                 }
 
                 if (reader.ValueTextEquals("txHash"u8))
                 {
                     reader.Read();
-                    txHash = reader.TokenType == JsonTokenType.Null ? null : JsonSerializer.Deserialize<Hash256>(ref reader, options);
+                    txHash = reader.TokenType == JsonTokenType.Null ? null : TypeInfoJsonSerializer.Deserialize<Hash256>(ref reader, options);
                     continue;
                 }
 
                 throw new JsonException($"Unexpected property: {reader.GetString()}");
             }
 
+            if (error is not null)
+            {
+                if (trace is not null) throw new JsonException("Both result and error properties");
+                trace = new GethLikeTxTrace { TraceError = error };
+            }
             if (trace is null)
             {
                 throw new JsonException("Missing result property");
@@ -93,19 +107,25 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
 
         writer.WriteStartArray();
 
-        foreach (var trace in value.Traces)
+        foreach (GethLikeTxTrace trace in value.Traces)
         {
-            writer.WriteStartObject();
-
-            writer.WritePropertyName("result"u8);
-            JsonSerializer.Serialize(writer, trace, options);
-
-            writer.WritePropertyName("txHash"u8);
-            JsonSerializer.Serialize(writer, trace.TxHash, options);
-
-            writer.WriteEndObject();
+            WriteEntry(writer, trace, options);
         }
 
         writer.WriteEndArray();
+    }
+
+    internal static void WriteEntry(Utf8JsonWriter writer, GethLikeTxTrace trace, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        if (trace.TraceError is { } error) writer.WriteString("error"u8, error);
+        else
+        {
+            writer.WritePropertyName("result"u8);
+            TypeInfoJsonSerializer.Serialize(writer, trace, options);
+        }
+        writer.WritePropertyName("txHash"u8);
+        TypeInfoJsonSerializer.Serialize(writer, trace.TxHash, options);
+        writer.WriteEndObject();
     }
 }

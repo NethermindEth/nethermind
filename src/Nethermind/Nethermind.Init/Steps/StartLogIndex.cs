@@ -5,14 +5,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Core.ServiceStopper;
-using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitDatabase), typeof(StartBlockProcessor))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartLogIndex(IBasicApi api, ILogIndexBuilder logIndexBuilder) : IStep
     {
         public Task Execute(CancellationToken cancellationToken)

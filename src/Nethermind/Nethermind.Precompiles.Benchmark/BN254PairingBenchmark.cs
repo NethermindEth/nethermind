@@ -10,7 +10,7 @@ public class BN254PairingBenchmark : PrecompileBenchmarkBase
 {
     protected override IEnumerable<IPrecompile> Precompiles => new[]
     {
-        BN254PairingPrecompile.Instance
+        BN254PairingCheckPrecompile.Instance
     };
 
     protected override string InputsDirectory => "bnpair";

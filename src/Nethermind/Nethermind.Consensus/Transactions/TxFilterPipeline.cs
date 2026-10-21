@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -11,12 +12,9 @@ namespace Nethermind.Consensus.Transactions;
 public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
 {
     private readonly List<ITxFilter> _filters = [];
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<TxFilterPipeline>();
 
-    public void AddTxFilter(ITxFilter txFilter)
-    {
-        _filters.Add(txFilter);
-    }
+    public void AddTxFilter(ITxFilter txFilter) => _filters.Add(txFilter);
 
     public bool Execute(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
     {
@@ -30,11 +28,14 @@ public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
             bool isAllowed = filter.IsAllowed(tx, parentHeader, currentSpec);
             if (!isAllowed)
             {
-                if (_logger.IsDebug) _logger.Debug($"Rejected tx ({isAllowed}) {tx.ToShortString()}");
+                if (_logger.IsTrace) TraceRejection(tx, isAllowed);
                 return isAllowed;
             }
         }
 
         return true;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceRejection(Transaction tx, bool isAllowed) => _logger.Trace($"Rejected tx ({isAllowed}) {tx.ToShortString()}");
     }
 }

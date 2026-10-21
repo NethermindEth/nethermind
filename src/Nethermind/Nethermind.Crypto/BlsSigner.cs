@@ -81,15 +81,9 @@ public static class BlsSigner
         public readonly G2Affine Point { get => _point.ToAffine(); }
         private readonly G2 _point;
 
-        public Signature()
-        {
-            _point = new();
-        }
+        public Signature() => _point = new();
 
-        public Signature(G2 point)
-        {
-            _point = point;
-        }
+        public Signature(G2 point) => _point = point;
 
         public void Decode(ReadOnlySpan<byte> bytes)
             => _point.Decode(bytes);
@@ -109,10 +103,7 @@ public static class BlsSigner
         public G1Affine PublicKey { get => _point.ToAffine(); }
         private readonly G1 _point;
 
-        public AggregatedPublicKey()
-        {
-            _point = new();
-        }
+        public AggregatedPublicKey() => _point = new();
 
         public AggregatedPublicKey(Span<long> buf)
         {

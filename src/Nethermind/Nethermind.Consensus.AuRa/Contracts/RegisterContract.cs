@@ -34,10 +34,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
-        {
-            Constant = GetConstant(readOnlyTxProcessorSource);
-        }
+            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))) => Constant = GetConstant(readOnlyTxProcessorSource);
 
         public bool TryGetAddress(BlockHeader header, string key, out Address address)
         {

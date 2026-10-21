@@ -36,71 +36,37 @@ namespace Nethermind.Core.Resettables
         {
         }
 
-        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
-        {
-            return _wrapped.GetEnumerator();
-        }
+        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator() => _wrapped.GetEnumerator();
 
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-        public void Add(KeyValuePair<TKey, TValue> item)
-        {
-            _wrapped.Add(item.Key, item.Value);
-        }
+        public void Add(KeyValuePair<TKey, TValue> item) => _wrapped.Add(item.Key, item.Value);
 
-        public void Clear()
-        {
-            _wrapped.Clear();
-        }
+        public void Clear() => _wrapped.Clear();
 
-        public bool Contains(KeyValuePair<TKey, TValue> item)
-        {
-            return ((IDictionary<TKey, TValue>)_wrapped).Contains(item);
-        }
+        public bool Contains(KeyValuePair<TKey, TValue> item) => ((IDictionary<TKey, TValue>)_wrapped).Contains(item);
 
-        public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
-        {
-            ((IDictionary<TKey, TValue>)_wrapped).CopyTo(array, arrayIndex);
-        }
+        public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex) => ((IDictionary<TKey, TValue>)_wrapped).CopyTo(array, arrayIndex);
 
-        public bool Remove(KeyValuePair<TKey, TValue> item)
-        {
-            return ((IDictionary<TKey, TValue>)_wrapped).Remove(item);
-        }
+        public bool Remove(KeyValuePair<TKey, TValue> item) => ((IDictionary<TKey, TValue>)_wrapped).Remove(item);
 
         public int Count => _wrapped.Count;
         public bool IsReadOnly => false;
 
-        public void Add(TKey key, TValue value)
-        {
-            _wrapped.Add(key, value);
-        }
+        public void Add(TKey key, TValue value) => _wrapped.Add(key, value);
 
-        public bool ContainsKey(TKey key)
-        {
-            return _wrapped.ContainsKey(key);
-        }
+        public bool ContainsKey(TKey key) => _wrapped.ContainsKey(key);
 
-        public bool Remove(TKey key)
-        {
-            return _wrapped.Remove(key);
-        }
+        public bool Remove(TKey key) => _wrapped.Remove(key);
 
-        public bool TryGetValue(TKey key, out TValue value)
-        {
+        public bool TryGetValue(TKey key, out TValue value) =>
 #pragma warning disable 8601
             // fixed C# 9
-            return _wrapped.TryGetValue(key, out value);
+            _wrapped.TryGetValue(key, out value);
 #pragma warning restore 8601
-        }
 
-        public ref TValue? GetValueRefOrAddDefault(TKey key, out bool exists)
-        {
-            return ref CollectionsMarshal.GetValueRefOrAddDefault(_wrapped, key, out exists);
-        }
+
+        public ref TValue? GetValueRefOrAddDefault(TKey key, out bool exists) => ref CollectionsMarshal.GetValueRefOrAddDefault(_wrapped, key, out exists);
 
         public TValue this[TKey key]
         {

@@ -43,5 +43,8 @@
   },
   "Optimism": {
     "SequencerUrl": "https://mainnet-sequencer.optimism.io"
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

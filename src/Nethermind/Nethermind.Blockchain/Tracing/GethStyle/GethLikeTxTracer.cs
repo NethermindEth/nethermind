@@ -7,69 +7,132 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-public abstract class GethLikeTxTracer : TxTracer
+public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOperationStorage
 {
-    protected GethLikeTxTracer(GethTraceOptions options)
+    private readonly RefundTracker? _refundTracker;
+
+    protected GethLikeTxTracer(GethTraceOptions options, long? destroyRefund = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+
+        if (destroyRefund.HasValue)
+            _refundTracker = new(destroyRefund.Value);
 
         IsTracingOpLevelStorage = !options.DisableStorage;
         IsTracingStack = !options.DisableStack;
         IsTracingFullMemory = options.EnableMemory;
+        IsTracingReturnData = options.EnableReturnData;
         IsTracing = IsTracing || IsTracingFullMemory;
     }
 
     private GethLikeTxTrace? _trace;
     protected GethLikeTxTrace Trace => _trace ??= CreateTrace();
     protected virtual GethLikeTxTrace CreateTrace() => new();
+
+    protected void ResetTrace() => _trace = null;
     public override bool IsTracingReceipt => true;
+    public override bool IsCollectingLogs => false;
     public sealed override bool IsTracingOpLevelStorage { get; protected set; }
     public sealed override bool IsTracingMemory { get; protected set; }
     public override bool IsTracingInstructions => true;
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
+    protected long CurrentRefund => _refundTracker?.Refund ?? 0;
 
-    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
-    {
+    public override void MarkAsSuccess(
+        Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
         Trace.ReturnValue = output;
-    }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         Trace.Failed = true;
+        Trace.Gas = gasSpent.SpentGas;
         Trace.ReturnValue = output ?? [];
     }
 
-    protected static string? GetErrorDescription(EvmExceptionType evmExceptionType)
+    // Geth's struct logger subscribes to OnOpcode, but not to post-execution OnFault.
+    protected static bool IsExecutionFault(EvmExceptionType error) => error is
+        EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or
+        EvmExceptionType.AccessViolation;
+
+    protected static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
-        return evmExceptionType switch
-        {
-            EvmExceptionType.None => null,
-            EvmExceptionType.BadInstruction => "BadInstruction",
-            EvmExceptionType.StackOverflow => "StackOverflow",
-            EvmExceptionType.StackUnderflow => "StackUnderflow",
-            EvmExceptionType.OutOfGas => "OutOfGas",
-            EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
-            EvmExceptionType.AccessViolation => "AccessViolation",
-            EvmExceptionType.StaticCallViolation => "StaticCallViolation",
-            _ => "Error"
-        };
+        EvmExceptionType.None => null,
+        EvmExceptionType.BadInstruction => "BadInstruction",
+        EvmExceptionType.StackOverflow => "StackOverflow",
+        EvmExceptionType.StackUnderflow => "StackUnderflow",
+        EvmExceptionType.OutOfGas => "out of gas",
+        EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
+        EvmExceptionType.AccessViolation => "AccessViolation",
+        EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
+        EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
+        EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+        _ => "Error"
+    };
+
+    public override void ReportRefund(long refund) => _refundTracker?.Add(refund);
+
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
+        _refundTracker?.CreditSelfDestruct(address);
+
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    {
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        _refundTracker?.TakeSnapshot();
     }
+
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionEnd(gas, output);
+        _refundTracker?.CommitSnapshot();
+    }
+
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        _refundTracker?.CommitSnapshot();
+    }
+
+    public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionRevert(gasLeft, output);
+        _refundTracker?.RestoreSnapshot();
+    }
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    {
+        base.ReportActionError(evmExceptionType);
+        _refundTracker?.RestoreSnapshot();
+    }
+
+    /// <inheritdoc/>
+    public void ReportStorageAttempt(Address address, UInt256 key, UInt256 value)
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        value.ToBigEndian(bytes);
+        SetOperationStorage(address, key, bytes, ReadOnlySpan<byte>.Empty);
+    }
+
+    /// <inheritdoc/>
+    public virtual void ReportStorageRefund(long refund) { }
+
+    protected void ResetRefund() => _refundTracker?.Reset();
 
     public virtual GethLikeTxTrace BuildResult() => Trace;
 }
 
-public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry : GethTxTraceEntry, new()
+public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund), ITraceOperationGasCost where TEntry : GethTxTraceEntry, new()
 {
     protected TEntry? CurrentTraceEntry { get; set; }
 
-    protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
     private bool _gasCostAlreadySetForCurrentOp;
+    private byte[]? _lastReturnData;
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         if (CurrentTraceEntry is not null)
         {
@@ -79,41 +142,82 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
         CurrentTraceEntry = CreateTraceEntry(opcode);
         CurrentTraceEntry.Depth = env.GetGethTraceDepth();
         CurrentTraceEntry.Gas = gas;
-        CurrentTraceEntry.Opcode = Enum.GetName(opcode);
+        CurrentTraceEntry.Opcode = OpcodeJsonNames.GetName(opcode);
         CurrentTraceEntry.ProgramCounter = pc;
+        CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
         _gasCostAlreadySetForCurrentOp = false;
+    }
+
+    /// <inheritdoc/>
+    public void ReportOperationGasCost(ulong gasCost)
+    {
+        if (CurrentTraceEntry is not null)
+        {
+            CurrentTraceEntry.GasCost = gasCost;
+            _gasCostAlreadySetForCurrentOp = true;
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void ReportActionErrorDetails(string error)
+    {
+        if (CurrentTraceEntry is not null)
+            CurrentTraceEntry.Error = error;
     }
 
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (CurrentTraceEntry is not null)
-            CurrentTraceEntry.Error = GetErrorDescription(error);
+            CurrentTraceEntry.Error ??= GetErrorDescription(error);
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
         {
             CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
+            // Geth samples after dynamic gas calculation, including this opcode's refund changes.
+            CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
             _gasCostAlreadySetForCurrentOp = true;
         }
     }
 
-    public override void SetOperationMemorySize(ulong newSize)
+    /// <inheritdoc/>
+    public override void ReportStorageRefund(long refund)
     {
-        CurrentTraceEntry?.UpdateMemorySize(newSize);
+        if (CurrentTraceEntry is not null)
+            CurrentTraceEntry.Refund = CurrentRefund + refund;
     }
+
+    public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry?.UpdateMemorySize(newSize);
 
     public override void SetOperationStack(TraceStack stack)
     {
         if (CurrentTraceEntry is not null)
-            CurrentTraceEntry.Stack = stack.ToHexWordList();
+            CurrentTraceEntry.Stack = stack.ToRawBytes();
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
     {
         if (IsTracingFullMemory && CurrentTraceEntry is not null)
-            CurrentTraceEntry.Memory = memoryTrace.ToHexWordList();
+            CurrentTraceEntry.Memory = memoryTrace.ToRawWordBytes();
+    }
+
+    /// <inheritdoc/>
+    public override void SetOperationReturnData(ReadOnlySpan<byte> returnData)
+    {
+        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
+            CurrentTraceEntry.ReturnData = GetReturnData(returnData);
+    }
+
+    // Return data only changes when a call returns, so consecutive opcodes share one copy. A change allocates a new
+    // array instead of overwriting the old one, because earlier entries still point to it.
+    private byte[] GetReturnData(ReadOnlySpan<byte> returnData)
+    {
+        if (_lastReturnData is null || !returnData.SequenceEqual(_lastReturnData))
+            _lastReturnData = returnData.ToArray();
+
+        return _lastReturnData;
     }
 
     public override GethLikeTxTrace BuildResult()

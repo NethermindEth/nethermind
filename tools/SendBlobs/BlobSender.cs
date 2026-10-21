@@ -34,7 +34,7 @@ internal class BlobSender
         ArgumentNullException.ThrowIfNull(logManager);
 
         _logManager = logManager;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<BlobSender>();
         _rpcClient = SetupCli.InitRpcClient(rpcUrl, _logger);
         _rpcUrl = rpcUrl;
 
@@ -315,7 +315,8 @@ internal class BlobSender
             NetworkWrapper = blobsContainer,
         };
 
-        await signer.Sign(tx);
+        if (!signer.TrySign(tx))
+            throw new InvalidOperationException($"Signer {signer.Address} could not sign blob transaction.");
 
         string txRlp = Hex.ToHexString(txDecoder
             .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);

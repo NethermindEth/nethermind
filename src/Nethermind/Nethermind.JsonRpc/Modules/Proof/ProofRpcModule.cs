@@ -2,24 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
 using Nethermind.Evm;
+using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Tracing.Proofs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Serialization.Json;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -28,195 +29,227 @@ namespace Nethermind.JsonRpc.Modules.Proof
     /// </summary>
     public class ProofRpcModule(
         IOverridableEnv<ITracer> tracerEnv,
+        IBlockchainBridge blockchainBridge,
         IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
-        ISpecProvider specProvider)
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
+        ISpecProvider specProvider,
+        IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule
     {
-        private readonly HeaderDecoder _headerDecoder = new();
-        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
+        // Registry-resolved so AuRa chains encode headers with step + signature (see AuRaHeaderModule).
+        private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
+        private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
+        private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, jsonRpcConfig);
 
-        public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
+        public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter) =>
+            _witnessCall.Execute(tx, blockParameter);
+
+        public ResultWrapper<TransactionForRpcWithProof?> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
         {
-            SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
-            if (searchResult.IsError)
+            if (!TryResolveTransaction(txHash, out ResolvedTransaction resolved, out SearchResult<Block> failure))
             {
-                return ResultWrapper<CallResultWithProof>.Fail(searchResult);
+                return failure.IsError ? ResultWrapper<TransactionForRpcWithProof>.Fail(failure) : ResultWrapper<TransactionForRpcWithProof>.Success(null);
             }
 
-            BlockHeader sourceHeader = searchResult.Object;
-            using Scope<ITracer> scope = tracerEnv.BuildAndOverride(sourceHeader);
-
-            BlockHeader callHeader = new(
-                sourceHeader.Hash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                0,
-                sourceHeader.Number + 1,
-                sourceHeader.GasLimit,
-                sourceHeader.Timestamp,
-                [])
-            {
-                TxRoot = Keccak.EmptyTreeHash,
-                ReceiptsRoot = Keccak.EmptyTreeHash,
-                Author = Address.Zero
-            };
-
-            callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
-            callHeader.Hash = callHeader.CalculateHash();
-
-            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true);
-            if (!txResult.Success(out Transaction? transaction, out string? error))
-            {
-                return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);
-            }
-
-            transaction.SenderAddress ??= Address.Zero;
-
-            if (transaction.GasLimit == 0)
-            {
-                transaction.GasLimit = callHeader.GasLimit;
-            }
-
-            Block block = new(callHeader, new[] { transaction }, []);
-
-            ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.Zero);
-            scope.Component.Trace(block, proofBlockTracer);
-
-            CallResultWithProof callResultWithProof = new();
-            ProofTxTracer proofTxTracer = proofBlockTracer.BuildResult().Single();
-
-            callResultWithProof.BlockHeaders = CollectHeaderBytes(proofTxTracer, sourceHeader);
-            callResultWithProof.Result = proofTxTracer.Output;
-
-            // we collect proofs from before execution (after learning which addresses will be touched)
-            // if we wanted to collect post execution proofs then we would need to use BeforeRestore on the tracer
-            callResultWithProof.Accounts = CollectAccountProofs(scope.Component, sourceHeader, proofTxTracer);
-
-            return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
-        }
-
-        public ResultWrapper<TransactionForRpcWithProof> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
-        {
-            Hash256 blockHash = receiptFinder.FindBlockHash(txHash);
-            if (blockHash is null)
-            {
-                return ResultWrapper<TransactionForRpcWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
-            }
-
-            SearchResult<Block> searchResult = blockFinder.SearchForBlock(new BlockParameter(blockHash));
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<TransactionForRpcWithProof>.Fail(searchResult);
-            }
-
-            Block block = searchResult.Object;
-            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
+            (Block block, int txIndex) = resolved;
             Transaction[] txs = block.Transactions;
-            Transaction transaction = txs[receipt.Index];
+            Transaction transaction = txs[txIndex];
 
             TransactionForRpcWithProof txWithProof = new();
             TransactionForRpcContext extraData = new(
                 chainId: specProvider.ChainId,
                 blockHash: block.Hash,
                 blockNumber: block.Number,
-                txIndex: receipt.Index,
+                txIndex: txIndex,
                 blockTimestamp: block.Timestamp,
-                baseFee: block.BaseFeePerGas,
-                receipt: receipt);
+                baseFee: block.BaseFeePerGas);
             txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, extraData);
-            txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
+            txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), txIndex);
             if (includeHeader)
             {
-                txWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
+                txWithProof.BlockHeader = _headerDecoder.EncodeAsBytes(block.Header);
             }
 
             return ResultWrapper<TransactionForRpcWithProof>.Success(txWithProof);
         }
 
-        public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader)
+        public ResultWrapper<ReceiptWithProof?> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader)
         {
-            Hash256 blockHash = receiptFinder.FindBlockHash(txHash);
-            if (blockHash is null)
+            if (!TryResolveTransaction(txHash, out ResolvedTransaction resolved, out SearchResult<Block> failure))
             {
-                return ResultWrapper<ReceiptWithProof>.Fail($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound);
+                return failure.IsError ? ResultWrapper<ReceiptWithProof>.Fail(failure) : ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
-            SearchResult<Block> searchResult = blockFinder.SearchForBlock(new BlockParameter(blockHash));
-            if (searchResult.IsError)
+            (Block block, int txIndex) = resolved;
+            TxReceipt[] storedReceipts = receiptFinder.Get(block);
+            TxReceipt? receipt = storedReceipts.ForTransaction(txHash);
+            if (receipt is null)
             {
-                return ResultWrapper<ReceiptWithProof>.Fail(searchResult);
+                return ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
-            Block block = searchResult.Object;
-            using Scope<ITracer> scope = tracerEnv.BuildAndOverride(blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
+            Transaction[] txs = block.Transactions;
 
-            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
+            // Without the parent's state the retrace fails on its first transaction with a misleading execution error.
+            if (!tracerEnv.TryBuildAndOverrideAtTarget(block.Header, null, null, out Scope<ITracer>? scope))
+            {
+                return ResultWrapper<ReceiptWithProof>.Fail(
+                    $"No state available to re-execute block {block.Header.ToString(BlockHeader.Format.Short)} for a receipt proof",
+                    ErrorCodes.ResourceUnavailable);
+            }
+
+            using Scope<ITracer> _ = scope;
+
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             scope.Component.Trace(block, receiptsTracer);
 
-            TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
-            Transaction[] txs = block.Transactions;
+            TxReceipt[] tracedReceipts = receiptsTracer.TxReceipts.ToArray();
+            // Backstop: a retrace that does not reproduce every transaction would still yield a proof of the wrong trie.
+            if (tracedReceipts.Length != txs.Length)
+            {
+                return ResultWrapper<ReceiptWithProof>.Fail(
+                    $"Unable to re-execute block {block.Header.ToString(BlockHeader.Format.Short)} for a receipt proof",
+                    ErrorCodes.ResourceUnavailable);
+            }
+
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
+            if (spec.IsEip8116Enabled)
+            {
+                tracedReceipts.SetEip8116GasUsed();
+            }
 
-            int logIndexStart = receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
+            int logIndexStart = spec.IsEip8116Enabled ? 0 : GetLogIndexStart(txs, storedReceipts, txIndex);
 
+            TxReceipt provenReceipt = new(receipt) { Index = txIndex, BlockHash = block.Hash, BlockNumber = block.Number };
             receiptWithProof.Receipt = new ReceiptForRpc(
                 txHash,
-                receipt,
+                provenReceipt,
                 block.Timestamp,
-                tx?.GetGasInfo(spec, block.Header) ?? new(),
+                txs[txIndex].GetGasInfo(spec, block.Header),
                 logIndexStart);
-            receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
-            receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
+            receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, tracedReceipts, txIndex);
+            receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), txIndex);
 
             if (includeHeader)
             {
-                receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
+                receiptWithProof.BlockHeader = _headerDecoder.EncodeAsBytes(block.Header);
             }
 
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        private AccountProof[] CollectAccountProofs(ITracer tracer, BlockHeader? baseBlock, ProofTxTracer proofTxTracer)
+        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
         {
-            List<AccountProof> accountProofs = new();
-            foreach (Address address in proofTxTracer.Accounts)
+            if (storageKeys.Count > EthRpcModule.GetProofStorageKeyLimit)
             {
-                AccountProofCollector collector = new(address, proofTxTracer.Storages
-                    .Where(s => s.Address == address)
-                    .Select(s => s.Index).ToArray());
-
-                tracer.Accept(collector, baseBlock);
-                accountProofs.Add(collector.BuildResult());
+                return ResultWrapper<AccountProofWithMeta>.Fail(
+                    $"storageKeys: {storageKeys.Count} is over the query limit {EthRpcModule.GetProofStorageKeyLimit}.",
+                    ErrorCodes.InvalidParams);
             }
 
-            return accountProofs.ToArray();
-        }
-
-        private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
-        {
-            List<BlockHeader> relevantHeaders = new() { tracedBlockHeader };
-            foreach (Hash256 blockHash in proofTxTracer.BlockHashes)
+            SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+            if (searchResult.IsError)
             {
-                relevantHeaders.Add(blockFinder.FindHeader(blockHash));
+                return ResultWrapper<AccountProofWithMeta>.Fail(searchResult);
             }
 
-            return relevantHeaders
-                .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
+            BlockHeader header = searchResult.Object;
+
+            if (!blockchainBridge.HasStateForBlock(header!))
+            {
+                return ResultWrapper<AccountProofWithMeta>.Fail(
+                    $"No state available for block {header!.ToString(BlockHeader.Format.Short)}",
+                    ErrorCodes.ResourceUnavailable);
+            }
+
+            using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
+            VisitingStats diagnostics = new();
+            blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
+
+            return ResultWrapper<AccountProofWithMeta>.Success(new AccountProofWithMeta
+            {
+                Proof = accountProofCollector.BuildResult(),
+                Meta = new ProofMeta
+                {
+                    NodeLookups = diagnostics.NodeLookups,
+                    CacheHits = diagnostics.CacheHits,
+                    MaxDepth = diagnostics.MaxDepth,
+                },
+            });
         }
 
-        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
+        private readonly record struct ResolvedTransaction(Block Block, int TxIndex);
+
+        /// <remarks>
+        /// <paramref name="failure"/> is populated only for a search error the caller must surface, and left default
+        /// when the caller should return a null result instead.
+        /// </remarks>
+        private bool TryResolveTransaction(Hash256 txHash, out ResolvedTransaction resolved, out SearchResult<Block> failure)
         {
-            return TxTrie.CalculateProof(txs, index);
+            resolved = default;
+            failure = default;
+
+            // A tx hash with no stored block never made it into the chain — mirrors the eth_ equivalents' null-on-miss result.
+            Hash256 blockHash = receiptFinder.FindBlockHash(txHash);
+            if (blockHash is null) return false;
+
+            SearchResult<Block> searchResult = blockFinder.SearchForBlock(new BlockParameter(blockHash));
+            if (searchResult.IsError)
+            {
+                // Unknown blocks yield null and mirror eth_; other search failures (e.g. pruned history) keep their error.
+                // Exact only if requireCanonical is false; InvalidInput reuses -32000 — canonical lookups must compare the message.
+                failure = searchResult.ErrorCode == ErrorCodes.ResourceNotFound ? default : searchResult;
+                return false;
+            }
+
+            Block block = searchResult.Object;
+            int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
+            if (txIndex < 0)
+            {
+                // The resolved block may not contain this transaction — e.g. a reorg re-resolved the stored block
+                // number to a different canonical block. Not an error, mirrors eth_.
+                return false;
+            }
+
+            resolved = new ResolvedTransaction(block, txIndex);
+            return true;
         }
 
-        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
+        /// <summary>
+        /// Counts the logs the block emits ahead of the transaction at <paramref name="txIndex"/>, over the stored
+        /// receipts the served logs themselves come from.
+        /// </summary>
+        /// <remarks>
+        /// Matches by transaction hash rather than using <see cref="ReceiptsExtensions.GetBlockLogFirstIndex"/>,
+        /// which trusts each stored <c>Index</c> and so miscounts when those indices are stale.
+        /// </remarks>
+        private static int GetLogIndexStart(Transaction[] txs, TxReceipt[] storedReceipts, int txIndex)
         {
-            return ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
+            if (txIndex == 0) return 0;
+
+            HashSet<Hash256> preceding = new(txIndex);
+            for (int i = 0; i < txIndex; i++)
+            {
+                preceding.Add(txs[i].Hash!);
+            }
+
+            int logIndexStart = 0;
+            foreach (TxReceipt storedReceipt in storedReceipts)
+            {
+                if (storedReceipt.TxHash is not null && preceding.Contains(storedReceipt.TxHash))
+                {
+                    logIndexStart += storedReceipt.Logs?.Length ?? 0;
+                }
+            }
+
+            return logIndexStart;
         }
+
+        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);
+
+        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index) => ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
     }
 }

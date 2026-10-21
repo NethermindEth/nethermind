@@ -7,8 +7,5 @@ namespace Nethermind.Optimism;
 
 public static class DepositTxExtensions
 {
-    public static bool IsDeposit(this Transaction tx)
-    {
-        return tx.Type == TxType.DepositTx;
-    }
+    public static bool IsDeposit(this Transaction tx) => tx.Type == TxType.DepositTx;
 }

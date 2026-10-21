@@ -7,8 +7,5 @@ public class CompactingStats
 {
     public ExecTimeStats Total { get; set; } = new();
 
-    public void Combine(CompactingStats other)
-    {
-        Total.Combine(other.Total);
-    }
+    public void Combine(CompactingStats other) => Total.Combine(other.Total);
 }

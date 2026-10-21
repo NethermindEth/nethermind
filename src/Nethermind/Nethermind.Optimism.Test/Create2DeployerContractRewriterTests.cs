@@ -9,6 +9,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.Optimism.Test;
 
@@ -26,13 +27,13 @@ internal class Create2DeployerContractRewriterTests
         });
 
         IWorldState ws = TestWorldStateFactory.CreateForTest();
-        using var _ = ws.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = ws.BeginScope(IWorldState.PreGenesis);
 
         Create2DeployerContractRewriter rewriter = new(specHelper, new TestSingleReleaseSpecProvider(Cancun.Instance), blockTree);
 
         rewriter.RewriteContract(blockTree.FindHeader(1, BlockTreeLookupOptions.None)!, ws);
 
-        byte[] setCode = ws.GetCode(PreInstalls.Create2Deployer)!;
+        byte[] setCode = ws.GetCode(PreInstalls.Create2Deployer).ToArray();
         Assert.That(setCode, Is.Not.Empty);
     }
 }

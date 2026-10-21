@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
@@ -10,20 +11,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Wallet
 {
-    public class AccountUnlocker
+    public class AccountUnlocker(IKeyStoreConfig config, IWallet wallet, ILogManager logManager, [KeyFilter(IPasswordProvider.ConfigOnly)] IPasswordProvider passwordProvider)
     {
-        private readonly IKeyStoreConfig _config;
-        private readonly IWallet _wallet;
-        private readonly ILogger _logger;
-        private readonly IPasswordProvider _passwordProvider;
-
-        public AccountUnlocker(IKeyStoreConfig config, IWallet wallet, ILogManager logManager, IPasswordProvider passwordProvider)
-        {
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _logger = logManager?.GetClassLogger<AccountUnlocker>() ?? throw new ArgumentNullException(nameof(logManager));
-            _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
-        }
+        private readonly IKeyStoreConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+        private readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+        private readonly ILogger _logger = logManager?.GetClassLogger<AccountUnlocker>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IPasswordProvider _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
 
         public void UnlockAccounts()
         {
@@ -34,7 +27,7 @@ namespace Nethermind.Wallet
                 {
                     try
                     {
-                        Address address = new Address(unlockAccount);
+                        Address address = new(unlockAccount);
                         if (_wallet.UnlockAccount(address, _passwordProvider.GetPassword(address) ?? string.Empty.Secure(), TimeSpan.FromDays(1000)))
                         {
                             if (_logger.IsInfo) _logger.Info($"Unlocked account: {unlockAccount}");

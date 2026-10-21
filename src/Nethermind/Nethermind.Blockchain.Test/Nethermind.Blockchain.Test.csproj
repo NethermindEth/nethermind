@@ -4,14 +4,15 @@
 
   <PropertyGroup>
     <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);NMEVM0001</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ConcurrentHashSet" />
-    <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />

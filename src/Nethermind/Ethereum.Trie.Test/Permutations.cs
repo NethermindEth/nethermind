@@ -28,7 +28,7 @@ namespace Ethereum.Trie.Test
                 return funcExecuteAndTellIfShouldStop(items);
             }
 
-            var indexes = new int[countOfItem];
+            int[] indexes = new int[countOfItem];
             for (int i = 0; i < countOfItem; i++)
             {
                 indexes[i] = 0;

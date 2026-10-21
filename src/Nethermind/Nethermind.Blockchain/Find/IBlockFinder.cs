@@ -21,18 +21,33 @@ namespace Nethermind.Blockchain.Find
 
         Block? Head { get; }
 
-        Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
+        Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null);
 
-        Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
+        Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options);
 
-        bool HasBlock(long blockNumber, Hash256 blockHash);
+        bool HasBlock(ulong blockNumber, Hash256 blockHash);
 
         /// Find a header. blockNumber is optional, but specifying it can improve performance.
-        BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
+        BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null);
 
-        BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options);
+        BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options);
 
-        Hash256? FindBlockHash(long blockNumber);
+        /// <summary>
+        /// Finds the canonical header at <paramref name="blockNumber"/> if <paramref name="bloomMatches"/> accepts its
+        /// logs bloom, which is empty for a zero-length (EIP-7668) bloom.
+        /// </summary>
+        /// <param name="blockNumber">The number of the block.</param>
+        /// <param name="bloomMatches">Tells whether the bloom is a match.</param>
+        /// <param name="found">Whether a canonical header is stored at <paramref name="blockNumber"/>, whether or not its bloom is a match.</param>
+        /// <remarks>The bloom may be tested on the stored encoding, so a header it rejects need not be decoded.</remarks>
+        BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+        {
+            BlockHeader? header = FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+            found = header is not null;
+            return found && bloomMatches(header!.Bloom!.Bytes) ? header : null;
+        }
+
+        Hash256? FindBlockHash(ulong blockNumber);
 
         /// <summary>
         /// Checks if the block is currently in the canonical chain
@@ -49,9 +64,9 @@ namespace Nethermind.Blockchain.Find
         /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
         bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true);
 
-        public Block? FindBlock(Hash256 blockHash, long? blockNumber = null) => FindBlock(blockHash, BlockTreeLookupOptions.None, blockNumber);
+        public Block? FindBlock(Hash256 blockHash, ulong? blockNumber = null) => FindBlock(blockHash, BlockTreeLookupOptions.None, blockNumber);
 
-        public Block? FindBlock(long blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+        public Block? FindBlock(ulong blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 
         public Block? FindGenesisBlock() => FindBlock(GenesisHash, BlockTreeLookupOptions.RequireCanonical);
 
@@ -67,9 +82,9 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindSafeBlock() => SafeHash is null ? null : FindBlock(SafeHash, BlockTreeLookupOptions.None);
 
-        public BlockHeader? FindHeader(Hash256 blockHash, long? blockNumber = null) => FindHeader(blockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
+        public BlockHeader? FindHeader(Hash256 blockHash, ulong? blockNumber = null) => FindHeader(blockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
 
-        public BlockHeader? FindHeader(long blockNumber) => FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+        public BlockHeader? FindHeader(ulong blockNumber) => FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 
         public BlockHeader FindGenesisHeader() => FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception("Genesis header could not be found");
 
@@ -105,8 +120,9 @@ namespace Nethermind.Blockchain.Find
                         blockParameter.RequireCanonical
                             ? BlockTreeLookupOptions.RequireCanonical
                             : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => blockParameter.BlockHash! == HeadHash
-                    ? FindLatestBlock()
+                // Head is read once, so a head change cannot answer for another block.
+                BlockParameterType.BlockHash => Head is { } head && head.Hash == blockParameter.BlockHash
+                    ? head
                     : FindBlock(blockParameter.BlockHash!, blockParameter.RequireCanonical
                         ? BlockTreeLookupOptions.RequireCanonical
                         : BlockTreeLookupOptions.None),
@@ -142,11 +158,10 @@ namespace Nethermind.Blockchain.Find
             };
         }
 
-        public long GetLowestBlock();
+        public ulong GetLowestBlock();
 
-        /// <summary>
-        /// Highest state persisted
-        /// </summary>
-        long? BestPersistedState { get; set; }
+        /// <summary>The oldest block this node can actually serve - the published boundary floored by the
+        /// download frontier while a backfill is still descending. What eth/69 advertises as earliest.</summary>
+        public ulong LowestServedBlock => GetLowestBlock();
     }
 }

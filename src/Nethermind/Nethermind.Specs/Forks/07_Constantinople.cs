@@ -7,7 +7,7 @@ namespace Nethermind.Specs.Forks;
 
 public class Constantinople() : NamedReleaseSpec<Constantinople>(Byzantium.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Constantinople";
         spec.BlockReward = new UInt256(2000000000000000000ul);

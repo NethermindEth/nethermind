@@ -2,31 +2,34 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool HasAtLeast(IWorldState state, Address account, in UInt256 value)
+    {
+        if (state.GetBalance(account) < value) return false;
+        state.NoteMinimumBalance(account, in value);
+        return true;
+    }
+
     /// <summary>
-    /// Interface defining the properties for a call-like opcode.
-    /// Each implementation specifies whether the call is static and what its execution type is.
+    /// Interface defining the execution type for a call-like opcode.
     /// </summary>
     public interface IOpCall
     {
-        /// <summary>
-        /// Indicates if the call is static.
-        /// Static calls cannot modify state.
-        /// </summary>
-        virtual static bool IsStatic => false;
-
         /// <summary>
         /// Returns the specific execution type of the call.
         /// </summary>
@@ -62,7 +65,6 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpStaticCall : IOpCall
     {
-        public static bool IsStatic => true;
         public static ExecutionType ExecutionType => ExecutionType.STATICCALL;
     }
 
@@ -81,264 +83,624 @@ internal static partial class EvmInstructions
     /// <typeparam name="TTracingInst">
     /// A type implementing <see cref="IFlag"/> that indicates whether instruction tracing is active.
     /// </typeparam>
+    /// <typeparam name="TSpec">The fork rules the opcode table specialized this handler on.</typeparam>
     /// <param name="vm">The current virtual machine instance containing execution state.</param>
     /// <param name="stack">The EVM stack for retrieving call parameters and pushing results.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the current program counter (not modified by this method).</param>
     /// <returns>
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
+        where TSpec : struct, ICallSpec
     {
-        // Increment global call metrics.
-        Metrics.IncrementCalls();
+        vm.MetricsCounters.IncrementCalls();
 
-        // Clear previous return data.
-        vm.ReturnData = null;
+        Debug.Assert(vm.ReturnData is null, "Dispatch clears staged output before entering an opcode chain.");
 
+        int traceStackHead;
         // Pop the gas limit for the call.
-        if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 gasLimit))
+        {
+            traceStackHead = 0;
+            goto StackUnderflow;
+        }
         // Pop the code source address from the stack.
-        Address codeSource = stack.PopAddress();
-        if (codeSource is null) goto StackUnderflow;
+        Address? codeSource = stack.PopAddress(vm.AddressCache);
+        if (codeSource is null)
+        {
+            traceStackHead = 1;
+            goto StackUnderflow;
+        }
 
         ExecutionEnvironment env = vm.VmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
-        if (typeof(TOpCall) == typeof(OpStaticCall))
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL)
         {
             // Static calls cannot transfer value.
-            callValue = UInt256.Zero;
+            callValue = default;
         }
-        else if (typeof(TOpCall) == typeof(OpDelegateCall))
+        else if (TOpCall.ExecutionType == ExecutionType.DELEGATECALL)
         {
             // Delegate calls use the value from the current execution context.
             callValue = env.Value;
         }
         else if (!stack.PopUInt256(out callValue))
         {
+            traceStackHead = 2;
             goto StackUnderflow;
         }
 
         // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
+        if (!stack.PopUInt256(out UInt256 dataOffset, out UInt256 dataLength, out UInt256 outputOffset, out UInt256 outputLength))
         {
+            traceStackHead = (int)stack.Head + (TOpCall.ExecutionType is ExecutionType.CALL or ExecutionType.CALLCODE ? 3 : 2);
             goto StackUnderflow;
         }
 
-        // For non-delegate calls, the transfer value is the call value.
-        UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
+        bool hasValueTransfer = TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
-        if (vm.VmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode))
+        if (vm.VmState.IsStatic && hasValueTransfer && TOpCall.ExecutionType != ExecutionType.CALLCODE)
+        {
+            if (TTracingInst.IsActive)
+                TraceCallWriteProtection(vm, TGasPolicy.GetRemainingGas(in gas), codeSource, in dataOffset, in dataLength, in outputOffset, in outputLength);
             return EvmExceptionType.StaticCallViolation;
+        }
 
         // Determine caller and target based on the call type.
-        Address caller = typeof(TOpCall) == typeof(OpDelegateCall) ? env.Caller : env.ExecutingAccount;
-        Address target = (typeof(TOpCall) == typeof(OpCall) || typeof(TOpCall) == typeof(OpStaticCall))
+        Address caller = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Caller : env.ExecutingAccount;
+        Address target = TOpCall.ExecutionType != ExecutionType.DELEGATECALL && TOpCall.ExecutionType != ExecutionType.CALLCODE
             ? codeSource
             : env.ExecutingAccount;
 
-        // Add extra gas cost if value is transferred.
-        if (!transferValue.IsZero)
-        {
-            if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
-        }
-
         IReleaseSpec spec = vm.Spec;
-
         IWorldState state = vm.WorldState;
+        bool traceNewAccountCharge = false;
+        ulong initialGas = DispatchFlags.ConstTracing && (vm.IsTracingActions || TTracingInst.IsActive) ? TGasPolicy.GetRemainingGas(in gas) : 0;
+        long initialStateSpill = TTracingInst.IsActive && TEip8037.IsActive ? TGasPolicy.GetStateGasSpill(in gas) : 0;
+        ulong traceMemorySize = DispatchFlags.ConstTracing && vm.IsTracingActions ? vm.VmState.Memory.Size : 0;
+        bool traceColdAccess = DispatchFlags.ConstTracing && vm.IsTracingActions && TSpec.UseHotAndColdStorage &&
+            vm.VmState.AccessTracker.IsCold(codeSource) && !spec.IsPrecompile(codeSource);
+
+        if (hasValueTransfer)
+        {
+            // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
+            // static gas check before any target access, so an OOG here must not touch the BAL.
+            bool valueOutOfGas = TSpec.IsEip2780Enabled
+                ? !TGasPolicy.TryConsumeCallValueTransferEip2780(ref gas)
+                : !TGasPolicy.TryConsumeCallValueTransfer(ref gas);
+            if (valueOutOfGas)
+            {
+                goto OutOfGasTraced;
+            }
+        }
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
-            goto OutOfGas;
+        if (!TGasPolicy.TryConsumeCallBaseGas(ref gas, spec) ||
+            !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, ref vm.VmState.Memory) ||
+            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, ref vm.VmState.Memory))
+        {
+            goto OutOfGasTraced;
+        }
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
-        bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
-
-        if (spec.UseHotAndColdStorage && delegated is not null)
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+                vm.IsTracingAccess, codeSource))
         {
-            if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                    vm.TxTracer.IsTracingAccess, delegated)) goto OutOfGas;
+            goto OutOfGasTraced;
         }
 
-        // Charge additional gas if the target account is new or considered empty.
-        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
+        // EIP-8279: the account enters the block access list on the transaction's first touch.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(codeSource)) goto OutOfGas;
+
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
+
+        if (TSpec.UseHotAndColdStorage && delegated is not null)
         {
-            false => !state.AccountExists(target),
-            true => transferValue != 0 && state.IsDeadAccount(target),
-        };
+            if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
+                goto OutOfGasTraced;
 
-        bool newAccountOutOfGas = chargesNewAccount && !(TEip8037.IsActive switch
-        {
-            true => TGasPolicy.ConsumeNewAccountCreation(ref gas),
-            false => TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
-        });
-
-        if (newAccountOutOfGas) goto OutOfGas;
-
-
-        // Retrieve code information for the call and schedule background analysis if needed.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
-
-        // If contract is large, charge for access
-        if (spec.IsEip7907Enabled)
-        {
-            uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
-            if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.VmState.AccessTracker, ref gas))
-                goto OutOfGas;
+            // EIP-8279: the delegation target enters the block access list on the transaction's first touch.
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(delegated)) goto OutOfGas;
         }
 
-        // Get remaining gas for 63/64 calculation
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
 
-        // Apply the 63/64 gas rule if enabled.
-        if (spec.Use63Over64Rule)
+        traceNewAccountCharge = chargesNewAccount;
+        bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas);
+
+        if (newAccountOutOfGas)
         {
-            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+            goto OutOfGasTraced;
         }
 
-        // If gasLimit exceeds the host's representable range, treat as out-of-gas.
-        if (gasLimit >= long.MaxValue) goto OutOfGas;
+        // EIP-8279: a CALL moving value to another account puts the caller's and the recipient's post balances in the
+        // block access list, metered even if the call then fails on depth or balance.
+        if (TSpec.IsEip8279Enabled && TOpCall.ExecutionType == ExecutionType.CALL && hasValueTransfer && target != env.ExecutingAccount
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
 
-        long gasLimitUl = (long)gasLimit;
-        if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
+        // EIP-7702: load delegated code after cold-access charge above.
+        if (delegated is not null)
+        {
+            // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
+            state.AddAccountRead(delegated);
+
+            codeInfo = vm.CodeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
+        }
+
+        // EIP-150: forward the requested gas to the child frame, capped at 63/64 of remaining.
+        if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, in gasLimit, spec, out ulong gasLimitUl)) goto OutOfGasTraced;
+
+        if (TTracingInst.IsActive)
+        {
+            ulong stateSpill = TEip8037.IsActive ? (ulong)(TGasPolicy.GetStateGasSpill(in gas) - initialStateSpill) : 0;
+            vm.TraceOperationReady(initialGas - TGasPolicy.GetRemainingGas(in gas) - stateSpill);
+        }
 
         // Add call stipend if value is being transferred.
-        if (!transferValue.IsZero)
+        if (hasValueTransfer)
         {
-            if (vm.TxTracer.IsTracingRefunds)
+            if (vm.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
             gasLimitUl += GasCostOf.CallStipend;
         }
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
+            (hasValueTransfer && !HasAtLeast(state, env.ExecutingAccount, in callValue)))
         {
-            // If the call cannot proceed, return an empty response and push zero on the stack.
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
+            EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
+            if (DispatchFlags.ConstTracing && vm.IsTracingActions)
+                TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckError);
 
-            // Optionally report memory changes for refund tracing.
-            if (vm.TxTracer.IsTracingRefunds)
-            {
-                // Specific to Parity tracing: inspect 32 bytes from data offset.
-                ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
-                vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
-            }
+            // If the call cannot proceed, return an empty response and push zero on the stack.
+            vm.ReturnDataBuffer = default;
+            EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(in gas));
-                vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                vm.TraceCallOutputWindow(in outputOffset, in outputLength);
+                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), precheckError);
             }
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            // EIP-8037: no account is created when the call cannot proceed (depth exceeded or
+            // balance too low), so refund the up-front NEW_ACCOUNT state charge.
+            if (chargesNewAccount)
+                vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetNewAccountStateCost());
             if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
             }
+            return pushResult;
+        }
+
+        // Fast-path for calls to externally owned accounts (non-contracts); EIP-8360 transfers need a frame to charge in.
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions
+            && (!TSpec.IsEip8360Enabled || !hasValueTransfer || vm.VmState.AccessTracker.TransientCreates is null))
+        {
+            vm.ReturnDataBuffer = default;
+            // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
+            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+            if (pushResult != EvmExceptionType.None) return pushResult;
+            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            // Self-call (always true for CALLCODE; runtime for CALL/STATICCALL when target == executing account):
+            // the +/- value balance ops cancel and target is the currently-executing account (alive),
+            // so skip both writes. AddTransferLog already no-ops when from == to.
+            bool isSelfCall = caller == target;
+            if (!isSelfCall)
+            {
+                if (hasValueTransfer)
+                {
+                    state.SubtractFromBalance(caller, in callValue, spec);
+                    vm.AddTransferLog<TEip7708>(caller, target, in callValue);
+                }
+                state.AddToBalanceAndCreateIfNotEmpty(target, TOpCall.ExecutionType, in callValue, spec);
+            }
+            vm.MetricsCounters.IncrementEmptyCalls();
             return EvmExceptionType.None;
         }
 
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL && codeInfo.Precompile is { } precompile &&
+            TryInlineStaticPrecompileCall<TGasPolicy, TTracingInst>(
+                vm, ref stack, ref gas, in dataOffset, dataLength, in outputOffset, outputLength,
+                precompile, target, codeSource, gasLimitUl, out EvmExceptionType inlineResult))
+        {
+            return inlineResult;
+        }
+
+        return TSpec.IsEip8360Enabled
+            ? CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OnFlag>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount)
+            : CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OffFlag>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
+
+        // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        if (DispatchFlags.ConstTracing && vm.IsTracingActions)
+            vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {(TOpCall.ExecutionType is ExecutionType.CALL or ExecutionType.CALLCODE ? 7 : 6)})");
+        return EvmExceptionType.StackUnderflow;
+    OutOfGasTraced:
+        if (DispatchFlags.ConstTracing && vm.IsTracingActions)
+            TraceCallGasError<TGasPolicy, TOpCall>(vm, initialGas, traceColdAccess, hasValueTransfer, in gasLimit, traceMemorySize,
+                in dataOffset, in dataLength, in outputOffset, in outputLength, traceNewAccountCharge);
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    }
+
+    /// <summary>Whether a transfer to <paramref name="target"/> pays the new-account charge under the given fork rules.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ChargesNewAccount<TSpec>(IWorldState state, Address target, bool hasValueTransfer)
+        where TSpec : struct, ICallSpec =>
+        TSpec.IsEip8038Enabled
+            ? hasValueTransfer && state.IsDeadAccount(target)
+            : !TSpec.IsEip2780Enabled && (TSpec.ClearEmptyAccountWhenTouched switch
+            {
+                false => !state.AccountExists(target),
+                true => hasValueTransfer && state.IsDeadAccount(target),
+            });
+
+    /// <summary>EIP-5920 PAY: transfers value to an address without executing its code.</summary>
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionPay<TGasPolicy, TTracingInst, TEip8037, TEip7708, TSpec>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
+        where TSpec : struct, ICallSpec
+    {
+        VmState<TGasPolicy> vmState = vm.VmState;
+        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
+
+        if (!stack.PopUInt256(out UInt256 addressWord, out UInt256 value)) return EvmExceptionType.StackUnderflow;
+        // EIP-5920: halt, rather than truncate, on non-zero high address bytes.
+        if (addressWord.u3 != 0 || (addressWord.u2 >> 32) != 0) return EvmExceptionType.BadInstruction;
+
+        Address target = vm.AddressCache.GetOrCreate(in addressWord);
+        bool hasValueTransfer = !value.IsZero;
+        IReleaseSpec spec = vm.Spec;
+        IWorldState state = vm.WorldState;
+
+        if (hasValueTransfer && !TGasPolicy.UpdateGas(ref gas, TSpec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : GasCostOf.CallValue))
+            goto OutOfGas;
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, target))
+            goto OutOfGas;
+
+        // EIP-8279: meter the target's block access list entry.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(target)) goto OutOfGas;
+
+        // EIP-7928: the target is read even for a zero value.
+        state.AddAccountRead(target);
+        bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
+        if (chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas)) goto OutOfGas;
+
+        // EIP-8279: both post balances, as for a value CALL.
+        Address executingAccount = vmState.Env.ExecutingAccount;
+        if (TSpec.IsEip8279Enabled && hasValueTransfer && target != executingAccount
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
+        if (hasValueTransfer && state.GetBalance(executingAccount) < value)
+        {
+            if (chargesNewAccount)
+                vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetNewAccountStateCost());
+            if (vm.IsTracingActions)
+                vm.TxTracer.ReportRejectedAction(0, 0, value, executingAccount, target, default, ExecutionType.CALL, EvmExceptionType.NotEnoughBalance);
+            return stack.PushZero<TTracingInst, OnFlag>();
+        }
+
+        // EIP-8360: price the balance changes of TCREATE accounts on either side of the transfer, charged to the current frame as SELFDESTRUCT does.
+        if (TSpec.IsEip8360Enabled && hasValueTransfer && vmState.AccessTracker.TransientCreates is not null && target != executingAccount)
+        {
+            if (vmState.IsTransientCreateContext
+                && vmState.AccessTracker.IsTransientCreate(state, executingAccount, out UInt256 original))
+            {
+                UInt256 executingBalance = state.GetBalance(executingAccount);
+                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in executingBalance, executingBalance - value))
+                    goto OutOfGas;
+            }
+
+            if (vmState.AccessTracker.IsTransientCreate(state, target, out original))
+            {
+                UInt256 targetBalance = state.GetBalance(target);
+                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in targetBalance, targetBalance + value))
+                    goto OutOfGas;
+            }
+        }
+
+        // Traced as a zero-gas CALL that runs no code.
+        bool reportsAction = vm.IsTracingActions;
+        if (reportsAction)
+        {
+            if (TTracingInst.IsActive) vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            vm.TxTracer.ReportAction(0, value, executingAccount, target, default, ExecutionType.CALL);
+        }
+
+        // Like a self-CALL, a self-payment writes no balance.
+        if (hasValueTransfer && target != executingAccount)
+        {
+            state.SubtractFromBalance(executingAccount, in value, spec);
+            state.AddToBalanceAndCreateIfNotExists(target, in value, spec);
+            vm.AddTransferLog<TEip7708>(executingAccount, target, in value);
+        }
+
+        if (reportsAction) vm.TxTracer.ReportActionEnd(0, default);
+
+        // Two words were popped, so the push cannot overflow.
+        EvmExceptionType pushResult = stack.PushOne<TTracingInst>();
+        if (TTracingInst.IsActive && reportsAction)
+            vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(in gas));
+        return pushResult;
+
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCallWriteProtection<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ulong gas, Address target,
+        in UInt256 inputOffset, in UInt256 inputLength, in UInt256 outputOffset, in UInt256 outputLength)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        IReleaseSpec spec = vm.Spec;
+        ulong constantCost = spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : spec.GasCosts.CallCost;
+        ulong coldCost = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
+        string error = gas < constantCost ? "out of gas"
+            : !TryGetTraceMemorySize(in inputOffset, in inputLength, out _) || !TryGetTraceMemorySize(in outputOffset, in outputLength, out _)
+                ? "gas uint64 overflow"
+                : spec.UseHotAndColdStorage && !spec.IsEip7702Enabled && vm.VmState.AccessTracker.IsCold(target) && !spec.IsPrecompile(target) && gas < coldCost
+                    ? "out of gas: out of gas"
+                    : "out of gas: write protection";
+        vm.TraceOperationReady(constantCost, error);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCallGasError<TGasPolicy, TOpCall>(VirtualMachine<TGasPolicy> vm, ulong initialGas, bool coldAccess, bool hasValueTransfer, in UInt256 requestedGas, ulong initialMemorySize,
+        in UInt256 dataOffset, in UInt256 dataLength, in UInt256 outputOffset, in UInt256 outputLength, bool newAccountCharge)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+    {
+        IReleaseSpec spec = vm.Spec;
+        ulong coldCost = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
+        ulong constantCost = spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : spec.GasCosts.CallCost;
+        if (initialGas < constantCost)
+        {
+            vm.TraceOperationGasCost(constantCost);
+            vm.TraceOperationReady(constantCost, "out of gas");
+            return;
+        }
+
+        if (!TryGetTraceMemorySize(in dataOffset, in dataLength, out ulong inputSize) ||
+            !TryGetTraceMemorySize(in outputOffset, in outputLength, out ulong outputSize))
+        {
+            vm.TraceOperationGasCost(constantCost);
+            vm.TraceActionErrorDetails("gas uint64 overflow");
+            vm.TraceOperationReady(constantCost, "gas uint64 overflow");
+            return;
+        }
+
+        // Geth checks memory range overflow before cold access, but memory gas overflow after it.
+        if ((!coldAccess || initialGas >= coldCost) && Math.Max(inputSize, outputSize) > 0x1FFFFFFFE0UL)
+        {
+            vm.TraceOperationGasCost(constantCost);
+            vm.TraceActionErrorDetails("out of gas: gas uint64 overflow");
+            vm.TraceOperationReady(constantCost, "out of gas: gas uint64 overflow");
+            return;
+        }
+
+        ulong oldWords = initialMemorySize / 32;
+        ulong newWords = Math.Max(oldWords, (Math.Max(inputSize, outputSize) + 31) / 32);
+        ulong memoryCost = (newWords - oldWords) * GasCostOf.Memory +
+            newWords * newWords / 512 - oldWords * oldWords / 512;
+        ulong transferCost = hasValueTransfer ? GasCostOf.CallValue : 0;
+        ulong accessCost = coldAccess ? coldCost - constantCost : 0;
+
+        // Geth checks CALL memory/value affordability before account creation; EIP-7702 checks all intrinsic costs.
+        if (spec.IsEip7702Enabled || coldAccess && initialGas < coldCost ||
+            TOpCall.ExecutionType == ExecutionType.CALL && initialGas - constantCost - accessCost < memoryCost + transferCost)
+        {
+            vm.TraceOperationGasCost(constantCost);
+            vm.TraceActionErrorDetails("out of gas: out of gas");
+            vm.TraceOperationReady(constantCost, "out of gas: out of gas");
+            return;
+        }
+
+        ulong intrinsicCost = memoryCost + transferCost + (newAccountCharge ? GasCostOf.NewAccount : 0);
+        ulong forwardedGas;
+        if (spec.Use63Over64Rule)
+        {
+            // Geth's pre-EIP-7702 calculator subtracts before checking intrinsic affordability.
+            ulong availableGas = unchecked(initialGas - constantCost - accessCost - intrinsicCost);
+            ulong cap = availableGas - availableGas / 64;
+            forwardedGas = requestedGas.IsUint64 ? Math.Min(requestedGas.u0, cap) : cap;
+        }
+        else if (requestedGas.IsUint64)
+        {
+            forwardedGas = requestedGas.u0;
+        }
+        else
+        {
+            vm.TraceOperationGasCost(constantCost);
+            vm.TraceActionErrorDetails("out of gas: gas uint64 overflow");
+            vm.TraceOperationReady(constantCost, "out of gas: gas uint64 overflow");
+            return;
+        }
+
+        ulong baseCost = intrinsicCost + accessCost;
+        if (forwardedGas > ulong.MaxValue - baseCost)
+        {
+            vm.TraceOperationGasCost(constantCost);
+            vm.TraceActionErrorDetails("out of gas: gas uint64 overflow");
+            vm.TraceOperationReady(constantCost, "out of gas: gas uint64 overflow");
+            return;
+        }
+        vm.TraceOperationGasCost(unchecked(constantCost + baseCost + forwardedGas));
+        vm.TraceOperationReady(unchecked(constantCost + baseCost + forwardedGas), "out of gas");
+    }
+
+    private static bool TryGetTraceMemorySize(in UInt256 offset, in UInt256 length, out ulong size)
+    {
+        size = 0;
+        if (length.IsZero) return true;
+        if (!offset.IsUint64 || !length.IsUint64 || length.u0 > ulong.MaxValue - 31 ||
+            offset.u0 > ulong.MaxValue - 31 - length.u0)
+            return false;
+        size = offset.u0 + length.u0;
+        return true;
+    }
+
+    /// <summary>
+    /// Reports a call that failed its depth or balance precheck as an action that entered no frame; the gas it
+    /// would have forwarded, including the stipend, returns at once.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceRejectedCall<TGasPolicy, TOpCall>(
+        VirtualMachine<TGasPolicy> vm,
+        in UInt256 dataOffset,
+        in UInt256 dataLength,
+        Address codeSource,
+        in UInt256 callValue,
+        ulong gas,
+        bool isPrecompile,
+        EvmExceptionType error)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+    {
+        ExecutionEnvironment env = vm.VmState.Env;
+        // The call already paid to expand memory over its input.
+        bool loaded = vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
+        Debug.Assert(loaded, "The rejected call input was validated and expanded before its precheck.");
+        vm.TxTracer.ReportRejectedAction(gas, gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, error, isPrecompile);
+    }
+
+    [MethodImpl(FullCallFrameInlining)]
+    [SkipLocalsInit]
+    private static EvmExceptionType CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, Eip8360>(
+        VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        in UInt256 dataOffset,
+        UInt256 dataLength,
+        UInt256 outputOffset,
+        UInt256 outputLength,
+        CodeInfo codeInfo,
+        Address target,
+        Address caller,
+        Address codeSource,
+        ExecutionEnvironment env,
+        in UInt256 callValue,
+        ulong gasLimitUl,
+        bool newAccountCharged)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+        where TTracingInst : struct, IFlag
+        where Eip8360 : struct, IFlag
+    {
+        IWorldState state = vm.WorldState;
         // Take a snapshot of the state for potential rollback.
         Snapshot snapshot = state.TakeSnapshot();
         // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, in transferValue, spec);
-
-        // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
-        {
-            vm.ReturnDataBuffer = default;
-            stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
-            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            vm.AddTransferLog<TEip7708>(caller, target, transferValue);
-            return FastCall(vm, spec, in transferValue, target);
-        }
+        if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero) state.SubtractFromBalance(caller, in callValue, vm.Spec);
 
         // Load call data from memory.
-        if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-            goto OutOfGas;
+        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+            vm.EnvironmentCache,
             codeInfo: codeInfo,
             executingAccount: target,
             caller: caller,
             codeSource: codeSource,
             callDepth: env.CallDepth + 1,
-            transferValue: in transferValue,
             value: in callValue,
             inputData: in callData);
 
         // Normalize output offset if output length is zero.
-        if (outputLength == 0)
+        if (outputLength.IsZero)
         {
             // Output offset is inconsequential when output length is 0.
-            outputOffset = 0;
+            outputOffset = default;
+        }
+
+        TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
+
+        // Precompiles run no bytecode: where the build supports it, handle them inline, skipping the child
+        // frame's round trip through the ExecuteTransaction dispatch loop.
+        // EIP-8360 transfers take the full frame so its entry prices the TCREATE balance change.
+        if (InlinesPrecompileFrames && codeInfo.IsPrecompile
+            && (!Eip8360.IsActive || callValue.IsZero || vm.VmState.AccessTracker.TransientCreates is null))
+        {
+            return InlinePrecompileFrame<TGasPolicy, TOpCall, TTracingInst>(
+                vm, callEnv, childGas, outputOffset.ToLong(), outputLength.ToLong(), in snapshot, ref stack, newAccountCharged);
         }
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
+            vm.FrameCache,
+            gas: childGas,
             outputDestination: outputOffset.ToLong(),
             outputLength: outputLength.ToLong(),
             executionType: TOpCall.ExecutionType,
-            isStatic: TOpCall.IsStatic || vm.VmState.IsStatic,
+            isStatic: TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
             isCreateOnPreExistingAccount: false,
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
-            snapshot: in snapshot);
+            snapshot: in snapshot,
+            newAccountCharged: newAccountCharged,
+            frameJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.FrameJournalCheckpoint ?? 0);
 
-        return EvmExceptionType.None;
-
-        // Fast-call path for non-contract calls:
-        // Directly credit the target account and avoid constructing a full call frame.
-        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
-        {
-            IWorldState state = vm.WorldState;
-            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
-            Metrics.IncrementEmptyCalls();
-
-            vm.ReturnData = null;
-            return EvmExceptionType.None;
-        }
-
-        // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.Suspend;
     }
 
-    private static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)
+    /// <summary>
+    /// Attempts to execute a STATICCALL into a precompile inline, without renting a full child call frame.
+    /// </summary>
+    /// <remarks>
+    /// The implementation is build-specific: mainline runs the precompile directly, while the zkEVM guest
+    /// declines (returns <c>false</c>) so the call flows through its dedicated <c>InlinePrecompileCall</c> path.
+    /// </remarks>
+    /// <returns><c>true</c> when the call was handled inline (with the outcome in <paramref name="result"/>); otherwise <c>false</c>.</returns>
+    [SkipLocalsInit]
+    private static partial bool TryInlineStaticPrecompileCall<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        in UInt256 dataOffset,
+        UInt256 dataLength,
+        in UInt256 outputOffset,
+        UInt256 outputLength,
+        IPrecompile precompile,
+        Address target,
+        Address codeSource,
+        ulong gasLimitUl,
+        out EvmExceptionType result)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        if (accessTracer.WarmUpLargeContract(codeAddress))
-        {
-            long largeContractCost = GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(excessContractSize, out bool outOfGas);
-            if (outOfGas || !TGasPolicy.UpdateGas(ref gas, largeContractCost)) return false;
-        }
+        where TTracingInst : struct, IFlag;
 
-        return true;
-    }
+    /// <summary>
+    /// Runs a CALL to a precompile within the calling frame, without renting a child frame for the
+    /// <c>ExecuteTransaction</c> dispatch loop.
+    /// </summary>
+    /// <remarks>Only builds where <c>InlinesPrecompileFrames</c> is set, the zkEVM guest's, call this.</remarks>
+    private static partial EvmExceptionType InlinePrecompileFrame<TGasPolicy, TOpCall, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ExecutionEnvironment callEnv,
+        TGasPolicy childGas,
+        long outputOffset,
+        long outputLength,
+        in Snapshot snapshot,
+        ref EvmStack stack,
+        bool newAccountCharged)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+        where TTracingInst : struct, IFlag;
 
     /// <summary>
     /// Executes the RETURN opcode.
@@ -348,33 +710,34 @@ internal static partial class EvmInstructions
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the offset and length are popped.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
-    /// <see cref="EvmExceptionType.None"/> on success; otherwise, an error such as <see cref="EvmExceptionType.StackUnderflow"/>,
-    /// <see cref="EvmExceptionType.OutOfGas"/>, or <see cref="EvmExceptionType.BadInstruction"/>.
+    /// <see cref="EvmExceptionType.Stop"/> on success, with the frame's output staged in
+    /// <see cref="VirtualMachine{TGasPolicy}.ReturnData"/>; otherwise, an error such as
+    /// <see cref="EvmExceptionType.StackUnderflow"/> or <see cref="EvmExceptionType.OutOfGas"/>.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturn<TGasPolicy>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionReturn<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
     {
         // Pop memory position and length for the return data.
-        if (!stack.PopUInt256(out UInt256 position) ||
-            !stack.PopUInt256(out UInt256 length))
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState) ||
-            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
+        if (DispatchFlags.ConstTracing && TTracingInst.IsActive)
+            vm.TraceMemoryOperationGasCost(in position, in length);
+
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
         {
             goto OutOfGas;
         }
 
-        vm.ReturnData = returnData.ToArray();
+        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length), isRevert: false);
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

@@ -14,19 +14,16 @@ namespace Nethermind.Hive;
 [RunnerStepDependencies(typeof(InitializeNetwork), Optional = true)]
 public class HiveStep(
     ITxPool txPool,
-    CompositeTxGossipPolicy txGossipPolicy,
     HiveRunner hiveRunner,
     IProcessExitSource processExitSource,
     ILogManager logManager
 ) : IStep
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<HiveStep>();
 
     public async Task Execute(CancellationToken cancellationToken)
     {
         txPool!.AcceptTxWhenNotSynced = true;
-
-        txGossipPolicy.Policies.Clear();
 
         if (_logger.IsInfo) _logger.Info("Hive is starting");
 

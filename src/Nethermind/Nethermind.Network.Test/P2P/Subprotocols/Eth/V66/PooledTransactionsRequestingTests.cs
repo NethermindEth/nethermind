@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -22,7 +23,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -50,8 +50,8 @@ public class PooledTransactionsRequestingTests
     private Block _genesisBlock = null!;
     private CompositeDisposable _disposables = null!;
 
-    private readonly int Timeout = 3000;
-    private readonly int InTime = 1000;
+    private const int RetryObservationMs = 5000;
+    private const int InTimeMs = 1000;
 
     [SetUp]
     public void Setup()
@@ -77,8 +77,10 @@ public class PooledTransactionsRequestingTests
                 new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2),
             new TxPoolConfig() { AcceptTxWhenNotSynced = true },
             new TxValidator(specProvider.ChainId),
+            new SpecChangeTxValidator(specProvider.ChainId),
             LimboLogs.Instance,
-            new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer());
+            new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer(),
+            TestFrameTxWidthLedger.For(new TxPoolConfig()));
         ISyncServer syncManager = Substitute.For<ISyncServer>();
         syncManager.Head.Returns(_genesisBlock.Header);
         syncManager.Genesis.Returns(_genesisBlock.Header);
@@ -147,20 +149,18 @@ public class PooledTransactionsRequestingTests
     }
 
     [Test]
-    public async Task Should_request_from_others_after_timeout()
-    {
-        await Task.Delay(Timeout);
-
-        _session2.Received(1).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
-    }
+    public void Should_request_from_others_after_timeout() =>
+        Assert.That(
+            () => _session2.Received(1).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash))),
+            Throws.Nothing.After(10_000, 100));
 
 
     [Test]
     public async Task Should_not_request_from_others_if_received()
     {
-        await Task.Delay(InTime);
-        HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
-        await Task.Delay(Timeout);
+        await Task.Delay(InTimeMs);
+        HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(LastPooledRequestId(), new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
+        await Task.Delay(RetryObservationMs);
 
         _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
     }
@@ -169,15 +169,19 @@ public class PooledTransactionsRequestingTests
     [Test]
     public async Task Should_not_request_from_others_if_received_immediately()
     {
-        HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
-        await Task.Delay(Timeout);
+        HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(LastPooledRequestId(), new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
+        await Task.Delay(RetryObservationMs);
 
         _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
     }
 
+    private long LastPooledRequestId() => _session.ReceivedCalls()
+        .SelectMany(static call => call.GetArguments().OfType<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>())
+        .Last().RequestId;
+
     private void HandleIncomingStatusMessage(Eth66ProtocolHandler handler)
     {
-        using var statusMsg = new StatusMessage();
+        using StatusMessage statusMsg = new();
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 

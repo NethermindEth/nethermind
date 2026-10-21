@@ -35,10 +35,10 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     // Helper method to convert TryGetSlot to GetSlot-like behavior
     private static byte[]? GetSlot(IPersistence.IPersistenceReader reader, Address address, in UInt256 slot)
     {
-        SlotValue slotValue = default;
+        UInt256 slotValue = default;
         if (reader.TryGetSlot(address, in slot, ref slotValue))
         {
-            return slotValue.ToEvmBytes();
+            return slotValue.ToMinimalBigEndian();
         }
         return null;
     }
@@ -50,21 +50,44 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
     public static IEnumerable<TestConfiguration> TestConfigs()
     {
-        yield return new TestConfiguration(new FlatDbConfig()
+        foreach (FlatLayout layout in Enum.GetValues<FlatLayout>())
         {
-            Enabled = true,
-            Layout = FlatLayout.Flat
-        }, "Flat");
-        yield return new TestConfiguration(new FlatDbConfig()
-        {
-            Enabled = true,
-            Layout = FlatLayout.FlatInTrie
-        }, "FlatInTrie");
-        yield return new TestConfiguration(new FlatDbConfig()
-        {
-            Enabled = true,
-            Layout = FlatLayout.PreimageFlat
-        }, "PreimageFlat");
+            yield return new TestConfiguration(new FlatDbConfig()
+            {
+                Enabled = true,
+                Layout = layout
+            }, layout.ToString());
+
+            // A generation small enough that the scenarios roll and merge generations while readers are open.
+            yield return new TestConfiguration(new FlatDbConfig()
+            {
+                Enabled = true,
+                Layout = layout,
+                TrieNodeLogEnabled = true,
+                TrieNodeLogStateBytes = 8192,
+                TrieNodeLogStorageBytes = 8192,
+                TrieNodeLogSecondLevelMergeLag = -1,
+            }, $"{layout}+TrieNodeLog");
+
+            yield return new TestConfiguration(new FlatDbConfig()
+            {
+                Enabled = true,
+                Layout = layout,
+                TrieNodeLogEnabled = true,
+                TrieNodeLogStateBytes = 8192,
+                TrieNodeLogStorageBytes = 8192,
+            }, $"{layout}+TrieNodeLogSecondLevel");
+        }
+    }
+
+    private static bool IsPreimage(FlatLayout layout) => layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat;
+
+    // Range deletes and self-destructs scan the RocksDB snapshot, so nodes still held only by the trie node log
+    // are not found; sync batches, which issue the range deletes, bypass the log for this reason.
+    private void IgnoreScanDeletesOverTrieNodeLog()
+    {
+        if (configuration.FlatDbConfig.TrieNodeLogEnabled)
+            Assert.Ignore("Scan-based trie node deletes do not see nodes held by the trie node log");
     }
 
     [SetUp]
@@ -143,9 +166,12 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
 
-        Assert.That(reader1.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(0)));
-        Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
-        Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(2)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader1.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(0)));
+            Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+            Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(2)));
+        }
     }
 
     [Test]
@@ -159,17 +185,18 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1]));
-            writer.SetStorage(address, 123, SlotValue.FromSpanWithoutLeadingZero([2]));
-            writer.SetStorage(address, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([3]));
+            writer.SetStorage(address, UInt256.MinValue, BaseFlatPersistence.DecodeSlotValue([1]));
+            writer.SetStorage(address, 123, BaseFlatPersistence.DecodeSlotValue([2]));
+            writer.SetStorage(address, UInt256.MaxValue, BaseFlatPersistence.DecodeSlotValue([3]));
 
             writer.SetAccount(address2, acc2);
-            writer.SetStorage(address2, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1]));
-            writer.SetStorage(address2, 123, SlotValue.FromSpanWithoutLeadingZero([2]));
-            writer.SetStorage(address2, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([3]));
+            writer.SetStorage(address2, UInt256.MinValue, BaseFlatPersistence.DecodeSlotValue([1]));
+            writer.SetStorage(address2, 123, BaseFlatPersistence.DecodeSlotValue([2]));
+            writer.SetStorage(address2, UInt256.MaxValue, BaseFlatPersistence.DecodeSlotValue([3]));
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.EqualTo([1]));
             Assert.That(GetSlot(reader, address, 123), Is.EqualTo([2]));
@@ -182,6 +209,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.Null);
             Assert.That(GetSlot(reader, address, 123), Is.Null);
@@ -206,6 +234,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Initially, slots should be null
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.Null);
             Assert.That(GetSlot(reader, address, UInt256.MaxValue), Is.Null);
@@ -214,14 +243,15 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Write various storage slots
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1, 2, 3]));
-            writer.SetStorage(address, 42, SlotValue.FromSpanWithoutLeadingZero([0x42]));
-            writer.SetStorage(address, 12345, SlotValue.FromSpanWithoutLeadingZero([0x10, 0x20, 0x30, 0x40]));
-            writer.SetStorage(address, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([0xff, 0xfe, 0xfd]));
+            writer.SetStorage(address, UInt256.MinValue, BaseFlatPersistence.DecodeSlotValue([1, 2, 3]));
+            writer.SetStorage(address, 42, BaseFlatPersistence.DecodeSlotValue([0x42]));
+            writer.SetStorage(address, 12345, BaseFlatPersistence.DecodeSlotValue([0x10, 0x20, 0x30, 0x40]));
+            writer.SetStorage(address, UInt256.MaxValue, BaseFlatPersistence.DecodeSlotValue([0xff, 0xfe, 0xfd]));
         }
 
         // Verify all slots can be read back
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.EqualTo([1, 2, 3]));
             Assert.That(GetSlot(reader, address, 42), Is.EqualTo([0x42]));
@@ -240,28 +270,31 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero([1]));
+            writer.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([1]));
         }
 
         using IPersistence.IPersistenceReader reader1 = _persistence.CreateReader();
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero([2]));
+            writer.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([2]));
         }
 
         using IPersistence.IPersistenceReader reader2 = _persistence.CreateReader();
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero([3]));
+            writer.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([3]));
         }
 
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
 
-        Assert.That(GetSlot(reader1, address, slot), Is.EqualTo([1]));
-        Assert.That(GetSlot(reader2, address, slot), Is.EqualTo([2]));
-        Assert.That(GetSlot(reader3, address, slot), Is.EqualTo([3]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetSlot(reader1, address, slot), Is.EqualTo([1]));
+            Assert.That(GetSlot(reader2, address, slot), Is.EqualTo([2]));
+            Assert.That(GetSlot(reader3, address, slot), Is.EqualTo([3]));
+        }
     }
 
     [Test]
@@ -273,8 +306,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, 1, SlotValue.FromSpanWithoutLeadingZero([0x01]));
-            writer.SetStorage(address, 2, SlotValue.FromSpanWithoutLeadingZero([0x02]));
+            writer.SetStorage(address, 1, BaseFlatPersistence.DecodeSlotValue([0x01]));
+            writer.SetStorage(address, 2, BaseFlatPersistence.DecodeSlotValue([0x02]));
         }
 
         // Verify account and storage exist
@@ -300,10 +333,10 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestRawOperations()
     {
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat) Assert.Ignore("Preimage mode does not support raw operation");
+        if (IsPreimage(configuration.FlatDbConfig.Layout)) Assert.Ignore("Preimage mode does not support raw operation");
 
         Account acc = TestItem.GenerateIndexedAccount(0);
-        Hash256 addrHash = new Hash256(TestItem.AddressA.ToAccountPath.Bytes);
+        Hash256 addrHash = new(TestItem.AddressA.ToAccountPath.Bytes);
         Hash256 slotHash = Keccak.Compute([1, 2, 3]);
 
         // Test raw account operations
@@ -318,8 +351,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Assert.That(rawAccount, Is.Not.Null);
 
             // Decode and verify
-            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(rawAccount);
-            Assert.That(AccountDecoder.Instance.Decode(ref ctx), Is.EqualTo(acc));
+            RlpReader ctx = new(rawAccount);
+            Assert.That(AccountDecoder.Slim.Decode(ref ctx), Is.EqualTo(acc));
         }
 
         // Test raw storage operations
@@ -327,16 +360,17 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorageRaw(addrHash, slotHash, SlotValue.FromBytes(storageValue));
+            ReadOnlySpan<byte> stripped = ((ReadOnlySpan<byte>)storageValue).WithoutLeadingZeros();
+            writer.SetStorageRawEncoded(addrHash, slotHash, Rlp.Encode(stripped).Bytes);
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         {
-            SlotValue rawValue = default;
+            UInt256 rawValue = default;
             Assert.That(reader.TryGetStorageRaw(addrHash, slotHash, ref rawValue), Is.EqualTo(storageValue is not null));
             if (storageValue is not null)
             {
-                Assert.That(rawValue.ToEvmBytes(), Is.EqualTo(storageValue.WithoutLeadingZeros().ToArray()));
+                Assert.That(rawValue.ToMinimalBigEndian(), Is.EqualTo(storageValue.WithoutLeadingZeros().ToArray()));
             }
         }
     }
@@ -353,8 +387,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, slot1, SlotValue.FromSpanWithoutLeadingZero([1]));
-            writer.SetStorage(address, slot2, SlotValue.FromSpanWithoutLeadingZero([10]));
+            writer.SetStorage(address, slot1, BaseFlatPersistence.DecodeSlotValue([1]));
+            writer.SetStorage(address, slot2, BaseFlatPersistence.DecodeSlotValue([10]));
         }
 
         using IPersistence.IPersistenceReader reader1 = _persistence.CreateReader();
@@ -363,7 +397,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, TestItem.GenerateIndexedAccount(1));
-            writer.SetStorage(address, slot1, SlotValue.FromSpanWithoutLeadingZero([2]));
+            writer.SetStorage(address, slot1, BaseFlatPersistence.DecodeSlotValue([2]));
         }
 
         using IPersistence.IPersistenceReader reader2 = _persistence.CreateReader();
@@ -371,25 +405,28 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Modify slot2
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, slot2, SlotValue.FromSpanWithoutLeadingZero([20]));
+            writer.SetStorage(address, slot2, BaseFlatPersistence.DecodeSlotValue([20]));
         }
 
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
 
-        // Verify reader1 sees initial state
-        Assert.That(reader1.GetAccount(address), Is.EqualTo(acc));
-        Assert.That(GetSlot(reader1, address, slot1), Is.EqualTo([1]));
-        Assert.That(GetSlot(reader1, address, slot2), Is.EqualTo([10]));
+        using (Assert.EnterMultipleScope())
+        {
+            // Verify reader1 sees initial state
+            Assert.That(reader1.GetAccount(address), Is.EqualTo(acc));
+            Assert.That(GetSlot(reader1, address, slot1), Is.EqualTo([1]));
+            Assert.That(GetSlot(reader1, address, slot2), Is.EqualTo([10]));
 
-        // Verify reader2 sees second state
-        Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
-        Assert.That(GetSlot(reader2, address, slot1), Is.EqualTo([2]));
-        Assert.That(GetSlot(reader2, address, slot2), Is.EqualTo([10]));
+            // Verify reader2 sees second state
+            Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+            Assert.That(GetSlot(reader2, address, slot1), Is.EqualTo([2]));
+            Assert.That(GetSlot(reader2, address, slot2), Is.EqualTo([10]));
 
-        // Verify reader3 sees final state
-        Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
-        Assert.That(GetSlot(reader3, address, slot1), Is.EqualTo([2]));
-        Assert.That(GetSlot(reader3, address, slot2), Is.EqualTo([20]));
+            // Verify reader3 sees final state
+            Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+            Assert.That(GetSlot(reader3, address, slot1), Is.EqualTo([2]));
+            Assert.That(GetSlot(reader3, address, slot2), Is.EqualTo([20]));
+        }
     }
 
     [Test]
@@ -407,13 +444,14 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             writer.SetAccount(addr2, TestItem.GenerateIndexedAccount(1));
             writer.SetAccount(addr3, TestItem.GenerateIndexedAccount(2));
 
-            writer.SetStorage(addr1, slot, SlotValue.FromSpanWithoutLeadingZero([0x11]));
-            writer.SetStorage(addr2, slot, SlotValue.FromSpanWithoutLeadingZero([0x22]));
-            writer.SetStorage(addr3, slot, SlotValue.FromSpanWithoutLeadingZero([0x33]));
+            writer.SetStorage(addr1, slot, BaseFlatPersistence.DecodeSlotValue([0x11]));
+            writer.SetStorage(addr2, slot, BaseFlatPersistence.DecodeSlotValue([0x22]));
+            writer.SetStorage(addr3, slot, BaseFlatPersistence.DecodeSlotValue([0x33]));
         }
 
         // Verify each account has its own isolated storage
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, addr1, slot), Is.EqualTo([0x11]));
             Assert.That(GetSlot(reader, addr2, slot), Is.EqualTo([0x22]));
@@ -423,11 +461,12 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Modify storage for addr2 only
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(addr2, slot, SlotValue.FromSpanWithoutLeadingZero([0xff]));
+            writer.SetStorage(addr2, slot, BaseFlatPersistence.DecodeSlotValue([0xff]));
         }
 
         // Verify only addr2's storage changed
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, addr1, slot), Is.EqualTo([0x11]));
             Assert.That(GetSlot(reader, addr2, slot), Is.EqualTo([0xff]));
@@ -461,18 +500,19 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             // State trie nodes (address=null)
-            writer.SetStateTrieNode(in stateShortPath, new TrieNode(NodeType.Leaf, stateShortRlp));
-            writer.SetStateTrieNode(in stateMediumPath, new TrieNode(NodeType.Leaf, stateMediumRlp));
-            writer.SetStateTrieNode(in stateLongPath, new TrieNode(NodeType.Leaf, stateLongRlp));
+            writer.SetStateTrieNode(in stateShortPath, stateShortRlp);
+            writer.SetStateTrieNode(in stateMediumPath, stateMediumRlp);
+            writer.SetStateTrieNode(in stateLongPath, stateLongRlp);
 
             // Storage trie nodes (with account address)
-            writer.SetStorageTrieNode(account1, in storageShortPath, new TrieNode(NodeType.Leaf, storage1ShortRlp));
-            writer.SetStorageTrieNode(account1, in storageLongPath, new TrieNode(NodeType.Leaf, storage1LongRlp));
-            writer.SetStorageTrieNode(account2, in storageShortPath, new TrieNode(NodeType.Leaf, storage2ShortRlp));
+            writer.SetStorageTrieNode(account1, in storageShortPath, storage1ShortRlp);
+            writer.SetStorageTrieNode(account1, in storageLongPath, storage1LongRlp);
+            writer.SetStorageTrieNode(account2, in storageShortPath, storage2ShortRlp);
         }
 
         // Verify all nodes
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             // State trie nodes
             Assert.That(reader.TryLoadStateRlp(in stateShortPath, ReadFlags.None), Is.EqualTo(stateShortRlp));
@@ -500,25 +540,28 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStateTrieNode(in path, new TrieNode(NodeType.Leaf, rlpData1));
+            writer.SetStateTrieNode(in path, rlpData1);
         }
         using IPersistence.IPersistenceReader reader1 = _persistence.CreateReader();
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStateTrieNode(in path, new TrieNode(NodeType.Leaf, rlpData2));
+            writer.SetStateTrieNode(in path, rlpData2);
         }
         using IPersistence.IPersistenceReader reader2 = _persistence.CreateReader();
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStateTrieNode(in path, new TrieNode(NodeType.Leaf, rlpData3));
+            writer.SetStateTrieNode(in path, rlpData3);
         }
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
 
-        Assert.That(reader1.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData1));
-        Assert.That(reader2.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData2));
-        Assert.That(reader3.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader1.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData1));
+            Assert.That(reader2.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData2));
+            Assert.That(reader3.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData3));
+        }
     }
 
     [Test]
@@ -548,15 +591,16 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStateTrieNode(in statePath5, new TrieNode(NodeType.Leaf, rlp5));
-            writer.SetStateTrieNode(in statePath6, new TrieNode(NodeType.Leaf, rlp6));
-            writer.SetStateTrieNode(in statePath15, new TrieNode(NodeType.Leaf, rlp15));
-            writer.SetStateTrieNode(in statePath16, new TrieNode(NodeType.Leaf, rlp16));
-            writer.SetStorageTrieNode(account, in storagePath15, new TrieNode(NodeType.Leaf, storageRlp15));
-            writer.SetStorageTrieNode(account, in storagePath16, new TrieNode(NodeType.Leaf, storageRlp16));
+            writer.SetStateTrieNode(in statePath5, rlp5);
+            writer.SetStateTrieNode(in statePath6, rlp6);
+            writer.SetStateTrieNode(in statePath15, rlp15);
+            writer.SetStateTrieNode(in statePath16, rlp16);
+            writer.SetStorageTrieNode(account, in storagePath15, storageRlp15);
+            writer.SetStorageTrieNode(account, in storagePath16, storageRlp16);
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.TryLoadStateRlp(in statePath5, ReadFlags.None), Is.EqualTo(rlp5));
             Assert.That(reader.TryLoadStateRlp(in statePath6, ReadFlags.None), Is.EqualTo(rlp6));
@@ -570,6 +614,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestSelfDestructTrieNodes()
     {
+        IgnoreScanDeletesOverTrieNodeLog();
         // Test that SelfDestruct removes storage trie nodes for an account
         // This tests both shortened storage nodes (path ≤15) and fallback storage nodes (path >15)
 
@@ -592,18 +637,19 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             // Account 1 storage trie nodes
-            writer.SetStorageTrieNode(account1Hash, in shortPath, new TrieNode(NodeType.Leaf, rlpShort));
-            writer.SetStorageTrieNode(account1Hash, in mediumPath, new TrieNode(NodeType.Leaf, rlpMedium));
-            writer.SetStorageTrieNode(account1Hash, in longPath, new TrieNode(NodeType.Leaf, rlpLong));
+            writer.SetStorageTrieNode(account1Hash, in shortPath, rlpShort);
+            writer.SetStorageTrieNode(account1Hash, in mediumPath, rlpMedium);
+            writer.SetStorageTrieNode(account1Hash, in longPath, rlpLong);
 
             // Account 2 storage trie nodes (same paths, different account)
-            writer.SetStorageTrieNode(account2Hash, in shortPath, new TrieNode(NodeType.Leaf, rlpShort));
-            writer.SetStorageTrieNode(account2Hash, in mediumPath, new TrieNode(NodeType.Leaf, rlpMedium));
-            writer.SetStorageTrieNode(account2Hash, in longPath, new TrieNode(NodeType.Leaf, rlpLong));
+            writer.SetStorageTrieNode(account2Hash, in shortPath, rlpShort);
+            writer.SetStorageTrieNode(account2Hash, in mediumPath, rlpMedium);
+            writer.SetStorageTrieNode(account2Hash, in longPath, rlpLong);
         }
 
         // Verify all nodes exist
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in shortPath, ReadFlags.None), Is.EqualTo(rlpShort));
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in mediumPath, ReadFlags.None), Is.EqualTo(rlpMedium));
@@ -621,6 +667,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify account1's trie nodes are deleted, account2's remain
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             // Account 1 nodes should be gone
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in shortPath, ReadFlags.None), Is.Null);
@@ -637,6 +684,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestSelfDestructTrieNodesWithSimilarAddressHashPrefix()
     {
+        IgnoreScanDeletesOverTrieNodeLog();
         // Test that SelfDestruct correctly differentiates accounts even when their hashes
         // might share the first 4 bytes (the prefix used in storage key encoding).
         // The storage key uses first 4 bytes of hash as prefix, remaining 16 bytes at end.
@@ -653,8 +701,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         hash1Bytes[4] = 0x11;
         hash2Bytes[4] = 0x22;
 
-        Hash256 account1Hash = new Hash256(hash1Bytes);
-        Hash256 account2Hash = new Hash256(hash2Bytes);
+        Hash256 account1Hash = new(hash1Bytes);
+        Hash256 account2Hash = new(hash2Bytes);
 
         TreePath shortPath = TreePath.FromHexString("1234"); // -> StorageNodes
         TreePath longPath = TreePath.FromHexString("0123456789abcdef0123456789abcdef01234567"); // -> FallbackNodes
@@ -665,14 +713,15 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Write trie nodes using the hashes directly
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorageTrieNode(account1Hash, in shortPath, new TrieNode(NodeType.Leaf, rlp1));
-            writer.SetStorageTrieNode(account1Hash, in longPath, new TrieNode(NodeType.Leaf, rlp1));
-            writer.SetStorageTrieNode(account2Hash, in shortPath, new TrieNode(NodeType.Leaf, rlp2));
-            writer.SetStorageTrieNode(account2Hash, in longPath, new TrieNode(NodeType.Leaf, rlp2));
+            writer.SetStorageTrieNode(account1Hash, in shortPath, rlp1);
+            writer.SetStorageTrieNode(account1Hash, in longPath, rlp1);
+            writer.SetStorageTrieNode(account2Hash, in shortPath, rlp2);
+            writer.SetStorageTrieNode(account2Hash, in longPath, rlp2);
         }
 
         // Verify all nodes exist before SelfDestruct
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in shortPath, ReadFlags.None), Is.EqualTo(rlp1));
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in longPath, ReadFlags.None), Is.EqualTo(rlp1));
@@ -690,8 +739,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Write and then delete using the real address flow
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorageTrieNode(address1Hash, in shortPath, new TrieNode(NodeType.Leaf, rlp1));
-            writer.SetStorageTrieNode(address1Hash, in longPath, new TrieNode(NodeType.Leaf, rlp1));
+            writer.SetStorageTrieNode(address1Hash, in shortPath, rlp1);
+            writer.SetStorageTrieNode(address1Hash, in longPath, rlp1);
         }
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
@@ -701,6 +750,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify address1's trie nodes are deleted
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.TryLoadStorageRlp(address1Hash, in shortPath, ReadFlags.None), Is.Null);
             Assert.That(reader.TryLoadStorageRlp(address1Hash, in longPath, ReadFlags.None), Is.Null);
@@ -708,6 +758,97 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             // The manually created hashes should still exist (they weren't self-destructed)
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in shortPath, ReadFlags.None), Is.EqualTo(rlp1));
             Assert.That(reader.TryLoadStorageRlp(account2Hash, in shortPath, ReadFlags.None), Is.EqualTo(rlp2));
+        }
+    }
+
+    // Each case: the value range [from, to] (the subtree of some root path) and nodes spread across all columns
+    // (top 0-5 / shortened 6-15 / fallback 16+), tagged with whether their whole subtree is contained in the range.
+    private static IEnumerable<TestCaseData> SubtreeDeleteCases()
+    {
+        // Shallow "ab" subtree: everything under ab is fully contained; aa/ac neighbours are not.
+        yield return Case("ab", new (string, bool)[]
+        {
+            ("ab00", true), ("abffff", true), ("ab00000000", true), ("abffffffffffff", true),
+            ("ab".PadRight(32, '0'), true), ("ab".PadRight(32, 'f'), true),
+            ("ab".PadRight(64, '0'), true), ("ab".PadRight(64, 'f'), true),
+            ("aa00", false), ("ac00", false), ("aa".PadRight(64, '0'), false), ("ac".PadRight(64, '0'), false),
+        });
+
+        // Deep subtree (depth 20): ancestors on the zero tail (depths 2/10/16/18) only partially overlap the range
+        // (their subtree overflows `to`), so they are preserved; the root (depth 20) and its descendants are removed.
+        yield return Case("ab".PadRight(20, '0'), new (string, bool)[]
+        {
+            ("ab", false), ("ab".PadRight(10, '0'), false), ("ab".PadRight(16, '0'), false), ("ab".PadRight(18, '0'), false),
+            ("ab".PadRight(20, '0'), true), ("ab".PadRight(20, '0') + "cccc", true), ("ab".PadRight(32, '0'), true), ("ab".PadRight(64, '0'), true),
+            ("aa".PadRight(20, '0'), false), ("ac".PadRight(20, '0'), false), ("aa".PadRight(64, '0'), false), ("ac".PadRight(64, '0'), false),
+        });
+
+        // Shortened-depth subtree (depth 10): top ancestor (depth 2) and shortened ancestors (depths 6/8) preserved;
+        // root (depth 10) and descendants removed.
+        yield return Case("ab".PadRight(10, '0'), new (string, bool)[]
+        {
+            ("ab", false), ("ab".PadRight(6, '0'), false), ("ab".PadRight(8, '0'), false),
+            ("ab".PadRight(10, '0'), true), ("ab".PadRight(12, '0'), true), ("ab".PadRight(32, '0'), true), ("ab".PadRight(64, '0'), true),
+            ("aa".PadRight(64, '0'), false), ("ac".PadRight(64, '0'), false),
+        });
+
+        // Whole trie: [Zero, MaxValue] contains every node.
+        yield return new TestCaseData(ValueKeccak.Zero, ValueKeccak.MaxValue, new (string, bool)[]
+        {
+            ("ab", true), ("ab".PadRight(10, '0'), true), ("ab".PadRight(64, '0'), true), ("cd".PadRight(64, 'f'), true),
+        }).SetName("Whole trie");
+
+        static TestCaseData Case(string rootHex, (string, bool)[] nodes)
+        {
+            TreePath root = TreePath.FromHexString(rootHex);
+            return new TestCaseData(root.ToLowerBoundPath(), root.ToUpperBoundPath(), nodes).SetName($"Subtree depth {rootHex.Length}");
+        }
+    }
+
+    [TestCaseSource(nameof(SubtreeDeleteCases))]
+    public void TestDeleteStateTrieNodeRange(ValueHash256 from, ValueHash256 to, (string Path, bool Deleted)[] nodes)
+    {
+        IgnoreScanDeletesOverTrieNodeLog();
+        byte[] rlp = [0xc1, 0x11];
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            foreach ((string p, _) in nodes) writer.SetStateTrieNode(TreePath.FromHexString(p), rlp);
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            writer.DeleteStateTrieNodeRange(from, to);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string p, bool del) in nodes)
+            {
+                byte[]? node = reader.TryLoadStateRlp(TreePath.FromHexString(p), ReadFlags.None);
+                Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(SubtreeDeleteCases))]
+    public void TestDeleteStorageTrieNodeRange(ValueHash256 from, ValueHash256 to, (string Path, bool Deleted)[] nodes)
+    {
+        IgnoreScanDeletesOverTrieNodeLog();
+        Hash256 account = TestItem.KeccakA;
+        byte[] rlp = [0xc1, 0x11];
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            foreach ((string p, _) in nodes) writer.SetStorageTrieNode(account, TreePath.FromHexString(p), rlp);
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            writer.DeleteStorageTrieNodeRange(new ValueHash256(account.Bytes), from, to);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string p, bool del) in nodes)
+            {
+                byte[]? node = reader.TryLoadStorageRlp(account, TreePath.FromHexString(p), ReadFlags.None);
+                Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
+            }
         }
     }
 
@@ -762,8 +903,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestStorageIterator_EnumeratesAccountStorage()
     {
-        // PreimageFlat uses raw address, others use hashed address paths
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+        // Preimage layouts use raw address, others use hashed address paths
+        if (IsPreimage(configuration.FlatDbConfig.Layout))
             Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
 
         // Write account with storage
@@ -773,9 +914,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(addr, acc);
-            writer.SetStorage(addr, 1, SlotValue.FromSpanWithoutLeadingZero([0x11]));
-            writer.SetStorage(addr, 42, SlotValue.FromSpanWithoutLeadingZero([0x42]));
-            writer.SetStorage(addr, 100, SlotValue.FromSpanWithoutLeadingZero([0x64]));
+            writer.SetStorage(addr, 1, BaseFlatPersistence.DecodeSlotValue([0x11]));
+            writer.SetStorage(addr, 42, BaseFlatPersistence.DecodeSlotValue([0x42]));
+            writer.SetStorage(addr, 100, BaseFlatPersistence.DecodeSlotValue([0x64]));
         }
 
         // Use iterator to enumerate storage
@@ -799,7 +940,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestStorageIterator_NoStorage_ReturnsEmpty()
     {
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+        if (IsPreimage(configuration.FlatDbConfig.Layout))
             Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
 
         // Write account without storage
@@ -829,7 +970,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestStorageIterator_IsolatesAccountStorage()
     {
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+        if (IsPreimage(configuration.FlatDbConfig.Layout))
             Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
 
         // Write storage for two accounts
@@ -839,13 +980,13 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(addr1, TestItem.GenerateIndexedAccount(0));
-            writer.SetStorage(addr1, 1, SlotValue.FromSpanWithoutLeadingZero([0x11]));
-            writer.SetStorage(addr1, 2, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+            writer.SetStorage(addr1, 1, BaseFlatPersistence.DecodeSlotValue([0x11]));
+            writer.SetStorage(addr1, 2, BaseFlatPersistence.DecodeSlotValue([0x22]));
 
             writer.SetAccount(addr2, TestItem.GenerateIndexedAccount(1));
-            writer.SetStorage(addr2, 10, SlotValue.FromSpanWithoutLeadingZero([0xaa]));
-            writer.SetStorage(addr2, 20, SlotValue.FromSpanWithoutLeadingZero([0xbb]));
-            writer.SetStorage(addr2, 30, SlotValue.FromSpanWithoutLeadingZero([0xcc]));
+            writer.SetStorage(addr2, 10, BaseFlatPersistence.DecodeSlotValue([0xaa]));
+            writer.SetStorage(addr2, 20, BaseFlatPersistence.DecodeSlotValue([0xbb]));
+            writer.SetStorage(addr2, 30, BaseFlatPersistence.DecodeSlotValue([0xcc]));
         }
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
@@ -871,8 +1012,17 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
 
-        // PreimageFlat layout should return true, others false
-        bool expected = configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat;
+        // Preimage layouts should return true, others false
+        bool expected = IsPreimage(configuration.FlatDbConfig.Layout);
         Assert.That(reader.IsPreimageMode, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void SupportsPrefetch_IsFalseOnlyForPreimageLayouts()
+    {
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+
+        // Preimage keys are not hashed, so the hashed prefetch does not apply to them.
+        Assert.That(reader is IPersistence.IPrefetchingReader { SupportsPrefetch: true }, Is.EqualTo(!IsPreimage(configuration.FlatDbConfig.Layout)));
     }
 }

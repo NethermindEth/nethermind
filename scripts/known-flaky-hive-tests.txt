@@ -1,0 +1,9 @@
+# engine
+
+# rpc-compat
+
+# Listed until the execution-apis fixtures follow execution-apis#881: #14625 numbers logIndex over returned logs only, the current fixture still expects the dropped logs' indices
+eth_simulateV1/ethSimulate-use-as-many-features-as-possible (nethermind)
+
+# Listed until the execution-apis fixtures follow execution-apis#881: #14618 keeps the EIP-2681 nonce limit without validation, the current fixture still expects the nonce to wrap to 0
+eth_simulateV1/ethSimulate-overflow-nonce (nethermind)

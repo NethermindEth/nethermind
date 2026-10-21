@@ -3,9 +3,13 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<SetCodeTransactionForRpc>
 {
     public new static TxType TxType => TxType.SetCode;
@@ -13,24 +17,31 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     public override TxType? Type => TxType;
 
     [JsonDiscriminator]
-    public AuthorizationListForRpc AuthorizationList { get; set; }
+    public AuthorizationListForRpc? AuthorizationList { get; set; }
 
     [JsonConstructor]
     public SetCodeTransactionForRpc() { }
 
     public SetCodeTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
         AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
 
         Transaction tx = baseResult.Data;
-        tx.AuthorizationList = AuthorizationList?.ToAuthorizationList() ?? [];
+
+        if (tx.SupportsAuthorizationList)
+        {
+            tx.AuthorizationList = AuthorizationList?.ToAuthorizationList() ?? [];
+        }
 
         return tx;
     }

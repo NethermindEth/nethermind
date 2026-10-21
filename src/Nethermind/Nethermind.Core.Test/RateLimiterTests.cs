@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -39,7 +38,7 @@ public class RateLimiterTests
         await Task.WhenAll(tasks);
 
         int effectivePerSec = (int)(counter / ((Environment.TickCount64 - startTime) / 1000.0));
-        effectivePerSec.Should().BeInRange((int)(eventPerSec * 0.2), (int)(eventPerSec * 1.5));
+        Assert.That(effectivePerSec, Is.InRange((int)(eventPerSec * 0.2), (int)(eventPerSec * 1.5)));
     }
 
     [Test]
@@ -52,7 +51,7 @@ public class RateLimiterTests
         cts.Cancel();
 
         Func<Task> act = async () => await waitTask;
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        Assert.That(async () => await act(), Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
@@ -60,6 +59,31 @@ public class RateLimiterTests
     {
         RateLimiter rateLimiter = new(1);
         await rateLimiter.WaitAsync(CancellationToken.None);
-        rateLimiter.IsThrottled().Should().BeTrue();
+        Assert.That(rateLimiter.IsThrottled(), Is.True);
+    }
+
+    [Test]
+    public async Task Idle_time_does_not_bank_a_burst()
+    {
+        RateLimiter rateLimiter = new(10);
+        await Task.Delay(500);
+
+        // Only the first call is free after an idle period; the next one is delayed by a full interval.
+        Assert.That(rateLimiter.WaitAsync(CancellationToken.None).IsCompleted, Is.True);
+        Assert.That(rateLimiter.WaitAsync(CancellationToken.None).IsCompleted, Is.False);
+    }
+
+    [Test]
+    public void Backlog_reports_the_delay_of_the_next_caller()
+    {
+        RateLimiter rateLimiter = new(10);
+        Assert.That(rateLimiter.Backlog, Is.EqualTo(TimeSpan.Zero));
+
+        for (int i = 0; i < 11; i++)
+        {
+            _ = rateLimiter.WaitAsync(CancellationToken.None);
+        }
+
+        Assert.That(rateLimiter.Backlog, Is.InRange(TimeSpan.FromMilliseconds(1000), TimeSpan.FromMilliseconds(1100)));
     }
 }

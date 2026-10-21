@@ -6,54 +6,61 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
+[method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
+public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
-    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
-    public WithdrawalDecoder() { }
-
-    protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Withdrawal? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
+
+        rlp.ReadSequenceLength(ref position, out int sequenceLength);
+        int checkPosition = position + sequenceLength;
+
+        rlp.DecodeULong(ref position, out ulong index);
+        rlp.DecodeULong(ref position, out ulong validatorIndex);
+        rlp.DecodeAddress(ref position, out Address address);
+        rlp.DecodeULong(ref position, out ulong amountInGwei);
+        decoderContext.Position = position;
+
+        Withdrawal withdrawal = new()
         {
-            decoderContext.ReadByte();
-            return null;
+            Index = index,
+            ValidatorIndex = validatorIndex,
+            Address = address,
+            AmountInGwei = amountInGwei
+        };
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        {
+            RlpHelpers.Check(position, checkPosition);
         }
 
-        decoderContext.ReadSequenceLength();
-
-        return new()
-        {
-            Index = decoderContext.DecodeULong(),
-            ValidatorIndex = decoderContext.DecodeULong(),
-            Address = decoderContext.DecodeAddress(),
-            AmountInGwei = decoderContext.DecodeULong()
-        };
+        return withdrawal;
     }
 
-    public override void Encode(RlpStream stream, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
-        var contentLength = GetContentLength(item);
+        int contentLength = GetContentLength(item);
 
-        stream.StartSequence(contentLength);
-        stream.Encode(item.Index);
-        stream.Encode(item.ValidatorIndex);
-        stream.Encode(item.Address);
-        stream.Encode(item.AmountInGwei);
+        writer.StartSequence(contentLength);
+        writer.Encode(item.Index);
+        writer.Encode(item.ValidatorIndex);
+        writer.Encode(item.Address);
+        writer.Encode(item.AmountInGwei);
     }
 
-    public Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        var stream = new RlpStream(GetLength(item, rlpBehaviors));
-
-        Encode(stream, item, rlpBehaviors);
-
-        return new(stream.Data.ToArray());
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
+        return new(bytes);
     }
 
     private static int GetContentLength(Withdrawal item) =>
@@ -62,5 +69,6 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
         Rlp.LengthOfAddressRlp +
         Rlp.LengthOf(item.AmountInGwei);
 
-    public override int GetLength(Withdrawal item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
+    public override int GetLength(Withdrawal? item, RlpBehaviors _)
+        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
 }

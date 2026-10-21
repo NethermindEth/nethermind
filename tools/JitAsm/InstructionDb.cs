@@ -13,24 +13,19 @@ internal sealed class InstructionInfo
     public string? Ports { get; init; }
 }
 
-internal sealed class InstructionDb
+internal sealed class InstructionDb(string archName)
 {
     private const string Magic = "UOPS";
     private const ushort Version = 2;
 
     private readonly Dictionary<string, List<InstructionInfo>> _instructions = new(StringComparer.OrdinalIgnoreCase);
 
-    public string ArchName { get; }
-
-    public InstructionDb(string archName)
-    {
-        ArchName = archName;
-    }
+    public string ArchName { get; } = archName;
 
     public void Add(InstructionInfo info)
     {
         string key = info.Mnemonic.ToLowerInvariant();
-        if (!_instructions.TryGetValue(key, out var list))
+        if (!_instructions.TryGetValue(key, out List<InstructionInfo>? list))
         {
             list = [];
             _instructions[key] = list;
@@ -42,11 +37,11 @@ internal sealed class InstructionDb
 
     public InstructionInfo? Lookup(string mnemonic, string operandPattern)
     {
-        if (!_instructions.TryGetValue(mnemonic, out var forms))
+        if (!_instructions.TryGetValue(mnemonic, out List<InstructionInfo>? forms))
             return null;
 
         // Exact match
-        foreach (var form in forms)
+        foreach (InstructionInfo form in forms)
         {
             if (string.Equals(form.OperandPattern, operandPattern, StringComparison.OrdinalIgnoreCase))
                 return form;
@@ -54,7 +49,7 @@ internal sealed class InstructionDb
 
         // Relaxed match: ignore register width differences (r32 ≈ r64 for same instruction class)
         string relaxed = RelaxPattern(operandPattern);
-        foreach (var form in forms)
+        foreach (InstructionInfo form in forms)
         {
             if (string.Equals(RelaxPattern(form.OperandPattern), relaxed, StringComparison.OrdinalIgnoreCase))
                 return form;
@@ -63,7 +58,7 @@ internal sealed class InstructionDb
         // Mnemonic-only match for zero-operand instructions (ret, nop, etc.)
         if (operandPattern.Length == 0)
         {
-            foreach (var form in forms)
+            foreach (InstructionInfo form in forms)
             {
                 if (form.OperandPattern.Length == 0)
                     return form;
@@ -73,20 +68,18 @@ internal sealed class InstructionDb
         return null;
     }
 
-    private static string RelaxPattern(string pattern)
-    {
+    private static string RelaxPattern(string pattern) =>
         // Normalize register widths: r8/r16/r32/r64 → r, m8/m16/m32/m64/m128/m256/m512 → m, imm8/imm32 → imm
-        return pattern
+        pattern
             .Replace("r64", "r").Replace("r32", "r").Replace("r16", "r").Replace("r8", "r")
             .Replace("m512", "m").Replace("m256", "m").Replace("m128", "m")
             .Replace("m64", "m").Replace("m32", "m").Replace("m16", "m").Replace("m8", "m")
             .Replace("imm32", "imm").Replace("imm8", "imm");
-    }
 
     public void Save(string path)
     {
-        using var stream = File.Create(path);
-        using var writer = new BinaryWriter(stream);
+        using FileStream stream = File.Create(path);
+        using BinaryWriter writer = new(stream);
 
         // Header
         writer.Write(Magic.ToCharArray());
@@ -98,9 +91,9 @@ internal sealed class InstructionDb
         writer.Write(entryCount);
 
         // Entries
-        foreach (var (_, forms) in _instructions)
+        foreach ((string _, List<InstructionInfo>? forms) in _instructions)
         {
-            foreach (var info in forms)
+            foreach (InstructionInfo info in forms)
             {
                 writer.Write(info.Mnemonic);
                 writer.Write(info.OperandPattern);
@@ -114,8 +107,8 @@ internal sealed class InstructionDb
 
     public static InstructionDb Load(string path)
     {
-        using var stream = File.OpenRead(path);
-        using var reader = new BinaryReader(stream);
+        using FileStream stream = File.OpenRead(path);
+        using BinaryReader reader = new(stream);
 
         // Header
         char[] magic = reader.ReadChars(4);
@@ -129,7 +122,7 @@ internal sealed class InstructionDb
         string archName = reader.ReadString();
         int entryCount = reader.ReadInt32();
 
-        var db = new InstructionDb(archName);
+        InstructionDb db = new(archName);
 
         for (int i = 0; i < entryCount; i++)
         {

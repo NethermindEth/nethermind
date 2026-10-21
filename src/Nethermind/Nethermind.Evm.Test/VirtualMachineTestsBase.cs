@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Numerics;
+using System.Text.Json;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,10 +20,12 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core.Test.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.GasPolicy;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -29,7 +35,9 @@ public abstract class VirtualMachineTestsBase
     protected const string SampleHexData1 = "a01234";
     protected const string SampleHexData2 = "b15678";
     protected const string HexZero = "00";
-    protected const long DefaultBlockGasLimit = 8000000;
+    protected const ulong DefaultBlockGasLimit = 8000000;
+    protected const ulong DefaultBlockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
+    protected const ulong DefaultTimestamp = 0UL;
 
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
@@ -39,6 +47,7 @@ public abstract class VirtualMachineTestsBase
     protected EthereumVirtualMachine Machine { get; private set; }
     protected CacheCodeInfoRepository CodeInfoRepository { get; private set; }
     protected IWorldState TestState { get; private set; }
+    protected IDbProvider DbProvider { get; private set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
     protected static Address Recipient { get; } = TestItem.AddressB;
@@ -49,15 +58,21 @@ public abstract class VirtualMachineTestsBase
     protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
-    protected virtual long BlockNumber { get; private set; } = MainnetSpecProvider.ByzantiumBlockNumber;
-    protected virtual ulong Timestamp { get; private set; } = 0UL;
+    protected virtual ulong BlockNumber => DefaultBlockNumber;
+    protected virtual ulong Timestamp => DefaultTimestamp;
+
+    /// <summary>Whether test transactions carry an EIP-155 <c>v</c>; there is none for chain ids above <c>(2^64 - 37) / 2</c>.</summary>
+    protected virtual bool SignWithEip155 => true;
+
+    /// <summary>Applies a signed <paramref name="adjustment"/> to a block number, e.g. to target just before/after a fork.</summary>
+    protected static ulong AdjustBlockNumber(ulong blockNumber, long adjustment) => (ulong)((long)blockNumber + adjustment);
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
-    protected virtual ILogManager GetLogManager()
-    {
-        return LimboLogs.Instance;
-    }
+    protected virtual ILogManager GetLogManager() => LimboLogs.Instance;
+
+    /// <summary>The frame code runner this fixture's machine is constructed with; none by default.</summary>
+    protected virtual FrameCodeRunner<EthereumGasPolicy>? CreateFrameCodeRunner() => null;
 
     [SetUp]
     public virtual void Setup()
@@ -65,13 +80,13 @@ public abstract class VirtualMachineTestsBase
         ILogManager logManager = GetLogManager();
 
         _stateDb = new MemDb();
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        TestState = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
+        DbProvider = TestMemDbProvider.Init();
+        TestState = TestWorldStateFactory.CreateForTest(DbProvider, logManager);
         _worldStateCloser = TestState.BeginScope(IWorldState.PreGenesis);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new EthereumCodeInfoRepository(TestState);
-        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager);
+        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager, CreateFrameCodeRunner());
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
@@ -80,17 +95,27 @@ public abstract class VirtualMachineTestsBase
     {
         _stateDb?.Dispose();
         _worldStateCloser?.Dispose();
+        DbProvider?.Dispose();
+        Machine?.Dispose();
     }
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default with { EnableMemory = true });
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
-    protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
+    protected GethLikeTxTrace ExecuteAndTrace(GethTraceOptions options, params byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, options);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        return tracer.BuildResult();
+    }
+
+    protected GethLikeTxTrace ExecuteAndTrace(ulong blockNumber, ulong gasLimit, params byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
@@ -98,7 +123,7 @@ public abstract class VirtualMachineTestsBase
         return tracer.BuildResult();
     }
 
-    protected GethLikeTxTrace ExecuteAndTrace(long gasLimit, params byte[] code)
+    protected GethLikeTxTrace ExecuteAndTrace(ulong gasLimit, params byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
@@ -108,22 +133,73 @@ public abstract class VirtualMachineTestsBase
 
     protected GethLikeTxTrace ExecuteAndTraceToFile(Action<GethTxFileTraceEntry> dumpCallback, byte[] code, GethTraceOptions options)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
-        GethLikeTxFileTracer tracer = new(dumpCallback, options);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        GethLikeTxFileTracer tracer = new(
+            dumpCallback,
+            options,
+            (long)spec.GasCosts.DestroyRefund,
+            IntrinsicGasCalculator.Calculate(transaction, spec, block.Header.GasLimit).Standard);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
         return tracer.BuildResult();
+    }
+
+    /// <summary>Runs <paramref name="code"/> under a <c>trace_*</c> vmTrace, buffered or streamed, and returns each top-level operation.</summary>
+    protected IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> TraceVmOperations(byte[] code, bool streaming)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
+        BlockExecutionContext context = new(block.Header, Spec);
+        List<(ulong, bool, int)> operations = [];
+        if (!streaming)
+        {
+            ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
+            _processor.Execute(transaction, context, tracer);
+            foreach (ParityVmOperationTrace operation in tracer.BuildResult().VmTrace.Operations)
+            {
+                operations.Add((operation.Cost, operation.Sub is not null, operation.Push?.Length ?? 0));
+            }
+
+            return operations;
+        }
+
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer streamingTracer = new(
+            block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace,
+            writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: true);
+        try
+        {
+            _processor.Execute(transaction, context, streamingTracer);
+            streamingTracer.BuildResult();
+        }
+        finally
+        {
+            streamingTracer.ReleaseResources();
+        }
+
+        writer.Flush();
+        using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+        foreach (JsonElement operation in document.RootElement.GetProperty("ops").EnumerateArray())
+        {
+            JsonElement push = operation.GetProperty("ex").GetProperty("push");
+            operations.Add((operation.GetProperty("cost").GetUInt64(),
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
+                push.ValueKind is JsonValueKind.Array ? push.GetArrayLength() : 0));
+        }
+
+        return operations;
     }
 
     /// <summary>
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
-    protected TestAllTracerWithOutput Execute(long blockNumber, params byte[] code) => Execute((blockNumber, Timestamp), code);
+    protected TestAllTracerWithOutput Execute(ulong blockNumber, params byte[] code) => Execute((blockNumber, Timestamp), code);
 
-    protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code) => Execute(activation, 100000, code);
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code) => Execute(activation, 100000UL, code);
 
-    protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, params byte[] code) => Execute(activation, gasLimit, 0, code);
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, ulong gasLimit, params byte[] code) => Execute(activation, gasLimit, 0UL, code);
 
-    protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, ulong slotNumber, params byte[] code)
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, ulong gasLimit, ulong slotNumber, params byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code, slotNumber: slotNumber);
         TestAllTracerWithOutput tracer = CreateTracer();
@@ -133,7 +209,7 @@ public abstract class VirtualMachineTestsBase
 
     protected TestAllTracerWithOutput Execute(ForkActivation activation, Transaction tx)
     {
-        (Block block, _) = PrepareTx(activation, 100000, null);
+        (Block block, _) = PrepareTx(activation, 100000UL, null);
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
@@ -148,7 +224,7 @@ public abstract class VirtualMachineTestsBase
 
     protected T ExecuteBlock<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : IBlockTracer
     {
-        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000UL, code);
         tracer.StartNewBlockTrace(block);
         ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
@@ -159,7 +235,7 @@ public abstract class VirtualMachineTestsBase
 
     protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {
-        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000UL, code);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
@@ -167,8 +243,8 @@ public abstract class VirtualMachineTestsBase
     /// <summary>
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
-    protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code,
-        long blockGasLimit = DefaultBlockGasLimit, byte[][] blobVersionedHashes = null)
+    protected TestAllTracerWithOutput Execute(ulong blockNumber, ulong gasLimit, byte[] code,
+        ulong blockGasLimit = DefaultBlockGasLimit, byte[][] blobVersionedHashes = null)
     {
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
@@ -177,8 +253,8 @@ public abstract class VirtualMachineTestsBase
         return tracer;
     }
 
-    protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, byte[] code,
-        long blockGasLimit = DefaultBlockGasLimit, byte[][] blobVersionedHashes = null)
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, ulong gasLimit, byte[] code,
+        ulong blockGasLimit = DefaultBlockGasLimit, byte[][] blobVersionedHashes = null)
     {
         (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
@@ -191,26 +267,23 @@ public abstract class VirtualMachineTestsBase
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
     protected (Block block, Transaction transaction) PrepareTx(
-        long blockNumber,
-        long gasLimit,
+        ulong blockNumber,
+        ulong gasLimit,
         byte[]? code = null,
         SenderRecipientAndMiner? senderRecipientAndMiner = null,
         int value = 1,
-        long blockGasLimit = DefaultBlockGasLimit,
+        ulong blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
         ulong excessBlobGas = 0,
-        ulong gasPrice = 1)
-    {
-        return PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas, gasPrice: gasPrice);
-    }
+        ulong gasPrice = 1) => PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas, gasPrice: gasPrice);
 
     protected (Block block, Transaction transaction) PrepareTx(
         ForkActivation activation,
-        long gasLimit,
+        ulong gasLimit,
         byte[]? code = null,
         SenderRecipientAndMiner? senderRecipientAndMiner = null,
         int value = 1,
-        long blockGasLimit = DefaultBlockGasLimit,
+        ulong blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
         ulong excessBlobGas = 0,
         ulong slotNumber = 0,
@@ -238,12 +311,12 @@ public abstract class VirtualMachineTestsBase
             TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
         }
 
-        GetLogManager().GetClassLogger().Debug("Committing initial state");
+        GetLogManager().GetClassLogger<VirtualMachineTestsBase>().Debug("Committing initial state");
         TestState.Commit(SpecProvider.GenesisSpec);
-        GetLogManager().GetClassLogger().Debug("Committed initial state");
-        GetLogManager().GetClassLogger().Debug("Committing initial tree");
+        GetLogManager().GetClassLogger<VirtualMachineTestsBase>().Debug("Committed initial state");
+        GetLogManager().GetClassLogger<VirtualMachineTestsBase>().Debug("Committing initial tree");
         TestState.CommitTree(0);
-        GetLogManager().GetClassLogger().Debug("Committed initial tree");
+        GetLogManager().GetClassLogger<VirtualMachineTestsBase>().Debug("Committed initial tree");
 
         transaction ??= Build.A.Transaction
             .WithGasLimit(gasLimit)
@@ -252,25 +325,20 @@ public abstract class VirtualMachineTestsBase
             .WithBlobVersionedHashes(blobVersionedHashes)
             .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
             .To(senderRecipientAndMiner.Recipient)
-            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, SignWithEip155)
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas, slotNumber);
-        BlockNumber = block.Header.Number;
-        Timestamp = block.Header.Timestamp;
         return (block, transaction);
     }
 
     /// <summary>
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
-    protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code,
-        byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null, ulong gasPrice = 1)
-    {
-        return PrepareTx((blockNumber, Timestamp), gasLimit, code, input, value, senderRecipientAndMiner);
-    }
+    protected (Block block, Transaction transaction) PrepareTx(ulong blockNumber, ulong gasLimit, byte[] code,
+        byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null, ulong gasPrice = 1) => PrepareTx((blockNumber, Timestamp), gasLimit, code, input, value, senderRecipientAndMiner);
 
-    protected (Block block, Transaction transaction) PrepareTx(ForkActivation activation, long gasLimit, byte[] code,
+    protected (Block block, Transaction transaction) PrepareTx(ForkActivation activation, ulong gasLimit, byte[] code,
         byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
@@ -294,19 +362,19 @@ public abstract class VirtualMachineTestsBase
 
         Transaction transaction = Build.A.Transaction
             .WithGasLimit(gasLimit)
-            .WithGasPrice(1)
+            .WithGasPrice(1UL)
             .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
             .WithData(input)
             .WithValue(value)
             .To(senderRecipientAndMiner.Recipient)
-            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, SignWithEip155)
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner);
         return (block, transaction);
     }
 
-    protected (Block block, Transaction transaction) PrepareInitTx(ForkActivation activation, long gasLimit, byte[] code,
+    protected (Block block, Transaction transaction) PrepareInitTx(ForkActivation activation, ulong gasLimit, byte[] code,
         SenderRecipientAndMiner senderRecipientAndMiner = null)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
@@ -316,22 +384,19 @@ public abstract class VirtualMachineTestsBase
         Transaction transaction = Build.A.Transaction
             .WithTo(null)
             .WithGasLimit(gasLimit)
-            .WithGasPrice(1)
+            .WithGasPrice(1UL)
             .WithCode(code)
-            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, SignWithEip155)
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner);
         return (block, transaction);
     }
 
-    protected Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner)
-    {
-        return BuildBlock(activation, senderRecipientAndMiner, null);
-    }
+    protected Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner) => BuildBlock(activation, senderRecipientAndMiner, null);
 
     protected virtual Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner,
-        Transaction tx, long blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0, ulong slotNumber = 0)
+        Transaction tx, ulong blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0, ulong slotNumber = 0)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
         return Build.A.Block.WithNumber(activation.BlockNumber)
@@ -347,29 +412,22 @@ public abstract class VirtualMachineTestsBase
             .TestObject;
     }
 
-    protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
-    {
-        Assert.That(receipt.GasSpent, Is.EqualTo(gas), "gas");
-    }
+    protected void AssertGas(TestAllTracerWithOutput receipt, ulong gas) => Assert.That(receipt.GasSpent, Is.EqualTo(gas), "gas");
 
-    protected void AssertStorage(UInt256 address, Address value)
-    {
-        Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes.PadLeft(32)), "storage");
-    }
+    protected void AssertStorage(UInt256 address, Address value) => AssertStorage(address, value.Bytes);
 
-    protected void AssertStorage(UInt256 address, Hash256 value)
-    {
-        Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.BytesToArray()), "storage");
-    }
+    protected void AssertStorage(UInt256 address, Hash256 value) => AssertStorage(address, value.Bytes);
 
     protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
     {
-        Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray()), "storage");
+        TestState.Get(new StorageCell(Recipient, address), out UInt256 actual);
+        Assert.That(actual.ToBigEndian(), Is.EqualTo(value.PadLeft(32)), "storage");
     }
 
     protected void AssertStorage(UInt256 address, BigInteger expectedValue)
     {
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
+        TestState.Get(new StorageCell(Recipient, address), out UInt256 storageValue1);
+        byte[] actualValue = storageValue1.ToMinimalBigEndian();
         byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
         Assert.That(actualValue, Is.EqualTo(expected), "storage");
     }
@@ -378,7 +436,8 @@ public abstract class VirtualMachineTestsBase
     {
         byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
 
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
+        TestState.Get(new StorageCell(Recipient, address), out UInt256 storageValue2);
+        byte[] actualValue = storageValue2.ToMinimalBigEndian();
         Assert.That(actualValue, Is.EqualTo(bytes), "storage");
     }
 
@@ -393,13 +452,11 @@ public abstract class VirtualMachineTestsBase
         }
         else
         {
-            byte[] actualValue = TestState.Get(storageCell).ToArray();
+            TestState.Get(storageCell, out UInt256 storageValue3);
+            byte[] actualValue = storageValue3.ToMinimalBigEndian();
             Assert.That(actualValue, Is.EqualTo(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray()), $"storage {storageCell}, call {_callIndex}");
         }
     }
 
-    protected void AssertCodeHash(Address address, Hash256 codeHash)
-    {
-        Assert.That(TestState.GetCodeHash(address), Is.EqualTo(codeHash), "code hash");
-    }
+    protected void AssertCodeHash(Address address, Hash256 codeHash) => Assert.That(TestState.GetCodeHash(address), Is.EqualTo(codeHash), "code hash");
 }

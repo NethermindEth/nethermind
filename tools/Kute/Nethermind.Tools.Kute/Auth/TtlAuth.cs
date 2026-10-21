@@ -5,32 +5,32 @@ using Nethermind.Tools.Kute.SystemClock;
 
 namespace Nethermind.Tools.Kute.Auth;
 
-public sealed class TtlAuth : IAuth
+public sealed class TtlAuth(IAuth auth, ISystemClock clock, TimeSpan ttl) : IAuth
 {
-    private readonly IAuth _auth;
-    private readonly ISystemClock _clock;
-    private readonly TimeSpan _ttl;
+    private readonly IAuth _auth = auth;
+    private readonly ISystemClock _clock = clock;
+    private readonly TimeSpan _ttl = ttl;
+
+    private readonly Lock _refreshLock = new();
 
     private LastAuth? _lastAuth;
-
-    public TtlAuth(IAuth auth, ISystemClock clock, TimeSpan ttl)
-    {
-        _auth = auth;
-        _clock = clock;
-        _ttl = ttl;
-    }
 
     public string AuthToken
     {
         get
         {
-            DateTimeOffset currentTime = _clock.UtcNow;
-            if (_lastAuth is null || (currentTime - _lastAuth.GeneratedAt) >= _ttl)
+            // One instance is shared by every replay worker; without the lock each expiry lets
+            // several workers regenerate at once, a signing burst inside the measured window.
+            lock (_refreshLock)
             {
-                _lastAuth = new(currentTime, _auth.AuthToken);
-            }
+                DateTimeOffset currentTime = _clock.UtcNow;
+                if (_lastAuth is null || (currentTime - _lastAuth.GeneratedAt) >= _ttl)
+                {
+                    _lastAuth = new(currentTime, _auth.AuthToken);
+                }
 
-            return _lastAuth.Token;
+                return _lastAuth.Token;
+            }
         }
     }
 

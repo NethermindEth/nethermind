@@ -4,13 +4,18 @@
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using System;
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace Nethermind.Specs
 {
     public class SpecNameParser
     {
-        public static IReleaseSpec Parse(string specName)
+        private static readonly ConcurrentDictionary<string, IReleaseSpec> _specs = new(StringComparer.Ordinal);
+
+        public static IReleaseSpec Parse(string specName) => _specs.GetOrAdd(specName, ParseUncached);
+
+        private static IReleaseSpec ParseUncached(string specName)
         {
             string unambiguousSpecName = new StringBuilder(specName)
                 .Replace("EIP150", "TangerineWhistle")
@@ -31,33 +36,41 @@ namespace Nethermind.Specs
 
             return unambiguousSpecName switch
             {
-                "Frontier" => Frontier.Instance,
-                "Homestead" => Homestead.Instance,
-                "TangerineWhistle" => TangerineWhistle.Instance,
-                "SpuriousDragon" => SpuriousDragon.Instance,
+                nameof(Frontier) => Frontier.Instance,
+                nameof(Homestead) => Homestead.Instance,
+                nameof(TangerineWhistle) => TangerineWhistle.Instance,
+                nameof(SpuriousDragon) => SpuriousDragon.Instance,
                 "EIP150" => TangerineWhistle.Instance,
                 "EIP158" => SpuriousDragon.Instance,
-                "Dao" => Dao.Instance,
-                "Constantinople" => Constantinople.Instance,
-                "ConstantinopleFix" => ConstantinopleFix.Instance,
-                "Byzantium" => Byzantium.Instance,
-                "Istanbul" => Istanbul.Instance,
-                "Berlin" => Berlin.Instance,
-                "London" => London.Instance,
-                "ArrowGlacier" => ArrowGlacier.Instance,
-                "GrayGlacier" => GrayGlacier.Instance,
-                "Shanghai" => Shanghai.Instance,
-                "Cancun" => Cancun.Instance,
-                "Paris" => Paris.Instance,
-                "Prague" => Prague.Instance,
-                "Osaka" => Osaka.Instance,
-                "BPO1" => BPO1.Instance,
-                "BPO2" => BPO2.Instance,
-                "BPO3" => BPO3.Instance,
-                "BPO4" => BPO4.Instance,
-                "BPO5" => BPO5.Instance,
-                "Amsterdam" => Amsterdam.Instance,
-                _ => throw new NotSupportedException()
+                nameof(Dao) => Dao.Instance,
+                nameof(Constantinople) => Constantinople.Instance,
+                nameof(ConstantinopleFix) => ConstantinopleFix.Instance,
+                nameof(Byzantium) => Byzantium.Instance,
+                nameof(Istanbul) => Istanbul.Instance,
+                nameof(Berlin) => Berlin.Instance,
+                nameof(London) => London.Instance,
+                nameof(ArrowGlacier) => ArrowGlacier.Instance,
+                nameof(GrayGlacier) => GrayGlacier.Instance,
+                nameof(Shanghai) => Shanghai.Instance,
+                nameof(Cancun) => Cancun.Instance,
+                nameof(Paris) => Paris.Instance,
+                nameof(Prague) => Prague.Instance,
+                nameof(Osaka) => Osaka.Instance,
+                nameof(BPO1) => BPO1.Instance,
+                nameof(BPO2) => BPO2.Instance,
+                nameof(BPO3) => BPO3.Instance,
+                nameof(BPO4) => BPO4.Instance,
+                nameof(BPO5) => BPO5.Instance,
+                nameof(Amsterdam) => Amsterdam.Instance,
+                nameof(Bogota) => Bogota.Instance,
+                nameof(Eip8141Prototype) => Eip8141Prototype.Instance,
+                nameof(Eip8250Prototype) => Eip8250Prototype.Instance,
+                nameof(Eip8272Prototype) => Eip8272Prototype.Instance,
+                nameof(Eip7906Prototype) => Eip7906Prototype.Instance,
+                nameof(FramesDevnet1) => FramesDevnet1.Instance,
+                _ => throw new NotSupportedException(specName == unambiguousSpecName
+                    ? $"Unknown fork name '{specName}'"
+                    : $"Unknown fork name '{specName}' (resolved to '{unambiguousSpecName}')")
             };
         }
     }

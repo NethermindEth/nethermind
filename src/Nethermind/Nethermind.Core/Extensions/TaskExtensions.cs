@@ -3,12 +3,35 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.Extensions;
 
 public static class TaskExtensions
 {
+    /// <summary>
+    /// Delay that returns immediately when cancelled instead of throwing <see cref="OperationCanceledException"/>.
+    /// Returns <c>true</c> if the delay completed normally, <c>false</c> if cancelled.
+    /// </summary>
+    public static async Task<bool> DelaySafe(int millisecondsDelay, CancellationToken cancellationToken)
+    {
+        Task delay = Task.Delay(millisecondsDelay, cancellationToken);
+        await delay.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ContinueOnCapturedContext);
+        return delay.IsCompletedSuccessfully;
+    }
+
+    /// <summary>
+    /// Delay that returns immediately when cancelled instead of throwing <see cref="OperationCanceledException"/>.
+    /// Returns <c>true</c> if the delay completed normally, <c>false</c> if cancelled.
+    /// </summary>
+    public static async Task<bool> DelaySafe(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        Task delayTask = Task.Delay(delay, cancellationToken);
+        await delayTask.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ContinueOnCapturedContext);
+        return delayTask.IsCompletedSuccessfully;
+    }
+
     public static bool IsFailedButNotCanceled(this Task? task)
     {
         if (task is null || !task.IsFaulted || task.Exception is null) return false;

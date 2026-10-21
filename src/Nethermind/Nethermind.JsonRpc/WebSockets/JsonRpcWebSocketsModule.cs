@@ -15,42 +15,31 @@ using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
-public class JsonRpcWebSocketsModule : IWebSocketsModule
+public class JsonRpcWebSocketsModule(IJsonRpcProcessor jsonRpcProcessor,
+    IJsonRpcService jsonRpcService,
+    IJsonRpcLocalStats jsonRpcLocalStats,
+    ILogManager logManager,
+    IJsonSerializer jsonSerializer,
+    IJsonRpcUrlCollection jsonRpcUrlCollection,
+    IRpcAuthentication rpcAuthentication,
+    long? maxBatchResponseBodySize,
+    int processingConcurrency,
+    long? maxRequestBodySize = null) : IWebSocketsModule
 {
     private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
 
-    private readonly JsonRpcProcessor _jsonRpcProcessor;
-    private readonly IJsonRpcService _jsonRpcService;
-    private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
-    private readonly ILogManager _logManager;
-    private readonly IJsonSerializer _jsonSerializer;
-    private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
-    private readonly IRpcAuthentication _rpcAuthentication;
-    private readonly long? _maxBatchResponseBodySize;
-    private readonly int _processingConcurrency;
+    private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+    private readonly IJsonRpcService _jsonRpcService = jsonRpcService;
+    private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
+    private readonly ILogManager _logManager = logManager;
+    private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
+    private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection = jsonRpcUrlCollection;
+    private readonly IRpcAuthentication _rpcAuthentication = rpcAuthentication;
+    private readonly long? _maxBatchResponseBodySize = maxBatchResponseBodySize;
+    private readonly long? _maxRequestBodySize = maxRequestBodySize;
+    private readonly int _processingConcurrency = processingConcurrency;
 
     public string Name { get; } = "json-rpc";
-
-    public JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
-        IJsonRpcService jsonRpcService,
-        IJsonRpcLocalStats jsonRpcLocalStats,
-        ILogManager logManager,
-        IJsonSerializer jsonSerializer,
-        IJsonRpcUrlCollection jsonRpcUrlCollection,
-        IRpcAuthentication rpcAuthentication,
-        long? maxBatchResponseBodySize,
-        int processingConcurrency)
-    {
-        _jsonRpcProcessor = jsonRpcProcessor;
-        _jsonRpcService = jsonRpcService;
-        _jsonRpcLocalStats = jsonRpcLocalStats;
-        _logManager = logManager;
-        _jsonSerializer = jsonSerializer;
-        _jsonRpcUrlCollection = jsonRpcUrlCollection;
-        _rpcAuthentication = rpcAuthentication;
-        _maxBatchResponseBodySize = maxBatchResponseBodySize;
-        _processingConcurrency = processingConcurrency;
-    }
 
     public async ValueTask<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext context)
     {
@@ -75,7 +64,10 @@ public class JsonRpcWebSocketsModule : IWebSocketsModule
             _jsonSerializer,
             jsonRpcUrl,
             _maxBatchResponseBodySize,
-            _processingConcurrency);
+            JsonRpcProcessingConcurrency.ForUrl(jsonRpcUrl, _processingConcurrency),
+            jsonRpcUrl.MaxRequestBodySize ?? _maxRequestBodySize,
+            context.Connection.RemoteIpAddress,
+            context.Request.Headers["X-Forwarded-For"]);
 
         _clients.TryAdd(socketsClient.Id, socketsClient);
 

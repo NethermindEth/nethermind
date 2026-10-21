@@ -6,22 +6,21 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Grpc;
+using Nethermind.Core.Test;
 using Nethermind.Init;
+using Nethermind.Init.Modules;
 using Nethermind.Init.Snapshot;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa;
 using Nethermind.Merge.Plugin;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Runner.Ethereum.Modules;
+using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Shutter;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs.ChainSpecStyle;
@@ -36,29 +35,28 @@ public class EthereumStepsLoaderTests
     [Test]
     public void BuildInSteps_IsCorrect()
     {
-        var steps = new HashSet<StepInfo>();
-        steps.AddRange(LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly));
-        steps.AddRange(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly));
+        HashSet<StepInfo> steps =
+        [
+            .. LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly),
+            .. LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly),
+        ];
 
-        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ExitOnInvalidBlock), typeof(ImportFlatDb)];
+        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb), typeof(DropPruningTrieState), typeof(SeedFlatHistoryGenesis), typeof(StartHistoryWindowPruner), typeof(StartHistoryWalkVerification), typeof(StartCommitmentReclaimer), typeof(StartTransactionChangesetBuilder), typeof(StartPivotHistoryImage)];
         steps = steps.Where((s) => !optionalSteps.Contains(s.StepBaseType)).ToHashSet();
 
         using IContainer container = new ContainerBuilder()
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new StartRpcStepsModule(new GrpcConfig()
-            {
-                Enabled = true
-            }))
+            .AddStep(typeof(StartRpc))
             .Build();
 
-        container.Resolve<IEnumerable<StepInfo>>().ToHashSet().Should().BeEquivalentTo(steps);
+        AssertStepInfosEquivalent(container.Resolve<IEnumerable<StepInfo>>(), steps);
     }
 
     [Test]
     public void DoubleCheck_PluginsSteps()
     {
         CheckPlugin(new AuRaPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters()) }));
-        CheckPlugin(new OptimismPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters()) }));
+        CheckPlugin(new OptimismPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters()) }, new OptimismConfig() { ClEnabled = true }));
         CheckPlugin(new TaikoPlugin(new ChainSpec()));
         CheckPlugin(new AuRaMergePlugin(new ChainSpec(), new MergeConfig()));
         CheckPlugin(new SnapshotPlugin(new SnapshotConfig()));
@@ -66,12 +64,8 @@ public class EthereumStepsLoaderTests
     }
 
     [Test]
-    public void LoadStepsFromHere()
-    {
-        LoadStepInfoFromAssembly(GetType().Assembly)
-            .ToArray()
-            .Should()
-            .BeEquivalentTo([
+    public void LoadStepsFromHere() => AssertStepInfosEquivalent(LoadStepInfoFromAssembly(GetType().Assembly),
+        [
                 new StepInfo(typeof(StepLong)),
                 new StepInfo(typeof(StepWithLogManagerInConstructor)),
                 new StepInfo(typeof(StepWithSameBaseStep)),
@@ -81,8 +75,23 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(StepCAuRa)),
                 new StepInfo(typeof(StepCStandard)),
                 new StepInfo(typeof(StepE)),
+                new StepInfo(typeof(CommandStep)),
+                new StepInfo(typeof(SelfCancellingStep)),
                 new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep)),
-            ]);
+                new StepInfo(typeof(StepObservingCancellation)),
+                new StepInfo(typeof(FailingOptionalStep)),
+                new StepInfo(typeof(RequiredDependentStep)),
+        ]);
+
+    [Test]
+    public void Command_names_are_unique()
+    {
+        string[] commands = [.. LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly)
+            .Concat(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly))
+            .Select(static s => s.Command)
+            .Where(static c => c is not null)!];
+
+        Assert.That(commands, Is.Unique);
     }
 
     private void CheckPlugin(INethermindPlugin plugin)
@@ -92,8 +101,19 @@ public class EthereumStepsLoaderTests
             .Build();
 
         StepInfo[] steps = container.Resolve<IList<StepInfo>>().ToArray();
-        steps.ToHashSet().Should().BeEquivalentTo(LoadStepInfoFromAssembly(plugin.GetType().Assembly));
+        AssertStepInfosEquivalent(steps, LoadStepInfoFromAssembly(plugin.GetType().Assembly));
     }
+
+    private static void AssertStepInfosEquivalent(IEnumerable<StepInfo> actual, IEnumerable<StepInfo> expected) =>
+        Assert.That(actual.Select(StepInfoKey).Order(), Is.SequenceEqualTo(expected.Select(StepInfoKey).Order()));
+
+    private static string StepInfoKey(StepInfo stepInfo) =>
+        string.Join("|",
+            stepInfo.StepType.FullName,
+            stepInfo.StepBaseType.FullName,
+            string.Join(",", stepInfo.Dependencies.Select(static t => t.FullName).Order()),
+            string.Join(",", stepInfo.Dependents.Select(static t => t.FullName).Order()),
+            stepInfo.Command);
 
     private static IEnumerable<StepInfo> LoadStepInfoFromAssembly(Assembly assembly)
     {

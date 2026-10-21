@@ -18,5 +18,16 @@ namespace Nethermind.Db
         public const int BodiesBarrierWhenStarted = 11;
         public const int LowestInsertedFastHeaderHash = 12;
         public const int HistoryPruningDeletePointer = 13;
+        public const int BlockAccessListsBarrierWhenStarted = 14;
+        public const int LowestInsertedBodyNumber = 15;
+        public const int LowestInsertedBlockAccessListBlockNumber = 16;
+        public const int BlockAccessListPruningDeletePointer = 17;
+        public const int FlatDbCompactionOffset = 18;
+        public const int HistoryPruningReclaimCursor = 19;
+        public const int HistoryPruningTxIndexSweepCursor = 20;
+        public const int HistoryPruningSliceCleanupCursor = 21;
+        public const int RetiredHistorySliceLogsRetainedFrom = 22;
+        public const int RetiredHistorySliceLogsSliceSet = 23;
+        public const int AncientBodiesDownloadComplete = 24;
     }
 }

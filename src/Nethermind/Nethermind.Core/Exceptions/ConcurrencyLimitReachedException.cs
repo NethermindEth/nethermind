@@ -5,9 +5,6 @@ using System;
 
 namespace Nethermind.Core.Exceptions;
 
-public class ConcurrencyLimitReachedException : InvalidOperationException
+public class ConcurrencyLimitReachedException(string message) : InvalidOperationException(message)
 {
-    public ConcurrencyLimitReachedException(string message) : base(message)
-    {
-    }
 }

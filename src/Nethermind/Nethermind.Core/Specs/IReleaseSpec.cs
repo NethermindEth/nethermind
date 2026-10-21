@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Frozen;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -11,18 +9,25 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// https://github.com/ethereum/EIPs
     /// </summary>
+    /// <remarks>Fork flags carry no default implementations, because no single default is safe: a
+    /// root spec wants the new EIP off, while a forwarding one that inherited that default would
+    /// report it off on a chain enabling it — a silent consensus divergence. Derive from
+    /// <c>ReleaseSpec</c> (new flags off until set) or <see cref="ReleaseSpecDecorator"/> (new flags
+    /// forwarded) to absorb added flags; implementing this interface directly opts into a compile
+    /// error per added flag, which is the only signal that the choice was made deliberately.</remarks>
     public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
-        long MinGasLimit { get; }
-        long MinHistoryRetentionEpochs { get; }
-        long GasLimitBoundDivisor { get; }
+        ulong MinGasLimit { get; }
+        ulong MinHistoryRetentionEpochs { get; }
+        ulong MinBalRetentionEpochs { get; }
+        ulong GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
-        long DifficultyBombDelay { get; }
-        long DifficultyBoundDivisor { get; }
-        long? FixedDifficulty { get; }
+        ulong DifficultyBombDelay { get; }
+        ulong DifficultyBoundDivisor { get; }
+        ulong? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
 
         /// <summary>
@@ -273,14 +278,12 @@ namespace Nethermind.Core.Specs
         /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
-        [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
         Address? DepositContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
-        [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
         Address? Eip7002ContractAddress { get; }
 
 
@@ -288,7 +291,6 @@ namespace Nethermind.Core.Specs
         /// EIP-7251: triggered consolidations
         /// </summary>
         bool IsEip7251Enabled { get; }
-        [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
         Address? Eip7251ContractAddress { get; }
 
 
@@ -301,19 +303,59 @@ namespace Nethermind.Core.Specs
         /// Fetch blockHashes from the state for BLOCKHASH opCode
         /// </summary>
         bool IsEip7709Enabled { get; }
-        [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
         Address? Eip2935ContractAddress { get; }
 
         /// <summary>
         /// EIP-2935 ring buffer size for historical block hash storage.
         /// Defaults to 8,191 blocks for Ethereum mainnet.
         /// </summary>
-        public long Eip2935RingBufferSize { get; }
+        public ulong Eip2935RingBufferSize { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
+
+        /// <summary>
+        /// EIP-8282: builder execution requests (builder deposit + builder exit predeploys).
+        /// </summary>
+        bool IsEip8282Enabled { get; }
+
+        /// <summary>
+        /// EIP-8141: frame transactions (abstract transaction validation, execution, and gas payment).
+        /// </summary>
+        bool IsEip8141Enabled { get; }
+
+        /// <summary>
+        /// EIP-8250: keyed nonces for frame transactions.
+        /// </summary>
+        bool IsEip8250Enabled { get; }
+
+        /// <summary>
+        /// EIP-8272: recent roots for frame transactions.
+        /// </summary>
+        bool IsEip8272Enabled { get; }
+
+        /// <summary>
+        /// EIP-7906: transaction outcome assertions.
+        /// </summary>
+        bool IsEip7906Enabled { get; }
+
+        /// <summary>
+        /// EIP-8151: ecRecover returns the recovered address only when its raw code is empty or an EIP-7702 delegation.
+        /// </summary>
+        bool IsEip8151Enabled { get; }
+
+        /// <summary>
+        /// EIP-7979: call and return opcodes (<c>CALLSUB</c>, <c>CALLDEST</c>, <c>RETURNSUB</c>) with a per-frame return stack.
+        /// </summary>
+        /// <remarks>Assumes EIP-8024 is active: a <c>CALLDEST</c> byte in a valid EIP-8024 immediate is never a destination.</remarks>
+        bool IsEip7979Enabled { get; }
+
+        /// <summary>
+        /// EIP-8038: State-access gas cost update
+        /// </summary>
+        bool IsEip8038Enabled { get; }
 
         /// <summary>
         /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
@@ -346,18 +388,6 @@ namespace Nethermind.Core.Specs
         bool IsRip7212Enabled { get; }
         bool IsEip7951Enabled { get; }
 
-        /// OP Granite
-        bool IsOpGraniteEnabled { get; }
-
-        /// OP Holocene
-        bool IsOpHoloceneEnabled { get; }
-
-        /// OP Jovian
-        bool IsOpJovianEnabled { get; }
-
-        // OP Isthmus
-        bool IsOpIsthmusEnabled { get; }
-
         /// <summary>
         ///  Increase call data cost
         /// </summary>
@@ -380,6 +410,35 @@ namespace Nethermind.Core.Specs
         int Eip7934MaxRlpBlockSize { get; }
 
         /// <summary>
+        ///  Increase Calldata Floor Cost
+        /// </summary>
+        bool IsEip7976Enabled { get; }
+
+        /// <summary>
+        /// Access List Token Floor Pricing
+        /// </summary>
+        bool IsEip7981Enabled { get; }
+
+        /// <summary>
+        /// EIP-8131: Unified Transaction Content Floor.
+        /// </summary>
+        /// <remarks>
+        /// Replaces the EIP-7976 calldata floor and the EIP-7981 access-list surcharge with a flat 64 gas per content
+        /// byte (calldata, access-list entries, authorizations and blob versioned hashes) at the floor.
+        /// </remarks>
+        bool IsEip8131Enabled { get; }
+
+        /// <summary>
+        /// EIP-8279: Block Access List Byte Floor.
+        /// </summary>
+        /// <remarks>
+        /// Meters the bytes execution adds to the EIP-7928 block access list at 64 gas per byte into the transaction
+        /// floor, checked against the gas limit before each insertion, and adds each authorization's worst-case block
+        /// access list bytes to the static floor. Requires EIP-8131.
+        /// </remarks>
+        bool IsEip8279Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -391,7 +450,7 @@ namespace Nethermind.Core.Specs
         public ulong TargetBlobCount { get; }
         public ulong MaxBlobCount { get; }
         public ulong MaxBlobsPerTx { get; }
-        public UInt256 BlobBaseFeeUpdateFraction { get; }
+        public ulong BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
 
@@ -399,32 +458,6 @@ namespace Nethermind.Core.Specs
 
         public bool IsEip7594Enabled { get; }
 
-        /// <summary>
-        /// This property holds an array that, at runtime, is actually an array of function pointers
-        /// with the signature:
-        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing,
-        /// but it cannot be explicitly typed as such due to cross-project layering constraints.
-        /// </summary>
-        /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
-        /// even though it internally represents a typed array of function pointers.
-        /// </remarks>
-        public Array? EvmInstructionsNoTrace { get; set; }
-
-        /// <summary>
-        /// This property holds an array that, at runtime, is actually an array of function pointers
-        /// with the signature:
-        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM,
-        /// capturing additional tracing data. It cannot be explicitly typed as such due to cross-project
-        /// layering constraints.
-        /// </summary>
-        /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
-        /// even though it internally represents a typed array of function pointers.
-        /// </remarks>
-        public Array? EvmInstructionsTraced { get; set; }
 
         /// <summary>
         /// Gets a cached set of all precompiled contract addresses for this release specification.
@@ -432,20 +465,18 @@ namespace Nethermind.Core.Specs
         /// </summary>
         FrozenSet<AddressAsKey> Precompiles { get; }
 
+        /// <summary>Whether <paramref name="address"/> names a precompile active at this fork.</summary>
+        /// <param name="address">The call target to test.</param>
+        /// <remarks>On the interface rather than beside it because the answer depends on the fork, so only
+        /// the spec can hold a form of it faster than a set probe — a caller memoising one has to re-check
+        /// which fork it belongs to on every call, which costs more than it saves. The default is the probe
+        /// itself, so an implementation that has nothing better keeps today's behaviour.</remarks>
+        bool IsPrecompile(Address address) => address.CouldBePrecompile() && Precompiles.Contains(address);
+
         /// <summary>
         /// EIP-7939 - CLZ - Count leading zeros instruction
         /// </summary>
         public bool IsEip7939Enabled { get; }
-
-        /// <summary>
-        /// EIP-7907: Meter Contract Code Size And Increase Limit
-        /// </summary>
-        public bool IsEip7907Enabled { get; }
-
-        /// <summary>
-        /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
-        /// </summary>
-        public bool IsRip7728Enabled { get; }
 
         /// <summary>
         /// EIP-7928: Block-Level Access Lists
@@ -473,6 +504,59 @@ namespace Nethermind.Core.Specs
         /// EIP-7954: Increase Maximum Contract Size
         /// </summary>
         public bool IsEip7954Enabled { get; }
+
+        /// <summary>
+        /// EIP-8246: SELFDESTRUCT no longer burns ETH
+        /// </summary>
+        public bool IsEip8246Enabled { get; }
+
+        /// <summary>
+        /// EIP-8253: Bump nonce of zero-nonce storage accounts.
+        /// </summary>
+        /// <remarks>
+        /// Irregular state transition at the fork block: each listed account gets nonce 1 before any
+        /// pre-execution system call, so a later CREATE/CREATE2 to it fails the EIP-684 nonce check.
+        /// </remarks>
+        public bool IsEip8253Enabled { get; }
+
+        /// <summary>
+        /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
+        /// and cold-account costs against actual state work.
+        /// </summary>
+        /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
+        public bool IsEip2780Enabled { get; }
+
+        /// <summary>
+        /// EIP-5920: PAY opcode (<c>0xfc</c>), transferring ether to an address without executing its code.
+        /// </summary>
+        /// <remarks>Requires EIP-2929 and EIP-7523; the opcode's access and new-account rules assume both.</remarks>
+        public bool IsEip5920Enabled { get; }
+
+        /// <summary>
+        /// EIP-8360: TCREATE opcode, creating contracts whose code, nonce and storage exist only for one transaction.
+        /// </summary>
+        bool IsEip8360Enabled { get; }
+
+        /// <summary>
+        /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
+        /// </summary>
+        /// <remarks>
+        /// Requires EIP-7778: removing the cap is only safe while block gas excludes refunds, otherwise uncapped
+        /// refunds would let a block exceed its gas limit in work. Specified as a delta on EIP-8037 and EIP-8038;
+        /// enabled without them, it still strikes whichever storage-clear refund and refund cap the spec would
+        /// otherwise apply, and the pre-EIP-3529 SELFDESTRUCT refund, which no same-transaction charge bounds.
+        /// </remarks>
+        public bool IsEip3298Enabled { get; }
+
+        /// <summary>
+        /// EIP-7805: Inclusion lists
+        /// </summary>
+        bool IsEip7805Enabled { get; }
+
+        /// <summary>
+        /// EIP-8298: SETCODEFROM code reuse instruction
+        /// </summary>
+        public bool IsEip8298Enabled { get; }
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.

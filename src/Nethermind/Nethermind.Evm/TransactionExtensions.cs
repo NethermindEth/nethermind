@@ -19,7 +19,8 @@ namespace Nethermind.Evm
         {
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
-            if (tx.SupportsBlobs)
+            // EIP-8141: gate on blob presence, not the type-3-only SupportsBlobs, so frame-blob txs report blob gas.
+            if (tx.CarriesBlobs)
             {
                 if (header.ExcessBlobGas is null)
                 {
@@ -50,10 +51,7 @@ namespace Nethermind.Evm
             BlobGasUsed = blobGasUsed;
         }
 
-        public TxGasInfo(UInt256? effectiveGasPrice)
-        {
-            EffectiveGasPrice = effectiveGasPrice;
-        }
+        public TxGasInfo(UInt256? effectiveGasPrice) => EffectiveGasPrice = effectiveGasPrice;
 
         public UInt256? EffectiveGasPrice { get; }
         public UInt256? BlobGasPrice { get; }

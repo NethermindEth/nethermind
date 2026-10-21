@@ -3,7 +3,6 @@
 
 using System.Linq;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -20,11 +19,19 @@ public class ReceiptsMessageSerializerTests
 {
     private class EmptyTxReceipt : TxReceipt
     {
-        public EmptyTxReceipt()
-        {
-            Logs = []; // Logs are always assumed non-null in decoders
-        }
+        public EmptyTxReceipt() => Logs = []; // Logs are always assumed non-null in decoders
     }
+
+    private const string FrameReceiptHex =
+        "f86c04f869f867" +
+        "f86506" +                                            // receipt, tx-type 6
+        "82022b" +                                            // cumulative-gas
+        "940100000000000000000000000000000000000000" +        // payer
+        "f84a" +                                              // frames
+        "f84201c26414f83c" +                                  // status 1, gas-used [100, 20]
+        "f83a940200000000000000000000000000000000000000" +
+        "e1a01500000000000000000000000000000000000000000000000000000000000000820202" +
+        "c502c28080c0";                                       // status 2, gas-used [0, 0], no logs
 
     private static readonly object[] TestData =
     [
@@ -150,6 +157,34 @@ public class ReceiptsMessageSerializerTests
                 }
             },
             "f8ce03f8cb" + "f8c9f8c7010182022bf8c0f85e940200000000000000000000000000000000000000f842a01500000000000000000000000000000000000000000000000000000000000000a016000000000000000000000000000000000000000000000000000000000000008402022020f85e940300000000000000000000000000000000000000f842a01f00000000000000000000000000000000000000000000000000000000000000a020000000000000000000000000000000000000000000000000000000000000008403032020"
+        },
+        // EIP-8141 pins the frame receipt as [tx-type, cumulative-gas, payer, [[status, gas-used, logs], ...]],
+        // with no status of its own; a roundtrip alone would pass for any self-consistent layout.
+        new object[] // EIP-8141 frame tx
+        {
+            4,
+            new TxReceipt[]
+            {
+                new EmptyTxReceipt
+                {
+                    TxType = TxType.FrameTx,
+                    GasUsedTotal = 555,
+                    Payer = new(new byte[] { 1 }.PadRight(Address.Size)),
+                    FrameReceipts =
+                    [
+                        new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 100, 20,
+                        [
+                            new(
+                                address: new(new byte[] { 2 }.PadRight(Address.Size)),
+                                topics: [new(new byte[] { 21 }.PadRight(Hash256.Size))],
+                                data: [2, 2]
+                            )
+                        ]),
+                        new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, [])
+                    ]
+                }
+            },
+            FrameReceiptHex
         }
     ];
 
@@ -162,9 +197,9 @@ public class ReceiptsMessageSerializerTests
             receipts
         }));
 
-        var serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
+        ReceiptsMessageSerializer69 serializer = new(new TestSpecProvider(Prague.Instance));
 
-        var x = PooledByteBufferAllocator.Default.Buffer(1024);
+        IByteBuffer x = PooledByteBufferAllocator.Default.Buffer(1024);
         serializer.Serialize(x, message);
 
         SerializerTester.TestZero(
@@ -185,12 +220,12 @@ public class ReceiptsMessageSerializerTests
             }
         }));
 
-        var serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
+        ReceiptsMessageSerializer69 serializer = new(new TestSpecProvider(Prague.Instance));
         byte[] encoded = serializer.Serialize(message);
 
         message.EthMessage.TxReceipts[0]![0].Bloom = length.HasValue
             ? new(Enumerable.Range(0, length.Value).Select(i => (byte)i).ToArray())
             : null;
-        serializer.Serialize(message).Should().Equal(encoded);
+        Assert.That(serializer.Serialize(message), Is.EqualTo(encoded));
     }
 }

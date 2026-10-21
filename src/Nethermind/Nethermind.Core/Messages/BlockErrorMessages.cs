@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
@@ -11,11 +11,14 @@ public static class BlockErrorMessages
     public static string ExceededUncleLimit(int maxUncleCount) =>
         $"ExceededUncleLimit: Cannot have more than {maxUncleCount}.";
 
-    public const string InsufficientMaxFeePerBlobGas =
-        "InsufficientMaxFeePerBlobGas: Not enough to cover blob gas fee.";
+    public static string InsufficientMaxFeePerBlobGas(Address? address, UInt256? blobGasFeeCap, UInt256 blobBaseFee) =>
+        $"max fee per blob gas less than block blob gas fee: address {address?.ToString(withEip55Checksum: true)}, blobGasFeeCap: {blobGasFeeCap}, blobBaseFee: {blobBaseFee}";
 
     public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
         $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";
+
+    public static string InvalidLogsBloomLength(bool eip7668Enabled) =>
+        $"InvalidLogsBloom: Logs bloom in header does not match. Expected a {(eip7668Enabled ? "zero-length" : "256-byte")} bloom";
 
     public static string InvalidTxRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidTxRoot: Expected {expected}, got {actual}";
@@ -34,6 +37,12 @@ public static class BlockErrorMessages
 
     public const string WithdrawalsNotEnabled =
         "WithdrawalsNotEnabled: Block body cannot have withdrawals.";
+
+    public const string MissingWithdrawalsRoot =
+        "MissingWithdrawalsRoot: Must be set in header.";
+
+    public const string WithdrawalsRootNotEnabled =
+        "WithdrawalsRootNotEnabled: Block header cannot have withdrawals root.";
 
     public static string InvalidReceiptsRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidReceiptsRoot: Receipts root in header does not match. Expected {expected}, got {actual}";
@@ -95,7 +104,7 @@ public static class BlockErrorMessages
     public static string InvalidTxInBlock(int i) =>
         $"InvalidTxInBlock: Tx at index {i} in body.";
 
-    public static string HeaderGasUsedMismatch(long expected, long actual) =>
+    public static string HeaderGasUsedMismatch(ulong expected, ulong actual) =>
         $"HeaderGasUsedMismatch: Gas used in header does not match calculated. Expected {expected}, got {actual}";
 
     public static string BlobGasUsedAboveBlockLimit(ulong blockBlobGasLimit, int blobsCount, ulong blobGasUsed) =>
@@ -125,6 +134,12 @@ public static class BlockErrorMessages
     public const string RequestsNotEnabled =
         "RequestsNotEnabled: Requests must be null in block when EIP-6110 and EIP-7002 are not activated.";
 
+    public const string MissingParentBeaconBlockRoot =
+        "MissingParentBeaconBlockRoot: Parent beacon block root cannot be null in header when EIP-4788 is activated.";
+
+    public const string ParentBeaconBlockRootNotEnabled =
+        "ParentBeaconBlockRootNotEnabled: Parent beacon block root must be null in header when EIP-4788 is not activated.";
+
     public static string InvalidRequestsHash(Hash256? expected, Hash256? actual) =>
         $"InvalidRequestsHash: Requests hash mismatch in block: expected {expected}, got {actual}";
 
@@ -143,6 +158,18 @@ public static class BlockErrorMessages
 
     public const string ConsolidationsContractFailed =
         "ConsolidationsFailed: Contract execution failed.";
+
+    public const string BuilderDepositsContractEmpty =
+        "BuilderDepositsEmpty: Contract is not deployed.";
+
+    public const string BuilderDepositsContractFailed =
+        "BuilderDepositsFailed: Contract execution failed.";
+
+    public const string BuilderExitsContractEmpty =
+        "BuilderExitsEmpty: Contract is not deployed.";
+
+    public const string BuilderExitsContractFailed =
+        "BuilderExitsFailed: Contract execution failed.";
 
     public static string InvalidDepositEventLayout(string error) =>
         $"DepositsInvalid: Invalid deposit event layout: {error}";
@@ -165,12 +192,20 @@ public static class BlockErrorMessages
     public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
         $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
 
+    public static string BlockAccessListGasLimitExceeded(ulong balItems, ulong maxBalItems) =>
+        $"BlockAccessListGasLimitExceeded: BAL has {balItems} items, exceeds limit of {maxBalItems} (block_gas_limit / {Eip7928Constants.ItemCost}).";
+
+    /// <summary>Describes a block whose transactions' minimum gas charge exceeds its gas limit.</summary>
+    public static string MinimumBlockGasAboveGasLimit(ulong minimumBlockGas, ulong gasLimit) =>
+        $"Block gas limit exceeded: transactions charge at least {minimumBlockGas} gas, above block gas limit {gasLimit}.";
+
+    public static string BlockLevelAccessListIndexOutOfRange(uint index, uint maxAllowed) =>
+        $"InvalidBlockLevelAccessList: BlockAccessIndex {index} exceeds allowed range [0, {maxAllowed}] (txCount + 1).";
+
     public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>
         $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 
     public const string MissingSlotNumber = "MissingSlotNumber: Must be present in block header.";
-    public const string InvalidSlotNumber =
-        "InvalidSlotNumber: Slot number in header must exceed parent.";
 
     public const string SlotNumberNotEnabled =
         "SlotNumberNotEnabled: Block header cannot have slot number.";

@@ -1,267 +1,89 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
-using System;
 
 namespace Nethermind.Xdc.Test;
 
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class SyncInfoManagerTests
 {
-    [Test]
-    public void ProcessSyncInfo_WithValidSyncInfo_CallsBothManagersMethods()
+    private const ulong KnownRound = 5;
+
+    // A stale, invalid or missing certificate is skipped on its own - a null round stands for the
+    // certificate a peer leaves out, which both RLP decoders return as null for an empty list.
+    [TestCase(10ul, true, true)]
+    [TestCase(KnownRound, true, false)]
+    [TestCase(1ul, true, false)]
+    [TestCase(10ul, false, false)]
+    [TestCase(null, true, false)]
+    public void ProcessQuorumCertificate_CommitsOnlyAFresherValidCertificate(ulong? round, bool isValid, bool expectCommitted)
     {
-        var blockRoundInfo = new BlockRoundInfo(Keccak.Zero, 1, 1);
-        var qc = new QuorumCertificate(blockRoundInfo, Array.Empty<Signature>(), 0);
-        var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
-        var syncInfo = new SyncInfo(qc, tc);
+        QuorumCertificate qc = round is null ? null! : Qc(round.Value);
+        IQuorumCertificateManager qcManager = Substitute.For<IQuorumCertificateManager>();
+        qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(isValid);
 
-        var xdcContext = Substitute.For<IXdcConsensusContext>();
-        var qcManager = Substitute.For<IQuorumCertificateManager>();
-        var timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        var logManager = Substitute.For<ILogManager>();
+        string? error = CreateManager(qcManager, Substitute.For<ITimeoutCertificateManager>()).ProcessQuorumCertificate(qc);
 
-        var manager = new SyncInfoManager(xdcContext, qcManager, timeoutManager, logManager);
+        qcManager.Received(expectCommitted ? 1 : 0).CommitCertificate(qc);
+        Assert.That(error is null, Is.EqualTo(expectCommitted), $"unexpected error: {error}");
+    }
 
-        manager.ProcessSyncInfo(syncInfo);
+    /// <inheritdoc cref="ProcessQuorumCertificate_CommitsOnlyAFresherValidCertificate"/>
+    [TestCase(10ul, true, true)]
+    [TestCase(KnownRound, true, false)]
+    [TestCase(1ul, true, false)]
+    [TestCase(10ul, false, false)]
+    [TestCase(null, true, false)]
+    public void ProcessTimeoutCertificate_AppliesOnlyAFresherValidCertificate(ulong? round, bool isValid, bool expectApplied)
+    {
+        TimeoutCertificate tc = round is null ? null! : Tc(round.Value);
+        ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
+        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string?>()).Returns(isValid);
 
-        timeoutManager.Received(1).ProcessTimeoutCertificate(tc);
-        qcManager.Received(1).CommitCertificate(qc);
+        string? error = CreateManager(Substitute.For<IQuorumCertificateManager>(), timeoutManager).ProcessTimeoutCertificate(tc);
+
+        timeoutManager.Received(expectApplied ? 1 : 0).ProcessTimeoutCertificate(tc);
+        Assert.That(error is null, Is.EqualTo(expectApplied), $"unexpected error: {error}");
     }
 
     [Test]
-    public void VerifySyncInfo_WhenQuorumCertificateRoundIsEqualToPrevious_ReturnsFalseAndError()
+    public void ProcessQuorumCertificate_WhenTargetBlockIsUnknown_IsReportedInsteadOfThrowing()
     {
-        var blockRoundInfo = new BlockRoundInfo(Keccak.Zero, 1, 1);
-        var qc = new QuorumCertificate(blockRoundInfo, Array.Empty<Signature>(), 0);
-        var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
-        var syncInfo = new SyncInfo(qc, tc);
-
-        var xdcContext = Substitute.For<IXdcConsensusContext>();
-        var contextQc = new QuorumCertificate(
-            new BlockRoundInfo(Keccak.Zero, 1, 1),
-            Array.Empty<Signature>(),
-            0);
-        xdcContext.HighestQC.Returns(contextQc);
-
-        var qcManager = Substitute.For<IQuorumCertificateManager>();
-        var timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        var logManager = Substitute.For<ILogManager>();
-
-        var manager = new SyncInfoManager(xdcContext, qcManager, timeoutManager, logManager);
-
-        var result = manager.VerifySyncInfo(syncInfo, out var error);
-
-        result.Should().BeFalse();
-    }
-
-    [Test]
-    public void VerifySyncInfo_WhenQuorumCertificateRoundIsLowerThanPrevious_ReturnsFalseAndError()
-    {
-        var blockRoundInfo = new BlockRoundInfo(Keccak.Zero, 1, 1);
-        var qc = new QuorumCertificate(blockRoundInfo, Array.Empty<Signature>(), 0);
-        var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
-        var syncInfo = new SyncInfo(qc, tc);
-
-        var xdcContext = Substitute.For<IXdcConsensusContext>();
-        var contextQc = new QuorumCertificate(
-            new BlockRoundInfo(Keccak.Zero, 5, 1),
-            Array.Empty<Signature>(),
-            0);
-        xdcContext.HighestQC.Returns(contextQc);
-
-        var qcManager = Substitute.For<IQuorumCertificateManager>();
-        var timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        var logManager = Substitute.For<ILogManager>();
-
-        var manager = new SyncInfoManager(xdcContext, qcManager, timeoutManager, logManager);
-
-        var result = manager.VerifySyncInfo(syncInfo, out var error);
-
-        result.Should().BeFalse();
-    }
-
-    [Test]
-    public void VerifySyncInfo_WhenTimeoutCertificateRoundIsEqualToPrevious_ReturnsFalseAndError()
-    {
-        var blockRoundInfo = new BlockRoundInfo(Keccak.Zero, 5, 1);
-        var qc = new QuorumCertificate(blockRoundInfo, Array.Empty<Signature>(), 0);
-        var tc = new TimeoutCertificate(2, Array.Empty<Signature>(), 0);
-        var syncInfo = new SyncInfo(qc, tc);
-
-        var xdcContext = Substitute.For<IXdcConsensusContext>();
-        var contextQc = new QuorumCertificate(
-            new BlockRoundInfo(Keccak.Zero, 1, 1),
-            Array.Empty<Signature>(),
-            0);
-        var contextTc = new TimeoutCertificate(2, Array.Empty<Signature>(), 0);
-        xdcContext.HighestQC.Returns(contextQc);
-        xdcContext.HighestTC.Returns(contextTc);
-
-        var qcManager = Substitute.For<IQuorumCertificateManager>();
-        var timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        var logManager = Substitute.For<ILogManager>();
-
-        var manager = new SyncInfoManager(xdcContext, qcManager, timeoutManager, logManager);
-
-        var result = manager.VerifySyncInfo(syncInfo, out var error);
-
-        result.Should().BeFalse();
-    }
-
-    [Test]
-    public void VerifySyncInfo_WhenTimeoutCertificateRoundIsLowerThanPrevious_ReturnsFalseAndError()
-    {
-        var blockRoundInfo = new BlockRoundInfo(Keccak.Zero, 5, 1);
-        var qc = new QuorumCertificate(blockRoundInfo, Array.Empty<Signature>(), 0);
-        var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
-        var syncInfo = new SyncInfo(qc, tc);
-
-        var xdcContext = Substitute.For<IXdcConsensusContext>();
-        var contextQc = new QuorumCertificate(
-            new BlockRoundInfo(Keccak.Zero, 1, 1),
-            Array.Empty<Signature>(),
-            0);
-        var contextTc = new TimeoutCertificate(2, Array.Empty<Signature>(), 0);
-        xdcContext.HighestQC.Returns(contextQc);
-        xdcContext.HighestTC.Returns(contextTc);
-
-        var qcManager = Substitute.For<IQuorumCertificateManager>();
-        var timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        var logManager = Substitute.For<ILogManager>();
-
-        var manager = new SyncInfoManager(xdcContext, qcManager, timeoutManager, logManager);
-
-        var result = manager.VerifySyncInfo(syncInfo, out var error);
-
-        result.Should().BeFalse();
-    }
-
-    [Test]
-    public void VerifySyncInfo_WhenAllVerificationsPass_ReturnsTrue()
-    {
-        var blockRoundInfo = new BlockRoundInfo(Keccak.Zero, 5, 1);
-        var qc = new QuorumCertificate(blockRoundInfo, Array.Empty<Signature>(), 0);
-        var tc = new TimeoutCertificate(5, Array.Empty<Signature>(), 0);
-        var syncInfo = new SyncInfo(qc, tc);
-
-        var xdcContext = Substitute.For<IXdcConsensusContext>();
-        var contextQc = new QuorumCertificate(
-            new BlockRoundInfo(Keccak.Zero, 1, 1),
-            Array.Empty<Signature>(),
-            0);
-        xdcContext.HighestQC.Returns(contextQc);
-
-        var qcManager = Substitute.For<IQuorumCertificateManager>();
-        var timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        var logManager = Substitute.For<ILogManager>();
-
+        QuorumCertificate qc = Qc(10);
+        IQuorumCertificateManager qcManager = Substitute.For<IQuorumCertificateManager>();
         qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
-        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string>()).Returns(true);
+        qcManager.When(m => m.CommitCertificate(qc)).Throw(new IncomingMessageBlockNotFoundException(Keccak.Zero, 10));
 
-        var manager = new SyncInfoManager(xdcContext, qcManager, timeoutManager, logManager);
+        SyncInfoManager manager = CreateManager(qcManager, Substitute.For<ITimeoutCertificateManager>());
 
-        var result = manager.VerifySyncInfo(syncInfo, out _);
-
-        result.Should().BeTrue();
+        Assert.That(manager.ProcessQuorumCertificate(qc), Is.Not.Null);
     }
 
+    // A peer can leave out the QC's block info just as it can leave out the certificate itself.
     [Test]
-    public void VerifySyncInfo_WhenBothCertificatesAreHigher_ReturnsTrue()
+    public void ProcessQuorumCertificate_WithoutBlockInfo_IsSkippedInsteadOfThrowing()
     {
-        var blockRoundInfo = new BlockRoundInfo(Keccak.Zero, 10, 1);
-        var qc = new QuorumCertificate(blockRoundInfo, Array.Empty<Signature>(), 0);
-        var tc = new TimeoutCertificate(10, Array.Empty<Signature>(), 0);
-        var syncInfo = new SyncInfo(qc, tc);
+        IQuorumCertificateManager qcManager = Substitute.For<IQuorumCertificateManager>();
+        SyncInfoManager manager = CreateManager(qcManager, Substitute.For<ITimeoutCertificateManager>());
 
-        var xdcContext = Substitute.For<IXdcConsensusContext>();
-        var contextQc = new QuorumCertificate(
-            new BlockRoundInfo(Keccak.Zero, 5, 1),
-            Array.Empty<Signature>(),
-            0);
-        var contextTc = new TimeoutCertificate(5, Array.Empty<Signature>(), 0);
-        xdcContext.HighestQC.Returns(contextQc);
-        xdcContext.HighestTC.Returns(contextTc);
-
-        var qcManager = Substitute.For<IQuorumCertificateManager>();
-        var timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        var logManager = Substitute.For<ILogManager>();
-
-        qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
-        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string>()).Returns(true);
-
-        var manager = new SyncInfoManager(xdcContext, qcManager, timeoutManager, logManager);
-
-        var result = manager.VerifySyncInfo(syncInfo, out _);
-
-        result.Should().BeTrue();
+        Assert.That(manager.ProcessQuorumCertificate(new QuorumCertificate(null!, [], 0)), Is.Not.Null);
+        qcManager.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
     }
 
-    [Test]
-    public void VerifySyncInfo_WhenOnlyQuorumCertificateIsHigher_ReturnsTrue()
+    private static SyncInfoManager CreateManager(IQuorumCertificateManager qcManager, ITimeoutCertificateManager timeoutManager)
     {
-        var blockRoundInfo = new BlockRoundInfo(Keccak.Zero, 10, 1);
-        var qc = new QuorumCertificate(blockRoundInfo, Array.Empty<Signature>(), 0);
-        var tc = new TimeoutCertificate(5, Array.Empty<Signature>(), 0);
-        var syncInfo = new SyncInfo(qc, tc);
-
-        var xdcContext = Substitute.For<IXdcConsensusContext>();
-        var contextQc = new QuorumCertificate(
-            new BlockRoundInfo(Keccak.Zero, 5, 1),
-            Array.Empty<Signature>(),
-            0);
-        var contextTc = new TimeoutCertificate(5, Array.Empty<Signature>(), 0);
-        xdcContext.HighestQC.Returns(contextQc);
-        xdcContext.HighestTC.Returns(contextTc);
-
-        var qcManager = Substitute.For<IQuorumCertificateManager>();
-        var timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        var logManager = Substitute.For<ILogManager>();
-
-        qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
-        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string>()).Returns(true);
-
-        var manager = new SyncInfoManager(xdcContext, qcManager, timeoutManager, logManager);
-
-        var result = manager.VerifySyncInfo(syncInfo, out _);
-
-        result.Should().BeTrue();
+        IXdcConsensusContext xdcContext = Substitute.For<IXdcConsensusContext>();
+        xdcContext.HighestQC.Returns(Qc(KnownRound));
+        xdcContext.HighestTC.Returns(Tc(KnownRound));
+        return new SyncInfoManager(xdcContext, qcManager, timeoutManager);
     }
 
-    [Test]
-    public void VerifySyncInfo_WhenOnlyTimeoutCertificateIsHigher_ReturnsTrue()
-    {
-        var blockRoundInfo = new BlockRoundInfo(Keccak.Zero, 5, 1);
-        var qc = new QuorumCertificate(blockRoundInfo, Array.Empty<Signature>(), 0);
-        var tc = new TimeoutCertificate(10, Array.Empty<Signature>(), 0);
-        var syncInfo = new SyncInfo(qc, tc);
+    private static QuorumCertificate Qc(ulong round) => new(new BlockRoundInfo(Keccak.Zero, round, 1), [], 0);
 
-        var xdcContext = Substitute.For<IXdcConsensusContext>();
-        var contextQc = new QuorumCertificate(
-            new BlockRoundInfo(Keccak.Zero, 5, 1),
-            Array.Empty<Signature>(),
-            0);
-        var contextTc = new TimeoutCertificate(5, Array.Empty<Signature>(), 0);
-        xdcContext.HighestQC.Returns(contextQc);
-        xdcContext.HighestTC.Returns(contextTc);
-
-        var qcManager = Substitute.For<IQuorumCertificateManager>();
-        var timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        var logManager = Substitute.For<ILogManager>();
-
-        qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
-        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string>()).Returns(true);
-
-        var manager = new SyncInfoManager(xdcContext, qcManager, timeoutManager, logManager);
-
-        var result = manager.VerifySyncInfo(syncInfo, out _);
-
-        result.Should().BeTrue();
-    }
+    private static TimeoutCertificate Tc(ulong round) => new(round, [], 0);
 }

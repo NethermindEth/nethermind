@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -25,35 +24,29 @@ public class ContainerBuilderExtensionsTests
 
         using (ILifetimeScope scope = sp.BeginLifetimeScope())
         {
-            scope.Resolve<MainComponent>().Property.Should().BeOfType<MainComponentDependency>();
+            Assert.That(scope.Resolve<MainComponent>().Property, Is.TypeOf<MainComponentDependency>());
         }
 
         MainComponentDependency customMainComponentDependency = sp.ResolveNamed<MainComponent>("custom").Property;
-        sp.ResolveNamed<MainComponent>("custom").Property.Should().BeOfType<MainComponentDependencySubClass>();
+        Assert.That(sp.ResolveNamed<MainComponent>("custom").Property, Is.TypeOf<MainComponentDependencySubClass>());
 
         sp.Dispose();
 
-        customMainComponentDependency.WasDisposed.Should().BeTrue();
+        Assert.That(customMainComponentDependency.WasDisposed, Is.True);
     }
 
     private class MainComponent(MainComponentDependency mainComponentDependency, ILifetimeScope scope) : IDisposable
     {
         public MainComponentDependency Property => mainComponentDependency;
 
-        public void Dispose()
-        {
-            scope.Dispose();
-        }
+        public void Dispose() => scope.Dispose();
     }
 
     private class MainComponentDependency : IDisposable
     {
         public bool WasDisposed { get; set; }
 
-        public void Dispose()
-        {
-            WasDisposed = true;
-        }
+        public void Dispose() => WasDisposed = true;
     }
 
     private class MainComponentDependencySubClass : MainComponentDependency
@@ -91,9 +84,6 @@ public class ContainerBuilderExtensionsTests
     {
         public bool WasDisposed { get; set; } = false;
 
-        public void Dispose()
-        {
-            WasDisposed = true;
-        }
+        public void Dispose() => WasDisposed = true;
     }
 }

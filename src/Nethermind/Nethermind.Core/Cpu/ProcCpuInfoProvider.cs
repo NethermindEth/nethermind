@@ -15,7 +15,7 @@ namespace Nethermind.Core.Cpu;
 /// </summary>
 internal static class ProcCpuInfoProvider
 {
-    internal static readonly Lazy<CpuInfo?> ProcCpuInfo = new Lazy<CpuInfo?>(Load);
+    internal static readonly Lazy<CpuInfo?> ProcCpuInfo = new(Load);
 
     private static CpuInfo? Load()
     {
@@ -31,7 +31,7 @@ internal static class ProcCpuInfoProvider
 
     private static string GetCpuSpeed()
     {
-        var output = ProcessHelper.RunAndReadOutput("/bin/bash", "-c \"lscpu | grep MHz\"")?
+        string[] output = ProcessHelper.RunAndReadOutput("/bin/bash", "-c \"lscpu | grep MHz\"")?
                                   .Split('\n')
                                   .SelectMany(static x => x.Split(':'))
                                   .ToArray() ?? [];
@@ -51,8 +51,8 @@ internal static class ProcCpuInfoProvider
         if (input is null || input.Length < 6)
             return null;
 
-        Frequency.TryParseMHz(input[3].Trim().Replace(',', '.'), out var minFrequency);
-        Frequency.TryParseMHz(input[5].Trim().Replace(',', '.'), out var maxFrequency);
+        Frequency.TryParseMHz(input[3].Trim().Replace(',', '.'), out Frequency minFrequency);
+        Frequency.TryParseMHz(input[5].Trim().Replace(',', '.'), out Frequency maxFrequency);
 
         return $"\n{ProcCpuInfoKeyNames.MinFrequency}\t:{minFrequency.ToMHz()}\n{ProcCpuInfoKeyNames.MaxFrequency}\t:{maxFrequency.ToMHz()}\n";
     }

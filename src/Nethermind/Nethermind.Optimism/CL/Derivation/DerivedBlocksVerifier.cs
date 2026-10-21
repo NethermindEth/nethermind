@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
@@ -12,7 +12,7 @@ namespace Nethermind.Optimism.CL.Derivation;
 
 public class DerivedBlocksVerifier(ILogManager logManager) : IDerivedBlocksVerifier
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<DerivedBlocksVerifier>();
 
     public bool ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual, ulong blockNumber)
     {
@@ -29,6 +29,12 @@ public class DerivedBlocksVerifier(ILogManager logManager) : IDerivedBlocksVerif
              !expected.EIP1559Params.SequenceEqual(actual.EIP1559Params)))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid Eip1559Params expected: {expected.EIP1559Params?.ToHexString()}, actual: {actual.EIP1559Params?.ToHexString()}");
+            result = false;
+        }
+
+        if (expected.MinBaseFee != actual.MinBaseFee)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Invalid MinBaseFee. Expected {expected.MinBaseFee}, Actual {actual.MinBaseFee}");
             result = false;
         }
 
@@ -79,8 +85,8 @@ public class DerivedBlocksVerifier(ILogManager logManager) : IDerivedBlocksVerif
             {
                 if (!expected.Transactions[i].SequenceEqual(actual.Transactions[i]))
                 {
-                    Transaction actualDecoded = Rlp.Decode<Transaction>(actual.Transactions[i], RlpBehaviors.SkipTypedWrapping);
-                    Transaction expectedDecoded = Rlp.Decode<Transaction>(expected.Transactions[i], RlpBehaviors.SkipTypedWrapping);
+                    Transaction? actualDecoded = Rlp.Decode<Transaction>(actual.Transactions[i], RlpBehaviors.SkipTypedWrapping);
+                    Transaction? expectedDecoded = Rlp.Decode<Transaction>(expected.Transactions[i], RlpBehaviors.SkipTypedWrapping);
                     if (_logger.IsWarn) _logger.Warn($"Invalid transaction. Index {i}. Block {blockNumber}");
                     if (_logger.IsWarn) _logger.Warn($"Expected: {expectedDecoded}");
                     if (_logger.IsWarn) _logger.Warn($"Actual: {actualDecoded}");

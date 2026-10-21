@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Ethereum.Test.Base;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
@@ -16,7 +16,7 @@ namespace Evm.T8n;
 
 public static class T8nInputProcessor
 {
-    private static readonly TxDecoder TxDecoder = TxDecoder.Instance;
+    private static readonly TxDecoder TransactionDecoder = TxDecoder.Instance;
 
     public static T8nTest ProcessInputAndConvertToT8nTest(T8nCommandArguments arguments)
     {
@@ -31,7 +31,7 @@ public static class T8nInputProcessor
 
         T8nValidator.ApplyChecks(inputData.Env, specProvider, spec);
 
-        var gethTraceOptions = new GethTraceOptions
+        GethTraceOptions gethTraceOptions = new()
         {
             EnableMemory = arguments.TraceMemory,
             DisableStack = arguments.TraceNoStack
@@ -40,7 +40,7 @@ public static class T8nInputProcessor
         T8nTest test = new(spec, specProvider, inputData.Env.CurrentCoinbase)
         {
             Alloc = inputData.Alloc ?? [],
-            Transactions = inputData.GetTransactions(TxDecoder, specProvider.ChainId),
+            Transactions = inputData.GetTransactions(TransactionDecoder, specProvider.ChainId),
             CurrentGasLimit = inputData.Env.CurrentGasLimit,
             CurrentTimestamp = inputData.Env.CurrentTimestamp,
             CurrentNumber = inputData.Env.CurrentNumber,

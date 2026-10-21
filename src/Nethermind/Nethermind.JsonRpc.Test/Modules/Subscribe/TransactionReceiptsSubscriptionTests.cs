@@ -5,31 +5,31 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 {
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     public class TransactionReceiptsSubscriptionTests
     {
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
         private IReceiptMonitor _receiptCanonicalityMonitor = null!;
         private IBlockTree _blockTree = null!;
         private ILogManager _logManager = null!;
-        private IJsonSerializer _jsonSerializer = null!;
+
+        // Sends run on the subscription's background loop, and the first one can take over a second on a cold CI runner.
+        private static readonly TimeSpan DeliveryTimeout = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan NoDeliveryWait = TimeSpan.FromSeconds(1);
 
         [SetUp]
         public void Setup()
@@ -38,7 +38,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             _receiptCanonicalityMonitor = Substitute.For<IReceiptMonitor>();
             _blockTree = Substitute.For<IBlockTree>();
             _logManager = Substitute.For<ILogManager>();
-            _jsonSerializer = new EthereumJsonSerializer();
         }
 
         [TearDown]
@@ -48,61 +47,70 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             _receiptCanonicalityMonitor?.Dispose();
         }
 
-        private JsonRpcResult GetTransactionReceiptsSubscriptionResult(
+        private string? GetTransactionReceiptsSubscriptionResult(
             TransactionHashesFilter? filter,
             ReceiptsEventArgs receiptsEventArgs,
             out string subscriptionId,
             bool shouldReceiveResult = true)
         {
-            TransactionReceiptsSubscription subscription = new(
+            using TransactionReceiptsSubscription subscription = new(
                 _jsonRpcDuplexClient,
                 _receiptCanonicalityMonitor,
                 _blockTree,
                 _logManager,
                 filter);
 
-            JsonRpcResult jsonRpcResult = new();
+            string? serialized = null;
             ManualResetEvent manualResetEvent = new(false);
 
             subscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
-                jsonRpcResult = j;
+                serialized = RpcTest.SerializeResponse(j.Response);
                 manualResetEvent.Set();
             }));
 
             _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+            Assert.That(manualResetEvent.WaitOne(shouldReceiveResult ? DeliveryTimeout : NoDeliveryWait), Is.EqualTo(shouldReceiveResult));
 
             subscriptionId = subscription.Id;
-            return jsonRpcResult;
+            return serialized;
         }
 
-        private List<JsonRpcResult> GetMultipleTransactionReceiptsResults(
+        private List<string> GetMultipleTransactionReceiptsResults(
             TransactionHashesFilter? filter,
             ReceiptsEventArgs receiptsEventArgs,
             out string subscriptionId,
             int expectedCount)
         {
-            TransactionReceiptsSubscription subscription = new(
+            using TransactionReceiptsSubscription subscription = new(
                 _jsonRpcDuplexClient,
                 _receiptCanonicalityMonitor,
                 _blockTree,
                 _logManager,
                 filter);
 
-            List<JsonRpcResult> jsonRpcResults = new();
-            SemaphoreSlim semaphoreSlim = new(0, 1);
+            List<string> serializedResults = [];
+            using CountdownEvent received = new(Math.Max(expectedCount, 1));
 
             subscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
-                jsonRpcResults.Add(j);
+                serializedResults.Add(RpcTest.SerializeResponse(j.Response));
+                if (!received.IsSet) received.Signal();
             }));
 
             _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
-            semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
+
+            if (expectedCount > 0)
+            {
+                received.Wait(DeliveryTimeout);
+            }
+            else
+            {
+                Thread.Sleep(200);
+            }
 
             subscriptionId = subscription.Id;
-            return jsonRpcResults;
+            return serializedResults;
         }
 
         [TestCase(200, false, TestName = "Exactly 200 hashes succeeds")]
@@ -120,23 +128,22 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 Action act = () => new TransactionReceiptsSubscription(
                     _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _logManager, filter);
 
-                act.Should().Throw<ArgumentException>()
-                    .WithMessage("*cannot subscribe to more than 200 transaction hashes*");
+                Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains("Cannot subscribe to more than 200 transaction hashes"));
             }
             else
             {
-                TransactionReceiptsSubscription subscription = new(
+                using TransactionReceiptsSubscription subscription = new(
                     _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _logManager, filter);
 
-                subscription.Should().NotBeNull();
-                subscription.Id.Should().StartWith("0x");
+                Assert.That(subscription, Is.Not.Null);
+                Assert.That(subscription.Id, Does.StartWith("0x"));
             }
         }
 
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_no_filter_returns_all_receipts()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
@@ -148,28 +155,31 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
+            List<string> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
-            results.Count.Should().Be(2);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count, Is.EqualTo(2));
 
-            string serialized1 = _jsonSerializer.Serialize(results[0].Response);
-            serialized1.Should().Contain(subscriptionId);
-            serialized1.Should().Contain(TestItem.KeccakA.ToString());
+                string serialized1 = results[0];
+                Assert.That(serialized1, Does.Contain(subscriptionId));
+                Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
 
-            string serialized2 = _jsonSerializer.Serialize(results[1].Response);
-            serialized2.Should().Contain(subscriptionId);
-            serialized2.Should().Contain(TestItem.KeccakB.ToString());
+                string serialized2 = results[1];
+                Assert.That(serialized2, Does.Contain(subscriptionId));
+                Assert.That(serialized2, Does.Contain(TestItem.KeccakB.ToString()));
+            }
         }
 
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_single_hash_filter()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakA }
+                TransactionHashes = [TestItem.KeccakA]
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -178,24 +188,23 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
 
-            result.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(result.Response);
-            serialized.Should().Contain(subscriptionId);
-            serialized.Should().Contain(TestItem.KeccakA.ToString());
-            serialized.Should().NotContain(TestItem.KeccakB.ToString());
+            Assert.That(serialized, Is.Not.Null);
+            Assert.That(serialized, Does.Contain(subscriptionId));
+            Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
+            Assert.That(serialized, Does.Not.Contain(TestItem.KeccakB.ToString()));
         }
 
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_multiple_hashes_filter()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakA, TestItem.KeccakC }
+                TransactionHashes = [TestItem.KeccakA, TestItem.KeccakC]
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -205,26 +214,29 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2, receipt3];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 2);
+            List<string> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 2);
 
-            results.Count.Should().Be(2);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count, Is.EqualTo(2));
 
-            string serialized1 = _jsonSerializer.Serialize(results[0].Response);
-            serialized1.Should().Contain(TestItem.KeccakA.ToString());
+                string serialized1 = results[0];
+                Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
 
-            string serialized2 = _jsonSerializer.Serialize(results[1].Response);
-            serialized2.Should().Contain(TestItem.KeccakC.ToString());
+                string serialized2 = results[1];
+                Assert.That(serialized2, Does.Contain(TestItem.KeccakC.ToString()));
+            }
         }
 
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_non_matching_hashes()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakD, TestItem.KeccakE }
+                TransactionHashes = [TestItem.KeccakD, TestItem.KeccakE]
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -233,20 +245,20 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 0);
+            List<string> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 0);
 
-            results.Count.Should().Be(0);
+            Assert.That(results.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_partial_match()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakA, TestItem.KeccakD }
+                TransactionHashes = [TestItem.KeccakA, TestItem.KeccakD]
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -256,19 +268,18 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2, receipt3];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
 
-            result.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(result.Response);
-            serialized.Should().Contain(TestItem.KeccakA.ToString());
-            serialized.Should().NotContain(TestItem.KeccakB.ToString());
-            serialized.Should().NotContain(TestItem.KeccakC.ToString());
+            Assert.That(serialized, Is.Not.Null);
+            Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
+            Assert.That(serialized, Does.Not.Contain(TestItem.KeccakB.ToString()));
+            Assert.That(serialized, Does.Not.Contain(TestItem.KeccakC.ToString()));
         }
 
         [Test]
         public void TransactionReceiptsSubscription_receipt_includes_all_fields()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).WithHash(TestItem.KeccakF).WithTimestamp(1000000).TestObject;
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).TestObject;
@@ -286,28 +297,30 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
 
-            result.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(result.Response);
+            Assert.That(serialized, Is.Not.Null);
 
-            serialized.Should().Contain("transactionHash");
-            serialized.Should().Contain(TestItem.KeccakA.ToString());
-            serialized.Should().Contain("blockHash");
-            serialized.Should().Contain(TestItem.KeccakF.ToString());
-            serialized.Should().Contain("blockNumber");
-            serialized.Should().Contain("0xd903"); // 55555 in hex
-            serialized.Should().Contain("transactionIndex");
-            serialized.Should().Contain("0x5"); // index 5
-            serialized.Should().Contain("logs");
-            serialized.Should().Contain("status");
-            serialized.Should().Contain("0x1"); // status code 1
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Does.Contain("transactionHash"));
+                Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
+                Assert.That(serialized, Does.Contain("blockHash"));
+                Assert.That(serialized, Does.Contain(TestItem.KeccakF.ToString()));
+                Assert.That(serialized, Does.Contain("blockNumber"));
+                Assert.That(serialized, Does.Contain("0xd903")); // 55555 in hex
+                Assert.That(serialized, Does.Contain("transactionIndex"));
+                Assert.That(serialized, Does.Contain("0x5")); // index 5
+                Assert.That(serialized, Does.Contain("logs"));
+                Assert.That(serialized, Does.Contain("status"));
+                Assert.That(serialized, Does.Contain("0x1")); // status code 1
+            }
         }
 
         [Test]
-        public void TransactionReceiptsSubscription_logs_have_correct_indices()
+        public void TransactionReceiptsSubscription_logs_have_correct_indices([Values] bool logIndexPerReceipt)
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             LogEntry log1 = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
@@ -318,40 +331,43 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt receipt2 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakB).WithIndex(1).WithLogs(log3).TestObject;
 
             TxReceipt[] receipts = [receipt1, receipt2];
-            ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
+            ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false, logIndexPerReceipt);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
+            List<string> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
-            results.Count.Should().Be(2);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count, Is.EqualTo(2));
 
-            // First receipt should have logs with indices 0 and 1
-            string serialized1 = _jsonSerializer.Serialize(results[0].Response);
-            serialized1.Should().Contain("\"logIndex\":\"0x0\"");
-            serialized1.Should().Contain("\"logIndex\":\"0x1\"");
+                // First receipt should have logs with indices 0 and 1
+                string serialized1 = results[0];
+                Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x0\""));
+                Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x1\""));
 
-            // Second receipt should have log with index 2 (cumulative)
-            string serialized2 = _jsonSerializer.Serialize(results[1].Response);
-            serialized2.Should().Contain("\"logIndex\":\"0x2\"");
+                // Block-wide index 2, or 0 when EIP-8116 counts within the receipt
+                string serialized2 = results[1];
+                Assert.That(serialized2, Does.Contain(logIndexPerReceipt ? "\"logIndex\":\"0x0\"" : "\"logIndex\":\"0x2\""));
+            }
         }
 
         [Test]
         public void TransactionReceiptsSubscription_empty_block_no_notification()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TxReceipt[] receipts = [];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 0);
+            List<string> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 0);
 
-            results.Count.Should().Be(0);
+            Assert.That(results.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void TransactionReceiptsSubscription_failed_tx_still_delivered()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TxReceipt receipt = Build.A.Receipt
@@ -365,18 +381,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
 
-            result.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(result.Response);
-            serialized.Should().Contain(TestItem.KeccakA.ToString());
-            serialized.Should().Contain("0x0"); // status 0 for failed tx
+            Assert.That(serialized, Is.Not.Null);
+            Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
+            Assert.That(serialized, Does.Contain("0x0")); // status 0 for failed tx
         }
 
         [Test]
         public void TransactionReceiptsSubscription_reorg_skipped()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TxReceipt receipt = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -384,15 +399,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, wasRemoved: true); // wasRemoved=true indicates reorg
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 0);
+            List<string> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 0);
 
-            results.Count.Should().Be(0);
+            Assert.That(results.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void TransactionReceiptsSubscription_dispose_stops_delivery()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionReceiptsSubscription subscription = new(
@@ -419,7 +434,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             Thread.Sleep(200); // Give time for any potential event delivery
 
-            receivedEvent.Should().BeFalse();
+            Assert.That(receivedEvent, Is.False);
         }
     }
 }

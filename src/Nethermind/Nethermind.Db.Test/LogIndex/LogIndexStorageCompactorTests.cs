@@ -30,7 +30,7 @@ public class LogIndexStorageCompactorTests
     }
 
     private static Compactor CreateCompactor(ILogIndexStorage storage, IDbMeta? db = null, int compactionDistance = 100) =>
-        new(storage, db ?? new FakeDb(), LimboLogs.Instance.GetClassLogger(), compactionDistance);
+        new(storage, db ?? new FakeDb(), LimboLogs.Instance.GetClassLogger<LogIndexStorageCompactorTests>(), compactionDistance);
 
     private static Compactor CreateCompactor(ILogIndexStorage storage, int compactionDistance = 100) =>
         CreateCompactor(storage, db: null, compactionDistance: compactionDistance);
@@ -60,7 +60,7 @@ public class LogIndexStorageCompactorTests
     public async Task TryEnqueue_During_Compact_Does_Not_Run_Compact_Concurrently()
     {
         const int compactionDistance = 10;
-        var compactionDelay = TimeSpan.FromMilliseconds(200);
+        TimeSpan compactionDelay = TimeSpan.FromMilliseconds(200);
 
         ILogIndexStorage storage = MockStorage(min: 0, max: 0);
         FakeDb db = new(compactionDelay);
@@ -80,14 +80,13 @@ public class LogIndexStorageCompactorTests
         await compactor.StopAsync();
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
+    [Test]
     [Repeat(RaceConditionTestRepeat)]
     [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
-    public async Task ForceAsync_Does_Not_Run_Compact_Concurrently(bool duringCompact)
+    public async Task ForceAsync_Does_Not_Run_Compact_Concurrently([Values] bool duringCompact)
     {
         const int compactionDistance = 10;
-        var compactionDelay = TimeSpan.FromMilliseconds(200);
+        TimeSpan compactionDelay = TimeSpan.FromMilliseconds(200);
 
         ILogIndexStorage storage = MockStorage(min: 0, max: 0);
         FakeDb db = new(compactionDelay);

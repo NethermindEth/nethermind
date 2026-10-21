@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
@@ -15,17 +14,17 @@ namespace Nethermind.Evm.Test
     public class Eip3198BaseFeeTests : VirtualMachineTestsBase
     {
 
-        [TestCase(true, 0, true)]
-        [TestCase(true, 100, true)]
-        [TestCase(true, 20, true)]
-        [TestCase(false, 20, true)]
-        [TestCase(false, 0, true)]
-        [TestCase(true, 0, false)]
-        [TestCase(true, 100, false)]
-        [TestCase(true, 20, false)]
-        [TestCase(false, 20, false)]
-        [TestCase(false, 0, false)]
-        public void Base_fee_opcode_should_return_expected_results(bool eip3198Enabled, int baseFee, bool send1559Tx)
+        [TestCase(true, 0UL, true)]
+        [TestCase(true, 100UL, true)]
+        [TestCase(true, 20UL, true)]
+        [TestCase(false, 20UL, true)]
+        [TestCase(false, 0UL, true)]
+        [TestCase(true, 0UL, false)]
+        [TestCase(true, 100UL, false)]
+        [TestCase(true, 20UL, false)]
+        [TestCase(false, 20UL, false)]
+        [TestCase(false, 0UL, false)]
+        public void Base_fee_opcode_should_return_expected_results(bool eip3198Enabled, ulong baseFee, bool send1559Tx)
         {
             _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             byte[] code = Prepare.EvmCode
@@ -34,17 +33,17 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            long blockNumber = eip3198Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
-            (Block block, Transaction transaction) = PrepareTx((blockNumber, 0), 100000, code);
-            block.Header.BaseFeePerGas = (UInt256)baseFee;
+            ulong blockNumber = eip3198Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
+            (Block block, Transaction transaction) = PrepareTx((blockNumber, 0UL), 100000UL, code);
+            block.Header.BaseFeePerGas = baseFee;
             if (send1559Tx)
             {
-                transaction.DecodedMaxFeePerGas = (UInt256)baseFee;
+                transaction.DecodedMaxFeePerGas = baseFee;
                 transaction.Type = TxType.EIP1559;
             }
             else
             {
-                transaction.GasPrice = (UInt256)baseFee;
+                transaction.GasPrice = baseFee;
             }
 
             TestAllTracerWithOutput tracer = CreateTracer();
@@ -56,7 +55,7 @@ namespace Nethermind.Evm.Test
             }
             else
             {
-                tracer.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
+                Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.BadInstruction.ToString()));
                 AssertStorage((UInt256)0, (UInt256)0);
             }
         }

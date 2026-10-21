@@ -21,11 +21,11 @@ public interface ILogIndexConfig : IConfig
     public bool Reset { get; set; }
 
     [ConfigItem(
-        Description = "Max allowed reorg depth for the index.",
-        DefaultValue = "64",
+        Description = "Max allowed reorg depth for the index. Defaults to `Pruning.PruningBoundary` when not set.",
+        DefaultValue = "null",
         HiddenFromDocs = true
     )]
-    public int? MaxReorgDepth { get; set; }
+    public ulong? MaxReorgDepth { get; set; }
 
     [ConfigItem(
         Description = "Maximum number of blocks with receipts to add to index per iteration.",
@@ -78,7 +78,7 @@ public interface ILogIndexConfig : IConfig
 
     [ConfigItem(
         Description = "Number of newly added blocks after which to run DB compaction.",
-        DefaultValue = "262,144",
+        DefaultValue = "262144",
         HiddenFromDocs = true
     )]
     public int CompactionDistance { get; set; }
@@ -96,11 +96,4 @@ public interface ILogIndexConfig : IConfig
         HiddenFromDocs = true
     )]
     bool DetailedLogs { get; set; }
-
-    [ConfigItem(
-        Description = "Whether to verify that eth_getLogs response generated using index matches one generated without.",
-        DefaultValue = "false",
-        HiddenFromDocs = true
-    )]
-    bool VerifyRpcResponse { get; set; }
 }

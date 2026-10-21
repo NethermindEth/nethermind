@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Taiko\Nethermind.Taiko.csproj" />
   </ItemGroup>
 

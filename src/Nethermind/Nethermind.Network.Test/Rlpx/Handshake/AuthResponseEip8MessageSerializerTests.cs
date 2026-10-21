@@ -35,8 +35,5 @@ public class AuthResponseEip8MessageSerializerTests
     }
 
     [Test]
-    public void Test()
-    {
-        TestEncodeDecode();
-    }
+    public void Test() => TestEncodeDecode();
 }

@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.Exceptions;
 
 public class InvalidBlockException(BlockHeader block, string message, Exception? innerException = null)
     : BlockchainException(message, innerException)

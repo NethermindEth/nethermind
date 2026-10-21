@@ -6,13 +6,15 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using ValidationResult = Nethermind.Merge.Plugin.Data.ValidationResult;
 
@@ -20,14 +22,25 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    private readonly IAsyncHandler<byte[], ExecutionPayload?> _getPayloadHandlerV1;
-    private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadV1Handler;
-    private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler;
-    private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
-    private readonly IEngineRequestsTracker _engineRequestsTracker;
+    private readonly IAsyncHandler<byte[], ExecutionPayload?> _getPayloadHandlerV1 = getPayloadHandlerV1;
+    private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadV1Handler = newPayloadV1Handler;
+    private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
+    private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler = transitionConfigurationHandler;
+    private readonly IEngineRequestsTracker _engineRequestsTracker = engineRequestsTracker;
+    private readonly PayloadTransactionCountGuard? _transactionCountGuard = transactionCountGuard;
     private readonly SemaphoreSlim _locker = new(1, 1);
-    private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
-    private readonly GCKeeper _gcKeeper;
+    /// <summary>How long an engine API call waits for the lock another call holds.</summary>
+    internal static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(8);
+    private readonly GCKeeper _gcKeeper = gcKeeper;
+    private readonly IBlockProcessingQueue _processingQueue = processingQueue;
+    /// <summary>How long the no-GC region is kept for a commit after the answer has gone out.</summary>
+    /// <remarks>
+    /// Shorter than the budget the request waits on for the same commit, and for a different reason: nothing is
+    /// blocked on this, and the one requirement is that a region can never be left standing. A commit slower than
+    /// this loses protection for its tail, which is the end to fail on - the alternative keeps collections off for
+    /// the whole request budget behind a commit that is stuck.
+    /// </remarks>
+    private static readonly TimeSpan NoGCRegionCommitBound = TimeSpan.FromSeconds(1);
 
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
@@ -41,10 +54,11 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
         => NewPayload(executionPayload, EngineApiVersions.NewPayload.V1);
 
-    protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
+    protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(
+        ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         _engineRequestsTracker.OnForkchoiceUpdatedCalled();
-        if (await _locker.WaitAsync(_timeout))
+        if (await _locker.WaitAsync(LockTimeout))
         {
             long startTime = Stopwatch.GetTimestamp();
             try
@@ -64,46 +78,76 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
+
+    private async Task EndNoGCRegionAfterCommitAsync(IDisposable region, Hash256 blockHash)
+    {
+        try
+        {
+            await _processingQueue.WaitForExecutedCopyAsync(blockHash, NoGCRegionCommitBound);
+        }
+        finally
+        {
+            region.Dispose();
+        }
+    }
+
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
+        executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 
-        if (!executionPayload.ValidateFork(_specProvider))
+        if (!executionPayload.ValidateForkOnNewPayload(_specProvider, version))
         {
+            // A payload that does not match the method's structure is invalid params before it is an unsupported fork.
+            if (executionPayload.HasUnboundField)
+            {
+                string unboundError = executionPayload.UnboundFieldError;
+                if (_logger.IsWarn) _logger.Warn(unboundError);
+                return ResultWrapper<PayloadStatusV1>.Fail(unboundError, ErrorCodes.InvalidParams);
+            }
+
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.NewPayload.V2 ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
-        ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
+        // The converter reads "0x" as the EIP-7668 bloom; before the fork it is the zero bloom, as it always was.
+        if (executionPayload.LogsBloom is { IsZeroLength: true } && !releaseSpec.IsEip7668Enabled) executionPayload.LogsBloom = new Bloom();
+
+        ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, _transactionCountGuard, out string? error, out Hash256? latestValidHash);
         if (validationResult != ValidationResult.Success)
         {
-            if (_logger.IsWarn) _logger.Warn(error);
+            if (_logger.IsWarn) _logger.Warn(error!);
             return validationResult == ValidationResult.Fail
                 ? ResultWrapper<PayloadStatusV1>.Fail(error!, ErrorCodes.InvalidParams)
-                : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
+                : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(latestValidHash, error));
         }
 
-        if (await _locker.WaitAsync(_timeout))
+        if (await _locker.WaitAsync(LockTimeout))
         {
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                Task<IDisposable> regionTask = _gcKeeper.TryStartNoGCRegionAsync();
+                IDisposable? region = _gcKeeper.TryStartNoGCRegion();
                 try
                 {
-                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    // The answer is out before the block is committed; the region stays for the commit's allocations
+                    // and ends when the block leaves the queue, on the thread that sees it leave.
+                    _ = EndNoGCRegionAfterCommitAsync(region, executionPayload.BlockHash);
+                    region = null;
+                    return result;
                 }
                 finally
                 {
-                    (await regionTask).Dispose();
+                    region?.Dispose();
                 }
             }
             catch (BlockchainException exception)
             {
-                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR engine_newPayloadV{version} failed: {exception}");
+                _logger.DebugError($"engine_newPayloadV{version} failed: {exception}");
                 return ResultWrapper<PayloadStatusV1>.Fail(exception.Message, ErrorCodes.UnknownBlockError);
             }
             catch (Exception exception)

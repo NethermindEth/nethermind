@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -47,21 +46,19 @@ public class TdxServiceTests
     }
 
     [Test]
-    public void IsBootstrapped_returns_false_before_bootstrap()
-    {
-        _service.IsBootstrapped.Should().BeFalse();
-    }
+    public void IsBootstrapped_returns_false_before_bootstrap() =>
+        Assert.That(_service.IsBootstrapped, Is.False);
 
     [Test]
     public void Bootstrap_generates_keys_and_quote()
     {
         TdxGuestInfo info = _service.Bootstrap();
 
-        info.Should().NotBeNull();
-        info.IssuerType.Should().Be("test");
-        info.PublicKey.Should().NotBeNullOrEmpty();
-        info.Quote.Should().NotBeNullOrEmpty();
-        _service.IsBootstrapped.Should().BeTrue();
+        Assert.That(info, Is.Not.Null);
+        Assert.That(info.IssuerType, Is.EqualTo("test"));
+        Assert.That(info.PublicKey, Is.Not.Null.And.Not.Empty);
+        Assert.That(info.Quote, Is.Not.Null.And.Not.Empty);
+        Assert.That(_service.IsBootstrapped, Is.True);
     }
 
     [Test]
@@ -70,15 +67,13 @@ public class TdxServiceTests
         TdxGuestInfo info1 = _service.Bootstrap();
         TdxGuestInfo info2 = _service.Bootstrap();
 
-        info1.PublicKey.Should().Be(info2.PublicKey);
-        info1.Quote.Should().Be(info2.Quote);
+        Assert.That(info1.PublicKey, Is.EqualTo(info2.PublicKey));
+        Assert.That(info1.Quote, Is.EqualTo(info2.Quote));
     }
 
     [Test]
-    public void GetGuestInfo_returns_null_before_bootstrap()
-    {
-        _service.GetGuestInfo().Should().BeNull();
-    }
+    public void GetGuestInfo_returns_null_before_bootstrap() =>
+        Assert.That(_service.GetGuestInfo(), Is.Null);
 
     [Test]
     public void GetGuestInfo_returns_info_after_bootstrap()
@@ -86,8 +81,8 @@ public class TdxServiceTests
         _service.Bootstrap();
         TdxGuestInfo? info = _service.GetGuestInfo();
 
-        info.Should().NotBeNull();
-        info!.PublicKey.Should().NotBeNullOrEmpty();
+        Assert.That(info, Is.Not.Null);
+        Assert.That(info!.PublicKey, Is.Not.Null.And.Not.Empty);
     }
 
     [Test]
@@ -97,7 +92,7 @@ public class TdxServiceTests
 
         Action act = () => _service.SignBlockHeader(block.Header);
 
-        act.Should().Throw<TdxException>().WithMessage("*not bootstrapped*");
+        Assert.That(act, Throws.TypeOf<TdxException>().With.Message.Contains(@"not bootstrapped"));
     }
 
     [Test]
@@ -112,11 +107,11 @@ public class TdxServiceTests
 
         TdxBlockHeaderSignature signature = _service.SignBlockHeader(block.Header);
 
-        signature.Should().NotBeNull();
-        signature.Signature.Should().HaveCount(Signature.Size);
-        signature.BlockHash.Should().Be(block.Hash!);
-        signature.StateRoot.Should().Be(TestItem.KeccakA);
-        signature.Header.Hash.Should().Be(block.Hash!);
+        Assert.That(signature, Is.Not.Null);
+        Assert.That(signature.Signature.Length, Is.EqualTo(Signature.Size));
+        Assert.That(signature.BlockHash, Is.EqualTo(block.Hash!));
+        Assert.That(signature.StateRoot, Is.EqualTo(TestItem.KeccakA));
+        Assert.That(signature.Header.Hash, Is.EqualTo(block.Hash!));
     }
 
     [Test]
@@ -124,12 +119,12 @@ public class TdxServiceTests
     {
         TdxGuestInfo info1 = _service.Bootstrap();
 
-        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxService newService = new(_config, _client, LimboLogs.Instance);
 
-        newService.IsBootstrapped.Should().BeTrue();
+        Assert.That(newService.IsBootstrapped, Is.True);
         TdxGuestInfo? info2 = newService.GetGuestInfo();
-        info2.Should().NotBeNull();
-        info2!.PublicKey.Should().Be(info1.PublicKey);
+        Assert.That(info2, Is.Not.Null);
+        Assert.That(info2!.PublicKey, Is.EqualTo(info1.PublicKey));
     }
 
     [Test]
@@ -141,7 +136,7 @@ public class TdxServiceTests
         TdxBlockHeaderSignature signature = _service.SignBlockHeader(block.Header);
 
         byte v = signature.Signature[Signature.Size - 1];
-        v.Should().BeOneOf((byte)27, (byte)28);
+        Assert.That(v, Is.AnyOf((byte)27, (byte)28));
     }
 
     [Test]
@@ -149,11 +144,11 @@ public class TdxServiceTests
     {
         TdxGuestInfo info1 = _service.Bootstrap();
 
-        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxService newService = new(_config, _client, LimboLogs.Instance);
         TdxGuestInfo info2 = newService.Bootstrap();
 
-        info2.PublicKey.Should().Be(info1.PublicKey);
-        info2.Quote.Should().Be(info1.Quote);
+        Assert.That(info2.PublicKey, Is.EqualTo(info1.PublicKey));
+        Assert.That(info2.Quote, Is.EqualTo(info1.Quote));
     }
 
     [Test]
@@ -163,10 +158,10 @@ public class TdxServiceTests
         Block block = Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
         TdxBlockHeaderSignature signature1 = _service.SignBlockHeader(block.Header);
 
-        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxService newService = new(_config, _client, LimboLogs.Instance);
         newService.Bootstrap();
         TdxBlockHeaderSignature signature2 = newService.SignBlockHeader(block.Header);
 
-        signature2.Signature.Should().BeEquivalentTo(signature1.Signature);
+        Assert.That(signature2.Signature, Is.EqualTo(signature1.Signature));
     }
 }

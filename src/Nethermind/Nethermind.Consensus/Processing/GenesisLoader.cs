@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -20,7 +21,7 @@ namespace Nethermind.Consensus.Processing
         IBlockTree blockTree,
         IWorldState worldState,
         IWorldStateManager worldStateManager,
-        IBlockchainProcessor blockchainProcessor,
+        IBlockProcessingQueue processingQueue,
         GenesisLoader.Config genesisConfig,
         ILogManager logManager
     ) : IGenesisLoader
@@ -38,7 +39,7 @@ namespace Nethermind.Consensus.Processing
 
         private void DoLoad()
         {
-            using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
 
             Block genesis = genesisBuilder.Build();
 
@@ -47,14 +48,14 @@ namespace Nethermind.Consensus.Processing
             ManualResetEventSlim genesisProcessedEvent = new(false);
 
             bool wasInvalid = false;
-            void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args)
+            void OnInvalidBlock(object? sender, IBlockProcessingQueue.InvalidBlockEventArgs args)
             {
                 if (args.InvalidBlock.Number != 0) return;
-                blockchainProcessor.InvalidBlock -= OnInvalidBlock;
+                processingQueue.InvalidBlock -= OnInvalidBlock;
                 wasInvalid = true;
                 genesisProcessedEvent.Set();
             }
-            blockchainProcessor.InvalidBlock += OnInvalidBlock;
+            processingQueue.InvalidBlock += OnInvalidBlock;
 
             void GenesisProcessed(object? sender, BlockEventArgs args)
             {

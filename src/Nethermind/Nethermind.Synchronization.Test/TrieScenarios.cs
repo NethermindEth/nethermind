@@ -352,10 +352,8 @@ namespace Nethermind.Synchronization.Test
             return remoteStorageTree;
         }
 
-        private static void SetStorage(StateTree stateTree, ITrieStore trieStore, Address address, Account account)
-        {
+        private static void SetStorage(StateTree stateTree, ITrieStore trieStore, Address address, Account account) =>
             SetStorage(stateTree, trieStore, address.ToAccountPath.ToCommitment(), account);
-        }
 
         private static void SetStorage(StateTree stateTree, ITrieStore trieStore, Hash256 address, Account account)
         {

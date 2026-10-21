@@ -9,32 +9,34 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class ChainLevelDecoder : RlpValueDecoder<ChainLevelInfo>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
+    public sealed class ChainLevelDecoder() : RlpDecoder<ChainLevelInfo>
     {
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
-        public ChainLevelDecoder() { }
-
-        public override void Encode(RlpStream stream, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                stream.Encode(Rlp.OfEmptyList);
+                writer.EncodeNullObject();
                 return;
             }
 
-            if (item.BlockInfos.AsSpan().Contains(null))
+            foreach (BlockInfo? blockInfo in item.BlockInfos)
             {
-                ThrowHasNull();
+                if (blockInfo is null)
+                {
+                    ThrowHasNull();
+                }
             }
 
             int contentLength = GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            stream.Encode(item.HasBlockOnMainChain);
+            writer.StartSequence(contentLength);
+            writer.Encode(item.HasBlockOnMainChain);
             int infoLength = GetBlockInfoLength(item.BlockInfos);
-            stream.StartSequence(infoLength);
+            writer.StartSequence(infoLength);
+            BlockInfoDecoder blockInfoDecoder = BlockInfoDecoder.Instance;
             foreach (BlockInfo? blockInfo in item.BlockInfos)
             {
-                stream.Encode(blockInfo);
+                blockInfoDecoder.Encode(ref writer, blockInfo);
             }
 
             [StackTraceHidden, DoesNotReturn]
@@ -42,20 +44,17 @@ namespace Nethermind.Serialization.Rlp
                 => throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
         }
 
-        protected override ChainLevelInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override ChainLevelInfo? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
-            {
-                decoderContext.ReadByte();
-                return null;
-            }
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            bool hasMainChainBlock = decoderContext.DecodeBool();
+            rlp.ReadSequenceLength(ref position, out int sequenceLength);
+            int lastCheck = position + sequenceLength;
+            rlp.DecodeBool(ref position, out bool hasMainChainBlock);
+            rlp.ReadSequenceLength(ref position, out _);
+            decoderContext.Position = position;
 
-            List<BlockInfo> blockInfos = new();
-
-            decoderContext.ReadSequenceLength();
+            List<BlockInfo> blockInfos = [];
             while (decoderContext.Position < lastCheck)
             {
                 // block info can be null for corrupted states (also cases where block hash is null from the old DBs)
@@ -68,16 +67,11 @@ namespace Nethermind.Serialization.Rlp
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
-                decoderContext.Check(lastCheck);
+                RlpHelpers.Check(decoderContext.Position, lastCheck);
             }
 
             ChainLevelInfo info = new(hasMainChainBlock, blockInfos.ToArray());
             return info;
-        }
-
-        public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
         }
 
         private static int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

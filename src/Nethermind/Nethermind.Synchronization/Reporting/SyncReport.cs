@@ -3,8 +3,11 @@
 
 using System;
 using System.Text;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -18,6 +21,10 @@ namespace Nethermind.Synchronization.Reporting
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly IPivot _pivot;
+        private readonly IBlockFinder _blockFinder;
+        private readonly ITimestamper _timestamper;
+        private readonly ulong _syncBehindThresholdSeconds;
+        private readonly ulong _caughtUpThresholdSeconds;
         private readonly ILogger _logger;
         private SyncMode _currentMode = SyncMode.None;
 
@@ -28,14 +35,27 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
+        // Gated on elapsed time rather than ticks, as the tick interval depends on the log level.
+        internal static readonly TimeSpan SyncBehindReportInterval = TimeSpan.FromMinutes(1);
+        internal const ulong SyncBehindThresholdSlots = 25; // 5 min with 12s slots
+        internal const ulong CaughtUpThresholdSlots = 4;
+        private DateTime? _lastSyncBehindReportTime;
+        private bool _isBehind;
+        private bool _hasBeenAtTip;
+        private (DateTime Time, ulong HeadTimestamp)? _lastCatchUpSample;
         private readonly TimeSpan _defaultReportingIntervals;
 
-        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
+        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockFinder blockFinder, ITimestamper timestamper, IBlocksConfig blocksConfig, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SyncReport>() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            ulong secondsPerSlot = (blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig))).SecondsPerSlot;
+            _syncBehindThresholdSeconds = SyncBehindThresholdSlots * secondsPerSlot;
+            _caughtUpThresholdSeconds = CaughtUpThresholdSlots * secondsPerSlot;
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             _defaultReportingIntervals = TimeSpan.FromSeconds(_logger.IsDebug ? 1 : 10);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
@@ -43,12 +63,13 @@ namespace Nethermind.Synchronization.Reporting
             FastBlocksHeaders = new("Old Headers", logManager);
             FastBlocksBodies = new("Old Bodies ", logManager);
             FastBlocksReceipts = new("Old Receipts", logManager);
+            FastBlockAccessLists = new("Old Block Access Lists", logManager);
             FullSyncBlocksDownloaded = new("Downloaded", logManager);
             BeaconHeaders = new("Beacon Headers", logManager);
 
             BeaconHeaders.SetFormat((progress) =>
             {
-                long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
+                ulong numHeadersToDownload = _pivot.PivotNumber.SaturatingSub(_pivot.PivotDestinationNumber) + 1;
                 string skipSectionStr = progress.SkippedPerSecond != -1
                     ? $"skipped {progress.SkippedPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s | "
                     : "";
@@ -83,7 +104,7 @@ namespace Nethermind.Synchronization.Reporting
             if (e.Previous != e.Current)
             {
                 // Repeat of "Changing state" so only output as confirm in debug
-                if (_logger.IsDebug) _logger.Debug($"Sync mode changed from {e.Previous} to {e.Current}");
+                if (_logger.IsDebug) _logger.Debug($"Sync mode changed from {e.Previous.ToFlagsString()} to {e.Current.ToFlagsString()}");
             }
         }
 
@@ -94,6 +115,13 @@ namespace Nethermind.Synchronization.Reporting
             if (_reportId % SyncReportFrequency == 0)
             {
                 WriteSyncReport();
+            }
+
+            DateTime now = _timestamper.UtcNow;
+            if (_lastSyncBehindReportTime is not { } lastSyncBehindReport || now - lastSyncBehindReport >= SyncBehindReportInterval)
+            {
+                _lastSyncBehindReportTime = now;
+                WriteSyncBehindReport(now);
             }
 
             if (_reportId % SyncFullPeersReportFrequency == 0)
@@ -118,6 +146,8 @@ namespace Nethermind.Synchronization.Reporting
 
         public ProgressLogger FastBlocksReceipts { get; init; }
 
+        public ProgressLogger FastBlockAccessLists { get; init; }
+
         public ProgressLogger FullSyncBlocksDownloaded { get; init; }
 
         public ProgressLogger BeaconHeaders { get; init; }
@@ -137,7 +167,7 @@ namespace Nethermind.Synchronization.Reporting
             SyncMode currentSyncMode = _currentMode;
             if (_logger.IsDebug) WriteSyncConfigReport();
 
-            if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
+            if (!_reportedFastBlocksSummary && HasAllEnded(FastBlocksHeaders, FastBlocksBodies, FastBlocksReceipts, FastBlockAccessLists))
             {
                 _reportedFastBlocksSummary = true;
                 WriteFastBlocksReport(currentSyncMode);
@@ -202,6 +232,7 @@ namespace Nethermind.Synchronization.Reporting
             Metrics.FastHeaders = FastBlocksHeaders.CurrentValue;
             Metrics.FastBodies = FastBlocksBodies.CurrentValue;
             Metrics.FastReceipts = FastBlocksReceipts.CurrentValue;
+            Metrics.FastBlockAccessLists = FastBlockAccessLists.CurrentValue;
         }
 
         private void WriteSyncConfigReport()
@@ -234,20 +265,11 @@ namespace Nethermind.Synchronization.Reporting
             if (_logger.IsTrace) _logger.Trace(builder.ToString());
         }
 
-        private void WriteStateNodesReport()
-        {
-            _logger.Info("Syncing state nodes");
-        }
+        private void WriteStateNodesReport() => _logger.Info("Syncing state nodes");
 
-        private void WriteDbSyncReport()
-        {
-            _logger.Info("Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
-        }
+        private void WriteDbSyncReport() => _logger.Info("Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
 
-        private void WriteNotStartedReport()
-        {
-            _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
-        }
+        private void WriteNotStartedReport() => _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
 
         private void WriteFullSyncReport()
         {
@@ -256,7 +278,9 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            if (FullSyncBlocksDownloaded.TargetValue - FullSyncBlocksDownloaded.CurrentValue < 32)
+            // Guard against ulong wrap when CurrentValue transiently exceeds TargetValue near
+            // sync completion; the intent is "suppress logs within 32 blocks of target".
+            if (FullSyncBlocksDownloaded.CurrentValue + 32 > FullSyncBlocksDownloaded.TargetValue)
             {
                 return;
             }
@@ -266,30 +290,107 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteFastBlocksReport(SyncMode currentSyncMode)
         {
-            if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders && FastBlocksHeaders.HasStarted)
-            {
-                FastBlocksHeaders.LogProgress();
-            }
-
-            if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies && FastBlocksBodies.HasStarted)
-            {
-                FastBlocksBodies.LogProgress();
-            }
-
-            if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts && FastBlocksReceipts.HasStarted)
-            {
-                FastBlocksReceipts.LogProgress();
-            }
+            LogProgressIfActive(currentSyncMode, SyncMode.FastHeaders, FastBlocksHeaders);
+            LogProgressIfActive(currentSyncMode, SyncMode.FastBodies, FastBlocksBodies);
+            LogProgressIfActive(currentSyncMode, SyncMode.FastReceipts, FastBlocksReceipts);
+            LogProgressIfActive(currentSyncMode, SyncMode.FastBlockAccessLists, FastBlockAccessLists);
         }
 
-        private void WriteBeaconSyncReport()
+        private void WriteBeaconSyncReport() => BeaconHeaders.LogProgress();
+
+        private void WriteSyncBehindReport(DateTime now)
         {
-            BeaconHeaders.LogProgress();
+            SyncMode currentSyncMode = _currentMode;
+            if ((currentSyncMode & (SyncMode.Full | SyncMode.FastSync | SyncMode.WaitingForBlock)) == 0) return;
+
+            // Head stays at genesis during fast sync, so its age says nothing about sync progress.
+            Block? head = _blockFinder.Head;
+            if (head is null || head.IsGenesis) return;
+
+            ulong secondsBehind = new UnixTime(now).Seconds.SaturatingSub(head.Timestamp);
+            if (secondsBehind <= _caughtUpThresholdSeconds)
+            {
+                _hasBeenAtTip = true;
+                _lastCatchUpSample = null;
+                if (_isBehind)
+                {
+                    _isBehind = false;
+                    if (_logger.IsInfo) _logger.Info("Head block is up to date again.");
+                }
+
+                return;
+            }
+
+            // Between the two thresholds the node is neither reported as behind nor announced as caught up.
+            if (secondsBehind <= _syncBehindThresholdSeconds) return;
+
+            _isBehind = true;
+            (DateTime Time, ulong HeadTimestamp)? previousSample = _lastCatchUpSample;
+            _lastCatchUpSample = (now, head.Timestamp);
+
+            // The head cannot advance until state sync completes, so an estimate would only ever say the gap is not closing.
+            string eta = (currentSyncMode & SyncMode.StateNodes) == 0 ? FormatCatchUpEta(previousSample, now, head.Timestamp, secondsBehind) : "";
+            string message = $"Head block is {FormatSeconds(secondsBehind)} old: the node is behind the chain or the chain is not producing blocks.{eta}";
+
+            // Only a node that had already reached the tip is worth warning about; on a first sync
+            // being behind is the expected state and would warn for the whole sync.
+            if (_hasBeenAtTip)
+            {
+                if (_logger.IsWarn) _logger.Warn(message);
+            }
+            else if (_logger.IsInfo) _logger.Info(message);
         }
 
-        public void Dispose()
+        /// <remarks>
+        /// Estimated from how much chain time the head advanced since the previous sample:
+        /// the gap closes only by the part of that advance exceeding the wall-clock time that passed.
+        /// A sample older than two report intervals is ignored, as it would average in a stretch
+        /// in which the node was not reporting, e.g. while out of forward sync.
+        /// </remarks>
+        private static string FormatCatchUpEta((DateTime Time, ulong HeadTimestamp)? previousSample, DateTime now, ulong headTimestamp, ulong secondsBehind)
         {
-            _timer.Dispose();
+            if (previousSample is not { } sample || now <= sample.Time || now - sample.Time > 2 * SyncBehindReportInterval) return "";
+
+            double secondsElapsed = (now - sample.Time).TotalSeconds;
+            double gapClosedPerSecond = headTimestamp.SaturatingSub(sample.HeadTimestamp) / secondsElapsed - 1;
+            if (gapClosedPerSecond <= 0) return " The gap is not closing.";
+
+            return $" Estimated time to catch up: {FormatSeconds((ulong)(secondsBehind / gapClosedPerSecond))}";
+        }
+
+        public void Dispose() => _timer.Dispose();
+
+        private static bool HasAllEnded(params ReadOnlySpan<ProgressLogger> progressLoggers)
+        {
+            foreach (ProgressLogger progressLogger in progressLoggers)
+            {
+                if (!progressLogger.HasEnded)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static string FormatSeconds(ulong totalSeconds)
+        {
+            ulong days = totalSeconds / 86400;
+            ulong hours = totalSeconds % 86400 / 3600;
+            ulong minutes = totalSeconds % 3600 / 60;
+            ulong seconds = totalSeconds % 60;
+
+            if (days >= 1) return $"{days}d {hours}h {minutes}m";
+            if (hours >= 1) return $"{hours}h {minutes}m";
+            return $"{minutes}m {seconds}s";
+        }
+
+        private static void LogProgressIfActive(SyncMode currentSyncMode, SyncMode mode, ProgressLogger progressLogger)
+        {
+            if ((currentSyncMode & mode) == mode && progressLogger.HasStarted)
+            {
+                progressLogger.LogProgress();
+            }
         }
     }
 }

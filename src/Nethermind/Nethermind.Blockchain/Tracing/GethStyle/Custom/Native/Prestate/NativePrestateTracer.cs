@@ -3,10 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -16,21 +17,40 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
-public class NativePrestateTracer : GethLikeNativeTxTracer
+public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingFilter
 {
     public const string PrestateTracer = "prestateTracer";
+
+    public UInt256 InstructionMask { get; }
+
+    private static readonly UInt256 CaptureMask = CreateCaptureMask();
+    private static readonly EthereumEcdsa AuthorityRecovery = new(0);
 
     private readonly IWorldState? _worldState;
     private readonly Hash256? _txHash;
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
-    private EvmExceptionType? _error;
-    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = new();
+    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = [];
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
+    // EIP-8360: storage opcodes of these accounts act on transient storage, so they read no state.
+    private HashSet<AddressAsKey>? _transientCreates;
+    private List<AddressAsKey>? _nonexistentAccounts;
+    private List<AddressAsKey>? _initiallyEmptyAccounts;
     private readonly bool _diffMode;
+    // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
+    private readonly bool _isEip5920Enabled;
+    private readonly bool _isEip7702Enabled;
+    private readonly bool _isEip8298Enabled;
+    // EIP-6780: SELFDESTRUCT deletes only an account created in the same transaction.
+    private readonly bool _isEip6780Enabled;
+    // EIP-8246: a self-destructed account that ends the transaction with a balance survives.
+    private readonly bool _isEip8246Enabled;
+    private readonly bool _includeEmpty;
+    private readonly bool _disableCode;
+    private readonly bool _disableStorage;
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -38,36 +58,137 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         Hash256? txHash,
         Address? from,
         Address? to = null,
-        Address? beneficiary = null)
+        Address? beneficiary = null,
+        Transaction? transaction = null,
+        IReleaseSpec? releaseSpec = null,
+        AuthorizationTuple[]? authorizations = null)
         : base(options)
     {
-        IsTracingRefunds = true;
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
 
         _worldState = worldState;
         _txHash = txHash;
+        _isEip7702Enabled = releaseSpec?.IsEip7702Enabled ?? false;
+        _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
+        _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
+        _isEip6780Enabled = releaseSpec?.IsEip6780Enabled == true;
+        _isEip8246Enabled = releaseSpec?.IsEip8246Enabled == true;
+        UInt256 instructionMask = CaptureMask;
+        if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
+        if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
+        InstructionMask = instructionMask;
 
-        NativePrestateTracerConfig config = options.TracerConfig?.Deserialize<NativePrestateTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
+        NativePrestateTracerConfig config = NativePrestateTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
         _diffMode = config.DiffMode;
+        _includeEmpty = config.IncludeEmpty;
+        if (_diffMode && _includeEmpty)
+            throw new ArgumentException("cannot use diffMode with includeEmpty");
+        _disableCode = config.DisableCode;
+        _disableStorage = config.DisableStorage;
         if (_diffMode)
         {
-            _poststate = new Dictionary<AddressAsKey, NativePrestateTracerAccount>();
-            _deletedAccounts = new HashSet<AddressAsKey>();
-            _createdAccounts = new HashSet<AddressAsKey>();
+            _poststate = [];
+            _deletedAccounts = [];
+            _createdAccounts = [];
         }
 
         LookupAccount(from!);
-        LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        if (transaction?.Frames is null)
+        {
+            Address recipient = to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0);
+            LookupAccount(recipient);
+            if (to is not null) LookupDelegation(to);
+            // As in geth, a contract-creation transaction creates its recipient.
+            if (_diffMode && to is null)
+                _createdAccounts.Add(recipient);
+        }
+        else
+        {
+            LookupFrameTxState(from, transaction);
+        }
         LookupAccount(beneficiary ?? Address.Zero);
+        if (authorizations is not null)
+        {
+            // Geth captures recoverable authorities even when chain ID or nonce prevents applying the authorization.
+            foreach (AuthorizationTuple authorization in authorizations)
+            {
+                if (HasValidAuthoritySignature(authorization.AuthoritySignature)
+                    && (authorization.Authority ??= AuthorityRecovery.RecoverAddress(authorization)) is { } authority)
+                    LookupAccount(authority);
+            }
+        }
+    }
+
+    private static bool HasValidAuthoritySignature(Signature signature)
+    {
+        UInt256 r = new(signature.RAsSpan, isBigEndian: true);
+        UInt256 s = new(signature.SAsSpan, isBigEndian: true);
+        return (signature.V == Signature.VOffset || signature.V == Signature.VOffset + 1)
+            && !r.IsZero && r < SecP256k1Curve.N && !s.IsZero && s <= SecP256k1Curve.HalfN;
+    }
+
+    /// <summary>Records the state an EIP-8141 transaction touches outside the VM, before anything reports it.</summary>
+    /// <remarks>A frame transaction creates no contract. The payer, always a frame target, is charged at approval,
+    /// which default code performs without entering the VM; approval also consumes EIP-8250 keyed nonces through
+    /// <c>NONCE_MANAGER</c> storage, so every frame target and consumed nonce slot is read up front.</remarks>
+    private void LookupFrameTxState(Address sender, Transaction transaction)
+    {
+        foreach (TxFrame frame in transaction.Frames!)
+            LookupAccount(frame.Target ?? sender);
+
+        if (transaction.NonceKeys is { } nonceKeys && KeyedNonceManager.UsesKeyedDomain(nonceKeys))
+        {
+            foreach (UInt256 nonceKey in nonceKeys)
+                LookupStorage(KeyedNonceManager.StorageSlot(sender, nonceKey));
+        }
+    }
+
+    private void LookupStorage(in StorageCell cell)
+    {
+        LookupAccount(cell.Address);
+        LookupStorage(cell.Address, cell.Index);
+        // Protocol-managed storage exists independently of the account record (EIP-8250).
+        if (!_disableStorage)
+            _initiallyEmptyAccounts?.Remove(cell.Address);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
 
+    private static UInt256 CreateCaptureMask()
+    {
+        UInt256 mask = UInt256.Zero;
+        for (int opcode = 0; opcode <= byte.MaxValue; opcode++)
+        {
+            if (RequiresStack((Instruction)opcode))
+                mask |= UInt256.One << opcode;
+        }
+        return mask;
+    }
+
+    private static bool RequiresStack(Instruction opcode) => opcode is Instruction.SLOAD or Instruction.SSTORE
+        or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
+        or Instruction.BALANCE or Instruction.SELFDESTRUCT
+        or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
+        or Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE;
+
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
+
+        if (_initiallyEmptyAccounts is not null)
+        {
+            foreach (AddressAsKey address in _initiallyEmptyAccounts)
+            {
+                // EIP-8250's nonce manager can have storage without an account record.
+                if (!_diffMode || (_prestate.TryGetValue(address, out NativePrestateTracerAccount? account)
+                    && account.Storage is not { Count: > 0 }))
+                    _prestate.Remove(address);
+            }
+        }
 
         result.TxHash = _txHash;
         result.CustomTracerResult = new GethLikeCustomTrace
@@ -94,14 +215,25 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             ProcessDiffState();
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         base.StartOperation(pc, opcode, gas, env);
 
-        if (_error is not null) return;
-
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
+
+        IsTracingMemory = _op is Instruction.CREATE2 or Instruction.TCREATE;
+        IsTracingStack = RequiresStack(_op)
+            || (_op == Instruction.PAY && _isEip5920Enabled)
+            || (_op == Instruction.SETCODEFROM && _isEip8298Enabled);
+    }
+
+    /// <remarks>EIP-8151: ecRecover reads the recovered account's code to decide its output. The VM reports it, so the
+    /// account is found wherever a state override moved ecRecover, and only when the read happened.</remarks>
+    public override void ReportPrecompileAccountRead(Address address)
+    {
+        base.ReportPrecompileAccountRead(address);
+        LookupAccount(address);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -121,7 +253,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         {
             case Instruction.SLOAD:
             case Instruction.SSTORE:
-                if (stackLen >= 1)
+                if (stackLen >= 1 && _transientCreates?.Contains(_executingAccount!) != true)
                 {
                     UInt256 index = stack.PeekUInt256(0);
                     LookupStorage(_executingAccount!, index);
@@ -132,12 +264,23 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             case Instruction.EXTCODESIZE:
             case Instruction.BALANCE:
             case Instruction.SELFDESTRUCT:
+            case Instruction.PAY when _isEip5920Enabled:
                 if (stackLen >= 1)
                 {
                     address = stack.PeekAddress(0);
                     LookupAccount(address);
-                    if (_diffMode && _op == Instruction.SELFDESTRUCT)
-                        _deletedAccounts.Add(address);
+                    // As in geth, the executing account is deleted when the opcode runs, but after EIP-6780 only if
+                    // it was created in this transaction.
+                    if (_diffMode && _op == Instruction.SELFDESTRUCT
+                        && (!_isEip6780Enabled || _createdAccounts.Contains(_executingAccount!)))
+                        _deletedAccounts.Add(_executingAccount!);
+                }
+                break;
+            // EIP-8298: SETCODEFROM reads the source account's code.
+            case Instruction.SETCODEFROM when _isEip8298Enabled:
+                if (stackLen >= 1)
+                {
+                    LookupAccount(stack.PeekAddress(0));
                 }
                 break;
             case Instruction.DELEGATECALL:
@@ -148,9 +291,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                 {
                     address = stack.PeekAddress(1);
                     LookupAccount(address);
+                    LookupDelegation(address);
                 }
                 break;
             case Instruction.CREATE2:
+            case Instruction.TCREATE:
                 if (stackLen >= 4)
                 {
                     try
@@ -159,22 +304,27 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                         int length = stack.Peek(2).ReadEthInt32();
                         ReadOnlySpan<byte> initCode = _memoryTrace.Slice(offset, length);
                         ReadOnlySpan<byte> salt = stack.Peek(3);
-                        address = ContractAddress.From(_executingAccount!, salt, initCode);
+                        address = _op == Instruction.TCREATE
+                            ? ContractAddress.FromTransientCreate(_executingAccount!, salt, initCode)
+                            : ContractAddress.From(_executingAccount!, salt, initCode);
                         LookupAccount(address);
                         if (_diffMode)
                             _createdAccounts.Add(address);
+                        if (_op == Instruction.TCREATE)
+                            (_transientCreates ??= []).Add(address);
                     }
                     catch
                     {
                         /*
-                         * This operation error will be recorded in ReportOperationError and all
-                         * subsequent operations will be ignored from the prestate trace
+                         * The init code cannot be read: an offset or length that does not fit, or a slice
+                         * past the traced memory's 1 MiB padding limit (as in geth). The account is then not
+                         * looked up; StartOperation resets the state for the next operation
                          */
                     }
                 }
                 break;
             case Instruction.CREATE:
-                UInt256 nonce = _worldState!.GetNonce(_executingAccount!);
+                ulong nonce = _worldState!.GetNonce(_executingAccount!);
                 address = ContractAddress.From(_executingAccount, nonce);
                 LookupAccount(address!);
                 if (_diffMode)
@@ -183,10 +333,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void ReportOperationError(EvmExceptionType error)
+    private void LookupDelegation(Address address)
     {
-        base.ReportOperationError(error);
-        _error = error;
+        if (_isEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(_worldState!.GetCode(address).Span, out Address? target))
+            LookupAccount(target);
     }
 
     protected void LookupAccount(Address addr)
@@ -196,8 +346,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
                 UInt256 nonce = account.Nonce;
-                byte[]? code = _worldState.GetCode(addr);
-                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code));
+                ReadOnlyMemory<byte> code = _disableCode ? default : _worldState.GetCode(addr);
+                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code)
+                {
+                    CodeHash = account.CodeHash != default(ValueHash256) && account.CodeHash != Keccak.OfAnEmptyString.ValueHash256
+                        ? account.CodeHash : (ValueHash256?)null
+                });
             }
             else
             {
@@ -205,36 +359,49 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                 {
                     Balance = UInt256.Zero
                 });
+                if (_diffMode && !_worldState.AccountExists(addr))
+                    (_nonexistentAccounts ??= []).Add(addr);
             }
+            NativePrestateTracerAccount snapshot = _prestate[addr];
+            if (!_includeEmpty && snapshot.Balance.GetValueOrDefault().IsZero
+                && snapshot.Nonce.GetValueOrDefault().IsZero && snapshot.CodeHash is null)
+                (_initiallyEmptyAccounts ??= []).Add(addr);
         }
     }
 
     protected void LookupStorage(Address addr, UInt256 index)
     {
+        if (_disableStorage) return;
+
         NativePrestateTracerAccount account = _prestate[addr];
-        account.Storage ??= new Dictionary<UInt256, UInt256>();
+        account.Storage ??= [];
 
         if (!account.Storage.ContainsKey(index))
         {
-            UInt256 storage = new(_worldState!.Get(new StorageCell(addr, index)), true);
+            _worldState!.Get(new StorageCell(addr, index), out UInt256 storage);
             account.Storage.Add(index, storage);
         }
     }
+
+    private static bool IsEmpty(NativePrestateTracerAccount account) =>
+        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code.IsEmpty && account.CodeHash is null;
 
     private void ProcessDiffState()
     {
         foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
         {
-            // If an account was deleted then don't show it in the postState trace
-            if (_deletedAccounts.Contains(addr))
+            // If an account was deleted then don't show it in the postState trace. Unlike geth, under EIP-8246 one
+            // that still exists kept its balance as a balance-only account, so it is a normal diff; EIP-161 removed
+            // it if the balance was zero.
+            if (_deletedAccounts.Contains(addr) && !(_isEip8246Enabled && _worldState!.AccountExists(addr)))
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
-            NativePrestateTracerAccount poststateAccount = new NativePrestateTracerAccount(
+            NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
-                _worldState.GetCode(addr));
-            NativePrestateTracerAccount? diffAccount = new NativePrestateTracerAccount();
+                _disableCode ? default : _worldState.GetCode(addr));
+            NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
             if (!poststateAccount.Balance.Equals(prestateAccount.Balance))
@@ -247,13 +414,20 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                 modified = true;
                 diffAccount.Nonce = poststateAccount.Nonce;
             }
-            if (!Bytes.NullableEqualityComparer.Equals(poststateAccount.Code, prestateAccount.Code))
+            ValueHash256 postCodeHash = _worldState.AccountExists(addr) ? poststateAccountStruct.CodeHash : default;
+            if (postCodeHash != (prestateAccount.CodeHash ?? Keccak.OfAnEmptyString.ValueHash256))
+            {
+                modified = true;
+                diffAccount.CodeHash = postCodeHash;
+            }
+            if (!_disableCode && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
             {
                 modified = true;
                 diffAccount.Code = poststateAccount.Code;
+                diffAccount.IncludeEmptyCode = poststateAccount.Code.IsEmpty;
             }
 
-            if (prestateAccount.Storage is not null)
+            if (!_disableStorage && prestateAccount.Storage is not null)
             {
                 foreach ((UInt256 index, UInt256 prestateStorage) in prestateAccount.Storage)
                 {
@@ -261,13 +435,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                     if (prestateStorage.IsZero)
                         prestateAccount.Storage.Remove(index);
 
-                    UInt256 poststateStorage = new(_worldState!.Get(new StorageCell(addr, index)), true);
+                    _worldState!.Get(new StorageCell(addr, index), out UInt256 poststateStorage);
                     if (!prestateStorage.Equals(poststateStorage))
                     {
                         modified = true;
                         if (!poststateStorage.IsZero)
                         {
-                            diffAccount.Storage ??= new Dictionary<UInt256, UInt256>();
+                            diffAccount.Storage ??= [];
                             diffAccount.Storage.Add(index, poststateStorage);
                         }
                     }
@@ -283,9 +457,20 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             if (modified)
                 _poststate.Add(addr, diffAccount);
 
-            // If no account fields were modified or the account was created then remove it from the prestate trace
-            if (!modified || _createdAccounts.Contains(addr))
+            // If no account fields were modified or the account was created then remove it from the prestate trace;
+            // a created account counts as new when it was empty before, judged by balance, nonce and code hash.
+            if (!modified || (_createdAccounts.Contains(addr) && IsEmpty(prestateAccount)))
                 _prestate.Remove(addr);
+        }
+
+        if (_nonexistentAccounts is not null)
+        {
+            foreach (AddressAsKey addr in _nonexistentAccounts)
+            {
+                // EIP-8250's nonce manager can have storage without an account record.
+                if (_prestate.TryGetValue(addr, out NativePrestateTracerAccount? account) && account.Storage is not { Count: > 0 })
+                    _prestate.Remove(addr);
+            }
         }
     }
 }

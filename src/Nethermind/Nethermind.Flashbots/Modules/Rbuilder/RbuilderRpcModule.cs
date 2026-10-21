@@ -7,7 +7,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -20,10 +19,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
     : IRbuilderRpcModule
 {
 
-    public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash)
-    {
-        return ResultWrapper<byte[]?>.Success(stateReader.GetCode(hash));
-    }
+    public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash) => ResultWrapper<byte[]?>.Success(stateReader.GetCode(hash));
 
     public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange> accountDiff)
     {
@@ -33,7 +29,12 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             return ResultWrapper<Hash256>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
-        using IReadOnlyTxProcessingScope worldScope = txProcessorSource.Build(blockHeader);
+        if (!txProcessorSource.TryBuild(blockHeader, out IReadOnlyTxProcessingScope? worldScope))
+        {
+            return ResultWrapper<Hash256>.Fail($"No state available for block {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+        }
+
+        using IReadOnlyTxProcessingScope _ = worldScope;
         IWorldState worldState = worldScope.WorldState;
         IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
 
@@ -93,8 +94,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             {
                 foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                 {
-                    ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian().WithoutLeadingZeros();
-                    worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray());
+                    worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value);
                 }
             }
         }

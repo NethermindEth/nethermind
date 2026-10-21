@@ -30,8 +30,8 @@ namespace Nethermind.Network.Benchmarks
 
             _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and ephemeral key for testing
 
-            _initiatorService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, LimboLogs.Instance);
-            _recipientService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, LimboLogs.Instance);
+            _initiatorService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, NullLogManager.Instance);
+            _recipientService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, NullLogManager.Instance);
         }
 
         private class BenchmarkTestRandom : ICryptoRandom
@@ -61,15 +61,9 @@ namespace Nethermind.Network.Benchmarks
                 return (byte[])responses[_i].Clone();
             }
 
-            public void GenerateRandomBytes(Span<byte> bytes)
-            {
-                GenerateRandomBytes(bytes.Length).CopyTo(bytes);
-            }
+            public void GenerateRandomBytes(Span<byte> bytes) => GenerateRandomBytes(bytes.Length).CopyTo(bytes);
 
-            public int NextInt(int max)
-            {
-                return max / 2;
-            }
+            public int NextInt(int max) => max / 2;
 
             public void Dispose()
             {
@@ -103,15 +97,9 @@ namespace Nethermind.Network.Benchmarks
             _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake); // 64B
         }
 
-        private void Ack()
-        {
-            _ack = _recipientService.Ack(new EncryptionHandshake(), _auth);
-        }
+        private void Ack() => _ack = _recipientService.Ack(new EncryptionHandshake(), _auth);
 
-        private void Agree()
-        {
-            _initiatorService.Agree(_initiatorHandshake, _ack);
-        }
+        private void Agree() => _initiatorService.Agree(_initiatorHandshake, _ack);
 
         [Benchmark(Baseline = true)]
         public void Current()
@@ -122,10 +110,7 @@ namespace Nethermind.Network.Benchmarks
         }
 
         [Benchmark]
-        public void CurrentAuth()
-        {
-            Auth();
-        }
+        public void CurrentAuth() => Auth();
 
         [Benchmark]
         public void CurrentAuthAck()

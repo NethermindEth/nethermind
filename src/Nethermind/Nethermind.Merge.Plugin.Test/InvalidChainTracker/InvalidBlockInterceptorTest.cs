@@ -31,8 +31,8 @@ public class InvalidBlockInterceptorTest
         _baseValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out _)
             .Returns(f =>
             {
-                var blockHeader = f.Arg<BlockHeader>();
-                var blockBody = f.Arg<BlockBody>();
+                BlockHeader blockHeader = f.Arg<BlockHeader>();
+                BlockBody blockBody = f.Arg<BlockBody>();
                 return BlockValidator.ValidateTxRootMatchesTxs(blockHeader, blockBody, out _) &&
                        BlockValidator.ValidateUnclesHashMatches(blockHeader, blockBody, out _) &&
                        BlockValidator.ValidateWithdrawalsHashMatches(blockHeader, blockBody, out _);
@@ -65,6 +65,22 @@ public class InvalidBlockInterceptorTest
         {
             _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
         }
+    }
+
+    /// <summary>
+    /// The interceptor is the decorator registered for <see cref="IBlockValidator"/>, so a missing overload here
+    /// would route every opt-out to the interface default and silently validate fully.
+    /// </summary>
+    [Test]
+    public void TestValidateHeaderForwardsValidateHash([Values] bool validateHash)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _baseValidator.Validate(header, parent, false, out Arg.Any<string?>(), validateHash).Returns(true);
+
+        Assert.That(_invalidBlockInterceptor.Validate(header, parent, false, out _, validateHash), Is.True);
+
+        _baseValidator.Received().Validate(header, parent, false, out Arg.Any<string?>(), validateHash);
     }
 
     [TestCase(true, false)]

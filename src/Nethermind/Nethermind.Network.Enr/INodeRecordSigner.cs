@@ -14,18 +14,11 @@ public interface INodeRecordSigner
     void Sign(NodeRecord nodeRecord);
 
     /// <summary>
-    /// Deserializes a <see cref="NodeRecord"/> from an <see cref="RlpStream"/>.
+    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="RlpReader"/>.
     /// </summary>
-    /// <param name="rlpStream">A stream to read the serialized data from.</param>
+    /// <param name="reader">The RLP reader to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
-    NodeRecord Deserialize(RlpStream rlpStream);
-
-    /// <summary>
-    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="Rlp.ValueDecoderContext"/>.
-    /// </summary>
-    /// <param name="ctx">A value decoder context to read the serialized data from.</param>
-    /// <returns>A deserialized <see cref="NodeRecord"/></returns>
-    NodeRecord Deserialize(ref Rlp.ValueDecoderContext ctx);
+    NodeRecord Deserialize(ref RlpReader reader);
 
     /// <summary>
     /// Verifies if the public key recovered from the <see cref="Signature"/> of this record matches

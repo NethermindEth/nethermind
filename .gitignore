@@ -86,6 +86,7 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+build/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
@@ -413,11 +414,11 @@ FodyWeavers.xsd
 
 # VS Code files for those working on multiple tools
 .vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+# !.vscode/settings.json
+# !.vscode/tasks.json
+# !.vscode/launch.json
+# !.vscode/extensions.json
+# !.vscode/*.code-snippets
 
 # Local History for Visual Studio Code
 .history/
@@ -439,10 +440,10 @@ FodyWeavers.xsd
 ## macOS
 .DS_Store
 
-# AI
+# Agents
 .claude/*
 !.claude/skills
-!.claude/skills/**
+.codex/
 .gemini/
 
 # Worktrees
@@ -450,7 +451,17 @@ FodyWeavers.xsd
 
 ## Nethermind
 keystore/
+/data/
+/bootnode-data/
 /.githooks
+/.dotnet-cli
 
-# Worktrees
-.worktrees/
+# Nix build output symlinks
+/result
+/result-*
+
+# Clawpatch
+.clawpatch/
+
+# Native objects built for the zkVM guests
+src/Nethermind/Nethermind.Stateless.*/*.o

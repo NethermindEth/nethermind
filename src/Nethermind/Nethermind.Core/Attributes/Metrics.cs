@@ -22,14 +22,9 @@ public sealed class GaugeMetricAttribute : Attribute { }
 /// Mark that the attribute is a dictionary whose key is used as a label of name LabelName.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
-public sealed class KeyIsLabelAttribute : Attribute
+public sealed class KeyIsLabelAttribute(params string[] labelNames) : Attribute
 {
-    public string[] LabelNames { get; }
-
-    public KeyIsLabelAttribute(params string[] labelNames)
-    {
-        LabelNames = labelNames;
-    }
+    public string[] LabelNames { get; } = labelNames;
 }
 
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
@@ -40,6 +35,13 @@ public sealed class SummaryMetricAttribute : Attribute
     // Summary objective in quantile-epsilon pair
     public double[] ObjectiveQuantile { get; set; } = [];
     public double[] ObjectiveEpsilon { get; set; } = [];
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class HistogramMetricAttribute : Attribute
+{
+    public string[] LabelNames { get; init; } = [];
+    public double[] Buckets { get; init; } = [];
 }
 
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
@@ -67,7 +69,15 @@ public sealed class DetailedMetricOnFlagAttribute : Attribute
 {
 }
 
-public record StringLabel(string label) : IMetricLabels
+public sealed class StringLabel(string label) : IMetricLabels, IEquatable<StringLabel>
 {
-    public string[] Labels => [label];
+    private readonly string _label = label;
+
+    public string[] Labels { get; } = [label];
+
+    public bool Equals(StringLabel? other) => other is not null && _label == other._label;
+
+    public override bool Equals(object? obj) => Equals(obj as StringLabel);
+
+    public override int GetHashCode() => _label.GetHashCode();
 }

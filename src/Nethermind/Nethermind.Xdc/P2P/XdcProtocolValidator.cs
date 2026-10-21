@@ -9,17 +9,14 @@ using Nethermind.Stats;
 
 namespace Nethermind.Xdc.P2P;
 
-internal class XdcProtocolValidator : ProtocolValidator
+internal class XdcProtocolValidator(
+    INodeStatsManager nodeStatsManager,
+    IBlockTree blockTree,
+    IForkInfo forkInfo,
+    INetworkConfig networkConfig,
+    ILogManager logManager) : ProtocolValidator(nodeStatsManager, blockTree, forkInfo, networkConfig, logManager)
 {
-    public XdcProtocolValidator(
-        INodeStatsManager nodeStatsManager,
-        IBlockTree blockTree,
-        IForkInfo forkInfo,
-        IPeerManager peerManager,
-        INetworkConfig networkConfig,
-        ILogManager logManager) : base(nodeStatsManager, blockTree, forkInfo, peerManager, networkConfig, logManager)
-    {
-    }
-
-    protected override bool MustValidateForkId { get; set; } = false;
+    /// <remarks>The legacy XDPoS 2.0 handshake has no fork ID field, so it cannot be validated.</remarks>
+    protected override bool MustValidateForkId(byte protocolVersion) =>
+        protocolVersion >= XdcProtocolVersions.FirstVersionWithForkId;
 }

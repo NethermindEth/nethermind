@@ -5,6 +5,7 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing;
@@ -36,11 +37,11 @@ public class T8nExecutionResult
         LogEntry[] logEntries = txReport.SuccessfulTransactionReceipts
             .SelectMany(receipt => receipt.Logs ?? Enumerable.Empty<LogEntry>())
             .ToArray();
-        var bloom = new Bloom(logEntries);
-        var gasUsed = blockReceiptsTracer.TxReceipts.Length == 0 ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
+        Bloom bloom = new(logEntries);
+        ulong gasUsed = blockReceiptsTracer.TxReceipts.Length == 0 ? 0UL : blockReceiptsTracer.LastReceipt.GasUsedTotal;
         ulong? blobGasUsed = test.Spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray()) : null;
 
-        var postState = new PostState
+        PostState postState = new()
         {
             StateRoot = stateProvider.StateRoot,
             TxRoot = txRoot,
@@ -103,13 +104,13 @@ public class T8nExecutionResult
     {
         if (!stateProvider.AccountExists(address)) return null;
 
-        stateProvider.TryGetAccount(address, out var account);
-        var code = stateProvider.GetCode(address);
-        var accountState = new AccountState
+        stateProvider.TryGetAccount(address, out AccountStruct account);
+        byte[] code = stateProvider.GetCode(address).AsArray();
+        AccountState accountState = new()
         {
             Nonce = account.Nonce,
             Balance = account.Balance,
-            Code = code!
+            Code = code
         };
 
         accountState.Storage = storageTxTracer.GetStorage(address) ?? [];

@@ -6,35 +6,37 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Int256;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.TxPool
 {
-    public class TxPoolSender : ITxSender
+    public class TxPoolSender(ITxPool txPool, ITxSealer sealer, INonceManager nonceManager, IEthereumEcdsa ecdsa) : ITxSender
     {
-        private readonly ITxPool _txPool;
-        private readonly ITxSealer _sealer;
-        private readonly INonceManager _nonceManager;
-        private readonly IEthereumEcdsa _ecdsa;
-
-        public TxPoolSender(ITxPool txPool, ITxSealer sealer, INonceManager nonceManager, IEthereumEcdsa ecdsa)
-        {
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
-            _nonceManager = nonceManager ?? throw new ArgumentNullException(nameof(nonceManager));
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-        }
+        private readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+        private readonly ITxSealer _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
+        private readonly INonceManager _nonceManager = nonceManager ?? throw new ArgumentNullException(nameof(nonceManager));
+        private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
 
         public ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
-            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
-            if (tx.SenderAddress is null)
-                throw new ArgumentNullException(nameof(tx.SenderAddress));
 
-            AcceptTxResult result = manageNonce
-                ? SubmitTxWithManagedNonce(tx, txHandlingOptions)
-                : SubmitTxWithNonce(tx, txHandlingOptions);
+            if (tx.SenderAddress is null)
+            {
+                if (!_ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
+                {
+                    return new((tx.Hash!, AcceptTxResult.FailedToResolveSender));
+                }
+                tx.SenderAddress = senderAddress;
+            }
+
+            // An EIP-8250 keyed sequence lives in NONCE_MANAGER, not the sender's account nonce: there is nothing to
+            // reserve, and recording one would push the managed reservation past a nonce the sender never consumes.
+            AcceptTxResult result = KeyedNonceManager.UsesKeyedNonce(tx)
+                ? SubmitTx(tx, txHandlingOptions)
+                : manageNonce
+                    ? SubmitTxWithManagedNonce(tx, txHandlingOptions)
+                    : SubmitTxWithNonce(tx, txHandlingOptions);
 
             return new ValueTask<(Hash256, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
         }
@@ -47,7 +49,7 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out UInt256 reservedNonce);
+            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, _txPool, out ulong reservedNonce);
             txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
             tx.Nonce = reservedNonce;
             return SubmitTx(locker, tx, txHandlingOptions);
@@ -55,15 +57,19 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTx(NonceLocker locker, Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            _sealer.Seal(tx, txHandlingOptions);
-            AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
+            AcceptTxResult result = SubmitTx(tx, txHandlingOptions);
 
             if (result == AcceptTxResult.Accepted)
             {
-                locker.Accept();
+                locker.Accept(tx);
             }
 
             return result;
         }
+
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) =>
+            _sealer.TrySeal(tx, txHandlingOptions)
+                ? _txPool.SubmitTx(tx, txHandlingOptions)
+                : AcceptTxResult.SignFailed;
     }
 }

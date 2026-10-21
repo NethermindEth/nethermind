@@ -3,12 +3,12 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -20,21 +20,24 @@ namespace Nethermind.Network.Test;
 public class NodesLoaderTests
 {
     private NetworkConfig _networkConfig;
-    private DiscoveryConfig _discoveryConfig;
     private INodeStatsManager _statsManager;
     private INetworkStorage _peerStorage;
+    private IEnode _enode;
     private NodesLoader _loader;
 
     [SetUp]
     public void SetUp()
     {
         _networkConfig = new NetworkConfig();
-        _discoveryConfig = new DiscoveryConfig();
         _statsManager = Substitute.For<INodeStatsManager>();
         _peerStorage = Substitute.For<INetworkStorage>();
-        IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
-        _loader = new NodesLoader(_networkConfig, _statsManager, _peerStorage, rlpxHost, LimboLogs.Instance);
+        _enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
+        _loader = CreateLoader();
     }
+
+    private NodesLoader CreateLoader(bool loadBootnodesAsPeerCandidates = true) =>
+        new(_networkConfig, _statsManager, _peerStorage, _enode, LimboLogs.Instance,
+            new NodesLoaderOptions(LoadBootnodesAsPeerCandidates: loadBootnodesAsPeerCandidates));
 
     [Test]
     public void When_no_peers_then_no_peers_nada_zero()
@@ -62,14 +65,24 @@ public class NodesLoaderTests
     [Test]
     public void Can_load_bootnodes()
     {
-        _discoveryConfig.Bootnodes = new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) };
-        _networkConfig.Bootnodes = _discoveryConfig.Bootnodes;
+        _networkConfig.Bootnodes = new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) };
         List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
         Assert.That(nodes.Count, Is.EqualTo(2));
         foreach (Node node in nodes)
         {
             Assert.That(node.IsBootnode, Is.True);
         }
+    }
+
+    [Test]
+    public void Does_not_load_bootnodes_as_peer_candidates_when_only_discv5_is_enabled()
+    {
+        _networkConfig.Bootnodes = new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) };
+        _loader = CreateLoader(loadBootnodesAsPeerCandidates: false);
+
+        List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
+
+        Assert.That(nodes, Is.Empty);
     }
 
     [Test]

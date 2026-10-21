@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class Homestead() : NamedReleaseSpec<Homestead>(Frontier.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Homestead";
         spec.IsEip2Enabled = true;

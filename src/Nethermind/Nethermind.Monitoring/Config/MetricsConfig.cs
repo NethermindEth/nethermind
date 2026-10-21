@@ -10,6 +10,8 @@ public class MetricsConfig : IMetricsConfig
     public bool Enabled { get; set; } = false;
     public bool CountersEnabled { get; set; } = false;
     public string PushGatewayUrl { get; set; } = null;
+    public string PushGatewayUsername { get; set; } = null;
+    public string PushGatewayPassword { get; set; } = null;
     public int IntervalSeconds { get; set; } = 5;
     public int DbMetricIntervalSeconds { get; set; } = 60;
     public bool PauseDbMetricDuringBlockProcessing { get; set; } = true;

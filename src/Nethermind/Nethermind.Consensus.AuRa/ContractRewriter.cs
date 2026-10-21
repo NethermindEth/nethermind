@@ -9,13 +9,13 @@ using Nethermind.Evm.State;
 namespace Nethermind.Consensus.AuRa;
 
 public class ContractRewriter(
-    IDictionary<long, IDictionary<Address, byte[]>> contractOverrides,
+    IDictionary<ulong, IDictionary<Address, byte[]>> contractOverrides,
     (ulong, Address, byte[])[] contractOverridesTimestamp)
 {
-    private readonly IDictionary<long, IDictionary<Address, byte[]>> _contractOverrides = contractOverrides;
+    private readonly IDictionary<ulong, IDictionary<Address, byte[]>> _contractOverrides = contractOverrides;
     private readonly (ulong, Address, byte[])[] _contractOverridesTimestamp = contractOverridesTimestamp;
 
-    public bool RewriteContracts(long blockNumber, IWorldState stateProvider, IReleaseSpec spec)
+    public bool RewriteContracts(ulong blockNumber, IWorldState stateProvider, IReleaseSpec spec)
     {
         bool result = false;
         if (_contractOverrides.TryGetValue(blockNumber, out IDictionary<Address, byte[]> overrides))

@@ -10,10 +10,7 @@ namespace Nethermind.Core.Test.Builders
     {
         private bool _alwaysTrue;
 
-        public BlockValidatorBuilder()
-        {
-            TestObject = Substitute.For<IBlockValidator>();
-        }
+        public BlockValidatorBuilder() => TestObject = Substitute.For<IBlockValidator>();
 
         public BlockValidatorBuilder ThatAlwaysReturnsFalse
         {

@@ -4,6 +4,7 @@
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -16,10 +17,12 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test;
+using Nethermind.Crypto;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -33,7 +36,8 @@ public class BlockValidatorTests
     public void Setup()
     {
         IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
-        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(true);
+        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>(), out Arg.Any<string?>(), Arg.Any<bool>())
+            .Returns(true);
         _blockValidator = new(
             Substitute.For<ITxValidator>(),
             headerValidator,
@@ -42,6 +46,55 @@ public class BlockValidatorTests
             LimboLogs.Instance);
     }
 
+
+    /// <summary>
+    /// The header hash is the one check <c>validateHashes</c> turns off, so an inverted branch on the way to the
+    /// header validator would silently disable it on every path, sync included.
+    /// </summary>
+    [TestCase(true, false, TestName = "ValidateSuggestedBlock_ValidatingHashes_RejectsAMismatchedHeaderHash")]
+    [TestCase(false, true, TestName = "ValidateSuggestedBlock_SkippingHashes_AcceptsAMismatchedHeaderHash")]
+    public void ValidateSuggestedBlock_CarriesValidateHashesToTheHeaderValidator(bool validateHashes, bool expectedValid)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Byzantium.Instance);
+        IBlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
+        BlockValidator sut = new(
+            Always.Valid,
+            new HeaderValidator(blockTree, Always.Valid, specProvider, LimboLogs.Instance),
+            Always.Valid,
+            specProvider,
+            LimboLogs.Instance);
+
+        Block parent = Build.A.Block.WithDifficulty(1).TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithDifficulty(2).TestObject;
+        blockTree.SuggestBlock(parent);
+        block.Header.Hash = Keccak.Zero;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent.Header, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid), error);
+        if (!expectedValid)
+        {
+            Assert.That(error, Does.StartWith("InvalidHeaderHash"), "the hash check must be what rejects the block");
+        }
+    }
+
+    /// <summary>
+    /// The EIP-4895 presence rules are not a hash recomputation, so a caller that verified the header hash has not
+    /// verified them: the header only pins the withdrawals root field, not whether a body carries withdrawals.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_WithdrawalsMissingAfterShanghai_IsRejected([Values] bool validateHashes)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Shanghai.Instance);
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.False);
+        Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+    }
 
     [Test]
     public void Accepts_valid_block()
@@ -84,8 +137,8 @@ public class BlockValidatorTests
             .WithParent(parent)
             .WithUncles(Build.A.BlockHeader.WithNumber(10).TestObject)
             .TestObject;
-        blockValidator.ValidateSuggestedBlock(block, parent, out _).Should().Be(false);
-        blockValidator.ValidateOrphanedBlock(block, out _).Should().Be(true);
+        Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(false));
+        Assert.That(blockValidator.ValidateOrphanedBlock(block, out _), Is.EqualTo(true));
     }
 
     private static IEnumerable<TestCaseData> CorruptedBodyFieldCases()
@@ -205,7 +258,7 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-            "InsufficientMaxFeePerBlobGas")
+            "max fee per blob gas less than block blob gas fee")
         { TestName = "InsufficientMaxFeePerBlobGas" };
 
         yield return new TestCaseData(
@@ -220,8 +273,8 @@ public class BlockValidatorTests
                 .WithParent(parent)
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
-                .WithBlockAccessList(new())
-                .WithEncodedBlockAccessList(Rlp.Encode(new BlockAccessList()).Bytes).TestObject,
+                .WithBlockAccessList(new ReadOnlyBlockAccessList())
+                .WithEncodedBlockAccessList(Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
             "InvalidBlockLevelAccessListHash")
@@ -232,7 +285,7 @@ public class BlockValidatorTests
                 .WithParent(parent)
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
-                .WithBlockAccessList(new())
+                .WithBlockAccessList(new ReadOnlyBlockAccessList())
                 .WithEncodedBlockAccessList([0xfa]).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
@@ -244,11 +297,12 @@ public class BlockValidatorTests
                 .WithParent(parent)
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
-                .WithBlockAccessList(new()).TestObject,
+                .WithBlockAccessList(new ReadOnlyBlockAccessList()).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
             "BlockLevelAccessListNotEnabled")
         { TestName = "BlockLevelAccessListNotEnabled" };
+
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]
@@ -260,5 +314,412 @@ public class BlockValidatorTests
         sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
         Assert.That(error, Does.StartWith(expectedError));
+    }
+
+    // WithPrecompileChanges yields 25 BAL items; the cap is itemCount <= gasLimit / Eip7928Constants.ItemCost.
+    [TestCase(50_000ul, true)]
+    [TestCase(49_999ul, false)]
+    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(ulong gasLimit, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        BlockValidator sut = AmsterdamSut(Always.Valid);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
+    }
+
+    [TestCase(0u, true)]
+    [TestCase(1u, true)]
+    [TestCase(2u, true)]
+    [TestCase(3u, true)]
+    [TestCase(4u, false)]
+    public void ValidateSuggestedBlock_enforces_bal_index_bounds(uint index, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(index, 1))
+            .TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(accountChanges)
+            .TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(1_000_000ul)
+            .WithTransactions(2, Amsterdam.Instance)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        BlockValidator sut = AmsterdamSut(Always.Valid);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        AssertValidation(expectedValid, isValid, error, "InvalidBlockLevelAccessList");
+    }
+
+    [Test]
+    public void ValidateSuggestedBlock_rejects_transactions_whose_minimum_gas_exceeds_gas_limit([Values(0, 1, 500)] int excessTransactions, [Values] bool senderKnown, [Values] bool calldataHeavy, [Values] TxKind kind)
+    {
+        const int txCount = 1000;
+        byte[] data = calldataHeavy ? Enumerable.Repeat((byte)0xFF, 1024).ToArray() : [];
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            transactions[i] = TransactionOf(kind).WithValue(1).WithData(data).WithGasLimit(1_000_000).TestObject;
+            transactions[i].SenderAddress = senderKnown ? TestItem.AddressA : null;
+            // Memoizes intrinsic gas as the real IsWellFormed does, which the minimum-gas check then reuses.
+            IntrinsicGasCalculator.Calculate(transactions[i], Amsterdam.Instance);
+        }
+
+        // An unrecovered sender could still turn out to be the recipient, so it is held to the self-transfer price.
+        Transaction priced = TransactionOf(kind).WithValue(1).WithData(data).WithSenderAddress(senderKnown ? TestItem.AddressA : TestItem.AddressB).TestObject;
+        EthereumIntrinsicGas pricedGas = IntrinsicGasCalculator.Calculate(priced, Amsterdam.Instance);
+        Assert.That(pricedGas.FloorGas > pricedGas.Standard, Is.EqualTo(calldataHeavy));
+        ulong minimumTransactionGas = pricedGas.MinimalGas;
+        ulong gasLimit = (ulong)txCount * minimumTransactionGas;
+        if (excessTransactions > 0) gasLimit -= (ulong)(excessTransactions - 1) * minimumTransactionGas + 1;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithTransactions(transactions)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(new ReadOnlyBlockAccessList())
+            .TestObject;
+        ITxValidator txValidator = Substitute.For<ITxValidator>();
+        txValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), Arg.Any<ulong>()).Returns(ValidationResult.Success);
+        BlockValidator sut = AmsterdamSut(txValidator);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertValidation(excessTransactions == 0, isValid, error, "Block gas limit exceeded");
+            int expectedValidated = excessTransactions == 0 ? txCount : txCount - excessTransactions + 1;
+            txValidator.Received(expectedValidated).IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), gasLimit);
+        }
+    }
+
+    public enum TxKind { Transfer, ContractCreation, SetCode, Blob }
+
+    private static TransactionBuilder<Transaction> TransactionOf(TxKind kind) => kind switch
+    {
+        TxKind.Transfer => Build.A.Transaction.To(TestItem.AddressB),
+        TxKind.ContractCreation => Build.A.Transaction.WithTo(null),
+        TxKind.SetCode => Build.A.Transaction.To(TestItem.AddressB).WithType(TxType.SetCode)
+            .WithAuthorizationCode([new AuthorizationTuple(0, TestItem.AddressC, 0, new Signature(new byte[64], 0)), new AuthorizationTuple(0, TestItem.AddressD, 1, new Signature(new byte[64], 0))]),
+        // Blob gas is a separate dimension, so blobs add no intrinsic gas; carrying none keeps the blob limit out of the test.
+        TxKind.Blob => Build.A.Transaction.To(TestItem.AddressB).WithType(TxType.Blob).WithMaxFeePerBlobGas(1).WithBlobVersionedHashes(0),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
+
+    [Test]
+    public void ValidateSuggestedBlock_rejects_bal_item_when_gas_limit_allows_no_items()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(0, 1))
+            .TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(accountChanges)
+            .TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(0ul)
+            .WithTransactions([])
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        BlockValidator sut = AmsterdamSut();
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        AssertValidation(false, isValid, error, "BlockAccessListGasLimitExceeded");
+    }
+
+    [TestCase(30_000ul, true)]
+    [TestCase(29_999ul, false)]
+    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(ulong gasLimit, bool expectedValid)
+    {
+        // Hive eels/consume-rlp feeds blocks via RLP, which leaves Block.BlockAccessList null
+        // (BlockDecoder does not decode BAL). The pre-execution check in
+        // ValidateBlockLevelAccessList is gated on a non-null BAL and therefore skipped, so
+        // ValidateProcessedBlock must catch the floor against the BAL produced during execution.
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
+
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBlockAccessListHash(balHash)
+            .TestObject;
+
+        Block processedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBlockAccessListHash(balHash)
+            .TestObject;
+        // Build a GeneratedBlockAccessList with the same shape as the suggested BAL so the
+        // ItemCount-based gas-limit boundary check exercises the generated path identically.
+        GeneratedBlockAccessList generated = new();
+        BlockAccessListAtIndex contribution = new();
+        contribution.AddStorageChange(Eip2935Constants.BlockHashHistoryAddress, 0, 0, new UInt256(parent.Hash!.BytesToArray(), isBigEndian: true));
+        UInt256 eip4788Slot1 = 12u % Eip4788Constants.RingBufferSize;
+        UInt256 eip4788Slot2 = (12u % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
+        contribution.AddStorageChange(Eip4788Constants.BeaconRootsAddress, eip4788Slot1, 0, 12);
+        contribution.AddStorageRead(Eip4788Constants.BeaconRootsAddress, eip4788Slot2);
+        for (UInt256 i = 0; i < 4; i++)
+        {
+            contribution.AddStorageRead(Eip7002Constants.WithdrawalRequestPredeployAddress, i);
+            contribution.AddStorageRead(Eip7251Constants.ConsolidationRequestPredeployAddress, i);
+        }
+        generated.Merge(contribution);
+        processedBlock.GeneratedBlockAccessList = generated;
+
+        BlockValidator sut = AmsterdamSut();
+
+        bool isValid = sut.ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
+
+        AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
+    }
+
+    // WithPrecompileChanges yields 25 BAL items. A list reattached from the store for queued processing (sync,
+    // restart replay, reorg) never went through ValidateSuggestedBlock, and parallel execution verifies against it
+    // without building a generated list, so the attached list must be checked after execution too.
+    [TestCase(50_000ul, true)]
+    [TestCase(49_999ul, false)]
+    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_attached_lists(ulong gasLimit, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        Block processedBlock = suggestedBlock.WithReplacedHeader(suggestedBlock.Header.Clone());
+
+        BlockValidator sut = AmsterdamSut();
+
+        bool isValid = sut.ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
+
+        AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
+    }
+
+    // A divergent block with an over-limit attached list reports the mismatch, as on master.
+    [Test]
+    public void ValidateProcessedBlock_reports_mismatch_before_attached_bal_item_limit()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(49_999)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        BlockHeader processedHeader = suggestedBlock.Header.Clone();
+        processedHeader.StateRoot = Keccak.Zero;
+        processedHeader.Hash = processedHeader.CalculateHash();
+        Block processedBlock = suggestedBlock.WithReplacedHeader(processedHeader);
+
+        bool isValid = AmsterdamSut().ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
+
+        AssertValidation(false, isValid, error, "InvalidStateRoot");
+    }
+
+    // EIP-7928 BlockAccessIndex must be in [0, txCount + 1]: 0 = pre-execution,
+    // 1..n = transaction indices, n+1 = post-execution.
+    // For a block with 0 transactions, valid indices are 0 and 1.
+    [TestCase(0u, true)]
+    [TestCase(1u, true)]
+    [TestCase(2u, false)]
+    [TestCase(uint.MaxValue - 1u, false)]
+    public void ValidateSuggestedBlock_rejects_bal_index_above_tx_count_plus_one(uint balanceChangeIndex, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithPrecompileChanges(parent.Hash!, timestamp: 12)
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges([new BalanceChange(balanceChangeIndex, 100)])
+                    .TestObject)
+            .TestObject;
+
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(30_000_000ul)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        BlockValidator sut = AmsterdamSut();
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid));
+        if (!expectedValid)
+        {
+            Assert.That(error, Does.StartWith("InvalidBlockLevelAccessList"));
+        }
+    }
+
+    /// <summary>
+    /// EIP-2780 prices an unknown sender as a transfer to someone else, the higher charge, so a transaction that
+    /// validates without its sender is left for the background recovery instead of being recovered on the request thread.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_leaves_senders_it_does_not_need_unrecovered()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(
+            Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressB, gasLimit: 50_000),
+            Eip2780Transfer(TestItem.PrivateKeyB, TestItem.AddressC, gasLimit: 50_000),
+            Eip2780Transfer(TestItem.PrivateKeyC, TestItem.AddressC, gasLimit: 50_000));
+
+        bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(isValid, Is.True, error);
+        Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.All.Null);
+    }
+
+    /// <summary>A self-transfer priced between the two charges is valid only for its own sender, so that one is recovered.</summary>
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_recovers_the_sender_of_a_self_transfer_below_the_non_self_charge()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressA, gasLimit: 15_000));
+
+        bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(isValid, Is.True, error);
+        Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
+    }
+
+    /// <summary>
+    /// The background recovery can publish the sender right after the first check priced the transaction without it.
+    /// That rejection must still be re-checked with the sender, or a valid block is rejected depending on timing.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_rechecks_a_self_transfer_whose_sender_arrives_after_the_first_check()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressA, gasLimit: 15_000));
+        SenderPublishedAfterFirstCheck txValidator = new(new TxValidator(TestBlockchainIds.ChainId), TestItem.AddressA);
+
+        bool isValid = AmsterdamSut(txValidator).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(txValidator.FirstCheckFailed, Is.True, "precondition: the first check prices the transaction without its sender");
+        Assert.That(isValid, Is.True, error);
+    }
+
+    /// <summary>Stands in for the background recovery: the sender appears just after the first check reads it as missing.</summary>
+    private sealed class SenderPublishedAfterFirstCheck(ITxValidator inner, Address sender) : ITxValidator
+    {
+        private int _checks;
+
+        public bool FirstCheckFailed { get; private set; }
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+            IsWellFormed(transaction, releaseSpec, 0);
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        {
+            ValidationResult result = inner.IsWellFormed(transaction, releaseSpec, blockGasLimit);
+            if (++_checks == 1)
+            {
+                FirstCheckFailed = !result;
+                transaction.SenderAddress = sender;
+            }
+
+            return result;
+        }
+    }
+
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_rejects_a_transfer_to_someone_else_below_its_intrinsic_gas()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressB, gasLimit: 15_000));
+
+        bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(isValid, Is.False);
+        Assert.That(error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+    }
+
+    private static Transaction Eip2780Transfer(PrivateKey signer, Address to, ulong gasLimit) =>
+        Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithTo(to)
+            .WithValue(1)
+            .WithGasLimit(gasLimit)
+            .WithMaxFeePerGas(2_000_000_000)
+            .WithMaxPriorityFeePerGas(1_000_000_000)
+            .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), signer)
+            .TestObject;
+
+    private static (Block Block, BlockHeader Parent) Eip2780Block(params Transaction[] transactions)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(30_000_000)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithTransactions(transactions)
+            .WithBal(bal)
+            .TestObject;
+        return (block, parent);
+    }
+
+    private static BlockValidator AmsterdamSut(ITxValidator? tx = null) =>
+        new(tx ?? new TxValidator(TestBlockchainIds.ChainId), Always.Valid, Always.Valid,
+            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+    private static void AssertValidation(bool expected, bool actual, string? error, string failPrefix)
+    {
+        Assert.That(actual, Is.EqualTo(expected));
+        if (expected)
+        {
+            Assert.That(error, Is.Null);
+        }
+        else
+        {
+            Assert.That(error, Does.StartWith(failPrefix));
+        }
+    }
+}
+
+file static class BalBuilderExtensions
+{
+    public static BlockBuilder WithBal(this BlockBuilder builder, ReadOnlyBlockAccessList bal)
+    {
+        byte[] encoded = Rlp.Encode(bal).Bytes;
+        return builder
+            .WithBlockAccessList(bal)
+            .WithEncodedBlockAccessList(encoded)
+            .WithBlockAccessListHash(new Hash256(ValueKeccak.Compute(encoded).Bytes));
     }
 }

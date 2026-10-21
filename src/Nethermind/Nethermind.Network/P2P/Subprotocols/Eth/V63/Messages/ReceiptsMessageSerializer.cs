@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,21 +14,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
+        private const ulong NoBlockSeenYet = ulong.MaxValue;
+
         private static readonly RlpLimit ReceiptsRlpLimit = RlpLimit.For<ReceiptsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
-        private static readonly RlpLimit BlockReceiptsRlpLimit = RlpLimit.For<TxReceipt[]>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
+        // A block has one receipt per transaction, so it is bounded like its transaction list rather than by request size.
+        private static RlpLimit BlockReceiptsRlpLimit => RlpLimit.For<TxReceipt[]>(BlockBodyDecoder.TransactionsCountLimit.Limit, nameof(ReceiptsMessage.TxReceipts));
         private readonly ISpecProvider _specProvider;
-        private readonly IRlpStreamEncoder<TxReceipt> _encoder;
-        private readonly IRlpValueDecoder<TxReceipt> _decoder;
+        private readonly IRlpDecoder<TxReceipt> _decoder;
         private readonly DecodeRlpValue<TxReceipt[]> _decodeArrayFunc;
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, (RlpValueDecoder<TxReceipt>)Rlp.GetValueDecoder<TxReceipt>()!) { }
+        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetDecoderOrThrow<TxReceipt>()) { }
 
-        protected ReceiptsMessageSerializer(ISpecProvider specProvider, RlpValueDecoder<TxReceipt> decoder)
+        protected ReceiptsMessageSerializer(ISpecProvider specProvider, IRlpDecoder<TxReceipt> decoder)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _encoder = decoder;
             _decoder = decoder;
-            _decodeArrayFunc = (ref Rlp.ValueDecoderContext ctx) => ctx.DecodeArray((ref Rlp.ValueDecoderContext nestedContext) => _decoder.Decode(ref nestedContext), limit: BlockReceiptsRlpLimit) ?? [];
+            // The message does not say which blocks the receipts belong to, so a zero-length bloom (EIP-7668) is
+            // accepted whenever the chain ever schedules the EIP; the receipts root rejects one before the fork.
+            RlpBehaviors decodeBehaviors = specProvider.GetFinalSpec().IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None;
+            _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext, decodeBehaviors), limit: BlockReceiptsRlpLimit);
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
@@ -36,31 +40,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             int totalLength = GetLength(message, out int contentLength);
 
             byteBuffer.EnsureWritable(totalLength);
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(contentLength);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
 
-            // Track the last ‐ seen block number & its RLP behavior
-            long lastBlockNumber = -1;
+            ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
-            foreach (TxReceipt?[]? txReceipts in message.TxReceipts)
+            foreach (TxReceipt[]? txReceipts in message.TxReceipts.AsSpan())
             {
                 if (txReceipts is null)
                 {
-                    stream.Encode(Rlp.OfEmptyList);
+                    writer.Encode(Rlp.OfEmptyList);
                     continue;
                 }
 
                 int innerLength = GetInnerLength(txReceipts);
-                stream.StartSequence(innerLength);
-                foreach (TxReceipt? txReceipt in txReceipts)
+                writer.StartSequence(innerLength);
+                foreach (TxReceipt txReceipt in txReceipts)
                 {
-                    if (txReceipt is null)
-                    {
-                        stream.Encode(Rlp.OfEmptyList);
-                        continue;
-                    }
-
                     // Only fetch a new spec when the block number changes
                     if (txReceipt.BlockNumber != lastBlockNumber)
                     {
@@ -69,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                     }
 
-                    _encoder.Encode(stream, txReceipt, behaviors);
+                    _decoder.Encode(ref writer, txReceipt, behaviors);
                 }
             }
         }
@@ -78,66 +75,53 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             if (byteBuffer.ReadableBytes == 0)
             {
-                return ReceiptsMessage.Empty;
+                return new ReceiptsMessage(null);
             }
 
             if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptyList[0])
             {
                 byteBuffer.ReadByte();
-                return ReceiptsMessage.Empty;
+                return new ReceiptsMessage(null);
             }
 
             return byteBuffer.DeserializeRlp(Deserialize);
         }
 
-        public ReceiptsMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        public ReceiptsMessage Deserialize(ref RlpReader ctx)
         {
-            ArrayPoolList<TxReceipt[]> data = ctx.DecodeArrayPoolList(_decodeArrayFunc, limit: ReceiptsRlpLimit);
-            ReceiptsMessage message = new(data);
-
-            return message;
+            ArrayPoolList<TxReceipt[]> data = ctx.DecodeNonNullArrayPoolList(_decodeArrayFunc, defaultElement: [], limit: ReceiptsRlpLimit);
+            return new ReceiptsMessage(data);
         }
 
         public int GetLength(ReceiptsMessage message, out int contentLength)
         {
             contentLength = 0;
 
-            for (int i = 0; i < message.TxReceipts.Count; i++)
+            ReadOnlySpan<TxReceipt[]?> txReceiptsSpan = message.TxReceipts.AsSpan();
+            for (int i = 0; i < txReceiptsSpan.Length; i++)
             {
-                TxReceipt?[]? txReceipts = message.TxReceipts[i];
-                if (txReceipts is null)
-                {
-                    contentLength += Rlp.OfEmptyList.Length;
-                }
-                else
-                {
-                    contentLength += Rlp.LengthOfSequence(GetInnerLength(txReceipts));
-                }
+                TxReceipt[]? txReceipts = txReceiptsSpan[i];
+                contentLength += txReceipts is null
+                    ? Rlp.OfEmptyList.Length
+                    : Rlp.LengthOfSequence(GetInnerLength(txReceipts));
             }
 
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private int GetInnerLength(TxReceipt?[]? txReceipts)
+        private int GetInnerLength(TxReceipt[] txReceipts)
         {
-            if (txReceipts == null || txReceipts.Length == 0)
+            if (txReceipts.Length == 0)
                 return 0;
 
             int contentLength = 0;
 
-            // Track the last‐seen block number and its spec
-            long lastBlockNumber = -1;
+            ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                TxReceipt? receipt = txReceipts[i];
-
-                if (receipt is null)
-                {
-                    contentLength += Rlp.OfEmptyList.Length;
-                    continue;
-                }
+                TxReceipt receipt = txReceipts[i];
 
                 // Only fetch a new spec when block number changes
                 if (lastBlockNumber != receipt.BlockNumber)

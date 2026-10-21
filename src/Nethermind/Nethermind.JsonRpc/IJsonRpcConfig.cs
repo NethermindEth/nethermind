@@ -20,20 +20,30 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = """
-            The max number of concurrent requests in the queue for:
+            The max number of concurrent requests waiting in the exclusive (non-sharable) queue for:
 
-            - `eth_call`
-            - `eth_estimateGas`
             - `eth_getLogs`
             - `eth_newFilter`
             - `eth_newBlockFilter`
             - `eth_newPendingTransactionFilter`
             - `eth_uninstallFilter`
 
-            `0` to lift the limit.
+            Calls beyond the limit return HTTP 503 immediately. `0` to lift the limit.
             """,
         DefaultValue = "500")]
     int RequestQueueLimit { get; set; }
+
+    [ConfigItem(
+        Description = """
+            The max number of concurrent in-flight requests on the shared (sharable) singleton handler.
+            Caps heavy methods promoted to sharable — `eth_call`, `eth_estimateGas`,
+            `eth_createAccessList` — preventing unbounded concurrency from exhausting memory.
+            Light sharable methods (e.g. `eth_blockNumber`, `eth_getBalance`) complete in <1 ms and
+            effectively never approach this limit. `eth_sendRawTransactionSync` holds a slot for as long
+            as it waits for inclusion; see `RpcTxSyncMaxConcurrentRequests`. `0` to lift the limit.
+            """,
+        DefaultValue = "10000")]
+    int MaxConcurrentSharedRequests { get; set; }
 
     [ConfigItem(
         Description = "The path to the base file for diagnostic recording.",
@@ -51,6 +61,16 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
     string IpcUnixDomainSocketPath { get; set; }
+
+    [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
+    bool RestrictIpcSocketPermissions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the JSON-RPC namespaces enabled over IPC. Defaults to <see langword="null"/>;
+    /// a null or empty array uses <see cref="EnabledModules"/>.
+    /// </summary>
+    [ConfigItem(Description = "An array of JSON-RPC namespaces to enable over the IPC socket, for instance `[engine,eth]`. If not set or empty, the IPC socket uses `JsonRpc.EnabledModules`.")]
+    string[]? IpcEnabledModules { get; set; }
 
     [ConfigItem(
         Description = """
@@ -77,7 +97,7 @@ public interface IJsonRpcConfig : IConfig
 
 
             """,
-        DefaultValue = "[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc]")]
+        DefaultValue = "[Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc]")]
     string[] EnabledModules { get; set; }
 
     [ConfigItem(
@@ -86,7 +106,7 @@ public interface IJsonRpcConfig : IConfig
     string[] AdditionalRpcUrls { get; set; }
 
     [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
-    long? GasCap { get; set; }
+    ulong? GasCap { get; set; }
 
     [ConfigItem(
         Description = "The interval, in seconds, between the JSON-RPC stats report log.",
@@ -103,7 +123,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "Data/jsonrpc.filter")]
     string CallsFilterFilePath { get; set; }
 
-    [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
+    [ConfigItem(Description = "The max length of an HTTP request body or a WebSocket message, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
     [ConfigItem(
@@ -112,18 +132,54 @@ public interface IJsonRpcConfig : IConfig
     public int MaxLogsPerResponse { get; set; }
 
     [ConfigItem(
+        Description = "Whether to stream `debug_trace*` and `trace_*` responses as the EVM executes (lower TTFB and bounded memory). For `debug_trace*` can be overridden per-call via `GethTraceOptions.StreamMode`.",
+        DefaultValue = "true")]
+    public bool EnableTracingStreamMode { get; set; }
+
+    [ConfigItem(
+        Description = "Whether to stream `eth_getLogs` and `eth_getFilterLogs` responses as logs are found. When enabled, unauthenticated responses stop at `MaxLogsPerResponse` or `MaxLogsResponseBodySize` instead of buffering the full result and returning a limit error.",
+        DefaultValue = "false")]
+    public bool EnableLogsStreamMode { get; set; }
+
+    [ConfigItem(
+        Description = "The max response body size, in bytes, for streamed `eth_getLogs` and `eth_getFilterLogs` JSON-RPC responses. Ignored unless `EnableLogsStreamMode` is enabled. `null` to use `MaxBatchResponseBodySize`.",
+        DefaultValue = "null")]
+    public long? MaxLogsResponseBodySize { get; set; }
+
+    [ConfigItem(
+        Description = "The max opcode log size, in bytes, per transaction of a `debug_trace*` or `debug_simulateV1` trace held in memory rather than streamed. Larger or unlimited `limit` trace options are lowered to it. `0` or negative to lift the limit.",
+        DefaultValue = "268435456")]
+    public long MaxBufferedTraceLogSize { get; set; }
+
+    [ConfigItem(
+        Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors capped at 16.")]
+    public int? DebugModuleConcurrentInstances { get; set; }
+
+    [ConfigItem(
+        Description = "The number of concurrent instances of the Trace RPC module (`trace_block`, `trace_transaction`, `trace_replay*`, etc.). Calls beyond this cap return `LimitExceeded`. Each instance holds block-processing environments for the life of the process, so raise it only where the memory is available. Defaults to 2.")]
+    public int? TraceModuleConcurrentInstances { get; set; }
+
+    [ConfigItem(
+        Description = "The maximum number of workers tracing block transactions at once across the whole node in `debug_traceBlock*` and `trace_block`, for blocks whose transactions can each be traced alone on the state before it: blocks that carry an access list, and, with `FlatDb.HistoryTransactionIndexEnabled`, blocks covered by the transaction index. Debug and trace, and both kinds of block, share this one budget. `0` or `1` traces such blocks sequentially; larger values are capped at the number of logical processors and at 16. Once a block has been traced in parallel, the node keeps up to this many processing environments and twice this many background threads for debug, and as many again for trace. The deprecated `FlatDb.HistoryTransactionIndexTraceParallelism`, when set to anything but `0`, sizes this budget instead.",
+        DefaultValue = "4")]
+    public int TraceBlockParallelism { get; set; }
+
+    [ConfigItem(
         Description = """
             The number of concurrent instances for non-sharable calls:
 
-            - `eth_call`
-            - `eth_estimateGas`
             - `eth_getLogs`
             - `eth_newBlockFilter`
             - `eth_newFilter`
             - `eth_newPendingTransactionFilter`
             - `eth_uninstallFilter`
 
-            This limits the load on the CPU and I/O to reasonable levels. If the limit is exceeded, HTTP 503 is returned along with the JSON-RPC error. Defaults to the number of logical processors.
+            This limits the load on the CPU and I/O to reasonable levels. If the limit is exceeded,
+            HTTP 503 is returned along with the JSON-RPC error. Also acts as the hard active
+            concurrency cap on the override-path env pool used by sharable `eth_call` /
+            `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
+            overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Defaults
+            to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
@@ -140,7 +196,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of the method names not to log.",
-        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3]")]
+        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3,eth_signTransaction]")]
     public string[]? MethodsLoggingFiltering { get; set; }
 
     [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
@@ -157,7 +213,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max number of JSON-RPC requests in a batch.", DefaultValue = "1024")]
     int MaxBatchSize { get; set; }
 
-    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "128")]
+    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "4096")]
     int JsonSerializationMaxDepth { get; set; }
 
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
@@ -169,16 +225,25 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
 
+    [ConfigItem(Description = "Maximum total tx fee (gasPrice * gasLimit, in wei) the node will sign in eth_signTransaction. 0 disables the cap. Default 1 ETH.", DefaultValue = "1000000000000000000")]
+    ulong RpcTxFeeCap { get; set; }
+
+    [ConfigItem(Description = "Whether to enable eth_signTransaction. Disabled by default; enable only on nodes that explicitly manage unlocked accounts.", DefaultValue = "false")]
+    bool EnableEthSignTransaction { get; set; }
+
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
 
-    [ConfigItem(Description = "Concurrency level of websocket connection.", DefaultValue = "1")]
+    [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Connections that are authenticated or enable the Engine module always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int WebSocketsProcessingConcurrency { get; set; }
 
-    [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
+    [ConfigItem(Description = "The number of requests one IPC connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. When `JsonRpc.EnabledModules` includes the Engine module, IPC always processes its requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int IpcProcessingConcurrency { get; set; }
 
-    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
+    [ConfigItem(Description = "The number of consecutive `eth_call`, `eth_estimateGas` and `eth_createAccessList` requests of one batch that execute at a time, capped at `JsonRpc.EthModuleConcurrentInstances`. Responses keep the request order, and any other request in the batch waits for the ones before it and executes alone. Set to 1 to execute batch requests one by one.", DefaultValue = "4")]
+    int BatchProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "true")]
     bool EnablePerMethodMetrics { get; set; }
 
     [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
@@ -191,4 +256,25 @@ public interface IJsonRpcConfig : IConfig
         Description = "Enable strict parsing rules for Block Params and Hashes in RPC requests. this will decrease compatibility but increase compliance with the spec.",
         DefaultValue = "true")]
     bool StrictHexFormat { get; set; }
+
+    [ConfigItem(Description = "Default server-side wait, in milliseconds, for eth_sendRawTransactionSync when the caller omits the timeout argument.", DefaultValue = "20000")]
+    int RpcTxSyncDefaultTimeoutMs { get; set; }
+
+    [ConfigItem(Description = "Maximum server-side wait, in milliseconds, that eth_sendRawTransactionSync will accept; client-supplied timeouts above this are clamped down.", DefaultValue = "60000")]
+    int RpcTxSyncMaxTimeoutMs { get; set; }
+
+    /// <summary>
+    /// Maximum number of concurrent eth_sendRawTransactionSync calls. Defaults to 128; 0 disables this limit.
+    /// </summary>
+    [ConfigItem(Description = "Maximum number of concurrent eth_sendRawTransactionSync calls, independent of EthModuleConcurrentInstances. Excess calls are rejected before submitting the transaction. Each pending call also counts against MaxConcurrentSharedRequests for up to RpcTxSyncMaxTimeoutMs, so keep this well below MaxConcurrentSharedRequests. 0 disables this limit; MaxConcurrentSharedRequests then remains the only bound (none if it is 0 too).", DefaultValue = "128")]
+    int RpcTxSyncMaxConcurrentRequests { get; set; }
+
+    [ConfigItem(
+        Description = """
+            Additional CIDR networks treated as trusted local sources for the JSON-RPC fast lane.
+            Loopback and RFC1918 ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) are always trusted.
+            Invalid entries are logged and ignored.
+            """,
+        DefaultValue = "[]")]
+    string[] AdditionalTrustedNetworks { get; set; }
 }

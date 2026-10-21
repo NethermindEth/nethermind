@@ -8,6 +8,10 @@ namespace Nethermind.Network
 {
     public interface IProtocolValidator
     {
-        bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs);
+        /// <summary>
+        /// Validates the initialized protocol and disconnects the session when it is invalid.
+        /// </summary>
+        /// <returns><c>true</c> if the session passed validation and survived; otherwise <c>false</c>.</returns>
+        bool ValidateOrDisconnect(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs);
     }
 }

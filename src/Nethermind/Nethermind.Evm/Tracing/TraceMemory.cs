@@ -3,20 +3,15 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing;
 
-public readonly struct TraceMemory
+public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
 {
-    public ulong Size { get; }
-    private readonly ReadOnlyMemory<byte> _memory;
-
-    public TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
-    {
-        Size = size;
-        _memory = memory;
-    }
+    public ulong Size { get; } = size;
+    private readonly ReadOnlyMemory<byte> _memory = memory;
 
     public string[] ToHexWordList()
     {
@@ -44,7 +39,34 @@ public readonly struct TraceMemory
         return memory;
     }
 
-    private const int MemoryPadLimit = 1024 * 1024;
+    /// <summary>Returns a copy of the raw memory bytes padded to a whole number of 32-byte words.
+    /// Returns an empty array for zero-size memory. The EVM reuses its internal buffer across opcodes, so a copy is required.</summary>
+    public byte[] ToRawWordBytes()
+    {
+        if (Size == 0) return Array.Empty<byte>();
+        byte[] raw = new byte[RawWordByteLength];
+        int copyLength = Math.Min((int)Size, _memory.Length);
+        if (copyLength > 0)
+            _memory.Span.Slice(0, copyLength).CopyTo(raw);
+        // remainder is zero-initialised by the array constructor
+        return raw;
+    }
+
+    /// <summary>Length in bytes of <see cref="ToRawWordBytes"/>: <see cref="Size"/> rounded up to whole 32-byte words.</summary>
+    public int RawWordByteLength => (int)((Size + EvmPooledMemory.WordSize - 1) / EvmPooledMemory.WordSize) * EvmPooledMemory.WordSize;
+
+    /// <summary>Writes the same bytes as <see cref="ToRawWordBytes"/> into the first <see cref="RawWordByteLength"/> bytes of <paramref name="destination"/>.</summary>
+    /// <remarks>The padding is cleared explicitly, so <paramref name="destination"/> can be a reused buffer.</remarks>
+    public void CopyRawWordBytesTo(Span<byte> destination)
+    {
+        int length = RawWordByteLength;
+        ArgumentOutOfRangeException.ThrowIfLessThan(destination.Length, length, nameof(destination));
+        int copyLength = Math.Min((int)Size, _memory.Length);
+        _memory.Span.Slice(0, copyLength).CopyTo(destination);
+        destination.Slice(copyLength, length - copyLength).Clear();
+    }
+
+    private const int MemoryPadLimit = MemorySizes.MiB;
     public ReadOnlySpan<byte> Slice(int start, int length, bool limit = true)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));

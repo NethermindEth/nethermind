@@ -14,6 +14,6 @@ public interface ISeqConfig : IConfig
     [ConfigItem(Description = "The Seq instance URL.", DefaultValue = "http://localhost:5341")]
     string ServerUrl { get; }
 
-    [ConfigItem(Description = "The Seq API key.", DefaultValue = "")]
+    [ConfigItem(Description = "The Seq API key.", DefaultValue = "", IsSensitive = true)]
     string ApiKey { get; }
 }

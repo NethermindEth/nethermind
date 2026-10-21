@@ -11,11 +11,10 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Evm.State;
@@ -29,25 +28,23 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
         | ProcessingOptions.IgnoreParentNotOnMainChain
-        | ProcessingOptions.MarkAsProcessed
         | ProcessingOptions.StoreReceipts;
 
-    private void PrepareState(
+    /// <remarks>
+    /// Only the state overrides are written, with EIP-158 off so an override that leaves an account empty keeps it.
+    /// Senders and call targets are not created up front: like eth_call, an account the calls have not created yet must
+    /// still be missing for the EIP-7702 authority check and EIP-8037 NEW_ACCOUNT charging, and the transaction
+    /// processor creates a missing sender itself.
+    /// </remarks>
+    private static void PrepareState(
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
-        long blockNumber,
+        ulong blockNumber,
         IReleaseSpec releaseSpec)
     {
+        releaseSpec = releaseSpec.WithoutEip158();
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
-
-        IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
-        IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
-        foreach (Address address in senders.Union(targets).Where(static t => t is not null))
-        {
-            stateProvider.CreateAccountIfNotExists(address, 0, 0);
-        }
-
         stateProvider.Commit(releaseSpec, commitRoots: true);
         stateProvider.CommitTree(blockNumber);
     }
@@ -57,11 +54,12 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
-        long gasCapLimit,
+        ulong gasCapLimit,
         CancellationToken cancellationToken)
     {
-        List<SimulateBlockResult<TTrace>> list = new();
-        SimulateOutput<TTrace> result = new SimulateOutput<TTrace>()
+        int blockCount = payload.BlockStateCalls?.Count ?? 0;
+        List<SimulateBlockResult<TTrace>> list = new(blockCount);
+        SimulateOutput<TTrace> result = new()
         {
             Items = list
         };
@@ -98,7 +96,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
-        long gasCapLimit,
+        ulong gasCapLimit,
         CancellationToken cancellationToken)
     {
         IBlockTree blockTree = env.BlockTree;
@@ -109,7 +107,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (payload.BlockStateCalls is not null)
         {
-            Dictionary<Address, ulong> nonceCache = new();
+            Dictionary<Address, ulong> nonceCache = [];
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
@@ -118,18 +116,17 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 (BlockHeader callHeader, IReleaseSpec spec) = GetCallHeader(env.SpecProvider, blockCall, parent, payload.Validation);
                 env.SimulateRequestState.BlockGasLeft = callHeader.GasLimit;
+                env.SimulateRequestState.BlockStateGasLeft = callHeader.GasLimit;
                 callHeader.Hash = callHeader.CalculateHash();
 
                 TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
 
-                env.SimulateRequestState.TxsWithExplicitGas = calls
-                    .Select((c) => c.HadGasLimitInRequest)
-                    .ToArray();
+                env.SimulateRequestState.Calls = calls;
 
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
-                BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
-                Block callBlock = new Block(callHeader, body);
+                BlockBody body = AssembleBody(calls, blockCall.BlockOverrides?.Withdrawals, stateProvider, nonceCache, spec);
+                Block callBlock = new(callHeader, body);
 
                 ProcessingOptions processingFlags = payload.Validation
                     ? SimulateProcessingOptions
@@ -167,40 +164,42 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
     private BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
+        Withdrawal[]? withdrawalOverrides,
         IWorldState stateProvider,
         Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
     {
-        Transaction[] transactions = calls
-            .Select(t => CreateTransaction(t, stateProvider, nonceCache))
-            .ToArray();
-
-        Withdrawal[]? withdrawals = null;
-        if (spec.WithdrawalsEnabled)
+        Transaction[] transactions = new Transaction[calls.Length];
+        for (int i = 0; i < calls.Length; i++)
         {
-            withdrawals = [];
+            transactions[i] = CreateTransaction(calls[i], stateProvider, nonceCache);
         }
 
-        BlockBody body = new BlockBody(transactions, null, withdrawals);
+        Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? withdrawalOverrides ?? [] : null;
+
+        BlockBody body = new(transactions, null, withdrawals);
         return body;
     }
 
     private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
-        long latestBlockNumber = latestBlock?.Number ?? 0;
+        ulong latestBlockNumber = latestBlock?.Number ?? 0;
 
         if (latestBlockNumber < parent.Number)
         {
             parent = latestBlock?.Header ?? blockTree.Head!.Header;
         }
 
-        BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
+        BlockStateCall<TransactionWithSourceDetails>? firstBlock =
+            payload.BlockStateCalls is { Count: > 0 } blockStateCalls
+                ? blockStateCalls[0]
+                : null;
 
-        ulong lastKnown = (ulong)latestBlockNumber;
+        ulong lastKnown = latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
-            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number - 1);
+            Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
             if (searchResult is not null)
             {
                 parent = searchResult.Header;
@@ -225,7 +224,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             {
                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
                 {
-                    cachedNonce = test.Nonce.ToUInt64(null);
+                    cachedNonce = test.Nonce;
                 }
                 // else // Todo think if we shall create account here
             }
@@ -244,30 +243,16 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return transaction;
     }
 
-    private (BlockHeader, IReleaseSpec) GetCallHeader(
+    internal (BlockHeader, IReleaseSpec) GetCallHeader(
         ISpecProvider specProvider,
         BlockStateCall<TransactionWithSourceDetails> block,
         BlockHeader parent,
         bool validate)
     {
-        BlockHeader result = new BlockHeader(
-            parent.Hash!,
-            Keccak.OfAnEmptySequenceRlp,
-            parent.Beneficiary,
-            UInt256.Zero,
-            parent.Number + 1,
-            parent.GasLimit,
-            parent.Timestamp + blocksConfig.SecondsPerSlot,
-            [],
-            requestsHash: parent.RequestsHash)
-        {
-            MixHash = Hash256.Zero,
-            RequestsHash = parent.RequestsHash,
-        };
+        BlockHeader result = parent.CreateSimulatedChild(parent.Timestamp + blocksConfig.SecondsPerSlot);
 
-        if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
+        if (IsChildPostMerge(specProvider, parent, result.Number))
         {
-            result.Difficulty = UInt256.Zero;
             result.IsPostMerge = true;
         }
         else
@@ -276,10 +261,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             result.IsPostMerge = false;
         }
 
-        IReleaseSpec spec = specProvider.GetSpec(result);
+        IReleaseSpec spec = specProvider.GetSpec(GetSimulatedActivation(block.BlockOverrides, result));
 
-        if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
+        if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = GetWithdrawalsRoot(block.BlockOverrides?.Withdrawals);
         if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
+        result.SlotNumber = GetSlotNumber(spec, specProvider, parent, result.SlotNumber, block.BlockOverrides?.Time ?? result.Timestamp);
 
         // In non-validation mode base fee is set to 0 if it is not overridden.
         // This is because it creates an edge case in EVM where gasPrice < baseFee.
@@ -299,4 +285,83 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         return (result, spec);
     }
+
+    /// <summary>
+    /// Whether a simulated child of <paramref name="parent"/> is post-merge, which decides the consensus rules it runs
+    /// and whether PREVRANDAO reads its mix hash (<c>blockOverrides.prevRandao</c>) or its difficulty.
+    /// </summary>
+    /// <remarks>
+    /// The merge block number alone is not enough: a node that synced past the merge never records the terminal block,
+    /// so it stays unknown on chains whose chainspec merges by total difficulty without pinning it (Mainnet, Sepolia,
+    /// Gnosis, Chiado). Per EIP-3675 the child is post-merge when its parent is post-merge (zero difficulty) or when
+    /// the parent reached the terminal total difficulty, which covers a child of the terminal PoW block itself.
+    /// This mirrors the transition rule in <c>PoSSwitcher.GetBlockConsensusInfo</c>, which Facade cannot reference;
+    /// keep the two aligned. An unknown (null) total difficulty falls back to the earlier rules, and a stored zero
+    /// cannot reach a nonzero terminal total difficulty, so neither case needs a guard here.
+    /// </remarks>
+    private static bool IsChildPostMerge(ISpecProvider specProvider, BlockHeader parent, ulong childNumber) =>
+        parent.Difficulty.IsZero
+        || (ForkActivation)childNumber >= specProvider.MergeBlockNumber
+        || (specProvider.TerminalTotalDifficulty is { } terminalTotalDifficulty && parent.TotalDifficulty >= terminalTotalDifficulty);
+
+    /// <summary>
+    /// Returns the EIP-7843 slot number of a simulated block, or <c>null</c> when its spec predates EIP-7843.
+    /// </summary>
+    /// <param name="spec">The spec resolved for the simulated block.</param>
+    /// <param name="specProvider">Supplies the beacon chain genesis timestamp, if known.</param>
+    /// <param name="parent">The block the simulated block builds on.</param>
+    /// <param name="childSlot">The slot <see cref="BlockHeader.CreateSimulatedChild"/> assigned: the parent's slot + 1, if any.</param>
+    /// <param name="timestamp">The simulated block's timestamp after <c>blockOverrides.time</c>.</param>
+    /// <remarks>
+    /// Pre-fork the result is <c>null</c> whatever <paramref name="childSlot"/> is, so the header is never encoded with a slot.
+    /// Post-fork it is the beacon chain slot containing <paramref name="timestamp"/> where that can be derived, else
+    /// <paramref name="childSlot"/>, else a synthetic 0 so SLOTNUM stays executable.
+    /// <para>
+    /// <c>slot = (timestamp - beacon genesis) / seconds per slot</c>, exact because every post-merge block sits on that grid.
+    /// A slotless parent (normally the real base block) off the grid means the configured slot length or genesis is not this
+    /// chain's, so derivation falls back. A parent carrying a slot may be a simulated block whose time override fell between
+    /// slots and was advanced, so its grid slot is only a floor. The result stays above the parent's slot (its grid slot
+    /// when it has none), as slots never repeat; that also caps a slot length too long for the chain at parent + 1.
+    /// A slotless simulated parent timed between slots, which a pre-fork block can be, also falls back: it cannot be told
+    /// apart from a base block on the wrong grid. The grid check is a heuristic: a wrong slot length still passes for a
+    /// slotless parent on both grids (one Gnosis head in 12 with a 12 s slot length), and the slot is then wrong.
+    /// </para>
+    /// </remarks>
+    private ulong? GetSlotNumber(IReleaseSpec spec, ISpecProvider specProvider, BlockHeader parent, ulong? childSlot, ulong timestamp)
+    {
+        if (!spec.IsEip7843Enabled)
+        {
+            return null;
+        }
+
+        ulong fallbackSlot = childSlot ?? 0;
+        ulong secondsPerSlot = blocksConfig.SecondsPerSlot;
+        if (specProvider.BeaconChainGenesisTimestamp is not { } genesis
+            || secondsPerSlot == 0
+            || parent.Timestamp < genesis
+            || timestamp < genesis)
+        {
+            return fallbackSlot;
+        }
+
+        ulong parentOffset = parent.Timestamp - genesis;
+        ulong parentGridSlot = parentOffset / secondsPerSlot;
+        bool parentFitsGrid = parent.SlotNumber is { } parentSlot
+            ? parentSlot >= parentGridSlot
+            : parentOffset % secondsPerSlot == 0;
+        if (!parentFitsGrid)
+        {
+            return fallbackSlot;
+        }
+
+        ulong previousSlot = parent.SlotNumber ?? parentGridSlot;
+        ulong slot = (timestamp - genesis) / secondsPerSlot;
+        return slot <= previousSlot ? previousSlot + 1 : slot;
+    }
+
+    private static Hash256 GetWithdrawalsRoot(Withdrawal[]? withdrawals) =>
+        withdrawals is null || withdrawals.Length == 0 ? Keccak.EmptyTreeHash : new WithdrawalTrie(withdrawals).RootHash;
+
+    private static ForkActivation GetSimulatedActivation(BlockOverride? overrides, BlockHeader header) =>
+        new(overrides?.Number ?? (ulong)header.Number, overrides?.Time ?? header.Timestamp);
 }

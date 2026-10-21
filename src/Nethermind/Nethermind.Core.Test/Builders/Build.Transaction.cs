@@ -10,8 +10,5 @@ public partial class Build
     public TransactionBuilder<GeneratedTransaction> GeneratedTransaction => new();
     public TransactionBuilder<T> TypedTransaction<T>() where T : Transaction, new() => new();
 
-    public TransactionBuilder<NamedTransaction> NamedTransaction(string name)
-    {
-        return new() { TestObjectInternal = { Name = name } };
-    }
+    public TransactionBuilder<NamedTransaction> NamedTransaction(string name) => new() { TestObjectInternal = { Name = name } };
 }

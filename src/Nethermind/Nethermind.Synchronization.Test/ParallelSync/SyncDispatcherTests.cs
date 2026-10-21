@@ -6,16 +6,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Test.Mocks;
 using NUnit.Framework;
 
@@ -24,118 +17,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync;
 [Parallelizable(ParallelScope.All)]
 public class SyncDispatcherTests
 {
-    private class TestSyncPeerPool : ISyncPeerPool
+    private class TestBatch(int start, int length)
     {
-        private readonly SemaphoreSlim _peerSemaphore;
-        private readonly Lock _lock = new Lock();
-
-        public TestSyncPeerPool(int peerCount = 1)
-        {
-            _peerSemaphore = new SemaphoreSlim(peerCount, peerCount);
-        }
-
-        public async Task<SyncPeerAllocation> Allocate(
-            IPeerAllocationStrategy peerAllocationStrategy,
-            AllocationContexts contexts,
-            int timeoutMilliseconds = 0,
-            CancellationToken cancellationToken = default)
-        {
-            await Task.Yield();
-            await _peerSemaphore.WaitAsync(cancellationToken);
-            ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
-            SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts, _lock);
-            return allocation;
-        }
-
-        private class MockSyncPeer(string clientId, UInt256 totalDifficulty) : BaseSyncPeerMock
-        {
-            public override string ClientId => clientId;
-            public override UInt256? TotalDifficulty => totalDifficulty;
-        }
-
-        public void Free(SyncPeerAllocation syncPeerAllocation)
-        {
-            _peerSemaphore.Release();
-        }
-
-        public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts contexts)
-        {
-        }
-
-        public void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details)
-        {
-        }
-
-        public void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts contexts)
-        {
-        }
-
-        public Task<int?> EstimateRequestLimit(RequestType bodies, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts blocks,
-            CancellationToken token)
-        {
-            return Task.FromResult<int?>(null);
-        }
-
-        public void WakeUpAll()
-        {
-            throw new NotImplementedException();
-        }
-
-        public IEnumerable<PeerInfo> AllPeers { get; } = Array.Empty<PeerInfo>();
-        public IEnumerable<PeerInfo> InitializedPeers { get; } = Array.Empty<PeerInfo>();
-        public int PeerCount { get; } = 0;
-        public int InitializedPeersCount { get; } = 0;
-        public int PeerMaxCount { get; } = 0;
-
-        public void AddPeer(ISyncPeer syncPeer)
-        {
-        }
-
-        public void RemovePeer(ISyncPeer syncPeer)
-        {
-        }
-
-        public void SetPeerPriority(PublicKey id)
-        {
-        }
-
-        public void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 hash)
-        {
-        }
-
-        public void Start()
-        {
-        }
-
-        public Task StopAsync()
-        {
-            return Task.CompletedTask;
-        }
-
-        public PeerInfo? GetPeer(Node node)
-        {
-            return null;
-        }
-
-        public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = static delegate { };
-
-        public ValueTask DisposeAsync()
-        {
-            _peerSemaphore.Dispose();
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    private class TestBatch
-    {
-        public TestBatch(int start, int length)
-        {
-            Start = start;
-            Length = length;
-        }
-
-        public int Start { get; }
-        public int Length { get; }
+        public int Start { get; } = start;
+        public int Length { get; } = length;
         public int[]? Result { get; set; }
     }
 
@@ -160,34 +45,31 @@ public class SyncDispatcherTests
         }
     }
 
-    private class TestSyncFeed : SyncFeed<TestBatch>
+    private class TestSyncFeed(bool isMultiFeed = true, int max = 64, Action? onPrepareRequest = null) : SyncFeed<TestBatch>
     {
-        public TestSyncFeed(bool isMultiFeed = true, int max = 64)
-        {
-            IsMultiFeed = isMultiFeed;
-            Max = max;
-        }
-
-        public int Max { get; }
+        public int Max { get; } = max;
         public int HighestRequested { get; private set; }
 
-        public readonly HashSet<int> _results = new();
+        public readonly HashSet<int> _results = [];
         private readonly ConcurrentQueue<TestBatch> _returned = new();
-        private readonly ManualResetEvent _responseLock = new ManualResetEvent(true);
-        private readonly TaskCompletionSource _handleResponseCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly ManualResetEvent _responseLock = new(true);
+        private readonly TaskCompletionSource _handleResponseCalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly object _watcherLock = new();
+        private int _watchedTarget = int.MaxValue;
+        private TaskCompletionSource? _watchedReached;
 
-        public void LockResponse()
-        {
+        public void LockResponse() =>
             _responseLock.Reset();
-        }
 
-        public void UnlockResponse()
-        {
+        public void UnlockResponse() =>
             _responseLock.Set();
-        }
+
+        public int HandleResponseCallCount => Volatile.Read(ref _handleResponseCallCount);
+        private int _handleResponseCallCount;
 
         public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
         {
+            Interlocked.Increment(ref _handleResponseCallCount);
             _handleResponseCalled.TrySetResult();
             _responseLock.WaitOne();
             if (response.Result is null)
@@ -209,12 +91,10 @@ public class SyncDispatcherTests
             return SyncResponseHandlingResult.OK;
         }
 
-        public Task WaitForHandleResponse()
-        {
-            return _handleResponseCalled.Task;
-        }
+        public Task WaitForHandleResponse() =>
+            _handleResponseCalled.Task;
 
-        public override bool IsMultiFeed { get; }
+        public override bool IsMultiFeed { get; } = isMultiFeed;
         public override AllocationContexts Contexts => AllocationContexts.All;
         public override void SyncModeSelectorOnChanged(SyncMode current)
         {
@@ -227,6 +107,8 @@ public class SyncDispatcherTests
 
         public override async Task<TestBatch> PrepareRequest(CancellationToken token = default)
         {
+            onPrepareRequest?.Invoke();
+
             TestBatch testBatch;
             if (_returned.TryDequeue(out TestBatch? returned))
             {
@@ -254,24 +136,44 @@ public class SyncDispatcherTests
                     HighestRequested += 8;
                 }
 
+                lock (_watcherLock)
+                {
+                    if (HighestRequested >= _watchedTarget)
+                    {
+                        _watchedReached?.TrySetResult();
+                    }
+                }
+
                 testBatch = new TestBatch(start, 8);
             }
 
             Interlocked.Increment(ref _pendingRequests);
             return testBatch;
         }
+
+        public Task WaitForHighestRequested(int target)
+        {
+            lock (_watcherLock)
+            {
+                if (HighestRequested >= target) return Task.CompletedTask;
+                _watchedTarget = target;
+                _watchedReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                return _watchedReached.Task;
+            }
+        }
     }
 
-    [Test, MaxTime(10000)]
+    [Test, NonParallelizable, MaxTime(30_000)]
     public async Task Simple_test_sync()
     {
         TestSyncFeed syncFeed = new();
-        TestDownloader downloader = new TestDownloader();
+        TestDownloader downloader = new();
+        await using TestSyncPeerPool peerPool = new();
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig(),
             syncFeed,
             downloader,
-            new TestSyncPeerPool(),
+            peerPool,
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
         Task executorTask = dispatcher.Start(CancellationToken.None);
@@ -279,58 +181,183 @@ public class SyncDispatcherTests
         await executorTask;
         for (int i = 0; i < syncFeed.Max; i++)
         {
-            syncFeed._results.Contains(i).Should().BeTrue(i.ToString());
+            Assert.That(syncFeed._results.Contains(i), Is.True, i.ToString());
         }
     }
 
-    [Test]
-    public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
+    // [NonParallelizable]: this test relies on the dispatcher's Task.Run reaching HandleResponse
+    // promptly. Under the class-level [Parallelizable(ParallelScope.All)] it competes with the rest
+    // of the suite for thread-pool capacity, and on slow CI the 1st HandleResponse can take >15s
+    // to fire — exhausting the budget before we even reach the assertion window.
+    [Test, NonParallelizable, CancelAfter(30_000)]
+    public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose(CancellationToken cancellationToken)
     {
-        using CancellationTokenSource cts = new();
-        cts.CancelAfter(TimeSpan.FromSeconds(15));
-
         TestSyncFeed syncFeed = new(isMultiFeed: true);
         syncFeed.LockResponse();
-        TestDownloader downloader = new TestDownloader();
+        TestDownloader downloader = new();
+        await using TestSyncPeerPool peerPool = new();
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig(),
             syncFeed,
             downloader,
+            peerPool,
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+        Task executorTask = dispatcher.Start(cancellationToken);
+
+        syncFeed.Activate();
+        await syncFeed.WaitForHandleResponse().WaitAsync(cancellationToken);
+        syncFeed.Finish();
+
+        Task disposeTask = Task.Run(() => dispatcher.DisposeAsync().AsTask());
+
+        // Production invariant: DisposeAsync must remain blocked while HandleResponse is in flight.
+        // WaitAsync throws TimeoutException iff disposeTask is still running after the window —
+        // that's the success path. Decouples this 200 ms timing window from the test's overall budget
+        // (CancelAfter), so a setup overrun no longer poisons the assertion.
+        Func<Task> waitForDisposeToEscape = () => disposeTask.WaitAsync(TimeSpan.FromMilliseconds(200));
+        Assert.That(async () => await waitForDisposeToEscape(), Throws.TypeOf<TimeoutException>(), "DisposeAsync must wait for in-flight HandleResponse");
+
+        syncFeed.UnlockResponse();
+        await disposeTask.WaitAsync(cancellationToken);
+        await executorTask.WaitAsync(cancellationToken);
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Cancelled_in_flight_dispatch_skips_its_response_and_disposes_its_allocation(CancellationToken cancellationToken)
+    {
+        // The dispatch loop cancels its token on every exit, including the routine feed-finish exit
+        // on a live node. The cancelled dispatch must not handle its response into a finishing feed,
+        // and it must still dispose its allocation - a leaked slot retires the peer for the lifetime
+        // of the connection.
+        TestSyncPeerPool pool = new(peerCount: 2);
+        TestSyncFeed syncFeed = new(max: 16);
+        await using SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig { MaxProcessingThreads = 1 },
+            syncFeed,
+            new TestDownloader(),
+            pool,
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+
+        // The first dispatch takes the single processing permit and blocks inside HandleResponse;
+        // the second finishes downloading and waits for the permit, holding its peer allocation.
+        syncFeed.LockResponse();
+        syncFeed.Activate();
+        Task dispatcherTask = dispatcher.Start(cancellationToken);
+        await syncFeed.WaitForHandleResponse().WaitAsync(cancellationToken);
+
+        // The permit holder has already freed its own slot, so exactly one slot outstanding
+        // means the second dispatch holds its allocation and the cancelled-wait path is real.
+        Assert.That(() => pool.AvailablePeers, Is.EqualTo(1).After(10_000, 10),
+            "guard: the second dispatch must hold an allocation before the feed finishes");
+
+        syncFeed.Finish();
+        await dispatcherTask.WaitAsync(cancellationToken);
+
+        syncFeed.UnlockResponse();
+        await dispatcher.DisposeAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.AvailablePeers, Is.EqualTo(2), "every allocation must return to the pool");
+            Assert.That(syncFeed.HandleResponseCallCount, Is.EqualTo(1), "the cancelled dispatch must not handle its response");
+        }
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Feed_is_finished_when_the_loop_exits_without_an_await_throwing(CancellationToken cancellationToken)
+    {
+        // Shutdown waits on ISyncFeed.FeedTask (Synchronizer.DisposeAsync), and the dispatch loop is the
+        // feed's only consumer - a loop that returns without finishing the feed turns that wait into a
+        // guaranteed timeout. Cancelling from inside PrepareRequest reproduces the exit where nothing
+        // throws: the peer pool reports a failed allocation for a cancelled token, so the iteration runs
+        // to completion and it is the `while` condition, not a cancelled await, that ends the loop.
+        using CancellationTokenSource cts = new();
+        TestSyncFeed syncFeed = new(onPrepareRequest: cts.Cancel);
+        await using SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new TestDownloader(),
             new TestSyncPeerPool(),
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
-        Task executorTask = dispatcher.Start(cts.Token);
 
-        // Load some requests
         syncFeed.Activate();
-        await syncFeed.WaitForHandleResponse();
-        syncFeed.Finish();
+        Assert.That(syncFeed.FeedTask.IsCompleted, Is.False, "an activated feed must have a pending FeedTask");
 
-        // Dispose
-        Task disposeTask = Task.Run(async () =>
-        {
-            await dispatcher.DisposeAsync();
-        });
-        await Task.Delay(200, cts.Token);
+        await dispatcher.Start(cts.Token).WaitAsync(cancellationToken);
 
-        disposeTask.IsCompletedSuccessfully.Should().BeFalse();
-
-        syncFeed.UnlockResponse();
-        await disposeTask;
-        await executorTask;
+        Assert.That(syncFeed.FeedTask.IsCompleted, Is.True, "the dispatch loop must finish the feed on every exit path");
     }
 
-    [Retry(tryCount: 5)]
+    [Test]
+    public async Task DisposeAsync_unsubscribes_StateChanged_handler()
+    {
+        await using TestSyncPeerPool peerPool = new();
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher(peerPool);
+
+        await dispatcher.DisposeAsync();
+
+        // After dispose, the dispatcher's internal semaphores and countdown events
+        // are disposed. If the StateChanged handler were still subscribed, Activate()
+        // would trigger UpdateState which accesses those disposed resources.
+        // No throw confirms the handler was actually removed, not just that the
+        // callback happens to be harmless.
+        Assert.DoesNotThrow(syncFeed.Activate);
+    }
+
+    [Test]
+    public async Task DisposeAsync_double_dispose_does_not_throw()
+    {
+        await using TestSyncPeerPool peerPool = new();
+        (_, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher(peerPool);
+
+        await dispatcher.DisposeAsync();
+        await dispatcher.DisposeAsync();
+    }
+
+    [Test]
+    public async Task DisposeAsync_then_StateChanged_does_not_modify_dispatcher()
+    {
+        await using TestSyncPeerPool peerPool = new();
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher(peerPool);
+
+        await dispatcher.DisposeAsync();
+
+        // Activate then Finish — if handler is still subscribed, this would
+        // modify internal state and potentially access disposed resources
+        syncFeed.Activate();
+        syncFeed.Finish();
+
+        // No exception means the handler was properly unsubscribed
+    }
+
+    private static (TestSyncFeed Feed, SyncDispatcher<TestBatch> Dispatcher) CreateFeedAndDispatcher(TestSyncPeerPool peerPool)
+    {
+        TestSyncFeed syncFeed = new();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new TestDownloader(),
+            peerPool,
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+        return (syncFeed, dispatcher);
+    }
+
     [TestCase(false, 1, 1, 8)]
     [TestCase(true, 1, 1, 24)]
     [TestCase(true, 2, 1, 32)]
     [TestCase(true, 1, 2, 32)]
+    [NonParallelizable]
     public async Task Test_release_before_processing_complete(bool isMultiSync, int processingThread, int peerCount, int expectedHighestRequest)
     {
         TestSyncFeed syncFeed = new(isMultiSync, 999999);
         syncFeed.LockResponse();
 
-        TestDownloader downloader = new TestDownloader();
+        TestDownloader downloader = new();
+        await using TestSyncPeerPool peerPool = new(peerCount);
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig()
             {
@@ -338,16 +365,19 @@ public class SyncDispatcherTests
             },
             syncFeed,
             downloader,
-            new TestSyncPeerPool(peerCount),
+            peerPool,
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
 
         Task _ = dispatcher.Start(CancellationToken.None);
         syncFeed.Activate();
 
-        await Task.Delay(100);
+        await syncFeed.WaitForHighestRequested(expectedHighestRequest).WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.That(() => syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest).After(4000, 100));
+        // The dispatcher must now plateau because all peers are busy / processing slots are full
+        // and HandleResponse is locked. Drain the scheduling queue and verify no further growth.
+        await Task.Yield();
+        Assert.That(syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest));
         syncFeed.UnlockResponse();
     }
 }

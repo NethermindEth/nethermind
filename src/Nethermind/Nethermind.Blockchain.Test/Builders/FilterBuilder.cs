@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 
@@ -17,10 +17,7 @@ namespace Nethermind.Blockchain.Test.Builders
         private AddressFilter _address = AddressFilter.AnyAddress;
         private SequenceTopicsFilter _topicsFilter = new();
 
-        private FilterBuilder(int id)
-        {
-            _id = id;
-        }
+        private FilterBuilder(int id) => _id = id;
 
         public static FilterBuilder New()
         {
@@ -41,7 +38,7 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public FilterBuilder FromBlock(long number)
+        public FilterBuilder FromBlock(ulong number)
         {
             _fromBlock = new BlockParameter(number);
             return this;
@@ -70,7 +67,7 @@ namespace Nethermind.Blockchain.Test.Builders
 
         public FilterBuilder FromFutureBlock()
         {
-            _fromBlock = new BlockParameter(1000000);
+            _fromBlock = new BlockParameter(1000000ul);
 
             return this;
         }
@@ -82,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public FilterBuilder ToBlock(long number)
+        public FilterBuilder ToBlock(ulong number)
         {
             _toBlock = new BlockParameter(number);
 

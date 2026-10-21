@@ -7,14 +7,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Facade.Filters
 {
     public sealed class FilterStore : IDisposable
     {
@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Filters
         public FilterType GetFilterType(int filterId)
         {
             /* so far ok to use block filter if none */
-            if (!_filters.TryGetValue(filterId, out var filter))
+            if (!_filters.TryGetValue(filterId, out FilterBase filter))
             {
                 return FilterType.BlockFilter;
             }
@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Filters
         private IEnumerable<T> GetFiltersEnumerate<T>() where T : FilterBase
         {
             // Reuse the enumerator
-            var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _filters.GetEnumerator();
+            IEnumerator<KeyValuePair<int, FilterBase>> enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _filters.GetEnumerator();
 
             while (enumerator.MoveNext())
             {
@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Filters
             _enumerator = enumerator;
         }
 
-        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
+        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out FilterBase filter)
                 ? filter as T
                 : null;
 
@@ -137,6 +137,8 @@ namespace Nethermind.Blockchain.Filters
 
         public event EventHandler<FilterEventArgs>? FilterRemoved;
 
+        internal event EventHandler<FilterEventArgs>? FilterSaved;
+
         public void SaveFilter(FilterBase filter)
         {
             if (!_filters.TryAdd(filter.Id, filter))
@@ -148,6 +150,8 @@ namespace Nethermind.Blockchain.Filters
             {
                 _currentFilterId = Math.Max(filter.Id, _currentFilterId);
             }
+
+            FilterSaved?.Invoke(this, new FilterEventArgs(filter.Id));
         }
 
         private int GetFilterId(bool generateId)
@@ -171,7 +175,7 @@ namespace Nethermind.Blockchain.Filters
             }
 
             FilterTopic?[]? filterTopics = GetFilterTopics(topics);
-            List<TopicExpression> expressions = new();
+            List<TopicExpression> expressions = [];
 
             for (int i = 0; i < filterTopics?.Length; i++)
             {
@@ -228,9 +232,6 @@ namespace Nethermind.Blockchain.Filters
             public Hash256[]? Topics { get; init; }
         }
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

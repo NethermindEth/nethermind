@@ -1,14 +1,17 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
+using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -18,10 +21,8 @@ namespace Nethermind.Optimism.Test;
 public class OptimismReceiptTests
 {
     [SetUp]
-    public void SetUp()
-    {
-        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
-    }
+    public void SetUp() =>
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
 
     [Test]
     public void ContainsOperatorFeeParameters_PreIsthmus_IsNull()
@@ -36,13 +37,13 @@ public class OptimismReceiptTests
             .TestObject;
         Transaction tx = Build.A.Transaction.TestObject;
 
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
-        var helper = Substitute.For<IOptimismSpecHelper>();
+        IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(false);
 
-        var blockGasInfo = new L1BlockGasInfo(block, helper);
-        var receipt = new OptimismReceiptForRpc(
+        L1BlockGasInfo blockGasInfo = new(block, helper);
+        OptimismReceiptForRpc receipt = new(
             tx.Hash!,
             new OptimismTxReceipt(),
             0,
@@ -50,8 +51,8 @@ public class OptimismReceiptTests
             blockGasInfo.GetTxGasInfo(tx)
         );
 
-        receipt.OperatorFeeScalar.Should().Be(null);
-        receipt.OperatorFeeConstant.Should().Be(null);
+        Assert.That(receipt.OperatorFeeScalar, Is.EqualTo(null));
+        Assert.That(receipt.OperatorFeeConstant, Is.EqualTo(null));
     }
 
     [Test]
@@ -62,7 +63,7 @@ public class OptimismReceiptTests
         // - blobBaseFeeScalar = 3
         // - baseFee = 1000*1e6
         // - blobBaseFee = 10*1e6
-        var l1Attributes = Bytes.FromHexString("098999be000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2");
+        byte[] l1Attributes = Bytes.FromHexString("098999be000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2");
 
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader.TestObject)
@@ -75,13 +76,13 @@ public class OptimismReceiptTests
             .TestObject;
         Transaction tx = Build.A.Transaction.TestObject;
 
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
-        var helper = Substitute.For<IOptimismSpecHelper>();
+        IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
 
-        var blockGasInfo = new L1BlockGasInfo(block, helper);
-        var receipt = new OptimismReceiptForRpc(
+        L1BlockGasInfo blockGasInfo = new(block, helper);
+        OptimismReceiptForRpc receipt = new(
             tx.Hash!,
             new OptimismTxReceipt(),
             0,
@@ -89,16 +90,14 @@ public class OptimismReceiptTests
             blockGasInfo.GetTxGasInfo(tx)
         );
 
-        receipt.L1BaseFeeScalar.Should().Be((UInt256)2);
-        receipt.L1BlobBaseFeeScalar.Should().Be((UInt256)3);
-        receipt.L1GasPrice.Should().Be((UInt256)(1000 * 1e6));
-        receipt.L1BlobBaseFee.Should().Be((UInt256)(10 * 1e6));
-        receipt.OperatorFeeScalar.Should().Be((UInt256)0);
-        receipt.OperatorFeeConstant.Should().Be((UInt256)0);
+        AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: 0, expectedOperatorFeeConstant: 0);
     }
 
-    [Test]
-    public void ContainsOperatorFeeParameters_PostIsthmus_FromExtraData()
+    // A transaction without data sits at the 100-byte minimum DA size, so its DA footprint is 100 * daFootprintGasScalar.
+    [TestCase(false, null, null, 0, TestName = "Isthmus 176-byte L1 attributes")]
+    [TestCase(true, 802UL, 80_200UL, 0, TestName = "Jovian 178-byte L1 attributes")]
+    [TestCase(true, 802UL, 169_222UL, 2_000, TestName = "Jovian 178-byte L1 attributes, above the minimum DA size")]
+    public void ContainsOperatorFeeParameters_PostIsthmus_FromExtraData(bool isJovian, ulong? expectedDaFootprintGasScalar, ulong? expectedBlobGasUsed, int txDataLength)
     {
         // Isthmus style l1 attributes with:
         // - baseFeeScalar = 2
@@ -107,7 +106,9 @@ public class OptimismReceiptTests
         // - blobBaseFee = 10*1e6
         // - operatorFeeScalar = 7
         // - operatorFeeConstant = 9
-        var l1Attributes = Bytes.FromHexString("098999be000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2000000070000000000000009");
+        // Jovian uses its own selector and appends daFootprintGasScalar = 802.
+        const string isthmusFields = "000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2000000070000000000000009";
+        byte[] l1Attributes = Bytes.FromHexString(isJovian ? "3db6be2b" + isthmusFields + "0322" : "098999be" + isthmusFields);
 
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader.TestObject)
@@ -118,15 +119,19 @@ public class OptimismReceiptTests
                     .TestObject
                 )
             .TestObject;
-        Transaction tx = Build.A.Transaction.TestObject;
+        byte[] txData = new byte[txDataLength];
+        for (int i = 0; i < txData.Length; i++) txData[i] = (byte)(i * 31 % 251);
+        Transaction tx = Build.A.Transaction.WithData(txData).TestObject;
 
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
-        var helper = Substitute.For<IOptimismSpecHelper>();
+        IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
+        helper.IsFjord(Arg.Any<BlockHeader>()).Returns(true);
+        helper.IsJovian(Arg.Any<BlockHeader>()).Returns(isJovian);
 
-        var blockGasInfo = new L1BlockGasInfo(block, helper);
-        var receipt = new OptimismReceiptForRpc(
+        L1BlockGasInfo blockGasInfo = new(block, helper);
+        OptimismReceiptForRpc receipt = new(
             tx.Hash!,
             new OptimismTxReceipt(),
             0,
@@ -134,11 +139,69 @@ public class OptimismReceiptTests
             blockGasInfo.GetTxGasInfo(tx)
         );
 
-        receipt.L1BaseFeeScalar.Should().Be((UInt256)2);
-        receipt.L1BlobBaseFeeScalar.Should().Be((UInt256)3);
-        receipt.L1GasPrice.Should().Be((UInt256)(1000 * 1e6));
-        receipt.L1BlobBaseFee.Should().Be((UInt256)(10 * 1e6));
-        receipt.OperatorFeeScalar.Should().Be((UInt256)7);
-        receipt.OperatorFeeConstant.Should().Be((UInt256)9);
+        AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: 7, expectedOperatorFeeConstant: 9);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.DaFootprintGasScalar, Is.EqualTo(expectedDaFootprintGasScalar));
+            Assert.That(receipt.BlobGasUsed, Is.EqualTo(expectedBlobGasUsed));
+            // The receipt has to agree with the per-transaction estimate the header's blobGasUsed sums.
+            if (isJovian) Assert.That(receipt.BlobGasUsed, Is.EqualTo((ulong)OptimismCostHelper.ComputeDaUsageEstimate(tx) * expectedDaFootprintGasScalar));
+        }
+    }
+
+    // ReceiptForRpc has a generated writer that matches only its exact type, so the subclass must keep the metadata path
+    // and its Optimism fields, while writing every base field as the generated writer does.
+    [Test]
+    public void Receipt_json_keeps_optimism_fields_and_writes_base_fields_as_the_base_receipt([Values] bool deposit)
+    {
+        LogEntry[] logs = [new(TestItem.AddressA, [1, 2], [TestItem.KeccakC])];
+        TxReceipt txReceipt = new()
+        {
+            TxType = deposit ? TxType.DepositTx : TxType.EIP1559,
+            StatusCode = 1,
+            TxHash = TestItem.KeccakA,
+            BlockHash = TestItem.KeccakB,
+            BlockNumber = 1_000,
+            Index = 2,
+            GasUsed = 21_000,
+            GasUsedTotal = 42_000,
+            Sender = TestItem.AddressA,
+            Recipient = TestItem.AddressB,
+            Logs = logs,
+            Bloom = new Bloom(logs),
+        };
+        TxGasInfo gasInfo = new(10 * Unit.GWei);
+        OptimismReceiptForRpc receipt = deposit
+            ? new(TestItem.KeccakA, txReceipt, 1_700_000_000, gasInfo, logIndexStart: 3) { DepositNonce = 7, DepositReceiptVersion = 1 }
+            : new(TestItem.KeccakA, txReceipt, 1_700_000_000, gasInfo, logIndexStart: 3) { L1Fee = 1, L1GasPrice = 2, L1GasUsed = 3, L1FeeScalar = "4", L1BaseFeeScalar = 5, L1BlobBaseFee = 6, L1BlobBaseFeeScalar = 7, OperatorFeeScalar = 8, OperatorFeeConstant = 9, DaFootprintGasScalar = 10 };
+        string[] optimismFields = deposit
+            ? ["depositNonce", "depositReceiptVersion"]
+            : ["l1Fee", "l1GasPrice", "l1GasUsed", "l1FeeScalar", "l1BaseFeeScalar", "l1BlobBaseFee", "l1BlobBaseFeeScalar", "operatorFeeScalar", "operatorFeeConstant", "daFootprintGasScalar"];
+
+        using JsonDocument full = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(receipt, EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(OptimismReceiptForRpc))));
+        using JsonDocument asBase = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(receipt, EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(ReceiptForRpc))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(full.RootElement.EnumerateObject().Select(static p => p.Name).Except(asBase.RootElement.EnumerateObject().Select(static p => p.Name)), Is.EquivalentTo(optimismFields));
+            foreach (JsonProperty property in asBase.RootElement.EnumerateObject())
+            {
+                Assert.That(full.RootElement.GetProperty(property.Name).GetRawText(), Is.EqualTo(property.Value.GetRawText()), property.Name);
+            }
+        }
+    }
+
+    private static void AssertL1AndOperatorFees(OptimismReceiptForRpc receipt, UInt256 expectedOperatorFeeScalar, UInt256 expectedOperatorFeeConstant)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            // L1 attribute fields are identical across the Ecotone-postIsthmus and Isthmus payloads — only the operator-fee tail differs
+            Assert.That(receipt.L1BaseFeeScalar, Is.EqualTo((UInt256)2));
+            Assert.That(receipt.L1BlobBaseFeeScalar, Is.EqualTo((UInt256)3));
+            Assert.That(receipt.L1GasPrice, Is.EqualTo((UInt256)(1000 * 1e6)));
+            Assert.That(receipt.L1BlobBaseFee, Is.EqualTo((UInt256)(10 * 1e6)));
+            Assert.That(receipt.OperatorFeeScalar, Is.EqualTo(expectedOperatorFeeScalar));
+            Assert.That(receipt.OperatorFeeConstant, Is.EqualTo(expectedOperatorFeeConstant));
+        }
     }
 }

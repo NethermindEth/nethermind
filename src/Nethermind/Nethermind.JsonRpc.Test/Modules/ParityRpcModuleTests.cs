@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -13,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -33,6 +33,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using System.Text.Json;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -67,31 +68,34 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ConnectedPeersCount.Returns(5);
             peerManager.MaxActivePeers.Returns(15);
 
-            TestReadOnlyStateProvider stateProvider = new TestReadOnlyStateProvider();
+            TestReadOnlyStateProvider stateProvider = new();
 
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
+            TxPoolConfig txPoolConfig = new();
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
                 new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider) { HasSynced = true },
-                new TxPoolConfig(),
+                txPoolConfig,
                 new TxValidator(specProvider.ChainId),
+                new SpecChangeTxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
-                new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer());
+                new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer(),
+                TestFrameTxWidthLedger.For(txPoolConfig));
 
             _receiptStorage = new InMemoryReceiptStorage();
 
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
             _parityRpcModule = CreateParityRpcModule(peerManager);
 
-            int blockNumber = 2;
+            ulong blockNumber = 2;
             Transaction pendingTransaction = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
             pendingTransaction.Signature!.V = 37;
-            stateProvider.CreateAccount(pendingTransaction.SenderAddress!, UInt256.UInt128MaxValue);
+            stateProvider.CreateAccount(pendingTransaction.SenderAddress!, ulong.MaxValue);
             _txPool.SubmitTx(pendingTransaction, TxHandlingOptions.None);
 
             blockNumber = 1;
@@ -99,33 +103,33 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(100).TestObject;
             transaction1.Signature!.V = 37;
-            stateProvider.CreateAccount(transaction1.SenderAddress!, UInt256.UInt128MaxValue);
+            stateProvider.CreateAccount(transaction1.SenderAddress!, ulong.MaxValue);
 
-            var transaction2 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
+            Transaction transaction2 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(120).TestObject;
             transaction2.Signature!.V = 37;
 
-            var transaction3 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
+            Transaction transaction3 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(110).TestObject;
             transaction2.Signature.V = 37;
 
             Block genesis = Build.A.Block.Genesis
-                .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+                .WithStateRoot(new Hash256("0xe4a589578a2838164c89c02e38528d7865b132981a9793a8f0b443fcfe70728f"))
                 .TestObject;
 
             _blockTree.SuggestBlock(genesis);
-            _blockTree.UpdateMainChain(new[] { genesis }, true);
+            _blockTree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis });
 
             Block previousBlock = genesis;
             Block block = Build.A.Block.WithNumber(blockNumber).WithParent(previousBlock)
-                    .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+                    .WithStateRoot(new Hash256("0xe4a589578a2838164c89c02e38528d7865b132981a9793a8f0b443fcfe70728f"))
                     .WithTransactions(transaction1, transaction2, transaction3)
                     .TestObject;
 
             _blockTree.SuggestBlock(block);
-            _blockTree.UpdateMainChain(new[] { block }, true);
+            _blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
 
             LogEntry[] logEntries = new[] { Build.A.LogEntry.TestObject };
 
@@ -194,7 +198,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.OutSession.RemoteNodeId.Returns(TestItem.PublicKeyA);
 
             IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler, ISyncPeer>();
-            peer.OutSession.TryGetProtocolHandler(Protocol.Eth, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.OutSession.TryGetProtocolHandler(Protocol.Eth, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = protocolHandler;
                 return true;
@@ -210,7 +214,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
-            peer.OutSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.OutSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = p2PProtocolHandler;
                 return true;
@@ -243,7 +247,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.InSession.RemoteNodeId.Returns(TestItem.PublicKeyB);
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
-            peer.InSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.InSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = p2PProtocolHandler;
                 return true;
@@ -257,10 +261,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             return peer;
         }
 
-        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null)
-        {
-            return new ParityRpcModule(_ethereumEcdsa,
-                _txPool,
+        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null, ITxPool? txPool = null) => new ParityRpcModule(_ethereumEcdsa,
+                txPool ?? _txPool,
                 _blockTree,
                 _receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
@@ -268,7 +270,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 MainnetSpecProvider.Instance,
                 peerManager ?? Substitute.For<IPeerManager>());
-        }
 
         [Test]
         public async Task parity_pendingTransactions()
@@ -297,11 +298,47 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(serialized, Is.EqualTo(expectedResult));
         }
 
+        /// <remarks>
+        /// An EIP-8141 frame transaction is accepted with no envelope signature, and every pending transaction
+        /// is mapped through the same constructor, so one of them in the pool used to throw the whole request.
+        /// </remarks>
+        [Test]
+        public async Task parity_pendingTransactions_maps_a_pool_holding_a_frame_transaction()
+        {
+            Transaction ordinary = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
+                .WithSenderAddress(TestItem.AddressD).TestObject;
+            ordinary.Signature!.V = 37;
+
+            Transaction frameTx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify());
+            frameTx.ChainId = MainnetSpecProvider.Instance.ChainId;
+            frameTx.To = null;
+
+            ITxPool txPool = Substitute.For<ITxPool>();
+            txPool.GetPendingTransactions().Returns([ordinary, frameTx]);
+
+            string serialized = await RpcTest.TestSerializedRequest(CreateParityRpcModule(txPool: txPool), "parity_pendingTransactions");
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            JsonElement frame = document.RootElement.GetProperty("result")[1];
+            Assert.Multiple(() =>
+            {
+                // The explicit chain id of the signed payload, which is the only place it survives.
+                Assert.That(frame.GetProperty("chainId").GetString(), Is.EqualTo("0x1"));
+                // Absent rather than a fabricated zero-value signature.
+                Assert.That(frame.GetProperty("r").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(frame.GetProperty("s").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(frame.GetProperty("v").GetString(), Is.EqualTo("0x0"));
+                Assert.That(frame.GetProperty("standardV").GetString(), Is.EqualTo("0x0"));
+                Assert.That(frame.TryGetProperty("publicKey", out _), Is.False, "no envelope key to recover");
+                Assert.That(frame.GetProperty("creates").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            });
+        }
+
         [Test]
         public async Task parity_getBlockReceipts()
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_getBlockReceipts", "latest");
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x5077d73d2e82d0b7799392db86827826f181df13e3f50fed89cbb5aa03f5230f\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x0\",\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"blockHash\":\"0x5077d73d2e82d0b7799392db86827826f181df13e3f50fed89cbb5aa03f5230f\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},{\"transactionHash\":\"0xd0183bfd42ccd8fccb7722b108e052d12d2cf5a32a144b6a6f3a975c4d7d14a1\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0x5077d73d2e82d0b7799392db86827826f181df13e3f50fed89cbb5aa03f5230f\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0xd0183bfd42ccd8fccb7722b108e052d12d2cf5a32a144b6a6f3a975c4d7d14a1\",\"blockHash\":\"0x5077d73d2e82d0b7799392db86827826f181df13e3f50fed89cbb5aa03f5230f\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},{\"transactionHash\":\"0xf8ab484b10dc0398f03957d1062bbe3526048b74d429f8a8c9c57fa7ac5fa436\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x5077d73d2e82d0b7799392db86827826f181df13e3f50fed89cbb5aa03f5230f\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0xf8ab484b10dc0398f03957d1062bbe3526048b74d429f8a8c9c57fa7ac5fa436\",\"blockHash\":\"0x5077d73d2e82d0b7799392db86827826f181df13e3f50fed89cbb5aa03f5230f\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"}],\"id\":67}";
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x0\",\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},{\"transactionHash\":\"0xd0183bfd42ccd8fccb7722b108e052d12d2cf5a32a144b6a6f3a975c4d7d14a1\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0xd0183bfd42ccd8fccb7722b108e052d12d2cf5a32a144b6a6f3a975c4d7d14a1\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},{\"transactionHash\":\"0xf8ab484b10dc0398f03957d1062bbe3526048b74d429f8a8c9c57fa7ac5fa436\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0xf8ab484b10dc0398f03957d1062bbe3526048b74d429f8a8c9c57fa7ac5fa436\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"}],\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
         }
 
@@ -319,8 +356,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
-            _signerStore.Address.Should().Be(TestItem.AddressA);
-            _signerStore.CanSign.Should().BeTrue();
+            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+            Assert.That(_signerStore.CanSign, Is.True);
         }
 
         [Test]
@@ -329,8 +366,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
-            _signerStore.Address.Should().Be(TestItem.AddressA);
-            _signerStore.CanSign.Should().BeTrue();
+            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+            Assert.That(_signerStore.CanSign, Is.True);
         }
 
         [Test]
@@ -339,9 +376,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_clearEngineSigner");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            serialized.Should().Be(expectedResult);
-            _signerStore.Address.Should().Be(Address.Zero);
-            _signerStore.CanSign.Should().BeFalse();
+            Assert.That(serialized, Is.EqualTo(expectedResult));
+            Assert.That(_signerStore.Address, Is.EqualTo(Address.Zero));
+            Assert.That(_signerStore.CanSign, Is.False);
         }
 
         [Test]
@@ -391,11 +428,23 @@ namespace Nethermind.JsonRpc.Test.Modules
                 """;
 
             EthereumJsonSerializer serializer = new();
-            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json);
+            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json)!;
 
-            tx.PublicKey.Should().NotBeNull();
-            tx.PublicKey.Bytes.Length.Should().Be(64);
-            tx.PublicKey.Bytes.Should().BeEquivalentTo(fullPublicKeyBytes);
+            Assert.That(tx.PublicKey, Is.Not.Null);
+            Assert.That(tx.PublicKey.Bytes.Length, Is.EqualTo(64));
+            Assert.That(tx.PublicKey.Bytes, Is.EqualTo(fullPublicKeyBytes));
+        }
+
+        [Test]
+        public void ParityTransaction_WithLeadingZeroPublicKey_SerializesFullWidth()
+        {
+            // The first hex digit is zero. A public key is DATA per EIP-1474. All 128 digits must survive.
+            const string leadingZeroKeyHex = "0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
+            ParityTransaction tx = new() { PublicKey = new PublicKey(leadingZeroKeyHex) };
+
+            string json = new EthereumJsonSerializer().Serialize(tx);
+
+            Assert.That(json, Does.Contain($"\"publicKey\":\"0x{leadingZeroKeyHex}\""));
         }
     }
 }

@@ -8,8 +8,5 @@ namespace Nethermind.Core.Test.Container;
 
 public class FunctionalGenesisPostProcessor(Action<Block> postProcessor) : IGenesisPostProcessor
 {
-    public void PostProcess(Block genesis)
-    {
-        postProcessor.Invoke(genesis);
-    }
+    public void PostProcess(Block genesis) => postProcessor.Invoke(genesis);
 }

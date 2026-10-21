@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
+using Nethermind.Network;
 using Nethermind.Monitoring.Config;
 
 namespace Nethermind.Init.Steps;
@@ -17,7 +19,7 @@ public class StartMonitoring(
     IMetricsConfig metricsConfig
 ) : IStep
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<StartMonitoring>();
 
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -29,11 +31,18 @@ public class StartMonitoring(
 
         if (metricsConfig.Enabled)
         {
-            await monitoringService.StartAsync().ContinueWith(x =>
+            try
             {
-                if (x.IsFaulted && _logger.IsError)
-                    _logger.Error("Error during starting a monitoring.", x.Exception);
-            }, cancellationToken);
+                await NetworkHelper.HandlePortTakenError(async () =>
+                {
+                    await monitoringService.StartAsync();
+                    return true;
+                }, metricsConfig.ExposePort is { } port ? [port] : []);
+            }
+            catch (Exception e) when (e is not ListenerBindException)
+            {
+                if (_logger.IsError) _logger.Error("Error during starting a monitoring.", e);
+            }
         }
         else
         {
@@ -48,6 +57,4 @@ public class StartMonitoring(
                 : "System.Diagnostics.Metrics disabled");
         }
     }
-
-    public bool MustInitialize => false;
 }

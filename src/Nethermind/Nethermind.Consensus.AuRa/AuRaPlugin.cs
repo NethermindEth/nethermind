@@ -5,20 +5,24 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Data;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -26,10 +30,15 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa")]
 
@@ -40,7 +49,6 @@ namespace Nethermind.Consensus.AuRa
     /// </summary>
     public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
-        private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
 
         public string Description => $"{SealEngineType} Consensus Engine";
@@ -49,29 +57,8 @@ namespace Nethermind.Consensus.AuRa
 
         public string SealEngineType => Core.SealEngineType.AuRa;
 
-        private StartBlockProducerAuRa? _blockProducerStarter;
-
-        private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
-
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-        public Task Init(INethermindApi nethermindApi)
-        {
-            _nethermindApi = nethermindApi as AuRaNethermindApi;
-            return Task.CompletedTask;
-        }
 
-        public IBlockProducer InitBlockProducer()
-        {
-            return BlockProducerStarter!.BuildProducer();
-        }
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            return new StandardBlockProducerRunner(
-                BlockProducerStarter.CreateTrigger(),
-                _nethermindApi.BlockTree,
-                blockProducer);
-        }
 
         public IModule Module => new AuRaModule(chainSpec);
 
@@ -87,18 +74,25 @@ namespace Nethermind.Consensus.AuRa
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
             builder
+                .AddModule(new AuRaHeaderModule())
+                .Intercept<ChainSpec>(AuRaChainSpecLoader.ProcessChainSpec)
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
-                .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
+                .AddSingleton<AuRaTxPoolTxSourceFactory>()
+                .AddSingleton<AuRaBlockProducerEnvFactory>()
+                .AddSingleton<AuRaBlockProducerFactory>()
+                .Bind<IBlockProducerFactory, AuRaBlockProducerFactory>()
+                .Bind<IBlockProducerRunnerFactory, AuRaBlockProducerFactory>()
                 .AddSingleton<AuraStatefulComponents>()
                 .AddSingleton<TxAuRaFilterBuilders>()
+                .AddSingleton<ITxPool>(CreateTxPool)
                 .AddSingleton<PermissionBasedTxFilter.Cache>()
                 .AddSingleton<IValidatorStore, ValidatorStore>()
                 .AddSingleton<AuRaContractGasLimitOverride.Cache, AuRaContractGasLimitOverride.Cache>()
                 .AddSingleton<ReportingContractBasedValidator.Cache>()
-                .AddSingleton<IReportingValidator, IMainProcessingContext>((mainProcessingContext) =>
-                    ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
+                .AddSingleton<IReportingValidator, IMainProcessingContext, AuraStatefulComponents>(
+                    static (_, statefulComponents) => statefulComponents.MainProcessingReportingValidator)
                 .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
 
                 // Steps override
@@ -109,6 +103,12 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IMainProcessingModule, AuraMainProcessingModule>()
                 .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
                 .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
+                .AddSingleton<IAuRaBlockFinalizationManager, IBlockTree, IChainLevelInfoRepository, IValidatorStore, ILogManager, AuRaChainSpecEngineParameters>(
+                    (blockTree, chainLevelInfoRepository, validatorStore, logManager, param) =>
+                        new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition))
+
+                .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
+                .AddSingleton<ITransactionProcessorFactory, AuRaTransactionProcessorFactory>()
 
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
@@ -130,7 +130,97 @@ namespace Nethermind.Consensus.AuRa
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
 
-            if (Rlp.GetStreamEncoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
+            if (Rlp.GetDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
+        }
+
+        private static ITxPool CreateTxPool(IComponentContext ctx)
+        {
+            TxAuRaFilterBuilders txAuRaFilterBuilders = ctx.Resolve<TxAuRaFilterBuilders>();
+            IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+            ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+            ILogManager logManager = ctx.Resolve<ILogManager>();
+
+            // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
+            TxPriorityContract txPriorityContract = txAuRaFilterBuilders.CreateTxPrioritySources();
+            TxPriorityContract.LocalDataSource? localDataSource = ctx.Resolve<AuraStatefulComponents>().TxPriorityContractLocalDataSource;
+
+            ReportTxPriorityRules(logManager, txPriorityContract, localDataSource);
+
+            DictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore
+                = txAuRaFilterBuilders.CreateMinGasPricesDataStore(txPriorityContract, localDataSource);
+
+            ITxFilter txPoolFilter = txAuRaFilterBuilders.CreateAuRaTxFilterForProducer(minGasPricesContractDataStore);
+
+            return new TxPool.TxPool(
+                ctx.Resolve<IEthereumEcdsa>(),
+                ctx.Resolve<IBlobTxStorage>(),
+                ctx.Resolve<IChainHeadInfoProvider>(),
+                ctx.Resolve<ITxPoolConfig>(),
+                ctx.Resolve<ITxValidator>(),
+                ctx.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey),
+                logManager,
+                CreateTxPoolTxComparer(ctx, txPriorityContract, localDataSource),
+                ctx.Resolve<FrameTxWidthLedger>(),
+                ctx.Resolve<ITxGossipPolicy>(),
+                [new TxFilterAdapter(blockTree, txPoolFilter, logManager, specProvider)],
+                txPriorityContract is not null || localDataSource is not null,
+                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+                stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
+        }
+
+        private static IComparer<Transaction> CreateTxPoolTxComparer(IComponentContext ctx, TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
+        {
+            if (txPriorityContract is not null || localDataSource is not null)
+            {
+                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                IReceiptFinder receiptFinder = ctx.Resolve<IReceiptFinder>();
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                IDisposableStack disposeStack = ctx.Resolve<IDisposableStack>();
+
+                ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
+                    new HashSetContractDataStoreCollection<Address>(),
+                    txPriorityContract?.SendersWhitelist,
+                    blockTree,
+                    receiptFinder,
+                    logManager,
+                    localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
+
+                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
+                    new(
+                        new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
+                        txPriorityContract?.Priorities,
+                        blockTree,
+                        receiptFinder,
+                        logManager,
+                        localDataSource?.GetPrioritiesLocalDataSource());
+
+                disposeStack.Push(whitelistContractDataStore);
+                disposeStack.Push(prioritiesContractDataStore);
+                IComparer<Transaction> txByPriorityComparer = new CompareTxByPriorityOnHead(whitelistContractDataStore, prioritiesContractDataStore, blockTree);
+                IComparer<Transaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(new GasPriceTxComparer(blockTree, ctx.Resolve<ISpecProvider>()), txByPriorityComparer);
+
+                return sameSenderNonceComparer
+                    .ThenBy(CompareTxByTimestamp.Instance)
+                    .ThenBy(CompareTxByPoolIndex.Instance)
+                    .ThenBy(CompareTxByGasLimit.Instance);
+            }
+
+            return ctx.Resolve<ITransactionComparerProvider>().GetDefaultComparer();
+        }
+
+        private static void ReportTxPriorityRules(ILogManager logManager, TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
+        {
+            ILogger logger = logManager.GetClassLogger<AuRaModule>();
+
+            if (localDataSource?.FilePath is not null)
+            {
+                if (logger.IsInfo) logger.Info($"Using TxPriority rules from local file: {localDataSource.FilePath}.");
+            }
+
+            if (txPriorityContract is not null)
+            {
+                if (logger.IsInfo) logger.Info($"Using TxPriority rules from contract at address: {txPriorityContract.ContractAddress}.");
+            }
         }
 
         /// <summary>
@@ -150,7 +240,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
-                IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
+                IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
                 (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. parameters.RewriteBytecodeTimestampParsed];
                 ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 

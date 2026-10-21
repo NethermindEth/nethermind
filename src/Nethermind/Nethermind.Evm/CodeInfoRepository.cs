@@ -3,13 +3,17 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -23,40 +27,62 @@ public class CodeInfoRepository : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    private readonly Func<ValueHash256, CodeInfo> _codeInfoLoader;
-    private readonly IBlockAccessListBuilder? _balBuilder;
+    /// <summary>Precompile <see cref="CodeInfo"/> indexed by precompile number, for the low numbers.</summary>
+    /// <remarks>Replaces a <see cref="FrozenDictionary{TKey, TValue}"/> hash and probe on every precompile
+    /// call with an array index. A number above <see cref="MaxIndexedNumber"/> — a plugin may register one
+    /// far away, as Taiko does at 0x10001 — is left out and served by <see cref="_localPrecompiles"/>
+    /// instead, so the array never has to cover the whole address space to be correct.</remarks>
+    private readonly CodeInfo?[] _localPrecompileArray;
+
+    /// <summary>Highest precompile number the index array covers.</summary>
+    /// <remarks>Fixed at 0x100 — RIP-7212, the highest Ethereum registers — rather than derived from what
+    /// the chain registers, so that a distant one, as Taiko's at 0x10001, cannot size the array to itself.
+    /// 2 KB of references covers every number an in-tree chain indexes, sparsely: mainnet fills 18 of the
+    /// 257 slots, and anything outside the range falls back to the dictionary.</remarks>
+    private const int MaxIndexedNumber = 0x100;
+
+    private readonly CodeInfo _emptyCodeInfo = CodeInfo.Empty;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
-        : this(worldState, precompileProvider, codeInfoLoader: null)
-    {
-    }
-
-    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<ValueHash256, CodeInfo>? codeInfoLoader)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
-        _balBuilder = _worldState as IBlockAccessListBuilder;
-        _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
-
-        CodeInfo DefaultLoad(ValueHash256 codeHash) =>
-            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, in codeHash);
+        _localPrecompileArray = BuildPrecompileArray(_localPrecompiles);
     }
+
+    /// <summary>Indexes the precompiles numbered at or below <see cref="MaxIndexedNumber"/>.</summary>
+    /// <param name="precompiles">Every precompile the chain knows.</param>
+    /// <returns>An array holding those within the cap, indexed by number, and nothing else.</returns>
+    /// <remarks>Public so that a decorator answering precompile calls ahead of this repository can index
+    /// its own map the same way; a decorator left probing a dictionary puts the probe back on the path.</remarks>
+    public static CodeInfo?[] BuildPrecompileArray(FrozenDictionary<AddressAsKey, CodeInfo> precompiles)
+    {
+        CodeInfo?[] byIndex = new CodeInfo?[MaxIndexedNumber + 1];
+        foreach (KeyValuePair<AddressAsKey, CodeInfo> entry in precompiles)
+        {
+            int index = ((Address)entry.Key).PrecompileIndexOrNegative();
+            if ((uint)index < (uint)byIndex.Length) byIndex[index] = entry.Value;
+        }
+
+        return byIndex;
+    }
+
+    public bool IsCodeOverridable => false;
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource))
         {
-            if (_balBuilder is not null && _balBuilder.TracingEnabled)
-            {
-                _balBuilder.AddAccountRead(codeSource);
-            }
-            return _localPrecompiles[codeSource];
+            _worldState.AddAccountRead(codeSource);
+            _worldState.RecordAccountAccess(codeSource);
+            return PrecompileCodeInfo(codeSource);
         }
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
 
-        if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
+        delegationAddress = codeInfo.DelegatedAddress is { } delegated && vmSpec.IsEip7702Enabled ? delegated : null;
+        if (delegationAddress is not null)
         {
             if (followDelegation)
             {
@@ -67,21 +93,56 @@ public class CodeInfoRepository : ICodeInfoRepository
         return codeInfo;
     }
 
-    private CodeInfo InternalGetCodeInfo(Address codeSource)
+    public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
+        vmSpec.IsPrecompile(codeSource) ? PrecompileCodeInfo(codeSource).Precompile : null;
+
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        vmSpec.IsPrecompile(target) ? _emptyCodeInfo : InternalGetCodeInfo(target);
+
+    /// <summary>Resolves a precompile's <see cref="CodeInfo"/> from its number, then from the map.</summary>
+    /// <remarks>The map still has to answer for a number above <see cref="MaxIndexedNumber"/>, which the
+    /// index array deliberately leaves out.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private CodeInfo PrecompileCodeInfo(Address codeSource)
     {
-        ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
-        return _codeInfoLoader(codeHash);
+        int index = codeSource.PrecompileIndexOrNegative();
+        CodeInfo?[] byIndex = _localPrecompileArray;
+        return (uint)index < (uint)byIndex.Length && byIndex[index] is { } precompile
+            ? precompile
+            : _localPrecompiles[codeSource];
     }
 
-    internal static CodeInfo GetCodeInfo(IWorldState worldState, in ValueHash256 codeHash)
+    private CodeInfo InternalGetCodeInfo(Address codeSource)
     {
-        byte[]? code = worldState.GetCode(in codeHash);
-        if (code is null)
+        ValueHash256 codeHash = _worldState.GetCodeHash(codeSource);
+        return LoadCodeInfo(codeSource, in codeHash);
+    }
+
+    /// <summary>Resolves the code stored under <paramref name="codeHash"/> for <paramref name="address"/>.</summary>
+    /// <remarks>Overridden by a repository that serves code from a cache instead of the world state.</remarks>
+    protected virtual CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
+        codeHash == ValueKeccak.OfAnEmptyString ? _emptyCodeInfo : GetCodeInfo(_worldState, address, in codeHash);
+
+    internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
+    {
+        // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.
+        worldState.RecordBytecodeAccess(address);
+        // When executing in parallel must get by address. Null, not empty, means not served: empty code is real.
+        ReadOnlyMemory<byte> code = worldState.GetCode(in codeHash);
+        if (code.IsNull()) code = worldState.GetCode(address);
+        if (code.IsNull())
         {
             MissingCode(in codeHash);
         }
 
-        return CodeInfoFactory.CreateCodeInfo(code);
+        // Counts code reads that miss the in-memory code cache (i.e. require a DB fetch via
+        // IWorldState.GetCode). Cache hits served by CacheCodeInfoRepository.GetOrCacheCodeInfo
+        // are counted separately as Metrics.CodeDbCache, so state_reads.code in the slow-block
+        // JSON tracks DB-backed code reads only and equals cache.code.misses by construction.
+        Metrics.IncrementCodeReads();
+        Metrics.IncrementCodeBytesRead(code.Length);
+
+        return new CodeInfo(code);
 
         [DoesNotReturn, StackTraceHidden]
         static void MissingCode(in ValueHash256 codeHash) => throw new DataException($"Code {codeHash} missing in the state");
@@ -97,6 +158,15 @@ public class CodeInfoRepository : ICodeInfoRepository
         return worldState.InsertCode(codeOwner, in codeHash, code, spec);
     }
 
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        InsertTransientCode(_worldState, code, codeOwner, spec);
+
+    public static void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
+        worldState.InsertTransientCode(codeOwner, in codeHash, code, spec);
+    }
+
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         SetDelegation(_worldState, codeSource, authority, spec, out _, out _);
 
@@ -110,9 +180,9 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (codeSource != Address.Zero)
         {
-            authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
+            authorizedBuffer = new byte[Eip7702Constants.DelegationHeaderLength + Address.Size];
             Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
-            codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
+            codeSource.Bytes.CopyTo(authorizedBuffer.AsSpan(Eip7702Constants.DelegationHeaderLength));
             codeHash = ValueKeccak.Compute(authorizedBuffer);
         }
         else
@@ -121,28 +191,31 @@ public class CodeInfoRepository : ICodeInfoRepository
             codeHash = ValueKeccak.OfAnEmptyString;
         }
 
-        return worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
-    }
-
-    /// <summary>
-    /// Retrieves code hash of delegation if delegated. Otherwise, code hash of <paramref name="address"/>.
-    /// </summary>
-    /// <param name="address"></param>
-    /// <param name="spec"></param>
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
-    {
-        ValueHash256 codeHash = _worldState.GetCodeHash(address);
-        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+        bool result = worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
+        if (result)
         {
-            return Keccak.OfAnEmptyString.ValueHash256;
+            if (codeSource != Address.Zero)
+            {
+                Metrics.IncrementEip7702DelegationsSet();
+            }
+            else
+            {
+                Metrics.IncrementEip7702DelegationsCleared();
+            }
         }
 
-        CodeInfo codeInfo = _codeInfoLoader(codeHash);
-        return codeInfo.IsEmpty
-            ? Keccak.OfAnEmptyString.ValueHash256
-            : codeHash;
+        return result;
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address).CodeSpan, out delegatedAddress);
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        if (!_worldState.HasCode(address))
+        {
+            delegatedAddress = null;
+            return false;
+        }
+
+        delegatedAddress = InternalGetCodeInfo(address).DelegatedAddress;
+        return delegatedAddress is not null;
+    }
 }

@@ -1,0 +1,1332 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+#nullable enable
+
+using Nethermind.Core.Extensions;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Blockchain;
+using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
+using NUnit.Framework;
+using NSubstitute;
+
+namespace Nethermind.Store.Test;
+
+/// <summary>
+/// Tests for <see cref="BlockAccessListBasedWorldState"/>. Reads first try the suggested
+/// <see cref="ReadOnlyBlockAccessList"/>; when the BAL doesn't carry an entry at the current
+/// block-access index, they fall through to the attached parent-state reader. Reads for an
+/// account that isn't declared in the BAL at all throw
+/// <see cref="BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException"/>.
+/// </summary>
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class BlockAccessListBasedWorldStateTests
+{
+    private static readonly IReleaseSpec Spec = Amsterdam.Instance;
+    private static readonly ILogManager Logger = LimboLogs.Instance;
+
+    private static (BlockAccessListBasedWorldState bws, IDisposable scope) CreateBlockAccessListState(
+        uint blockAccessIndex,
+        ReadOnlyBlockAccessList suggestedBal,
+        Action<IWorldState>? genesisSetup = null,
+        Func<IWorldState, IWorldState>? decorateParent = null,
+        BalReadCoverage? readCoverage = null,
+        ILogManager? logManager = null,
+        IKeyValueStoreWithBatching? codeDb = null)
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest(codeDb: codeDb);
+        Hash256 stateRoot;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            genesisSetup?.Invoke(inner);
+            inner.Commit(Spec, isGenesis: true);
+            inner.CommitTree(0);
+            stateRoot = inner.StateRoot;
+        }
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+
+        BlockAccessListBasedWorldState bws = new(inner, logManager ?? Logger);
+        bws.SetBlockAccessIndex(blockAccessIndex);
+        Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
+        bws.Setup(block, readCoverage);
+        IDisposable scope = inner.BeginScope(baseBlock);
+        // The inner world state, scoped against the genesis root, is itself a valid parent reader
+        // — reads against it answer pre-block state directly from the trie.
+        bws.SetParentReader(decorateParent?.Invoke(inner) ?? inner);
+        return (bws, scope);
+    }
+
+    /// <summary>Shape of the pre-block account backing a <see cref="PhysicalCreationCases"/> row.</summary>
+    public enum ParentAccount { Missing, Empty, Balance, Nonce, Code }
+
+    private const uint ParentBalance = 7;
+    private const uint BalanceCredit = 5;
+
+    /// <summary>
+    /// Rows for <see cref="AddToBalanceAndCreateIfNotExists_returns_physical_creation"/>, each carrying its own
+    /// expectations rather than re-deriving them from the condition the implementation uses.
+    /// </summary>
+    /// <remarks>
+    /// Every shape other than <see cref="ParentAccount.Missing"/> and <see cref="ParentAccount.Empty"/> is declared
+    /// in the suggested BAL with its change at index 1, so index 1 answers from the parent while index 2 reads
+    /// through the change and sees an account EIP-161 has emptied — hence physically recreated.
+    /// <see cref="ParentAccount.Empty"/> declares no change at all, so both indices fall through to the parent and
+    /// find the account physically present, however empty — no recreation at either index.
+    /// </remarks>
+    private static IEnumerable<TestCaseData> PhysicalCreationCases()
+    {
+        (ParentAccount Parent, uint Index, bool Created, uint OldBalance, bool Exists)[] rows =
+        [
+            (ParentAccount.Missing, 1, true, 0, false),
+            (ParentAccount.Missing, 2, true, 0, false),
+            (ParentAccount.Empty, 1, false, 0, false),
+            (ParentAccount.Empty, 2, false, 0, false),
+            (ParentAccount.Balance, 1, false, ParentBalance, true),
+            (ParentAccount.Balance, 2, true, 0, false),
+            (ParentAccount.Nonce, 1, false, 0, true),
+            (ParentAccount.Nonce, 2, true, 0, false),
+            (ParentAccount.Code, 1, false, 0, true),
+            (ParentAccount.Code, 2, true, 0, false),
+        ];
+
+        foreach ((ParentAccount parent, uint index, bool created, uint oldBalance, bool exists) in rows)
+        {
+            // The decorated parent exercises the IWorldState fallback arms; the direct one the WorldState fast paths.
+            foreach (bool decorate in (bool[])[false, true])
+            {
+                yield return new TestCaseData(parent, index, decorate, created, oldBalance, exists)
+                    .SetName($"{{m}}({parent}, index {index}, {(decorate ? "decorated" : "direct")} parent)");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(PhysicalCreationCases))]
+    public void AddToBalanceAndCreateIfNotExists_returns_physical_creation(
+        ParentAccount parentState, uint index, bool decorate, bool expectedCreated, uint expectedOldBalance, bool expectedExists)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(parentState == ParentAccount.Balance ? [new BalanceChange(1, 0)] : [])
+                .WithNonceChanges(parentState == ParentAccount.Nonce ? [new NonceChange(1, 0)] : [])
+                .WithCodeChanges(parentState == ParentAccount.Code ? [new CodeChange(1, [])] : [])
+                .TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(index, bal,
+            ws =>
+            {
+                if (parentState == ParentAccount.Missing) return;
+                ws.CreateAccount(TestItem.AddressA, parentState == ParentAccount.Balance ? ParentBalance : 0u, parentState == ParentAccount.Nonce ? 1UL : 0UL);
+                if (parentState == ParentAccount.Code) ws.InsertCode(TestItem.AddressA, new byte[] { 0x00 }, Spec);
+            }, ws => decorate ? new ParentDecorator(ws) : ws);
+        using (scope)
+        {
+            bool created = bws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, BalanceCredit, Spec, out UInt256 oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.EqualTo(expectedCreated));
+                Assert.That(oldBalance, Is.EqualTo(new UInt256(expectedOldBalance)));
+                Assert.That(bws.AccountExists(TestItem.AddressA), Is.EqualTo(expectedExists));
+            }
+        }
+    }
+
+    [Test]
+    public void Storage_before_clear_is_not_read_from_the_shared_state()
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        StorageCell cell = new(TestItem.AddressA, 1);
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.CreateAccount(TestItem.AddressA, UInt256.One);
+            inner.Set(cell, (UInt256)5);
+            inner.Commit(Spec);
+            inner.ClearStorage(TestItem.AddressA);
+            BlockAccessListBasedWorldState bws = new(inner, Logger);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(inner.TryGetStorageBeforeClear(in cell, out UInt256 shared), Is.True);
+                Assert.That(shared, Is.EqualTo((UInt256)5));
+                Assert.That(bws.TryGetStorageBeforeClear(in cell, out _), Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void Traced_balance_creation_preserves_existence_across_repeated_touches(
+        [Values("missing", "empty", "funded")] string parentState,
+        [Values(0u, 5u)] uint balanceChange)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject).TestObject;
+        UInt256 initialBalance = parentState == "funded" ? 7u : 0u;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                if (parentState != "missing") ws.CreateAccount(TestItem.AddressA, initialBalance);
+            });
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new() { Index = 1 });
+            for (uint touch = 0; touch < 3; touch++)
+            {
+                bool created = traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out UInt256 oldBalance);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(created, Is.EqualTo(touch == 0 && parentState == "missing"));
+                    Assert.That(oldBalance, Is.EqualTo(initialBalance + touch * balanceChange));
+                    Assert.That(traced.GetBalance(TestItem.AddressA), Is.EqualTo(initialBalance + (touch + 1) * balanceChange));
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void Traced_balance_creation_restores_physical_existence(
+        [Values] bool initiallyExists, [Values(0u, 5u)] uint balanceChange)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                if (initiallyExists) ws.CreateAccount(TestItem.AddressA, 0);
+            });
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new() { Index = 1 });
+            Snapshot beforeCreate = traced.TakeSnapshot();
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.EqualTo(!initiallyExists));
+
+            Snapshot afterCreate = traced.TakeSnapshot();
+            traced.DeleteAccount(TestItem.AddressA);
+            Snapshot afterDelete = traced.TakeSnapshot();
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.True);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.False, "recreation after a same-index delete must be recorded");
+
+            traced.Restore(afterDelete);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.True);
+
+            traced.Restore(afterCreate);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out UInt256 oldBalance), Is.False);
+            Assert.That(oldBalance, Is.EqualTo(new UInt256(balanceChange)));
+
+            traced.Restore(beforeCreate);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.EqualTo(!initiallyExists));
+
+            traced.Clear();
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out oldBalance), Is.EqualTo(!initiallyExists));
+            Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Traced_explicit_creation_preserves_physical_existence(
+        [Values] bool ifNotExists, [Values(0u, 5u)] uint balance)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal);
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new() { Index = 1 });
+            Snapshot beforeCreate = traced.TakeSnapshot();
+            if (ifNotExists)
+                traced.CreateAccountIfNotExists(TestItem.AddressA, balance);
+            else
+                traced.CreateAccount(TestItem.AddressA, balance);
+
+            bool created = traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balance, Spec, out UInt256 oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.False);
+                Assert.That(oldBalance, Is.EqualTo(new UInt256(balance)));
+                Assert.That(traced.GetBalance(TestItem.AddressA), Is.EqualTo(new UInt256(2 * balance)));
+            }
+
+            traced.Restore(beforeCreate);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balance, Spec, out oldBalance), Is.True);
+            Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Traced_repeated_storage_writes_use_current_transaction_value(
+        [Values] bool supplyCurrentValue, [Values(0ul, 2ul)] ulong finalValue)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal, ws =>
+        {
+            ws.CreateAccount(cell.Address, 0);
+            ws.Set(in cell, new UInt256(7));
+        });
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new());
+            traced.SetIndex(1);
+            traced.Get(in cell, out UInt256 current);
+            Assert.That(current, Is.EqualTo(new UInt256(7)));
+            traced.Set(in cell, UInt256.One, in current);
+            traced.Get(in cell, out current);
+            Assert.That(current, Is.EqualTo(UInt256.One));
+
+            UInt256 next = finalValue;
+            if (supplyCurrentValue)
+                traced.Set(in cell, in next, in current);
+            else
+                traced.Set(in cell, in next);
+
+            traced.Get(in cell, out UInt256 actual);
+            bws.Get(in cell, out UInt256 underlying);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(next));
+                Assert.That(underlying, Is.EqualTo(new UInt256(7)));
+                Assert.That(traced.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.EqualTo(1));
+            }
+        }
+    }
+
+    [Test]
+    public void Transient_writes_use_worker_journal()
+    {
+        IWorldState parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            1, Build.A.BlockAccessList.TestObject, decorateParent: ws => parent = ws);
+        using (scope)
+        {
+            StorageCell cell = new(TestItem.AddressA, 1);
+            Snapshot snapshot = bws.TakeSnapshot();
+            UInt256 value = UInt256.MaxValue;
+            bws.SetTransientState(cell, in value);
+            value = UInt256.Zero;
+            using (Assert.EnterMultipleScope())
+            {
+                bws.GetTransientState(cell, out UInt256 storageValue1);
+                Assert.That(storageValue1, Is.EqualTo(UInt256.MaxValue));
+                parent.GetTransientState(cell, out UInt256 storageValue2);
+                Assert.That(storageValue2.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0 }));
+            }
+            bws.Restore(snapshot);
+            bws.GetTransientState(cell, out UInt256 storageValue3);
+            Assert.That(storageValue3.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0 }));
+        }
+    }
+
+    [Test]
+    public void DeclaredReads_PreserveOriginalValuesAndSnapshots([Values] bool decorate, [Values(0, 42)] int storedValue)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(cell.Address)
+                .WithStorageReads(cell.Index).TestObject).TestObject;
+        IWorldState parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                ws.CreateAccount(cell.Address, 100);
+                ws.Set(cell, new UInt256((ReadOnlySpan<byte>)[(byte)storedValue], isBigEndian: true));
+            },
+            ws =>
+            {
+                parent = ws;
+                return decorate ? new ParentDecorator(ws) : ws;
+            });
+        using (scope)
+        {
+            Snapshot before = parent.TakeSnapshot();
+            Assert.That(bws.GetBalance(cell.Address), Is.EqualTo((UInt256)100));
+            Assert.That(bws.AccountExists(cell.Address), Is.True);
+            Assert.That(bws.IsDeadAccount(cell.Address), Is.False);
+            if (!decorate) Assert.That(parent.TakeSnapshot(), Is.EqualTo(before), "account read must not journal");
+
+            bws.Get(cell, out UInt256 storageValue4);
+            Assert.That(storageValue4, Is.EqualTo((UInt256)storedValue));
+            bws.GetOriginal(in cell, out UInt256 originalValue);
+            Assert.That(originalValue, Is.EqualTo((UInt256)storedValue));
+            if (!decorate)
+                Assert.That(parent.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot,
+                    Is.EqualTo(before.StorageSnapshot.PersistentStorageSnapshot), "storage read must not journal");
+
+            Snapshot snapshot = bws.TakeSnapshot();
+            bws.Set(cell, (UInt256)99);
+            bws.Restore(snapshot);
+            bws.Get(cell, out UInt256 storageValue5);
+            Assert.That(storageValue5, Is.EqualTo((UInt256)storedValue));
+
+            bws.ClearParentReader();
+            parent.Set(cell, (UInt256)77);
+            parent.AddToBalance(cell.Address, 100, Spec);
+            parent.SetNonce(cell.Address, 3);
+            parent.Commit(Spec);
+            parent.CommitTree(1);
+            bws.SetParentReader(decorate ? new ParentDecorator(parent) : parent);
+            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
+            bws.Get(cell, out UInt256 storageValue6);
+            Assert.That(storageValue6, Is.EqualTo((UInt256)77));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetBalance(cell.Address), Is.EqualTo((UInt256)200));
+                Assert.That(bws.GetNonce(cell.Address), Is.EqualTo(3UL));
+            }
+        }
+    }
+
+    private sealed class ParentDecorator(IWorldState state) : WorldStateDecorator(state);
+
+    [Test]
+    public void CachedDeclaredRead_PreservesCoverageAcrossSlicesAndDeclarationChanges([Values] bool primeWithOriginal)
+    {
+        StorageCell cell = new(TestItem.AddressA, UInt256.MaxValue);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage coverage = plan.CreateCoverage();
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal, ws =>
+        {
+            ws.CreateAccount(cell.Address, 100);
+            ws.Set(in cell, (UInt256)17);
+        }, readCoverage: coverage);
+        using (scope)
+        {
+            if (primeWithOriginal) bws.GetOriginal(in cell, out _);
+            else bws.Get(in cell, out _);
+            for (uint index = 1; index <= 2; index++)
+            {
+                bws.SetBlockAccessIndex(index);
+                coverage.StartSlice();
+                bws.GetOriginal(in cell, out UInt256 original);
+                Assert.That(coverage.ChargeableReadCount, Is.Zero);
+                bws.Get(in cell, out UInt256 value);
+                bws.Get(in cell, out value);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(original, Is.EqualTo((UInt256)17));
+                    Assert.That(value, Is.EqualTo((UInt256)17));
+                    Assert.That(coverage.ChargeableReadCount, Is.EqualTo(1ul));
+                    Assert.That(plan.TryFindUncovered(out _), Is.False);
+                }
+            }
+
+            ReadOnlyBlockAccessList changed = Build.A.BlockAccessList.WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(cell.Address).WithStorageChanges(
+                    cell.Index, new StorageChange(0, 23), new StorageChange(1, 31)).TestObject).TestObject;
+            bws.Setup(Build.A.Block.WithBlockAccessList(changed).TestObject);
+            bws.Get(in cell, out UInt256 changedValue);
+            Assert.That(changedValue, Is.EqualTo((UInt256)31));
+            bws.SetBlockAccessIndex(1);
+            bws.GetOriginal(in cell, out changedValue);
+            Assert.That(changedValue, Is.EqualTo((UInt256)23));
+
+            bws.ClearParentReader();
+            Assert.Throws<InvalidOperationException>(() => bws.Get(in cell, out _));
+        }
+    }
+
+    [Test]
+    public void CachedDeclaredRead_DoesNotSurviveSetupThatRemovesDeclaration([Values] bool failSetup)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws => ws.CreateAccount(cell.Address, 100), logManager: new OneLoggerLogManager(new ILogger(logger)));
+        using (scope)
+        {
+            bws.Get(in cell, out _);
+            Block next = Build.A.Block.WithBlockAccessList(Build.A.BlockAccessList.WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(cell.Address).TestObject).TestObject).TestObject;
+            if (failSetup)
+            {
+                logger.When(log => log.Trace(Arg.Any<string>()))
+                    .Do(_ => throw new InvalidOperationException("Injected reset failure"));
+                Assert.Throws<InvalidOperationException>(() => bws.Setup(next));
+            }
+            else bws.Setup(next);
+
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.Get(in cell, out _));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.GetOriginal(in cell, out _));
+        }
+    }
+
+    [TestCase(false, false, 0)]
+    [TestCase(true, false, 0)]
+    [TestCase(false, true, 0)]
+    [TestCase(true, true, 0)]
+    [TestCase(false, true, 1)]
+    [TestCase(true, true, 1)]
+    public void TryGetAccount_PreservesParentExistence(bool decorate, bool createAccount, int balance)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(0, bal,
+            ws =>
+            {
+                if (createAccount) ws.CreateAccount(TestItem.AddressA, (UInt256)balance);
+            }, ws => decorate ? new ParentDecorator(ws) : ws);
+        using (scope)
+        {
+            bool exists = bws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exists, Is.EqualTo(createAccount && balance != 0));
+                Assert.That(account.Balance, Is.EqualTo(createAccount ? (UInt256)balance : UInt256.Zero));
+                Assert.That(account.IsTotallyEmpty, Is.EqualTo(!createAccount || balance == 0));
+            }
+        }
+    }
+
+    [Test]
+    public void DeclaredReads_CacheAlternatingSlotsUntilParentContextChanges([Values] bool replaceReader, [Values] bool useCoverage, [Values(0, 192)] int slotShift)
+    {
+        UInt256 firstSlot = UInt256.One << slotShift;
+        UInt256 secondSlot = (UInt256)2 << slotShift;
+        StorageCell[] cells = [new(TestItem.AddressA, firstSlot), new(TestItem.AddressA, secondSlot), new(TestItem.AddressB, firstSlot)];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(firstSlot, secondSlot).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(firstSlot).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage? coverage = useCoverage ? plan.CreateCoverage() : null;
+        IWorldState parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.CreateAccount(TestItem.AddressB, 100);
+                ws.Set(cells[1], (UInt256)42);
+                ws.Set(cells[2], (UInt256)77);
+            }, ws => parent = ws, coverage);
+        using (scope)
+        {
+            LocalMetrics metrics = (LocalMetrics)typeof(WorldState)
+                .GetField("_localMetrics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(parent)!;
+            long readsBefore = metrics.StorageTreeReads;
+            Snapshot snapshot = parent.TakeSnapshot();
+            ReadAlternatingSlots(0);
+            bws.Restore(snapshot);
+            bws.SetBlockAccessIndex(2);
+            coverage?.StartSlice();
+            ReadAlternatingSlots(0);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(metrics.StorageTreeReads - readsBefore, Is.EqualTo(cells.Length));
+                Assert.That(parent.TakeSnapshot(), Is.EqualTo(snapshot), "pure reads must not journal");
+            }
+
+            if (replaceReader) bws.ClearParentReader();
+            parent.Set(cells[0], (UInt256)99);
+            parent.Commit(Spec);
+            parent.CommitTree(1);
+            if (replaceReader) bws.SetParentReader(parent);
+            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject, coverage);
+            coverage?.StartSlice();
+            readsBefore = metrics.StorageTreeReads;
+            ReadAlternatingSlots(99);
+            Assert.That(metrics.StorageTreeReads - readsBefore, Is.EqualTo(cells.Length));
+        }
+
+        void ReadAlternatingSlots(uint firstValue)
+        {
+            uint[] expected = [firstValue, 42, 77];
+            for (int repeat = 0; repeat < 4; repeat++)
+            {
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    UInt256 value;
+                    if (repeat % 2 == 0) bws.Get(in cells[i], out value);
+                    else bws.GetOriginal(in cells[i], out value);
+                    Assert.That(value, Is.EqualTo((UInt256)expected[i]));
+                }
+            }
+            if (coverage is not null)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(coverage.ChargeableReadCount, Is.EqualTo((ulong)cells.Length));
+                    Assert.That(plan.TryFindUncovered(out _), Is.False);
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void AccountContext_FollowsAddressIndexAndBlockChanges()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(0, 10), new BalanceChange(1, 20)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB)
+                    .WithBalanceChanges(new BalanceChange(0, 30)).TestObject)
+            .TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal);
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+            Assert.That(bws.GetBalance(new Address(TestItem.AddressA.Bytes)), Is.EqualTo((UInt256)10));
+            Assert.That(bws.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)30));
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => bws.GetBalance(TestItem.AddressC));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => bws.GetBalance(TestItem.AddressC));
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+
+            bws.SetBlockAccessIndex(2);
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)20));
+
+            ReadOnlyBlockAccessList next = Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(0, 40)).TestObject).TestObject;
+            bws.Setup(Build.A.Block.WithBlockAccessList(next).TestObject);
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)40));
+            bws.ClearParentReader();
+            Assert.Throws<InvalidOperationException>(() => bws.GetBalance(TestItem.AddressA));
+        }
+    }
+
+    [Test]
+    public void AccountContext_DoesNotRetainPreviousBlockAfterSetupFails()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 10)).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            1, bal, logManager: new OneLoggerLogManager(new ILogger(logger)));
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+            ReadOnlyBlockAccessList next = Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(0, 40)).TestObject).TestObject;
+            logger.When(log => log.Trace(Arg.Any<string>()))
+                .Do(_ => throw new InvalidOperationException("Injected reset failure"));
+            Assert.Throws<InvalidOperationException>(() => bws.Setup(Build.A.Block.WithBlockAccessList(next).TestObject));
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)40));
+        }
+    }
+
+    [Test]
+    public void AccountContext_DoesNotCacheFailedParentReaderValidation()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 10)).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal);
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+            bws.ClearParentReader();
+            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
+
+            Assert.Throws<InvalidOperationException>(() => bws.GetBalance(TestItem.AddressA));
+            Assert.Throws<InvalidOperationException>(() => bws.GetBalance(TestItem.AddressA));
+            Assert.Throws<InvalidOperationException>(() => bws.GetBalance(new Address(TestItem.AddressA.Bytes)));
+        }
+    }
+
+    private static readonly uint[] CompositeReadIndices = [0, 1, 2, 3, 4, 31, 32, 33, 63, 64, uint.MaxValue];
+
+    [Test]
+    public void CompositeReads_UseEffectiveState(
+        [Values("balance", "nonce", "code", "empty")] string kind,
+        [ValueSource(nameof(CompositeReadIndices))] uint index,
+        [Values(0, 1, 4, 32)] int count,
+        [Values] bool decorate)
+    {
+        BalanceChange[] balances = new BalanceChange[count];
+        NonceChange[] nonces = new NonceChange[count];
+        CodeChange[] codes = new CodeChange[count];
+        int last = -1;
+        for (int i = 0; i < count; i++)
+        {
+            uint changeIndex = (uint)(2 * i + 1);
+            bool nonempty = i % 2 == 0;
+            balances[i] = new BalanceChange(changeIndex, nonempty && kind == "balance" ? 10u : 0u);
+            nonces[i] = new NonceChange(changeIndex, nonempty && kind == "nonce" ? 10u : 0u);
+            codes[i] = new CodeChange(changeIndex, nonempty && kind == "code" ? [0x00] : []);
+            if (changeIndex < index) last = i;
+        }
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(balances)
+                .WithNonceChanges(nonces)
+                .WithCodeChanges(codes)
+                .TestObject).TestObject;
+        IWorldState parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(index, bal,
+            ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, kind is "code" or "empty" ? 20u : 0u,
+                    kind is "balance" or "empty" ? 30UL : 0UL);
+                if (kind is "nonce" or "empty")
+                    ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute([0x00]), new byte[] { 0x00 }, Spec);
+            }, ws =>
+            {
+                parent = ws;
+                return decorate ? new ParentDecorator(ws) : ws;
+            });
+        using (scope)
+        {
+            Snapshot before = parent.TakeSnapshot();
+            using (Assert.EnterMultipleScope())
+            {
+                bool exists = last < 0 || (last % 2 == 0 && kind != "empty");
+                Assert.That(bws.AccountExists(TestItem.AddressA), Is.EqualTo(exists));
+                Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.EqualTo(!exists));
+                Assert.That(bws.IsContract(TestItem.AddressA), Is.EqualTo(last < 0 ? kind is "nonce" or "empty" : last % 2 == 0 && kind == "code"));
+            }
+            if (!decorate) Assert.That(parent.TakeSnapshot(), Is.EqualTo(before), "composite reads must not journal");
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.AccountExists(TestItem.AddressB));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.IsDeadAccount(TestItem.AddressB));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.IsContract(TestItem.AddressB));
+        }
+    }
+
+    [Test]
+    public void CompositeReads_PreserveVirtualOverrides([Values("balance", "nonce", "code")] string kind)
+    {
+        OverriddenAccountState bws = new(TestWorldStateFactory.CreateForTest(), kind);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+            Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.False);
+        }
+
+        bws.ReportMissing = true;
+        Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.True);
+    }
+
+    private sealed class OverriddenAccountState(IWorldState state, string kind) : BlockAccessListBasedWorldState(state, Logger)
+    {
+        private readonly UInt256 _balance = kind == "balance" ? 1u : 0u;
+        private readonly ulong _nonce = kind == "nonce" ? 1UL : 0UL;
+        private readonly ValueHash256 _codeHash = kind == "code" ? ValueKeccak.Compute([0x00]) : Keccak.OfAnEmptyString.ValueHash256;
+        public bool ReportMissing { get; set; }
+        public override ref readonly UInt256 GetBalance(Address address) => ref _balance;
+        public override ulong GetNonce(Address address) => _nonce;
+        public override ref readonly ValueHash256 GetCodeHash(Address address) => ref _codeHash;
+        public override bool AccountExists(Address address) => !ReportMissing && base.AccountExists(address);
+    }
+
+    [Test]
+    public void GetCodeByHash_ConcurrentReadersKeepIndependentIndicesAndBlocks([Values] bool hasCodeChanges)
+    {
+        byte[] code = [0x00, 0x01];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        CodeChange[] changes = hasCodeChanges ? [new CodeChange(1, code), new CodeChange(5, code)] : [];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithCodeChanges(changes).TestObject).TestObject;
+        ReadOnlyBlockAccessList next = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithCodeChanges(new CodeChange(10, code)).TestObject).TestObject;
+        Block originalBlock = Build.A.Block.WithBlockAccessList(bal).TestObject;
+        Block nextBlock = Build.A.Block.WithBlockAccessList(next).TestObject;
+
+        Parallel.For(0, 8, index =>
+        {
+            (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState((uint)index, bal);
+            using (scope)
+            {
+                Assert.That(Read(bws.GetCode(hash)), Is.EqualTo(hasCodeChanges && index > 1 ? code : null));
+                bws.Setup(nextBlock);
+                Assert.That(bws.GetCode(hash).IsNull(), Is.True);
+                bws.Setup(originalBlock);
+                Assert.That(Read(bws.GetCode(hash)), Is.EqualTo(hasCodeChanges && index > 1 ? code : null));
+                bws.ClearParentReader();
+                Assert.That(bws.GetCode(hash).IsNull(), Is.True);
+            }
+        });
+
+        static byte[]? Read(ReadOnlyMemory<byte> code) => code.IsNull() ? null : code.ToArray();
+    }
+
+    // EIP-8298: an adopted change declares only a hash, whose bytecode is declared at a lower index or is pre-block.
+    [Test]
+    public void GetCode_ResolvesAdoptedCodeByHash([Values] bool declaredInBlock)
+    {
+        byte[] code = [0x60, 0x2a];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithCodeChanges(CodeChange.Adopted(2, hash)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithCodeChanges(declaredInBlock ? [new CodeChange(1, code)] : []).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(3, bal, ws =>
+        {
+            if (declaredInBlock) return;
+            ws.CreateAccount(TestItem.AddressB, 1);
+            ws.InsertCode(TestItem.AddressB, hash, code, Spec);
+        });
+        using (scope)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetCodeHash(TestItem.AddressA), Is.EqualTo(hash), "code hash");
+                Assert.That(bws.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(code), "code");
+                Assert.That(bws.TryGetAccount(TestItem.AddressA, out AccountStruct account), Is.True, "exists");
+                Assert.That(account.CodeHash, Is.EqualTo(hash), "account code hash");
+            }
+        }
+    }
+
+    // A suggested BAL adopting a hash with no source bytecode is malformed: the parallel path retries sequentially
+    // only on InvalidBlockLevelAccessListException, so the code database's InvalidOperationException must not escape.
+    [Test]
+    public void GetCode_AdoptedHashWithoutSourceBytecode_ThrowsInvalidBlockLevelAccessList([Values] bool declaredAtSameIndex)
+    {
+        byte[] code = [0x60, 0x2a];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithCodeChanges(CodeChange.Adopted(2, hash)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithCodeChanges(declaredAtSameIndex ? [new CodeChange(3, code)] : []).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(3, bal);
+        using (scope)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.GetCode(TestItem.AddressA));
+        }
+    }
+
+    [Test]
+    public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)100));
+        }
+    }
+
+    [Test]
+    public void GetBalance_WithPriorTxChange_ReturnsUpdatedBalance()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 200))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)200));
+        }
+    }
+
+    // Regression: an account emptied by an earlier same-block selfdestruct must read as
+    // non-existent later, else a same-block CREATE2 wrongly refunds its create-state gas.
+    [Test]
+    public void AccountExists_PreFundedAccountDrainedToZeroEarlierInBlock_ReturnsFalse()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 0))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.False);
+        }
+    }
+
+    [Test]
+    public void AccountExists_PreFundedAccountWithBalance_ReturnsTrue()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
+    public void GetNonce_WithPriorTxChange_ReturnsUpdatedNonce()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithNonceChanges(new NonceChange(0, 3))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            Assert.That(bws.GetNonce(TestItem.AddressA), Is.EqualTo(3UL));
+        }
+    }
+
+    [Test]
+    public void GetCode_WithPriorTxChange_ReturnsPriorTxCode()
+    {
+        byte[] priorTxCode = [0xAA, 0xBB];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithCodeChanges(new CodeChange(0, priorTxCode))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            Assert.That(bws.GetCode(TestItem.AddressA), Is.SequenceEqualTo(priorTxCode));
+        }
+    }
+
+    [TestCase(false, TestName = "Account without code")]
+    [TestCase(true, TestName = "Account with code")]
+    public void GetCode_tells_empty_code_from_code_the_block_does_not_declare(bool hasCode)
+    {
+        // Empty code must stay non-null: a null read by hash is what sends execution to the by-address fallback.
+        byte[] code = [0x60, 0x01];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal, ws =>
+        {
+            ws.CreateAccount(TestItem.AddressA, 0);
+            if (hasCode) ws.InsertCode(TestItem.AddressA, code, Spec);
+        });
+        using (scope)
+        {
+            ReadOnlyMemory<byte> byAddress = bws.GetCode(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(byAddress.IsNull(), Is.False);
+                Assert.That(byAddress, Is.SequenceEqualTo(hasCode ? code : Array.Empty<byte>()));
+                Assert.That(bws.GetCode(ValueKeccak.Compute(code)).IsNull(), Is.True, "undeclared code is left to the by-address read");
+            }
+        }
+    }
+
+    [Test]
+    public void Code_deployed_earlier_in_the_same_transaction_is_served_without_a_store_read()
+    {
+        // In parallel execution fresh code exists only in the traced state; reading its hash from the store would
+        // miss (and a healing store would block on the network) on a valid block.
+        NativeTestMemDb codeDb = new();
+        byte[] code = [0x60, 0x03, 0x00];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws => ws.CreateAccount(TestItem.AddressA, 0), codeDb: codeDb);
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new() { Index = 1 });
+            traced.InsertCode(TestItem.AddressA, code, Spec);
+
+            CodeInfo codeInfo = new CodeInfoRepository(traced, new EthereumPrecompileProvider())
+                .GetCachedCodeInfo(TestItem.AddressA, followDelegation: false, Spec, out _);
+
+            Assert.That(codeInfo.CodeSpan, Is.SequenceEqualTo(code));
+            codeDb.KeyWasRead(ValueKeccak.Compute(code).ToByteArray(), 0);
+        }
+    }
+
+    [Test]
+    public void TryGetAccount_WithPriorCodeChange_ReturnsExistingAccount()
+    {
+        byte[] priorTxCode = [0xAA, 0xBB];
+        ValueHash256 expectedCodeHash = ValueKeccak.Compute(priorTxCode);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithCodeChanges(new CodeChange(0, priorTxCode))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            bool exists = bws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exists, Is.True);
+                Assert.That(account.CodeHash, Is.EqualTo(expectedCodeHash));
+                Assert.That(account.HasCode, Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public void AccountExists_AccountCreatedByCurrentTxOnly_ReturnsFalseBeforeCurrentTx()
+    {
+        // Account is first touched at tx index 23. Before that index, the BAL has no entry
+        // *and* the parent state has no account (genesisSetup not invoked), so AccountExists
+        // must be false.
+        byte[] currentTxCode = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithNonceChanges(new NonceChange(23, 1))
+            .WithCodeChanges(new CodeChange(23, currentTxCode))
+            .TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 23,
+            suggestedBal: bal);
+
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.False);
+        }
+    }
+
+    [Test]
+    public void AccountExists_WithPriorTxCodeChange_ReturnsTrue()
+    {
+        byte[] priorTxCode = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithNonceChanges(new NonceChange(23, 1))
+            .WithCodeChanges(new CodeChange(23, priorTxCode))
+            .TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 24,
+            suggestedBal: bal);
+
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
+    public void GetStorage_WithPriorTxChange_ReturnsPriorTxValue()
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageChanges(cell.Index, new StorageChange(0, 99u))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            bws.Get(cell, out UInt256 retrieved);
+            Assert.That(retrieved, Is.EqualTo((UInt256)99));
+        }
+    }
+
+    [Test]
+    public void AccountExists_ExistedInParentState_ReturnsTrue()
+    {
+        // Account is declared in BAL but has no entries at index 0; existence comes from
+        // the parent reader (set up via genesisSetup).
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 1));
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
+    public void AccountExists_CreatedAtLaterTx_ReturnsFalseForEarlierIndex()
+    {
+        // Account is first touched at tx 2 (balance change at index 2). For tx 1's world state,
+        // calling AccountExists must return false: no entry in BAL strictly before index 1, and
+        // the account doesn't exist in parent state.
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(2, 100))
+            .TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
+
+        (BlockAccessListBasedWorldState bwsAtIndex1, IDisposable scope1) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal);
+        using (scope1)
+        {
+            Assert.That(bwsAtIndex1.AccountExists(TestItem.AddressA), Is.False);
+        }
+
+        (BlockAccessListBasedWorldState bwsAtIndex3, IDisposable scope3) = CreateBlockAccessListState(
+            blockAccessIndex: 3,
+            suggestedBal: bal);
+        using (scope3)
+        {
+            Assert.That(bwsAtIndex3.AccountExists(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
+    public void GetBalance_AddressNotInAccessList_Throws()
+    {
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: new ReadOnlyBlockAccessList());
+        using (scope)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() =>
+                bws.GetBalance(TestItem.AddressB));
+        }
+    }
+
+    /// <summary>
+    /// SLOAD on a slot declared in <c>storage_reads</c> (no in-block change) must fall through
+    /// to the parent reader. Without the fall-through, the BAL-backed world state would
+    /// incorrectly return an empty slot for storage that the block legitimately read.
+    /// </summary>
+    [Test]
+    public void GetStorage_WithStorageReadOnlyDeclaration_ReturnsParentValue()
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(cell.Index)
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x2A], isBigEndian: true));
+            });
+
+        using (scope)
+        {
+            bws.Get(cell, out UInt256 retrieved);
+            Assert.That(retrieved, Is.EqualTo((UInt256)0x2A));
+        }
+    }
+
+    /// <summary>
+    /// SLOAD on a slot not declared anywhere in the account's BAL entry must throw — the spec
+    /// invariant is that every slot the block touches appears either in <c>storage_changes</c>
+    /// or <c>storage_reads</c>. Falling through to parent state silently would let a malformed
+    /// BAL pass validation.
+    /// </summary>
+    [Test]
+    public void GetStorage_MissingDeclaration_ThrowsBeforeParentFallback(
+        [Values] bool missingAccount, [Values] bool original, [Values] bool useCoverage)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(missingAccount ? TestItem.AddressB : TestItem.AddressA)
+                .WithStorageReads((UInt256)2)
+                .TestObject)
+            .TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x2A], isBigEndian: true));
+            },
+            readCoverage: useCoverage ? plan.CreateCoverage() : null);
+
+        using (scope)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () =>
+                {
+                    if (original) bws.GetOriginal(in cell, out _);
+                    else bws.Get(in cell, out _);
+                });
+        }
+    }
+
+    /// <summary>
+    /// TryGetAccount must overlay every BAL-prior change family (balance, nonce, code) on top
+    /// of the parent-state account, not just the field the latest test happened to touch.
+    /// Single-field overlay would let stale parent values leak through for the untouched fields.
+    /// </summary>
+    [Test]
+    public void TryGetAccount_OverlaysPriorChangesOnParentAccount()
+    {
+        byte[] parentCode = [0x60, 0x00];
+        byte[] priorCode = [0x60, 0x01];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(1, 200))
+                .WithNonceChanges(new NonceChange(1, 8))
+                .WithCodeChanges(new CodeChange(1, priorCode))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 2,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100, 7);
+                ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(parentCode), parentCode, Spec);
+            });
+
+        using (scope)
+        {
+            Assert.That(bws.TryGetAccount(TestItem.AddressA, out AccountStruct account), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account.Balance, Is.EqualTo((UInt256)200));
+                Assert.That(account.Nonce, Is.EqualTo(8UL));
+                Assert.That(account.CodeHash, Is.EqualTo(ValueKeccak.Compute(priorCode)));
+            }
+        }
+    }
+
+    /// <summary>
+    /// GetAccountChanges filters out BAL entries that have no state changes — accounts touched
+    /// only by storage reads or pure account reads are not "changed" for the purposes of the
+    /// post-execution state-apply pass, so they must not be returned.
+    /// </summary>
+    [Test]
+    public void GetAccountChanges_IgnoresStorageReadsWithoutStateChanges()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithStorageReads((UInt256)1)
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressB)
+                    .WithBalanceChanges(new BalanceChange(0, 1))
+                    .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.CreateAccount(TestItem.AddressB, 0);
+            });
+
+        using (scope)
+        using (ArrayPoolList<AddressAsKey> changes = bws.GetAccountChanges())
+        {
+            Assert.That(changes, Has.Count.EqualTo(1));
+            Assert.That(changes[0].Value, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
+    /// <summary>
+    /// An account missing from parent state but introduced by a prior-tx balance change must
+    /// report as existing — the existence overlay covers all three change families (balance,
+    /// nonce, code), not just code. Pairs with the code-only test
+    /// <see cref="AccountExists_WithPriorTxCodeChange_ReturnsTrue"/>.
+    /// </summary>
+    [TestCase("balance", TestName = "AccountExists_MissingParentAccountCreatedByPriorBalanceChange_ReturnsTrue")]
+    [TestCase("nonce", TestName = "AccountExists_MissingParentAccountCreatedByPriorNonceChange_ReturnsTrue")]
+    public void AccountExists_MissingParentAccountCreatedByPriorChange_ReturnsTrue(string changeKind)
+    {
+        AccountChangesBuilder builder = Build.An.AccountChanges.WithAddress(TestItem.AddressA);
+        builder = changeKind switch
+        {
+            "balance" => builder.WithBalanceChanges(new BalanceChange(0, 1)),
+            "nonce" => builder.WithNonceChanges(new NonceChange(0, 1)),
+            _ => throw new ArgumentOutOfRangeException(nameof(changeKind), changeKind, null),
+        };
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(builder.TestObject).TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal);
+
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+        }
+    }
+}

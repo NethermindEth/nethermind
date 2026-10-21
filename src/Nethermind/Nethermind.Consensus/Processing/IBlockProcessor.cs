@@ -20,13 +20,20 @@ namespace Nethermind.Consensus.Processing
     public interface IBlockProcessor
     {
         /// <summary>
-        /// Raised after all transactions in a block have been executed,
+        /// Raised with the executing block after all its transactions have completed,
         /// before blooms, receipts root, and state root are computed.
         /// Subscribers can use this to cancel background work (e.g. prewarmer)
         /// so the thread pool is free for the parallel post-tx computations.
         /// </summary>
-        event Action? TransactionsExecuted;
+        event Action<Block>? TransactionsExecuted;
 
+        /// <summary>Processes a block, or a transaction prefix in a compatible read-only tracing environment.</summary>
+        /// <remarks>
+        /// A transaction-only trace may return fewer receipts than transactions. Such receipts have no computed bloom,
+        /// and the returned block has unfinalized roots, bloom and prefix-only gas totals. Consumers must not persist
+        /// these results or assume full-block receipt indexing. Prefix replay does not update the suggested block's
+        /// execution artifacts. Ordinary block processing retains the complete, finalized result contract.
+        /// </remarks>
         public (Block Block, TxReceipt[] Receipts) ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,
@@ -38,6 +45,20 @@ namespace Nethermind.Consensus.Processing
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
             void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+
+            /// <summary>Publishes transaction events staged by the successful processing attempt.</summary>
+            /// <remarks>Decorators must forward this call. The block processor invokes it only after block execution, finalization, and processed-block validation complete.</remarks>
+            void PublishTransactionProcessedEvents() { }
+
+            /// <summary>Discards transaction events and references retained by the processing attempt.</summary>
+            /// <remarks>Decorators must forward this call. The block processor invokes it on every exit, including failures.</remarks>
+            void ClearTransactionProcessedEvents() { }
+
+            // Optional per-tx timing instrumentation. Default no-op implementations let executors that
+            // don't capture per-tx timing (block production, simulation, invalid-tx) ignore these.
+            void SetupTxTimingMetrics(Block block) { }
+            long StartTxTimer() => 0;
+            void StopTxTimer(int i, long txStart) { }
         }
     }
 }

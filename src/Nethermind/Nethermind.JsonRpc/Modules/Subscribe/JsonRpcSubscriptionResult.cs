@@ -9,4 +9,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public object Result { get; set; }
     }
+
+    public class JsonRpcSubscriptionResult<T>
+    {
+        public string Subscription { get; set; }
+
+        public T Result { get; set; }
+    }
 }

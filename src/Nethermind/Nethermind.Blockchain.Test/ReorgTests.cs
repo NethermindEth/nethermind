@@ -4,12 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Spec;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -26,9 +24,9 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -41,13 +39,15 @@ public class ReorgTests
 #pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockTree _blockTree = null!;
     private BlockHeader _genesis = null!;
+    private TestStateHeaderProvider _stateHeaderProvider = null!;
 
     [OneTimeSetUp]
     public void Setup()
     {
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance);
+        TestStateHeaderProvider stateHeaderProvider = _stateHeaderProvider = new();
+        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance, stateHeaderProvider);
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
@@ -70,10 +70,9 @@ public class ReorgTests
 
             _genesis = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
         }
+        stateHeaderProvider.Parent = _genesis;
 
         EthereumEcdsa ecdsa = new(1);
-        ITransactionComparerProvider transactionComparerProvider =
-            new TransactionComparerProvider(specProvider, _blockTree);
 
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree()
             .WithoutSettingHead
@@ -81,17 +80,8 @@ public class ReorgTests
 
         _blockTree = blockTreeBuilder.TestObject;
 
-        TxPool.TxPool txPool = new(
-            ecdsa,
-            new BlobTxStorage(),
-            new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, stateReader),
-            new TxPoolConfig(),
-            new TxValidator(specProvider.ChainId),
-            LimboLogs.Instance,
-            transactionComparerProvider.GetDefaultComparer());
         BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
-        BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(blockhashCache, LimboLogs.Instance);
         EthereumVirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
@@ -104,47 +94,53 @@ public class ReorgTests
             new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(blockhashProvider, specProvider, LimboLogs.Instance));
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+                stateProvider, specProvider, balManager, LimboLogs.Instance),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(stateProvider),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
+            new ExecutionRequestsProcessor(transactionProcessor),
+            balManager);
         BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,
             stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             blockhashProvider,
-            LimboLogs.Instance);
+            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
+            LimboLogs.Instance,
+            Substitute.For<IWorldStateManager>());
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
-            new RecoverSignatures(
+            [new RecoverSignatures(
                 ecdsa,
                 specProvider,
-                LimboLogs.Instance),
+                LimboLogs.Instance)],
             stateReader,
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default,
-            Substitute.For<IProcessingStats>());
+            Substitute.For<IProcessingStats>(),
+            new BlockTreeMutationLock());
     }
 
     [OneTimeTearDown]
     public async Task TearDownAsync() => await (_blockchainProcessor?.DisposeAsync() ?? default);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Retry(3)]
-    public void Test()
+    public async Task Test()
     {
-        List<Block> events = new();
+        List<Block> events = [];
+        TaskCompletionSource block2BAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
         Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;
@@ -152,10 +148,13 @@ public class ReorgTests
         Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
         Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(4).WithTotalDifficulty(5L).TestObject;
         Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(6).WithTotalDifficulty(11L).TestObject;
+        // The state system resolves each block's parent by hash, so the branch it processes must be known to it.
+        foreach (Block block in new[] { block0, block1, block2, block3, block1B, block2B }) _stateHeaderProvider.Add(block.Header);
 
         _blockTree.BlockAddedToMain += (_, args) =>
         {
-            events.Add(args.Block);
+            lock (events) events.Add(args.Block);
+            if (args.Block.Hash == block2B.Hash) block2BAdded.TrySetResult();
         };
 
         _blockchainProcessor.Start();
@@ -167,10 +166,11 @@ public class ReorgTests
         _blockTree.SuggestBlock(block1B);
         _blockTree.SuggestBlock(block2B);
 
-        Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
+        await block2BAdded.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        events.Should().HaveCount(6);
-        events[4].Hash.Should().Be(block1B.Hash!);
-        events[5].Hash.Should().Be(block2B.Hash!);
+        Assert.That(_blockTree.Head, Is.EqualTo(block2B));
+        Assert.That(events.Count, Is.EqualTo(6));
+        Assert.That(events[4].Hash, Is.EqualTo(block1B.Hash!));
+        Assert.That(events[5].Hash, Is.EqualTo(block2B.Hash!));
     }
 }

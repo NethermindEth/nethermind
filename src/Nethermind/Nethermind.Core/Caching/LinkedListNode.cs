@@ -7,19 +7,16 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Core.Caching;
 
-internal sealed class LinkedListNode<T>
+internal sealed class LinkedListNode<T>(T value)
 {
     internal LinkedListNode<T>? Next;
     internal LinkedListNode<T>? Prev;
-    internal T Value;
-
-    public LinkedListNode(T value)
-    {
-        Value = value;
-    }
+    internal T Value = value;
 
     public static void MoveToMostRecent([NotNull] ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)
     {
+        if (ReferenceEquals(leastRecentlyUsed?.Prev, node)) return;
+
         if (node.Next == node)
         {
             if (leastRecentlyUsed != node)
@@ -60,17 +57,11 @@ internal sealed class LinkedListNode<T>
         }
 
         [DoesNotReturn, StackTraceHidden]
-        static void InvalidRemoveFromEmptyList()
-        {
-            throw new InvalidOperationException("This method shouldn't be called on empty list");
-        }
+        static void InvalidRemoveFromEmptyList() => throw new InvalidOperationException("This method shouldn't be called on empty list");
     }
 
     [DoesNotReturn, StackTraceHidden]
-    static void InvalidNotSingleNodeList()
-    {
-        throw new InvalidOperationException("This should only be true for a list with only one node");
-    }
+    static void InvalidNotSingleNodeList() => throw new InvalidOperationException("This should only be true for a list with only one node");
 
     public static void AddMostRecent([NotNull] ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)
     {

@@ -6,13 +6,8 @@ using System;
 namespace Nethermind.Abi
 {
     [AttributeUsage(AttributeTargets.Property)]
-    public class AbiTypeMappingAttribute : Attribute
+    public class AbiTypeMappingAttribute(Type abiType, params object[] args) : Attribute
     {
-        public AbiTypeMappingAttribute(Type abiType, params object[] args)
-        {
-            AbiType = (AbiType)Activator.CreateInstance(abiType, args)! ?? throw new ArgumentException($"Cannot create type {abiType}", nameof(abiType));
-        }
-
-        public AbiType AbiType { get; }
+        public AbiType AbiType { get; } = (AbiType)Activator.CreateInstance(abiType, args)! ?? throw new ArgumentException($"Cannot create type {abiType}", nameof(abiType));
     }
 }

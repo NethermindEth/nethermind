@@ -8,8 +8,5 @@ namespace Nethermind.Xdc;
 
 public class MustBeEmptyUnclesValidator : IUnclesValidator
 {
-    public bool Validate(BlockHeader header, BlockHeader[] uncles)
-    {
-        return uncles.Length == 0;
-    }
+    public bool Validate(BlockHeader header, BlockHeader[] uncles) => uncles.Length == 0;
 }

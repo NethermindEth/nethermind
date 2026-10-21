@@ -27,7 +27,18 @@ namespace Nethermind.Api.Steps
                 StepType.GetCustomAttribute<RunnerStepDependenciesAttribute>();
             Dependencies = dependenciesAttribute?.Dependencies ?? [];
             Dependents = dependenciesAttribute?.Dependents ?? [];
+
+            StepCommandAttribute? commandAttribute = StepType.GetCustomAttribute<StepCommandAttribute>();
+            Command = commandAttribute?.Name;
+            CommandDescription = commandAttribute?.Description;
         }
+
+        /// <summary>The command name this step is exposed as, or <c>null</c> for an ordinary startup step.</summary>
+        /// <remarks>A step with a command only runs when it is selected as the target of the run.</remarks>
+        public string? Command { get; }
+
+        /// <summary>One line describing <see cref="Command"/>.</summary>
+        public string? CommandDescription { get; }
 
         public Type StepBaseType { get; }
 
@@ -36,10 +47,7 @@ namespace Nethermind.Api.Steps
         public Type[] Dependencies { get; }
         public Type[] Dependents { get; }
 
-        public override string ToString()
-        {
-            return $"{StepType.Name} : {StepBaseType.Name}";
-        }
+        public override string ToString() => $"{StepType.Name} : {StepBaseType.Name}";
 
         private static Type GetStepBaseType(Type type)
         {
@@ -51,10 +59,7 @@ namespace Nethermind.Api.Steps
             return type;
         }
 
-        public static implicit operator StepInfo(Type type)
-        {
-            return new StepInfo(type);
-        }
+        public static implicit operator StepInfo(Type type) => new(type);
 
         public static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
     }

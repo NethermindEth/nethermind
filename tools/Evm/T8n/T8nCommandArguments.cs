@@ -28,7 +28,7 @@ public class T8nCommandArguments
 
     public static T8nCommandArguments FromParseResult(ParseResult parseResult)
     {
-        var arguments = new T8nCommandArguments
+        T8nCommandArguments arguments = new()
         {
             OutputBody = parseResult.GetValue(T8nCommandOptions.OutputBodyOpt),
             Trace = parseResult.GetValue(T8nCommandOptions.TraceOpt),
@@ -37,55 +37,55 @@ public class T8nCommandArguments
             TraceReturnData = parseResult.GetValue(T8nCommandOptions.TraceReturnDataOpt)
         };
 
-        var inputAlloc = parseResult.GetValue(T8nCommandOptions.InputAllocOpt);
+        string? inputAlloc = parseResult.GetValue(T8nCommandOptions.InputAllocOpt);
         if (inputAlloc is not null)
         {
             arguments.InputAlloc = inputAlloc;
         }
 
-        var inputEnv = parseResult.GetValue(T8nCommandOptions.InputEnvOpt);
+        string? inputEnv = parseResult.GetValue(T8nCommandOptions.InputEnvOpt);
         if (inputEnv is not null)
         {
             arguments.InputEnv = inputEnv;
         }
 
-        var inputTxs = parseResult.GetValue(T8nCommandOptions.InputTxsOpt);
+        string? inputTxs = parseResult.GetValue(T8nCommandOptions.InputTxsOpt);
         if (inputTxs is not null)
         {
             arguments.InputTxs = inputTxs;
         }
 
-        var outputAlloc = parseResult.GetValue(T8nCommandOptions.OutputAllocOpt);
+        string? outputAlloc = parseResult.GetValue(T8nCommandOptions.OutputAllocOpt);
         if (outputAlloc is not null)
         {
             arguments.OutputAlloc = outputAlloc;
         }
 
-        var outputResult = parseResult.GetValue(T8nCommandOptions.OutputResultOpt);
+        string? outputResult = parseResult.GetValue(T8nCommandOptions.OutputResultOpt);
         if (outputResult is not null)
         {
             arguments.OutputResult = outputResult;
         }
 
-        var outputBasedir = parseResult.GetValue(T8nCommandOptions.OutputBaseDirOpt);
+        string? outputBasedir = parseResult.GetValue(T8nCommandOptions.OutputBaseDirOpt);
         if (outputBasedir is not null)
         {
             arguments.OutputBaseDir = outputBasedir;
         }
 
-        var stateFork = parseResult.GetValue(T8nCommandOptions.StateForkOpt);
+        string? stateFork = parseResult.GetValue(T8nCommandOptions.StateForkOpt);
         if (stateFork is not null)
         {
             arguments.StateFork = stateFork;
         }
 
-        var stateReward = parseResult.GetValue(T8nCommandOptions.StateRewardOpt);
+        string? stateReward = parseResult.GetValue(T8nCommandOptions.StateRewardOpt);
         if (stateReward is not null)
         {
             arguments.StateReward = stateReward;
         }
 
-        var stateChainId = parseResult.GetValue(T8nCommandOptions.StateChainIdOpt);
+        ulong? stateChainId = parseResult.GetValue(T8nCommandOptions.StateChainIdOpt);
         if (stateChainId.HasValue)
         {
             arguments.StateChainId = stateChainId.Value;

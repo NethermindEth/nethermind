@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
+
 namespace Nethermind.Tools.Kute.Metrics;
 
 public enum MetricsReportFormat
@@ -40,7 +42,7 @@ public sealed record TimeMetrics
         {
             double average = times.Average(t => t.Ticks);
             double sumOfSquares = times.Sum(t => Math.Pow(t.Ticks - average, 2));
-            var stdDev = Math.Sqrt(sumOfSquares / times.Count);
+            double stdDev = Math.Sqrt(sumOfSquares / times.Count);
             return TimeSpan.FromTicks((long)stdDev);
         }
     }
@@ -58,13 +60,16 @@ public sealed record MetricsReport
     public required IReadOnlyDictionary<string, TimeSpan> Batches { get; init; }
 
     private Dictionary<string, TimeMetrics>? _singlesMetrics;
-    public Dictionary<string, TimeMetrics> SinglesMetrics => _singlesMetrics ??= Singles.ToDictionary(kvp => kvp.Key, kvp => TimeMetrics.From(kvp.Value.Values.ToList()));
+    public Dictionary<string, TimeMetrics> SinglesMetrics => _singlesMetrics ??= Singles.ToDictionary(kvp => kvp.Key, kvp => TimeMetrics.From([.. kvp.Value.Values]));
 
     private TimeMetrics? _batchesMetrics;
-    public TimeMetrics BatchesMetrics => _batchesMetrics ??= TimeMetrics.From(Batches.Values.ToList());
+    public TimeMetrics BatchesMetrics => _batchesMetrics ??= TimeMetrics.From([.. Batches.Values]);
 }
 
 public interface IMetricsReportProvider
 {
     MetricsReport Report();
 }
+
+[JsonSerializable(typeof(MetricsReport))]
+internal partial class MetricsReportJsonContext : JsonSerializerContext;

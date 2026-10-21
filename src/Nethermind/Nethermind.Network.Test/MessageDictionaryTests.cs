@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Network.Test.P2P.Subprotocols;
 using NSubstitute;
 using NUnit.Framework;
 using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
@@ -19,7 +20,7 @@ namespace Nethermind.Network.Test;
 
 public class MessageDictionaryTests
 {
-    private readonly List<Eth66Message<GetBlockHeadersMessage>> _recordedRequests = new();
+    private readonly List<Eth66Message<GetBlockHeadersMessage>> _recordedRequests = [];
     private MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>
         _testMessageDictionary;
 
@@ -27,7 +28,7 @@ public class MessageDictionaryTests
     public void Setup()
     {
         _recordedRequests.Clear();
-        _testMessageDictionary = new((message) => _recordedRequests.Add(message));
+        _testMessageDictionary = new(RecordingProtocolHandler.Create(_recordedRequests));
     }
 
     [Test]
@@ -39,13 +40,13 @@ public class MessageDictionaryTests
 
         _testMessageDictionary.Send(request);
 
-        _recordedRequests.Count.Should().Be(1);
-        _recordedRequests[^1].Should().BeSameAs(request.Message);
-        request.CompletionSource.Task.IsCompleted.Should().BeFalse();
+        Assert.That(_recordedRequests.Count, Is.EqualTo(1));
+        Assert.That(_recordedRequests[^1], Is.SameAs(request.Message));
+        Assert.That(request.CompletionSource.Task.IsCompleted, Is.False);
 
         _testMessageDictionary.Handle(111, response, 100);
-        request.CompletionSource.Task.IsCompleted.Should().BeTrue();
-        request.CompletionSource.Task.Result.Should().BeSameAs(response);
+        Assert.That(request.CompletionSource.Task.IsCompleted, Is.True);
+        Assert.That(request.CompletionSource.Task.Result, Is.SameAs(response));
     }
 
     [Test]
@@ -57,13 +58,11 @@ public class MessageDictionaryTests
 
         _testMessageDictionary.Send(request);
 
-        _recordedRequests.Count.Should().Be(1);
-        _recordedRequests[^1].Should().BeSameAs(request.Message);
-        request.CompletionSource.Task.IsCompleted.Should().BeFalse();
+        Assert.That(_recordedRequests.Count, Is.EqualTo(1));
+        Assert.That(_recordedRequests[^1], Is.SameAs(request.Message));
+        Assert.That(request.CompletionSource.Task.IsCompleted, Is.False);
 
-        _testMessageDictionary.Invoking((dictionary) => dictionary.Handle(112, response, 100))
-            .Should()
-            .Throw<SubprotocolException>();
+        Assert.That(() => _testMessageDictionary.Handle(112, response, 100), Throws.TypeOf<SubprotocolException>());
     }
 
     [Test]
@@ -77,15 +76,15 @@ public class MessageDictionaryTests
         _testMessageDictionary.Send(requestBefore);
         _testMessageDictionary.Send(request);
 
-        _recordedRequests.Count.Should().Be(2);
-        _recordedRequests[^1].Should().BeSameAs(request.Message);
-        request.CompletionSource.Task.IsCompleted.Should().BeFalse();
+        Assert.That(_recordedRequests.Count, Is.EqualTo(2));
+        Assert.That(_recordedRequests[^1], Is.SameAs(request.Message));
+        Assert.That(request.CompletionSource.Task.IsCompleted, Is.False);
 
         _testMessageDictionary.Handle(111, response, 100);
-        request.CompletionSource.Task.IsCompleted.Should().BeTrue();
-        request.CompletionSource.Task.Result.Should().BeSameAs(response);
+        Assert.That(request.CompletionSource.Task.IsCompleted, Is.True);
+        Assert.That(request.CompletionSource.Task.Result, Is.SameAs(response));
 
-        requestBefore.CompletionSource.Task.IsCompleted.Should().BeFalse();
+        Assert.That(requestBefore.CompletionSource.Task.IsCompleted, Is.False);
     }
 
     [Test]
@@ -96,18 +95,30 @@ public class MessageDictionaryTests
             _testMessageDictionary.Send(CreateRequest(i));
         }
 
-        _testMessageDictionary.Invoking(static (dictionary) => dictionary.Send(CreateRequest(33)))
-            .Should()
-            .Throw<InvalidOperationException>();
+        Assert.That(() => _testMessageDictionary.Send(CreateRequest(33)), Throws.InstanceOf<InvalidOperationException>());
     }
 
     [Test]
     public void Test_Send_MessageDisposing_OnInvalidId()
     {
         IOwnedReadOnlyList<BlockHeader> response = Substitute.For<IOwnedReadOnlyList<BlockHeader>>();
-        _testMessageDictionary.Invoking((dictionary) => dictionary.Handle(1234, response, 100))
-            .Should()
-            .Throw<SubprotocolException>();
+        Assert.That(() => _testMessageDictionary.Handle(1234, response, 100), Throws.TypeOf<SubprotocolException>());
+
+        response.Received().Dispose();
+    }
+
+    [Test]
+    public void Test_Send_MessageDisposing_OnOldRequest()
+    {
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
+
+        _testMessageDictionary.Send(request);
+
+        // Simulate a request timed out
+        request.CompletionSource.TrySetException(new TimeoutException());
+
+        IOwnedReadOnlyList<BlockHeader> response = Substitute.For<IOwnedReadOnlyList<BlockHeader>>();
+        _testMessageDictionary.Handle(111, response, 100);
 
         response.Received().Dispose();
     }
@@ -115,14 +126,42 @@ public class MessageDictionaryTests
     [Test]
     public void Handle_disposes_tuple_disposable_component_on_unmatched_request()
     {
-        MessageDictionary<Eth66Message<GetBlockHeadersMessage>, (IDisposable, long)> dictionary = new(_ => { });
+        MessageDictionary<Eth66Message<GetBlockHeadersMessage>, (IDisposable, long)> dictionary = new(RecordingProtocolHandler.Create<Eth66Message<GetBlockHeadersMessage>>());
         IDisposable inner = Substitute.For<IDisposable>();
 
-        dictionary.Invoking(d => d.Handle(9999, (inner, 100L), 100))
-            .Should()
-            .Throw<SubprotocolException>();
+        Assert.That(() => dictionary.Handle(9999, (inner, 100L), 100), Throws.TypeOf<SubprotocolException>());
 
         inner.Received().Dispose();
+    }
+
+    [Test]
+    public void ThrowIfNotRequested_keeps_a_pending_request_pending()
+    {
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
+        using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
+        _testMessageDictionary.Send(request);
+
+        _testMessageDictionary.ThrowIfNotRequested(UndecodableResponse.Create(111));
+        _testMessageDictionary.Handle(111, response, 100);
+
+        Assert.That(request.CompletionSource.Task.Result, Is.SameAs(response));
+    }
+
+    [TestCaseSource(nameof(UncorrelatedContents))]
+    public void ThrowIfNotRequested_rejects_uncorrelated_content(IByteBuffer content)
+    {
+        _testMessageDictionary.Send(CreateRequest(111));
+
+        Assert.That(() => _testMessageDictionary.ThrowIfNotRequested(content), Throws.TypeOf<SubprotocolException>());
+    }
+
+    private static IEnumerable<TestCaseData> UncorrelatedContents()
+    {
+        yield return new TestCaseData(UndecodableResponse.Create(112)).SetName("Not pending request id");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0x80])).SetName("Unreadable request id");
+        yield return new TestCaseData(Unpooled.WrappedBuffer(Array.Empty<byte>())).SetName("Empty payload");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc1])).SetName("List shorter than its header");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc2, 0x82, 0x01])).SetName("Request id shorter than its header");
     }
 
     private static Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> CreateRequest(int requestId)

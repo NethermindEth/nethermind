@@ -3,7 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -17,80 +22,397 @@ namespace Nethermind.Core.Test.Encoding;
 public class BlockAccessListDecoderTests
 {
     [TestCaseSource(nameof(BlockAccessListTestSource))]
-    public void Can_decode_then_encode(string rlp, BlockAccessList expected)
+    public void Can_decode_then_encode(string rlp, ReadOnlyBlockAccessList expected)
     {
-        BlockAccessList bal = Rlp.Decode<BlockAccessList>(Bytes.FromHexString(rlp));
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(Bytes.FromHexString(rlp))!;
 
         Assert.That(bal, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(bal).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [TestCaseSource(nameof(BlockAccessListTestSource))]
+    public void Decode_caches_wire_hash_matching_full_rlp_keccak(string rlp, ReadOnlyBlockAccessList _)
+    {
+        byte[] bytes = Bytes.FromHexString(rlp);
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(bytes)!;
+
+        Assert.That(bal.WireHash, Is.Not.Null);
+        Assert.That(bal.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(bytes))));
+    }
+
+    // Block processing reuses WireHash as the header commitment of the generated BAL, which holds only
+    // if every encoding the decoder accepts is the canonical one.
+    [TestCaseSource(nameof(BlockAccessListEncodingFormsSource))]
+    public bool Decode_accepts_only_the_canonical_encoding(string rlp)
+    {
+        byte[] bytes = Bytes.FromHexString(rlp);
+
+        ReadOnlyBlockAccessList? decoded;
+        try
+        {
+            decoded = Rlp.Decode<ReadOnlyBlockAccessList>(bytes);
+        }
+        catch (RlpException)
+        {
+            return false;
+        }
+
+        Assert.That(Rlp.Encode(decoded).Bytes, Is.EqualTo(bytes), "accepted a non-canonical encoding");
+        return true;
+    }
+
+    [Test]
+    public void Decode_handles_envelope_with_trailing_bytes_and_hashes_only_the_bal_slice()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+        byte[] balRlp = Rlp.Encode(bal).Bytes;
+
+        byte[] envelope = new byte[balRlp.Length + 4];
+        Buffer.BlockCopy(balRlp, 0, envelope, 0, balRlp.Length);
+        envelope[^4] = 0xde;
+        envelope[^3] = 0xad;
+        envelope[^2] = 0xbe;
+        envelope[^1] = 0xef;
+
+        RlpReader ctx = new(envelope);
+        ReadOnlyBlockAccessList decoded = BlockAccessListDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(balRlp))));
+            Assert.That(ctx.Position, Is.EqualTo(balRlp.Length));
+        }
+    }
+
+    // Truncated RLP causes an out-of-bounds primitive read; the Rlp.Decode entry-point
+    // wrap converts that to RlpException so callers see a consistent failure mode
+    // (engine_newPayloadV5 returns a clean error instead of crashing the RPC).
+    [Test]
+    public void Decode_empty_bytes_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>([]), Throws.TypeOf<RlpException>());
+
+    // 0xf8 announces a long-form list with a 1-byte length follower, but the byte is missing.
+    [Test]
+    public void Decode_truncated_outer_list_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xf8 }), Throws.TypeOf<RlpException>());
+
+    // 0x80 is an empty byte string, not an EIP-7928 BAL list. The public Decode<T>
+    // entry point must fail with a typed RlpException rather than returning null.
+    [Test]
+    public void Decode_empty_string_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0x80 }), Throws.TypeOf<RlpException>());
+
+    // 0xc1 0xc0 = outer list of 1 containing an empty inner list. EIP-7928 requires each
+    // AccountChanges to be a 6-field sequence; an empty list is structurally invalid.
+    [Test]
+    public void Decode_inner_empty_list_in_account_changes_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
+
+    [Test]
+    public void Decode_empty_slot_changes_entry_in_account_changes_throws_RlpException()
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptySlotChangesEntry(TestItem.AddressA);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded),
+            Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Decode_account_changes_without_changes_or_reads_roundtrips_as_account_read()
+    {
+        ReadOnlyBlockAccessList bal = new(
+            [new ReadOnlyAccountChanges(TestItem.AddressA)],
+            itemCount: 0);
+        byte[] encoded = Rlp.Encode(bal).Bytes;
+
+        ReadOnlyBlockAccessList decoded = Rlp.Decode<ReadOnlyBlockAccessList>(encoded)!;
+
+        Assert.That(decoded, Is.EqualTo(bal));
+        Assert.That(decoded.ItemCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void DecodeArrayPool_disposes_partial_list_when_element_decoder_throws()
+    {
+        TextWriter originalError = Console.Error;
+        using StringWriter error = new();
+        Console.SetError(error);
+        try
+        {
+            RlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+
+            RlpException? exception = null;
+            try
+            {
+                Rlp.DecodeArrayPool(ref ctx, new ThrowingByteDecoder());
+            }
+            catch (RlpException e)
+            {
+                exception = e;
+            }
+
+            Assert.That(exception?.Message, Is.EqualTo(ThrowingByteDecoder.Error));
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            Assert.That(error.ToString(), Does.Not.Contain(nameof(ArrayPoolList<>)));
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+    }
+
+    [Test]
+    public void DecodeArrayPool_disposes_decoded_items_when_element_decoder_throws()
+    {
+        DisposableElement.DisposedCount = 0;
+        RlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+
+        RlpException? exception = null;
+        try
+        {
+            Rlp.DecodeArrayPool(ref ctx, new ThrowingDisposableDecoder());
+        }
+        catch (RlpException e)
+        {
+            exception = e;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.Message, Is.EqualTo(ThrowingDisposableDecoder.Error));
+            Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void DecodeArrayPool_disposes_runtime_disposable_items_when_static_type_does_not_implement_disposable()
+    {
+        DisposableElement.DisposedCount = 0;
+        RlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+
+        RlpException? exception = null;
+        try
+        {
+            Rlp.DecodeArrayPool<object>(ref ctx, new ThrowingObjectDecoder());
+        }
+        catch (RlpException e)
+        {
+            exception = e;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.Message, Is.EqualTo(ThrowingObjectDecoder.Error));
+            Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void DecodeArrayPool_wraps_non_rlp_decoder_exceptions() => Assert.That(
+        () => { RlpReader c = new(new byte[] { 0xc1, 0x01 }); Rlp.DecodeArrayPool(ref c, new ThrowingArgumentDecoder()); },
+        Throws.TypeOf<RlpException>().With.InnerException.TypeOf<ArgumentException>());
+
+    [Test]
+    public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
+    {
+        // SlotChanges = [StorageKey, List[StorageChange]]. An empty StorageChange list means a
+        // slot with no changes — that slot belongs in storage_reads instead. Geth bal-devnet-4
+        // rejects this with "empty storage writes".
+        ReadOnlySlotChanges withEmptyChanges = new(123u, []);
+        byte[] rlp = Rlp.Encode(withEmptyChanges).Bytes;
+
+        RlpException? thrown = null;
+        try
+        {
+            RlpReader ctx = new(rlp);
+            SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        }
+        catch (RlpException e)
+        {
+            thrown = e;
+        }
+
+        Assert.That(thrown, Is.Not.Null);
+        Assert.That(thrown!.Message, Does.Contain("Empty storage_changes"));
+    }
+
+    [Test]
+    public void Decode_slot_changes_rejects_storage_change_count_above_max_txs()
+    {
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(Eip7928Constants.MaxTxs + 1);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpLimitException>()
+                .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
+    }
+
+    [Test]
+    public void DecodeArray_with_decoder_stays_constrained_to_reference_types()
+    {
+        MethodInfo decodeArray = typeof(RlpReader)
+            .GetMethods()
+            .Single(m => m.Name == nameof(RlpReader.DecodeArray)
+                && m.IsGenericMethodDefinition
+                && m.GetParameters().Length == 5
+                && m.GetParameters()[0].ParameterType.IsGenericType
+                && m.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IRlpDecoder<>));
+
+        GenericParameterAttributes constraints = decodeArray.GetGenericArguments()[0].GenericParameterAttributes;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(constraints.HasFlag(GenericParameterAttributes.ReferenceTypeConstraint), Is.True,
+                "DecodeArray(IRlpDecoder<T>, ...) must stay constrained to reference types: a value-type T would otherwise silently substitute default(T) for an empty-list (0xc0) element instead of throwing.");
+            Assert.That(decodeArray.GetParameters(), Has.Length.EqualTo(5),
+                "The five-parameter overload is part of the public binary API.");
+        }
+    }
+
+    [Test]
+    public void Decode_slot_changes_with_empty_list_storage_change_throws_RlpException()
+    {
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(1);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>());
+    }
+
+    [TestCase(0, TestName = "storage_changes")]
+    [TestCase(1, TestName = "storage_reads")]
+    [TestCase(2, TestName = "balance_changes")]
+    [TestCase(3, TestName = "nonce_changes")]
+    [TestCase(4, TestName = "code_changes")]
+    public void Decode_account_changes_with_empty_list_element_in_field_throws_RlpException(int malformedFieldIndex)
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptyListElement(TestItem.AddressA, malformedFieldIndex);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>());
     }
 
     [Test]
     public void Can_decode_then_encode_balance_change()
     {
         const string rlp = "0xc801861319718811c8";
-        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        RlpReader ctx = new(Bytes.FromHexString(rlp));
         BalanceChange balanceChange = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         BalanceChange expected = new(1, 0x1319718811c8);
         Assert.That(balanceChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(balanceChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Balance_change_roundtrips_with_index_above_uint16_range()
+    {
+        // EIP-7928 widened BlockAccessIndex to uint32 (commit 645099785a). This test catches
+        // any regression to the old uint16 decoder by using an index above 65535.
+        BalanceChange original = new(0x10_0000u, 0x42);
+
+        Rlp encoded = Rlp.Encode(original);
+        RlpReader ctx = new(encoded.Bytes);
+        BalanceChange decoded = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        Assert.That(decoded, Is.EqualTo(original));
+        Assert.That(decoded.Index, Is.EqualTo(0x10_0000u));
     }
 
     [Test]
     public void Can_decode_then_encode_nonce_change()
     {
         const string rlp = "0xc20101";
-        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        RlpReader ctx = new(Bytes.FromHexString(rlp));
         NonceChange nonceChange = NonceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         NonceChange expected = new(1, 1);
         Assert.That(nonceChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(nonceChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    // EIP-8298: [index, new_code] for installed code, [index, b"", new_code_hash] for code adopted by SETCODEFROM.
+    [Test]
+    public void Code_change_roundtrips_in_its_form([Values] bool adopted)
+    {
+        CodeChange original = adopted ? CodeChange.Adopted(1, TestItem.KeccakA.ValueHash256) : new CodeChange(1, [0xab, 0xcd]);
+        string expectedRlp = adopted ? "0xe30180a0" + TestItem.KeccakA.ToString(false) : "0xc40182abcd";
+
+        byte[] encoded = Rlp.Encode(original).Bytes;
+        RlpReader ctx = new(encoded);
+        CodeChange decoded = CodeChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That("0x" + Bytes.ToHexString(encoded), Is.EqualTo(expectedRlp), "encoding");
+            Assert.That(decoded, Is.EqualTo(original), "decoded");
+            Assert.That(decoded.IsAdopted, Is.EqualTo(adopted), "form");
+            Assert.That(decoded.Code, adopted ? Is.Empty : Is.EqualTo(original.Code), "code");
+        }
+    }
+
+    [Test]
+    public void Code_change_forms_are_not_equal_for_the_same_code()
+    {
+        byte[] code = [0xab, 0xcd];
+
+        Assert.That(CodeChange.Adopted(1, ValueKeccak.Compute(code), code), Is.Not.EqualTo(new CodeChange(1, code)));
+    }
+
+    [TestCase("0xe50182abcda0", TestName = "code_change_with_code_and_hash")]
+    [TestCase("0xc50180820102", TestName = "code_change_with_short_hash")]
+    public void Decode_malformed_adopted_code_change_throws_RlpException(string prefix)
+    {
+        byte[] encoded = Bytes.FromHexString(prefix.EndsWith("a0") ? prefix + TestItem.KeccakA.ToString(false) : prefix);
+
+        Assert.That(() =>
+        {
+            RlpReader ctx = new(encoded);
+            CodeChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        }, Throws.InstanceOf<RlpException>());
     }
 
     [Test]
     public void Can_decode_then_encode_slot_change()
     {
         StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-        SlotChanges expected = new(0, new SortedList<ushort, StorageChange> { { 0, parentHashStorageChange } });
+        ReadOnlySlotChanges expected = new(0, [parentHashStorageChange]);
 
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
 
-        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(expectedRlp));
-        SlotChanges slotChange = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        RlpReader ctx = new(Bytes.FromHexString(expectedRlp));
+        ReadOnlySlotChanges slotChange = SlotChangesDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.None);
         Assert.That(slotChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(slotChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(expectedRlp);
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
-    [Test]
-    public void Can_decode_then_encode_storage_change()
+    [TestCase("00", "0xc28080")]
+    [TestCase("01", "0xc28001")]
+    [TestCase("80", "0xc3808180")]
+    [TestCase("0de0b6b3a7640000", "0xca80880de0b6b3a7640000")]
+    [TestCase("c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd", "0xe280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")]
+    public void Can_decode_then_encode_storage_change(string valueHex, string expectedRlp)
     {
-        StorageChange expected = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
+        StorageChange expected = new(0, new UInt256(Bytes.FromHexString(valueHex), isBigEndian: true));
 
-        string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
-
-        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(expectedRlp));
+        RlpReader ctx = new(Bytes.FromHexString(expectedRlp));
         StorageChange storageChange = StorageChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(storageChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(expectedRlp);
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
@@ -99,148 +421,86 @@ public class BlockAccessListDecoderTests
     {
         const string rlp = "0xc20100";
 
-        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        RlpReader ctx = new(Bytes.FromHexString(rlp));
         CodeChange codeChange = CodeChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         CodeChange expected = new(1, [0x0]);
         Assert.That(codeChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(codeChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
     [TestCaseSource(nameof(AccountChangesTestSource))]
-    public void Can_decode_then_encode_account_change(string rlp, AccountChanges expected)
+    public void Can_decode_then_encode_account_change(string rlp, ReadOnlyAccountChanges expected)
     {
-        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
-        AccountChanges accountChange = AccountChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        RlpReader ctx = new(Bytes.FromHexString(rlp));
+        ReadOnlyAccountChanges accountChange = AccountChangesDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.None);
 
         Assert.That(accountChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(accountChange).Bytes);
-        Console.WriteLine(encoded);
-        Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
     [Test]
     public void Can_encode_then_decode()
     {
-        StorageChange storageChange = new()
-        {
-            BlockAccessIndex = 10,
-            NewValue = 0xcad
-        };
+        StorageChange storageChange = new(10, (UInt256)0xcad);
         byte[] storageChangeBytes = Rlp.Encode(storageChange, RlpBehaviors.None).Bytes;
-        StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
+        StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None)!;
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        var storageChanges = new SortedList<ushort, StorageChange> { { 10, storageChange } };
-        SlotChanges slotChanges = new(0xbad, storageChanges);
+        StorageChange[] storageChanges = [storageChange];
+        ReadOnlySlotChanges slotChanges = new(0xbad, storageChanges);
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
-        SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
+        ReadOnlySlotChanges slotChangesDecoded = Rlp.Decode<ReadOnlySlotChanges>(slotChangesBytes, RlpBehaviors.None)!;
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
 
-        StorageRead storageRead = new(0xbababa);
-        StorageRead storageRead2 = new(0xcacaca);
-        byte[] storageReadBytes = Rlp.Encode(storageRead, RlpBehaviors.None).Bytes;
-        StorageRead storageReadDecoded = Rlp.Decode<StorageRead>(storageReadBytes, RlpBehaviors.None);
+        UInt256 storageRead = 0xbababa;
+        byte[] storageReadBytes = Rlp.Encode(storageRead).Bytes;
+        UInt256 storageReadDecoded = Rlp.Decode<UInt256>(storageReadBytes, RlpBehaviors.None);
         Assert.That(storageRead, Is.EqualTo(storageReadDecoded));
 
         BalanceChange balanceChange = new(10, 0);
         BalanceChange balanceChange2 = new(11, 1);
         byte[] balanceChangeBytes = Rlp.Encode(balanceChange, RlpBehaviors.None).Bytes;
-        BalanceChange balanceChangeDecoded = Rlp.Decode<BalanceChange>(balanceChangeBytes, RlpBehaviors.None);
+        BalanceChange balanceChangeDecoded = Rlp.Decode<BalanceChange>(balanceChangeBytes, RlpBehaviors.None)!;
         Assert.That(balanceChange, Is.EqualTo(balanceChangeDecoded));
 
         NonceChange nonceChange = new(10, 0);
         NonceChange nonceChange2 = new(11, 0);
         byte[] nonceChangeBytes = Rlp.Encode(nonceChange, RlpBehaviors.None).Bytes;
-        NonceChange nonceChangeDecoded = Rlp.Decode<NonceChange>(nonceChangeBytes, RlpBehaviors.None);
+        NonceChange nonceChangeDecoded = Rlp.Decode<NonceChange>(nonceChangeBytes, RlpBehaviors.None)!;
         Assert.That(nonceChange, Is.EqualTo(nonceChangeDecoded));
 
         CodeChange codeChange = new(10, [0, 50]);
         byte[] codeChangeBytes = Rlp.Encode(codeChange, RlpBehaviors.None).Bytes;
-        CodeChange codeChangeDecoded = Rlp.Decode<CodeChange>(codeChangeBytes, RlpBehaviors.None);
+        CodeChange codeChangeDecoded = Rlp.Decode<CodeChange>(codeChangeBytes, RlpBehaviors.None)!;
         Assert.That(codeChange, Is.EqualTo(codeChangeDecoded));
 
-        AccountChanges accountChanges = Build.An.AccountChanges
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithStorageChanges(slotChanges.Slot, storageChange)
+            .WithStorageChanges(slotChanges.Key, storageChange)
             .WithStorageReads(0xbababa, 0xcacaca)
             .WithBalanceChanges([balanceChange, balanceChange2])
             .WithNonceChanges([nonceChange, nonceChange2])
             .WithCodeChanges(codeChange)
             .TestObject;
         byte[] accountChangesBytes = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-        AccountChanges accountChangesDecoded = Rlp.Decode<AccountChanges>(accountChangesBytes, RlpBehaviors.None);
+        ReadOnlyAccountChanges accountChangesDecoded = Rlp.Decode<ReadOnlyAccountChanges>(accountChangesBytes, RlpBehaviors.None)!;
         Assert.That(accountChanges, Is.EqualTo(accountChangesDecoded));
 
-        SortedDictionary<Address, AccountChanges> accountChangesDict = new()
-        {
-            { accountChanges.Address, accountChanges }
-        };
-
-        BlockAccessList blockAccessList = new(accountChangesDict);
+        ReadOnlyBlockAccessList blockAccessList = Build.A.BlockAccessList.WithAccountChanges(accountChanges).TestObject;
         byte[] blockAccessListBytes = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
-        BlockAccessList blockAccessListDecoded = Rlp.Decode<BlockAccessList>(blockAccessListBytes, RlpBehaviors.None);
+        ReadOnlyBlockAccessList blockAccessListDecoded = Rlp.Decode<ReadOnlyBlockAccessList>(blockAccessListBytes, RlpBehaviors.None)!;
         Assert.That(blockAccessList, Is.EqualTo(blockAccessListDecoded));
     }
 
     [Test]
-    public void Decoding_block_access_list_with_unsorted_account_changes_throws()
+    public void Decoding_account_changes_with_unsorted_or_duplicate_storage_reads_throws([Values(1UL, 2UL)] ulong firstSlot)
     {
-        AccountChanges accountChangesA = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
-        AccountChanges accountChangesB = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
-        SortedDictionary<Address, AccountChanges> accountChanges = new(DescendingComparer<Address>())
-        {
-            { accountChangesA.Address, accountChangesA },
-            { accountChangesB.Address, accountChangesB }
-        };
-
-        BlockAccessList blockAccessList = new(accountChanges);
-        byte[] encoded = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
-
-        Assert.That(
-            () => Rlp.Decode<BlockAccessList>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Account changes were in incorrect order."));
-    }
-
-    [Test]
-    public void Decoding_account_changes_with_unsorted_storage_changes_throws()
-    {
-        UInt256 slot1 = UInt256.One;
-        UInt256 slot2 = new(2);
-        SortedList<UInt256, SlotChanges> storageChanges = new(DescendingComparer<UInt256>())
-        {
-            { slot1, new SlotChanges(slot1) },
-            { slot2, new SlotChanges(slot2) }
-        };
-        AccountChanges accountChanges = new(
-            TestItem.AddressA,
-            storageChanges,
-            [],
-            [],
-            [],
-            []);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-
-        Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order."));
-    }
-
-    [Test]
-    public void Decoding_account_changes_with_unsorted_storage_reads_throws()
-    {
-        SortedSet<StorageRead> storageReads = new(DescendingComparer<StorageRead>())
-        {
-            new(UInt256.One),
-            new(new UInt256(2))
-        };
-        AccountChanges accountChanges = new(
+        UInt256[] storageReads = [new UInt256(firstSlot), UInt256.One];
+        ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
             [],
             storageReads,
@@ -251,94 +511,50 @@ public class BlockAccessListDecoderTests
         byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
 
         Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage reads were in incorrect order."));
     }
 
     [Test]
-    public void Decoding_account_changes_with_unsorted_balance_changes_throws()
+    public void Decoding_block_access_list_with_overlapping_storage_reads_and_changes_throws([Values(1UL, 2UL)] ulong writtenSlot)
     {
-        SortedList<ushort, BalanceChange> balanceChanges = new(DescendingComparer<ushort>())
-        {
-            { 1, new(1, UInt256.One) },
-            { 2, new(2, UInt256.Zero) }
-        };
-        AccountChanges accountChanges = new(
+        ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
+            [new ReadOnlySlotChanges(new UInt256(writtenSlot), [new StorageChange(1, 1)])],
+            [UInt256.One, new UInt256(2)],
             [],
-            [],
-            balanceChanges,
             [],
             []);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-
-        Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Balance changes were in incorrect order."));
-    }
-
-    [Test]
-    public void Decoding_account_changes_with_unsorted_nonce_changes_throws()
-    {
-        SortedList<ushort, NonceChange> nonceChanges = new(DescendingComparer<ushort>())
-        {
-            { 1, new(1, 1) },
-            { 2, new(2, 2) }
-        };
-        AccountChanges accountChanges = new(
-            TestItem.AddressA,
-            [],
-            [],
-            [],
-            nonceChanges,
-            []);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+        ReadOnlyBlockAccessList blockAccessList = new([accountChanges], 4);
+        byte[] encoded = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
 
         Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Nonce changes were in incorrect order."));
+            () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Invalid storage read, already in storage changes."));
     }
 
-    [Test]
-    public void Decoding_account_changes_with_unsorted_code_changes_throws()
-    {
-        SortedList<ushort, CodeChange> codeChanges = new(DescendingComparer<ushort>())
-        {
-            { 1, new(1, [0x01]) },
-            { 2, new(2, [0x02]) }
-        };
-        AccountChanges accountChanges = new(
-            TestItem.AddressA,
-            [],
-            [],
-            [],
-            [],
-            codeChanges);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-
+    // Verify-only validation compares the decoded BAL with execution instead of hashing the generated BAL,
+    // so the decoder must reject a duplicate rather than keep one of its values.
+    [TestCaseSource(nameof(UnsortedOrDuplicateEntrySource))]
+    public void Decoding_block_access_list_with_unsorted_or_duplicate_entry_throws(byte[] encoded, string expectedMessage) =>
         Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Code changes were in incorrect order."));
-    }
+            () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo(expectedMessage));
 
-    [Test]
-    public void Decoding_slot_changes_with_unsorted_storage_changes_throws()
-    {
-        SortedList<ushort, StorageChange> storageChanges = new(DescendingComparer<ushort>())
-        {
-            { 1, new(1, UInt256.One) },
-            { 2, new(2, UInt256.Zero) }
-        };
-        SlotChanges slotChanges = new(UInt256.One, storageChanges);
-        byte[] encoded = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
+    private const string CanonicalBlockAccessListRlp = "0xe2e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0";
 
+    // The wire hash is the header commitment, so every accepted encoding must be the one the BAL re-encodes to.
+    // Each case is a single-field mutation of CanonicalBlockAccessListRlp.
+    [TestCase("0xe2e1940000000000000000000000000000000000000001c0c0c4c3008180c3c20105c0", "Non-canonical integer at position 27", TestName = "zero_index_as_0x00")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", "Non-canonical integer at position 28", TestName = "value_with_leading_zero")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3810105c0", "Non-canonical integer at position 32", TestName = "single_byte_index_as_string")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3018105c0", "Non-canonical integer at position 33", TestName = "single_byte_value_as_string")]
+    [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Expected length greater than or equal to 56 and was 34", TestName = "short_list_with_long_header")]
+    [TestCase("0xe3e2b8140000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Unexpected RLP prefix of 184 when decoding Address at position 3 in the message of length 36.", TestName = "short_address_with_long_header")]
+    public void Decoding_non_canonical_encoding_of_valid_block_access_list_throws(string nonCanonicalRlp, string expectedMessage) =>
         Assert.That(
-            () => Rlp.Decode<SlotChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order. index=1, lastIndex=2"));
-    }
+            () => Rlp.Decode<ReadOnlyBlockAccessList>(Bytes.FromHexString(nonCanonicalRlp)),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo(expectedMessage));
 
     private static IEnumerable<TestCaseData> BlockAccessListTestSource
     {
@@ -346,91 +562,340 @@ public class BlockAccessListDecoderTests
         {
             StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
             StorageChange timestampStorageChange = new(0, 0xc);
-            SortedDictionary<Address, AccountChanges> expectedAccountChanges = new()
-            {
-                {
-                    Eip7002Constants.WithdrawalRequestPredeployAddress,
+
+            ReadOnlyBlockAccessList expected = Build.A.BlockAccessList
+                .WithAccountChanges(
                     Build.An.AccountChanges
                         .WithAddress(Eip7002Constants.WithdrawalRequestPredeployAddress)
                         .WithStorageReads(0, 1, 2, 3)
-                        .TestObject
-                },
-                {
-                    Eip7251Constants.ConsolidationRequestPredeployAddress,
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(Eip7251Constants.ConsolidationRequestPredeployAddress)
                         .WithStorageReads(0, 1, 2, 3)
-                        .TestObject
-                },
-                {
-                    Eip2935Constants.BlockHashHistoryAddress,
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
                         .WithStorageChanges(0, parentHashStorageChange)
-                        .TestObject
-                },
-                {
-                    Eip4788Constants.BeaconRootsAddress,
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(Eip4788Constants.BeaconRootsAddress)
                         .WithStorageChanges(0xc, timestampStorageChange)
                         .WithStorageReads(0x200b)
-                        .TestObject
-                },
-                {
-                    new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"),
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"))
                         .WithBalanceChanges([new(1, 0x1319718811c8)])
-                        .TestObject
-                },
-                {
-                    new("0xaccc7d92b051544a255b8a899071040739bada75"),
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(new("0xaccc7d92b051544a255b8a899071040739bada75"))
                         .WithBalanceChanges([new(1, new UInt256(Bytes.FromHexString("0x3635c99aac6d15af9c"), isBigEndian: true))])
                         .WithNonceChanges([new(1, 1)])
-                        .TestObject
-                },
-                {
-                    new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"),
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"))
                         .WithBalanceChanges([new(1, 0x64)])
-                        .TestObject
-                },
-            };
-            BlockAccessList expected = new(expectedAccountChanges);
+                        .TestObject)
+                .TestObject;
             string balanceChangesRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
-            yield return new TestCaseData(balanceChangesRlp, expected)
-            { TestName = "balance_changes" };
+            yield return new TestCaseData(balanceChangesRlp, expected) { TestName = "balance_changes" };
+
+            ReadOnlyBlockAccessList canonical = Build.A.BlockAccessList
+                .WithAccountChanges(
+                    Build.An.AccountChanges
+                        .WithAddress(new("0x0000000000000000000000000000000000000001"))
+                        .WithBalanceChanges([new(0, 0x80)])
+                        .WithNonceChanges([new(1, 5)])
+                        .TestObject)
+                .TestObject;
+            yield return new TestCaseData(CanonicalBlockAccessListRlp, canonical) { TestName = "canonical" };
         }
     }
+
+    private static IEnumerable<TestCaseData> UnsortedOrDuplicateEntrySource
+    {
+        get
+        {
+            // Explicit addresses, as TestItem.Address* have no predictable ordering.
+            Address low = new("0x0000000000000000000000000000000000000001");
+            Address high = new("0x0000000000000000000000000000000000000002");
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithAddress(high).TestObject, Build.An.AccountChanges.WithAddress(low).TestObject),
+                "Account changes were in incorrect order.")
+            { TestName = "unsorted_account" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(new ReadOnlyAccountChanges(
+                    TestItem.AddressA,
+                    [new ReadOnlySlotChanges(2, [new StorageChange(0, 2)]), new ReadOnlySlotChanges(1, [new StorageChange(0, 1)])],
+                    [], [], [], [])),
+                "Storage changes were in incorrect order.")
+            { TestName = "unsorted_storage_slot" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithStorageChanges(1, new StorageChange(2, 0), new StorageChange(1, 1)).TestObject),
+                "Storage changes were in incorrect order. index=1, lastIndex=2")
+            { TestName = "unsorted_storage_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithBalanceChanges(new BalanceChange(2, 0), new BalanceChange(1, 1)).TestObject),
+                "Balance changes were in incorrect order.")
+            { TestName = "unsorted_balance_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithNonceChanges(new NonceChange(2, 2), new NonceChange(1, 1)).TestObject),
+                "Nonce changes were in incorrect order.")
+            { TestName = "unsorted_nonce_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithCodeChanges(new CodeChange(2, [0x02]), new CodeChange(1, [0x01])).TestObject),
+                "Code changes were in incorrect order.")
+            { TestName = "unsorted_code_change_index" };
+
+            yield return new TestCaseData(
+                EncodeBlockAccessList(
+                    Build.An.AccountChanges.WithBalanceChanges(new BalanceChange(1, 1)).TestObject,
+                    Build.An.AccountChanges.WithBalanceChanges(new BalanceChange(1, 2)).TestObject),
+                "Account changes were in incorrect order.")
+            { TestName = "duplicate_account" };
+
+            ReadOnlyAccountChanges duplicateSlot = Build.An.AccountChanges
+                .WithStorageChanges(1, new StorageChange(1, 1))
+                .WithStorageChanges(2, new StorageChange(1, 2))
+                .TestObject;
+            // ReadOnlyAccountChanges indexes slots by key, so the duplicate is swapped in after construction.
+            duplicateSlot.StorageChanges[1] = new ReadOnlySlotChanges(1, [new StorageChange(1, 2)]);
+            yield return new TestCaseData(EncodeBlockAccessList(duplicateSlot), "Storage changes were in incorrect order.")
+            { TestName = "duplicate_storage_slot" };
+
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithStorageChanges(1, new StorageChange(1, 1), new StorageChange(1, 2)).TestObject),
+                "Storage changes were in incorrect order. index=1, lastIndex=1")
+            { TestName = "duplicate_storage_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithBalanceChanges(new BalanceChange(1, 1), new BalanceChange(1, 0)).TestObject),
+                "Balance changes were in incorrect order.")
+            { TestName = "duplicate_balance_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithNonceChanges(new NonceChange(1, 1), new NonceChange(1, 2)).TestObject),
+                "Nonce changes were in incorrect order.")
+            { TestName = "duplicate_nonce_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithCodeChanges(new CodeChange(1, [0x01]), new CodeChange(1, [0x02])).TestObject),
+                "Code changes were in incorrect order.")
+            { TestName = "duplicate_code_change_index" };
+
+            // Encoded per account, as ReadOnlyBlockAccessList indexes accounts by address and rejects a duplicate.
+            static byte[] EncodeBlockAccessList(params ReadOnlyAccountChanges[] accounts) =>
+                Rlp.Encode([.. accounts.Select(static a => Rlp.Encode(a))]).Bytes;
+        }
+    }
+
+    private static IEnumerable<TestCaseData> BlockAccessListEncodingFormsSource
+    {
+        get
+        {
+            string address = "94" + TestItem.AddressA.ToString(false, false);
+            string Account(string balanceChange, string codeChanges = "c0", string extraField = "")
+                => RlpList(address, "c0", "c0", RlpList(balanceChange), "c0", codeChanges, extraField);
+            string Bal(string balanceChange, string codeChanges = "c0", string extraField = "")
+                => RlpList(Account(balanceChange, codeChanges, extraField));
+
+            yield return new TestCaseData(Bal(RlpList("01", "64"))).Returns(true).SetName("canonical");
+            yield return new TestCaseData(Bal(RlpList("01", "64"), extraField: "80")).Returns(false).SetName("extra_account_field");
+            yield return new TestCaseData(Bal(RlpList("01", "64", "80"))).Returns(false).SetName("extra_balance_change_field");
+            yield return new TestCaseData(Bal(RlpList("01", "8164"))).Returns(false).SetName("single_byte_with_0x81_prefix");
+            yield return new TestCaseData(Bal(RlpList("01", "820064"))).Returns(false).SetName("integer_with_leading_zero");
+            yield return new TestCaseData(Bal(RlpList("820001", "64"))).Returns(false).SetName("index_with_leading_zero");
+            yield return new TestCaseData(Bal(RlpList("01", "00"))).Returns(false).SetName("zero_as_0x00");
+            yield return new TestCaseData(Bal(RlpList("01", "64"), RlpList(RlpList("01", "82abcd", "a0" + TestItem.KeccakA.ToString(false))))).Returns(false).SetName("adopted_code_change_with_code");
+            yield return new TestCaseData(RlpList(InLongForm(Account(RlpList("01", "64"))))).Returns(false).SetName("short_list_in_long_form");
+        }
+    }
+
+    private static string RlpList(params string[] items)
+    {
+        string content = string.Concat(items);
+        int length = content.Length / 2;
+        return length < 56 ? $"{0xc0 + length:x2}{content}" : $"f8{length:x2}{content}";
+    }
+
+    private static string InLongForm(string shortList) => $"f8{shortList.Length / 2 - 1:x2}{shortList[2..]}";
 
     private static IEnumerable<TestCaseData> AccountChangesTestSource
     {
         get
         {
-            AccountChanges storageReadsExpected = Build.An.AccountChanges
+            ReadOnlyAccountChanges storageReadsExpected = Build.An.AccountChanges
                 .WithAddress(Eip7002Constants.WithdrawalRequestPredeployAddress)
                 .WithStorageReads(0, 1, 2, 3)
                 .TestObject;
             string storageReadsRlp = "0x" + Bytes.ToHexString(Rlp.Encode(storageReadsExpected).Bytes);
-            yield return new TestCaseData(storageReadsRlp, storageReadsExpected)
-            { TestName = "storage_reads" };
+            yield return new TestCaseData(storageReadsRlp, storageReadsExpected) { TestName = "storage_reads" };
 
-            AccountChanges storageChangesExpected = Build.An.AccountChanges
+            ReadOnlyAccountChanges storageChangesExpected = Build.An.AccountChanges
                 .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
                 .WithStorageChanges(
                     0,
-                    [new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))])
+                    [new StorageChange(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))])
                 .TestObject;
             string storageChangesRlp = "0x" + Bytes.ToHexString(Rlp.Encode(storageChangesExpected).Bytes);
-            yield return new TestCaseData(storageChangesRlp, storageChangesExpected)
-            { TestName = "storage_changes" };
+            yield return new TestCaseData(storageChangesRlp, storageChangesExpected) { TestName = "storage_changes" };
         }
     }
 
-    private static IComparer<T> DescendingComparer<T>() where T : IComparable<T>
-        => Comparer<T>.Create((left, right) => right.CompareTo(left));
+    private static byte[] EncodeAccountChangesWithEmptySlotChangesEntry(Address address)
+    {
+        int storageChangesLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+        int contentLength = Rlp.LengthOfAddressRlp
+            + storageChangesLength
+            + Rlp.OfEmptyList.Length
+            + Rlp.OfEmptyList.Length
+            + Rlp.OfEmptyList.Length
+            + Rlp.OfEmptyList.Length;
+
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(contentLength);
+        writer.Encode(address);
+        writer.StartSequence(Rlp.OfEmptyList.Length);
+        writer.Encode(Rlp.OfEmptyList);
+        writer.Encode(Rlp.OfEmptyList);
+        writer.Encode(Rlp.OfEmptyList);
+        writer.Encode(Rlp.OfEmptyList);
+        writer.Encode(Rlp.OfEmptyList);
+        return bytes;
+    }
+
+    private static byte[] EncodeAccountChangesWithEmptyListElement(Address address, int malformedFieldIndex)
+    {
+        const int fieldCount = 5;
+        int malformedFieldLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+
+        int contentLength = Rlp.LengthOfAddressRlp;
+        for (int i = 0; i < fieldCount; i++)
+        {
+            contentLength += i == malformedFieldIndex ? malformedFieldLength : Rlp.OfEmptyList.Length;
+        }
+
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(contentLength);
+        writer.Encode(address);
+        for (int i = 0; i < fieldCount; i++)
+        {
+            if (i == malformedFieldIndex)
+            {
+                writer.StartSequence(Rlp.OfEmptyList.Length);
+                writer.Encode(Rlp.OfEmptyList);
+            }
+            else
+            {
+                writer.Encode(Rlp.OfEmptyList);
+            }
+        }
+
+        return bytes;
+    }
+
+    private static byte[] EncodeSlotChangesWithEmptyStorageChangeEntries(int count)
+    {
+        int changesContentLength = count * Rlp.OfEmptyList.Length;
+        int contentLength = Rlp.LengthOf(UInt256.Zero) + Rlp.LengthOfSequence(changesContentLength);
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(contentLength);
+        writer.Encode(UInt256.Zero);
+        writer.StartSequence(changesContentLength);
+        for (int i = 0; i < count; i++)
+        {
+            writer.Encode(Rlp.OfEmptyList);
+        }
+
+        return bytes;
+    }
+
+    private sealed class ThrowingByteDecoder : RlpDecoder<byte>
+    {
+        public const string Error = "semantic failure";
+        private int _calls;
+
+        protected override byte DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            byte value = decoderContext.DecodeByte();
+            _calls++;
+            if (_calls == 2)
+            {
+                throw new RlpException(Error);
+            }
+
+            return value;
+        }
+
+        public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+
+        public override void Encode<TWriter>(ref TWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class DisposableElement : IDisposable
+    {
+        public static int DisposedCount;
+
+        public void Dispose() => DisposedCount++;
+    }
+
+    private sealed class ThrowingDisposableDecoder : RlpDecoder<DisposableElement>
+    {
+        public const string Error = "disposable semantic failure";
+        private int _calls;
+
+        protected override DisposableElement DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.DecodeByte();
+            _calls++;
+            if (_calls == 2)
+            {
+                throw new RlpException(Error);
+            }
+
+            return new DisposableElement();
+        }
+
+        public override int GetLength(DisposableElement? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+
+        public override void Encode<TWriter>(ref TWriter writer, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class ThrowingObjectDecoder : RlpDecoder<object>
+    {
+        public const string Error = "object semantic failure";
+        private int _calls;
+
+        protected override object DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.DecodeByte();
+            _calls++;
+            if (_calls == 2)
+            {
+                throw new RlpException(Error);
+            }
+
+            return new DisposableElement();
+        }
+
+        public override int GetLength(object? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+
+        public override void Encode<TWriter>(ref TWriter writer, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class ThrowingArgumentDecoder : RlpDecoder<byte>
+    {
+        protected override byte DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.DecodeByte();
+            throw new ArgumentException("semantic argument failure");
+        }
+
+        public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+
+        public override void Encode<TWriter>(ref TWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
+    }
 }

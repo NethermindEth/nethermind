@@ -7,26 +7,16 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.Rpc;
 
-public class OptimismGetPayloadV3Result
+public class OptimismGetPayloadV3Result(GetPayloadV3Result<ExecutionPayloadV3> result)
 {
-    public OptimismGetPayloadV3Result(GetPayloadV3Result<ExecutionPayloadV3> result)
-    {
-        ExecutionPayload = result.ExecutionPayload;
-        BlockValue = result.BlockValue;
+    public UInt256 BlockValue { get; } = result.BlockValue;
+    public ExecutionPayloadV3 ExecutionPayload { get; } = result.ExecutionPayload;
 
-        BlobsBundle = result.BlobsBundle;
-        ParentBeaconBlockRoot = result.ExecutionPayload.ParentBeaconBlockRoot!;
-        ShouldOverrideBuilder = result.ShouldOverrideBuilder;
-    }
+    public BlobsBundleV1 BlobsBundle { get; } = result.BlobsBundle;
 
-    public UInt256 BlockValue { get; }
-    public ExecutionPayloadV3 ExecutionPayload { get; }
+    public Hash256 ParentBeaconBlockRoot { get; set; } = result.ExecutionPayload.ParentBeaconBlockRoot!;
 
-    public BlobsBundleV1 BlobsBundle { get; }
-
-    public Hash256 ParentBeaconBlockRoot { get; set; }
-
-    public bool ShouldOverrideBuilder { get; }
+    public bool ShouldOverrideBuilder { get; } = result.ShouldOverrideBuilder;
 
     public override string ToString() => $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ParentBeaconBlockRoot: {ParentBeaconBlockRoot}, ShouldOverrideBuilder {ShouldOverrideBuilder}}}";
 }

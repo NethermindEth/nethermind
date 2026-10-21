@@ -3,10 +3,10 @@
 
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.InteropServices;
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
@@ -64,20 +64,13 @@ namespace Nethermind.Synchronization.FastSync
 
             public override int GetHashCode()
             {
-                uint hash0 = (uint)Hash.GetHashCode();
                 ulong hash1 = ((ulong)(uint)(Address.GetHashCode()) << 32) | (ulong)(uint)(Path?.GetHashCode() ?? 2);
-                return (int)BitOperations.Crc32C(hash0, hash1);
+                return SpanExtensions.CombineHash((uint)Hash.GetHashCode(), hash1);
             }
 
-            public static bool operator ==(in NodeKey left, in NodeKey right)
-            {
-                return left.Equals(right);
-            }
+            public static bool operator ==(in NodeKey left, in NodeKey right) => left.Equals(right);
 
-            public static bool operator !=(in NodeKey left, in NodeKey right)
-            {
-                return !(left == right);
-            }
+            public static bool operator !=(in NodeKey left, in NodeKey right) => !(left == right);
         }
     }
 }

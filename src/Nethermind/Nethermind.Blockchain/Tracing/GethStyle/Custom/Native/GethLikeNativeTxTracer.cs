@@ -7,28 +7,23 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 
-public abstract class GethLikeNativeTxTracer : GethLikeTxTracer
+public abstract class GethLikeNativeTxTracer(GethTraceOptions options) : GethLikeTxTracer(options)
 {
-    protected int Depth { get; private set; }
+    protected int Depth { get; private set; } = -1;
 
-    protected GethLikeNativeTxTracer(GethTraceOptions options) : base(options)
-    {
-        Depth = -1;
-    }
-
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         Depth++;
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
         Depth--;
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionEnd(gas, output);
         Depth--;
@@ -37,6 +32,12 @@ public abstract class GethLikeNativeTxTracer : GethLikeTxTracer
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
+        Depth--;
+    }
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionRevert(gas, output);
         Depth--;
     }
 }

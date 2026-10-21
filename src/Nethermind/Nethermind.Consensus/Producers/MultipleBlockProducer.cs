@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Producers
             if (blockProducers.Length == 0) throw new ArgumentException("Collection cannot be empty.", nameof(blockProducers));
             _bestBlockPicker = bestBlockPicker;
             _blockProducers = blockProducers;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger(typeof(MultipleBlockProducer<>));
         }
 
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,

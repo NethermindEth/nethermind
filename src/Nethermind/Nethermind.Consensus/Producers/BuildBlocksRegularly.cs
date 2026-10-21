@@ -27,9 +27,6 @@ namespace Nethermind.Consensus.Producers
 
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

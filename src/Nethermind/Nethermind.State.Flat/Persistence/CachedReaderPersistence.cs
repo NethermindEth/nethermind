@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,7 +30,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         ILogManager logManager)
     {
         _inner = inner;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<CachedReaderPersistence>();
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
         // Start the background cache clearing task
@@ -60,7 +57,8 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        if ((flags & ReaderFlags.Sync) != 0)
+        // The cached reader is created flagless, so flagged requests must go to the inner persistence directly.
+        if ((flags & (ReaderFlags.Sync | ReaderFlags.FullScan)) != 0)
             return _inner.CreateReader(flags);
 
         RefCountingPersistenceReader? cachedReader = _cachedReader;
@@ -96,17 +94,18 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         }
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
-    {
-        return new ClearCacheOnWriteBatchComplete(_inner.CreateWriteBatch(from, to, flags), this);
-    }
+    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new ClearCacheOnWriteBatchComplete(_inner.CreateWriteBatch(from, to, flags), this);
 
     public void Flush() => _inner.Flush();
 
     public void Clear()
     {
+        // Drop the cached snapshot first so it does not pin the data being wiped, and again afterwards: a read
+        // during the wipe re-caches a reader whose snapshot predates the end of the wipe (so it can still report the
+        // pre-wipe CurrentState), which would otherwise be served until the next write batch or timer tick.
         ClearReaderCache();
         _inner.Clear();
+        ClearReaderCache();
     }
 
     private void ClearReaderCache()
@@ -132,15 +131,15 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     {
         public void SelfDestruct(Address addr) => inner.SelfDestruct(addr);
         public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) => inner.SetStorage(addr, slot, value);
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue) => inner.SetStateTrieNode(path, tnValue);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) => inner.SetStorageTrieNode(address, path, tnValue);
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) => inner.SetStorageRaw(addrHash, slotHash, value);
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => inner.SetStorage(addr, slot, value);
+        public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) => inner.SetAccountRaw(addrHash, account);
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteAccountRange(fromPath, toPath);
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteStorageRange(addressHash, fromPath, toPath);
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) => inner.DeleteStateTrieNodeRange(fromPath, toPath);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) => inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
 
         public void Dispose()
         {

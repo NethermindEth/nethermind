@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -13,13 +13,17 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public int Concurrency { get; set; } = 3;
 
+    public int BitsPerHop { get; set; } = 2;
+
     public int MaxDiscoveryRounds { get; set; } = 8;
 
     public int EvictionCheckInterval { get; set; } = 75;
 
     public int SendNodeTimeout { get; set; } = 500;
-
-    public int PongTimeout { get; set; } = 1000 * 15;
+    public long EnrTimeout { get; set; } = 1000;
+    public long PingTimeout { get; set; } = 1000;
+    public long MessageExpiryTime { get; set; } = 30000;
+    public int BondWaitTime { get; set; } = 500;
 
     public int BootnodePongTimeout { get; set; } = 1000 * 100;
 
@@ -39,11 +43,13 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public float DropFullBucketNodeProbability { get; set; } = 0.05f;
 
-    public int MaxOutgoingMessagePerSecond { get; set; } = 100;
+    public int MaxOutgoingMessagePerSecond { get; set; } = 500;
 
     public NetworkNode[] Bootnodes { get; set; } = [];
 
     public bool UseDefaultDiscv5Bootnodes { get; set; } = true;
 
     public DiscoveryVersion DiscoveryVersion { get; set; } = DiscoveryVersion.V4;
+
+    public int ConcurrentDiscoveryJob { get; set; } = 10;
 }

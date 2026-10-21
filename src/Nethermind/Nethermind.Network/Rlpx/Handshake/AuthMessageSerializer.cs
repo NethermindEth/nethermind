@@ -53,7 +53,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 throw new NetworkingException($"Incorrect incoming {nameof(AuthMessage)} length. Expected {Length} but was {msgBytes.ReadableBytes}", NetworkExceptionType.Validation);
             }
 
-            AuthMessage authMessage = new AuthMessage();
+            AuthMessage authMessage = new();
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
             authMessage.Signature = new Signature(msg[..(SigLength - 1)], msg[64]);
             authMessage.EphemeralPublicHash = new Hash256(msg.Slice(EphemeralHashOffset, EphemeralHashLength));

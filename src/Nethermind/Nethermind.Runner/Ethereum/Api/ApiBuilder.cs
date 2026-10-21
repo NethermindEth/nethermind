@@ -32,7 +32,7 @@ public class ApiBuilder
     public ApiBuilder(IProcessExitSource processExitSource, IConfigProvider configProvider, ILogManager logManager)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = _logManager.GetClassLogger();
+        _logger = _logManager.GetClassLogger<ApiBuilder>();
         _processExitSource = processExitSource;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _initConfig = configProvider.GetConfig<IInitConfig>();
@@ -42,7 +42,12 @@ public class ApiBuilder
         ChainSpec = LoadChainSpec(_jsonSerializer);
     }
 
-    public EthereumRunner CreateEthereumRunner(IEnumerable<INethermindPlugin> plugins)
+    /// <summary>Builds the container and resolves the runner.</summary>
+    /// <param name="plugins">The enabled plugins, whose modules join the container.</param>
+    /// <param name="command">
+    /// The standalone command to run instead of the node, or <c>null</c> to start a node.
+    /// </param>
+    public EthereumRunner CreateEthereumRunner(IEnumerable<INethermindPlugin> plugins, string? command)
     {
         bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
         if (wasCreated)
@@ -57,6 +62,7 @@ public class ApiBuilder
                 _configProvider,
                 _processExitSource,
                 plugins,
+                command,
                 _logManager));
 
         IContainer container = containerBuilder.Build();
@@ -70,7 +76,7 @@ public class ApiBuilder
 
         ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 
-        var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logManager);
+        ChainSpecFileLoader loader = new(ethereumJsonSerializer, _logManager);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
 
         //overwriting NetworkId which is useful for some devnets (like bloatnet)

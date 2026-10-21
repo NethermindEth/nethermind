@@ -33,7 +33,7 @@ namespace Nethermind.Precompiles.Benchmark
 
             public string Name { get; } = name;
 
-            public long Gas(IReleaseSpec releaseSpec) =>
+            public ulong Gas(IReleaseSpec releaseSpec) =>
                 precompile.BaseGasCost(releaseSpec) + precompile.DataGasCost(Bytes, releaseSpec);
 
             public override string ToString() => Name;
@@ -46,7 +46,13 @@ namespace Nethermind.Precompiles.Benchmark
                 foreach (IPrecompile precompile in Precompiles)
                 {
                     List<Param> inputs = [];
-                    var inputsDir = Path.Combine(AppContext.BaseDirectory, InputsDirectory, "current");
+                    string inputsDir = Path.Combine(AppContext.BaseDirectory, InputsDirectory, "current");
+
+                    if (!Directory.Exists(inputsDir))
+                    {
+                        Console.Error.WriteLine($"[PrecompileBenchmark] Input directory not found, skipping: {inputsDir}");
+                        continue;
+                    }
 
                     foreach (string file in Directory.GetFiles(inputsDir, "*.csv", SearchOption.TopDirectoryOnly))
                     {
@@ -59,7 +65,8 @@ namespace Nethermind.Precompiles.Benchmark
                     foreach (string file in Directory.GetFiles(inputsDir, "*.json", SearchOption.TopDirectoryOnly))
                     {
                         EthereumJsonSerializer jsonSerializer = new();
-                        JsonInput[] jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file));
+                        JsonInput[] jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file))
+                            ?? throw new InvalidDataException($"Precompile benchmark input file '{file}' decoded as null.");
                         IEnumerable<Param> parameters = jsonInputs.Select(i => new Param(precompile, Path.GetFileName(i.Name!), i.Input!, i.Expected));
                         inputs.AddRange(parameters);
                     }
@@ -82,7 +89,7 @@ namespace Nethermind.Precompiles.Benchmark
         public bool Baseline()
         {
             bool overallResult = true;
-            for (var i = 0; i < Operations; i++)
+            for (int i = 0; i < Operations; i++)
             {
                 Result<byte[]> result = Input.Precompile.Run(Input.Bytes, Cancun.Instance);
                 overallResult &= result;

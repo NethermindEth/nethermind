@@ -43,7 +43,7 @@ public class EthereumL1Bridge : IL1Bridge
         _batchSubmitter = engineParameters.BatchSubmitter;
         _batcherInboxAddress = engineParameters.BatcherInboxAddress;
         _l1BeaconGenesisSlotTime = engineParameters.L1BeaconGenesisSlotTime.Value;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<EthereumL1Bridge>();
     }
 
     public async Task<L1BridgeStepResult> Step(CancellationToken token)
@@ -99,7 +99,7 @@ public class EthereumL1Bridge : IL1Bridge
             if (_logger.IsInfo) _logger.Info($"New L1 Block. Number {block.Number}");
             int startingBlobIndex = 0;
             // Filter batch submitter transaction
-            List<DaDataSource> result = new();
+            List<DaDataSource> result = [];
             foreach (L1Transaction transaction in block.Transactions!)
             {
                 if (transaction.Type == TxType.Blob)

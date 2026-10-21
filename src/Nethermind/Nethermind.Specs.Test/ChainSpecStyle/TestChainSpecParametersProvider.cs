@@ -8,16 +8,11 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
 
-public class TestChainSpecParametersProvider : IChainSpecParametersProvider
+public class TestChainSpecParametersProvider(IChainSpecEngineParameters parameters) : IChainSpecParametersProvider
 {
     public static readonly TestChainSpecParametersProvider NethDev = new(new NethDevChainSpecEngineParameters());
 
-    private readonly IChainSpecEngineParameters _parameters;
-
-    public TestChainSpecParametersProvider(IChainSpecEngineParameters parameters)
-    {
-        _parameters = parameters;
-    }
+    private readonly IChainSpecEngineParameters _parameters = parameters;
 
     public string SealEngineType => _parameters.SealEngineType!;
 

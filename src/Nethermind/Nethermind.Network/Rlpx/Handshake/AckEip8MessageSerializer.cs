@@ -7,20 +7,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AckEip8MessageSerializer : IZeroMessageSerializer<AckEip8Message>
+    public class AckEip8MessageSerializer(IMessagePad messagePad) : IZeroMessageSerializer<AckEip8Message>
     {
-        private readonly IMessagePad _messagePad;
+        private readonly IMessagePad _messagePad = messagePad;
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
         public const int NonceLength = 32;
         public const int NonceOffset = EphemeralPublicKeyOffset + EphemeralPublicKeyLength;
         public const int VersionOffset = NonceOffset + NonceLength;
         public const int TotalLength = EphemeralPublicKeyLength + NonceLength;
-
-        public AckEip8MessageSerializer(IMessagePad messagePad)
-        {
-            _messagePad = messagePad;
-        }
 
         public void Serialize(IByteBuffer byteBuffer, AckEip8Message msg)
         {
@@ -29,17 +24,17 @@ namespace Nethermind.Network.Rlpx.Handshake
             totalLength += Rlp.LengthOf(msg.Version);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(totalLength);
-            stream.Encode(msg.EphemeralPublicKey.Bytes);
-            stream.Encode(msg.Nonce);
-            stream.Encode(msg.Version);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(totalLength);
+            writer.Encode(msg.EphemeralPublicKey.Bytes);
+            writer.Encode(msg.Nonce);
+            writer.Encode(msg.Version);
         }
 
         public AckEip8Message Deserialize(IByteBuffer msgBytes) =>
             msgBytes.DeserializeRlp(Deserialize);
 
-        private static AckEip8Message Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static AckEip8Message Deserialize(ref RlpReader ctx)
         {
             AckEip8Message authEip8Message = new();
             ctx.ReadSequenceLength();

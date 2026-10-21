@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Processing.CensorshipDetector;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -9,8 +9,6 @@ using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -19,11 +17,14 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
     ILogManager logManager,
-    ICensorshipDetector? censorshipDetector = null)
+    IBuilderOverridePolicy? builderOverridePolicy = null)
     : IAsyncHandler<byte[], TGetPayloadResult?>
-    where TGetPayloadResult : IForkValidator
+    where TGetPayloadResult : class
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadHandlerBase<>));
+
+    /// <summary>The spec provider passed to this handler.</summary>
+    protected ISpecProvider SpecProvider => specProvider;
 
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[] payloadId)
     {
@@ -38,13 +39,13 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
             return ResultWrapper<TGetPayloadResult?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
         }
 
-        TGetPayloadResult getPayloadResult = GetPayloadResultFromBlock(blockContext);
-
-        if (!getPayloadResult.ValidateFork(specProvider))
+        if (!ValidateFork(specProvider.GetSpec(block.Header)))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return ResultWrapper<TGetPayloadResult?>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
         }
+
+        TGetPayloadResult getPayloadResult = GetPayloadResultFromBlock(blockContext);
 
         if (_logger.IsInfo) _logger.Info($"GetPayloadV{apiVersion} result: {block.Header.ToString(BlockHeader.Format.Short)}.");
 
@@ -53,8 +54,13 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
 
-    protected bool ShouldOverrideBuilder(Block block)
-         => censorshipDetector?.GetCensoredBlocks().Contains(new BlockNumberHash(block)) ?? false;
+    /// <summary>
+    /// Evaluates policies used by Engine API getPayload V3 and later to populate the <c>shouldOverrideBuilder</c> field.
+    /// </summary>
+    protected bool ShouldOverrideBuilder(Block block) => builderOverridePolicy?.ShouldOverrideBuilder(block) ?? false;
+
+    /// <summary>Whether this getPayload version supports the built block's release spec.</summary>
+    protected abstract bool ValidateFork(IReleaseSpec spec);
 
     protected abstract TGetPayloadResult GetPayloadResultFromBlock(IBlockProductionContext blockProductionContext);
 }

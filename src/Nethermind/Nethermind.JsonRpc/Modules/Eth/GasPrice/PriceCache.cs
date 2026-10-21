@@ -6,16 +6,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth.GasPrice;
 
-public struct PriceCache
+public struct PriceCache(Hash256? headHash, UInt256? price)
 {
-    public PriceCache(Hash256? headHash, UInt256? price)
-    {
-        LastHeadHash = headHash;
-        LastPrice = price;
-    }
-
-    public UInt256? LastPrice { get; private set; }
-    private Hash256? LastHeadHash { get; set; }
+    public UInt256? LastPrice { get; private set; } = price;
+    private Hash256? LastHeadHash { get; set; } = headHash;
 
     public void Set(Hash256 headHash, UInt256 price)
     {

@@ -11,6 +11,6 @@ namespace Nethermind.Test.Runner
 
         public StateTestTxTraceResult Result { get; set; } = new();
 
-        public List<StateTestTxTraceEntry> Entries { get; set; } = new();
+        public List<StateTestTxTraceEntry> Entries { get; set; } = [];
     }
 }

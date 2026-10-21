@@ -11,10 +11,7 @@ public static class IntExtensions
 {
     extension(int @this)
     {
-        public string ToHexString()
-        {
-            return $"0x{@this:x}";
-        }
+        public string ToHexString() => $"0x{@this:x}";
 
         public UInt256 Ether => (uint)@this * Unit.Ether;
         public UInt256 Wei => (uint)@this * Unit.Wei;
@@ -32,11 +29,7 @@ public static class IntExtensions
         public byte[] ToBigEndianByteArray()
         {
             byte[] bytes = BitConverter.GetBytes(@this);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-
+            Array.Reverse(bytes);
             return bytes;
         }
 

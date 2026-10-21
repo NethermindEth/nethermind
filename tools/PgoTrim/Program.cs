@@ -32,7 +32,7 @@ for (int i = 0; i < args.Length; i++)
             break;
         default:
             if (inputPath is null) inputPath = args[i];
-            else if (outputPath is null) outputPath = args[i];
+            else outputPath ??= args[i];
             break;
     }
 }

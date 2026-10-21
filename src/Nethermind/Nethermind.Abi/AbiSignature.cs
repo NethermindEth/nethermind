@@ -6,19 +6,13 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Abi
 {
-    public class AbiSignature
+    public class AbiSignature(string name, params AbiType[] types)
     {
         private string? _toString;
         private Hash256? _hash;
 
-        public AbiSignature(string name, params AbiType[] types)
-        {
-            Name = name;
-            Types = types;
-        }
-
-        public string Name { get; }
-        public AbiType[] Types { get; }
+        public string Name { get; } = name;
+        public AbiType[] Types { get; } = types;
         public byte[] Address => GetAddress(Hash.Bytes);
         public Hash256 Hash => _hash ??= Keccak.Compute(ToString());
 

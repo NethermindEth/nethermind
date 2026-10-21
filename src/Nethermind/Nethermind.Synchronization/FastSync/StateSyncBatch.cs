@@ -22,10 +22,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public int ConsumerId { get; set; }
 
-        public override string ToString()
-        {
-            return $"{RequestedNodes?.Count ?? 0} state sync requests with {Responses?.Count ?? 0} responses";
-        }
+        public override string ToString() => $"{RequestedNodes?.Count ?? 0} state sync requests with {Responses?.Count ?? 0} responses";
 
         public void Dispose()
         {

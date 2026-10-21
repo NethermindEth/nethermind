@@ -1,33 +1,30 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class ExecutionPayloadBodyV1Result
+public class ExecutionPayloadBodyV1Result(Transaction[] transactions, Withdrawal[]? withdrawals)
 {
-    public ExecutionPayloadBodyV1Result(IReadOnlyList<Transaction> transactions, IReadOnlyList<Withdrawal>? withdrawals)
+    private Transaction[]? _sourceTransactions = transactions;
+    private byte[][]? _transactions;
+
+    internal Transaction[]? SourceTransactions => _sourceTransactions;
+
+    internal byte[][] EncodedTransactions => _transactions ??= PayloadBodiesDirectResponseWriter.EncodeTransactions(_sourceTransactions!);
+
+    public byte[][] Transactions
     {
-        ArgumentNullException.ThrowIfNull(transactions);
-
-        byte[][] t = new byte[transactions.Count][];
-
-        for (int i = 0, count = t.Length; i < count; i++)
+        get => EncodedTransactions;
+        set
         {
-            t[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            _transactions = value;
+            _sourceTransactions = null;
         }
-
-        Transactions = t;
-        Withdrawals = withdrawals;
     }
 
-    public IReadOnlyList<byte[]> Transactions { get; set; }
-
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public IReadOnlyList<Withdrawal>? Withdrawals { get; set; }
+    public Withdrawal[]? Withdrawals { get; set; } = withdrawals;
 }

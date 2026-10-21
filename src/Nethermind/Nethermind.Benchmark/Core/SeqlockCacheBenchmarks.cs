@@ -35,13 +35,13 @@ public class SeqlockCacheBenchmarks
         _keys = new StorageCell[KeyCount];
         _values = new byte[KeyCount][];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
-            var address = new Address(addressBytes);
-            var index = new UInt256((ulong)i);
+            Address address = new(addressBytes);
+            UInt256 index = new((ulong)i);
 
             _keys[i] = new StorageCell(address, index);
             _values[i] = new byte[32];
@@ -53,7 +53,7 @@ public class SeqlockCacheBenchmarks
         }
 
         // Create a key that won't be in the cache
-        var missAddressBytes = new byte[20];
+        byte[] missAddressBytes = new byte[20];
         random.NextBytes(missAddressBytes);
         _missKey = new StorageCell(new Address(missAddressBytes), UInt256.MaxValue);
     }
@@ -61,58 +61,35 @@ public class SeqlockCacheBenchmarks
     // ==================== TryGetValue (Hit) ====================
 
     [Benchmark(Baseline = true)]
-    public bool SeqlockCache_TryGetValue_Hit()
-    {
-        return _seqlockCache.TryGetValue(in _keys[500], out _);
-    }
+    public bool SeqlockCache_TryGetValue_Hit() => _seqlockCache.TryGetValue(in _keys[500], out _);
 
     [Benchmark]
-    public bool ConcurrentDict_TryGetValue_Hit()
-    {
-        return _concurrentDict.TryGetValue(_keys[500], out _);
-    }
+    public bool ConcurrentDict_TryGetValue_Hit() => _concurrentDict.TryGetValue(_keys[500], out _);
 
     // ==================== TryGetValue (Miss) ====================
 
     [Benchmark]
-    public bool SeqlockCache_TryGetValue_Miss()
-    {
-        return _seqlockCache.TryGetValue(in _missKey, out _);
-    }
+    public bool SeqlockCache_TryGetValue_Miss() => _seqlockCache.TryGetValue(in _missKey, out _);
 
     [Benchmark]
-    public bool ConcurrentDict_TryGetValue_Miss()
-    {
-        return _concurrentDict.TryGetValue(_missKey, out _);
-    }
+    public bool ConcurrentDict_TryGetValue_Miss() => _concurrentDict.TryGetValue(_missKey, out _);
 
     // ==================== Set (Existing Key) ====================
 
     [Benchmark]
-    public void SeqlockCache_Set_Existing()
-    {
-        _seqlockCache.Set(in _keys[500], _values[500]);
-    }
+    public void SeqlockCache_Set_Existing() => _seqlockCache.Set(in _keys[500], _values[500]);
 
     [Benchmark]
-    public void ConcurrentDict_Set_Existing()
-    {
-        _concurrentDict[_keys[500]] = _values[500];
-    }
+    public void ConcurrentDict_Set_Existing() => _concurrentDict[_keys[500]] = _values[500];
 
     // ==================== GetOrAdd (Hit) ====================
 
     [Benchmark]
-    public byte[]? SeqlockCache_GetOrAdd_Hit()
-    {
-        return _seqlockCache.GetOrAdd(in _keys[500], static (in StorageCell _) => new byte[32]);
-    }
+    public byte[]? SeqlockCache_GetOrAdd_Hit() =>
+        _seqlockCache.GetOrAdd(in _keys[500], static (in StorageCell _) => new byte[32]);
 
     [Benchmark]
-    public byte[] ConcurrentDict_GetOrAdd_Hit()
-    {
-        return _concurrentDict.GetOrAdd(_keys[500], static _ => new byte[32]);
-    }
+    public byte[] ConcurrentDict_GetOrAdd_Hit() => _concurrentDict.GetOrAdd(_keys[500], static _ => new byte[32]);
 
     // ==================== GetOrAdd (Miss - measures factory overhead) ====================
 
@@ -122,14 +99,14 @@ public class SeqlockCacheBenchmarks
     public byte[]? SeqlockCache_GetOrAdd_Miss()
     {
         // Use incrementing key to always miss
-        var key = new StorageCell(_keys[0].Address, new UInt256((ulong)(KeyCount + _missCounter++)));
+        StorageCell key = new(_keys[0].Address, new UInt256((ulong)(KeyCount + _missCounter++)));
         return _seqlockCache.GetOrAdd(in key, static (in StorageCell _) => new byte[32]);
     }
 
     [Benchmark]
     public byte[] ConcurrentDict_GetOrAdd_Miss()
     {
-        var key = new StorageCell(_keys[0].Address, new UInt256((ulong)(KeyCount + _missCounter++)));
+        StorageCell key = new(_keys[0].Address, new UInt256((ulong)(KeyCount + _missCounter++)));
         return _concurrentDict.GetOrAdd(key, static _ => new byte[32]);
     }
 }
@@ -158,13 +135,13 @@ public class SeqlockCacheMixedWorkloadBenchmarks
         _keys = new StorageCell[KeyCount];
         _values = new byte[KeyCount][];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
-            var address = new Address(addressBytes);
-            var index = new UInt256((ulong)i);
+            Address address = new(addressBytes);
+            UInt256 index = new((ulong)i);
 
             _keys[i] = new StorageCell(address, index);
             _values[i] = new byte[32];
@@ -267,10 +244,10 @@ public class SeqlockCacheHitRateBenchmarks
         _keys = new StorageCell[KeyCount];
         _values = new byte[KeyCount][];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
             _keys[i] = new StorageCell(new Address(addressBytes), new UInt256((ulong)i));
             _values[i] = new byte[32];
@@ -289,6 +266,66 @@ public class SeqlockCacheHitRateBenchmarks
                 hits++;
         }
         return (double)hits / KeyCount * 100;
+    }
+}
+
+/// <summary>
+/// Measures the configurable set count: per-op cost across sizes, working-set sweeps above capacity.
+/// </summary>
+[MemoryDiagnoser]
+public class SeqlockCacheSizeBenchmarks
+{
+    private SeqlockCache<StorageCell, byte[]> _cache = null!;
+    private StorageCell[] _keys = null!;
+    private byte[] _value = null!;
+
+    [Params(SeqlockCache<StorageCell, byte[]>.DefaultSetsBits, 17)]
+    public int SetsBits { get; set; }
+
+    // 1K = below capacity; 48K/140K = distinct-slot working sets of 100M/300M-gas cold-SLOAD blocks.
+    [Params(1_000, 48_000, 140_000)]
+    public int KeyCount { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _cache = new SeqlockCache<StorageCell, byte[]>(SetsBits);
+        _keys = new StorageCell[KeyCount];
+        _value = new byte[32];
+
+        Random random = new(42);
+        for (int i = 0; i < KeyCount; i++)
+        {
+            byte[] addressBytes = new byte[20];
+            random.NextBytes(addressBytes);
+            _keys[i] = new StorageCell(new Address(addressBytes), new UInt256((ulong)i));
+            _cache.Set(in _keys[i], _value);
+        }
+    }
+
+    [Benchmark]
+    public bool TryGetValue_Hot() => _cache.TryGetValue(in _keys[KeyCount / 2], out _);
+
+    /// <summary>Reads every key once; misses come from capacity evictions at the given size.</summary>
+    [Benchmark]
+    public int SweepAll()
+    {
+        int hits = 0;
+        for (int i = 0; i < KeyCount; i++)
+        {
+            if (_cache.TryGetValue(in _keys[i], out _)) hits++;
+        }
+        return hits;
+    }
+
+    /// <summary>Writes the whole working set, as a block-long prewarm population does.</summary>
+    [Benchmark]
+    public void PopulateAll()
+    {
+        for (int i = 0; i < KeyCount; i++)
+        {
+            _cache.Set(in _keys[i], _value);
+        }
     }
 }
 
@@ -315,31 +352,16 @@ public class SeqlockCacheCallSiteBenchmarks
     }
 
     [Benchmark(Baseline = true)]
-    public byte[]? GetOrAdd_Hit_PerCallMethodGroup()
-    {
-        return _cache.GetOrAdd(in _key, LoadFromBackingStore);
-    }
+    public byte[]? GetOrAdd_Hit_PerCallMethodGroup() => _cache.GetOrAdd(in _key, LoadFromBackingStore);
 
     [Benchmark]
-    public byte[]? GetOrAdd_Hit_CachedDelegate()
-    {
-        return _cache.GetOrAdd(in _key, _cachedFactory);
-    }
+    public byte[]? GetOrAdd_Hit_CachedDelegate() => _cache.GetOrAdd(in _key, _cachedFactory);
 
     [Benchmark]
-    public bool TryGetValue_WithIn()
-    {
-        return _cache.TryGetValue(in _key, out _);
-    }
+    public bool TryGetValue_WithIn() => _cache.TryGetValue(in _key, out _);
 
     [Benchmark]
-    public bool TryGetValue_WithoutIn()
-    {
-        return _cache.TryGetValue(_key, out _);
-    }
+    public bool TryGetValue_WithoutIn() => _cache.TryGetValue(_key, out _);
 
-    private byte[] LoadFromBackingStore(in StorageCell _)
-    {
-        return _value;
-    }
+    private byte[] LoadFromBackingStore(in StorageCell _) => _value;
 }

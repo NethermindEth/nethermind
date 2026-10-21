@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Collections;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Macs;
@@ -23,28 +23,21 @@ namespace Nethermind.Crypto;
 ///  * Hash the MAC key before use
 ///  * Include the encryption IV in the MAC computation
 /// </summary>
-public sealed class EthereumIesEngine
+/// <remarks>
+/// Initializes a new instance of the <see cref="EthereumIesEngine"/> class.
+/// </remarks>
+/// <param name="mac">The message authentication code generator for the message.</param>
+/// <param name="hash">The hash function.</param>
+/// <param name="cipher">The block cipher to use for encryption/decryption.</param>
+public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlockCipher cipher)
 {
     private bool _forEncryption;
-    private byte[] _kdfKey;
-    private readonly Sha256Digest _hash;
-    private readonly HMac _mac;
-    private readonly BufferedBlockCipher _cipher;
-    private IesWithCipherParameters _iesParameters;
-    private byte[] _iv;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="EthereumIesEngine"/> class.
-    /// </summary>
-    /// <param name="mac">The message authentication code generator for the message.</param>
-    /// <param name="hash">The hash function.</param>
-    /// <param name="cipher">The block cipher to use for encryption/decryption.</param>
-    public EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlockCipher cipher)
-    {
-        _mac = mac;
-        _hash = hash;
-        _cipher = cipher;
-    }
+    private byte[]? _kdfKey;
+    private readonly Sha256Digest _hash = hash;
+    private readonly HMac _mac = mac;
+    private readonly BufferedBlockCipher _cipher = cipher;
+    private IesWithCipherParameters? _iesParameters;
+    private byte[]? _iv;
 
     /// <summary>
     /// Initializes the engine for encryption or decryption.
@@ -68,15 +61,23 @@ public sealed class EthereumIesEngine
     /// <param name="macData">Additional data to include in the MAC computation (can be null or empty).</param>
     /// <returns>The resulting encrypted or decrypted data, with authentication applied.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="input"/> is null.</exception>
-    public byte[] ProcessBlock(byte[] input, byte[] macData)
+    /// <exception cref="InvalidCipherTextException">Thrown when decrypting input shorter than the MAC, or when the MAC is invalid.</exception>
+    public byte[] ProcessBlock(byte[] input, byte[]? macData)
     {
         ArgumentNullException.ThrowIfNull(input);
+        (byte[] kdfKey, IesWithCipherParameters iesParameters, byte[] iv) = GetInitializedParameters();
+
+        // Validate before GetOutputSize subtracts the MAC and produces a negative allocation size.
+        if (!_forEncryption && input.Length < _mac.GetMacSize())
+        {
+            ThrowInputTooShort();
+        }
 
         int outputSize = GetOutputSize(input.Length);
         byte[] output = new byte[outputSize];
         int actualLength = _forEncryption
-            ? EncryptBlock(input, output, macData)
-            : DecryptBlock(input, output, macData);
+            ? EncryptBlock(input, output, macData ?? [], kdfKey, iesParameters, iv)
+            : DecryptBlock(input, output, macData ?? [], kdfKey, iesParameters, iv);
 
         if (actualLength == outputSize)
             return output;
@@ -84,6 +85,20 @@ public sealed class EthereumIesEngine
         byte[] result = new byte[actualLength];
         output.AsSpan(0, actualLength).CopyTo(result);
         return result;
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowInputTooShort()
+            => throw new InvalidCipherTextException("Length of input must be at least the MAC size");
+    }
+
+    private (byte[] KdfKey, IesWithCipherParameters IesParameters, byte[] Iv) GetInitializedParameters()
+    {
+        if (_kdfKey is null || _iesParameters is null || _iv is null)
+        {
+            throw new InvalidOperationException($"{nameof(EthereumIesEngine)} must be initialized before processing.");
+        }
+
+        return (_kdfKey, _iesParameters, _iv);
     }
 
     private int GetOutputSize(int inputLength)
@@ -93,11 +108,17 @@ public sealed class EthereumIesEngine
             (_forEncryption ? macSize : -macSize);
     }
 
-    private int EncryptBlock(ReadOnlySpan<byte> input, Span<byte> output, ReadOnlySpan<byte> macData)
+    private int EncryptBlock(
+        ReadOnlySpan<byte> input,
+        Span<byte> output,
+        ReadOnlySpan<byte> macData,
+        byte[] kdfKey,
+        IesWithCipherParameters iesParameters,
+        byte[] iv)
     {
         // Block cipher mode.
-        ReadOnlySpan<byte> k1 = _kdfKey.AsSpan(0, _iesParameters.CipherKeySize / 8);
-        _cipher.Init(true, new ParametersWithIV(new KeyParameter(k1), _iv));
+        ReadOnlySpan<byte> k1 = kdfKey.AsSpan(0, iesParameters.CipherKeySize / 8);
+        _cipher.Init(true, new ParametersWithIV(new KeyParameter(k1), iv));
 
         int cipherOutputSize = _cipher.GetOutputSize(input.Length);
         int macSize = _mac.GetMacSize();
@@ -108,28 +129,27 @@ public sealed class EthereumIesEngine
             ThrowOutputBufferTooSmall();
         }
 
-        // Rent temporary buffers from pool
-        byte[] cipherOutputBuffer = ArrayPool<byte>.Shared.Rent(cipherOutputSize);
-        Span<byte> c = cipherOutputBuffer.AsSpan(0, cipherOutputSize);
+        using ArrayPoolSpan<byte> cipherOutputBuffer = new(cipherOutputSize);
+        Span<byte> c = cipherOutputBuffer;
 
         int len = _cipher.ProcessBytes(input, c);
         len += _cipher.DoFinal(c.Slice(len));
 
         _hash.Reset();
-        ReadOnlySpan<byte> k2 = _kdfKey.AsSpan(k1.Length, _iesParameters.MacKeySize / 8);
+        ReadOnlySpan<byte> k2 = kdfKey.AsSpan(k1.Length, iesParameters.MacKeySize / 8);
         _hash.BlockUpdate(k2);
 
-        byte[] k2ABuffer = ArrayPool<byte>.Shared.Rent(digestSize);
-        Span<byte> k2A = k2ABuffer.AsSpan(0, digestSize);
+        using ArrayPoolSpan<byte> k2ASpan = new(digestSize);
+        Span<byte> k2A = k2ASpan;
         _hash.DoFinal(k2A);
 
         _mac.Init(new KeyParameter(k2A));
 
-        _mac.BlockUpdate(_iv);
+        _mac.BlockUpdate(iv);
         _mac.BlockUpdate(c.Slice(0, len));
 
         // Convert the length of the encoding vector into a byte array.
-        byte[]? p2 = _iesParameters.GetEncodingV();
+        byte[]? p2 = iesParameters.GetEncodingV();
         if (p2 is not null)
         {
             _mac.BlockUpdate(p2, 0, p2.Length);
@@ -141,18 +161,13 @@ public sealed class EthereumIesEngine
         }
 
         // Apply the MAC.
-        byte[] macOutputBuffer = ArrayPool<byte>.Shared.Rent(macSize);
-        Span<byte> T = macOutputBuffer.AsSpan(0, macSize);
+        using ArrayPoolSpan<byte> macSpan = new(macSize);
+        Span<byte> T = macSpan;
         _mac.DoFinal(T);
 
         // Output the double (C,T).
         c.Slice(0, len).CopyTo(output);
         T.CopyTo(output.Slice(len));
-
-        // Return buffers to the pool
-        ArrayPool<byte>.Shared.Return(k2ABuffer);
-        ArrayPool<byte>.Shared.Return(cipherOutputBuffer);
-        ArrayPool<byte>.Shared.Return(macOutputBuffer);
 
         return len + macSize;
 
@@ -161,21 +176,21 @@ public sealed class EthereumIesEngine
             => throw new ArgumentException("Output buffer too small", nameof(output));
     }
 
-    private int DecryptBlock(ReadOnlySpan<byte> input, Span<byte> output, ReadOnlySpan<byte> macData)
+    private int DecryptBlock(
+        ReadOnlySpan<byte> input,
+        Span<byte> output,
+        ReadOnlySpan<byte> macData,
+        byte[] kdfKey,
+        IesWithCipherParameters iesParameters,
+        byte[] iv)
     {
         int macSize = _mac.GetMacSize();
-
-        // Ensure that the length of the input is greater than the MAC in bytes
-        if (input.Length <= _iesParameters.MacKeySize / 8)
-        {
-            ThrowInputTooShort();
-        }
 
         int digestSize = _hash.GetDigestSize();
 
         // Block cipher mode.
-        ReadOnlySpan<byte> k1 = _kdfKey.AsSpan(0, _iesParameters.CipherKeySize / 8);
-        _cipher.Init(false, new ParametersWithIV(new KeyParameter(k1), _iv));
+        ReadOnlySpan<byte> k1 = kdfKey.AsSpan(0, iesParameters.CipherKeySize / 8);
+        _cipher.Init(false, new ParametersWithIV(new KeyParameter(k1), iv));
 
         int cipherInputLength = input.Length - macSize;
 
@@ -183,19 +198,19 @@ public sealed class EthereumIesEngine
         ReadOnlySpan<byte> t1 = input.Slice(input.Length - macSize, macSize);
 
         _hash.Reset();
-        ReadOnlySpan<byte> k2 = _kdfKey.AsSpan(k1.Length, _iesParameters.MacKeySize / 8);
+        ReadOnlySpan<byte> k2 = kdfKey.AsSpan(k1.Length, iesParameters.MacKeySize / 8);
         _hash.BlockUpdate(k2);
 
-        byte[] k2ABuffer = ArrayPool<byte>.Shared.Rent(digestSize);
-        Span<byte> k2A = k2ABuffer.AsSpan(0, digestSize);
+        using ArrayPoolSpan<byte> k2ASpan = new(digestSize);
+        Span<byte> k2A = k2ASpan;
         _hash.DoFinal(k2A);
 
         _mac.Init(new KeyParameter(k2A));
-        _mac.BlockUpdate(_iv);
+        _mac.BlockUpdate(iv);
         _mac.BlockUpdate(input.Slice(0, cipherInputLength));
 
         // Convert the length of the encoding vector into a byte array.
-        byte[]? p2 = _iesParameters.GetEncodingV();
+        byte[]? p2 = iesParameters.GetEncodingV();
         if (p2 is not null)
         {
             _mac.BlockUpdate(p2, 0, p2.Length);
@@ -206,8 +221,8 @@ public sealed class EthereumIesEngine
             _mac.BlockUpdate(macData);
         }
 
-        byte[] macOutputBuffer = ArrayPool<byte>.Shared.Rent(macSize);
-        Span<byte> t2 = macOutputBuffer.AsSpan(0, macSize);
+        using ArrayPoolSpan<byte> macSpan = new(macSize);
+        Span<byte> t2 = macSpan;
         _mac.DoFinal(t2);
 
         if (!Arrays.FixedTimeEquals(t1, t2))
@@ -219,15 +234,7 @@ public sealed class EthereumIesEngine
         int len = _cipher.ProcessBytes(input.Slice(0, cipherInputLength), output);
         len += _cipher.DoFinal(output.Slice(len));
 
-        // Return buffers to the pool
-        ArrayPool<byte>.Shared.Return(k2ABuffer);
-        ArrayPool<byte>.Shared.Return(macOutputBuffer);
-
         return len;
-
-        [StackTraceHidden, DoesNotReturn]
-        static void ThrowInputTooShort()
-            => throw new InvalidCipherTextException("Length of input must be greater than the MAC");
 
         [StackTraceHidden, DoesNotReturn]
         static void ThrowInvalidMac()

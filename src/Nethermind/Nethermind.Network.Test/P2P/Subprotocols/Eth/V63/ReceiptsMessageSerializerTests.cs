@@ -1,14 +1,18 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -19,13 +23,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63;
 [Parallelizable(ParallelScope.All)]
 public class ReceiptsMessageSerializerTests
 {
-    private const int DecoderLogsLimit = 270_000;
+    // The log count the decoder was pinned to before the limit was derived from the block gas ceiling.
+    private const int FormerFixedLogsLimit = 270_000;
 
     private static void Test(TxReceipt[][]? txReceipts)
     {
         using ReceiptsMessage message = new(txReceipts?.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        var serialized = serializer.Serialize(message);
+        byte[] serialized = serializer.Serialize(message);
         using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
         if (txReceipts is null)
@@ -37,19 +42,15 @@ public class ReceiptsMessageSerializerTests
             Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(txReceipts.Length), "length");
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                if (txReceipts[i] is null)
+                if (txReceipts[i] is null || txReceipts[i].Length == 0)
                 {
-                    Assert.That(deserialized.TxReceipts[i], Is.Null, $"receipts[{i}]");
+                    Assert.That(deserialized.TxReceipts[i], Is.Empty, $"receipts[{i}]");
                 }
                 else
                 {
                     for (int j = 0; j < txReceipts[i].Length; j++)
                     {
-                        if (txReceipts[i][j] is null)
-                        {
-                            Assert.That(deserialized.TxReceipts[i][j], Is.Null, $"receipts[{i}][{j}]");
-                        }
-                        else
+                        using (Assert.EnterMultipleScope())
                         {
                             Assert.That(deserialized.TxReceipts[i][j].TxType, Is.EqualTo(txReceipts[i][j].TxType), $"receipts[{i}][{j}].TxType");
                             Assert.That(deserialized.TxReceipts[i][j].Bloom, Is.EqualTo(txReceipts[i][j].Bloom), $"receipts[{i}][{j}].Bloom");
@@ -73,6 +74,25 @@ public class ReceiptsMessageSerializerTests
     }
 
     [Test]
+    public void Zero_length_bloom_decodes_only_on_a_chain_scheduling_eip7668([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        ReceiptsMessageSerializer serializer = new(new TestSingleReleaseSpecProvider(spec));
+        using ReceiptsMessage message = new(new TxReceipt[][] { [Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.ZeroLength).TestObject] }.ToPooledList());
+        byte[] serialized = serializer.Serialize(message);
+
+        if (eip7668)
+        {
+            using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
+            Assert.That(deserialized.TxReceipts[0][0].Bloom, Is.SameAs(Bloom.ZeroLength));
+        }
+        else
+        {
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+        }
+    }
+
+    [Test]
     public void Roundtrip()
     {
         TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject], [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
@@ -84,12 +104,13 @@ public class ReceiptsMessageSerializerTests
     {
         TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
 
-        var decoder = new ReceiptMessageDecoder(skipStateAndStatus: true);
+        ReceiptMessageDecoder decoder = new(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
-        var decoded = decoder.Decode((ReadOnlySpan<byte>)encoded);
+        RlpReader context = new(encoded);
+        TxReceipt decoded = decoder.Decode(ref context);
 
-        var expectedDecoded = new TxReceipt
+        TxReceipt expectedDecoded = new()
         {
             TxType = receipt.TxType,
             GasUsedTotal = receipt.GasUsedTotal,
@@ -97,7 +118,7 @@ public class ReceiptsMessageSerializerTests
             Logs = receipt.Logs
         };
 
-        decoded.Should().BeEquivalentTo(expectedDecoded);
+        decoded.AssertEquivalentTo(expectedDecoded);
     }
 
     [Test]
@@ -108,24 +129,51 @@ public class ReceiptsMessageSerializerTests
     }
 
     [Test]
-    public void Roundtrip_with_null_top_level()
+    public void Roundtrip_with_empty_block()
     {
-        Test(null);
-    }
-
-    [Test]
-    public void Roundtrip_with_nulls()
-    {
-        TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], null, new[] { null, Build.A.Receipt.WithAllFieldsFilled.TestObject }];
+        TxReceipt[][] data = [[], [Build.A.Receipt.WithAllFieldsFilled.TestObject]];
         Test(data);
     }
 
     [Test]
-    public void Deserialize_empty()
+    public void Roundtrip_with_null_top_level() => Test(null);
+
+    [Test]
+    public void Roundtrip_with_null_block()
+    {
+        TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], null];
+        Test(data);
+    }
+
+    [Test]
+    public void Deserialize_Throws_On_Null_Receipt()
     {
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        using ReceiptsMessage receiptsMessage = serializer.Deserialize([]);
-        receiptsMessage.TxReceipts.Should().HaveCount(0);
+        byte[] serialized = Bytes.FromHexString("c2c1c0");
+
+        RlpException? exception = Assert.Throws<RlpException>(() => serializer.Deserialize(serialized));
+        Assert.That(exception?.Message, Is.EqualTo("Unexpected null array element at index 0"));
+    }
+
+    private static IEnumerable<TestCaseData> EmptyResponses()
+    {
+        yield return new TestCaseData(Array.Empty<byte>()).SetArgDisplayNames("no bytes");
+        yield return new TestCaseData(Rlp.OfEmptyList.Bytes).SetArgDisplayNames("empty list");
+    }
+
+    [TestCaseSource(nameof(EmptyResponses))]
+    public void Deserialize_empty_is_usable_after_an_earlier_one_is_disposed(byte[] bytes)
+    {
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+        ReceiptsMessage first = serializer.Deserialize(bytes);
+        first.Dispose();
+
+        using ReceiptsMessage second = serializer.Deserialize(bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second.TxReceipts.ToArray(), Is.Empty);
+        }
     }
 
     [Test]
@@ -142,7 +190,7 @@ public class ReceiptsMessageSerializerTests
         serializer.Serialize(buffer, message);
         using ReceiptsMessage deserialized = serializer.Deserialize(buffer);
 
-        deserialized.TxReceipts.Count.Should().Be(data.Length);
+        Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(data.Length));
     }
 
     [Test]
@@ -172,20 +220,35 @@ public class ReceiptsMessageSerializerTests
     [Test]
     public void Deserialize_Throws_On_TooMany_Receipts_In_A_Block()
     {
-        TxReceipt[][] txReceipts = [new TxReceipt[NethermindSyncLimits.MaxHashesFetch + 1]];
-        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        byte[] serialized = SerializeSingleBlock(BlockBodyDecoder.TransactionsCountLimit.Limit + 1);
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-
-        byte[] serialized = serializer.Serialize(message);
 
         Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
     }
 
     [Test]
-    public void Deserialize_Allows_Receipt_Log_Count_At_Current_Limit()
+    public void Deserialize_Allows_More_Receipts_In_A_Block_Than_Hashes_Per_Request()
+    {
+        const int receiptCount = NethermindSyncLimits.MaxHashesFetch + 1;
+        byte[] serialized = SerializeSingleBlock(receiptCount);
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
+        Assert.That(deserialized.TxReceipts[0].Length, Is.EqualTo(receiptCount));
+    }
+
+    private static byte[] SerializeSingleBlock(int receiptCount)
+    {
+        TxReceipt receipt = new() { StatusCode = 1, GasUsedTotal = 21_000, Bloom = Bloom.Empty, Logs = [] };
+        using ReceiptsMessage message = new(new TxReceipt[][] { Enumerable.Repeat(receipt, receiptCount).ToArray() }.ToPooledList());
+        return new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).Serialize(message);
+    }
+
+    [Test]
+    public void Deserialize_Allows_Receipt_Log_Count_Above_The_Former_Fixed_Limit()
     {
         TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-        receipt.Logs = Enumerable.Repeat(Build.A.LogEntry.TestObject, DecoderLogsLimit).ToArray();
+        receipt.Logs = Enumerable.Repeat(Build.A.LogEntry.TestObject, FormerFixedLogsLimit + 1).ToArray();
 
         TxReceipt[][] txReceipts = [new[] { receipt }];
         using ReceiptsMessage message = new(txReceipts.ToPooledList());
@@ -193,21 +256,25 @@ public class ReceiptsMessageSerializerTests
 
         byte[] serialized = serializer.Serialize(message);
         using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
-        Assert.That(deserialized.TxReceipts[0][0].Logs.Length, Is.EqualTo(DecoderLogsLimit));
+        Assert.That(deserialized.TxReceipts[0][0].Logs.Length, Is.EqualTo(FormerFixedLogsLimit + 1));
     }
 
     [Test]
-    public void Deserialize_Throws_On_Receipt_Log_Count_Above_Current_Limit()
+    public void Deserialize_Throws_On_A_Receipt_Log_Count_The_Message_Cannot_Hold()
     {
-        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-        receipt.Logs = Enumerable.Repeat(Build.A.LogEntry.TestObject, DecoderLogsLimit + 1).ToArray();
-
-        TxReceipt[][] txReceipts = [new[] { receipt }];
-        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        // Hand-built rather than round-tripped: the point is a count no encoder would produce.
+        byte[] serialized = WrapInSequence(WrapInSequence(ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount))));
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
-        byte[] serialized = serializer.Serialize(message);
-
         Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+    }
+
+    private static byte[] WrapInSequence(byte[] inner)
+    {
+        byte[] bytes = new byte[Rlp.LengthOfSequence(inner.Length)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(inner.Length);
+        inner.CopyTo(bytes, writer.Position);
+        return bytes;
     }
 }

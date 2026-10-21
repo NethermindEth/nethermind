@@ -6,14 +6,9 @@ using System.IO;
 
 namespace Nethermind.Sockets;
 
-public class CounterStream : Stream
+public class CounterStream(Stream stream) : Stream
 {
-    private readonly Stream _stream;
-
-    public CounterStream(Stream stream)
-    {
-        _stream = stream ?? throw new ArgumentNullException(nameof(stream));
-    }
+    private readonly Stream _stream = stream ?? throw new ArgumentNullException(nameof(stream));
 
     public long WrittenBytes { get; private set; }
 

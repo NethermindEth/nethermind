@@ -6,8 +6,11 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -30,8 +33,8 @@ public class OptimismBlockValidatorTests(Fork fork)
 
     private (BlockHeader parentHeader, Block header) BuildBlock(Action<BlockBuilder>? postBuild = null)
     {
-        var parentBlock = Build.A.BlockHeader.TestObject;
-        var builder = Build.A.Block
+        BlockHeader parentBlock = Build.A.BlockHeader.TestObject;
+        BlockBuilder builder = Build.A.Block
             .WithWithdrawals(_timestamp >= Spec.IsthmusTimeStamp ? [] : null)
             .WithHeader(Build.A.BlockHeader
                 .WithParent(parentBlock)
@@ -67,7 +70,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             .WithWithdrawalsRoot(withdrawalsRoot)
         );
 
-        var validator = new OptimismBlockValidator(
+        OptimismBlockValidator validator = new(
             Always.Valid,
             Always.Valid,
             Always.Valid,
@@ -99,7 +102,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             .WithWithdrawalsRoot(GetWithdrawalsRoot())
         );
 
-        var validator = new OptimismBlockValidator(
+        OptimismBlockValidator validator = new(
             Always.Valid,
             Always.Valid,
             Always.Valid,
@@ -130,7 +133,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             .WithBlobGasUsed((ulong?)blobGasUsed)
         );
 
-        var validator = new OptimismBlockValidator(
+        OptimismBlockValidator validator = new(
             Always.Valid,
             Always.Valid,
             Always.Valid,
@@ -141,6 +144,40 @@ public class OptimismBlockValidatorTests(Fork fork)
         Assert.That(
             validator.ValidateSuggestedBlock(block, parentHeader, out string? error),
             Is.EqualTo(isValid.On(_timestamp)),
+            () => error!);
+    }
+
+    [Test]
+    public void ValidateSuggestedBlock_ValidatesLegacyTransactionGasLimitCap()
+    {
+        const ulong chainId = 10;
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+            .SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA)
+            .TestObject;
+        (BlockHeader parentHeader, Block block) = BuildBlock(b => b
+            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap * 2)
+            .WithTransactions(transaction));
+        OptimismReleaseSpec spec = new()
+        {
+            IsEip1559Enabled = true,
+            IsEip7825Enabled = _timestamp >= Spec.KarstTimeStamp
+        };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(block.Header).Returns(spec);
+        TxValidator txValidator = new(chainId);
+        txValidator.RegisterValidator(TxType.Legacy, new OptimismLegacyTxValidator(chainId));
+        OptimismBlockValidator validator = new(
+            txValidator,
+            Always.Valid,
+            Always.Valid,
+            specProvider,
+            Spec.Instance,
+            TestLogManager.Instance);
+
+        Assert.That(
+            validator.ValidateSuggestedBlock(block, parentHeader, out string? error),
+            Is.EqualTo(_timestamp < Spec.KarstTimeStamp),
             () => error!);
     }
 }

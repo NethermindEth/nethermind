@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -39,10 +40,10 @@ namespace Nethermind.Core
                         _ => tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee)
                     };
 
-                    return effectiveGasPrice * (ulong)tx.GasLimit + tx.ValueRef;
+                    return effectiveGasPrice * tx.GasLimit + tx.ValueRef;
                 }
 
-                return tx.MaxPriorityFeePerGas * (ulong)tx.GasLimit + tx.ValueRef;
+                return tx.MaxPriorityFeePerGas * tx.GasLimit + tx.ValueRef;
             }
 
             public UInt256 CalculateEffectiveGasPrice(bool eip1559Enabled, in UInt256 baseFee) =>
@@ -56,21 +57,26 @@ namespace Nethermind.Core
             public bool IsAboveInitCode(IReleaseSpec spec) =>
                 tx.IsContractCreation && spec.IsEip3860Enabled && tx.DataLength > spec.MaxInitCodeSize;
 
-            public ulong GetBlobGas() => (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
-            public int GetBlobCount() => tx.BlobVersionedHashes?.Length ?? 0;
+            /// <summary>
+            /// Returns the rejection of a priced transaction whose priority fee exceeds its fee cap, otherwise <see langword="null"/>.
+            /// </summary>
+            /// <remarks>
+            /// Calls skip transaction validation, and the processor then checks only the fee cap against the base fee.
+            /// </remarks>
+            public string? GetTipAboveFeeCapError(IReleaseSpec spec) =>
+                spec.IsEip1559Enabled
+                && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero)
+                && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas
+                    ? $"{TxErrorMessages.TipAboveFeeCap}: address {tx.SenderAddress!.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tx.MaxPriorityFeePerGas}, maxFeePerGas: {tx.MaxFeePerGas}"
+                    : null;
 
-            public void CapGasLimit(long? gasCap)
-            {
-                if (gasCap is not null and not 0)
-                {
-                    tx.GasLimit = long.Min(tx.GasLimit, gasCap.Value);
-                }
-            }
+            public ulong GetBlobGas() => (ulong)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
+            public int GetBlobCount() => tx.BlobVersionedHashes?.Length ?? 0;
         }
 
         public static bool TryGetByTxType<T>(this T?[] array, TxType txType, [NotNullWhen(true)] out T? item)
         {
-            var type = (byte)txType;
+            byte type = (byte)txType;
             if (type > Transaction.MaxTxType)
             {
                 item = default;

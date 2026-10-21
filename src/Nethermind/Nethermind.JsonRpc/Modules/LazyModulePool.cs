@@ -10,15 +10,9 @@ public class LazyModulePool<T>(Lazy<IRpcModulePool<T>> lazyBasePool) : IRpcModul
 {
     private IRpcModulePool<T> BasePool => lazyBasePool.Value;
 
-    public Task<T> GetModule(bool canBeShared)
-    {
-        return BasePool.GetModule(canBeShared);
-    }
+    public Task<T> GetModule(bool canBeShared) => BasePool.GetModule(canBeShared);
 
-    public void ReturnModule(T module)
-    {
-        BasePool.ReturnModule(module);
-    }
+    public void ReturnModule(T module) => BasePool.ReturnModule(module);
 
     public IRpcModuleFactory<T> Factory => BasePool.Factory;
 

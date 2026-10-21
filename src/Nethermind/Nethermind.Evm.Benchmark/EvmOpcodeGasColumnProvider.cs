@@ -90,12 +90,9 @@ public sealed class EvmOpcodeGasColumnProvider : IColumnProvider
         public override string ColumnName => "Gas";
         public override string Legend => "Gas consumed by the configured opcode setup";
 
-        public override string GetValue(Summary summary, BenchmarkCase benchmarkCase)
-        {
-            return TryGetBenchmarkData(summary, benchmarkCase, out long gas, out _)
+        public override string GetValue(Summary summary, BenchmarkCase benchmarkCase) => TryGetBenchmarkData(summary, benchmarkCase, out long gas, out _)
                 ? gas.ToString(CultureInfo.InvariantCulture)
                 : "N/A";
-        }
     }
 
     private sealed class OpcodeGasThroughputColumn : BaseOpcodeGasColumn

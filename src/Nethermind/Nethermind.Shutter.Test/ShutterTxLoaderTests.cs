@@ -11,6 +11,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Abi;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Shutter.Test;
 
@@ -61,7 +62,7 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
     {
         Random rnd = new(ShutterTestsCommon.Seed);
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -90,7 +91,7 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
             new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
         );
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -102,11 +103,27 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
     }
 
     [Test]
+    public async Task Can_load_transactions_when_cached_head_header_is_another_instance()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
+        await ProduceBranchV1(chain.EngineRpcModule, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+
+        Block head = chain.BlockTree.Head!;
+        Assert.That(chain.BlockTree.FindHeader(head.Hash!, BlockTreeLookupOptions.None), Is.Not.SameAs(head.Header));
+
+        chain.Api!.AdvanceSlot(20);
+
+        Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(20));
+    }
+
+    [Test]
     public async Task Can_load_up_to_gas_limit()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -150,7 +167,7 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
     {
         Random rnd = new(ShutterTestsCommon.Seed);
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -182,7 +199,7 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
     {
         Random rnd = new(ShutterTestsCommon.Seed);
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -203,7 +220,7 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
             new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
         );
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];

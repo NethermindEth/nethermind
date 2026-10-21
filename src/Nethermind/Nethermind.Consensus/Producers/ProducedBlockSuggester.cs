@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 
 namespace Nethermind.Consensus.Producers
 {
@@ -11,6 +12,7 @@ namespace Nethermind.Consensus.Producers
         private readonly IBlockTree _blockTree;
         private readonly IBlockProducerRunner _blockProducerRunner;
 
+        [ConstructorWithSideEffect]
         public ProducedBlockSuggester(IBlockTree blockTree, IBlockProducerRunner blockProducer)
         {
             _blockTree = blockTree;

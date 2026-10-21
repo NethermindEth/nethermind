@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <RootNamespace>Nethermind.DocGen</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,6 +12,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Runner\Nethermind.Runner.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.DocGen.Test" />
   </ItemGroup>
 
 </Project>

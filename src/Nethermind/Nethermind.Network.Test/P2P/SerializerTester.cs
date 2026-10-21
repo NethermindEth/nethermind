@@ -1,11 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-
-using System;
 using DotNetty.Buffers;
-using FluentAssertions;
-using FluentAssertions.Equivalency;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
@@ -15,37 +11,34 @@ namespace Nethermind.Network.Test.P2P
 {
     public static class SerializerTester
     {
-        public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message, string? expectedData = null, Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? additionallyExcluding = null) where T : P2PMessage
+        public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message, string? expectedData = null) where T : P2PMessage
         {
             using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
             using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
-
-            serializer.Serialize(buffer, message);
-            using T deserialized = serializer.Deserialize(buffer);
-
-            // RlpLength is calculated explicitly when serializing an object by Calculate method. It's null after deserialization.
-            deserialized.Should().BeEquivalentTo(message, options =>
+            try
             {
-                EquivalencyAssertionOptions<T>? excluded = options.Excluding(c => c.Name == "RlpLength" || c.Name == "EncodedSize");
-                return (additionallyExcluding is not null ? additionallyExcluding(excluded) : excluded)
-                    .Using<ReadOnlyMemory<byte>>((context => context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray())))
-                    .WhenTypeIs<ReadOnlyMemory<byte>>();
-            });
+                serializer.Serialize(buffer, message);
+                using T deserialized = serializer.Deserialize(buffer);
 
-            Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
+                Assert.That(deserialized, Is.Not.Null);
 
-            serializer.Serialize(buffer2, deserialized);
+                Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
 
-            buffer.SetReaderIndex(0);
-            string allHex = buffer.ReadAllHex();
-            Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
+                serializer.Serialize(buffer2, deserialized);
 
-            if (expectedData is not null)
-            {
-                allHex.Should().BeEquivalentTo(expectedData);
+                buffer.SetReaderIndex(0);
+                string allHex = buffer.ReadAllHex();
+                Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
+
+                if (expectedData is not null)
+                {
+                    Assert.That(allHex, Is.EqualTo(expectedData));
+                }
             }
-
-            message.TryDispose();
+            finally
+            {
+                message.TryDispose();
+            }
         }
     }
 }

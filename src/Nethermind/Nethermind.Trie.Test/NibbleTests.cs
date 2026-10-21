@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -35,21 +34,23 @@ public class NibbleTests
         for (int i = 0; i < _compactEncoding.Length; i++)
         {
             byte[]? encoded = _compactEncoding[i];
-            Nibbles.CompactToHexEncode(encoded).Should().BeEquivalentTo(_hexEncoding[i]);
+            Assert.That(Nibbles.CompactToHexEncode(encoded), Is.EqualTo(_hexEncoding[i]));
         }
     }
 
-    [Test]
-    public void BytesToNibbleBytes_SmallInput_ProducesCorrectOutput()
+    [TestCase(new byte[] { 0x9C }, new byte[] { 0x09, 0x0C })]
+    [TestCase(new byte[] { 0x12, 0x34, 0x56, 0x78 }, new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 })]
+    public void BytesToNibbleBytes_SmallInput_ProducesCorrectOutput(byte[] input, byte[] expected)
     {
-        // Test with small input that doesn't trigger vector paths
-        byte[] input = [0x12, 0x34, 0x56, 0x78];
-        byte[] expected = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
-
         byte[] result = Nibbles.BytesToNibbleBytes(input);
 
-        result.Should().BeEquivalentTo(expected);
+        Assert.That(result, Is.EqualTo(expected));
     }
+
+    // [] is a null-reference span, so a write for a zero length faults here instead of corrupting the heap.
+    [Test]
+    public void BytesToNibbleBytes_EmptyInput_ReturnsEmpty() =>
+        Assert.That(Nibbles.BytesToNibbleBytes([]), Is.Empty);
 
     [Test]
     public void BytesToNibbleBytes_Vector128Size_ProducesCorrectOutput()
@@ -66,18 +67,16 @@ public class NibbleTests
         // Verify each byte was correctly split into two nibbles
         for (int i = 0; i < input.Length; i++)
         {
-            result[i * 2].Should().Be((byte)(input[i] >> 4), $"high nibble at position {i}");
-            result[i * 2 + 1].Should().Be((byte)(input[i] & 0x0F), $"low nibble at position {i}");
+            Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
+            Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
         }
     }
 
     [Test]
     public void BytesToNibbleBytes_LargerThanVector128_ProducesCorrectOutput()
     {
-        // Test with 33 bytes - triggers multiple Vector128 iterations
-        // This would have caught the out-of-bounds bug where second iteration
-        // read from bytes[0] instead of bytes[processed]
-        // Use distinct values in each chunk to detect re-reading
+        // 33 bytes: on the 128-bit path, blocks at 0 and 16, then a final block at 17
+        // Distinct values in each chunk expose a block read from the wrong offset
         byte[] input = new byte[33];
         for (int i = 0; i < input.Length; i++)
         {
@@ -92,17 +91,16 @@ public class NibbleTests
 
         byte[] result = Nibbles.BytesToNibbleBytes(input);
 
-        result.Length.Should().Be(66);
+        Assert.That(result.Length, Is.EqualTo(66));
 
         // Verify each byte was correctly split into two nibbles
-        // With the bug, bytes 16-31 would have nibbles from bytes 0-15 instead
         for (int i = 0; i < input.Length; i++)
         {
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
 
-            result[i * 2].Should().Be(expectedHigh, $"high nibble at position {i} (byte value 0x{input[i]:X2})");
-            result[i * 2 + 1].Should().Be(expectedLow, $"low nibble at position {i} (byte value 0x{input[i]:X2})");
+            Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2})");
+            Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2})");
         }
     }
 
@@ -119,23 +117,21 @@ public class NibbleTests
 
         byte[] result = Nibbles.BytesToNibbleBytes(input);
 
-        result.Length.Should().Be(64);
+        Assert.That(result.Length, Is.EqualTo(64));
 
         // Verify each byte was correctly split into two nibbles
         for (int i = 0; i < input.Length; i++)
         {
-            result[i * 2].Should().Be((byte)(input[i] >> 4), $"high nibble at position {i}");
-            result[i * 2 + 1].Should().Be((byte)(input[i] & 0x0F), $"low nibble at position {i}");
+            Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
+            Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
         }
     }
 
     [Test]
     public void BytesToNibbleBytes_LargerThanVector256_ProducesCorrectOutput()
     {
-        // Test with 65 bytes - triggers multiple Vector256 iterations on AVX2 systems
-        // This would have caught the out-of-bounds bug where second iteration
-        // read from bytes[0] instead of bytes[processed]
-        // Use distinct values in each chunk to detect re-reading
+        // 65 bytes: on AVX2, blocks at 0 and 32, then a final block at 33
+        // Distinct values in each chunk expose a block read from the wrong offset
         byte[] input = new byte[65];
         for (int i = 0; i < input.Length; i++)
         {
@@ -150,27 +146,23 @@ public class NibbleTests
 
         byte[] result = Nibbles.BytesToNibbleBytes(input);
 
-        result.Length.Should().Be(130);
+        Assert.That(result.Length, Is.EqualTo(130));
 
         // Verify each byte was correctly split into two nibbles
-        // With the bug, bytes 32-63 would have nibbles from bytes 0-31 instead
         for (int i = 0; i < input.Length; i++)
         {
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
 
-            result[i * 2].Should().Be(expectedHigh, $"high nibble at position {i} (byte value 0x{input[i]:X2})");
-            result[i * 2 + 1].Should().Be(expectedLow, $"low nibble at position {i} (byte value 0x{input[i]:X2})");
+            Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2})");
+            Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2})");
         }
     }
 
     [Test]
-    public void BytesToNibbleBytes_Vector256ThenVector128_ProducesCorrectOutput()
+    public void BytesToNibbleBytes_Vector256OverlappingTail_ProducesCorrectOutput()
     {
-        // Test with 80 bytes - on AVX2 systems this triggers:
-        // - Vector256 processes 64 bytes (2 iterations of 32 bytes)
-        // - Vector128 processes remaining 16 bytes
-        // With the bug, Vector128 would read from bytes[0] instead of bytes[64]
+        // 80 bytes: on AVX2, blocks at 0 and 32, then a final block at 48 that overlaps the second
         byte[] input = new byte[80];
         for (int i = 0; i < input.Length; i++)
         {
@@ -180,27 +172,23 @@ public class NibbleTests
 
         byte[] result = Nibbles.BytesToNibbleBytes(input);
 
-        result.Length.Should().Be(160);
+        Assert.That(result.Length, Is.EqualTo(160));
 
         // Verify each byte was correctly split into two nibbles
-        // With the bug, bytes 64-79 would show nibbles from bytes 0-15
         for (int i = 0; i < input.Length; i++)
         {
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
 
-            result[i * 2].Should().Be(expectedHigh,
-                $"high nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
-            result[i * 2 + 1].Should().Be(expectedLow,
-                $"low nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
+            Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
+            Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
         }
     }
 
     [Test]
     public void BytesToNibbleBytes_MultipleVector128Iterations_ProducesCorrectOutput()
     {
-        // Test with 48 bytes - triggers 3 Vector128 iterations (16 bytes each)
-        // With the bug, second and third iterations would read from wrong offset
+        // 48 bytes: on the 128-bit path, blocks at 0, 16 and 32
         byte[] input = new byte[48];
         for (int i = 0; i < input.Length; i++)
         {
@@ -210,7 +198,7 @@ public class NibbleTests
 
         byte[] result = Nibbles.BytesToNibbleBytes(input);
 
-        result.Length.Should().Be(96);
+        Assert.That(result.Length, Is.EqualTo(96));
 
         // Verify each byte was correctly split
         for (int i = 0; i < input.Length; i++)
@@ -218,10 +206,8 @@ public class NibbleTests
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
 
-            result[i * 2].Should().Be(expectedHigh,
-                $"high nibble at position {i} (byte value 0x{input[i]:X2})");
-            result[i * 2 + 1].Should().Be(expectedLow,
-                $"low nibble at position {i} (byte value 0x{input[i]:X2})");
+            Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2})");
+            Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2})");
         }
     }
 
@@ -238,13 +224,13 @@ public class NibbleTests
 
         byte[] result = Nibbles.BytesToNibbleBytes(input);
 
-        result.Length.Should().Be(256);
+        Assert.That(result.Length, Is.EqualTo(256));
 
         // Verify each byte was correctly split into two nibbles
         for (int i = 0; i < input.Length; i++)
         {
-            result[i * 2].Should().Be((byte)(input[i] >> 4), $"high nibble at position {i}");
-            result[i * 2 + 1].Should().Be((byte)(input[i] & 0x0F), $"low nibble at position {i}");
+            Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
+            Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
         }
     }
 
@@ -260,13 +246,13 @@ public class NibbleTests
 
         byte[] result = Nibbles.BytesToNibbleBytes(input);
 
-        result.Length.Should().Be(512);
+        Assert.That(result.Length, Is.EqualTo(512));
 
         // Verify each byte was correctly split into two nibbles
         for (int i = 0; i < input.Length; i++)
         {
-            result[i * 2].Should().Be((byte)(input[i] >> 4), $"high nibble at position {i}");
-            result[i * 2 + 1].Should().Be((byte)(input[i] & 0x0F), $"low nibble at position {i}");
+            Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
+            Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
         }
     }
 }

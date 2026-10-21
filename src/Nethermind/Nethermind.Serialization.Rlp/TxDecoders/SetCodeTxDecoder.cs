@@ -6,27 +6,55 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
-    : BaseEIP1559TxDecoder<T>(TxType.SetCode, transactionFactory) where T : Transaction, new()
+public sealed class SetCodeTxDecoder(Func<Transaction>? transactionFactory = null)
+    : BaseEIP1559TxDecoder(TxType.SetCode, transactionFactory)
 {
-    private readonly AuthorizationTupleDecoder _authTupleDecoder = new();
+    private static RlpLimit AuthorizationListLimit => RlpLimit.For<Transaction>(
+        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.PerAuthBaseCost + 1)),
+        nameof(Transaction.AuthorizationList)
+    );
 
-    protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
-        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private static readonly AuthorizationTupleDecoder AuthTupleDecoder = AuthorizationTupleDecoder.Instance;
+
+    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+
+    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        EncodeTransaction(transaction, ref writer, rlpBehaviors, forSigning);
+
+    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        GetTransactionLength(transaction, rlpBehaviors, forSigning);
+
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-        transaction.AuthorizationList = decoderContext.DecodeArray(_authTupleDecoder);
+        int contentLength = GetContentLength(transaction, forSigning);
+        StartTypedTransaction(ref writer, TxType.SetCode, Rlp.LengthOfSequence(contentLength), rlpBehaviors);
+        writer.StartSequence(contentLength);
+        EncodeEip1559Fields(transaction, ref writer, rlpBehaviors);
+        AuthTupleDecoder.EncodeArray(ref writer, transaction.AuthorizationList, rlpBehaviors);
+        EncodeTypedSignature(transaction.Signature, forSigning, ref writer);
     }
 
-    protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        base.EncodePayload(transaction, stream, rlpBehaviors);
-        stream.EncodeArray(transaction.AuthorizationList, rlpBehaviors);
-    }
+    internal static int GetTransactionLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning) =>
+        GetTypedTransactionLength(Rlp.LengthOfSequence(GetContentLength(transaction, forSigning)), rlpBehaviors);
 
-    protected override int GetPayloadLength(Transaction transaction)
+    private static int GetContentLength(Transaction transaction, bool forSigning) =>
+        GetEip1559FieldsLength(transaction)
+        + (transaction.AuthorizationList is null ? 1 : Rlp.LengthOfSequence(AuthTupleDecoder.GetContentLength(transaction.AuthorizationList, RlpBehaviors.None)))
+        + GetTypedSignatureLength(transaction.Signature, forSigning);
+
+    private readonly struct Payload : ITxPayloadDecoder
     {
-        return base.GetPayloadLength(transaction)
-               + (transaction.AuthorizationList is null ? 1 : Rlp.LengthOfSequence(_authTupleDecoder.GetContentLength(transaction.AuthorizationList, RlpBehaviors.None)));
+        public static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors)
+        {
+            DecodeEip1559Fields(transaction, ref decoderContext, rlpBehaviors);
+            transaction.AuthorizationList = decoderContext.DecodeNonNullArray(AuthTupleDecoder, limit: AuthorizationListLimit);
+        }
+
+        public static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            DecodeTypedSignature(transaction, ref decoderContext, rlpBehaviors);
     }
 }

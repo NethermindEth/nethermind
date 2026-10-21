@@ -6,14 +6,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Runner.Logging
 {
-    public class CustomMicrosoftLogger : ILogger
+    public class CustomMicrosoftLogger(in Nethermind.Logging.ILogger logger) : ILogger
     {
-        private readonly Nethermind.Logging.ILogger _logger;
-
-        public CustomMicrosoftLogger(in Nethermind.Logging.ILogger logger)
-        {
-            _logger = logger;
-        }
+        private readonly Nethermind.Logging.ILogger _logger = logger;
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
         {
@@ -24,7 +19,7 @@ namespace Nethermind.Runner.Logging
 
             ArgumentNullException.ThrowIfNull(formatter);
 
-            var message = formatter(state, exception);
+            string message = formatter(state, exception);
             switch (logLevel)
             {
                 case LogLevel.Error:
@@ -46,28 +41,19 @@ namespace Nethermind.Runner.Logging
             }
         }
 
-        public bool IsEnabled(LogLevel logLevel)
-        {
-            return IsLevelEnabled(logLevel);
-        }
+        public bool IsEnabled(LogLevel logLevel) => IsLevelEnabled(logLevel);
 
-        public IDisposable BeginScope<TState>(TState state)
-        {
-            return NullScope.Instance;
-        }
+        public IDisposable BeginScope<TState>(TState state) => NullScope.Instance;
 
-        private bool IsLevelEnabled(LogLevel logLevel)
+        private bool IsLevelEnabled(LogLevel logLevel) => logLevel switch
         {
-            return logLevel switch
-            {
-                LogLevel.Error or LogLevel.Critical => _logger.IsError,
-                LogLevel.Information => _logger.IsInfo,
-                LogLevel.Warning => _logger.IsWarn,
-                LogLevel.Debug => _logger.IsDebug,
-                LogLevel.Trace => _logger.IsTrace,
-                _ => false,
-            };
-        }
+            LogLevel.Error or LogLevel.Critical => _logger.IsError,
+            LogLevel.Information => _logger.IsInfo,
+            LogLevel.Warning => _logger.IsWarn,
+            LogLevel.Debug => _logger.IsDebug,
+            LogLevel.Trace => _logger.IsTrace,
+            _ => false,
+        };
 
         private class NullScope : IDisposable
         {

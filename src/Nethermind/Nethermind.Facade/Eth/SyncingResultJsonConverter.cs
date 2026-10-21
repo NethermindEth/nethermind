@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth;
 
@@ -25,7 +26,7 @@ public class SyncingResultJsonConverter : JsonConverter<SyncingResult>
             return;
         }
 
-        JsonSerializer.Serialize(writer, new Result
+        TypeInfoJsonSerializer.Serialize(writer, new Result
         {
             StartingBlock = value.StartingBlock,
             CurrentBlock = value.CurrentBlock,
@@ -33,10 +34,10 @@ public class SyncingResultJsonConverter : JsonConverter<SyncingResult>
         }, options);
     }
 
-    private struct Result
+    internal struct Result
     {
-        public long StartingBlock { get; set; }
-        public long CurrentBlock { get; set; }
-        public long HighestBlock { get; set; }
+        public ulong StartingBlock { get; set; }
+        public ulong CurrentBlock { get; set; }
+        public ulong HighestBlock { get; set; }
     }
 }

@@ -16,13 +16,13 @@ namespace Nethermind.Blockchain.Utils;
 public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 {
     private readonly IBlockTree _blockTree;
-    private readonly int _lastN = 0;
+    private readonly ulong _lastN = 0;
 
     private Hash256? _lastQueuedStateRoot = null;
-    private Queue<Hash256> _stateRootQueue = new Queue<Hash256>();
+    private Queue<Hash256> _stateRootQueue = new();
     private NonBlocking.ConcurrentDictionary<Hash256AsKey, int> _availableStateRoots = new();
 
-    public LastNStateRootTracker(IBlockTree blockTree, int lastN)
+    public LastNStateRootTracker(IBlockTree blockTree, ulong lastN)
     {
         _blockTree = blockTree;
         _lastN = lastN;
@@ -31,10 +31,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         if (_blockTree.Head is not null) ResetAvailableStateRoots(_blockTree.Head.Header, true);
     }
 
-    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        ResetAvailableStateRoots(e.Block.Header, false);
-    }
+    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e) => ResetAvailableStateRoots(e.Block.Header, false);
 
     private void ResetAvailableStateRoots(BlockHeader? newHead, bool resetQueue)
     {
@@ -50,7 +47,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
                 newHead.StateRoot,
                 static (_) => 1,
                 static (_, oldValue) => oldValue + 1);
-            while (_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256 oldStateRoot))
+            while ((ulong)_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256 oldStateRoot))
             {
                 int newNum = _availableStateRoots.AddOrUpdate(
                     oldStateRoot,
@@ -68,7 +65,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         newStateRootSet.TryAdd(newHead.StateRoot, 1);
         stateRoots.Add(newHead.StateRoot);
 
-        while (parent is not null && stateRoots.Count < _lastN)
+        while (parent is not null && (ulong)stateRoots.Count < _lastN)
         {
             newStateRootSet.AddOrUpdate(
                 parent.StateRoot,
@@ -84,13 +81,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         _lastQueuedStateRoot = newHead.StateRoot;
     }
 
-    public bool HasStateRoot(Hash256 stateRoot)
-    {
-        return _availableStateRoots.TryGetValue(stateRoot, out int num) && num > 0;
-    }
+    public bool HasStateRoot(Hash256 stateRoot) => _availableStateRoots.TryGetValue(stateRoot, out int num) && num > 0;
 
-    public void Dispose()
-    {
-        _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
-    }
+    public void Dispose() => _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
 }

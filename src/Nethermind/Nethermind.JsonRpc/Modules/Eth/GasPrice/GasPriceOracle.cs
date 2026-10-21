@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -15,33 +16,23 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
-    public class GasPriceOracle : IGasPriceOracle
+    public class GasPriceOracle(
+        IBlockFinder blockFinder,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        UInt256? minGasPrice = null) : IGasPriceOracle
     {
-        private static readonly IComparer<UInt256> UInt256Comparer = Comparer<UInt256>.Default;
-
-        protected readonly IBlockFinder _blockFinder;
-        protected readonly ILogger _logger;
-        protected readonly UInt256 _minGasPrice;
+        protected readonly IBlockFinder _blockFinder = blockFinder;
+        protected readonly ILogger _logger = logManager.GetClassLogger<GasPriceOracle>();
+        protected readonly UInt256 _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
         protected internal PriceCache _gasPriceEstimation;
         protected internal PriceCache _maxPriorityFeePerGasEstimation;
         private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
-        protected ISpecProvider SpecProvider { get; }
+        protected ISpecProvider SpecProvider { get; } = specProvider;
         internal UInt256 IgnoreUnder { get; init; } = EthGasPriceConstants.DefaultIgnoreUnder;
         internal int BlockLimit { get; init; } = EthGasPriceConstants.DefaultBlocksLimit;
         private int SoftTxThreshold => BlockLimit * 2;
         private readonly UInt256 _defaultMinGasPriceMultiplier = 110;
-
-        public GasPriceOracle(
-            IBlockFinder blockFinder,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            UInt256? minGasPrice = null)
-        {
-            _blockFinder = blockFinder;
-            _logger = logManager.GetClassLogger();
-            _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
-            SpecProvider = specProvider;
-        }
 
         public virtual ValueTask<UInt256> GetGasPriceEstimate()
         {
@@ -64,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return ValueTask.FromResult(gasPriceEstimate!);
         }
 
-        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber) =>
+        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber) =>
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
             static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
 
@@ -84,9 +75,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
             IEnumerable<UInt256> gasPricesWithFee = GetGasPricesFromRecentBlocks(headBlock.Number,
                 EthGasPriceConstants.DefaultBlocksLimitMaxPriorityFeePerGas,
-                static (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee));
+                static (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee),
+                _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice);
 
-            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastPrice ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
+            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice;
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _maxPriorityFeePerGasEstimation.Set(headBlockHash, gasPriceEstimate);
             return gasPriceEstimate!;
@@ -96,52 +88,45 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         private delegate UInt256 CalculateGas(Transaction transaction, bool eip1559, UInt256 baseFee);
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction, UInt256? substituteForEmptyBlock = null)
         {
-            IEnumerable<Block> GetBlocks(long currentBlockNumber)
+            IEnumerable<Block> GetBlocks(ulong currentBlockNumber)
             {
-                while (currentBlockNumber >= 0)
+                do
                 {
                     if (_logger.IsTrace) _logger.Trace($"GasPriceOracle - searching for block number {currentBlockNumber}");
-                    yield return _blockFinder.FindBlock(currentBlockNumber)!;
-                    currentBlockNumber--;
-                }
+                    Block? block = _blockFinder.FindBlock(currentBlockNumber);
+                    if (block is null)
+                    {
+                        yield break;
+                    }
+
+                    yield return block;
+                } while (currentBlockNumber-- != 0);
             }
 
-            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction);
+            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction, substituteForEmptyBlock);
         }
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, CalculateGas calculateGasFromTransaction)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, CalculateGas calculateGasFromTransaction, UInt256? substituteForEmptyBlock)
         {
             int txCount = 0;
+            LowestGasPrices lowestGasPrices = default;
 
             foreach (Block currentBlock in blocks)
             {
-                Transaction[] currentBlockTransactions = currentBlock.Transactions;
-                int txFromCurrentBlock = 0;
-                bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Header).IsEip1559Enabled;
-                UInt256 baseFee = currentBlock.BaseFeePerGas;
-                IEnumerable<UInt256> effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
-                        .Select(tx => calculateGasFromTransaction(tx, eip1559Enabled, baseFee))
-                        .Where(g => g >= IgnoreUnder)
-                        .OrderBy(g => g);
-
-                foreach (UInt256 gasPrice in effectiveGasPrices)
+                int txFromCurrentBlock = SelectLowestGasPrices(currentBlock, calculateGasFromTransaction, ref lowestGasPrices);
+                for (int i = 0; i < txFromCurrentBlock; i++)
                 {
-                    yield return gasPrice;
-                    txFromCurrentBlock++;
-                    txCount++;
-
-                    if (txFromCurrentBlock >= EthGasPriceConstants.TxLimitFromABlock)
-                    {
-                        break;
-                    }
+                    yield return lowestGasPrices[i];
                 }
+
+                txCount += txFromCurrentBlock;
 
                 if (txFromCurrentBlock == 0)
                 {
                     blocksToGoBack--;
-                    yield return FallbackGasPrice(currentBlock.BaseFeePerGas);
+                    yield return substituteForEmptyBlock ?? FallbackGasPrice(currentBlock.BaseFeePerGas);
                 }
 
                 if (txFromCurrentBlock > 1 || txCount + blocksToGoBack >= SoftTxThreshold)
@@ -154,6 +139,46 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                     break;
                 }
             }
+        }
+
+        /// <summary>Fills <paramref name="lowest"/> with the block's lowest gas prices at or above <see cref="IgnoreUnder"/>, in ascending order.</summary>
+        /// <returns>The number of gas prices written.</returns>
+        private int SelectLowestGasPrices(Block block, CalculateGas calculateGasFromTransaction, ref LowestGasPrices lowestGasPrices)
+        {
+            Span<UInt256> lowest = lowestGasPrices;
+            bool eip1559Enabled = SpecProvider.GetSpec(block.Header).IsEip1559Enabled;
+            UInt256 baseFee = block.BaseFeePerGas;
+            int count = 0;
+            foreach (Transaction tx in block.Transactions)
+            {
+                if (tx.SenderAddress == block.Beneficiary)
+                {
+                    continue;
+                }
+
+                UInt256 gasPrice = calculateGasFromTransaction(tx, eip1559Enabled, baseFee);
+                if (gasPrice < IgnoreUnder || (count == lowest.Length && gasPrice >= lowest[^1]))
+                {
+                    continue;
+                }
+
+                int index = count < lowest.Length ? count++ : lowest.Length - 1;
+                while (index > 0 && gasPrice < lowest[index - 1])
+                {
+                    lowest[index] = lowest[index - 1];
+                    index--;
+                }
+
+                lowest[index] = gasPrice;
+            }
+
+            return count;
+        }
+
+        [InlineArray(EthGasPriceConstants.TxLimitFromABlock)]
+        private struct LowestGasPrices
+        {
+            private UInt256 _element0;
         }
 
         private static UInt256? GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
@@ -188,7 +213,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
                 // Deterministic pivot for stable perf/repro (median-of-range).
                 int pivotIndex = left + ((right - left) >> 1);
-                pivotIndex = Partition(list, left, right, pivotIndex, UInt256Comparer);
+                pivotIndex = Partition(list, left, right, pivotIndex, GenericComparer<UInt256>.Default);
 
                 if (k == pivotIndex)
                 {

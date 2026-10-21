@@ -4,8 +4,10 @@
 #nullable enable
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
@@ -32,11 +34,11 @@ namespace Nethermind.Monitoring.Metrics
         private readonly int _intervalMilliseconds;
         private static bool _staticLabelsInitialized;
 
-        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
+        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = [];
         private volatile IMetricUpdater[][] _updaterValues = [];
 
         // Largely for testing reason
-        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
+        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = [];
 
         private readonly bool _useCounters;
         private readonly bool _enableDetailedMetric;
@@ -56,17 +58,17 @@ namespace Nethermind.Monitoring.Metrics
 
         public class GaugePerKeyMetricUpdater(IDictionary dict, string dictionaryName) : IMetricUpdater
         {
-            private readonly Dictionary<string, Gauge> _gauges = new();
+            private readonly Dictionary<string, Gauge> _gauges = [];
             public IReadOnlyDictionary<string, Gauge> Gauges => _gauges;
 
             public void Update()
             {
                 // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
                 // impact the performance of whatever is updating the metrics.
-                foreach (object keyObj in dict.Keys) // Different dictionary seems to iterate to different KV type. So need to use `Keys` here.
+                foreach (DictionaryEntry entry in dict)
                 {
-                    string keyStr = keyObj.ToString()!;
-                    double value = Convert.ToDouble(dict[keyObj]);
+                    string keyStr = entry.Key.ToString()!;
+                    double value = Convert.ToDouble(entry.Value);
                     string gaugeName = GetGaugeNameKey(dictionaryName, keyStr);
                     ref Gauge? gauge = ref CollectionsMarshal.GetValueRefOrAddDefault(_gauges, gaugeName, out _);
                     gauge ??= CreateGauge(BuildGaugeName(keyStr));
@@ -79,9 +81,10 @@ namespace Nethermind.Monitoring.Metrics
         {
             public void Update()
             {
-                foreach (object key in dict.Keys)
+                foreach (DictionaryEntry entry in dict)
                 {
-                    double value = Convert.ToDouble(dict[key]);
+                    object key = entry.Key;
+                    double value = Convert.ToDouble(entry.Value);
                     switch (key)
                     {
                         case IMetricLabels label:
@@ -119,6 +122,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public class SummaryMetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
         {
+            private readonly ConcurrentDictionary<IMetricLabels, Summary.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -126,7 +131,12 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    Summary.Child child = _stableChildren.GetOrAdd(labels, static (l, s) => s.WithLabels(l.Labels), summary);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     summary.WithLabels(labels.Labels).Observe(value);
                 }
@@ -139,6 +149,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public class HistogramMetricUpdater(Histogram histogram) : IMetricUpdater, IMetricObserver
         {
+            private readonly ConcurrentDictionary<IMetricLabels, Histogram.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -146,7 +158,12 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    Histogram.Child child = _stableChildren.GetOrAdd(labels, static (l, h) => h.WithLabels(l.Labels), histogram);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     histogram.WithLabels(labels.Labels).Observe(value);
                 }
@@ -201,7 +218,7 @@ namespace Nethermind.Monitoring.Metrics
                 : meter.CreateObservableGauge(name, observer, description: description);
         }
 
-        private static string GetStaticMemberInfo(Type givenInformer, string givenName)
+        private static string GetStaticMemberInfo([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type givenInformer, string givenName)
         {
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
@@ -210,7 +227,7 @@ namespace Nethermind.Monitoring.Metrics
             return value.ToString()!;
         }
 
-        public void RegisterMetrics(Type type)
+        public void RegisterMetrics([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields)] Type type)
         {
             if (!_metricUpdaters.ContainsKey(type))
             {
@@ -220,7 +237,7 @@ namespace Nethermind.Monitoring.Metrics
                     meter = new(type.Namespace!);
                 }
 
-                IList<IMetricUpdater> metricUpdaters = new List<IMetricUpdater>();
+                IList<IMetricUpdater> metricUpdaters = [];
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
                 foreach (MemberInfo member in members)
                 {
@@ -256,6 +273,24 @@ namespace Nethermind.Monitoring.Metrics
                     });
 
                 metricUpdater = new SummaryMetricUpdater(summary);
+                memberInfo.SetValue(metricUpdater);
+
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
+            }
+
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)) && memberInfo.GetCustomAttribute<HistogramMetricAttribute>() is HistogramMetricAttribute explicitHistogramAttribute)
+            {
+                CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
+
+                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description,
+                    new HistogramConfiguration()
+                    {
+                        LabelNames = explicitHistogramAttribute.LabelNames,
+                        Buckets = explicitHistogramAttribute.Buckets
+                    });
+
+                metricUpdater = new HistogramMetricUpdater(histogram);
                 memberInfo.SetValue(metricUpdater);
 
                 _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
@@ -335,7 +370,7 @@ namespace Nethermind.Monitoring.Metrics
 
         public async Task RunTimer(CancellationToken cancellationToken)
         {
-            using var standardTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(_intervalMilliseconds));
+            using PeriodicTimer standardTimer = new(TimeSpan.FromMilliseconds(_intervalMilliseconds));
 
             try
             {

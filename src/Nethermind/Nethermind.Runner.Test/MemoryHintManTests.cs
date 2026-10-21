@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
@@ -20,8 +18,8 @@ namespace Nethermind.Runner.Test
     [TestFixture]
     public class MemoryHintManTests
     {
-        private const long GB = 1000 * 1000 * 1000;
-        private const long MB = 1000 * 1000;
+        private const ulong GB = 1000 * 1000 * 1000;
+        private const ulong MB = 1000 * 1000;
 
         private IDbConfig _dbConfig;
         private ISyncConfig _syncConfig;
@@ -30,6 +28,7 @@ namespace Nethermind.Runner.Test
         private INetworkConfig _networkConfig;
         private MemoryHintMan _memoryHintMan;
         private MallocHelper _mallocHelper;
+        private int _txHashCacheSize;
 
         [SetUp]
         public void Setup()
@@ -41,18 +40,20 @@ namespace Nethermind.Runner.Test
             _networkConfig = new NetworkConfig();
             _mallocHelper = Substitute.For<MallocHelper>();
             _memoryHintMan = new MemoryHintMan(LimboLogs.Instance, _mallocHelper);
+            _txHashCacheSize = MemoryAllowance.TxHashCacheSize;
         }
 
-        private void SetMemoryAllowances(uint cpuCount)
-        {
-            _memoryHintMan.SetMemoryAllowances(
+        // MemoryHintMan writes the process-wide MemoryAllowance; restore it so no test sees another's value.
+        [TearDown]
+        public void TearDown() => MemoryAllowance.TxHashCacheSize = _txHashCacheSize;
+
+        private void SetMemoryAllowances(uint cpuCount) => _memoryHintMan.SetMemoryAllowances(
                 _dbConfig,
                 _initConfig,
                 _networkConfig,
                 _syncConfig,
                 _txPoolConfig,
                 cpuCount);
-        }
 
         [TestCase(4 * GB, 2u, 4u, 11)]
         [TestCase(4 * GB, 4u, 8u, 11)]
@@ -64,25 +65,51 @@ namespace Nethermind.Runner.Test
         [TestCase(2000 * MB, 12u, 24u, 10)]
         [TestCase(1000 * MB, 12u, 8u, 11)]
         [TestCase(2000 * MB, 12u, 8u, 11)]
-        public void Netty_arena_order_is_configured_correctly(long memoryHint, uint cpuCount, uint maxArenaCount, int expectedArenaOrder)
+        public void Netty_arena_order_is_configured_correctly(ulong memoryHint, uint cpuCount, uint maxArenaCount, int expectedArenaOrder)
         {
             _txPoolConfig.Size = 128;
             _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
-            _initConfig.MemoryHint = (long)memoryHint;
+            _initConfig.MemoryHint = memoryHint;
             _networkConfig.MaxNettyArenaCount = maxArenaCount;
             SetMemoryAllowances(cpuCount);
-            _networkConfig.NettyArenaOrder.Should().Be(expectedArenaOrder);
+            Assert.That(_networkConfig.NettyArenaOrder, Is.EqualTo(expectedArenaOrder));
+        }
+
+        [Test]
+        public void Tx_hash_cache_is_sized_from_the_pool_size([Values(1024, 2048)] int txPoolSize)
+        {
+            _txPoolConfig.Size = txPoolSize;
+            _initConfig.MemoryHint = 1024 * MB;
+            SetMemoryAllowances(4);
+
+            // A tiny cache disables the per-peer announcement shape check and the long-term seen-hash cache.
+            Assert.That(MemoryAllowance.TxHashCacheSize, Is.EqualTo(txPoolSize * 64));
+        }
+
+        [Test]
+        public void Tx_hash_cache_is_capped_by_a_small_memory_hint()
+        {
+            const int txPoolSize = 1024;
+            _txPoolConfig.Size = txPoolSize;
+            _initConfig.MemoryHint = 256 * MB;
+            SetMemoryAllowances(4);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MemoryAllowance.TxHashCacheSize, Is.InRange(1, txPoolSize * 64 - 1));
+                Assert.That(_memoryHintMan.TxPoolMemory, Is.EqualTo(txPoolSize * 40_000UL + (ulong)MemoryAllowance.TxHashCacheSize * 128UL));
+            }
         }
 
         [Test]
         public void Db_size_are_computed_correctly(
             [Values(256 * MB, 512 * MB, 1 * GB, 4 * GB, 6 * GB, 16 * GB, 32 * GB, 64 * GB, 128 * GB)]
-            long memoryHint,
+            ulong memoryHint,
             [Values(1u, 2u, 3u, 4u, 8u, 32u)] uint cpuCount,
             [Values(true, false)] bool fastSync)
         {
             // OK to throw here
-            if (memoryHint == 256.MB)
+            if (memoryHint == 256 * MB)
             {
                 _txPoolConfig.Size = 128;
                 _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
@@ -91,28 +118,28 @@ namespace Nethermind.Runner.Test
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(cpuCount);
 
-            SyncConfig syncConfig = new SyncConfig();
+            SyncConfig syncConfig = new();
             syncConfig.FastSync = fastSync;
 
-            _memoryHintMan.DbMemory.Should().BeGreaterThan((long)((memoryHint - 100.MB) * 0.5));
-            _memoryHintMan.DbMemory.Should().BeLessThan((long)((memoryHint - 100.MB) * 0.9));
+            Assert.That(_memoryHintMan.DbMemory, Is.GreaterThan((memoryHint - 100 * MB) / 2));
+            Assert.That(_memoryHintMan.DbMemory, Is.LessThan((memoryHint - 100 * MB) * 9 / 10));
         }
 
         [TestCase(100 * GB, 16u, -1)]
         [TestCase(100 * GB, 16u, 1)]
         [TestCase(384 * MB, 1u, -1)]
         [TestCase(384 * MB, 1u, 1)]
-        public void Will_not_change_non_default_arena_order(long memoryHint, uint cpuCount, int differenceFromDefault)
+        public void Will_not_change_non_default_arena_order(ulong memoryHint, uint cpuCount, int differenceFromDefault)
         {
-            _initConfig.MemoryHint = (long)memoryHint;
+            _initConfig.MemoryHint = memoryHint;
             int manuallyConfiguredArenaOrder = INetworkConfig.DefaultNettyArenaOrder + differenceFromDefault;
             _networkConfig.NettyArenaOrder = manuallyConfiguredArenaOrder;
             SetMemoryAllowances(cpuCount);
-            _networkConfig.NettyArenaOrder.Should().Be(manuallyConfiguredArenaOrder);
+            Assert.That(_networkConfig.NettyArenaOrder, Is.EqualTo(manuallyConfiguredArenaOrder));
         }
 
         [TestCase(4 * GB, 0u)]
-        public void Incorrect_input_throws(long memoryHint, uint cpuCount)
+        public void Incorrect_input_throws(ulong memoryHint, uint cpuCount)
         {
             _initConfig.MemoryHint = memoryHint;
             Assert.Throws<ArgumentOutOfRangeException>(
@@ -120,16 +147,15 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase(500 * GB)]
-        public void Big_value_at_memory_hint(long memoryHint)
+        public void Big_value_at_memory_hint(ulong memoryHint)
         {
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(1);
-            _dbConfig.StateDbRowCacheSize.Should().BeGreaterThan(0);
+            Assert.That(_dbConfig.StateDbRowCacheSize, Is.GreaterThan(0));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Big_value_at_memory_hint(bool shouldSetMallocOpts)
+        [Test]
+        public void Big_value_at_memory_hint([Values] bool shouldSetMallocOpts)
         {
             _initConfig.DisableMallocOpts = !shouldSetMallocOpts;
             SetMemoryAllowances(1);

@@ -40,17 +40,39 @@ namespace Nethermind.JsonRpc
         /// <summary>
         /// Missing or invalid parameters
         /// </summary>
-        public const int InvalidInput = -32000;
+        public const int InvalidInput = Default;
+
+        /// <summary>
+        /// EVM execution error (out of gas, insufficient funds during execution, etc.)
+        /// </summary>
+        public const int ExecutionError = Default;
 
         /// <summary>
         /// Requested resource not found
         /// </summary>
-        public const int ResourceNotFound = -32000;
+        public const int ResourceNotFound = Default;
+
+        /// <summary>
+        /// Requested block access list resource not found.
+        /// </summary>
+        /// <remarks>
+        /// The execution-apis block access list methods use a dedicated code while keeping
+        /// <c>Resource not found</c> as the error message.
+        /// </remarks>
+        public const int BlockAccessListResourceNotFound = StandardResourceNotFound;
+
+        /// <summary>
+        /// Requested resource not found, with the code EIP-1474 and the execution-apis specification assign
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ResourceNotFound"/> keeps <see cref="Default"/> for the methods that already return it.
+        /// </remarks>
+        public const int StandardResourceNotFound = -32001;
 
         /// <summary>
         /// Transaction creation failed
         /// </summary>
-        public const int TransactionRejected = -32000;
+        public const int TransactionRejected = Default;
 
         /// <summary>
         /// Requested resource not available
@@ -73,6 +95,12 @@ namespace Nethermind.JsonRpc
         public const int Timeout = -32016;
 
         /// <summary>
+        /// Transaction was added to the pool but not included before the <c>eth_sendRawTransactionSync</c> timeout
+        /// </summary>
+        /// <remarks>See <see href="https://eips.ethereum.org/EIPS/eip-7966">EIP-7966</see>.</remarks>
+        public const int TxSyncTimeout = 4;
+
+        /// <summary>
         /// Request exceeds defined timeout limit
         /// </summary>
         public const int ModuleTimeout = -32017;
@@ -93,12 +121,12 @@ namespace Nethermind.JsonRpc
         public const int BlockTimestampNotIncreased = -38021;
 
         /// <summary>
-        /// Invalid RPC simulate call containing too many blocks
+        /// MovePrecompileToAddress referenced itself in replacement
         /// </summary>
-        public const int InvalidInputTooManyBlocks = -38026;
+        public const int MovePrecompileSelfReference = -38022;
 
         /// <summary>
-        /// Too many blocks for simulation
+        /// Too many blocks or calls — client limit exceeded
         /// </summary>
         public const int ClientLimitExceededError = -38026;
 
@@ -118,22 +146,42 @@ namespace Nethermind.JsonRpc
         public const int Default = -32000;
 
         /// <summary>
-        /// Invalid intrinsic gas. Miner premium is negative
+        /// Transaction nonce is lower than the account's current nonce — eth_simulateV1 spec error
+        /// </summary>
+        public const int NonceTooLow = -38010;
+
+        /// <summary>
+        /// Transaction nonce is higher than the account's current nonce — eth_simulateV1 spec error
+        /// </summary>
+        public const int NonceTooHigh = -38011;
+
+        /// <summary>
+        /// Transaction maxFeePerGas is below the block base fee — eth_simulateV1 spec error
+        /// </summary>
+        public const int FeeCapBelowBaseFee = -38012;
+
+        /// <summary>
+        /// Transaction gas limit is below the intrinsic gas cost — eth_simulateV1 spec error
         /// </summary>
         public const int IntrinsicGas = -38013;
 
         /// <summary>
-        /// Not enough value to cover transaction costs
+        /// Not enough value to cover transaction costs — eth_simulateV1 spec error
         /// </summary>
         public const int InsufficientFunds = -38014;
 
         /// <summary>
-        /// Gas limit reached
+        /// Gas limit reached — eth_simulateV1 spec error
         /// </summary>
         public const int BlockGasLimitReached = -38015;
 
         /// <summary>
-        /// EIP-3860. Code size is to big
+        /// Sender account has deployed code (is not an EOA) — eth_simulateV1 spec error
+        /// </summary>
+        public const int SenderIsNotEoa = -38024;
+
+        /// <summary>
+        /// EIP-3860. Code size is too big — eth_simulateV1 spec error
         /// </summary>
         public const int MaxInitCodeSizeExceeded = -38025;
 
@@ -141,5 +189,21 @@ namespace Nethermind.JsonRpc
         /// Error during EVM execution
         /// </summary>
         public const int VMError = -32015;
+
+        /// <summary>
+        /// True for errors whose volume a single unauthenticated caller controls, and which no operator
+        /// action would prevent: the JSON-RPC 2.0 pre-defined request errors
+        /// (<see cref="ParseError"/>, <see cref="InvalidRequest"/>, <see cref="MethodNotFound"/>,
+        /// <see cref="InvalidParams"/>) and the application guard rails (<see cref="ResourceUnavailable"/>,
+        /// <see cref="LimitExceeded"/>, <see cref="PrunedHistoryUnavailable"/>).
+        /// <para>
+        /// The code alone is not always enough: <see cref="InvalidRequest"/> is also returned for a namespace that
+        /// is disabled for the requested URL or endpoint, which is a condition of this node. Those errors set
+        /// <c>Error.OperatorActionable</c> and callers of this helper must honour it.
+        /// </para>
+        /// </summary>
+        public static bool IsRequestError(int code) =>
+            code is ParseError or InvalidRequest or MethodNotFound or InvalidParams
+                or ResourceUnavailable or LimitExceeded or PrunedHistoryUnavailable;
     }
 }

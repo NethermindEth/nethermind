@@ -9,9 +9,6 @@ namespace Nethermind.Network.P2P
     public static class PeerWithSatelliteProtocolExtensions
     {
         public static void RegisterSatelliteProtocol<T>(this IPeerWithSatelliteProtocol peerWithSatelliteProtocol, T handler)
-            where T : ProtocolHandlerBase
-        {
-            peerWithSatelliteProtocol.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
-        }
+            where T : ProtocolHandlerBase => peerWithSatelliteProtocol.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
     }
 }
