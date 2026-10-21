@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Buffers;
@@ -137,7 +139,47 @@ public class GuestRawKeyWriteTests
 
         Write(tree, reference, key, [5]);
 
-        AssertSameTrie(tree.RootRef, reference.RootRef);
+        try
+        {
+            AssertSameTrie(tree.RootRef, reference.RootRef);
+        }
+        catch (AssertionException)
+        {
+            try
+            {
+                DumpSplitFailure(sharedNibbles, depth, leafKey, key, tree.RootRef, reference.RootRef);
+            }
+            catch (Exception exception)
+            {
+                TestContext.Error.WriteLine($"Split diagnostics failed: {exception}");
+            }
+
+            throw;
+        }
+    }
+
+    private static void DumpSplitFailure(int sharedNibbles, int depth, byte[] leafKey, byte[] key, TrieNode? actual, TrieNode? expected)
+    {
+        TestContext.Error.WriteLine($"sharedNibbles={sharedNibbles}, depth={depth}; {RuntimeInformation.OSDescription}; {RuntimeInformation.FrameworkDescription}; {RuntimeInformation.ProcessArchitecture}; Vector128={Vector128.IsHardwareAccelerated}, Vector256={Vector256.IsHardwareAccelerated}, Vector512={Vector512.IsHardwareAccelerated}");
+        TestContext.Error.WriteLine($"leafKey={Convert.ToHexString(leafKey)}, key={Convert.ToHexString(key)}");
+        byte[] scalarKey = new byte[2 * key.Length];
+        byte[] scalarLeaf = new byte[2 * leafKey.Length];
+        for (int i = 0; i < scalarKey.Length; i++) scalarKey[i] = (byte)Nibbles.NibbleAt(key, i);
+        for (int i = 0; i < scalarLeaf.Length; i++) scalarLeaf[i] = (byte)Nibbles.NibbleAt(leafKey, i);
+        TestContext.Error.WriteLine($"scalarKey={Convert.ToHexString(scalarKey)}, expandedKey={Convert.ToHexString(Nibbles.BytesToNibbleBytes(key))}, originalLeafNibbles={Convert.ToHexString(scalarLeaf.AsSpan(depth))}");
+        DumpTrie("raw", actual);
+        DumpTrie("reference", expected);
+    }
+
+    private static void DumpTrie(string path, TrieNode? node)
+    {
+        TestContext.Error.WriteLine($"{path}: {node?.NodeType.ToString() ?? "null"}, key={(node is not null && !node.IsBranch ? Convert.ToHexString(node.Key!) : "none")}");
+        if (node is null || node.IsLeaf) return;
+        for (int i = 0; i < (node.IsBranch ? 16 : 1); i++)
+        {
+            TreePath childPath = TreePath.Empty;
+            DumpTrie($"{path}/{i:x}", node.GetChild(NullTrieNodeResolver.Instance, ref childPath, i));
+        }
     }
 
     [Test]
