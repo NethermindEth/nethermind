@@ -186,10 +186,18 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             using CancellationTokenSource cts = new();
             Task task = CreateUpdater().EnsureSyncPivot(cts.Token);
 
-            // Finite attempts: the loop gives up on its own. Infinite attempts: it never completes, so cancel it.
-            await Task.WhenAny(task, Task.Delay(500));
-            cts.Cancel();
-            try { await task; } catch (OperationCanceledException) { }
+            // Finite attempts: the loop gives up on its own, so wait for it rather than for a fixed time a cold runner
+            // can overrun. Infinite attempts: it never completes, so cancel it.
+            if (maxAttempts != ISyncConfig.InfiniteAttempts)
+            {
+                await task.WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            else
+            {
+                await Task.WhenAny(task, Task.Delay(500));
+                cts.Cancel();
+                try { await task; } catch (OperationCanceledException) { }
+            }
 
             Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(expectedFinalConfigValue));
         }
