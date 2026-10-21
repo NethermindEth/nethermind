@@ -85,10 +85,10 @@ public interface IBlocksConfig : IConfig
     /// </summary>
     /// <remarks>
     /// Only runs that change nothing but balances, nonces and slots share it, and only while what they change commits as
-    /// it reads; anything else, and every executed transaction, starts from committed state. Requires
-    /// <see cref="PreWarmHandoff"/>.
+    /// it reads; anything else, and every executed transaction, starts from committed state. On by default; off, every
+    /// takeover commits on its own. Requires <see cref="PreWarmHandoff"/>.
     /// </remarks>
-    [ConfigItem(Description = "Commit consecutive transactions taken over from their pre-warm runs together, up to PreWarmBatchedReplayCommitMaxTxs at a time. Requires PreWarmHandoff.", DefaultValue = "false", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Commit consecutive transactions taken over from their pre-warm runs together, up to PreWarmBatchedReplayCommitMaxTxs at a time. Requires PreWarmHandoff.", DefaultValue = "true", HiddenFromDocs = true)]
     bool PreWarmBatchedReplayCommit { get; set; }
 
     [ConfigItem(Description = "The most taken-over transactions one state commit covers with PreWarmBatchedReplayCommit.", DefaultValue = "16", HiddenFromDocs = true)]

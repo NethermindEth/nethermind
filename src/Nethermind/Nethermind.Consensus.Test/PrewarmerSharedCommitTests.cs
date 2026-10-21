@@ -20,21 +20,21 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
 
-/// <summary>Every handoff scenario, with consecutive takeovers sharing their commits.</summary>
+/// <summary>Every handoff scenario with every takeover committing on its own, the path the switch turns back to.</summary>
 [TestFixtureSource(typeof(PrewarmerHandoffTests), nameof(PrewarmerHandoffTests.Forks))]
-public class PrewarmerHandoffSharedCommitTests(IReleaseSpec spec) : PrewarmerHandoffScenarios(spec)
+public class PrewarmerHandoffPerTransactionCommitTests(IReleaseSpec spec) : PrewarmerHandoffScenarios(spec)
 {
-    protected override void ConfigureBlocks(BlocksConfig config) => config.PreWarmBatchedReplayCommit = true;
+    protected override void ConfigureBlocks(BlocksConfig config) => config.PreWarmBatchedReplayCommit = false;
 }
 
-/// <summary>Every read-ahead safety scenario, the randomized blocks included, with consecutive takeovers sharing their commits.</summary>
+/// <summary>Every read-ahead safety scenario, the randomized blocks included, with every takeover committing on its own.</summary>
 [TestFixtureSource(typeof(PrewarmerReadAheadSafetyTests), nameof(PrewarmerReadAheadSafetyTests.Forks))]
-public class PrewarmerReadAheadSafetySharedCommitTests(IReleaseSpec spec) : PrewarmerReadAheadSafetyScenarios(spec)
+public class PrewarmerReadAheadSafetyPerTransactionCommitTests(IReleaseSpec spec) : PrewarmerReadAheadSafetyScenarios(spec)
 {
     protected override void ConfigureBlocks(BlocksConfig config)
     {
         base.ConfigureBlocks(config);
-        config.PreWarmBatchedReplayCommit = true;
+        config.PreWarmBatchedReplayCommit = false;
     }
 }
 
@@ -200,6 +200,60 @@ public class PrewarmerSharedCommitTests(IReleaseSpec spec) : PrewarmerHandoffTes
         finally
         {
             _sharing = true;
+        }
+    }
+
+    /// <summary>
+    /// The world state's check starts at the first change after a takeover's snapshot, and starting it one change later
+    /// would change no block's result: that change is always the sender's, as a run's first effect is its sender's gas
+    /// debit or nonce and the run sets the sender's nonce, which leaves the change not empty. This pins that order over
+    /// the randomized blocks and every transaction kind of the fork.
+    /// </summary>
+    [Test]
+    public void Every_run_starts_with_its_senders_debit_or_nonce_and_sets_the_senders_nonce()
+    {
+        List<Block> blocks = [];
+        for (int i = 0; i < 60; i++) blocks.Add(RandomBlock(new Random(0x4e4d_0c0d + i)));
+        List<Transaction> kinds =
+        [
+            AccessListCall(TestItem.PrivateKeyA, 0, Counter),
+            LegacyCall(TestItem.PrivateKeyB, 0, Logger),
+            Create(TestItem.PrivateKeyC, 0, DeployCode),
+            Transfer(TestItem.PrivateKeyD, 0, EmptyWithStorage, 0),
+        ];
+        if (Spec.IsEip4844Enabled) kinds.Add(BlobCall(TestItem.PrivateKeyD, 1, Logger));
+        if (Spec.IsEip7702Enabled) kinds.Add(SetCodeCall(TestItem.PrivateKeyD, 2, TestItem.PrivateKeyE, Counter));
+        blocks.Add(BuildBlock([.. kinds]));
+
+        int runs = 0;
+        List<string> wrong = [];
+        foreach (Block block in blocks)
+        {
+            RunPreWarmCaches(PreWarmer, block);
+            // A block too small to warm records nothing.
+            if (PreWarmer.Footprints is not { } footprints) continue;
+            for (int i = 0; i < footprints.Count; i++)
+            {
+                if (footprints.Get(i) is not { } footprint) continue;
+                runs++;
+                Address sender = footprint.Transaction.SenderAddress!;
+                ReadOnlySpan<StateEffect> effects = footprint.Effects;
+                bool startsWithSender = effects.Length > 0 && effects[0].Address == sender
+                    && effects[0].Kind is EffectKind.SubtractFromBalance or EffectKind.AddToBalance or EffectKind.SetNonce;
+                bool setsNonce = false;
+                foreach (ref readonly StateEffect effect in effects)
+                {
+                    setsNonce |= effect.Kind == EffectKind.SetNonce && effect.Address == sender;
+                }
+
+                if (!startsWithSender || !setsNonce) wrong.Add($"block {block.Number} tx {i}: first effect {(effects.Length > 0 ? $"{effects[0].Kind} of {effects[0].Address}" : "none")}, sets the nonce {setsNonce}");
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrong, Is.Empty);
+            Assert.That(runs, Is.GreaterThan(300), "precondition: runs were recorded");
         }
     }
 
