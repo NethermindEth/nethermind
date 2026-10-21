@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Security.Cryptography;
+using System.Threading.Channels;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -435,6 +436,246 @@ public class ConsensusTests
         invalidOffset.AsSpan(0, sizeof(int)).Clear();
         Assert.That(() => LightClientWireCodec.DecodeBootstrap(invalidOffset, spec),
             Throws.TypeOf<InvalidDataException>());
+    }
+
+    [Test]
+    public async Task Stale_or_future_consensus_retries_within_one_slot([Values(0UL, 21UL, ulong.MaxValue)] ulong optimisticSlot)
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        int repairs = 0;
+        Task loop = ConsensusSync.RunRepairLoopAsync(_ => { repairs++; return Task.CompletedTask; },
+            () => optimisticSlot, static () => 20, TimeSpan.FromSeconds(12), clock, stop.Token);
+        try
+        {
+            await clock.NextTimerAsync();
+            Assert.That(repairs, Is.EqualTo(1));
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(11)), Is.False);
+            Assert.That(repairs, Is.EqualTo(1), "an unavailable peer must not cause a retry spin");
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True, "stale consensus must retry within one slot");
+            await clock.NextTimerAsync();
+            Assert.That(repairs, Is.EqualTo(2));
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+        Assert.That(clock.ActiveTimers, Is.Zero);
+    }
+
+    [Test]
+    public async Task Missing_gossip_exits_healthy_backoff_when_consensus_becomes_stale()
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        ulong optimisticSlot = 100;
+        int repairs = 0;
+        ulong CurrentSlot() => 100 + (ulong)clock.GetUtcNow().ToUnixTimeSeconds() / 12;
+        Task loop = ConsensusSync.RunRepairLoopAsync(_ =>
+        {
+            repairs++;
+            if (repairs > 1) optimisticSlot = CurrentSlot();
+            return Task.CompletedTask;
+        }, () => optimisticSlot, CurrentSlot, TimeSpan.FromSeconds(12), clock, stop.Token);
+        try
+        {
+            await clock.NextTimerAsync();
+            for (int slot = 1; slot <= 3; slot++)
+            {
+                Assert.That(clock.Advance(TimeSpan.FromSeconds(12)), Is.True);
+                await clock.NextTimerAsync();
+                Assert.That(repairs, Is.EqualTo(slot <= 2 ? 1 : 2));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(optimisticSlot, Is.EqualTo(103));
+                Assert.That(clock.GetTimestamp(), Is.EqualTo(TimeSpan.FromSeconds(36).Ticks));
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+    }
+
+    [Test]
+    public async Task Healthy_gossip_keeps_the_one_minute_repair_backoff([Values(0UL, 100UL, ulong.MaxValue - 10)] ulong initialSlot)
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        ulong slot = initialSlot;
+        int repairs = 0;
+        Task loop = ConsensusSync.RunRepairLoopAsync(_ => { repairs++; return Task.CompletedTask; },
+            () => slot, () => slot, TimeSpan.FromSeconds(12), clock, stop.Token);
+        try
+        {
+            await clock.NextTimerAsync();
+            for (int elapsed = 12; elapsed <= 60; elapsed += 12)
+            {
+                slot++;
+                Assert.That(clock.Advance(TimeSpan.FromSeconds(12)), Is.True);
+                await clock.NextTimerAsync();
+                Assert.That(repairs, Is.EqualTo(elapsed < 60 ? 1 : 2));
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+    }
+
+    [Test]
+    public async Task A_stalled_repair_keeps_its_deadline_and_waits_one_slot_after_failure()
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        int repairs = 0;
+        int expired = 0;
+        Task loop = ConsensusSync.RunRepairLoopAsync(async token =>
+        {
+            repairs++;
+            using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(15), clock);
+            using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, attempt.Token); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested) { expired++; }
+        }, static () => 0, static () => 100, TimeSpan.FromSeconds(12), clock, stop.Token);
+        try
+        {
+            await clock.NextTimerAsync();
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(14)), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(repairs, Is.EqualTo(1));
+                Assert.That(expired, Is.Zero);
+            }
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
+            await clock.NextTimerAsync();
+            Assert.That(expired, Is.EqualTo(1));
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(11)), Is.False);
+            Assert.That(repairs, Is.EqualTo(1));
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
+            await clock.NextTimerAsync();
+            Assert.That(repairs, Is.EqualTo(2));
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+        Assert.That(clock.ActiveTimers, Is.Zero);
+    }
+
+    [Test]
+    public async Task Repair_waits_for_peer_recovery_without_overlapping_or_catching_up_missed_ticks()
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        TaskCompletionSource peerAvailable = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int repairs = 0;
+        ulong head = 0;
+        Task loop = ConsensusSync.RunRepairLoopAsync(async token =>
+        {
+            repairs++;
+            await peerAvailable.Task.WaitAsync(token);
+            head = 100;
+        }, () => head, static () => 100, TimeSpan.FromSeconds(12), clock, stop.Token);
+        try
+        {
+            clock.Advance(TimeSpan.FromSeconds(90));
+            Assert.That(repairs, Is.EqualTo(1), "a pending peer request remains the only repair owner");
+            peerAvailable.SetResult();
+            await clock.NextTimerAsync();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(head, Is.EqualTo(100));
+                Assert.That(repairs, Is.EqualTo(1));
+            }
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(12)), Is.True);
+            await clock.NextTimerAsync();
+            Assert.That(repairs, Is.EqualTo(1), "healthy recovery restarts the backoff instead of replaying missed ticks");
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+    }
+
+    [Test]
+    public async Task Repair_loop_cancellation_joins_pending_work([Values] bool repairing)
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task loop = ConsensusSync.RunRepairLoopAsync(async token =>
+        {
+            if (!repairing) return;
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            finally { released.SetResult(); }
+        }, static () => 0, static () => 10, TimeSpan.FromSeconds(12), clock, stop.Token);
+        if (!repairing) await clock.NextTimerAsync();
+        await StopRepairLoopAsync(loop, stop);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(released.Task.IsCompleted, Is.EqualTo(repairing));
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Already_canceled_repair_loop_does_not_request_data()
+    {
+        using CancellationTokenSource stop = new();
+        stop.Cancel();
+        int repairs = 0;
+        Assert.That(async () => await ConsensusSync.RunRepairLoopAsync(_ => { repairs++; return Task.CompletedTask; },
+            static () => 0, static () => 10, TimeSpan.FromSeconds(12), new RepairClock(), stop.Token), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(repairs, Is.Zero);
+    }
+
+    private static async Task StopRepairLoopAsync(Task loop, CancellationTokenSource stop)
+    {
+        await stop.CancelAsync();
+        try { await loop; }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+    }
+
+    private sealed class RepairClock : TimeProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<Timer> _timers = [];
+        private readonly Channel<TimeSpan> _created = Channel.CreateUnbounded<TimeSpan>();
+        private long _ticks;
+        internal int ActiveTimers { get { lock (_gate) return _timers.Count; } }
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => Interlocked.Read(ref _ticks);
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(GetTimestamp());
+        internal async Task NextTimerAsync() => await _created.Reader.ReadAsync();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Timer timer = new(this, callback, state);
+            timer.Change(dueTime, period);
+            return timer;
+        }
+
+        internal bool Advance(TimeSpan elapsed)
+        {
+            List<Timer> due;
+            lock (_gate)
+            {
+                _ticks += elapsed.Ticks;
+                due = _timers.Where(timer => timer.Due <= _ticks).ToList();
+                foreach (Timer timer in due) _timers.Remove(timer);
+            }
+            foreach (Timer timer in due) timer.Fire();
+            return due.Count > 0;
+        }
+
+        private sealed class Timer(RepairClock clock, TimerCallback callback, object? state) : ITimer
+        {
+            internal long Due;
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                lock (clock._gate)
+                {
+                    clock._timers.Remove(this);
+                    if (dueTime != Timeout.InfiniteTimeSpan)
+                    {
+                        Due = clock._ticks + dueTime.Ticks;
+                        clock._timers.Add(this);
+                        clock._created.Writer.TryWrite(dueTime);
+                    }
+                }
+                return true;
+            }
+            internal void Fire() => callback(state);
+            public void Dispose() { lock (clock._gate) clock._timers.Remove(this); }
+            public ValueTask DisposeAsync() { Dispose(); return default; }
+        }
     }
 
     private static LightClientStore Store(LightClientBootstrap bootstrap) =>

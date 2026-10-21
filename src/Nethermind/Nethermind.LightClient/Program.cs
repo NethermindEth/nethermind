@@ -343,56 +343,58 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     {
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    await ConsensusSync.CatchUpAsync(store, spec, beacon.UpdateAsync, CurrentSlot,
-                        ProcessUpdateAsync, cancellationToken);
-                    await consensusGate.WaitAsync(cancellationToken);
-                    try
-                    {
-                        LightClientUpdate? bestUpdate = store.BestUpdate;
-                        ulong slot = CurrentSlot();
-                        if (bestUpdate is not null && store.ForceUpdate(slot))
-                        {
-                            await PersistAsync(journal.AppendForcedAsync(bestUpdate, slot, store, app.Lifetime.ApplicationStopping),
-                                app.Lifetime.ApplicationStopping);
-                            PublishPersistedHeaders();
-                            logger.LogWarning("Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged");
-                        }
-                    }
-                    finally { consensusGate.Release(); }
-                }
-                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-                {
-                    logger.LogWarning(exception, "Consensus sync failed; retaining the last verified finalized head");
-                }
-                try
-                {
-                    using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                    await beacon.PollFinalityAsync(async (update, token) => { await ProcessFinalityAsync(update, token); }, attempt.Token);
-                }
-                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-                {
-                    logger.LogDebug(exception, "Finality poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
-                }
-                try
-                {
-                    using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                    await beacon.PollOptimisticAsync(async (update, token) => { await ProcessOptimisticAsync(update, token); }, attempt.Token);
-                }
-                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-                {
-                    logger.LogDebug(exception, "Optimistic poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
-                }
-                // Gossip advances the heads continuously; req/resp repairs lost messages and committee gaps.
-                await Task.Delay(TimeSpan.FromMinutes(1), clock, cancellationToken);
-            }
+            await ConsensusSync.RunRepairLoopAsync(RepairConsensusAsync,
+                () => Volatile.Read(ref persistedOptimistic).Beacon!.Slot, CurrentSlot,
+                TimeSpan.FromSeconds(spec.SecondsPerSlot), clock, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    async Task RepairConsensusAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ConsensusSync.CatchUpAsync(store, spec, beacon.UpdateAsync, CurrentSlot,
+                ProcessUpdateAsync, cancellationToken);
+            await consensusGate.WaitAsync(cancellationToken);
+            try
+            {
+                LightClientUpdate? bestUpdate = store.BestUpdate;
+                ulong slot = CurrentSlot();
+                if (bestUpdate is not null && store.ForceUpdate(slot))
+                {
+                    await PersistAsync(journal.AppendForcedAsync(bestUpdate, slot, store, app.Lifetime.ApplicationStopping),
+                        app.Lifetime.ApplicationStopping);
+                    PublishPersistedHeaders();
+                    logger.LogWarning("Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged");
+                }
+            }
+            finally { consensusGate.Release(); }
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Consensus sync failed; retaining the last verified finalized head");
+        }
+        try
+        {
+            using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attempt.CancelAfter(TimeSpan.FromSeconds(15));
+            await beacon.PollOptimisticAsync(async (update, token) => { await ProcessOptimisticAsync(update, token); }, attempt.Token);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogDebug(exception, "Optimistic poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
+        }
+        try
+        {
+            using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attempt.CancelAfter(TimeSpan.FromSeconds(15));
+            await beacon.PollFinalityAsync(async (update, token) => { await ProcessFinalityAsync(update, token); }, attempt.Token);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogDebug(exception, "Finality poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
+        }
     }
 
     async Task ReportPeersAsync(CancellationToken cancellationToken)
