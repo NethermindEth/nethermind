@@ -1,3 +1,29 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 0b45679..c094223 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -19,6 +19,21 @@ env:
+   FOUNDRY_DISABLE_NIGHTLY_WARNING: 1
+ 
+ jobs:
++  runner-tests:
++    name: E2E runner regressions
++    runs-on: ubuntu-latest
++    timeout-minutes: 10
++    steps:
++      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
++        with:
++          persist-credentials: false
++      - name: Install runner dependencies
++        run: sudo apt-get update && sudo apt-get install -y bc jq
++      - name: Check runner scripts and regressions
++        run: |
++          for script in script/e2e/lib/*.sh; do bash -n "$script"; done
++          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s script/e2e/tests -v
++
+   contract-tests:
+     name: Contract Tests
+     runs-on: ubuntu-latest
 diff --git a/script/e2e/README.md b/script/e2e/README.md
 index 7dc7034..0c7df31 100644
 --- a/script/e2e/README.md
@@ -170,10 +196,10 @@ index 0000000..066596d
 +}
 diff --git a/script/e2e/tests/test_network_setup.py b/script/e2e/tests/test_network_setup.py
 new file mode 100644
-index 0000000..946213b
+index 0000000..9c2f6b3
 --- /dev/null
 +++ b/script/e2e/tests/test_network_setup.py
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,176 @@
 +"""Setup receipts can move before trigger preparation; use the settled inclusion."""
 +import json
 +import os
@@ -186,6 +212,7 @@ index 0000000..946213b
 +TX = "0x" + "1" * 64
 +OLD_BLOCK = "0x" + "2" * 64
 +NEW_BLOCK = "0x" + "3" * 64
++SECOND_TX = "0x" + "6" * 64
 +
 +TRANSPORT = r'''#!/usr/bin/env python3
 +import json, os, pathlib, sys
@@ -209,12 +236,16 @@ index 0000000..946213b
 +            number = 9 if params[0] == "safe" and (clock < 1004 or mode == "stalled") else 10
 +            if params[0] != "safe": number = int(params[0], 16)
 +            block_hash = "0x" + ("3" if number == 10 else "4") * 64
-+            if mode == "orphaned" and params[0] != "safe" and number == 10: block_hash = "0x" + "5" * 64
++            if params[0] != "safe" and ((mode == "orphaned" and number == 9) or
++                                         (mode == "safe_reorg" and number == 10)):
++                block_hash = "0x" + "5" * 64
 +            result = {"number":hex(number), "hash":block_hash}
 +    elif method == "eth_getTransactionReceipt":
-+        if mode != "missing" and clock >= 1002:
-+            result = {"transactionHash":params[0], "blockNumber":"0xa",
-+                      "blockHash":"0x" + "3" * 64, "status":"0x0" if mode == "reverted" else "0x1"}
++        if mode != "missing" and clock >= 1002 and not (mode == "missing_second" and params[0] == os.environ["SECOND_TX"]):
++            height = 9 if mode in ("orphaned", "safe_reorg") else 10
++            result = {"transactionHash":params[0], "blockNumber":hex(height),
++                      "blockHash":"0x" + ("3" if height == 10 else "4") * 64,
++                      "status":"0x0" if mode == "reverted" else "0x1"}
 +        if mode == "wrong_hash" and result: result["transactionHash"] = "0x" + "9" * 64
 +    else: raise AssertionError(item)
 +    return {"jsonrpc":"2.0", "id":item["id"], "result":result}
@@ -243,6 +274,14 @@ index 0000000..946213b
 +        mkdir -p "$path"
 +        printf '{"transactions":[{"hash":"%s"}],"receipts":[{"transactionHash":"%s","blockHash":"%s","blockNumber":"0xa","status":"0x1"}]}\n' \
 +            "$SETUP_TX" "$SETUP_TX" "$OLD_BLOCK" > "$path/run-latest.json"
++        if [[ "${TEST_MODE:-}" == missing_second ]]; then
++            jq --arg hash "$SECOND_TX" '.transactions += [{hash:$hash}]' "$path/run-latest.json" > "$path/second.json"
++            mv "$path/second.json" "$path/run-latest.json"
++        fi
++        case "${TEST_MODE:-}" in
++            manifest_invalid) echo '{"transactions":[{"hash":"invalid"}]}' > "$path/run-latest.json" ;;
++            manifest_empty) echo '{"transactions":[]}' > "$path/run-latest.json" ;;
++        esac
 +        printf '%s\n' "$path" >> "$TEST_ROOT/broadcast-paths"
 +        echo 'APP=0x1111111111111111111111111111111111111111'
 +    else
@@ -269,7 +308,7 @@ index 0000000..946213b
 +        prefix += '[[ ! -f "$LIB/network-setup.sh" ]] || source "$LIB/network-setup.sh"\n'
 +        return subprocess.run(["bash", "-c", prefix + COMMANDS + script], cwd=self.root,
 +            env={**os.environ, "LIB":str(LIB), "TEST_ROOT":str(self.root), "TEST_MODE":mode,
-+                 "SETUP_TX":TX, "OLD_BLOCK":OLD_BLOCK, "E2E_SETUP_TIMEOUT":"6",
++                 "SETUP_TX":TX, "SECOND_TX":SECOND_TX, "OLD_BLOCK":OLD_BLOCK, "E2E_SETUP_TIMEOUT":"6",
 +                 "TMPDIR":str(self.root), "PATH":str(self.root / "bin") + os.pathsep + os.environ["PATH"], **env},
 +            text=True, capture_output=True, timeout=15)
 +
@@ -293,16 +332,18 @@ index 0000000..946213b
 +        self.assertNotIn(OLD_BLOCK, json.dumps(self.calls()))
 +
 +    def test_missing_unsafe_or_orphaned_setup_never_signs(self):
-+        for mode in ("missing", "stalled", "orphaned"):
++        for mode in ("missing", "stalled", "orphaned", "safe_reorg", "missing_second"):
 +            with self.subTest(mode=mode):
 +                (self.root / "clock").write_text("1000")
 +                result = self.prepare_trigger(mode)
 +                self.assertNotEqual(result.returncode, 0, result.stdout)
 +                self.assertFalse((self.root / "signs").exists())
 +                self.assertEqual((self.root / "clock").read_text().strip(), "1006")
++                if mode == "missing_second":
++                    self.assertTrue(any(call[1:] == ["eth_getTransactionReceipt", [SECOND_TX]] for call in self.calls()))
 +
 +    def test_reverted_malformed_or_unsupported_setup_fails_without_signing(self):
-+        for mode in ("reverted", "malformed", "unsupported", "wrong_hash"):
++        for mode in ("reverted", "malformed", "unsupported", "wrong_hash", "manifest_invalid", "manifest_empty"):
 +            with self.subTest(mode=mode):
 +                (self.root / "clock").write_text("1000")
 +                result = self.prepare_trigger(mode)

@@ -23,6 +23,14 @@ jobs:
           persist-credentials: false
       - name: Install runner dependencies
         run: sudo apt-get update && sudo apt-get install -y bc jq
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a
+        with:
+          version: v1.7.1
+      - name: Check actual Foundry broadcast directory selection
+        run: |
+          broadcast_directory="$RUNNER_TEMP/eez-private-broadcast"
+          FOUNDRY_BROADCAST="$broadcast_directory" forge config --root core --json | jq -e --arg path "$broadcast_directory" '.broadcast == $path'
       - name: Require the regression to fail before the fix
         run: |
           mkdir -p artifacts/setup-regression
