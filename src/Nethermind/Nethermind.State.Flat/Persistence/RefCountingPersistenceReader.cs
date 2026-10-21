@@ -11,7 +11,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader
+public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
 {
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
@@ -57,6 +57,13 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
         _innerReader.CreateAccountIterator(startKey, endKey);
+
+    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+    {
+        if (_innerReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots, cancellationToken);
+    }
+
+    public bool SupportsPrefetch => _innerReader is IPersistence.IPrefetchingReader { SupportsPrefetch: true };
 
     public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
         _innerReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);

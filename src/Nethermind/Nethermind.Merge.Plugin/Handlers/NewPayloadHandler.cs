@@ -9,12 +9,14 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
@@ -55,6 +57,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
+    private readonly IBlockAccessListStore? _blockAccessListStore;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
     private readonly RecoverSignatures _senderRecovery;
@@ -95,7 +98,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ISpecProvider specProvider,
         ITxValidator txValidator,
         ILogManager logManager,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IBlockAccessListStore? blockAccessListStore = null)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -108,6 +112,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _blockAccessListStore = blockAccessListStore;
         _specProvider = specProvider;
         _txValidator = txValidator;
         _senderRecovery = senderRecovery;
@@ -141,14 +146,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         long deadline = _timeProvider.GetTimestamp() + (long)(_timeout.TotalSeconds * _timeProvider.TimestampFrequency);
 
         using ExecutionPayloadPreparation preparation = new(request);
+        using CancellationTokenSource senderRecoveryCancellation = new();
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
+            // Started before TryGetBlock so recovery overlaps the background transactions-root job it waits for.
+            StartSenderRecovery(request, senderRecoveryCancellation.Token);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
-            if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {
+            senderRecoveryCancellation.Cancel();
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
@@ -169,6 +177,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // IBlockValidator.ValidateSuggestedBlock for payload types that take those roots off the wire instead.
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
+            senderRecoveryCancellation.Cancel();
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
             Nethermind.Blockchain.Metrics.BadBlocks++;
             if (block.IsByNethermindNode()) Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
@@ -180,6 +189,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
+            // A queued ancestor can still fail execution and move latestValidHash backwards.
+            if (lastValidHash is not null && !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
+            {
+                return NewPayloadV1Result.Syncing;
+            }
+
+            // Queue removal publishes invalidation before completing, so refresh the earlier snapshot.
+            _invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out lastValidHash);
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $". The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
@@ -432,10 +449,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     /// <summary>Answers an already-committed block's inclusion-list compliance without re-executing it.</summary>
     /// <remarks>
-    /// EIP-7805 appendability is judged against the state the block committed, which for a canonical block
-    /// is readable at its own state root, so the only work left is recovering the list's senders.
-    /// Null when EIP-8037 leaves the answer undecidable from state alone: only execution records the gas
-    /// dimensions appendability is judged on, so the caller must fall through to it rather than guess.
+    /// EIP-7805 appendability uses the transaction boundary. The validated BAL reverses finalization's
+    /// account changes; a field with no earlier BAL value is read from the parent state.
+    /// Null when required BAL or parent state is unavailable, or EIP-8037 leaves the gas dimensions undecidable.
+    /// The caller must fall through to execution rather than guess.
     /// After cache loss or restart, even resending the current head can therefore answer SYNCING.
     /// </remarks>
     private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)
@@ -461,7 +478,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
     {
         Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        if (block is null || !_stateReader.HasStateForBlock(block.Header)) return null;
+        if (block is null || !WasExecuted(block) || !_stateReader.HasStateForBlock(block.Header)) return null;
         // Gas bounds must not mutate the tree's shared header while another request reads it.
         block = block.WithReplacedBodyCloned(block.Body);
         block.Header.GasUsedPerDimension = RecordedGasDimensions(blockHash);
@@ -476,17 +493,41 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
 
-        SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
-        return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
+        InclusionListCommittedState state = new(new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header),
+            (uint)block.Transactions.Length + 1, ReadList, ReadParent);
+        bool? satisfied = spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
             ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
             : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator);
+        return state.Available ? satisfied : null;
+
+        ReadOnlyBlockAccessList? ReadList()
+        {
+            if (block.Header.BlockAccessListHash is not { } commitment) return null;
+            if (block.BlockAccessList is { WireHash: { } own } carried && own == commitment) return carried;
+            try
+            {
+                ReadOnlyBlockAccessList? stored = _blockAccessListStore?.Get(block.Number, block.GetOrCalculateHash());
+                return stored?.WireHash == commitment ? stored : null;
+            }
+            catch (RlpException exception)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot recheck inclusion list for {block.Hash}: its BAL does not decode. {exception.Message}");
+                return null;
+            }
+        }
+
+        IReadOnlyStateProvider? ReadParent()
+        {
+            BlockHeader? parent = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return parent is not null && _stateReader.HasStateForBlock(parent)
+                ? new SpecificBlockReadOnlyStateProvider(_stateReader, parent) : null;
+        }
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
     /// <remarks>Account reads are shared across the gas bounds.</remarks>
     private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
-        state = new CachedAccountStateProvider(state);
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
@@ -504,51 +545,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // Bounds must never escape as recorded execution totals, including through the payload cache.
             block.Header.GasUsedPerDimension = null;
         }
-    }
-
-    /// <summary>Shares account reads across one request's inclusion-list checks.</summary>
-    private sealed class CachedAccountStateProvider(IReadOnlyStateProvider state) : IReadOnlyStateProvider
-    {
-        private Dictionary<AddressAsKey, (bool Exists, AccountStruct Account)>? _accounts;
-
-        /// <inheritdoc/>
-        public Hash256 StateRoot => state.StateRoot;
-
-        /// <inheritdoc/>
-        public bool TryGetAccount(Address address, out AccountStruct account)
-        {
-            _accounts ??= [];
-            if (!_accounts.TryGetValue(address, out (bool Exists, AccountStruct Account) cached))
-            {
-                bool exists = state.TryGetAccount(address, out account);
-                cached = (exists, account);
-                _accounts.Add(address, cached);
-            }
-            account = cached.Account;
-            return cached.Exists;
-        }
-
-        /// <inheritdoc/>
-        public ReadOnlyMemory<byte> GetCode(Address address)
-        {
-            TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? Array.Empty<byte>() : state.GetCode(account.CodeHash);
-        }
-
-        /// <inheritdoc/>
-        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => state.GetCode(in codeHash);
-
-        /// <inheritdoc/>
-        public bool IsContract(Address address) => state.IsContract(address);
-
-        /// <inheritdoc/>
-        public bool AccountExists(Address address) => state.AccountExists(address);
-
-        /// <inheritdoc/>
-        public bool IsDeadAccount(Address address) => state.IsDeadAccount(address);
-
-        /// <inheritdoc/>
-        public void Get(in StorageCell storageCell, out UInt256 value) => state.Get(in storageCell, out value);
     }
 
     /// <summary>The EIP-8037 gas dimensions execution recorded for the block <paramref name="hash"/> names.</summary>
@@ -659,7 +655,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private void StartSenderRecovery(ExecutionPayload request)
+    private void StartSenderRecovery(ExecutionPayload request, CancellationToken cancellationToken)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
         // the senders; they recover in the processing queue as before.
@@ -674,7 +670,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
         try
         {
-            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec, request.Transactions, cancellationToken);
         }
         catch (Exception e)
         {

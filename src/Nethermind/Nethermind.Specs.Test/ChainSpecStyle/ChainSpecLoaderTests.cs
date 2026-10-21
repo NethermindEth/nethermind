@@ -40,11 +40,10 @@ public class ChainSpecLoaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.ForkBaseFee, Is.EqualTo(1.GWei), $"fork base fee");
             Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.MinEpochsForBlockRequests));
             Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
-            Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
-            Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), nameof(chainSpec.Name));
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
             Assert.That(chainSpec.HomesteadBlockNumber, Is.EqualTo(MainnetSpecProvider.HomesteadBlockNumber));
@@ -52,7 +51,7 @@ public class ChainSpecLoaderTests
             Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(MainnetSpecProvider.TangerineWhistleBlockNumber));
             Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(MainnetSpecProvider.SpuriousDragonBlockNumber));
             Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(MainnetSpecProvider.ByzantiumBlockNumber));
-            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(null));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(MainnetSpecProvider.ConstantinopleFixBlockNumber));
             Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(MainnetSpecProvider.ConstantinopleFixBlockNumber));
             Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(MainnetSpecProvider.IstanbulBlockNumber));
             Assert.That(chainSpec.MuirGlacierNumber, Is.EqualTo(MainnetSpecProvider.MuirGlacierBlockNumber));
@@ -103,8 +102,7 @@ public class ChainSpecLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
-            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
-            Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), nameof(chainSpec.Name));
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
             Assert.That(chainSpec.Bootnodes, Has.Length.EqualTo(5), nameof(chainSpec.Bootnodes));
 
@@ -207,7 +205,7 @@ public class ChainSpecLoaderTests
     [Test]
     public void Bal_retention_floor_defaults_to_history_prune_epochs()
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
         using MemoryStream gethGenesis = new(Encoding.UTF8.GetBytes("""{ "config": { "chainId": 1 }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }"""));
 
         using (Assert.EnterMultipleScope())

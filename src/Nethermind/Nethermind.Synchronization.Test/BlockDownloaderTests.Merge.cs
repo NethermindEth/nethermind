@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -35,6 +36,7 @@ public partial class BlockDownloaderTests
     [TestCase(16UL, 32UL, false, 32UL, 29UL)]
     [TestCase(16UL, 32UL, true, 0UL, 32UL)]
     [TestCase(16UL, SyncBatchSizeMax * 8, true, 32UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8, true, 32UL, SyncBatchSizeMax * 8)]
     [TestCase(16UL, SyncBatchSizeMax * 8, false, 32UL, 32UL)]
     [TestCase(16UL, SyncBatchSizeMax * 8, false, 32UL, SyncBatchSizeMax * 8 - 16UL)]
     public async Task Merge_Happy_path(ulong beaconPivot, ulong headNumber, bool enableFastSync, ulong fastSyncLag, ulong insertedBeaconBlocks)
@@ -100,6 +102,25 @@ public partial class BlockDownloaderTests
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
         Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(insertedBeaconBlocks));
+
+        SuggestedStateRoots suggestedStateRoots = container.Resolve<SuggestedStateRoots>();
+        ulong expectedFastSyncEnd = ulong.Max(notSyncedTreeStartingBlockNumber, insertedBeaconBlocks.SaturatingSub(fastSyncLag));
+        if (insertedBeaconBlocks > expectedFastSyncEnd)
+        {
+            BlockTreeSuggestOptions[] processingOptions = suggestedStateRoots.SuggestedOptions
+                .Where(options => options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess))
+                .ToArray();
+            Assert.That(processingOptions, Is.Not.Empty, "the test must observe at least one merge processing suggestion");
+            Assert.That(processingOptions.All(options => options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)), Is.True,
+                "merge processing suggestions must opt into asynchronous processing");
+        }
+        if (enableFastSync && expectedFastSyncEnd > notSyncedTreeStartingBlockNumber)
+        {
+            Assert.That(suggestedStateRoots.SuggestedOptions.Any(options =>
+                !options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess) &&
+                !options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)), Is.True,
+                "merge fast-sync suggestions must not opt into asynchronous processing");
+        }
     }
 
     [TestCase(32UL, DownloaderOptions.Insert, 32, false)]
@@ -342,7 +363,8 @@ public partial class BlockDownloaderTests
         {
             builder
                 .AddSingleton<IBlockTree>(treeBuilder.NotSyncedTree)
-                .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb);
+                .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb)
+                .AddDecorator<IBlockTree, StateTrackingBlockTree>();
         }, configs);
 
     private record PostMergeContext(

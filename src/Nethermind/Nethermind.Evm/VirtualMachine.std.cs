@@ -26,7 +26,11 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private OpcodeTable GetOpcodeTable() =>
         _cachedOpcodeTable ??= _opcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable());
 
-    partial void ResetSpecCaches() => _cachedOpcodeTable = null;
+    partial void ResetSpecCaches()
+    {
+        _cachedOpcodeTable = null;
+        _frameCodeBodies = null;
+    }
 
     private const long OpcodeRefreshInterval = 10_000;
     private const long OpcodeRefreshLimit = 500_000;

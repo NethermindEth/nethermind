@@ -332,7 +332,7 @@ public class Eth68ProtocolHandlerTests
 
         bool shapeMatches = announced is AnnouncedShape.None or AnnouncedShape.Matching;
         recyclablePool.Received(shapeMatches ? 1 : 0).TrySubmitKnown(Arg.Any<ValueHash256>());
-        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), out _, out _);
+        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), Arg.Any<object?>(), out _);
         _session.Received(shapeMatches ? 0 : 1).InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 
@@ -348,7 +348,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(broadcast, Eth62MessageCode.Transactions);
 
         recyclablePool.DidNotReceive().TrySubmitKnown(Arg.Any<ValueHash256>());
-        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), out _, out _);
+        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), Arg.Any<object?>(), out _);
     }
 
     [Test]
