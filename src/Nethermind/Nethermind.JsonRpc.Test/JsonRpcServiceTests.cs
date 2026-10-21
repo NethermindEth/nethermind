@@ -13,6 +13,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -23,6 +24,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -1535,6 +1537,42 @@ public class JsonRpcServiceTests
         public int DisposeCount { get; private set; }
 
         public void Dispose() => DisposeCount++;
+    }
+
+    [Test]
+    public async Task Service_registered_by_the_node_can_be_decorated()
+    {
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddDecorator<IJsonRpcService, RecordingJsonRpcService>()
+            .Build();
+
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_chainId"), new JsonRpcContext(RpcEndpoint.Http));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service, Is.InstanceOf<RecordingJsonRpcService>());
+            Assert.That(((RecordingJsonRpcService)service).Methods, Is.EqualTo(new[] { "eth_chainId" }));
+            RpcTest.AssertSuccess<ulong>(response);
+        }
+    }
+
+    private sealed class RecordingJsonRpcService(IJsonRpcService inner) : IJsonRpcService
+    {
+        public List<string> Methods { get; } = [];
+
+        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context)
+        {
+            Methods.Add(request.Method);
+            return inner.SendRequestAsync(request, context);
+        }
+
+        public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, in JsonRpcId id, string? methodName = null) =>
+            inner.GetErrorResponse(errorCode, errorMessage, in id, methodName);
+
+        public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, string? methodName = null) =>
+            inner.GetErrorResponse(errorCode, errorMessage, methodName);
     }
 
     public class PolymorphicBasePayload
