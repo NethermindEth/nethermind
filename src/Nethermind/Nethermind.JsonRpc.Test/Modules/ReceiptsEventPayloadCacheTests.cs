@@ -111,13 +111,16 @@ public class ReceiptsEventPayloadCacheTests
     {
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
         using Fixture fixture = new();
-        using ReceiptsEventPayloadCache<LogsSubscription.FilterKey>.Membership unfiltered = fixture.LogPayloads.Join(null);
+        // A filter with a wildcard topic accepts every log, so it counts as unfiltered and makes the others store.
+        (CollectingClient anyTopic, _) = fixture.SubscribeToLogs((Address[]?)null, ExpectedLogs(e, null).Count, topics: [null]);
         // Address C's only log is at position 3; the bloom of the first receipt does not match C.
         (CollectingClient client, _) = fixture.SubscribeToLogs(TestItem.AddressC, 1);
 
         fixture.Monitor.Raise(e);
         Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
+        Assert.That(anyTopic.Received.Wait(DeliveryTimeout), Is.True);
 
+        using ReceiptsEventPayloadCache<LogsSubscription.FilterKey>.Membership unfiltered = fixture.LogPayloads.Join(null);
         EventPayloads payloads = unfiltered.ForEvent(e);
         Assert.That(Enumerable.Range(0, 4).Where(position => payloads.TryGet(position, out _)), Is.EqualTo([3]));
     }
@@ -258,8 +261,12 @@ public class ReceiptsEventPayloadCacheTests
         return probe.ForEvent(e).TryGet(0, out _);
     }
 
-    private static LogsSubscription.FilterKey LogsKey(BlockParameter toBlock, Address[]? addresses, Hash256[]?[] topics) =>
-        new(BlockParameter.Latest, toBlock, addresses is null ? null : [.. addresses.Select(static a => new AddressAsKey(a))], topics);
+    private static LogsSubscription.FilterKey LogsKey(BlockParameter toBlock, Address[]? addresses, Hash256[]?[] topics) => new(new LogsFilter
+    {
+        ToBlock = toBlock,
+        Address = addresses is null ? null : [.. addresses.Select(static a => new AddressAsKey(a))],
+        Topics = topics
+    });
 
     /// <summary>Two receipts of <see cref="LogsPerReceipt"/> logs: positions 0 and 2 come from address A, 1 from B and 3 from C.</summary>
     private static ReceiptsEventArgs CreateEvent(bool removed, bool logIndexPerReceipt)
@@ -324,10 +331,14 @@ public class ReceiptsEventPayloadCacheTests
         public (CollectingClient, Subscription) SubscribeToLogs(Address? address, int expectedMessages) =>
             SubscribeToLogs(address is null ? null : [address], expectedMessages);
 
-        public (CollectingClient, Subscription) SubscribeToLogs(Address[]? addresses, int expectedMessages)
+        public (CollectingClient, Subscription) SubscribeToLogs(Address[]? addresses, int expectedMessages, Hash256[]?[]? topics = null)
         {
             CollectingClient client = new(expectedMessages);
-            LogsFilter? filter = addresses is null ? null : new() { Address = [.. addresses.Select(static a => new AddressAsKey(a))] };
+            LogsFilter? filter = addresses is null && topics is null ? null : new()
+            {
+                Address = addresses is null ? null : [.. addresses.Select(static a => new AddressAsKey(a))],
+                Topics = topics
+            };
             return Track(client, new LogsSubscription(client, Monitor, _filterStore, _blockTree, NullLogManager.Instance, LogPayloads, filter));
         }
 
