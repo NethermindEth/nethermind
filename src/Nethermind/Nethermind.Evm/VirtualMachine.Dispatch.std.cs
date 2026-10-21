@@ -291,12 +291,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TContinuable : struct, IFlag
         {
             bool carriesExecutionGas = CarriesExecutionGas<TTracingInst>();
+            nint traceStackHead = DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody
+                && TOpcode.StackInputs > 0 && state.Vm.IsTracingActions ? stack.Head : 0;
 
             // Only a traced run reads the opcode out of the bytecode. The read costs two dependent loads.
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             {
                 Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
-                state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in state.Gas), (int)pc, in stack);
+                state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in state.Gas), (int)pc, in stack,
+                    TOpcode.TraceGasCost ?? TOpcode.GetSpecTraceGasCost(state.Vm.Spec), TOpcode.StackInputs, TOpcode.StackGrowth);
             }
 
             if (carriesExecutionGas && TOpcode.HasUntracedFastPath)
@@ -383,7 +386,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                     gas = GetExecutionGas(ref localGas);
                     if (!CheckedStackFits<TOpcode>(in stack))
-                        return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, CheckedStackFailure<TOpcode>(in stack));
+                    {
+                        EvmExceptionType stackFailure = CheckedStackFailure<TOpcode>(in stack);
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && stackFailure == EvmExceptionType.StackUnderflow)
+                            state.Vm.TraceActionErrorDetails($"stack underflow ({stack.Head} <=> {TOpcode.StackInputs})");
+                        return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, stackFailure);
+                    }
 
                     ExecuteCheckedBodyAfterChecks<TOpcode>(ref stack, ref localGas, ref state, ref pc);
                     gas = GetExecutionGas(ref localGas);
@@ -395,7 +403,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     pc = checkedResult.ProgramCounter;
                     exceptionType = checkedResult.Exception;
                     if (exceptionType != EvmExceptionType.None)
+                    {
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && exceptionType == EvmExceptionType.StackUnderflow)
+                            state.Vm.TraceActionErrorDetails($"stack underflow ({stack.Head} <=> {TOpcode.StackInputs})");
                         return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
+                    }
                 }
             }
             else if (carriesExecutionGas && TOpcode.ChargesFixedGas)
@@ -465,6 +477,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             throw IL.Unreachable();
 
         Exit:
+            if (DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody && TOpcode.StackInputs > 0 &&
+                exceptionType == EvmExceptionType.StackUnderflow && state.Vm.IsTracingActions)
+            {
+                Instruction opcode = (Instruction)Unsafe.Add(ref stack.Code, pc - 1);
+                if (opcode is not (Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL))
+                    state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
+            }
             return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
         }
 
@@ -496,7 +515,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             {
                 Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
-                vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in state.Gas), (int)pc, in stack);
+                vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in state.Gas), (int)pc, in stack,
+                    GasPolicy.JumpIGasCost.GasCost, stackInputs: 2);
             }
 
             pc++;

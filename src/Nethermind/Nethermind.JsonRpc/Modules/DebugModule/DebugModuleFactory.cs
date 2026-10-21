@@ -6,8 +6,11 @@ using Autofac;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Facade;
+using Nethermind.Int256;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -49,6 +52,9 @@ public class DebugModuleFactory(
             // Note: Not overriding `IReceiptStorage` to null.
             .AddModule(validationBlockProcessingModules)
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
+            .AddScoped<GethStyleTracer.TraceCallRequestState>()
+            .AddScoped<IBlobBaseFeeOverrideProvider, TraceCallBlobBaseFeeOverrideProvider>()
+            .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
 
             // So the debug rpc change the adapter sometime.
             .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
@@ -57,6 +63,12 @@ public class DebugModuleFactory(
             // same ChangeableTransactionProcessorAdapter so they honour the tracer's runtime Execute↔Trace swap.
             .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(
                 static changeable => changeable.ForProcessor);
+
+    private sealed class TraceCallBlobBaseFeeOverrideProvider(GethStyleTracer.TraceCallRequestState state) : IBlobBaseFeeOverrideProvider
+    {
+        /// <inheritdoc/>
+        public UInt256? BlobBaseFeeOverride => state.BlobBaseFee;
+    }
 
     public IDebugRpcModule Create()
     {
@@ -72,11 +84,10 @@ public class DebugModuleFactory(
             builder.AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace);
         });
 
-        // Pass only `IGethStyleTracer` into the debug rpc lifetime.
-        // This is to prevent leaking processor or world state accidentally.
-        // `GethStyleTracer` must be very careful to always dispose overridable env.
+        // Share the override environment's exact repository, including its decorators, for stateless preflight.
         ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>()));
+            .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>())
+            .AddScoped<ICodeInfoRepository>(tracerLifecycle.Resolve<IOverridableCodeInfoRepository>()));
 
         debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecycle);
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);

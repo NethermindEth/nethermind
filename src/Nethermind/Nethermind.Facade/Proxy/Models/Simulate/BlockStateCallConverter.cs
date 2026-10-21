@@ -162,7 +162,9 @@ public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>
         {
             byte[][] names = typeof(TOverride)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(static property => property.SetMethod?.IsPublic == true && property.GetCustomAttribute<JsonIgnoreAttribute>() is null)
+                .Where(static property => property.SetMethod?.IsPublic == true
+                    && property.GetCustomAttribute<JsonIgnoreAttribute>() is null
+                    && (typeof(TOverride) != typeof(BlockOverride) || property.Name != nameof(BlockOverride.BeaconRoot)))
                 .Select(static property => Encoding.UTF8.GetBytes(property.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name ?? property.Name))
                 .ToArray();
             // One bit per field and per letter of a name.
