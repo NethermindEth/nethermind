@@ -79,8 +79,9 @@ public class PbtWorldStateScopeTests
             scope.Commit(2);
         }
         Assert.That(buffer.WriteFrontier(), Is.EqualTo(globalFrontier), "override folds write to the overlay buffer");
-        // The overlay pinned the global buffer before this block, so it cannot reach the block's root group.
         BlockHeader second = CommitCanonical(manager, first, 2, 3);
+        // The overlay cannot reach global records written after its pin, so a reset re-pins it past this block.
+        overrides.ResetOverrides();
         Hash256 expected;
         using (IWorldStateScopeProvider.IScope canonical = manager.GlobalWorldState.BeginScope(second, new LocalMetrics()))
         {
