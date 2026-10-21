@@ -92,27 +92,38 @@ def declaration_pattern(method):
     return re.compile(rf"^[ \t]*(?:(?:public|private|protected|internal|static|async|virtual|override|sealed|unsafe|new)\s+)+[^\n(;=]+?\s+{re.escape(method)}\s*\(", re.MULTILINE)
 
 
-def find_source(project, method):
+def traced_class(failure):
+    trace = re.search(rf"\bat ([\w.]+)\.{re.escape(failure['method'])}\(", failure["excerpt"])
+    return trace.group(1) if trace else None
+
+
+def find_source(project, method, owner=None):
     pattern = declaration_pattern(method)
-    for path in sorted((SOURCE_ROOT / project).rglob("*.cs")):
-        if pattern.search(path.read_text(encoding="utf-8", errors="replace")):
-            return path.as_posix()
-    return None
+    owner_class = owner and re.compile(rf"\bclass\s+{re.escape(owner.rsplit('.', 1)[-1])}\b")
+    matches = [path for path in sorted((SOURCE_ROOT / project).rglob("*.cs"))
+               if pattern.search(path.read_text(encoding="utf-8", errors="replace"))]
+    preferred = [path for path in matches if owner_class and owner_class.search(path.read_text(encoding="utf-8", errors="replace"))]
+    chosen = (preferred or matches or [None])[0]
+    return chosen.as_posix() if chosen else None
 
 
 def test_class(failure):
-    trace = re.search(rf"\bat ([\w.]+)\.{re.escape(failure['method'])}\(", failure["excerpt"])
-    if trace:
-        return trace.group(1)
+    owner = traced_class(failure)
+    if owner:
+        return owner
     if not failure.get("source"):
         return None
     text = Path(failure["source"]).read_text(encoding="utf-8", errors="replace")
-    declaration = declaration_pattern(failure["method"]).search(text)
+    found = declaration_pattern(failure["method"]).search(text)
     namespace = NAMESPACE.search(text)
-    classes = CLASS.findall(text[:declaration.start()]) if declaration else []
+    classes = CLASS.findall(text[:found.start()]) if found else []
     if not (namespace and classes):
         return None
     return f"{namespace.group(1)}.{classes[-1]}"
+
+
+def method_filter(test_filter):
+    return test_filter.split("&", 1)[1] if test_filter.startswith("FullyQualifiedName~") else None
 
 
 def test_filter(failure):
@@ -205,7 +216,7 @@ def select(log_dir, repo, daily_limit, lookback_days, today=None):
             if key in seen or not is_eligible(failure):
                 continue
             seen.add(key)
-            source = find_source(failure["project"], failure["method"])
+            source = find_source(failure["project"], failure["method"], traced_class(failure))
             branch = branch_name(failure["method"])
             if source is None or branch_exists(branch) or is_known(repo, failure["method"], since):
                 continue
@@ -255,7 +266,11 @@ def repeat(project, test_filter, runs, budget, stop_after, out_dir, host=None, l
                 partial = expired.stdout or b""
                 code, output = -1, f"timed out after {run_timeout}s\n{partial.decode(errors='replace')}"
             if code == ZERO_TESTS_RAN:
-                raise SystemExit(f"filter {test_filter!r} matched no tests in {project}")
+                broader = method_filter(test_filter) if done == 0 else None
+                if broader is None:
+                    raise SystemExit(f"filter {test_filter!r} matched no tests in {project}")
+                test_filter = broader
+                continue
             done += 1
             if code != 0:
                 failures += 1
@@ -267,7 +282,7 @@ def repeat(project, test_filter, runs, budget, stop_after, out_dir, host=None, l
         for spinner in spinners:
             spinner.kill()
     return {"runs": done, "failures": failures, "seconds": round(time.monotonic() - started),
-            "verdict": classify(done, failures)}
+            "verdict": classify(done, failures), "filter": test_filter}
 
 
 def blocked_paths(paths):

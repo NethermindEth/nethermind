@@ -105,6 +105,27 @@ class FilterTests(unittest.TestCase):
         self.assertEqual(self.filter("   at Other.Fixture.Run_twice(Int32 x)"),
                          r"FullyQualifiedName~Other.Fixture&Name=Run_twice")
 
+    def test_finds_the_declaring_file_of_the_traced_class(self):
+        root = self.source.parent
+        project = root / "X.Test"
+        project.mkdir()
+        (project / "A.cs").write_text("class Fixture\n{\n    void Go() { Run_twice(1); }\n}\n", encoding="utf-8")
+        (project / "B.cs").write_text("class Other\n{\n    public void Run_twice(int x) { }\n}\n", encoding="utf-8")
+        (project / "C.cs").write_text("class Fixture\n{\n    public async Task Run_twice(int x) { }\n}\n", encoding="utf-8")
+        with mock.patch.object(flaky_tests, "SOURCE_ROOT", root):
+            self.assertEqual(flaky_tests.find_source("X.Test", "Run_twice"), (project / "B.cs").as_posix())
+            self.assertEqual(flaky_tests.find_source("X.Test", "Run_twice", "Ns.Fixture"), (project / "C.cs").as_posix())
+
+    def test_falls_back_to_the_method_when_the_class_filter_matches_nothing(self):
+        host = self.source.parent / "host.sh"
+        host.write_text('#!/bin/sh\ncase "$2" in FullyQualifiedName*) exit 8;; esac\nexit 0\n', encoding="utf-8")
+        host.chmod(0o755)
+        (self.source.parent / "X.Test").mkdir()
+        with mock.patch.object(flaky_tests, "SOURCE_ROOT", self.source.parent):
+            result = flaky_tests.repeat("X.Test", "FullyQualifiedName~Ns.Base&Name=Run_twice", 3, 60, 0,
+                                        self.source.parent / "out", host=host.as_posix(), load=0)
+        self.assertEqual((result["runs"], result["failures"], result["filter"]), (3, 0, "Name=Run_twice"))
+
 
 class FindSourceTests(unittest.TestCase):
     def test_returns_the_file_that_declares_the_method_not_a_call_site(self):

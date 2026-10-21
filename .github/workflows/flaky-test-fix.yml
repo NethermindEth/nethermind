@@ -59,7 +59,11 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
         run: |
           [[ "$RUN_ID" =~ ^[0-9]+$ ]] || exit 1
-          [[ "$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '[.name, .event, .head_branch] | join("|")')" == "Nethermind/Ethereum tests|push|master" ]] || exit 1
+          run=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '[.name, .event, .head_branch, .head_repository.full_name] | @tsv')
+          if [ "$run" != "$(printf 'Nethermind/Ethereum tests\tpush\tmaster\t%s' "$REPO")" ]; then
+            echo "::error::Run $RUN_ID is not a master push run of Nethermind/Ethereum tests"
+            exit 1
+          fi
           mkdir -p "$RUNNER_TEMP/logs"
           gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
             --jq '.jobs[] | select(.conclusion == "failure") | .id' |
@@ -101,7 +105,7 @@ jobs:
       PROJECT: ${{ needs.detect.outputs.project }}
       METHOD: ${{ needs.detect.outputs.method }}
       BRANCH: ${{ needs.detect.outputs.branch }}
-      FILTER: ${{ needs.detect.outputs.filter }}
+      DETECTED_FILTER: ${{ needs.detect.outputs.filter }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -145,7 +149,7 @@ jobs:
         if: steps.claim.outputs.taken != 'true'
         id: baseline
         run: |
-          python3 "$RUNNER_TEMP/flaky_tests.py" repeat --project "$PROJECT" --filter "$FILTER" \
+          python3 "$RUNNER_TEMP/flaky_tests.py" repeat --project "$PROJECT" --filter "$DETECTED_FILTER" \
             --runs "$BASELINE_RUNS" --budget "$BASELINE_SECONDS" --out-dir "$RUNNER_TEMP/claude/baseline"
 
       - name: Record a test that did not reproduce or always fails
@@ -194,7 +198,7 @@ jobs:
 
             Verify before you finish:
               dotnet build src/Nethermind/${{ env.PROJECT }}/${{ env.PROJECT }}.csproj -c release
-              python3 scripts/ci/flaky_tests.py repeat --project ${{ env.PROJECT }} --filter "${{ env.FILTER }}" --runs 200 --budget 1800 --stop-after 1 --out-dir ${{ runner.temp }}/claude/reruns
+              python3 scripts/ci/flaky_tests.py repeat --project ${{ env.PROJECT }} --filter "${{ steps.baseline.outputs.filter }}" --runs 200 --budget 1800 --stop-after 1 --out-dir ${{ runner.temp }}/claude/reruns
             Iterate until it reports 0 failures.
 
             Do not commit or push. Write `${{ runner.temp }}/claude/report.md` for the PR description: the root cause
@@ -225,6 +229,7 @@ jobs:
         if: steps.check.outcome == 'success'
         id: verify
         env:
+          FILTER: ${{ steps.baseline.outputs.filter }}
           FAILURES: ${{ steps.baseline.outputs.failures }}
           RUNS: ${{ steps.baseline.outputs.runs }}
           SECONDS_TAKEN: ${{ steps.baseline.outputs.seconds }}
@@ -240,6 +245,7 @@ jobs:
       - name: Write the PR description
         if: steps.verify.outcome == 'success'
         env:
+          FILTER: ${{ steps.baseline.outputs.filter }}
           BEFORE: ${{ steps.baseline.outputs.failures }}/${{ steps.baseline.outputs.runs }}
           AFTER: ${{ steps.verify.outputs.failures }}/${{ steps.verify.outputs.runs }}
           FAILED_RUN: ${{ github.event.workflow_run.html_url || inputs.run_id }}
