@@ -61,17 +61,11 @@ public partial class BlockProcessor
 
             ClearTransactionProcessedEvents();
             _pendingTransactionProcessedEvents?.EnsureCapacity(block.Transactions.Length);
-            Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
             TxReceipt[] receipts = !ZkEvmFlag.IsActive && !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
-
-            // Seed empty/system-only blocks with the base fee, then publish gauges once - after workers
-            // join - from the final aggregates so a stale worker view cannot overwrite them.
-            Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
-            Metrics.PublishBlockGasPriceGauges();
 
             return receipts;
         }
@@ -320,16 +314,17 @@ public partial class BlockProcessor
                 }
 
                 incrementalValidation.GetResult();
-                return CombineReceipts(receiptsTracers, len);
             }
             finally
             {
                 // Always populate the outer tracer with per-tx receipts so the parallel path's
                 // tracer state matches what the sequential path would have produced. Needed for
-                // BlockTraceDumper's invalid-block dump on failure, and keeps tracer state
-                // consistent on success.
+                // BlockTraceDumper's invalid-block dump on failure, and the success path returns
+                // the harvested outer receipts.
                 HarvestPerTxReceiptsIntoOuter(receiptsTracers, len, outerReceiptsTracer);
             }
+
+            return [.. outerReceiptsTracer.TxReceipts];
         }
 
         void BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler.OnTransactionProcessed(TxProcessedEventArgs args) =>
@@ -470,21 +465,6 @@ public partial class BlockProcessor
                 receipt.GasUsedTotal = cumulativeGas;
                 outer.SetReceipt(i, receipt);
             }
-        }
-
-        private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len)
-        {
-            TxReceipt[] result = new TxReceipt[len];
-            ulong cumulativeGas = 0;
-            for (int i = 0; i < len; i++)
-            {
-                result[i] = receiptsTracers[i].TxReceipts[0];
-                result[i].Index = i;
-                cumulativeGas += result[i].GasUsed;
-                result[i].GasUsedTotal = cumulativeGas;
-            }
-
-            return result;
         }
 
         private static void ProcessTransaction(
