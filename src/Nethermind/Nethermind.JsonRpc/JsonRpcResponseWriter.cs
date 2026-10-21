@@ -35,6 +35,8 @@ public static class JsonRpcResponseWriter
 
     [ThreadStatic] private static Utf8JsonWriter? _cachedWriter;
     [ThreadStatic] private static JsonSerializerOptions? _cachedWriterOptions;
+    [ThreadStatic] private static ArrayBufferWriter<byte>? _payloadBuffer;
+    private const int MaxCachedPayloadBufferSize = 16 * 1024;
 
     /// <summary>Writes <paramref name="response"/> as a JSON-RPC response envelope.</summary>
     public static void Write(IBufferWriter<byte> writer, JsonRpcResponse response, JsonSerializerOptions options)
@@ -57,9 +59,14 @@ public static class JsonRpcResponseWriter
             throw;
         }
 
+        ReturnWriter(jsonWriter, options);
+    }
+
+    private static void ReturnWriter(Utf8JsonWriter writer, JsonSerializerOptions options)
+    {
         // Detach so the cached writer does not keep the transport buffer alive.
-        jsonWriter.Reset(DetachedOutput);
-        _cachedWriter = jsonWriter;
+        writer.Reset(DetachedOutput);
+        _cachedWriter = writer;
         _cachedWriterOptions = options;
     }
 
@@ -328,15 +335,33 @@ public static class JsonRpcResponseWriter
     }
 
     /// <summary>Serializes a payload once, byte for byte as <see cref="WritePayload{T}"/> writes it in a response.</summary>
+    /// <remarks>
+    /// Writes through the thread's cached writer and buffer, so only the returned array is allocated; a buffer grown
+    /// beyond <see cref="MaxCachedPayloadBufferSize"/> by a large payload is not kept.
+    /// </remarks>
     internal static byte[] SerializePayload<T>(T value, JsonSerializerOptions options)
     {
-        ArrayBufferWriter<byte> buffer = new();
-        using (Utf8JsonWriter writer = new(buffer, CreateWriterOptions(options)))
+        ArrayBufferWriter<byte> buffer = _payloadBuffer ?? new(MaxCachedPayloadBufferSize);
+        _payloadBuffer = null;
+        buffer.ResetWrittenCount();
+
+        Utf8JsonWriter writer = RentWriter(buffer, options);
+        try
         {
             WritePayload(writer, value, options);
+            writer.Flush();
+        }
+        catch
+        {
+            writer.Dispose();
+            throw;
         }
 
-        return buffer.WrittenSpan.ToArray();
+        ReturnWriter(writer, options);
+
+        byte[] payload = buffer.WrittenSpan.ToArray();
+        if (buffer.Capacity <= MaxCachedPayloadBufferSize) _payloadBuffer = buffer;
+        return payload;
     }
 
     internal static bool TryWriteSimpleValue<T>(Utf8JsonWriter writer, T value)

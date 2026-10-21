@@ -71,6 +71,33 @@ public class JsonRpcResponseWriterTests
     }
 
     [Test]
+    public void Serialized_payload_holds_only_its_own_bytes_after_a_large_or_failed_one([Values] bool previousFailed)
+    {
+        if (previousFailed)
+        {
+            Assert.Throws<InvalidOperationException>(() => JsonRpcResponseWriter.SerializePayload(new ThrowingResult(), EthereumJsonSerializer.JsonOptions));
+        }
+        else
+        {
+            JsonRpcResponseWriter.SerializePayload(new string('a', 64 * 1024), EthereumJsonSerializer.JsonOptions);
+        }
+
+        Assert.That(Encoding.UTF8.GetString(JsonRpcResponseWriter.SerializePayload("ok", EthereumJsonSerializer.JsonOptions)), Is.EqualTo("\"ok\""));
+    }
+
+    [Test]
+    public void Repeated_payload_serialization_allocates_only_the_payload()
+    {
+        JsonRpcResponseWriter.SerializePayload("ok", EthereumJsonSerializer.JsonOptions);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        JsonRpcResponseWriter.SerializePayload("ok", EthereumJsonSerializer.JsonOptions);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(allocated, Is.LessThan(128), "the payload array, not a fresh buffer and writer");
+    }
+
+    [Test]
     public void Cached_writer_does_not_keep_the_output_alive()
     {
         WeakReference output = WriteToUnreferencedBuffer();
