@@ -51,6 +51,8 @@ public sealed partial class PbtGroupLog
         lock (_lock)
         {
             ThrowIfUnavailable();
+            if (generation < _oldestInPlace || _generations.TryGetValue(generation, out Generation? pinned) && pinned.Dropping)
+                throw new ObjectDisposedException(nameof(GenerationPin));
             _pins.TryGetValue(generation, out int count);
             _pins[generation] = count + 1;
             _pinCount++;
@@ -212,7 +214,12 @@ public sealed partial class PbtGroupLog
         public PbtGroupReference WriteBoundary { get; }
 
         /// <summary>Keeps the same generation range independently of this pin.</summary>
-        public GenerationPin Copy() => _log.PinGeneration(Generation, WriteBoundary);
+        /// <exception cref="ObjectDisposedException">This pin or the log is disposed.</exception>
+        public GenerationPin Copy()
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            return _log.PinGeneration(Generation, WriteBoundary);
+        }
 
         IPbtGroupLogPin IPbtGroupLogPin.Copy() => Copy();
 

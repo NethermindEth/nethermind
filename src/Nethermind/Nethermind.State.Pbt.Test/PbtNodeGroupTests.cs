@@ -1117,6 +1117,7 @@ public class PbtNodeGroupTests
             Assert.That(context.Log.ResidentBytes, Is.Zero);
             Assert.That(context.Log.GenerationCount, Is.Zero);
             Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
+            Assert.Throws<ObjectDisposedException>(() => copy.Copy(), "a disposed pin cannot re-pin its released generation");
         }
     }
 
