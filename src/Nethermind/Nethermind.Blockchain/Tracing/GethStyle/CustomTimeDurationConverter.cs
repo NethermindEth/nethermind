@@ -36,7 +36,6 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
 
     // Matches Go's int64 nanosecond range (positive values must be < MaxNs).
     private const ulong MaxNs = 1UL << 63;
-    private const int MaxFractionDigits = 19; // digits in MaxNs
 
     // Largest possible Format output is "-256204778h59m59.999999999s" = 27 chars.
     private const int FormatBufferSize = 32;
@@ -263,8 +262,8 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         // Go's leadingFraction stops accumulating once the value would exceed 1<<63:
         // 18 significant digits always fit, a 19th only if the result stays <= 1<<63.
         ReadOnlySpan<char> significant = digits[leadingZeros..];
-        int taken = Math.Min(significant.Length, MaxFractionDigits);
-        f = ulong.Parse(significant[..taken], NumberStyles.None, CultureInfo.InvariantCulture);
+        int taken = Math.Min(significant.Length, 19);
+        ulong.TryParse(significant[..taken], out f); // <= 19 digits always fits in ulong
         if (f > MaxNs)
         {
             f /= 10;
