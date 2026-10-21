@@ -25,6 +25,7 @@ using Nethermind.Facade.Filters.Topics;
 using Nethermind.Facade.Find;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -89,8 +90,7 @@ public class SlicedReceiptRetentionTests
         }
         testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.TryPruneHistory(CancellationToken.None);
+        TryPruneHistory(testBlockchain);
 
         using (Assert.EnterMultipleScope())
         {
@@ -168,8 +168,7 @@ public class SlicedReceiptRetentionTests
 
         testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.TryPruneHistory(CancellationToken.None);
+        TryPruneHistory(testBlockchain);
 
         using (Assert.EnterMultipleScope())
         {
@@ -212,8 +211,7 @@ public class SlicedReceiptRetentionTests
         }
         testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.TryPruneHistory(CancellationToken.None);
+        TryPruneHistory(testBlockchain);
 
         Assert.That(testBlockchain.ReceiptStorage.HasBlock(blockNumber, blockHash), Is.False);
 
@@ -265,8 +263,7 @@ public class SlicedReceiptRetentionTests
         }
         testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.TryPruneHistory(CancellationToken.None);
+        TryPruneHistory(testBlockchain);
 
         Assert.That(testBlockchain.ReceiptStorage.HasBlock(prunedBlockNumber, prunedBlockHash), Is.False,
             "the from endpoint's receipts must be gone for this test to exercise the availability probe");
@@ -355,8 +352,7 @@ public class SlicedReceiptRetentionTests
 
         testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.TryPruneHistory(CancellationToken.None);
+        TryPruneHistory(testBlockchain);
 
         using (Assert.EnterMultipleScope())
         {
@@ -411,8 +407,7 @@ public class SlicedReceiptRetentionTests
 
         testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.TryPruneHistory(CancellationToken.None);
+        TryPruneHistory(testBlockchain);
 
         using (Assert.EnterMultipleScope())
         {
@@ -882,6 +877,7 @@ public class SlicedReceiptRetentionTests
     {
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = 0 });
         IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+        TestStateBoundary stateBoundary = new();
 
         return await BasicTestBlockchain.Create(containerBuilder =>
         {
@@ -890,6 +886,8 @@ public class SlicedReceiptRetentionTests
                 .AddSingleton(blockProcessingQueue)
                 .AddSingleton(historyConfig)
                 .AddSingleton(flatDbConfig)
+                .AddSingleton(stateBoundary)
+                .AddSingleton<IStateBoundary>(stateBoundary)
                 .AddSingleton<IPrunedReceiptRetention, SlicedReceiptRetention>();
 
             if (logIndexStorage is not null)
@@ -897,5 +895,14 @@ public class SlicedReceiptRetentionTests
                 containerBuilder.AddSingleton(logIndexStorage);
             }
         });
+    }
+
+    private static void TryPruneHistory(BasicTestBlockchain testBlockchain)
+    {
+        TestStateBoundary stateBoundary = testBlockchain.Container.Resolve<TestStateBoundary>();
+        stateBoundary.BestPersistedState = testBlockchain.BlockTree.Head!.Number;
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
     }
 }
