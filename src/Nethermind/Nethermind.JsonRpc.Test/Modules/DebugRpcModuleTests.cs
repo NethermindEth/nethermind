@@ -1262,6 +1262,27 @@ public partial class DebugRpcModuleTests
         AssertTraceCallInputError(response, expectedCollision);
     }
 
+    [Test]
+    public async Task Debug_traceCall_validates_fees_with_null_account_override(
+        [Values] bool streaming, [Values("null", "{}")] string accountOverride, [Values(null, "0x0")] string? txIndex)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        object options = new
+        {
+            stateOverrides = new Dictionary<string, JsonElement>
+            {
+                ["0x0000000000000000000000000000000000000010"] = JsonSerializer.Deserialize<JsonElement>(accountOverride)
+            },
+            txIndex
+        };
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gasPrice = "0x1", maxFeePerGas = "0x2" }, "latest", options);
+
+        AssertTraceCallInputError(response, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified");
+    }
+
     private static void AssertTraceCallInputError(string response, string message)
     {
         JToken json = JToken.Parse(response);
