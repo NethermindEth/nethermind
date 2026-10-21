@@ -33,7 +33,7 @@ public static partial class AbiType
         Write = (ref BinarySpanWriter w, Int256.Int256 v) => ((UInt256)v).ToBigEndian(w.Take(32)),
     };
 
-    public static Abi<T> UIntN<T>() where T : IBinaryInteger<T>, IUnsignedNumber<T> => new()
+    public static Abi<T> UIntN<T>() where T : IBinaryInteger<T>, IUnsignedNumber<T>, IMinMaxValue<T> => new()
     {
         Name = $"uint{T.Zero.GetByteCount() * 8}",
         Read = (ref BinarySpanReader r) =>
@@ -50,7 +50,7 @@ public static partial class AbiType
         },
     };
 
-    public static Abi<T> IntN<T>() where T : IBinaryInteger<T>, ISignedNumber<T> => new()
+    public static Abi<T> IntN<T>() where T : IBinaryInteger<T>, ISignedNumber<T>, IMinMaxValue<T> => new()
     {
         Name = $"int{T.Zero.GetByteCount() * 8}",
         Read = (ref BinarySpanReader r) =>
