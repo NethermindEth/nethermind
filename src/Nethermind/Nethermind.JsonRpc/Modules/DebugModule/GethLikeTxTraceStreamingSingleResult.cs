@@ -52,7 +52,7 @@ public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IDef
     internal void WriteAsJson(Utf8JsonWriter writer) => EmitContent(writer, null, _timeoutToken);
 
     private void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken) =>
-        StructLogEnvelopeWriter.EmitTraceObject(writer, pipeWriter, cancellationToken, _runTrace, _logger, isSingleResult: true);
+        StructLogEnvelopeWriter.EmitTraceObject(writer, pipeWriter, cancellationToken, _runTrace, _logger, propagateDurationErrors: true);
 }
 
 internal sealed class GethLikeTxTraceStreamingSingleResultConverter : JsonConverter<GethLikeTxTraceStreamingSingleResult>

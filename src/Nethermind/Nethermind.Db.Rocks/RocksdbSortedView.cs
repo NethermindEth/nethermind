@@ -13,6 +13,10 @@ internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : I
     private readonly ReadOptions _readOptions = readOptions;
     private bool _started = false;
 
+    protected ReadOptions ReadOptions => _readOptions;
+
+    protected void Restart() => _started = false;
+
     // The read options own the iterate-bound buffers, so the iterator must go first.
     public void Dispose()
     {

@@ -281,6 +281,10 @@ namespace Nethermind.Trie
         /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>
         private const MethodImplOptions GetChildWithChildPathInlining = MethodImplOptions.AggressiveInlining;
 
+        /// <summary>How <see cref="ResolveChildFromRlp"/> is inlined: always.</summary>
+        /// <remarks>Nearly every witness node is a child resolved once, and the call spilled the walk's live registers around it.</remarks>
+        private const MethodImplOptions ResolveChildFromRlpInlining = MethodImplOptions.AggressiveInlining;
+
         /// <summary>How <see cref="SetChild"/> is inlined: always.</summary>
         /// <remarks>Called per level as a trie write climbs back to the root, where an out-of-line call costs more than the
         /// sealed check and slot store it makes.</remarks>
@@ -334,6 +338,51 @@ namespace Nethermind.Trie
             Rlp.Encode(destination, position + keyItemLength, value);
             return true;
         }
+
+        /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's, most often a branch with empty slots.</summary>
+        /// <remarks>
+        /// Skips the slots before the child knowing only the two item shapes such a branch holds, an empty slot and a hash,
+        /// and hands any other shape, an extension or a node without RLP to <see cref="ResolveChildFromAnyRlp"/>. Every
+        /// call it makes is a tail call, so unlike that general item scan it saves no registers.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private object? ResolveChildFromSparseRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i, CappedArray<byte> rlp)
+        {
+            ReadOnlySpan<byte> span = rlp.AsSpan();
+            if (span.Length == 0 || span[0] < 0xc0 || _nodeData is not BranchData)
+                return ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+
+            int position = span[0] < 0xf8 ? 1 : 1 + span[0] - 0xf7;
+            for (int skipped = 0; skipped < i; skipped++)
+            {
+                int prefix = span[position];
+                if (prefix == EmptyItem) position++;
+                else if (prefix == HashItem) position += 1 + Hash256.Size;
+                else return ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+            }
+
+            switch (span[position])
+            {
+                case EmptyItem:
+                    data = _nullNode;
+                    return _nullNode;
+                case HashItem:
+                    return ResolveHashedChild(tree, ref childPath, ref data, span.Slice(position + 1, Hash256.Size));
+                default:
+                    return ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+            }
+        }
+
+        private const int EmptyItem = 0x80;
+        private const int HashItem = 0x80 + Hash256.Size;
+
+        /// <summary>Creates the data of a leaf decoded from this node's RLP, with the hex-prefix key <paramref name="compactKey"/>
+        /// ending at <paramref name="compactKeyEnd"/>.</summary>
+        /// <remarks>The key stays in the RLP until read: an RLP array is never written once a node holds it here, as the
+        /// guest's buffer pool hands out fresh arrays and takes none back.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
+            new(_rlpArray!, compactKeyEnd - compactKey.Length, compactKey.Length, value);
 
         /// <summary>Deepens <paramref name="path"/> by one level for a child of the node being encoded, leaving its nibbles alone.</summary>
         /// <remarks>

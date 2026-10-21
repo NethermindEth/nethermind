@@ -9,6 +9,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -17,6 +18,8 @@ namespace Nethermind.Consensus.Test;
 
 public class BlockAccessListValidationIndexTests
 {
+    private static readonly BlockHeader Header = Build.A.BlockHeader.TestObject;
+
     private BlockAccessListValidationIndex.AddressIndex _addressIndex = null!;
 
     [SetUp]
@@ -134,6 +137,26 @@ public class BlockAccessListValidationIndexTests
         Assert.That(generatedIndex.ChangesEqual(suggestedIndex, index), Is.False);
     }
 
+    [Test]
+    public void Build_rejects_change_past_post_execution_index([Values] ChangeKind kind, [Values] bool pastPostExecution)
+    {
+        const int txCount = 1;
+        uint index = txCount + (pastPostExecution ? 2u : 1u);
+        ReadOnlyBlockAccessList suggested = Bal(kind switch
+        {
+            ChangeKind.Balance => Account(TestItem.AddressA, balance: new BalanceChange(index, 1)),
+            ChangeKind.Nonce => Account(TestItem.AddressA, nonce: new NonceChange(index, 1)),
+            ChangeKind.Code => Account(TestItem.AddressA, code: new CodeChange(index, [1])),
+            _ => Account(TestItem.AddressA, storage: (1, new StorageChange(index, 1))),
+        });
+
+        Action build = () => BlockAccessListValidationIndex.Build(suggested, Header, txCount, _addressIndex).Dispose();
+
+        Assert.That(build, pastPostExecution
+            ? Throws.InstanceOf<InvalidBlockException>().With.Message.Contains("exceeds allowed range")
+            : Throws.Nothing);
+    }
+
     // EIP-8298: a code change matches only in the same form, so adopted code recorded as bytecode is rejected.
     [Test]
     public void ChangesEqual_compares_code_change_form([Values] bool suggestedAdopted, [Values] bool generatedAdopted)
@@ -158,7 +181,7 @@ public class BlockAccessListValidationIndexTests
         ReadOnlyBlockAccessList suggested = Bal(
             Account(TestItem.AddressA, balance: new BalanceChange(1, 1)));
 
-        BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount: 1, _addressIndex);
+        BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount: 1, _addressIndex);
         BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
 
         // Generated slice: AddressA matches, AddressB has only a read.
@@ -213,7 +236,7 @@ public class BlockAccessListValidationIndexTests
             .WithStorageReads(1)
             .WithStorageChanges(3, new StorageChange(1, 7u))
             .WithStorageChanges(2, new StorageChange(1, 5u)).TestObject);
-        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, 1, _addressIndex);
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, 1, _addressIndex);
         using BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex,
             suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads);
         BlockAccessListAtIndex slice = new() { Index = 1 };
@@ -236,7 +259,7 @@ public class BlockAccessListValidationIndexTests
         int txCount,
         out BlockAccessListValidationIndex suggestedIndex)
     {
-        suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount, _addressIndex);
+        suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount, _addressIndex);
         BlockAccessListValidationIndex generatedIndex = new(txCount, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
         // BlockAccessListValidationIndex.Add only accepts per-tx slices (one BlockAccessListAtIndex
         // per block-access index). Tests phrase the generated side as a full ReadOnlyBlockAccessList
@@ -352,5 +375,13 @@ public class BlockAccessListValidationIndexTests
         IncorrectNonce,
         IncorrectCode,
         IncorrectStorage
+    }
+
+    public enum ChangeKind
+    {
+        Balance,
+        Nonce,
+        Code,
+        Storage
     }
 }
