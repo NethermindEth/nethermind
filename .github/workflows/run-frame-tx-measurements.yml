@@ -289,7 +289,7 @@ jobs:
               run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement "FullyQualifiedName~FrameTxMempoolDosMeasurement" nopin "${mempool_markers[@]}" || status=1
               run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "FullyQualifiedName~FrameTxProducerRetryMeasurement" nopin 'case=k_retry_sweep' || status=1
               run_harness Nethermind.Blockchain.Test FrameTxShapeGuard "TestCategory=frame-tx-cost" nopin || status=1
-              run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement "FullyQualifiedName~FrameTxVerifyDosMeasurement" nopin 'case=burn_per_attempt' || status=1
+              run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement "FullyQualifiedName~FrameTxVerifyDosMeasurement" nopin 'case=burn_per_attempt budget=100000' 'case=burn_per_attempt budget=235800' 'case=burn_per_attempt budget=300000' || status=1
               run_harness Nethermind.TxPool.Test FrameTxPoolRetentionMeasurement "FullyQualifiedName~FrameTxPoolRetentionMeasurement" nopin 'case=retention_with_deadline' || status=1
               run_harness Nethermind.Network.Test FrameTxPeerFloodMeasurement "FullyQualifiedName~FrameTxPeerFloodMeasurement" nopin 'case=peer_flood' || status=1
               ;;

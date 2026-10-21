@@ -93,15 +93,17 @@ public partial class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> AdmissionShapes()
     {
-        foreach (string shape in new string[]
-                 {
-                     "keccak-wide", "groth16-250k", "groth16-300k", "groth16-400k", "groth16-500k",
-                     "groth16-soispoke-v2",
-                     "signature-stuffed"
-                 })
+        foreach (ulong ceiling in ProducerCeilings)
         {
-            yield return new TestCaseData(shape);
+            yield return new TestCaseData("keccak-wide", ceiling, ceiling);
         }
+        foreach ((string shape, Groth16Sweep sweep) in Groth16Sweeps)
+        {
+            yield return new TestCaseData(shape, sweep.SweepCeiling, sweep.SweepCeiling);
+        }
+        yield return new TestCaseData("signature-stuffed", 500_000UL, 500_000UL);
+        yield return new TestCaseData("keccak-wide", 235_800UL, 0UL)
+            .SetName("Admission_flood_actually_reaches_the_simulator_with_zero_using_default_headroom");
     }
 
     private bool _shedding;
@@ -176,13 +178,10 @@ public partial class FrameTxFloodMeasurement
     /// <summary>Verifies that each flood shape reaches its intended rejection stage before timing.</summary>
     [TestCaseSource(nameof(AdmissionShapes))]
     [Category(CostSuite)]
-    public async Task Admission_flood_actually_reaches_the_simulator(string shape)
+    public async Task Admission_flood_actually_reaches_the_simulator(string shape, ulong ceiling, ulong configuredBudget)
     {
         bool isSignatureStuffed = shape == "signature-stuffed";
-        ulong ceiling = isSignatureStuffed ? 500_000
-            : Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep) ? sweep.SweepCeiling
-            : Eip8141Constants.MaxVerifyGas;
-        await BuildChain(shape, ceiling);
+        await BuildChain(shape, ceiling, configuredBudget: configuredBudget);
 
         long simulationFailuresBefore = Volatile.Read(ref Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSimulationFailed);
         long signatureFailuresBefore = Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSignatureInvalid;
@@ -210,6 +209,15 @@ public partial class FrameTxFloodMeasurement
         }
 
         AssertWorkloadBlockDoesRealWork();
+    }
+
+    [Test]
+    [Category(CostSuite)]
+    public async Task Admission_flood_rejects_an_underbudgeted_measurement()
+    {
+        AssertionException? error = await Assert.ThrowsAsync<AssertionException>(
+            async () => await BuildChain("keccak-wide", 500_000, configuredBudget: 0));
+        Assert.That(error!.Message, Does.Contain("was capped"));
     }
 
     /// <summary>Open-loop submitter that owns its thread and its cancellation.</summary>
@@ -448,14 +456,14 @@ public partial class FrameTxFloodMeasurement
     /// Builds the production-wired pool and block processor, seeding both state views with identical attacker
     /// code because simulation and block processing intentionally use separate world-state scopes.
     /// </summary>
-    private async Task BuildChain(string shape, ulong ceiling, bool shedding = false, bool computeVictim = false, int honestSenders = 0)
+    private async Task BuildChain(string shape, ulong ceiling, bool shedding = false, bool computeVictim = false, int honestSenders = 0, ulong? configuredBudget = null)
     {
         byte[] attackCode = LoadAttackCode(shape, ceiling);
         byte[] computeVictimCode = FrameTxPrefixShapes.Code("keccak-wide");
         byte[] honestCode = HonestVerifyCode();
 
         _shedding = shedding;
-        ulong verifyGasCeiling = shape == "signature-stuffed" ? ceiling : 0;
+        ulong verifyGasCeiling = configuredBudget ?? ceiling;
         _chain = await FloodTestBlockchain.CreateFlood(verifyGasCeiling, shedding, computeVictim, builder =>
         {
             builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
@@ -490,6 +498,16 @@ public partial class FrameTxFloodMeasurement
         }
 
         AssertAttackerCodeIsVisible(attackCode);
+        if (shape != "signature-stuffed")
+        {
+            // Probe the actual admission path before every campaign cell, using a hash outside the flood.
+            // A capped simulation is still a rejection, but would time less work than the row declares.
+            AcceptTxResult result = _chain.TxPool.SubmitTx(FloodFrameTx(-1), TxHandlingOptions.None);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed),
+                $"the flood must reach simulation (got {result})");
+            Assert.That(result.ToString(), Does.Not.Contain("MAX_VERIFY_GAS"),
+                $"the {shape} flood at {ceiling} gas was capped before completing its declared work");
+        }
     }
 
     private void AssertAttackerCodeIsVisible(byte[] expected)

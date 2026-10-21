@@ -17,7 +17,7 @@ namespace Nethermind.TxPool.Filters;
 /// <see cref="MalformedTxFilter"/>, which guarantees the frame list is well-formed, and before
 /// <see cref="FrameTxSignatureFilter"/>, so the per-signature elliptic-curve recovery it gates stays bounded. A
 /// configured gas limit of 0 lifts the operator ceiling, matching the other per-sender pool limits; signature
-/// verification then falls back to the fixed <see cref="Eip8141Constants.MaxVerifyGas"/>, so lifting the ceiling
+/// verification then falls back to the default <see cref="TxPoolConfig.DefaultFrameTxMaxVerifyGas"/>, so lifting the ceiling
 /// cannot uncap per-signature recovery.
 /// </remarks>
 internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
@@ -47,10 +47,10 @@ internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger
         else
         {
             ulong signatureGas = FrameTxValidation.SignatureVerificationWorkGas(tx);
-            if (signatureGas > Eip8141Constants.MaxVerifyGas)
+            if (signatureGas > TxPoolConfig.DefaultFrameTxMaxVerifyGas)
             {
                 Metrics.PendingTransactionsFrameTxVerifyGasTooHigh++;
-                if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, signature verification costs {signatureGas} gas (max {Eip8141Constants.MaxVerifyGas}).");
+                if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, signature verification costs {signatureGas} gas (max {TxPoolConfig.DefaultFrameTxMaxVerifyGas}).");
                 return AcceptTxResult.FrameTxVerifyGasTooHigh;
             }
         }

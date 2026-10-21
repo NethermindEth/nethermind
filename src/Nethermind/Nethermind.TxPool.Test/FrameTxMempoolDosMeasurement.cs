@@ -519,7 +519,7 @@ public class FrameTxMempoolDosMeasurement
 
         Assert.That(readout.Available, Is.GreaterThanOrEqualTo(ceiling - MaxFrameEntryCharge),
             $"{shape} entered the EVM with {readout.Available} gas against the {ceiling} it declared. CapFrameGas "
-            + $"clamped it below the configured budget {_verifyGasCeiling}, so these are the "
+            + $"capped it at the configured budget {_verifyGasCeiling}, so these are the "
             + "constant's numbers wearing this ceiling's label.");
 
         if (shape == "banned-opcode")
@@ -641,7 +641,7 @@ public class FrameTxMempoolDosMeasurement
         DumpHistogram(sweep.Directory, probe);
         Assert.That(readout.Available, Is.GreaterThanOrEqualTo(sweep.FrameGasLimit - MaxFrameEntryCharge),
             $"{sweep.Directory} entered the EVM with {readout.Available} gas against the {sweep.FrameGasLimit} it "
-            + $"declared. CapFrameGas clamped it below the configured budget {_verifyGasCeiling}, "
+            + $"declared. CapFrameGas capped it at the configured budget {_verifyGasCeiling}, "
             + "so these are the constant's numbers wearing this ceiling's label.");
         if (sweep.Failure == Groth16Failure.RevertsProofInvalid)
         {

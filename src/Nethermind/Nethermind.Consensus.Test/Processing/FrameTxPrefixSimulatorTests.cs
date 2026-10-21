@@ -542,12 +542,12 @@ public class FrameTxPrefixSimulatorTests
         processor.Received(1).SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.SlotNumber == expectedSlot));
     }
 
-    [TestCase(0ul, 100_000ul)]
+    [TestCase(0ul, 300_000ul)]
     [TestCase(1ul, 100_000ul)]
     [TestCase(100_000ul, 100_000ul)]
     [TestCase(300_000ul, 300_000ul)]
     [TestCase(500_000ul, 500_000ul)]
-    public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheDefault(ulong configured, ulong expected)
+    public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheSharedFloor(ulong configured, ulong expected)
     {
         using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, maxVerifyGas: configured);
 
