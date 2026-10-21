@@ -96,36 +96,50 @@ public static unsafe partial class Bytes
         }
         else
         {
-            // Whole words, then a byte tail: the widest access the target has without SIMD.
-            // Correct at any base; the win needs a word-aligned start, which Bloom's byte[256] has.
-            // Four words a pass halves the loop overhead per word.
-            int i = 0;
-            for (; i <= thisSpan.Length - 4 * sizeof(ulong); i += 4 * sizeof(ulong))
-            {
-                ref byte destination = ref Unsafe.Add(ref thisRef, i);
-                ref byte value = ref Unsafe.Add(ref valueRef, i);
-                Unsafe.WriteUnaligned(ref destination,
-                    Unsafe.ReadUnaligned<ulong>(ref destination) | Unsafe.ReadUnaligned<ulong>(ref value));
-                Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8),
-                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 8)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8)));
-                Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16),
-                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 16)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16)));
-                Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 24),
-                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 24)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 24)));
-            }
+            OrScalar(thisSpan, valueSpan);
+        }
+    }
 
-            for (; i <= thisSpan.Length - sizeof(ulong); i += sizeof(ulong))
-            {
-                ref byte destination = ref Unsafe.Add(ref thisRef, i);
-                Unsafe.WriteUnaligned(ref destination,
-                    Unsafe.ReadUnaligned<ulong>(ref destination) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref valueRef, i)));
-            }
+    /// <summary>
+    /// The non-SIMD body of <see cref="Or"/>; the caller has checked that the lengths match.
+    /// </summary>
+    /// <remarks>
+    /// Whole words, then a byte tail: the widest access the target has without SIMD.
+    /// Correct at any base; the win needs a word-aligned start, which Bloom's byte[256] has.
+    /// Four words a pass quarters the loop overhead per word.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void OrScalar(Span<byte> thisSpan, ReadOnlySpan<byte> valueSpan)
+    {
+        ref byte thisRef = ref MemoryMarshal.GetReference(thisSpan);
+        ref byte valueRef = ref MemoryMarshal.GetReference(valueSpan);
 
-            for (; i < thisSpan.Length; i++)
-            {
-                ref byte destination = ref Unsafe.Add(ref thisRef, i);
-                destination = (byte)(destination | Unsafe.Add(ref valueRef, i));
-            }
+        int i = 0;
+        for (; i <= thisSpan.Length - 4 * sizeof(ulong); i += 4 * sizeof(ulong))
+        {
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            ref byte value = ref Unsafe.Add(ref valueRef, i);
+            Unsafe.WriteUnaligned(ref destination,
+                Unsafe.ReadUnaligned<ulong>(ref destination) | Unsafe.ReadUnaligned<ulong>(ref value));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 8)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8)));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 16)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16)));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 24),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 24)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 24)));
+        }
+
+        for (; i <= thisSpan.Length - sizeof(ulong); i += sizeof(ulong))
+        {
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            Unsafe.WriteUnaligned(ref destination,
+                Unsafe.ReadUnaligned<ulong>(ref destination) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref valueRef, i)));
+        }
+
+        for (; i < thisSpan.Length; i++)
+        {
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            destination = (byte)(destination | Unsafe.Add(ref valueRef, i));
         }
     }
 

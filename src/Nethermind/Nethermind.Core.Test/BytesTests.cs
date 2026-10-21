@@ -660,6 +660,14 @@ namespace Nethermind.Core.Test
             Assert.That(first, Is.EqualTo(expected));
         }
 
+        // Hosts always take a SIMD branch of Or, so the scalar path is exercised directly.
+        [TestCaseSource(nameof(OrTests))]
+        public void OrScalar(byte[] first, byte[] second, byte[] expected)
+        {
+            Bytes.OrScalar(first, second);
+            Assert.That(first, Is.EqualTo(expected));
+        }
+
         [TestCaseSource(nameof(XorTests))]
         public void Xor(byte[] first, byte[] second, byte[] expected)
         {
