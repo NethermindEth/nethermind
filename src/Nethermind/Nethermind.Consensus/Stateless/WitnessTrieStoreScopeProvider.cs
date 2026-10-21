@@ -105,26 +105,40 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
         byte[]? rootRlp = _witnessNodes.Find(root);
         if (rootRlp is null) return;
 
+        HashKeyedNodeStorage.WitnessProbe probe = _witnessNodes.CreateProbe();
+        Span<HashKeyedNodeStorage.HeldChild> held = _held;
         _pendingCount = 0;
         Push(rootRlp, root.ToArray(), 0, HashedKeyNibbles);
         while (_pendingCount != 0)
         {
             PendingNode node = _pending[--_pendingCount];
             byte[] rlp = node.Rlp;
+            int remainingNibbles = node.RemainingNibbles;
             if ((_bytesBeforeMemo -= rlp.Length) < 0
-                && !(_walked ??= []).Add(new WalkedNode(new ValueHash256(node.Parent.AsSpan(node.KeccakOffset, Hash256.Size)), node.RemainingNibbles)))
+                && !(_walked ??= []).Add(new WalkedNode(new ValueHash256(node.Parent.AsSpan(node.KeccakOffset, Hash256.Size)), remainingNibbles)))
             {
                 continue;
             }
 
-            ValidateNode(rlp, 0, rlp.Length, node.RemainingNibbles);
+            int heldCount = probe.FindHeldBranchChildren(rlp, held);
+            if (heldCount < 0)
+            {
+                ValidateOtherNode(rlp, 0, rlp.Length, remainingNibbles);
+                continue;
+            }
+
+            if (remainingNibbles == 0) ThrowPathExceedsKey();
+
+            for (int i = 0; i < heldCount; i++)
+            {
+                Push(held[i].Node, rlp, held[i].Offset, remainingNibbles - 1);
+            }
         }
     }
 
-    /// <summary>Validates the node at <paramref name="start"/> of <paramref name="array"/>, stacking the hashed children
-    /// the witness holds.</summary>
-    /// <remarks>Only a hashed node stacks children: an inlined node is too short to reference a keccak.</remarks>
-    private void ValidateNode(byte[] array, int start, int length, int remainingNibbles)
+    /// <summary>Validates the node inlined at <paramref name="start"/> of <paramref name="array"/>.</summary>
+    /// <remarks>Too short to reference a keccak, it stacks no children.</remarks>
+    private void ValidateInlinedNode(byte[] array, int start, int length, int remainingNibbles)
     {
         Span<HashKeyedNodeStorage.HeldChild> held = _held;
         int heldCount = _witnessNodes.FindHeldBranchChildren(array.AsSpan(start, length), held);
@@ -154,7 +168,7 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
 
     /// <summary>Validates a node other than a branch of hashed or empty children: a leaf, an extension, the empty node
     /// or a branch that inlines a child or holds a value.</summary>
-    /// <remarks>Kept out of <see cref="ValidateNode"/>, whose every call would otherwise save the registers this
+    /// <remarks>Kept out of <see cref="ValidatePaths"/>, whose every node would otherwise pay for the registers this
     /// decoding takes.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void ValidateOtherNode(byte[] array, int start, int length, int remainingNibbles)
@@ -206,7 +220,7 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
             int inlinedLength = reader.PeekNextRlpLength();
             reader.SkipItem();
             _bytesBeforeMemo -= inlinedLength;
-            ValidateNode(array, inlinedStart, inlinedLength, remainingNibbles);
+            ValidateInlinedNode(array, inlinedStart, inlinedLength, remainingNibbles);
             return;
         }
 
