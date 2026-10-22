@@ -427,12 +427,7 @@ internal static class NodeRecordBulkSet
         private int CopyChildren(NodeRecord branch)
         {
             int childrenStart = _workingState.ReserveChildSpace();
-            NodeRecordRef view = branch.View;
-            for (int i = 0; i < BranchChildCount; i++)
-            {
-                _workingState.Children[childrenStart + i] = view.Child(i);
-            }
-
+            branch.View.CopyChildren(_workingState.Children.Slice(childrenStart, BranchChildCount));
             return childrenStart;
         }
 

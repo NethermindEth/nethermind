@@ -79,6 +79,19 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
         }
     }
 
+    /// <summary>Writes every child of a branch into <paramref name="children"/>, as <see cref="Child"/> would one at a time, in one pass over the RLP.</summary>
+    public void CopyChildren(Span<ChildRef> children)
+    {
+        Debug.Assert(Kind is NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch);
+        RlpReader reader = new(Payload);
+        int position = 0;
+        for (int i = 0; i < children.Length; i++)
+        {
+            children[i] = ReadChild(ref reader, position);
+            if (children[i].Kind == ChildRefKind.Hash) position++;
+        }
+    }
+
     /// <summary>Number of key nibbles past the first <paramref name="skip"/>; a branch has no key.</summary>
     public int KeyLength(int skip) => Kind is NodeRecordKind.Leaf or NodeRecordKind.Extension
         ? NodeRlp.HexPrefixNibbleCount(KeyHexPrefix) - skip
@@ -96,7 +109,7 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
 
     private ChildRef ReadChild(ref RlpReader reader, int position)
     {
-        if (reader.IsSequenceNext()) return ChildRef.ForInline(reader.PeekNextItem());
+        if (reader.IsSequenceNext()) return ChildRef.ForInline(reader.Read(reader.PeekNextRlpLength()));
         ReadOnlySpan<byte> hash = reader.DecodeByteArraySpan();
         return hash.IsEmpty ? default : ChildRef.ForHash(new ValueHash256(hash), Pointer(position));
     }
