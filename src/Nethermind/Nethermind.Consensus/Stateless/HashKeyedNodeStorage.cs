@@ -386,14 +386,15 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public byte[]? FindFiltered(ref byte keccak)
         {
-            uint leading = Unsafe.ReadUnaligned<uint>(ref keccak);
-            nint head = Unsafe.Add(ref _heads, (nint)leading & _bucketMask);
+            // Sign-extended: the mask is below 2^31, and a zero-extension would cost the guest an instruction.
+            int leading = Unsafe.ReadUnaligned<int>(ref keccak);
+            nint head = Unsafe.Add(ref _heads, leading & _bucketMask);
             if (head == Overflowed) return _storage.FindOverflowed(ref keccak);
 
             for (nint entry = (nint)((nuint)head >> LengthBits); entry != 0; entry = Unsafe.Add(ref _next, entry - 1))
             {
                 ref readonly NodeKey key = ref Unsafe.Add(ref _keys, entry - 1);
-                if (key.Leading == leading && key.Equals(MemoryMarshal.CreateReadOnlySpan(ref keccak, Hash256.Size)))
+                if ((int)key.Leading == leading && key.Equals(MemoryMarshal.CreateReadOnlySpan(ref keccak, Hash256.Size)))
                     return Unsafe.Add(ref _values, entry - 1);
             }
 
