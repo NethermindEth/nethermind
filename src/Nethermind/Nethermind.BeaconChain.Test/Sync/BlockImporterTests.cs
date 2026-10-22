@@ -74,7 +74,7 @@ public class BlockImporterTests
     }
 
     [Test]
-    public void Import_preserves_state_time_and_data_availability([Values] bool verifySignatures, [Values] bool available)
+    public void Import_preserves_state_time_and_data_availability([Values] bool verifySignatures, [Values] bool available, [Values] bool prepare)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
         IDataAvailabilityRule availability = Substitute.For<IDataAvailabilityRule>();
@@ -82,6 +82,9 @@ public class BlockImporterTests
         BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), availability: availability);
         Assert.That(chain.AnchorState.GenesisTime, Is.Not.EqualTo(chain.Spec.GenesisTime),
             "the transition's timestamp comes from the checkpoint state");
+        Hash256 anchorStateRoot = SszRoots.HashTreeRoot(chain.AnchorState);
+        if (prepare) importer.PrepareNextSlot(chain.AnchorRoot, chain.Block.Message!.Slot);
+        Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot));
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures);
 
@@ -89,6 +92,27 @@ public class BlockImporterTests
         Assert.That(result, Is.EqualTo(available || !verifySignatures ? BlockImportResult.Imported : BlockImportResult.DataUnavailable),
             "gossip checks must preserve import results, including trusted replay and availability deferral");
         Assert.That(((IBlockImporter)importer).RejectGossip, Is.False);
+    }
+
+    [Test]
+    public void Prepared_epoch_states_are_reused_only_for_their_parent([Values] bool prepare, [Values] bool otherParent)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), importClock: chain.Anchor.ClockAtSlot(32));
+        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, 31, 0xA1);
+        Assert.That(importer.Import(parent.Block, parent.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        BeaconStateFulu held = ((ForkedBeaconState.OfFulu)importer.GetStateForApi(parent.Root)!).State;
+        Hash256 before = SszRoots.HashTreeRoot(held);
+        if (prepare) importer.PrepareNextSlot(parent.Root, 32);
+        Assert.That(SszRoots.HashTreeRoot(held), Is.EqualTo(before));
+        if (otherParent)
+        {
+            parent = chain.Extend(chain.AnchorRoot, 31, 0xB1);
+            Assert.That(importer.Import(parent.Block, parent.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        }
+        UnsignedChain.ChainBlock child = chain.Extend(parent.Root, 32, 0xA2);
+        Assert.That(importer.Import(child.Block, child.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)importer.GetStateForApi(child.Root)!).State), Is.EqualTo(child.Block.Message!.StateRoot));
     }
 
     [Test]

@@ -649,6 +649,35 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return true;
     }
 
+    internal void ReportRejectedGossip(PeerId peerId, string detail)
+    {
+        ManagedPeer? peer;
+        lock (_admissionLock)
+        {
+            if (!TryFindConnected(peerId.ToString(), out peer) && !TryFindClosed(peerId.ToString(), out peer)) return;
+        }
+
+        peer!.ReportFailure(PeerFailureReason.ProtocolViolation, detail, ownRequest: false);
+        if (peer.RecordRejectedGossip() == MaxConsecutiveFailures)
+        {
+            // Do not hold the pubsub verdict callback while the peer's streams close.
+            _ = DropRejectedGossipAsync(peer, detail);
+        }
+    }
+
+    private async Task DropRejectedGossipAsync(ManagedPeer peer, string detail)
+    {
+        try
+        {
+            await DropAsync(peer, GoodbyeReason.Fault, detail, _runToken);
+        }
+        catch (OperationCanceledException) when (_runToken.IsCancellationRequested) { }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Failed to disconnect gossip peer {peer.Id}: {DescribeFailure(e)}");
+        }
+    }
+
     /// <summary>
     /// Dials a discovered peer (bounded by <see cref="DialTimeout"/>) and adds it to the pool when
     /// the status exchange succeeds. Refuses a banned peer id or one that would push the pool past
@@ -1948,8 +1977,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return;
         }
 
-        // A drop that began before the peer's session closed finds it removed and recorded by RemoveClosedSession already, with no session left to say goodbye on.
-        if (!removed && peer.RemovedOnClose)
+        // Session closure or another drop already owns the disconnect bookkeeping.
+        if (!removed)
         {
             return;
         }
@@ -2287,6 +2316,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         /// <summary>The discv5 ENR text this peer was discovered with; <c>null</c> for a static peer or
         /// an inbound session (see <see cref="PeerManager.TryAddPeerAsync"/>'s optional parameter).</summary>
         public string? Enr { get; } = enr;
+        private int _rejectedGossip;
+        public int RecordRejectedGossip() => Interlocked.Increment(ref _rejectedGossip);
         public int ConsecutiveFailures => Volatile.Read(ref _consecutiveFailures);
 
         /// <summary>The selection penalty from failed requests; a passing health check clears only its health-timeout contribution.</summary>

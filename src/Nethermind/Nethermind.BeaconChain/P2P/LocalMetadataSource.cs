@@ -9,18 +9,16 @@ namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>Holds the node's own eth2 <c>MetaData</c>, served over the <c>metadata</c> and <c>ping</c> protocols.</summary>
 /// <remarks>
-/// The node neither attests nor custodies extra data, so the subnet bitfields stay empty and the
-/// custody group count is the Fulu <c>CUSTODY_REQUIREMENT</c> minimum. Reads
-/// <see cref="Eip7594DasConstants.CustodyRequirement"/> directly rather than its own copy, so this
-/// value and the one <see cref="Discovery.LocalCustody"/> derives subnets from can never drift apart.
+/// The node does not attest, so the attestation subnet bitfields stay empty. The custody group count
+/// uses the same configuration as <see cref="Discovery.LocalCustody"/>.
 /// </remarks>
-public class LocalMetadataSource
+public class LocalMetadataSource(IBeaconChainConfig? config = null)
 {
     public MetaDataV3 Current { get; set; } = new()
     {
         SeqNumber = 1,
         Attnets = new BitArray(64),
         Syncnets = new BitArray(4),
-        CustodyGroupCount = Eip7594DasConstants.CustodyRequirement,
+        CustodyGroupCount = config?.CustodyGroupCount ?? Eip7594DasConstants.CustodyRequirement,
     };
 }

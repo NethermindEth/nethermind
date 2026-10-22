@@ -14,6 +14,8 @@ using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Emit;
 using NUnit.Framework;
 
+using Nethermind.BeaconChain.Generators;
+
 namespace Nethermind.Analyzers.Test;
 
 public class ForkAlgorithmGeneratorTests

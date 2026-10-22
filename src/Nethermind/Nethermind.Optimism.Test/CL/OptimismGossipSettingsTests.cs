@@ -76,27 +76,57 @@ public class OptimismGossipSettingsTests
         BoundedGossipProtocol first = new(inner, budget);
         BoundedGossipProtocol otherVersion = new(inner, budget);
         ISessionContext[] peers = Enumerable.Range(0, GossipStreamBudget.MaxStreams + 1).Select(_ => Session()).ToArray();
-        Task[] listening = new Task[GossipStreamBudget.MaxStreams];
+        Task[] listening = new Task[GossipStreamBudget.MaxStreams + 2];
         Array.Fill(listening, Task.CompletedTask);
         listening[0] = first.ListenAsync(ReadyChannel(), peers[0]);
         try
         {
             IChannel duplicate = ReadyChannel();
-            await otherVersion.ListenAsync(duplicate, peers[0]);
-            await duplicate.Received(1).CloseAsync();
+            listening[^2] = otherVersion.ListenAsync(duplicate, peers[0]);
+            Assert.That(listening[^2].IsCompleted, Is.False);
+            await duplicate.DidNotReceive().CloseAsync();
             Assert.That(admitted, Is.EqualTo(1));
 
-            Parallel.For(1, listening.Length, i => listening[i] = first.ListenAsync(ReadyChannel(), peers[i]));
+            Parallel.For(1, GossipStreamBudget.MaxStreams, i => listening[i] = first.ListenAsync(ReadyChannel(), peers[i]));
             IChannel excess = ReadyChannel();
-            await otherVersion.ListenAsync(excess, peers[^1]);
+            listening[^1] = otherVersion.ListenAsync(excess, peers[^1]);
 
-            await excess.Received(1).CloseAsync();
+            Assert.That(listening[^1].IsCompleted, Is.False);
+            await excess.DidNotReceive().CloseAsync();
             Assert.That(admitted, Is.EqualTo(GossipStreamBudget.MaxStreams));
         }
         finally
         {
             done.SetResult();
             await Task.WhenAll(listening);
+        }
+        Assert.That(admitted, Is.EqualTo(GossipStreamBudget.MaxStreams + 2));
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task A_stalled_rpc_body_times_out_and_releases_its_allowance(CancellationToken token)
+    {
+        GossipStreamBudget budget = new();
+        ISessionProtocol inner = Substitute.For<ISessionProtocol>();
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(async call =>
+        {
+            await call.Arg<IChannel>().ReadPrefixedProtobufAsync(GossipRpc.Parser, 1024, token);
+        });
+        BoundedGossipProtocol protocol = new(inner, budget, TimeSpan.FromMilliseconds(100));
+        ISessionContext peer = Session();
+        Channel channel = new();
+        Task listener = protocol.ListenAsync(channel, peer);
+        try
+        {
+            await channel.Reverse.WriteVarintAsync(1024).AsTask().WaitAsync(token);
+            await Assert.ThrowsAsync<ChannelClosedException>(async () => await listener.WaitAsync(token));
+            Assert.That(budget.TryAcquire(peer.State.RemotePeerId!), Is.True);
+            budget.Release(peer.State.RemotePeerId!);
+        }
+        finally
+        {
+            await channel.CloseAsync();
         }
     }
 

@@ -8,7 +8,6 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Autofac;
 using Google.Protobuf;
-using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.Core;
@@ -557,7 +556,7 @@ public sealed class BeaconDiscovery(
     {
         CryptoRandom cryptoRandom = new();
         PrivateKey nodeKey = LoadOrCreateIdentity(cryptoRandom);
-        LocalCustody = new LocalCustody(nodeKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
+        LocalCustody = new LocalCustody(nodeKey.PublicKey.Hash, config.CustodyGroupCount);
         ulong epoch = CurrentEpoch;
         BeaconNodeRecordProvider localEnr = new(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, epoch), LocalCustody.CustodyGroupCount, EnrForkId.NextForkDigest(spec, epoch),
             NextEnrSequence());

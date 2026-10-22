@@ -12,6 +12,16 @@ public class BeaconChainConfig : IBeaconChainConfig
     public string? WeakSubjectivityCheckpoint { get; set; }
     public int P2PPort { get; set; } = 9060;
     public int Discv5Port { get; set; } = 9060;
+    public ulong CustodyGroupCount
+    {
+        get => field;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, DataAvailability.Eip7594DasConstants.CustodyRequirement);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, DataAvailability.Eip7594DasConstants.NumberOfCustodyGroups);
+            field = value;
+        }
+    } = DataAvailability.Eip7594DasConstants.CustodyRequirement;
     public string? Bootnodes { get; set; }
     public string? StaticPeers { get; set; }
     public int TargetPeerCount { get; set; } = 50;

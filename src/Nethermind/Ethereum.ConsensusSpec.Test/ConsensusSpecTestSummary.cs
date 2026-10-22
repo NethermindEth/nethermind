@@ -32,14 +32,20 @@ public static class ConsensusSpecTestSummary
         }
         catch (NotImplementedInDriverException notImplemented)
         {
-            Record(suite, fork, preset, vectorName, VectorOutcome.NotImplemented, notImplemented.Message);
-            Assert.Inconclusive(notImplemented.Message);
+            Record(suite, fork, preset, vectorName, notImplemented.KnownUnsupported ? VectorOutcome.NotImplemented : VectorOutcome.Fail, notImplemented.Message);
+            FinishUnsupportedVector(notImplemented, vectorName);
         }
         catch (Exception ex)
         {
             Record(suite, fork, preset, vectorName, VectorOutcome.Fail, ex is AssertionException ? ex.Message : ex.ToString());
             throw;
         }
+    }
+
+    internal static void FinishUnsupportedVector(NotImplementedInDriverException exception, string vectorName)
+    {
+        if (exception.KnownUnsupported) Assert.Inconclusive(exception.Message);
+        Assert.Fail($"Vector became unsupported: {vectorName}: {exception.Message}");
     }
 
     public static void PrintReport()
@@ -98,4 +104,7 @@ public static class ConsensusSpecTestSummary
     }
 }
 
-public sealed class NotImplementedInDriverException(string message) : Exception(message);
+public sealed class NotImplementedInDriverException(string message) : Exception(message)
+{
+    public bool KnownUnsupported { get; init; }
+}

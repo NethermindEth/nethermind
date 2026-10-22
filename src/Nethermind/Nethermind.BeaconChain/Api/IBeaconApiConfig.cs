@@ -12,7 +12,7 @@ namespace Nethermind.BeaconChain.Api;
 /// </summary>
 public interface IBeaconApiConfig : IConfig
 {
-    [ConfigItem(Description = "Whether to serve the Beacon API (REST/SSE) surface.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to serve the Beacon API (REST/SSE) surface. Requires BeaconChain.Enabled.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "The host the Beacon API Kestrel listener binds to.", DefaultValue = "\"127.0.0.1\"")]

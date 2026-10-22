@@ -1475,7 +1475,8 @@ public partial class BeaconSyncOrchestratorTests
         PeerManager? peerManager = null,
         bool filterPoolByHead = false,
         HeadSnapshotHolder? headSnapshots = null,
-        Func<Hash256, ForkedBeaconState?>? apiStateReader = null)
+        Func<Hash256, ForkedBeaconState?>? apiStateReader = null,
+        Func<CheckpointRef, ForkedBeaconState?>? apiCheckpointStateReader = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot).AddSeconds(6);
         ManualTimestamper timestamper = new(now);
@@ -1511,6 +1512,7 @@ public partial class BeaconSyncOrchestratorTests
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
         orchestrator.PtcReader = (_, slot) => importer.Ptc(slot);
         orchestrator.ApiStateReader = apiStateReader;
+        orchestrator.ApiCheckpointStateReader = apiCheckpointStateReader;
         orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
         rangeSync.VerifyBlockSignature = _ => Task.FromResult<bool?>(true);
         return new Harness(orchestrator, importer, engine, pool, router, statusHolder, timestamper, envelopePool);

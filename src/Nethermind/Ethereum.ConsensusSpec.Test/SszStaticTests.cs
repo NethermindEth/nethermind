@@ -291,7 +291,8 @@ public class SszStaticTests
             || !byFork.TryGetValue(testCase.Fork, out Entry entry))
         {
             throw new NotImplementedInDriverException(
-                $"No {testCase.ContainerName} container is modeled for fork '{testCase.Fork}' in this repo: {NotModeledReason(testCase.Fork, testCase.ContainerName) ?? "no reason is pinned"}.");
+                $"No {testCase.ContainerName} container is modeled for fork '{testCase.Fork}' in this repo: {NotModeledReason(testCase.Fork, testCase.ContainerName) ?? "no reason is pinned"}.")
+            { KnownUnsupported = NotModeledReason(testCase.Fork, testCase.ContainerName) is not null };
         }
 
         if (entry.PresetDependent)

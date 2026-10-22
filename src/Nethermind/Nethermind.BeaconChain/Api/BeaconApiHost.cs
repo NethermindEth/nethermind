@@ -39,13 +39,15 @@ public sealed class BeaconApiHost(
     BeaconDiscovery? discovery = null,
     ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
     HeadSnapshotHolder? headSnapshots = null,
-    DataColumnSidecarPool? columnPool = null) : IAsyncDisposable
+    DataColumnSidecarPool? columnPool = null,
+    BeaconChainService? driver = null) : IAsyncDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconApiHost>();
     private WebApplication? _app;
     private StateRequestLimiter? _stateLimiter;
     private int _port;
     private CancellationTokenRegistration _exitRegistration;
+    private CancellationTokenRegistration _driverRegistration;
     private int _disposed;
 
     /// <summary>The port actually bound; differs from <see cref="IBeaconApiConfig.Port"/> only when
@@ -76,6 +78,7 @@ public sealed class BeaconApiHost(
         // than waiting for whatever step in the shutdown sequence eventually disposes the plugin.
         // The registration is disposed in DisposeAsync so a later exit never re-enters a disposed host.
         _exitRegistration = processExitSource.Token.Register(static state => _ = ((BeaconApiHost)state!).StopAsync(), this);
+        _driverRegistration = driver?.Stopping.Register(static state => _ = ((BeaconApiHost)state!).StopAsync(), this) ?? default;
 
         if (_logger.IsInfo) _logger.Info($"Beacon API listening on http://{apiConfig.Host}:{port}");
     }
@@ -105,6 +108,7 @@ public sealed class BeaconApiHost(
         }
 
         await _exitRegistration.DisposeAsync();
+        await _driverRegistration.DisposeAsync();
         await StopAsync();
 
         WebApplication? app = Volatile.Read(ref _app);

@@ -342,6 +342,38 @@ public class GloasBlockImporterTests
     }
 
     [Test]
+    public void Gossip_full_votes_require_a_validated_payload([Values(ExecutionStatus.Valid, ExecutionStatus.Optimistic, ExecutionStatus.Invalid)] ExecutionStatus status)
+    {
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine { EnvelopeVerdict = ExecutionStatus.Optimistic }, clock: ClockAt(_chain, ForkSlot + 2, 0));
+        SignedGloasChain.Block block = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
+        Assert.That(importer.ImportEnvelope(block.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Optimistic));
+        ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        if (status == ExecutionStatus.Valid) runner.ValidateExecutionChain(block.Root, block.Bid.BlockHash!);
+        if (status == ExecutionStatus.Invalid) runner.InvalidateExecutionChain(block.Root, block.Bid.BlockHash, null);
+        runner.GetHead();
+        SignedAggregateAndProofGloas aggregate = SignedAggregate(block, new AttestationData
+        {
+            Slot = ForkSlot + 1,
+            Index = 1,
+            BeaconBlockRoot = block.Root,
+            Source = new Checkpoint { Epoch = 0, Root = _chain.AnchorRoot },
+            Target = new Checkpoint { Epoch = 1, Root = block.Root },
+        });
+
+        if (status == ExecutionStatus.Valid)
+        {
+            Assert.That(() => runner.OnAggregateAndProof(aggregate), Throws.Nothing);
+        }
+        else
+        {
+            ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
+            using IDisposable assertions = Assert.EnterMultipleScope();
+            Assert.That(refusal.RejectGossip, Is.EqualTo(status == ExecutionStatus.Invalid));
+            Assert.That(refusal.Message, Does.Contain(status == ExecutionStatus.Invalid ? "invalidated payload" : "optimistic payload"));
+        }
+    }
+
+    [Test]
     public async Task Gossip_aggregate_claiming_a_payload_in_its_blocks_slot_charges_the_delivering_peer([Values] bool finalizedAncestor, [Values] bool validSignature)
     {
         BeaconChainStore store = _chain.CreateStore();
@@ -652,8 +684,8 @@ public class GloasBlockImporterTests
         CommitteeCache committees = new EpochCache().GetCommitteeCache(block.PostState, 1);
         data ??= new() { Slot = ForkSlot, BeaconBlockRoot = block.Root, Source = block.PostState.CurrentJustifiedCheckpoint, Target = new Checkpoint { Epoch = 1, Root = block.Root } };
         byte[] slotRoot = new byte[32];
-        BitConverter.TryWriteBytes(slotRoot, ForkSlot);
-        int[] committee = committees.GetBeaconCommittee(ForkSlot, 0).ToArray();
+        BitConverter.TryWriteBytes(slotRoot, data.Slot);
+        int[] committee = committees.GetBeaconCommittee(data.Slot, 0).ToArray();
         int member = committee.First(index => BeaconStateAccessors.IsAggregator(committee.Length, SignAs(index, new Hash256(slotRoot), DomainType.SelectionProof, 1)));
         AggregateAndProofGloas message = new()
         {
@@ -1431,11 +1463,16 @@ public class GloasBlockImporterTests
         BeaconBlockGloas message = child.Signed.Message!;
         MutateProposal(child.Signed, first.PostState, forgery);
 
-        BlockImportResult result = importer.Import(child.Forked, SszRoots.HashTreeRoot(message), verifySignatures: true);
+        Hash256 blockRoot = SszRoots.HashTreeRoot(message);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        BlockImportResult result = importer.Import(child.Forked, blockRoot, verifySignatures: true);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(result, Is.EqualTo(expected));
         Assert.That(((IBlockImporter)importer).RejectGossip, Is.EqualTo(forgery is not (Forgery.None or Forgery.OtherProposerSigned)),
             "an unverified parent payload precedes expected-proposer rejection, but follows signature rejection");
+        if (pastLookahead && forgery is Forgery.BodyAltered or Forgery.OtherProposer)
+            Assert.That(allocated, Is.LessThan(128 * 1024), "an invalid signature must be rejected before cloning and advancing the ancestor state");
     }
 
     private static void MutateProposal(SignedBeaconBlockGloas block, BeaconStateGloas state, Forgery forgery)

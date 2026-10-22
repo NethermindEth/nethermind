@@ -116,7 +116,7 @@ public static class FuluDriverSupport
     public static void RequireCompiledPreset(string preset)
     {
         if (preset != CompiledPreset.ToString())
-            throw new NotImplementedInDriverException($"This assembly's SSZ bounds use {CompiledPreset}; {preset} state fixtures require their own compiled preset.");
+            throw new NotImplementedInDriverException($"This assembly's SSZ bounds use {CompiledPreset}; {preset} state fixtures require their own compiled preset.") { KnownUnsupported = true };
     }
 
     /// <remarks>Ignores the calling test for the mainnet preset unless mainnet vectors are enabled, since the mainnet source is then empty by design.</remarks>

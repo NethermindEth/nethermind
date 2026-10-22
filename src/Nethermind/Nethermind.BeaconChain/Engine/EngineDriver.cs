@@ -12,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -31,7 +32,7 @@ namespace Nethermind.BeaconChain.Engine;
 /// worker); only availability is read concurrently. A forkchoice
 /// update still running past its deadline fails every later call until it finishes.
 /// </remarks>
-public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager, SlotClock clock, BeaconChainSpec spec, INodeColumnCustodySource custody, IBlockTree? blockTree = null) : IEngineDriver
+public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager, SlotClock clock, BeaconChainSpec spec, INodeColumnCustodySource custody, IBlockTree? blockTree = null, GCKeeper? gcKeeper = null) : IEngineDriver
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EngineDriver>();
     private volatile bool _isAvailable = true;
@@ -51,6 +52,30 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// recover what the body alone does not carry — the EIP-4788 parent beacon block root.
     /// </summary>
     public SignedBeaconBlock? CurrentBlock { get; set; }
+
+    internal async Task<DataColumnSidecar[]> GetLocalColumns(SignedBeaconBlock block)
+    {
+        SszKzgCommitment[] commitments = block.Message!.Body!.BlobKzgCommitments!;
+        if (commitments.Length == 0) return [];
+        byte[][] hashes = new byte[commitments.Length][];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = new byte[Hash256.Size];
+            Nethermind.Crypto.KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitments[i].AsSpan(), hashes[i]);
+        }
+        try
+        {
+            using IDisposable call = detector.EnterEmbeddedCall("getBlobsV2");
+            ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await detector.InnerEngine.engine_getBlobsV2(hashes);
+            using IDisposable? response = result.Data as IDisposable;
+            return result.Result.ResultType == ResultType.Success && result.Data is { } blobs ? LocalBlobColumns.Create(block, blobs) : [];
+        }
+        catch (Exception e) when (e is not OutOfMemoryException and not OperationCanceledException)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Local blob retrieval failed for slot {block.Message.Slot}: {e.Message}");
+            return [];
+        }
+    }
     /// <summary>
     /// Submits the block's execution payload via <c>engine_newPayloadV4</c> and returns the
     /// execution layer's verdict (VALID/INVALID/SYNCING/ACCEPTED).
@@ -68,6 +93,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         return await CallEngineAsync("newPayloadV4", _logger.IsInfo ? $"{payload.BlockNumber} ({payload.BlockHash?.ToShortString()})" : null, async () =>
         {
             using IDisposable call = detector.EnterEmbeddedCall("newPayloadV4");
+            gcKeeper?.CancelPendingGC();
             long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
@@ -204,6 +230,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         return await CallEngineAsync("newPayloadV5", _logger.IsInfo ? $"{converted.BlockNumber} ({converted.BlockHash?.ToShortString()})" : null, async () =>
         {
             using IDisposable call = detector.EnterEmbeddedCall("newPayloadV5");
+            gcKeeper?.CancelPendingGC();
             long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);

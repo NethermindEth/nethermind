@@ -26,11 +26,11 @@ namespace Nethermind.BeaconChain.Sync;
 /// <summary>Applies state transitions, proto-array fork choice, engine newPayload and persistence.</summary>
 /// <remarks>
 /// A live Fulu state follows the canonical lineage with one <see cref="CachedBeaconStateHasher"/> in its <see cref="EpochCache"/>.
-/// Branch clones use fresh caches and <see cref="FullBeaconStateHasher"/>; reorg adoption uses the retained post-state and fresh cached hasher.
+/// Branch clones use fresh balance caches and share the incremental hasher; reorg adoption uses the retained post-state and fresh cached hasher.
 /// Live blocks and trusted persisted replays apply to clones to protect lineage from partial mutation.
 /// Gloas always clones its parent's post-state, carrying Fulu parents across the fork on that clone, and retains frozen results
 /// for fork choice and envelope verification. A child of the last Gloas block reuses its CachedBeaconStateHasher with envelope root checks;
-/// branches start fresh. Retain each epoch's last block and the next epoch's first in <see cref="PostStateCache"/> for checkpoints despite skipped first slots.
+/// branches share the hasher with fresh balance caches. Retain each epoch's last block and the next epoch's first in <see cref="PostStateCache"/> for checkpoints despite skipped first slots.
 /// Not thread-safe: callers must use the orchestrator's import worker.
 /// </remarks>
 public sealed class BlockImporter : IBlockImporter
@@ -56,6 +56,33 @@ public sealed class BlockImporter : IBlockImporter
     private readonly ILogger _logger;
 
     private readonly IDataAvailabilityRule _availability;
+    internal Func<SignedBeaconBlock, DataColumnSidecar[]>? RecoverLocalColumns { get; init; }
+    internal Action<Hash256, DataColumnSidecar[]>? PublishLocalColumns { get; init; }
+    private PreparedSlot? _preparedSlot;
+    private sealed record PreparedSlot(Hash256 Parent, BeaconStateFulu Original, BeaconStateFulu State, EpochCache Cache);
+
+    internal void PrepareNextSlot(Hash256 headRoot, ulong nextSlot)
+    {
+        if (SignedBeaconBlockCodec.IsGloasSlot(nextSlot, _spec))
+        {
+            _preparedSlot = null;
+            return;
+        }
+        if (_runner.GetBlockSlot(headRoot) is not { } headSlot || headSlot >= nextSlot || nextSlot - headSlot > 2) return;
+        if (_preparedSlot is { } held && held.Parent == headRoot && held.State.Slot == nextSlot) return;
+        if (_states.GetHeldBlockState(headRoot) is not { } parent) return;
+        BeaconStateFulu copy = parent.Clone();
+        EpochCache cache = new() { Hasher = _lineageCache.Hasher, SigningSpec = _spec };
+        SlotProcessing.ProcessSlots(copy, nextSlot, cache);
+        _preparedSlot = new(headRoot, parent, copy, cache);
+    }
+
+    private PreparedSlot? TakePreparedSlot(Hash256 parentRoot, ulong slot, BeaconStateFulu original)
+    {
+        PreparedSlot? prepared = _preparedSlot;
+        _preparedSlot = null;
+        return prepared is not null && prepared.Parent == parentRoot && prepared.State.Slot == slot && ReferenceEquals(prepared.Original, original) ? prepared : null;
+    }
 
     private readonly PostStateCache _states;
     private readonly ForkChoiceRunner _runner;
@@ -433,7 +460,15 @@ public sealed class BlockImporter : IBlockImporter
         // Check on_block availability before cloning or calling the engine, so missing columns defer cheaply.
         // Trusted replays already passed this gate; their verifying columns were not persisted and cannot be rechecked.
         IDataAvailabilityRule availability = verifySignatures ? _availability : ReplayedBlockAvailability.Instance;
-        if (!availability.IsDataAvailable(block, blockRoot, _spec))
+        DataColumnSidecar[] localColumns = [];
+        bool dataAvailable = availability.IsDataAvailable(block, blockRoot, _spec);
+        if (verifySignatures && !dataAvailable
+            && VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == true)
+        {
+            localColumns = RecoverLocalColumns?.Invoke(signedBlock) ?? [];
+            if (localColumns.Length != 0) dataAvailable = availability.IsDataAvailable(block, blockRoot, _spec);
+        }
+        if (!dataAvailable)
         {
             // Honest columns carry the honest signature, so a requested copy with altered signature bytes would never become available.
             // Gossip verified the signature before import (phase0/p2p-interface.md beacon_block).
@@ -461,7 +496,7 @@ public sealed class BlockImporter : IBlockImporter
             heldParent = _states.GetBlockState(parentRoot);
         }
 
-        BeaconStateFulu? parentState = onLineage ? _states.LineageState : heldParent?.Clone();
+        BeaconStateFulu? parentState = onLineage ? _states.LineageState : heldParent;
         if (parentState is null)
         {
             // The parent is known to fork choice but its post-state fell out of all retention
@@ -478,7 +513,13 @@ public sealed class BlockImporter : IBlockImporter
 
         BeaconStateFulu state;
         EpochCache cache;
-        if (onLineage)
+        PreparedSlot? prepared = TakePreparedSlot(parentRoot, block.Slot, parentState);
+        if (prepared is not null)
+        {
+            state = prepared.State;
+            cache = prepared.Cache;
+        }
+        else if (onLineage)
         {
             // Replay can now receive an INVALID execution verdict; preserve the parent until admission succeeds.
             state = parentState.Clone();
@@ -486,16 +527,17 @@ public sealed class BlockImporter : IBlockImporter
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state and without the cached hasher: the lineage is at {_states.LineageRoot}");
-            state = parentState; // already a copy
-            cache = new EpochCache(); // fork branch: stateless hasher, fresh balance memo
+            if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state: the lineage is at {_states.LineageRoot}");
+            state = parentState.Clone();
+            cache = new EpochCache { Hasher = _lineageCache.Hasher };
         }
 
         ImportVerdict verdict = new(_engine);
         _engine.CurrentBlock = signedBlock;
         try
         {
-            StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures);
+            if (prepared is not null) StateTransition.StateTransition.ApplyPrepared(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures);
+            else StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures);
         }
         catch (EngineUnavailableException e)
         {
@@ -562,6 +604,7 @@ public sealed class BlockImporter : IBlockImporter
         ApplyBodyOperations(block.Body!, blockRoot);
 
         _store.PutBlock(blockRoot, signedBlock);
+        if (localColumns.Length > 0) PublishLocalColumns?.Invoke(blockRoot, localColumns);
         _unfinalized[blockRoot] = block.Slot;
 
         if (onLineage)
@@ -573,6 +616,7 @@ public sealed class BlockImporter : IBlockImporter
             }
 
             _states.SetLineage(blockRoot, state);
+            _lineageCache = cache;
             _lineageBlockStartsEpoch = crossesEpoch;
         }
         else
@@ -641,9 +685,8 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.UnknownParent;
         }
 
-        // A fork block hashes with the stateless hasher, so one that fails allocates no memo and cannot disturb the lineage's.
         bool extendsLineage = parentRoot == _gloasLineageRoot;
-        EpochCache cache = extendsLineage ? _gloasLineageCache : new EpochCache();
+        EpochCache cache = extendsLineage ? _gloasLineageCache : new EpochCache { Hasher = _gloasLineageCache.Hasher };
         BeaconStateGloas postState;
         try
         {
@@ -706,11 +749,6 @@ public sealed class BlockImporter : IBlockImporter
 
         _store.PutForkedBlock(blockRoot, forked);
         _unfinalized[blockRoot] = block.Slot;
-        if (!extendsLineage)
-        {
-            cache.Hasher = new CachedBeaconStateHasher();
-        }
-
         _gloasLineageRoot = blockRoot;
         _gloasLineageCache = cache;
         return BlockImportResult.Imported;
@@ -861,6 +899,12 @@ public sealed class BlockImporter : IBlockImporter
                 {
                     if (_logger.IsDebug) _logger.Debug($"Not deferring block {blockRoot} at slot {block.Slot}: it is past the proposer lookahead of its ancestor {ancestorRoot}");
                     return BlockImportResult.UnknownParent;
+                }
+
+                if (VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain) == false)
+                {
+                    RejectGossip = true;
+                    return BlockImportResult.Invalid;
                 }
 
                 proposerState = ancestorState.Clone();
@@ -1121,7 +1165,9 @@ public sealed class BlockImporter : IBlockImporter
         PruneStore(finalizedSlot);
         // Replay after a restart starts from the persisted anchor, which stays behind when the finalized state was not retained;
         // with no anchor, a finalized block fork choice does not hold has no known slot, and the epoch start could be past it.
-        _store.PruneExecutionPayloadEnvelopes(_clock.CurrentEpoch, _store.TryGetAnchor(out _, out ulong anchorSlot) ? Math.Min(anchorSlot, finalizedSlot) : _runner.GetBlockSlot(finalized.Root) ?? 0);
+        ulong replaySlot = _store.TryGetAnchor(out _, out ulong anchorSlot) ? Math.Min(anchorSlot, finalizedSlot) : _runner.GetBlockSlot(finalized.Root) ?? 0;
+        _store.PruneExecutionPayloadEnvelopes(_clock.CurrentEpoch, replaySlot);
+        _store.PruneCanonicalBlocks(_clock.CurrentEpoch, replaySlot);
         // on_block refuses every block at or below the finalized epoch's start slot, even when that slot is empty.
         ulong neverImportable = Math.Max(finalizedSlot, BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch));
         _failedBlocks?.Prune(neverImportable);
@@ -1521,7 +1567,8 @@ public sealed class BlockImporterFactory(
     BeaconDiscovery? discovery = null,
     ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
     ProposerLookaheadHolder? proposerLookaheads = null,
-    FailedBlockRoots? failedBlocks = null) : IBlockImporterFactory
+    FailedBlockRoots? failedBlocks = null,
+    ColumnGossipRouter? columnRouter = null) : IBlockImporterFactory
 {
     public IBlockImporter Create(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot)
     {
@@ -1541,7 +1588,18 @@ public sealed class BlockImporterFactory(
             anchorRoot,
             forkChoiceSnapshots,
             proposerLookaheads,
-            failedBlocks);
+            failedBlocks)
+        {
+            RecoverLocalColumns = block =>
+            {
+                if (engine is not EngineDriver driver) return [];
+                DataColumnSidecar[] columns = driver.GetLocalColumns(block).GetAwaiter().GetResult();
+                Hash256 root = SszRoots.HashTreeRoot(block.Message!);
+                foreach (DataColumnSidecar column in columns) pool.Add(root, block.Message!.Slot, column);
+                return columns;
+            },
+            PublishLocalColumns = columnRouter is null ? null : columnRouter.PublishLocalColumns,
+        };
     }
 
 }

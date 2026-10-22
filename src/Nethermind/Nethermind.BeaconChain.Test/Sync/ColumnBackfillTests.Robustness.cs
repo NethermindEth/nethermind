@@ -26,6 +26,29 @@ namespace Nethermind.BeaconChain.Test.Sync;
 [NonParallelizable]
 public partial class ColumnBackfillTests
 {
+    [Test]
+    public async Task Empty_fork_start_does_not_verify_the_pre_fork_parent_with_the_fulu_domain([Values] bool stored, CancellationToken token)
+    {
+        await using HistoryFixture fixture = HistoryFixture.Build([31, 33], anchorSlot: 40);
+        fixture.Spec = fixture.Spec with { FuluForkEpoch = 1 };
+        ForkedSignedBeaconBlock predecessor = fixture.Blocks.Values.Single(block => block.Slot == 31);
+        if (stored) fixture.Store.PutForkedBlock(predecessor.ComputeMessageRoot(), predecessor);
+        int preForkChecks = 0;
+        fixture.VerifyBlockSignature = block =>
+        {
+            if (block.Slot >= 32) return Task.FromResult<bool?>(true);
+            Interlocked.Increment(ref preForkChecks);
+            return Task.FromResult<bool?>(false);
+        };
+        StubPeer peer = fixture.Honest("honest");
+
+        await fixture.Start(token, peer).WaitAsync(token);
+
+        Assert.That(fixture.Backfill.CompleteFrom, Is.EqualTo(32));
+        Assert.That(preForkChecks, Is.Zero);
+        Assert.That(peer.Failures, Is.Zero);
+    }
+
     private sealed class HistoryFixture : IAsyncDisposable
     {
         public BeaconChainSpec Spec = ImportableBlobBlock.FuluFromGenesis;
@@ -47,6 +70,7 @@ public partial class ColumnBackfillTests
         private Task _run = Task.CompletedTask;
         public ILogManager LogManager = LimboLogs.Instance;
         public TimeSpan WindowPause = TimeSpan.FromMilliseconds(1);
+        public Func<ForkedSignedBeaconBlock, Task<bool?>>? VerifyBlockSignature;
 
         public static HistoryFixture Build(int[] blobSlots, ulong anchorSlot, FaultyColumnsDb? db = null)
         {
@@ -108,7 +132,7 @@ public partial class ColumnBackfillTests
         public Task Start(CancellationToken token, params IBeaconSyncPeer[] peers)
         {
             StubPool pool = new(peers);
-            RangeSync rangeSync = new(pool, LogManager, Pool, Spec, Clock, Discovery) { VerifyBlockSignature = _ => Task.FromResult<bool?>(true) };
+            RangeSync rangeSync = new(pool, LogManager, Pool, Spec, Clock, Discovery) { VerifyBlockSignature = VerifyBlockSignature ?? (_ => Task.FromResult<bool?>(true)) };
             Backfill = new ColumnBackfill(Store, Pool, rangeSync, pool, Clock, Spec, Status, new DiscoveryNodeCustodySource(Discovery), LogManager)
             {
                 RetryDelay = TimeSpan.FromMilliseconds(50),

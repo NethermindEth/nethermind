@@ -12,7 +12,7 @@ namespace Nethermind.BeaconChain.StateTransition.Shuffling;
 /// contiguous slice of one shuffled active-validator list.
 /// </summary>
 /// <remarks>
-/// Mirrors Lighthouse's <c>CommitteeCache</c>: instead of computing committees per slot via
+/// Instead of computing committees per slot via
 /// <c>compute_committee</c>, the whole active set is shuffled once with the bulk
 /// <see cref="SwapOrNotShuffle.ShuffleList"/> and committees are returned as spans into it.
 /// Instances are immutable after <see cref="Build"/>.

@@ -96,6 +96,8 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
     internal const ulong EnvelopePruneBatchSlots = 1024;
 
+    internal const ulong CanonicalPruneBatchSlots = 1024;
+
     /// <summary>Envelope column key of the lowest and highest slot (8 bytes big-endian each) that may still have envelopes; its 1-byte length never collides with slot (8) or root (32) keys.</summary>
     private static ReadOnlySpan<byte> EnvelopeBoundsKey => [0];
     private const int SlotBoundsLength = 2 * sizeof(ulong);
@@ -1021,6 +1023,40 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return true;
     }
 
+    /// <summary>Prunes one bounded batch of canonical history outside the request window and below the persisted replay anchor.</summary>
+    internal void PruneCanonicalBlocks(ulong currentEpoch, ulong replaySlot)
+    {
+        BeaconChainSpec networkSpec = spec ?? throw new InvalidOperationException("Block retention requires a network spec");
+        ulong retention = currentEpoch >= networkSpec.GloasForkEpoch ? MinEpochsForBlockRequests
+            : Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
+        retention = Math.Max(retention, Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests);
+        ulong epoch = currentEpoch > retention ? currentEpoch - retention : 0;
+        ulong windowStart = epoch > ulong.MaxValue / networkSpec.SlotsPerEpoch ? ulong.MaxValue : epoch * networkSpec.SlotsPerEpoch;
+        ulong keepFrom = Math.Min(windowStart, replaySlot);
+        if (TryGetAnchor(out _, out ulong anchorSlot)) keepFrom = Math.Min(keepFrom, anchorSlot);
+        if (!TryGetEarliestBlockSlot(out ulong lowest) || lowest >= keepFrom) return;
+
+        ulong end = lowest + Math.Min(keepFrom - lowest, CanonicalPruneBatchSlots);
+        for (ulong slot = lowest; slot < end; slot++)
+        {
+            if (TryGetCanonicalRoot(slot, out Hash256? root)) DeleteBlock(root);
+        }
+
+        // Commit the cursor with the index removals. A crash before this batch repeats the idempotent block deletes.
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
+        Span<byte> key = stackalloc byte[sizeof(ulong)];
+        for (ulong slot = lowest; slot < end; slot++)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(key, slot);
+            index.Remove(key);
+        }
+
+        byte[] floor = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(floor, end);
+        batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.EarliestBlockSlot), floor);
+    }
+
     /// <summary>Deletes every stored execution payload envelope whose slot is below both the ExecutionPayloadEnvelopesByRange/ByRoot retention window as of <paramref name="currentEpoch"/> and <paramref name="finalizedSlot"/>.</summary>
     /// <remarks>
     /// The window is <c>[max(GLOAS_FORK_EPOCH, current_epoch - compute_min_epochs_for_block_requests()), current_epoch]</c>
@@ -1824,7 +1860,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <remarks>
     /// Finalization or checkpoint sync sets the anchor; only newer states remain useful for justification
     /// or replay. The atomic batch preserves either anchor with its state across crashes and is idempotent.
-    /// Canonical blocks below the anchor remain stored; <see cref="TryGetEarliestBlockSlot"/> retains the lowest anchor.
+    /// Canonical blocks below the anchor remain stored until they leave the request retention window.
     /// </remarks>
     public void SetAnchor(Hash256 blockRoot, ulong slot)
     {
@@ -1841,7 +1877,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         RemoveStatesThroughSlot(slot, blockRoot, batch.GetColumnBatch(BeaconChainDbColumns.States), batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex));
     }
 
-    /// <summary>The slot of the lowest anchor ever recorded: canonical blocks are stored from it on.</summary>
+    /// <summary>The lower bound of retained canonical history.</summary>
     /// <remarks>A database written before this record falls back to its current anchor, which is never below the real floor.</remarks>
     internal bool TryGetEarliestBlockSlot(out ulong slot)
     {

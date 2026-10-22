@@ -57,7 +57,7 @@ internal static class ForkChoiceStepDriver
         if (!FuluDriverSupport.ShouldVerifySignatures(casePath)
             && Path.GetFileName(casePath) is "is_one_confirmed_fails_recently_activated_validator_voting_in_empty_slot"
                 or "is_one_confirmed_passes_with_new_validator_activated_in_head_state")
-            throw new NotImplementedInDriverException("This never_bls vector requires mocked deposit proof-of-possession; the driver retains real verification of pending new-validator deposits.");
+            throw new NotImplementedInDriverException("This never_bls vector requires mocked deposit proof-of-possession; the driver retains real verification of pending new-validator deposits.") { KnownUnsupported = true };
     }
 
     /// <param name="blockRejections">Why each block step, in order, was refused; <c>null</c> for an accepted block.</param>

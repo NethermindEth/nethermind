@@ -493,7 +493,7 @@ public class SszGeneratorDiagnosticTest
         string fields = reversed ? "Second=second First=first Deposits=deposits" : "First=first Second=second Deposits=deposits";
         CSharpCompilation input = CSharpCompilation.Create("JsonShapeContract", [CSharpSyntaxTree.ParseText(source)],
             BuildMetadataReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        GeneratorDriver driver = CSharpGeneratorDriver.Create([CreateSszGenerator("BeaconJsonShapeGenerator").AsSourceGenerator()],
+        GeneratorDriver driver = CSharpGeneratorDriver.Create([new BeaconJsonShapeGenerator().AsSourceGenerator()],
             additionalTexts: [new JsonSchema("ArrayEntry Proof=proof\nItem " + fields + "\nmethod public WriteItem Item item - object\nmethod private WriteDeposits ArrayEntry itemArrayEntry deposits array")]);
         driver = driver.RunGeneratorsAndUpdateCompilation(input, out Compilation output, out _);
         string generated = driver.GetRunResult().Results[0].GeneratedSources[0].SourceText.ToString();

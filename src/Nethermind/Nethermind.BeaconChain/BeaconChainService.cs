@@ -49,8 +49,12 @@ public sealed class BeaconChainService(
     private Task? _runTask;
     private Task _columnFloorCheck = Task.CompletedTask;
 
+    internal CancellationToken Stopping => _cancellationTokenSource.Token;
+
     /// <summary>How long <see cref="StopAsync"/> waits before warning that shutdown is still in progress.</summary>
     internal TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(8);
+    internal TimeSpan ShutdownHardTimeout { get; set; } = TimeSpan.FromMinutes(5);
+    internal Action<string> AbortShutdown { get; set; } = Environment.FailFast;
     /// <summary>Wait before checkpoint sync starts over after a network failure that outlasted its own retries.</summary>
     internal TimeSpan StartRetryDelay { get; init; } = DefaultStartRetryDelay;
 
@@ -244,26 +248,35 @@ public sealed class BeaconChainService(
 
     /// <summary>Stops the driver and waits for its run loop to finish before dependencies can be disposed.</summary>
     /// <remarks>
-    /// Waits without a deadline, including for in-flight execution work after an Engine API timeout.
-    /// Returning early would allow the node to dispose databases still used by that work. An unresponsive
-    /// execution call therefore requires the operator to terminate the process to finish shutdown.
+    /// Terminates the process if work cannot drain within the hard deadline: returning while that work
+    /// still runs would allow the node to dispose databases it uses.
     /// </remarks>
     public async Task StopAsync()
     {
         Stop();
-        if (_runTask is not null)
+        Task drain = DrainAsync();
+        try
         {
+            await drain.WaitAsync(ShutdownTimeout);
+        }
+        catch (TimeoutException)
+        {
+            if (_logger.IsWarn) _logger.Warn("Embedded beacon chain driver is still stopping; waiting before disposing its dependencies");
             try
             {
-                await _runTask.WaitAsync(ShutdownTimeout);
+                await drain.WaitAsync(ShutdownHardTimeout);
             }
             catch (TimeoutException)
             {
-                if (_logger.IsWarn) _logger.Warn("Embedded beacon chain driver is still stopping; waiting before disposing its dependencies");
-                await _runTask;
+                AbortShutdown("Embedded beacon chain shutdown exceeded its hard deadline; terminating before active work loses its databases");
+                await drain;
             }
         }
+    }
 
+    private async Task DrainAsync()
+    {
+        if (_runTask is not null) await _runTask;
         await _columnFloorCheck;
         await externalClDetector.WaitForEmbeddedCallsAsync();
     }

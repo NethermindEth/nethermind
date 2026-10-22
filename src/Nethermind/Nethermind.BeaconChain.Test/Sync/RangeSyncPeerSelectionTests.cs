@@ -416,6 +416,33 @@ public class RangeSyncPeerSelectionTests
 
     [Test]
     [CancelAfter(30_000)]
+    public async Task A_peer_omitting_a_parent_is_charged_when_another_peer_serves_it(CancellationToken token)
+    {
+        const ulong tipSlot = AnchorSlot + 1;
+        const ulong targetSlot = tipSlot + 2;
+        (SignedBeaconBlock _, Hash256 finalizedRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, tipSlot, tipSlot + 1, targetSlot);
+        ForkedSignedBeaconBlock[] blocks = [.. chain.Select(static block => new ForkedSignedBeaconBlock.OfFulu(block))];
+        StubPeer[] liars = [.. Enumerable.Range(0, 2).Select(i => new StubPeer($"liar {i}", targetSlot,
+            (start, _) => start == tipSlot + 1 ? [blocks[^1]] : []))];
+        StubPeer honest = new("honest", targetSlot, (start, count) => [.. blocks.Where(block => block.Slot >= start && block.Slot < start + count)]);
+        RangeSync sync = new(new OfferingPool([.. liars, honest]), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet))
+        {
+            VerifyBlockSignature = _ => Task.FromResult<bool?>(true),
+        };
+        bool rejected = false;
+        RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true, RequiredMismatches: 2);
+
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(blocks[0].ComputeMessageRoot(), tipSlot, () => targetSlot, token, fallback));
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(rejected, Is.True);
+        Assert.That(yielded, Is.EqualTo(blocks));
+        Assert.That(liars.Select(static peer => peer.Reports.Count), Is.EqualTo(new[] { 1, 1 }));
+        Assert.That(honest.Reports, Is.Empty);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
     public async Task Empty_ranges_from_two_peers_do_not_make_the_first_peer_responsible_for_both(CancellationToken token)
     {
         const ulong tipSlot = AnchorSlot + 4;

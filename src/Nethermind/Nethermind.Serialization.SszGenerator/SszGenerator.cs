@@ -387,6 +387,7 @@ internal static partial class SszCodecHelpers
         }
     }
 
+    // Inlined into every byte-list element's decode, where the message's string handler would be zeroed per element.
     internal static void ValidateSszListLimit(int count, ulong limit, string typeName, string fieldName)
     {
         if ((ulong)count > limit)

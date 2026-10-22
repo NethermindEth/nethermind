@@ -1445,16 +1445,15 @@ public sealed class ColumnGossipRouter(
             }
 
             IReadOnlyList<ReconstructedSidecarToPublish> entries = ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix);
+            foreach (ReconstructedSidecarToPublish entry in entries)
+            {
+                if (ExposeReconstructed(entry, blockRoot))
+                {
+                    exposed.Add(entry);
+                }
+            }
             lock (_reconstructionLock)
             {
-                foreach (ReconstructedSidecarToPublish entry in entries)
-                {
-                    if (ExposeReconstructed(entry, blockRoot))
-                    {
-                        exposed.Add(entry);
-                    }
-                }
-
                 _reconstructedBlockRoots.Set(blockRoot);
             }
         }
@@ -1484,6 +1483,19 @@ public sealed class ColumnGossipRouter(
 
         pool?.Add(blockRoot, entry.Slot, entry.Sidecar);
         return true;
+    }
+
+    internal void PublishLocalColumns(Hash256 blockRoot, DataColumnSidecar[] columns)
+    {
+        _acceptedHeaders.Set(blockRoot, columns[0].SignedBlockHeader!.Signature);
+        List<ReconstructedSidecarToPublish> entries = [];
+        foreach (DataColumnSidecar sidecar in columns)
+        {
+            _verifiedColumns.Set((blockRoot, sidecar.Index));
+            BeaconBlockHeader header = sidecar.SignedBlockHeader!.Message!;
+            entries.Add(new(header.Slot, header.ProposerIndex, CustodyGroups.ComputeSubnetForDataColumnSidecar(sidecar.Index), sidecar));
+        }
+        PublishReconstructed(blockRoot, entries);
     }
 
     /// <summary>Publishes reconstructed sidecars on their own fork digest, including unsubscribed subnets.</summary>

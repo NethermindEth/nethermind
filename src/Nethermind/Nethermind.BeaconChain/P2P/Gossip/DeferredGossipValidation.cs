@@ -55,12 +55,14 @@ internal sealed class DeferredGossipValidation(
     private readonly ConcurrentDictionary<Message, Reservation> _reservations = new(ReferenceEqualityComparer.Instance);
     private long _nextSweepTicks;
     private readonly int _maxPendingPerSource = Math.Max(1, maxPending / 8);
-    private readonly ConcurrentDictionary<PeerId, int> _pendingBySource = new();
+    private readonly ConcurrentDictionary<(PeerId Source, bool Vote, bool Column), int> _pendingBySource = new();
     private int _pending;
     private long _pendingBytes;
     private int _pendingVotes;
     private int _pendingColumns;
     private long _pendingColumnBytes;
+
+    internal Action<PeerId, string>? ReportRejectedMessage { get; init; }
 
     /// <summary>The messages other than votes deferred for validation whose verdict is not given yet.</summary>
     internal int Pending => Volatile.Read(ref _pending);
@@ -86,15 +88,16 @@ internal sealed class DeferredGossipValidation(
         long size = message.CalculateSize();
         bool vote = IsVote(message, size);
         bool column = GossipMessageValidator.IsColumn(message.Topic);
-        bool sharedBySource = !vote && !column;
-        if (vote ? PendingVotes >= maxPendingVotes
+        int sourceLimit = vote ? Math.Max(1, maxPendingVotes / 8) : _maxPendingPerSource;
+        if (_pendingBySource.GetValueOrDefault((source, vote, column)) >= sourceLimit || (vote ? PendingVotes >= maxPendingVotes
             : column ? Volatile.Read(ref _pendingColumns) >= maxPending || Interlocked.Read(ref _pendingColumnBytes) + size > maxPendingBytes
-            : Pending >= maxPending || PendingBytes + size > maxPendingBytes || (sharedBySource && _pendingBySource.GetValueOrDefault(source) >= _maxPendingPerSource))
+            : Pending >= maxPending || PendingBytes + size > maxPendingBytes))
         {
             return Throttle(source, message);
         }
 
-        Reservation reservation = new(this, source, vote ? 0 : size, vote, column, sharedBySource, _time.GetUtcNow() + timeout + ReservationSlack);
+        Reservation reservation = new(this, source, vote ? 0 : size, vote, column, _time.GetUtcNow() + timeout + ReservationSlack);
+        _pendingBySource.AddOrUpdate((source, vote, column), 1, static (_, count) => count + 1);
         if (vote)
         {
             Interlocked.Increment(ref _pendingVotes);
@@ -108,10 +111,6 @@ internal sealed class DeferredGossipValidation(
         {
             Interlocked.Increment(ref _pending);
             Interlocked.Add(ref _pendingBytes, size);
-            if (sharedBySource)
-            {
-                _pendingBySource.AddOrUpdate(source, 1, static (_, count) => count + 1);
-            }
         }
 
         _reservations[message] = reservation;
@@ -143,7 +142,15 @@ internal sealed class DeferredGossipValidation(
     {
         // A message whose reservation expired before dispatch was released already; it is validated unreserved.
         Action? release = _reservations.TryRemove(message, out Reservation? reservation) ? reservation.Release : null;
-        GossipVerdict verdict = new(validity => router.CompleteValidation(message, validity), release);
+        GossipVerdict verdict = new(validity =>
+        {
+            bool applied = router.CompleteValidation(message, validity);
+            if (validity == MessageValidity.Rejected)
+            {
+                ReportRejectedMessage?.Invoke(source, $"rejected gossip on {message.Topic}");
+            }
+            return applied;
+        }, release);
         try
         {
             MessageValidity validity;
@@ -172,7 +179,7 @@ internal sealed class DeferredGossipValidation(
     }
 
     /// <summary>The room <see cref="Verify"/> reserved for one deferred message, released exactly once: by its verdict, or by expiry if never dispatched.</summary>
-    private sealed class Reservation(DeferredGossipValidation owner, PeerId source, long size, bool vote, bool column, bool sharedBySource, DateTimeOffset expiresAt)
+    private sealed class Reservation(DeferredGossipValidation owner, PeerId source, long size, bool vote, bool column, DateTimeOffset expiresAt)
     {
         private int _released;
 
@@ -183,6 +190,11 @@ internal sealed class DeferredGossipValidation(
             if (Interlocked.Exchange(ref _released, 1) != 0)
             {
                 return;
+            }
+
+            if (owner._pendingBySource.AddOrUpdate((source, vote, column), 0, static (_, count) => count - 1) <= 0)
+            {
+                owner._pendingBySource.TryRemove(new KeyValuePair<(PeerId, bool, bool), int>((source, vote, column), 0));
             }
 
             if (vote)
@@ -200,10 +212,6 @@ internal sealed class DeferredGossipValidation(
 
             Interlocked.Decrement(ref owner._pending);
             Interlocked.Add(ref owner._pendingBytes, -size);
-            if (sharedBySource && owner._pendingBySource.AddOrUpdate(source, 0, static (_, count) => count - 1) <= 0)
-            {
-                owner._pendingBySource.TryRemove(new KeyValuePair<PeerId, int>(source, 0));
-            }
         }
     }
 

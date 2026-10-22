@@ -334,7 +334,7 @@ public class BeaconChainServiceStartupTests
     }
 
     [Test]
-    public async Task StopAsync_completes_only_after_a_run_blocked_in_the_pubkey_cache_build_is_released([Values] bool pastWarning)
+    public async Task StopAsync_completes_only_after_a_run_blocked_in_the_pubkey_cache_build_is_released([Values(0, 1, 2)] int deadline)
     {
         PubkeyCache pubkeyCache = new();
         TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -345,6 +345,12 @@ public class BeaconChainServiceStartupTests
         await using IContainer container = KickContainer(engine, pubkeyCache, logManager).AddSingleton(store).Build();
         SeedAnchor(store, gloas: false, nextCommittee: false, key: null);
         BeaconChainService service = container.Resolve<BeaconChainService>();
+        TaskCompletionSource aborted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (deadline == 2)
+        {
+            service.ShutdownHardTimeout = TimeSpan.FromMilliseconds(50);
+            service.AbortShutdown = _ => aborted.TrySetResult();
+        }
         Task run = service.Start();
         await engine.Called.Task.WaitAsync(TimeSpan.FromSeconds(30));
         gate.Arm();
@@ -355,7 +361,8 @@ public class BeaconChainServiceStartupTests
 
         try
         {
-            if (pastWarning) await Task.Delay(service.ShutdownTimeout + TimeSpan.FromMilliseconds(100));
+            if (deadline == 1) await Task.Delay(service.ShutdownTimeout + TimeSpan.FromMilliseconds(100));
+            if (deadline == 2) await aborted.Task.WaitAsync(TimeSpan.FromSeconds(30));
             Assert.That(stopping.IsCompleted, Is.False, "the run is still inside the cache build");
         }
         finally

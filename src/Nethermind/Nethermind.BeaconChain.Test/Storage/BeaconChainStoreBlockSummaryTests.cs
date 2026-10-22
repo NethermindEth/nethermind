@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Test.P2P;
@@ -32,6 +33,55 @@ public class BeaconChainStoreBlockSummaryTests
 
     [TearDown]
     public void DisposeStore() => _db.Dispose();
+
+    [Test]
+    public void Canonical_retention_preserves_the_request_window_and_replay_anchor([Values] bool gloas, [Values] bool replayBehind)
+    {
+        BeaconChainSpec spec = Sepolia with { GloasForkEpoch = gloas ? 128UL : ulong.MaxValue };
+        BeaconChainStore store = new(_db, spec);
+        const ulong first = 32;
+        ulong boundary = replayBehind ? 64UL : 96UL;
+        Hash256 old = StoreBlock(store, "expired", first, canonical: true);
+        Hash256 before = StoreBlock(store, "before boundary", boundary - 1, canonical: true);
+        Hash256 retained = StoreBlock(store, "boundary", boundary, canonical: true);
+        store.SetAnchor(old, first);
+        store.SetAnchor(retained, replayBehind ? boundary : 128);
+        ulong retention = gloas ? BeaconChainStore.MinEpochsForBlockRequests : Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
+
+        store.PruneCanonicalBlocks(retention + 3, replayBehind ? boundary : 128);
+
+        BeaconChainStore restarted = new(_db, spec);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(restarted.TryGetBlockSummary(old, out _), Is.False);
+        Assert.That(restarted.TryGetBlockSummary(before, out _), Is.False);
+        Assert.That(restarted.TryGetCanonicalRoot(boundary - 1, out _), Is.False);
+        Assert.That(restarted.TryGetBlockSummary(retained, out _), Is.True);
+        Assert.That(restarted.TryGetCanonicalRoot(boundary, out Hash256? root), Is.True);
+        Assert.That(root, Is.EqualTo(retained));
+        Assert.That(restarted.TryGetEarliestBlockSlot(out ulong floor), Is.True);
+        Assert.That(floor, Is.EqualTo(boundary));
+    }
+
+    [Test]
+    public void Canonical_retention_resumes_bounded_batches_after_restart()
+    {
+        BeaconChainStore store = new(_db, Sepolia with { GloasForkEpoch = 128 });
+        Hash256 oldest = StoreBlock(store, "oldest", 0, canonical: true);
+        ulong anchorSlot = BeaconChainStore.CanonicalPruneBatchSlots + 10;
+        Hash256 anchor = StoreBlock(store, "anchor", anchorSlot, canonical: true);
+        store.SetAnchor(oldest, 0);
+        store.SetAnchor(anchor, anchorSlot);
+        ulong epoch = BeaconChainStore.MinEpochsForBlockRequests + 100;
+        store.PruneCanonicalBlocks(epoch, anchorSlot);
+        Assert.That(store.TryGetEarliestBlockSlot(out ulong floor), Is.True);
+        Assert.That(floor, Is.EqualTo(BeaconChainStore.CanonicalPruneBatchSlots));
+
+        BeaconChainStore restarted = new(_db, Sepolia with { GloasForkEpoch = 128 });
+        restarted.PruneCanonicalBlocks(epoch, anchorSlot);
+        Assert.That(restarted.TryGetEarliestBlockSlot(out floor), Is.True);
+        Assert.That(floor, Is.EqualTo(anchorSlot));
+        Assert.That(restarted.TryGetBlockSummary(anchor, out _), Is.True);
+    }
 
     [TestCase(false, false)]
     [TestCase(true, false)]

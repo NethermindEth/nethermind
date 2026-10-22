@@ -4,6 +4,7 @@
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -19,7 +20,8 @@ public partial class BeaconSyncOrchestratorTests
         HeadSnapshotHolder snapshots = new() { CaptureState = captureState };
         ForkedBeaconState state = new ForkedBeaconState.OfFulu(new BeaconStateFulu());
         int reads = 0;
-        Harness harness = CreateHarness(headSnapshots: snapshots, apiStateReader: _ => { reads++; return state; });
+        Harness harness = CreateHarness(headSnapshots: snapshots, apiStateReader: _ => { reads++; return state; },
+            apiCheckpointStateReader: _ => throw new InvalidOperationException("Checkpoint advancement ran before pubkey-cache initialization"));
 
         HeadSnapshot? published = snapshots.Current;
 
@@ -31,6 +33,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(published.ExecutionInSync, Is.False);
         Assert.That(published.FullHeadRoot, Is.Null);
         Assert.That(published.State, Is.SameAs(captureState ? state : null));
+        Assert.That(published.FinalizedState, Is.Null, "checkpoint advancement must wait until after the engine kick and pubkey-cache initialization");
         Assert.That(reads, Is.EqualTo(captureState ? 1 : 0));
     }
 
@@ -79,7 +82,9 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.ApiCheckpointStateReader = checkpoint =>
         {
             checkpointReads.Add(checkpoint);
-            return new ForkedBeaconState.OfFulu(new BeaconStateFulu { Slot = checkpoint.Epoch * Spec.SlotsPerEpoch });
+            BeaconStateFulu state = GloasTestFixtures.CreateFuluState(1);
+            state.Slot = checkpoint.Epoch * Spec.SlotsPerEpoch;
+            return new ForkedBeaconState.OfFulu(state);
         };
         Hash256[] heads = [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB];
         ForkedBeaconState?[] published = new ForkedBeaconState?[heads.Length];
@@ -98,6 +103,8 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(checkpointReads, Is.EqualTo(new[] { new CheckpointRef(4, TestItem.KeccakC), new CheckpointRef(3, TestItem.KeccakD), new CheckpointRef(5, TestItem.KeccakC), new CheckpointRef(4, TestItem.KeccakD) }));
         Assert.That(snapshots.Current!.JustifiedState!.State.Slot, Is.EqualTo(5 * Spec.SlotsPerEpoch));
         Assert.That(snapshots.Current.FinalizedState!.State.Slot, Is.EqualTo(4 * Spec.SlotsPerEpoch));
+        Assert.That(snapshots.Current.JustifiedState.StateRoot, Is.EqualTo(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)snapshots.Current.JustifiedState.State).State)));
+        Assert.That(snapshots.Current.FinalizedState.StateRoot, Is.EqualTo(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)snapshots.Current.FinalizedState.State).State)));
     }
 
     [Test]

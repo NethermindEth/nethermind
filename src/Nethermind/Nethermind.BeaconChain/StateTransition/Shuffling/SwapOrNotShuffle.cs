@@ -13,8 +13,7 @@ namespace Nethermind.BeaconChain.StateTransition.Shuffling;
 /// </summary>
 /// <remarks>
 /// Implements both the per-index <c>compute_shuffled_index</c> from consensus-specs and the
-/// optimized whole-list shuffle (credit to @protolambda), ported from Lighthouse's
-/// <c>swap_or_not_shuffle</c> crate. The list variant is orders of magnitude faster than calling
+/// optimized whole-list shuffle (credit to @protolambda). The list variant is orders of magnitude faster than calling
 /// <see cref="ComputeShuffledIndex"/> per index.
 /// </remarks>
 public static class SwapOrNotShuffle
