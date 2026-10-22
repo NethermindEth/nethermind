@@ -361,6 +361,15 @@ public partial class BlockAccessListManager
         || address == Eip8282Constants.BuilderDepositRequestPredeployAddress
         || address == Eip8282Constants.BuilderExitRequestPredeployAddress;
 
+    private static ulong SystemContractStorageReads(ReadOnlyBlockAccessList blockAccessList)
+        => StorageReads(blockAccessList, Eip7002Constants.WithdrawalRequestPredeployAddress)
+        + StorageReads(blockAccessList, Eip7251Constants.ConsolidationRequestPredeployAddress)
+        + StorageReads(blockAccessList, Eip8282Constants.BuilderDepositRequestPredeployAddress)
+        + StorageReads(blockAccessList, Eip8282Constants.BuilderExitRequestPredeployAddress);
+
+    private static ulong StorageReads(ReadOnlyBlockAccessList blockAccessList, Address address)
+        => (ulong)(blockAccessList.GetAccountChanges(address)?.StorageReads.Length ?? 0);
+
     private static bool IsToleratedGeneratedOnlyAccount(Address address, uint index, bool hasNoChangesAtIndex, bool hasChargeableReads)
         => hasNoChangesAtIndex
         && ((index == 0 && address == Address.SystemUser && !hasChargeableReads) || hasChargeableReads);
