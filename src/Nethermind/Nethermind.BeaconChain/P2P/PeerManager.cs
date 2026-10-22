@@ -1978,8 +1978,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return;
         }
 
-        // Session closure or another drop already owns the disconnect bookkeeping.
-        if (!removed)
+        // A peer refused at admission was never pooled, so only a closed session or an earlier drop owns the disconnect.
+        if (!removed && peer.RemovedOnClose || !peer.RecordDrop(reason, detail, unresponsive))
         {
             return;
         }
@@ -1987,8 +1987,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         if (_logger.IsInfo) _logger.Info($"Dropping beacon chain peer {peer.Id}: {detail}");
         Interlocked.Increment(ref Metrics.PeersDroppedCount);
         Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(GoodbyeReasonName(reason)));
-        _dialHistory.Record(peer.Id, connected: false);
-        peer.RecordDrop(reason, detail, unresponsive);
+        if (removed) _dialHistory.Record(peer.Id, connected: false);
         await _p2p.GoodbyeAsync(peer.Session, reason, token);
         try
         {
@@ -2502,13 +2501,16 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         /// <summary>Records our drop of the peer like <see cref="RecordClose"/>: as a fault disconnect when <paramref name="reason"/> is one or the peer violated the protocol since its last passing health check.</summary>
-        public void RecordDrop(ulong reason, string detail, bool unresponsive)
+        /// <returns><c>false</c> when the peer's close or drop was already recorded.</returns>
+        public bool RecordDrop(ulong reason, string detail, bool unresponsive)
         {
             lock (_closeLock)
             {
+                if (_closeRecorded) return false;
                 _closeRecorded = true;
                 _closeCountedAsFault = reason == GoodbyeReason.Fault || ViolatedProtocolSinceLastHealthyCheck;
                 manager.RecordDisconnect(this, _closeCountedAsFault ? GoodbyeReason.Fault : reason, detail, unresponsive && !_closeCountedAsFault);
+                return true;
             }
         }
 
