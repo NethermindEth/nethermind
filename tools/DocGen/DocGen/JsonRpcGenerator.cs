@@ -67,12 +67,13 @@ internal static class JsonRpcGenerator
         [typeof(DateTimeOffset)] = "_string_ (date-time)",
         [typeof(double)] = "_number_",
         [typeof(double[])] = "array of _number_",
+        [typeof(FilterAddress)] = "_string_ (address), array of _string_ (address), or `null`",
         [typeof(FilterBlockBound)] = $"_string_ (block number or hash or either of {_blockTags}) or _integer_ (block number)",
+        [typeof(FilterBlockHash)] = "_string_ (hash, not allowed with `fromBlock` or `toBlock`)",
+        [typeof(FilterTopics)] = "array of (_string_ (hash), array of _string_ (hash), or `null`)",
         [typeof(Hash256)] = "_string_ (hash)",
         [typeof(Hash256[])] = "array of _string_ (hash)",
-        [typeof(HashSet<AddressAsKey>)] = "_string_ (address), array of _string_ (address), or `null`",
         [typeof(HexBytes)] = "_string_ (hex data)",
-        [typeof(IEnumerable<Hash256[]>)] = "array of (_string_ (hash), array of _string_ (hash), or `null`)",
         [typeof(int)] = "_integer_",
         [typeof(IPAddress)] = "_string_",
         [typeof(long)] = "_string_ (hex integer)",
@@ -152,9 +153,9 @@ internal static class JsonRpcGenerator
         // Read by Filter.ReadJson rather than a converter, so keyed by the type
         [typeof(Filter)] =
         [
-            ("address", typeof(HashSet<AddressAsKey>), null), ("blockHash", typeof(Hash256), null),
+            ("address", typeof(FilterAddress), null), ("blockHash", typeof(FilterBlockHash), null),
             ("fromBlock", typeof(FilterBlockBound), null), ("toBlock", typeof(FilterBlockBound), null),
-            ("topics", typeof(IEnumerable<Hash256[]>), null), ("useIndex", typeof(bool), null),
+            ("topics", typeof(FilterTopics), null), ("useIndex", typeof(bool), null),
         ],
         [typeof(ProofJsonConverter)] =
         [
@@ -169,8 +170,11 @@ internal static class JsonRpcGenerator
         ],
     };
 
-    // Filter.ReadJson parses its range bounds from their text, so they take no EIP-1898 object
+    // Markers for the forms Filter.ReadJson accepts; its range bounds are parsed from their text, so they take no EIP-1898 object
+    private sealed class FilterAddress;
     private sealed class FilterBlockBound;
+    private sealed class FilterBlockHash;
+    private sealed class FilterTopics;
 
     internal static void Generate(string path)
     {

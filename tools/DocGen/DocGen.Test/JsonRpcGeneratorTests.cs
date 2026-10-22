@@ -69,7 +69,7 @@ public class JsonRpcGeneratorTests
     [TestCase("eth", "eth_getLogs", "- `topics`: array of (_string_ (hash), array of _string_ (hash), or `null`)", "EIP-1898")]
     [TestCase("eth", "eth_newFilter", "- `address`: _string_ (address), array of _string_ (address), or `null`", "EIP-1898")]
     [TestCase("eth", "eth_newFilter", "- `fromBlock`: _string_ (block number or hash or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`) or _integer_ (block number)", "- `topics`: array of array")]
-    [TestCase("eth", "eth_newFilter", "- `blockHash`: _string_ (hash)", "- `topics`: array of array")]
+    [TestCase("eth", "eth_newFilter", "- `blockHash`: _string_ (hash, not allowed with `fromBlock` or `toBlock`)", "- `topics`: array of array")]
     [TestCase("eth", "eth_getStorageValues", "1. `requests`: map of address to array of _string_ (hex storage slot), 1 to 1024 slots in total", "- `entries`:")]
     [TestCase("trace", "trace_filter", "- `fromBlock`: _string_ (block number or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`), _object_ (EIP-1898 `{blockNumber}`)", "requireCanonical")]
     public void Parameters_document_accepted_input(string ns, string method, string documented, string notDocumented)
