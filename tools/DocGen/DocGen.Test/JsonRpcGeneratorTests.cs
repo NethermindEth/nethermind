@@ -115,6 +115,8 @@ public class JsonRpcGeneratorTests
         yield return new TestCaseData("parity", "parity_pendingTransactions",
             new ParityTransaction(new Transaction { SenderAddress = Address.Zero, Signature = new Signature(1, 1, 27) }, [], null!))
             .SetArgDisplayNames("pending contract creation");
+        yield return new TestCaseData("eth", "eth_getBlockByNumber", new BlockForRpc())
+            .SetArgDisplayNames("pending block");
         yield return new TestCaseData("eth", "eth_getTransactionReceipt", new ReceiptForRpc())
             .SetArgDisplayNames("receipt without recipient");
         yield return new TestCaseData("trace", "trace_get", ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace
