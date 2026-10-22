@@ -26,7 +26,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 
     public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
-        Dictionary<Address, ISet<UInt256>?> dictionary = [];
+        Dictionary<Address, HashSet<UInt256>?> dictionary = [];
         foreach (Address address in accessedAddresses)
         {
             dictionary.Add(address, null);
@@ -34,7 +34,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 
         foreach (StorageCell storageCell in accessedStorageCells)
         {
-            ref ISet<UInt256>? set = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, storageCell.Address, out _);
+            ref HashSet<UInt256>? set = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, storageCell.Address, out _);
             set ??= new HashSet<UInt256>();
             set.Add(storageCell.Index);
         }
@@ -42,14 +42,14 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
         for (int i = 0; i < addressesToOptimize.Length; i++)
         {
             Address address = addressesToOptimize[i];
-            if (dictionary.TryGetValue(address, out ISet<UInt256>? set) && set is null)
+            if (dictionary.TryGetValue(address, out HashSet<UInt256>? set) && set is null)
             {
                 dictionary.Remove(address);
             }
         }
 
         AccessList.Builder builder = new();
-        foreach ((Address address, ISet<UInt256>? storageKeys) in dictionary)
+        foreach ((Address address, HashSet<UInt256>? storageKeys) in dictionary)
         {
             builder.AddAddress(address);
             if (storageKeys is not null)
