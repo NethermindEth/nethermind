@@ -26,6 +26,7 @@ namespace Nethermind.Evm.Test;
 [TestFixture(true, false)]
 [TestFixture(false, false)]
 [TestFixture(true, true)]
+[TestFixture(false, true)]
 [Parallelizable(ParallelScope.All)]
 public class Eip7708Tests(bool eip7708Enabled, bool amsterdam)
 {

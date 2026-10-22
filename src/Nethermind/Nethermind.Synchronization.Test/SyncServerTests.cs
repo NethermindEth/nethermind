@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -492,7 +493,8 @@ public class SyncServerTests
         ConfigurePeers(ctx, [peer1, peer2]);
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer2.SyncPeer);
-        await Task.Delay(100); // notifications fire on separate task
+        // Notifications fire on a separate task, and one that starts after Close() is dropped, so wait for the delivery.
+        await Wait.ForCondition(() => remoteServer2.ReceivedCalls().Any(static c => c.GetMethodInfo().Name == nameof(ISyncServer.AddNewBlock)), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(10));
         await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
         remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
         remoteServer2.Received().AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>());
@@ -986,10 +988,11 @@ public class SyncServerTests
             using ManualResetEventSlim start = new(false);
             ConcurrentQueue<Exception> failures = new();
 
-            Task[] tasks = new Task[threadCount];
+            // Dedicated threads: eight CPU-bound thread-pool bodies would hold the pool the parallel fixtures share.
+            Thread[] racers = new Thread[threadCount];
             for (int t = 0; t < threadCount; t++)
             {
-                tasks[t] = Task.Run(() =>
+                racers[t] = new Thread(() =>
                 {
                     // Rendezvous so every thread is inside the swap window together rather than in sequence.
                     start.Wait();
@@ -1005,10 +1008,11 @@ public class SyncServerTests
                         failures.Enqueue(e);
                     }
                 });
+                racers[t].Start();
             }
 
             start.Set();
-            Task.WaitAll(tasks);
+            foreach (Thread racer in racers) racer.Join();
 
             Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures.Select(static e => e.ToString())));
         }

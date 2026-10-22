@@ -35,8 +35,9 @@ public class FlatStorageTreeDeleteWarmupTests
     private const int DeletedSlots = 64;
 
     // The per-block node cache is direct-mapped, so a few warmed nodes are evicted by others whatever is written;
-    // a delete must not add the nodes its collapse needs on top of that.
-    private const int CollisionAllowance = 4;
+    // a delete must not add the nodes its collapse needs on top of that. Slots are hashed with a per-process seed,
+    // so the collisions vary run to run: a flagged delete has read up to 5 more nodes, an unflagged one always 25 more.
+    private const int CollisionAllowance = 12;
 
     private static readonly Address Contract = TestItem.AddressA;
 

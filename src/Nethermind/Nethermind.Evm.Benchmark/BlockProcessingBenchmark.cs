@@ -20,15 +20,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Container;
-using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Benchmark;
 
@@ -122,9 +117,6 @@ public class BlockProcessingBenchmark
         .PushData(0x01)
         .Op(Instruction.STOP)
         .Done;
-
-    // Minimal bytecode (STOP) for system contract stubs
-    private static readonly byte[] StopCode = [0x00];
 
     /// <summary>How many times the SLOAD scenario reads the same slot per call.</summary>
     private const int SloadsPerCall = 2000;
@@ -477,20 +469,7 @@ public class BlockProcessingBenchmark
 
         // Single world state — BranchProcessor.Process() manages scope internally,
         // matching the live client's block processing path.
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        TestStateHeaderProvider stateHeaderProvider = new();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, NullLogManager.Instance);
-        IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
-
-        IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
-        IMainProcessingModule[] mainProcessingModules = _container.Resolve<IMainProcessingModule[]>();
-        _processingScope = _container.BeginLifetimeScope(b =>
-        {
-            b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
-            b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
-            b.AddModule(validationModules);
-            b.AddModule(mainProcessingModules);
-        });
+        _processingScope = BlockProcessingBenchmarkSetup.BeginProcessingScope(_container, out TestStateHeaderProvider stateHeaderProvider);
 
         IWorldState stateProvider = _processingScope.Resolve<IWorldState>();
 
@@ -539,16 +518,7 @@ public class BlockProcessingBenchmark
             stateProvider.CreateAccount(ExtCodeSizeCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(ExtCodeSizeCallerAddress, ExtCodeSizeSameAddressCode, Spec);
 
-            stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
-            stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
-            stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
-            stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
-
-            // Amsterdam reads two more system contracts at the end of every block.
-            stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, UInt256.Zero);
-            stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, StopCode, Spec);
-            stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, UInt256.Zero);
-            stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, StopCode, Spec);
+            BlockProcessingBenchmarkSetup.SeedSystemContracts(stateProvider, Spec);
 
             stateProvider.Commit(Spec);
             stateProvider.CommitTree(0);
@@ -590,15 +560,7 @@ public class BlockProcessingBenchmark
         {
             BlockReceiptsTracer tracer = new();
             _branchProcessor.Process(_parentHeader, [block], ProcessingOptions.NoValidation, tracer);
-
-            foreach (TxReceipt receipt in tracer.TxReceipts)
-            {
-                if (receipt.StatusCode != StatusCode.Success)
-                {
-                    throw new InvalidOperationException(
-                        $"Scenario transaction to {receipt.Recipient?.ToString() ?? "create"} failed under {Fork} ({receipt.Error}) - the benchmark number would be meaningless.");
-                }
-            }
+            BlockProcessingBenchmarkSetup.EnsureAllSucceeded(tracer, $"under {Fork}");
         }
     }
 

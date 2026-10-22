@@ -26,7 +26,7 @@ public static class ScopeBalApplier
     /// <param name="cancellationToken">Checked before each account and before the storage writes.</param>
     public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal, ILogManager logManager, CancellationToken cancellationToken = default)
     {
-        ILogger logger = logManager.GetClassLogger(typeof(ScopeBalApplier));
+        LazyLogger logger = new(logManager);
         IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
         // Clones deploying the same code in one block would otherwise all write it: ContainsCode only sees persisted code.
         ArrayPoolList<ValueHash256>? writtenCodeHashes = null;
@@ -39,7 +39,7 @@ public static class ScopeBalApplier
                 try
                 {
                     // Disposed at the end of this block, so unclaimed storage batches are disposed before the parent.
-                    using StorageBatches storageBatches = new(logger);
+                    using StorageBatches storageBatches = new(logManager);
                     foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                     {
                         if (cancellationToken.IsCancellationRequested) break;
@@ -66,7 +66,7 @@ public static class ScopeBalApplier
                             }
                             else
                             {
-                                ReportMissingCode(logger, address, codeChange.CodeHash);
+                                ReportMissingCode(ref logger, address, codeChange.CodeHash);
                             }
                         }
 
@@ -84,7 +84,7 @@ public static class ScopeBalApplier
                 }
                 finally
                 {
-                    Dispose(writeBatch, failed, logger);
+                    Dispose(writeBatch, failed, ref logger);
                 }
             }
             catch
@@ -95,7 +95,7 @@ public static class ScopeBalApplier
             }
             finally
             {
-                Dispose(codeSetter, failed, logger);
+                Dispose(codeSetter, failed, ref logger);
             }
 
             if (writtenCodeHashes is null) return;
@@ -115,7 +115,7 @@ public static class ScopeBalApplier
     /// After a failure, a second fault while disposing must not replace the original exception, so it is logged and
     /// swallowed. Disposal commits writes, so on success its failure propagates.
     /// </remarks>
-    private static void Dispose(IDisposable? disposable, bool failed, in ILogger logger)
+    private static void Dispose(IDisposable? disposable, bool failed, ref LazyLogger logger)
     {
         if (!failed)
         {
@@ -126,7 +126,8 @@ public static class ScopeBalApplier
         try { disposable?.Dispose(); }
         catch (Exception e)
         {
-            if (logger.IsWarn) logger.Warn($"Swallowed disposal failure of {disposable!.GetType().Name} after a failed BAL apply: {e}");
+            ILogger log = logger.Get();
+            if (log.IsWarn) log.Warn($"Swallowed disposal failure of {disposable!.GetType().Name} after a failed BAL apply: {e}");
         }
     }
 
@@ -135,16 +136,29 @@ public static class ScopeBalApplier
     /// code database being healed.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ReportMissingCode(in ILogger logger, Address address, in ValueHash256 codeHash)
+    private static void ReportMissingCode(ref LazyLogger logger, Address address, in ValueHash256 codeHash)
     {
         Metrics.IncrementBalAdoptedCodeMissing();
-        if (logger.IsWarn) logger.Warn($"Block access list adopts code {codeHash} for {address}, but its bytecode is neither in the code database nor deposited in the block.");
+        ILogger log = logger.Get();
+        if (log.IsWarn) log.Warn($"Block access list adopts code {codeHash} for {address}, but its bytecode is neither in the code database nor deposited in the block.");
     }
 
-    private sealed class StorageBatches(ILogger logger) : IDisposable
+    /// <summary>
+    /// Resolves the logger on first use and reuses it for later reports from the same owner, so a successful apply never
+    /// looks it up. <see cref="StorageBatches"/> holds its own, so a failed apply resolves it at most twice.
+    /// </summary>
+    private struct LazyLogger(ILogManager logManager)
+    {
+        private ILogger? _logger;
+
+        public ILogger Get() => _logger ??= logManager.GetClassLogger(typeof(ScopeBalApplier));
+    }
+
+    private sealed class StorageBatches(ILogManager logManager) : IDisposable
     {
         private const int MinParallelBatches = 3;
         private bool _applied;
+        private LazyLogger _logger = new(logManager);
         private readonly ArrayPoolList<(IWorldStateScopeProvider.IStorageWriteBatch? Batch, BalAccountDelta Delta)> _batches = new(0);
 
         public void Add(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, in BalAccountDelta delta, bool existed)
@@ -202,7 +216,7 @@ public static class ScopeBalApplier
                 // The parallel loop joins before returning or throwing; only unclaimed batches remain owned here.
                 foreach ((IWorldStateScopeProvider.IStorageWriteBatch? batch, _) in _batches.AsSpan())
                 {
-                    if (batch is not null) ScopeBalApplier.Dispose(batch, failed: !_applied, logger);
+                    if (batch is not null) ScopeBalApplier.Dispose(batch, failed: !_applied, ref _logger);
                 }
             }
             finally
