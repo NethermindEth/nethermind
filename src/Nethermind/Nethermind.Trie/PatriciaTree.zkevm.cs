@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -27,6 +29,12 @@ public partial class PatriciaTree
     /// the clear is a second index computation and three stores per level of every write's climb, and a memset for
     /// every write that ends its climb early.</remarks>
     private static bool ReleasesPoppedFrames => false;
+
+    // The state and storage tries key by keccak.
+    private const int SecuredKeyNibbles = 2 * Hash256.Size;
+
+    // The key length of the last write that deleted a leaf, which alone collapses a branch.
+    private int _deletedKeyNibbles;
 
     /// <summary>Whether a trie write that changes a level unseals every ancestor still on its stack at once.</summary>
     /// <remarks>
@@ -115,6 +123,7 @@ public partial class PatriciaTree
                 int commonPrefixLength = isCompactLeaf
                     ? Nibbles.CommonPrefixLength(compactKey, compactStart, key, consumed, Math.Min(keyLength, remaining))
                     : CommonPrefixLength(nibbleKey!, key, consumed, Math.Min(keyLength, remaining));
+                if (nibbleCount == SecuredKeyNibbles && (node.IsExtension ? keyLength >= remaining : keyLength != remaining)) ThrowPathExceedsKey();
 
                 if (commonPrefixLength == keyLength)
                 {
@@ -135,6 +144,7 @@ public partial class PatriciaTree
 
                     if (value.IsNullOrEmpty)
                     {
+                        _deletedKeyNibbles = nibbleCount;
                         node = null;
                     }
                     else if (node.Value.AsSpan().SequenceEqual(value.AsSpan()))
@@ -189,6 +199,7 @@ public partial class PatriciaTree
                 break;
             }
 
+            if (consumed == nibbleCount) ThrowPathExceedsKey();
             int nib = Nibbles.NibbleAt(key, consumed);
             TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
             traverseStack.Push(new TraverseStackFrame()
@@ -237,17 +248,28 @@ public partial class PatriciaTree
             if (data is BranchData)
             {
                 // A value held by a branch is not supported, as in GetNew.
-                if (consumed == nibbleCount) return default;
+                if (consumed == nibbleCount)
+                {
+                    if (nibbleCount == SecuredKeyNibbles) ThrowPathExceedsKey();
+                    return default;
+                }
+
                 node = node.GetChildWithChildPath(TrieStore, ref path, Nibbles.NibbleAt(key, consumed++));
             }
             else if (data is LeafData leaf)
             {
-                return leaf.KeyIsSuffixOf(key, nibbleCount - consumed) ? leaf.Value : default;
+                if (leaf.KeyIsSuffixOf(key, nibbleCount - consumed)) return leaf.Value;
+                if (nibbleCount == SecuredKeyNibbles && leaf.KeyNibbleCount != nibbleCount - consumed) ThrowPathExceedsKey();
+                return default;
             }
             else
             {
                 byte[] extensionKey = node.Key!;
-                if (extensionKey.Length > nibbleCount - consumed) return default;
+                if (extensionKey.Length >= nibbleCount - consumed)
+                {
+                    if (nibbleCount == SecuredKeyNibbles) ThrowPathExceedsKey();
+                    if (extensionKey.Length > nibbleCount - consumed) return default;
+                }
                 for (int i = 0; i < extensionKey.Length; i++)
                 {
                     if (extensionKey[i] != Nibbles.NibbleAt(key, consumed + i)) return default;
@@ -260,6 +282,22 @@ public partial class PatriciaTree
 
         return default;
     }
+
+    /// <remarks>Only in a secured trie. The sibling the branch collapsed into sits one level
+    /// below it, so its path is checked by checking the collapsed node's at the branch's depth.</remarks>
+    partial void ValidateCollapsedBranch(TraverseStack ancestors, TrieNode? node)
+    {
+        if (node is null || _deletedKeyNibbles != SecuredKeyNibbles) return;
+
+        int depth = 0;
+        foreach (TraverseStackFrame frame in ancestors.Frames) depth += frame.Node.IsExtension ? frame.Node.Key!.Length : 1;
+        int remaining = SecuredKeyNibbles - depth;
+        if (node.IsBranch ? remaining <= 0 : node.IsLeaf ? node.Key!.Length != remaining : node.Key!.Length >= remaining) ThrowPathExceedsKey();
+    }
+
+    /// <summary>Rejects a secured trie node whose path does not end at the length of the hashed keys.</summary>
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowPathExceedsKey() => throw new TrieException("A witness trie path does not end at the length of its hashed keys");
 
     partial void AdjustBulkSetFlags(ref Flags flags) => flags |= Flags.DoNotParallelize;
 
