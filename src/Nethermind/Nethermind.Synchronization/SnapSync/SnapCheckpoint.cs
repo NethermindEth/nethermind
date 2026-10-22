@@ -31,10 +31,19 @@ public sealed class SnapCheckpoint
     /// <summary>The hash of the block at <see cref="AnchorNumber"/>.</summary>
     public required Hash256 AnchorHash { get; init; }
 
+    /// <summary>How far each account range partition got, one entry per partition.</summary>
     public required AccountRangeProgress[] Partitions { get; init; }
+
+    /// <summary>The accounts whose whole storage is still to download.</summary>
     public required PathWithAccount[] StoragesToRetrieve { get; init; }
+
+    /// <summary>The storage range requests still to send, such as the continuation of a large storage or a request dropped in flight at a shutdown.</summary>
     public required StorageRangeProgress[] StorageRanges { get; init; }
+
+    /// <summary>The accounts whose storage did not verify against the root it was requested with, and is downloaded again from its starting hash.</summary>
     public required AccountWithStorageStartingHash[] AccountsToRefresh { get; init; }
+
+    /// <summary>The hashes of the bytecodes still to download.</summary>
     public required ValueHash256[] CodesToRetrieve { get; init; }
 
     /// <summary>The accounts whose storage healing has to verify, see <c>IStateSyncPivot.UpdatedStorages</c>.</summary>
@@ -68,6 +77,11 @@ public sealed class SnapCheckpoint
         }
     }
 
+    /// <summary>Serializes the checkpoint for <see cref="Decode"/>.</summary>
+    /// <remarks>
+    /// The record starts with a format version, and <see cref="Decode"/> rejects any other version, so a change to the
+    /// layout has to bump it: a checkpoint written by another version is then discarded and the sync starts over.
+    /// </remarks>
     public byte[] Encode()
     {
         ArrayBufferWriter<byte> writer = new();
@@ -290,4 +304,7 @@ public sealed class SnapCheckpoint
 public readonly record struct AccountRangeProgress(ValueHash256 NextAccountPath, ValueHash256 AccountPathLimit, bool MoreAccountsToRight);
 
 /// <summary>A queued storage range request.</summary>
+/// <param name="Accounts">The accounts the request covers, in path order.</param>
+/// <param name="StartingHash">The first slot hash to fetch for the first account, or <c>null</c> for its whole storage.</param>
+/// <param name="LimitHash">The last slot hash to fetch for the last account, or <c>null</c> for the rest of its storage.</param>
 public readonly record struct StorageRangeProgress(PathWithAccount[] Accounts, ValueHash256? StartingHash, ValueHash256? LimitHash);

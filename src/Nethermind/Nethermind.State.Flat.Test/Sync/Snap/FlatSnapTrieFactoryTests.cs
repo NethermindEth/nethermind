@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -228,12 +229,13 @@ public class FlatSnapTrieFactoryTests
         ValueHash256 inFinishedPartition = Path("1");
         ValueHash256 storageQueued = Path("2");
         ValueHash256 storageQueuedFromSlot8 = Path("3");
+        ValueHash256 refreshedFromSlot8 = Path("4");
         ValueHash256 slot1 = Path("1");
         ValueHash256 slotC = Path("c");
 
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
-            foreach (ValueHash256 account in (ValueHash256[])[LastAccount, writtenAfter, inFinishedPartition, storageQueued, storageQueuedFromSlot8])
+            foreach (ValueHash256 account in (ValueHash256[])[LastAccount, writtenAfter, inFinishedPartition, storageQueued, storageQueuedFromSlot8, refreshedFromSlot8])
             {
                 batch.SetAccountRaw(account, new Account(1));
                 batch.SetStorageRawEncoded(account, slot1, SlotRlp);
@@ -253,7 +255,8 @@ public class FlatSnapTrieFactoryTests
 
         CreateResumingFactory(persistence, db).SaveCheckpoint(CreateCheckpoint(
             storagesToRetrieve: [new PathWithAccount(storageQueued, new Account(1))],
-            storageRanges: [new StorageRangeProgress([new PathWithAccount(storageQueuedFromSlot8, new Account(1))], Path("8"), null)]));
+            storageRanges: [new StorageRangeProgress([new PathWithAccount(storageQueuedFromSlot8, new Account(1))], Path("8"), null)],
+            accountsToRefresh: [new AccountWithStorageStartingHash { PathAndAccount = new PathWithAccount(refreshedFromSlot8, new Account(1)), StorageStartingHash = Path("8"), StorageHashLimit = ValueKeccak.MaxValue }]));
 
         FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db);
         factory.EnsureInitialize();
@@ -264,7 +267,7 @@ public class FlatSnapTrieFactoryTests
             Assert.That(factory.LoadCheckpoint(), Is.Not.Null, "the checkpoint is what the resumed run starts from");
 
             foreach ((ValueHash256 account, bool kept) in (ValueTuple<ValueHash256, bool>[])
-                     [(LastAccount, true), (writtenAfter, false), (inFinishedPartition, true), (storageQueued, true), (storageQueuedFromSlot8, true)])
+                     [(LastAccount, true), (writtenAfter, false), (inFinishedPartition, true), (storageQueued, true), (storageQueuedFromSlot8, true), (refreshedFromSlot8, true)])
             {
                 Assert.That(reader.GetAccountRaw(account) is not null, Is.EqualTo(kept), $"account {account}");
             }
@@ -276,6 +279,7 @@ public class FlatSnapTrieFactoryTests
                          (inFinishedPartition, slot1, true), (inFinishedPartition, slotC, true),
                          (storageQueued, slot1, false), (storageQueued, slotC, false),
                          (storageQueuedFromSlot8, slot1, true), (storageQueuedFromSlot8, slotC, false),
+                         (refreshedFromSlot8, slot1, true), (refreshedFromSlot8, slotC, false),
                      ])
             {
                 UInt256 value = default;
@@ -290,6 +294,7 @@ public class FlatSnapTrieFactoryTests
                          (storageQueued, []),
                          // The root and the node at 8 are on the path to slot 8, the ones at c are past it.
                          (storageQueuedFromSlot8, ["1", "1111111111111111"]),
+                         (refreshedFromSlot8, ["1", "1111111111111111"]),
                      ])
             {
                 foreach (string node in StorageNodePaths)
@@ -356,6 +361,50 @@ public class FlatSnapTrieFactoryTests
         Assert.That(factory.LoadCheckpoint(), Is.Null);
     }
 
+    [Test]
+    public void SaveCheckpoint_KeepsTheLastCheckpoint_WhenTheWritesItCoversFailToFlush()
+    {
+        MemColumnsDb<FlatDbColumns> columns = new();
+        FlushFailingDb accounts = new();
+        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(c => c.Arg<FlatDbColumns>() == FlatDbColumns.Account ? accounts : columns.GetColumnDb(c.Arg<FlatDbColumns>()));
+        FlatSnapTrieFactory factory = CreateResumingFactory(Substitute.For<IPersistence>(), db);
+        factory.SaveCheckpoint(CreateCheckpoint());
+
+        accounts.FailFlush = true;
+
+        Assert.Throws<InvalidOperationException>(() => factory.SaveCheckpoint(CreateCheckpoint(anchorHash: TestItem.KeccakB)));
+        Assert.That(factory.LoadCheckpoint()?.AnchorHash, Is.EqualTo(TestItem.KeccakA));
+    }
+
+    // RocksDB commits a batch without the WAL every few hundred writes, which bounds the memory a large discard takes.
+    [Test]
+    public void EnsureInitialize_Resuming_DeletesWithoutTheWal([Values(FlatLayout.Flat, FlatLayout.FlatInTrie)] FlatLayout layout)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> inner = new();
+        DeleteFlagsSpyColumnsDb db = new(inner);
+        IPersistence persistence = CreatePersistence(db, layout);
+        ValueHash256 writtenAfter = Path("a");
+        ValueHash256 storageQueued = Path("2");
+        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            foreach (ValueHash256 account in (ValueHash256[])[writtenAfter, storageQueued])
+            {
+                batch.SetAccountRaw(account, new Account(1));
+                batch.SetStorageRawEncoded(account, Path("1"), SlotRlp);
+                batch.SetStorageTrieNode(account.ToCommitment(), TreePath.FromHexString("1"), BranchRlp);
+            }
+
+            batch.SetStateTrieNode(TreePath.FromHexString("a"), BranchRlp);
+        }
+
+        CreateResumingFactory(persistence, db).SaveCheckpoint(CreateCheckpoint(storagesToRetrieve: [new PathWithAccount(storageQueued, new Account(1))]));
+        CreateResumingFactory(persistence, db).EnsureInitialize();
+
+        Assert.That(db.DeleteFlags, Is.Not.Empty);
+        Assert.That(db.DeleteFlags, Has.All.Matches<WriteFlags>(static flags => flags.HasFlag(WriteFlags.DisableWAL)));
+    }
+
     private static ValueHash256 Path(string hexPrefix) => new(hexPrefix.PadRight(64, '0'));
 
     private static byte[] BuildBranchRlp()
@@ -388,10 +437,14 @@ public class FlatSnapTrieFactoryTests
             new SyncConfig { SnapResume = snapResume, SnapSyncAccountRangePartitionCount = partitionCount }, LimboLogs.Instance);
 
     /// <summary>Two account partitions: the first finished, the second downloaded up to <see cref="LastAccount"/>.</summary>
-    private static SnapCheckpoint CreateCheckpoint(PathWithAccount[]? storagesToRetrieve = null, StorageRangeProgress[]? storageRanges = null) => new()
+    private static SnapCheckpoint CreateCheckpoint(
+        PathWithAccount[]? storagesToRetrieve = null,
+        StorageRangeProgress[]? storageRanges = null,
+        AccountWithStorageStartingHash[]? accountsToRefresh = null,
+        Hash256? anchorHash = null) => new()
     {
         AnchorNumber = 1,
-        AnchorHash = TestItem.KeccakA,
+        AnchorHash = anchorHash ?? TestItem.KeccakA,
         Partitions =
         [
             new AccountRangeProgress(FirstPartitionLimit, FirstPartitionLimit, MoreAccountsToRight: false),
@@ -399,8 +452,53 @@ public class FlatSnapTrieFactoryTests
         ],
         StoragesToRetrieve = storagesToRetrieve ?? [],
         StorageRanges = storageRanges ?? [],
-        AccountsToRefresh = [],
+        AccountsToRefresh = accountsToRefresh ?? [],
         CodesToRetrieve = [],
         UpdatedStorages = [],
     };
+
+    private sealed class FlushFailingDb : MemDb, IDbMeta
+    {
+        public bool FailFlush { get; set; }
+
+        void IDbMeta.FlushOrThrow()
+        {
+            if (FailFlush) throw new InvalidOperationException("Flush failed");
+        }
+    }
+
+    /// <summary>Records the write flags of every delete staged through its batches.</summary>
+    private sealed class DeleteFlagsSpyColumnsDb(IColumnsDb<FlatDbColumns> inner) : IColumnsDb<FlatDbColumns>
+    {
+        public List<WriteFlags> DeleteFlags { get; } = [];
+
+        public IDb GetColumnDb(FlatDbColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatDbColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnsWriteBatch<FlatDbColumns> StartWriteBatch() => new SpyColumnsWriteBatch(inner.StartWriteBatch(), DeleteFlags);
+        public IColumnDbSnapshot<FlatDbColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void Dispose() { }
+
+        private sealed class SpyColumnsWriteBatch(IColumnsWriteBatch<FlatDbColumns> inner, List<WriteFlags> deleteFlags) : IColumnsWriteBatch<FlatDbColumns>
+        {
+            public IWriteBatch GetColumnBatch(FlatDbColumns key) => new SpyWriteBatch(inner.GetColumnBatch(key), deleteFlags);
+            public void Clear() => inner.Clear();
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class SpyWriteBatch(IWriteBatch inner, List<WriteFlags> deleteFlags) : IWriteBatch
+        {
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                if (value is null) deleteFlags.Add(flags);
+                inner.Set(key, value, flags);
+            }
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => inner.Merge(key, value, flags);
+            public void Clear() => inner.Clear();
+
+            // The column batches are owned and committed by the columns batch this view was taken from.
+            public void Dispose() { }
+        }
+    }
 }

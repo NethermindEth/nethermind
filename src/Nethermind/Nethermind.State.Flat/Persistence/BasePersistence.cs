@@ -276,38 +276,42 @@ public static class BasePersistence
     /// <summary>
     /// Scan a key range and delete all entries matching the expected key length.
     /// </summary>
+    /// <param name="flags">The batch's write flags. Without the WAL a batch commits every few hundred writes, deletes included, which bounds a long scan.</param>
     internal static void DeleteMatchingKeys(
         ISortedKeyValueStore snap,
         IWriteBatch batch,
         ReadOnlySpan<byte> firstKey,
         ReadOnlySpan<byte> lastKey,
-        int expectedKeyLength)
+        int expectedKeyLength,
+        WriteFlags flags)
     {
         using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
         while (view.MoveNext())
         {
             if (view.CurrentKey.Length == expectedKeyLength)
-                batch.Remove(view.CurrentKey);
+                batch.Set(view.CurrentKey, null, flags);
         }
     }
 
     /// <summary>
     /// Scan a key range and delete entries matching the address suffix at the given offset.
     /// </summary>
+    /// <param name="flags">The batch's write flags. Without the WAL a batch commits every few hundred writes, deletes included, which bounds a long scan.</param>
     internal static void DeleteMatchingKeys(
         ISortedKeyValueStore snap,
         IWriteBatch batch,
         ReadOnlySpan<byte> firstKey,
         ReadOnlySpan<byte> lastKey,
         int suffixOffset,
-        ReadOnlySpan<byte> expectedSuffix)
+        ReadOnlySpan<byte> expectedSuffix,
+        WriteFlags flags)
     {
         using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
         while (view.MoveNext())
         {
             ReadOnlySpan<byte> key = view.CurrentKey;
             if (key.Length >= suffixOffset + expectedSuffix.Length && Bytes.AreEqual(key[suffixOffset..], expectedSuffix))
-                batch.Remove(view.CurrentKey);
+                batch.Set(view.CurrentKey, null, flags);
         }
     }
 
@@ -316,6 +320,7 @@ public static class BasePersistence
     /// account is within <c>[fromAccount, toAccount]</c>. The account is read as <paramref name="prefixLength"/> bytes at
     /// <paramref name="prefixOffset"/> followed by the rest of its bytes at <paramref name="suffixOffset"/>.
     /// </summary>
+    /// <param name="flags">The batch's write flags. Without the WAL a batch commits every few hundred writes, deletes included, which bounds a long scan.</param>
     [SkipLocalsInit]
     internal static void DeleteKeysOfAccountRange(
         ISortedKeyValueStore snap,
@@ -327,7 +332,8 @@ public static class BasePersistence
         int prefixLength,
         int suffixOffset,
         scoped ReadOnlySpan<byte> fromAccount,
-        scoped ReadOnlySpan<byte> toAccount)
+        scoped ReadOnlySpan<byte> toAccount,
+        WriteFlags flags)
     {
         const int accountLength = 20;
         Span<byte> account = stackalloc byte[accountLength];
@@ -340,7 +346,7 @@ public static class BasePersistence
             key.Slice(prefixOffset, prefixLength).CopyTo(account);
             key.Slice(suffixOffset, accountLength - prefixLength).CopyTo(account[prefixLength..]);
             if (account.SequenceCompareTo(fromAccount) >= 0 && account.SequenceCompareTo(toAccount) <= 0)
-                batch.Remove(key);
+                batch.Set(key, null, flags);
         }
     }
 

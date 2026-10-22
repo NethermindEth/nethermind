@@ -103,9 +103,12 @@ public class FlatSnapTrieFactory(
     {
         if (checkpoint is not null)
         {
-            // Snap writes skip the WAL, so only a flush makes the data the checkpoint covers durable.
+            // Snap writes skip the WAL, so only a flush makes the data the checkpoint covers durable. The persistence
+            // flush drains the trie node log but only logs a column that fails to flush, so each column is flushed
+            // again, throwing, before a checkpoint can claim the data. Codes are written with the WAL.
             persistence.Flush();
-            codeDb.Flush();
+            foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>()) flatDb.GetColumnDb(column).FlushOrThrow();
+            codeDb.SyncWal();
         }
 
         BasePersistence.WriteSnapCheckpoint(flatDb, checkpoint?.Encode());
