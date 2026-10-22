@@ -60,8 +60,19 @@ public static class KnownHeaders
     public static async Task EnsureHeaderlessHeightsLinkToKnownHeaders(IBlockTree blockTree, ulong from, ulong to, Func<ulong, Task<Block?>> readArchiveBlock, CancellationToken cancellation)
     {
         ulong highestKnown = Math.Max(blockTree.BestKnownNumber, blockTree.BestKnownBeaconNumber);
+        ulong scanTo = Math.Min(to, highestKnown);
+        ulong? lowestInserted = (blockTree.LowestInsertedHeader, blockTree.LowestInsertedBeaconHeader) switch
+        {
+            ({ } fast, { } beacon) => Math.Min(fast.Number, beacon.Number),
+            ({ } fast, null) => fast.Number,
+            (null, { } beacon) => beacon.Number,
+            _ => null
+        };
+        if (lowestInserted is { } boundary)
+            scanTo = Math.Min(scanTo, boundary);
+
         ulong? lowestWithoutHeader = null;
-        for (ulong number = Math.Max(from, 1UL); number <= Math.Min(to, highestKnown); number++)
+        for (ulong number = Math.Max(from, 1UL); number <= scanTo; number++)
         {
             cancellation.ThrowIfCancellationRequested();
 
@@ -80,7 +91,7 @@ public static class KnownHeaders
             lowestWithoutHeader = null;
         }
 
-        if (lowestWithoutHeader is null || to >= highestKnown || blockTree.FindLevel(to + 1) is not { BlockInfos.Length: > 0 } levelAbove)
+        if (lowestWithoutHeader is null || to >= highestKnown || scanTo < to || blockTree.FindLevel(to + 1) is not { BlockInfos.Length: > 0 } levelAbove)
             return;
 
         HashSet<Hash256> parents = [];

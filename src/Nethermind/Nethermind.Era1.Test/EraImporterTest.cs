@@ -416,4 +416,21 @@ public class EraImporterTest
             Assert.That(archiveReads, Is.Zero);
         }
     }
+
+    [Test]
+    public void EnsureHeaderlessHeightsLinkToKnownHeaders_HeadersCoverRange_DoesNotLoadEveryLevel()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.BestKnownNumber.Returns(1_000_000UL);
+        blockTree.BestKnownBeaconNumber.Returns(0UL);
+        blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
+        blockTree.LowestInsertedBeaconHeader.Returns((BlockHeader?)null);
+        blockTree.FindLevel(Arg.Any<ulong>()).Returns(new ChainLevelInfo(true, new BlockInfo(Keccak.Zero, 0)));
+
+        Assert.That(
+            () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(blockTree, 1, 1_000, _ => Task.FromResult<Block?>(null), CancellationToken.None),
+            Throws.Nothing);
+
+        Assert.That(blockTree.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IBlockTree.FindLevel)), Is.LessThan(10));
+    }
 }
