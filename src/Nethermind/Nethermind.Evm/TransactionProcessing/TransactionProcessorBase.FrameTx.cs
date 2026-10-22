@@ -465,7 +465,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <param name="totalFrameGasUsed">Gas charged across all frames whose effects survived the loop.</param>
     /// <param name="totalFrameStateGasUsed">The state-gas dimension of that total, before correction.</param>
     /// <param name="refundCounter">The EIP-3529 refund accumulated by committed frames.</param>
-    /// <param name="maxCost">The escrow charged to the payer at approval, per TXPARAM 0x06.</param>
+    /// <param name="maxCost">The escrow, max_cost, charged to the payer at approval.</param>
     /// <param name="assertReverted">Whether an ASSERT frame discarded the body, which the receipt reports as a failure.</param>
     /// <typeparam name="TTracing">As in <see cref="ExecuteFrameTx{TTracing}"/>.</typeparam>
     private TransactionResult SettleFrameTx<TTracing>(

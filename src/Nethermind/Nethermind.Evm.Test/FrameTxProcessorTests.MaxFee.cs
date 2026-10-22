@@ -136,7 +136,7 @@ public partial class FrameTxProcessorTests
 
     [TestCase((byte)0x04, TestName = "Execute_MaxFee_TxParam_MaxFee")]
     [TestCase((byte)0x05, TestName = "Execute_MaxFee_TxParam_MaxBlobFeeHalts")]
-    [TestCase((byte)0x06, TestName = "Execute_MaxFee_TxParam_MaxCost")]
+    [TestCase((byte)0x06, TestName = "Execute_MaxFee_TxParam_MaxCostHalts")]
     [TestCase((byte)Instruction.GASPRICE, TestName = "Execute_MaxFee_GasPrice_IsTheEscrowedPerGasPrice")]
     public void Execute_MaxFee_Introspection(byte param)
     {
@@ -167,8 +167,7 @@ public partial class FrameTxProcessorTests
         AssertStorage(Observer, 0, param switch
         {
             0x04 => maxFee,
-            0x05 => UInt256.One,
-            0x06 => maxCost,
+            0x05 or 0x06 => UInt256.One,
             _ => gasPrice
         });
     }

@@ -642,7 +642,7 @@ public static class FrameTxValidation
 
     /// <summary>
     /// The most <paramref name="transaction"/> can cost its payer at any base fees: its <c>max_fee</c>, which bounds
-    /// the <c>TXPARAM(0x06)</c> <c>max_cost</c> execution collects at the including block's base fees.
+    /// the <c>max_cost</c> execution collects at the including block's base fees.
     /// </summary>
     /// <remarks>Callers that must not under-reserve (the mempool exposure bound, the simulated APPROVE gate) want this form.</remarks>
     /// <returns><c>false</c> when the transaction cannot be priced; <paramref name="maxCost"/> is then 0.</returns>

@@ -66,7 +66,7 @@ public partial class FrameTxProcessorTests
     private static readonly Address Recipient = TestItem.AddressC;
     private static readonly Address Beneficiary = TestItem.AddressE;
 
-    // The gas leg of max_cost (TXPARAM 0x06) for a SelfVerify + one DEFAULT frame at max fee 1, blob-free.
+    // The gas leg of max_cost for a SelfVerify + one DEFAULT frame at a tip of 1 per gas, blob-free.
     private const ulong DefaultFrameStateGasLimit = 200_000;
     private const ulong BlobFreeMaxCost = 612_950;
 
@@ -751,21 +751,36 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_TxParamMaxCost_BlobCarryingFrameTx_PricesBlobLegAtBlobBaseFee()
+    public void Execute_MaxCost_BlobCarryingFrameTx_PricesBlobLegAtBlobBaseFee()
     {
         // max_cost's blob leg is the blob gas at the block's blob_base_fee, paid from the max_fee budget.
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x06).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
-            .Op(Instruction.STOP).Done);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
+        Transaction tx = MaxCostObserverTx();
         tx.BlobVersionedHashes = [new byte[32]];
 
         TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        // Gas leg is the blobless Execute_TxParam_MaxCost value the same frame shape observes (a tip of 1 per gas).
         AssertStorage(Observer, 0, BlobFreeMaxCost + ExpectedBlobFee(excessBlobGas: 0, blobCount: 1));
+    }
+
+    [Test]
+    public void Execute_MaxCost_IsTheGasBudgetAtTheTip()
+    {
+        TransactionResult result = Process(MaxCostObserverTx());
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, BlobFreeMaxCost);
+    }
+
+    /// <summary>Builds the transaction whose body frame stores the <c>max_cost</c> approval collected from the sender.</summary>
+    /// <remarks>The sender starts with one ether and nothing else moves its balance before settlement.</remarks>
+    private Transaction MaxCostObserverTx()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(Sender).Op(Instruction.BALANCE).PushData(1.Ether).Op(Instruction.SUB).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
     }
 
     [Test]
@@ -931,7 +946,6 @@ public partial class FrameTxProcessorTests
     [TestCase((byte)0x01, 0UL, TestName = "Execute_TxParam_Nonce")]
     [TestCase((byte)0x03, 1UL, TestName = "Execute_TxParam_MaxPriorityFee")]
     [TestCase((byte)0x04, DefaultMaxFeeWei, TestName = "Execute_TxParam_MaxFee")]
-    [TestCase((byte)0x06, BlobFreeMaxCost, TestName = "Execute_TxParam_MaxCost")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
     [TestCase((byte)0x0A, 1UL, TestName = "Execute_TxParam_CurrentFrameIndex")]
@@ -970,7 +984,7 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Simulation_TxParamMaxCost_PlaceholderCoversSignedSignature()
+    public void Simulation_MaxCost_PlaceholderCoversSignedSignature()
     {
         UInt256 placeholder = SimulatedMaxCost(signed: false);
         UInt256 signed = SimulatedMaxCost(signed: true);
@@ -978,10 +992,10 @@ public partial class FrameTxProcessorTests
         Assert.That(placeholder, Is.GreaterThanOrEqualTo(signed));
     }
 
-    /// <summary>The <c>TXPARAM</c> max_cost a frame observes with a SECP256K1 entry, run as simulation with its state kept.</summary>
+    /// <summary>The max_cost a frame observes with a SECP256K1 entry, run as simulation with its state kept.</summary>
     private UInt256 SimulatedMaxCost(bool signed)
     {
-        Transaction tx = TxParamObserverTx(0x06);
+        Transaction tx = MaxCostObserverTx();
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, default)];
         if (signed) SignCanonicalHash(tx, 0, TestItem.PrivateKeyB, TestItem.AddressB);
         Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
@@ -3818,12 +3832,10 @@ public partial class FrameTxProcessorTests
             ApproveCode(FrameFlags.ApproveExecutionAndPayment),
             Prepare.EvmCode
                 .CallWithInput(Sender, 100_000, [1]).Op(Instruction.POP)
-                // balance + max_cost matches the funded balance only once APPROVE has collected it.
-                .PushData(0x06).Op(Instruction.TXPARAM)
-                .Op(Instruction.ADDRESS).Op(Instruction.BALANCE)
-                .Op(Instruction.ADD)
+                // The balance falls below the funded one only once APPROVE has collected max_cost.
                 .PushData(1.Ether)
-                .Op(Instruction.EQ)
+                .Op(Instruction.ADDRESS).Op(Instruction.BALANCE)
+                .Op(Instruction.LT)
                 .Op(Instruction.ISZERO)
                 .PushData(0).PushData(0)
                 .Op(Instruction.RETURNDATACOPY)
@@ -4521,15 +4533,15 @@ public partial class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // Payer and max cost come from the frame context rather than the diff, so they are read back
-    // against TXPARAM, which exposes the same two values to the body.
+    // Payer and max cost come from the frame context rather than the diff, so max cost is read back
+    // against what approval collected from the payer, which nothing else has moved yet.
     [Test]
     public void Execute_TxTrace_ReadsThePayerAndMaxCost()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Recipient, AssertAll(
             (Txtrace(0x15, 0), To32(AddressAsWord(Sender))),
-            ([.. Txtrace(0x14, 0), .. Txparam(0x06), (byte)Instruction.EQ], To32(1))));
+            ([.. Txtrace(0x14, 0), .. Prepare.EvmCode.PushData(Sender).Op(Instruction.BALANCE).PushData(1.Ether).Op(Instruction.SUB).Done, (byte)Instruction.EQ], To32(1))));
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
             SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)));
@@ -4596,9 +4608,6 @@ public partial class FrameTxProcessorTests
     {
         public BlockAccessListAtIndex? GeneratedBlockAccessList => null;
     }
-
-    private static byte[] Txparam(byte param)
-        => Prepare.EvmCode.PushData((UInt256)param).Op(Instruction.TXPARAM).Done;
 
     // TXTRACE stack order is (param, index) with param on top.
     private static byte[] Txtrace(byte param, UInt256 index)

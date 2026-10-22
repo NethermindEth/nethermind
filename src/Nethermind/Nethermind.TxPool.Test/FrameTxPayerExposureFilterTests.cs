@@ -466,7 +466,7 @@ public class FrameTxPayerExposureFilterTests
         BehindAPostPrefixDefaultFrame,
     }
 
-    // TXPARAM(0x06) prices gas alone, so the wei a SENDER frame moves sits outside it. One in the leading prologue
+    // max_fee bounds fees alone, so the wei a SENDER frame moves sits outside it. One in the leading prologue
     // needs the balance to already hold it; one behind a DEFAULT frame the prefix does not cover may be funded by
     // what that frame does. Payer-less and self-paid alike: neither leg reserves the sender's value anywhere else.
     [TestCase(0, false, SenderFramePosition.BehindTheApprovingFrame, false, TestName = "the sender covers the fee and the leading frame's value")]
@@ -746,7 +746,7 @@ public class FrameTxPayerExposureFilterTests
         return tx;
     }
 
-    /// <summary>A frame tx whose <c>max_fee</c>, the bound of its <c>TXPARAM(0x06)</c> max cost, is exactly <paramref name="cost"/> wei.</summary>
+    /// <summary>A frame tx whose <c>max_fee</c>, the bound of its <c>max_cost</c>, is exactly <paramref name="cost"/> wei.</summary>
     private static Transaction FrameTxCostingExactly(int cost, Address? payer = null)
     {
         Transaction tx = FrameTx(FrameTxTestFrames.PrefixFrameGas, payer);

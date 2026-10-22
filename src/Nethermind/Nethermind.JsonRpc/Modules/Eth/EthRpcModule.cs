@@ -388,7 +388,9 @@ public partial class EthRpcModule(
         if (CheckSendTransactionFees(rpcTx) is { } feeError)
             return Task.FromResult(feeError);
 
-        Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
+        // A frame transaction priced per gas buys max_gas at those prices, which only a fork can price.
+        IReleaseSpec? frameSpec = rpcTx is FrameTransactionForRpc && _blockFinder.Head?.Header is { } head ? _specProvider.GetSpec(head) : null;
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction(spec: frameSpec);
         if (!txResult.Success(out Transaction tx, out string error))
         {
             return Task.FromResult(ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput));

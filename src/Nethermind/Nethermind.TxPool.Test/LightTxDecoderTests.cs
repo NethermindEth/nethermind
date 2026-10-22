@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -274,22 +275,6 @@ public class LightTxDecoderTests
 
     // Records written before the grouping end in a flat nonce_keys list. Its first element is a scalar where the
     // grouped form always opens with the keys list, which is what lets one decoder read both.
-    [Test]
-    public void A_record_written_before_the_grouping_still_decodes()
-    {
-        Transaction bare = BlobCarryingTx(TxType.FrameTx);
-        // The legacy trailing field: a flat list of the keys 1 and 2, each a single RLP byte.
-        byte[] legacy = [.. LightTxDecoder.Encode(bare), 0xC2, 0x01, 0x02];
-
-        LightTransaction decoded = LightTxDecoder.Decode(legacy);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoded.NonceKeys, Is.EqualTo(new UInt256[] { 1, 2 }));
-            Assert.That(decoded.PayerAddress, Is.Null);
-        }
-    }
-
     // A payer that never reached the exposure gate holds no reservation, and the slot cannot tell that from a
     // zero one, so the placeholder reads back as absent. The payer itself must still survive.
     [Test]
@@ -308,15 +293,14 @@ public class LightTxDecoderTests
         }
     }
 
-    // The shape an earlier build wrote for a sponsored transaction admitted without simulation: the paymaster
-    // is what makes the group exist, and the exposure slot holds the placeholder. Read as a zero price it
-    // would charge the sender nothing for the record.
+    // A sponsored transaction admitted without simulation: the exposure slot holds the placeholder. Read as a
+    // zero price it would charge the sender nothing for the record.
     [Test]
     public void A_record_whose_exposure_slot_holds_the_placeholder_decodes_as_unpriced()
     {
-        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
-        // [keys: [], payer: absent, exposure: placeholder, paymaster: AddressC]
-        byte[] group = [0xD8, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes];
+        byte[] bare = FrameRecordWithoutGroup();
+        // [keys: [], payer: absent, exposure: placeholder, paymaster: AddressC, max_fee: 5]
+        byte[] group = [0xD9, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes, 0x05];
 
         LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
 
@@ -343,23 +327,6 @@ public class LightTxDecoderTests
             Assert.That(tx.PayerAddress, Is.Null, "the record must name no payer, or this pins the payer slot instead");
             Assert.That(decoded.PayerAddress, Is.Null);
             Assert.That(decoded.PayerExposure, Is.EqualTo((UInt256)12_345));
-        }
-    }
-
-    // A legacy record whose flat list is empty leaves the group zero-length, and IsSequenceNext is an
-    // unguarded index: deciding the branch on it first read past the end of the buffer.
-    [Test]
-    public void An_empty_legacy_key_list_decodes_rather_than_reading_past_the_buffer()
-    {
-        Transaction bare = BlobCarryingTx(TxType.FrameTx);
-        byte[] legacy = [.. LightTxDecoder.Encode(bare), 0xC0];
-
-        LightTransaction decoded = LightTxDecoder.Decode(legacy);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoded.NonceKeys, Is.Null);
-            Assert.That(decoded.PayerAddress, Is.Null);
         }
     }
 
@@ -418,6 +385,29 @@ public class LightTxDecoderTests
         }
     }
 
+    // A frame record written before max_fee was the fee field carries none. Read as a zero max_fee it would restore a
+    // transaction the pool prices at nothing, so it is skipped with the other unreadable records instead.
+    [Test]
+    public void A_frame_record_without_max_fee_is_not_restored()
+    {
+        byte[] perGasRecord = FrameRecordWithoutGroup();
+        Transaction zeroFee = BlobCarryingTx(TxType.FrameTx);
+        Transaction readable = BlobCarryingTx(TxType.Blob);
+        using MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        lightBlobTxs.Set(UnreadableRecordKey, perGasRecord);
+        lightBlobTxs.Set(ReadableRecordKey, LightTxDecoder.Encode(readable));
+
+        List<LightTransaction> loaded = [.. new BlobTxStorage(database).GetAll()];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => LightTxDecoder.Decode(perGasRecord), Throws.InstanceOf<RlpException>());
+            Assert.That(loaded.Select(static tx => tx.Hash), Is.EqualTo(new[] { readable.Hash }));
+            Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(zeroFee)).MaxFee, Is.EqualTo(UInt256.Zero), "a zero max_fee is still a max_fee");
+        }
+    }
+
     [Test]
     public void Round_trip_of_a_blob_record_has_no_max_fee()
     {
@@ -435,9 +425,9 @@ public class LightTxDecoderTests
     [Test]
     public void A_group_carrying_a_slot_this_build_does_not_know_still_decodes()
     {
-        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
-        // [keys: [], payer: absent, exposure: 0, paymaster: AddressC, one slot this build has no name for]
-        byte[] group = [0xD9, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes, 0x01];
+        byte[] bare = FrameRecordWithoutGroup();
+        // [keys: [], payer: absent, exposure: 0, paymaster: AddressC, max_fee: 5, one slot this build has no name for]
+        byte[] group = [0xDA, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes, 0x05, 0x01];
 
         LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
 
@@ -445,28 +435,29 @@ public class LightTxDecoderTests
         {
             Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
             Assert.That(decoded.PayerAddress, Is.Null);
+            Assert.That(decoded.MaxFee, Is.EqualTo((UInt256)5));
         }
     }
 
-    // Slot 3 tolerates the placeholder for the reason slot 1 does: behind a later slot an absent paymaster is
-    // written out rather than omitted, so the strict read would throw on a record a newer build wrote.
+    // Slot 3 tolerates the placeholder for the reason slot 1 does: an absent paymaster is written out rather
+    // than omitted, so the strict read would throw on it.
     [Test]
     public void A_group_whose_paymaster_slot_is_empty_decodes_as_unsponsored()
     {
-        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
-        // [keys: [], payer: absent, exposure: 0, paymaster: absent, one slot this build has no name for]
-        byte[] group = [0xC5, 0xC0, 0x80, 0x80, 0x80, 0x01];
+        byte[] bare = FrameRecordWithoutGroup();
+        // [keys: [], payer: absent, exposure: 0, paymaster: absent, max_fee: 5]
+        byte[] group = [0xC5, 0xC0, 0x80, 0x80, 0x80, 0x05];
 
         LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
 
         Assert.That(decoded.PersistedPaymaster, Is.Null);
     }
 
-    // A paymaster on its own opens the group, so it costs the header, the empty keys list, the empty payer
-    // slot, a zero reservation and the address. Measured off two frameless records that differ in nothing
-    // else: carrying the sponsor in a pay frame instead would also move the two persisted size fields.
+    // A frame record always carries the group for max_fee, so a paymaster costs its address over the empty slot.
+    // Measured off two frameless records that differ in nothing else: carrying the sponsor in a pay frame instead
+    // would also move the two persisted size fields.
     [Test]
-    public void A_paymaster_alone_grows_the_record_by_the_group_and_the_address()
+    public void A_paymaster_grows_a_frame_record_by_the_address()
     {
         static LightTransaction Record(Address paymaster) => new(
             timestamp: 42, TestItem.AddressA, nonce: 7, TestItem.KeccakA, value: 5, gasLimit: 1_000_000,
@@ -475,65 +466,61 @@ public class LightTxDecoderTests
 
         int grownBy = LightTxDecoder.Encode(Record(TestItem.AddressC)).Length - LightTxDecoder.Encode(Record(null)).Length;
 
-        Assert.That(grownBy, Is.EqualTo(1 + 1 + 1 + 1 + 21));
+        Assert.That(grownBy, Is.EqualTo(21 - 1));
     }
 
-    // The group is written only for a slot that has a value, so a keys-only record keeps the flat list every
-    // earlier build writes — and stays readable by one, which a nested form would not be.
+    // A zero price is what the decoder hands back as absent, as the placeholder is.
     [Test]
-    public void A_keys_only_record_keeps_the_flat_list()
-    {
-        UInt256[] keys = [1, 2];
-        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
-        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
-
-        byte[] encoded = LightTxDecoder.Encode(tx);
-
-        using (Assert.EnterMultipleScope())
-        {
-            // The flat list alone: 0xc2 over two single-byte keys, with no outer group header.
-            Assert.That(encoded[bare.Length..], Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
-            Assert.That(LightTxDecoder.Decode(encoded).NonceKeys, Is.EqualTo(keys));
-        }
-    }
-
-    // A zero price is what the decoder hands back as absent, so it cannot be a record's only claim on the group:
-    // one written for it costs the header and three slots for nothing, and forfeits the flat list.
-    [Test]
-    public void A_zero_price_alone_keeps_the_flat_list()
+    public void A_zero_price_reads_back_as_unpriced()
     {
         UInt256[] keys = [1, 2];
         Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
         // What admission records for a zero-cost transaction no payer resolved for.
         tx.PayerExposure = UInt256.Zero;
-        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
 
         byte[] encoded = LightTxDecoder.Encode(tx);
         LightTransaction decoded = LightTxDecoder.Decode(encoded);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(encoded[bare.Length..], Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
             Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
             Assert.That(decoded.PayerExposure, Is.Null);
             Assert.That(LightTxDecoder.Encode(decoded), Is.EqualTo(encoded), "a group the decoder discards leaves the round trip without a fixed point");
         }
     }
 
-    // A record needing neither field must keep the exact layout every already-persisted one has, or the whole
-    // pool becomes unreadable at once; a payer costs exactly the group and nothing more.
+    // A frame record always carries the group, so a payer costs its address over the empty slot, and a reservation
+    // of one wei the byte the placeholder already took.
     [Test]
-    public void A_payer_grows_the_record_by_the_group_alone()
+    public void A_payer_grows_a_frame_record_by_the_address()
     {
-        Transaction bare = BlobCarryingTx(TxType.Blob);
-        Transaction withPayer = BlobCarryingTx(TxType.Blob);
+        Transaction bare = BlobCarryingTx(TxType.FrameTx);
+        Transaction withPayer = BlobCarryingTx(TxType.FrameTx);
         withPayer.PayerAddress = TestItem.AddressB;
         withPayer.PayerExposure = 1;
 
         int grownBy = LightTxDecoder.Encode(withPayer).Length - LightTxDecoder.Encode(bare).Length;
 
-        // The group header, the empty keys list holding slot 0, the 21-byte address and a 1-byte reservation.
-        Assert.That(grownBy, Is.EqualTo(1 + 1 + 21 + 1));
+        Assert.That(grownBy, Is.EqualTo(21 - 1));
+    }
+
+    // A record of any other type carries no group, so its layout is the one every earlier build wrote.
+    [Test]
+    public void A_blob_record_carries_no_trailing_group()
+    {
+        Transaction tx = BlobCarryingTx(TxType.Blob);
+        byte[] encoded = LightTxDecoder.Encode(tx);
+
+        Assert.That(encoded[^1], Is.EqualTo((byte)TxType.Blob), "the type is the last field");
+    }
+
+    /// <summary>A frame record ending before the trailing group: the same fields as a blob record, with the frame
+    /// type in the last slot. Alone it is the record the per-gas fee shape left, which carries no <c>max_fee</c>.</summary>
+    private static byte[] FrameRecordWithoutGroup()
+    {
+        byte[] record = LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob));
+        record[^1] = (byte)TxType.FrameTx;
+        return record;
     }
 
     private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null, Address paymaster = null)
