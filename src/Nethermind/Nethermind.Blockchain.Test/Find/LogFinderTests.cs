@@ -218,8 +218,7 @@ public class LogFinderTests
             "the scan must have taken the parallel path, or this test cannot cover the unwrap");
     }
 
-    // One method per case: the parallel path needs the process-wide parallel-scan slot, which any other scan in
-    // the assembly can hold, and a [NonParallelizable] on a parameterized method does not isolate it (nunit/nunit#3371).
+    // One method per case, for the same reason as above.
     [Test]
     [MaxTime(Timeout.MaxTestTime)]
     [NonParallelizable]
