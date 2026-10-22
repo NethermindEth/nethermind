@@ -34,6 +34,27 @@ def sha(value):
     return value
 
 
+def build_identity(manifest):
+    identity = {key: manifest[key] for key in ("repository", "profile", "revision", "core_revision")}
+    if "streaming" in manifest:
+        identity["streaming"] = {key: value for key, value in manifest["streaming"].items() if key != "source"}
+    return identity
+
+
+def cache_identity(args):
+    manifest = json.loads(args.manifest.read_text())
+    args.output.write_text(json.dumps(build_identity(manifest), sort_keys=True, separators=(",", ":")) + "\n")
+
+
+def refresh_resolution(args):
+    cached = json.loads(args.manifest.read_text())
+    current = json.loads(args.resolution.read_text())
+    if build_identity(cached) != build_identity(current):
+        raise ValueError("cached build inputs differ from the current resolution")
+    current["runtime"] = cached["runtime"]
+    args.manifest.write_text(json.dumps(current, indent=2) + "\n")
+
+
 def resolve(args):
     profile = getattr(args, "profile", "rollup0")
     repository = PROFILES.get(profile)
@@ -425,6 +446,12 @@ def main():
     resolver.add_argument("--streaming", action="store_true")
     resolver.add_argument("--profile", choices=PROFILES, default="rollup0")
     resolver.add_argument("--output", type=Path, required=True)
+    identity = modes.add_parser("cache-identity")
+    identity.add_argument("--manifest", type=Path, required=True)
+    identity.add_argument("--output", type=Path, required=True)
+    refresh = modes.add_parser("refresh-resolution")
+    refresh.add_argument("--manifest", type=Path, required=True)
+    refresh.add_argument("--resolution", type=Path, required=True)
     downloader = modes.add_parser("runtime")
     downloader.add_argument("--manifest", type=Path, required=True)
     downloader.add_argument("--output", type=Path, required=True)
@@ -443,7 +470,8 @@ def main():
     execution.add_argument("--directory", type=Path, required=True)
     execution.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    {"resolve": resolve, "runtime": runtime, "record-build": record_build, "vectors": vectors, "rollupx-execution": rollupx_execution}[args.mode](args)
+    {"resolve": resolve, "cache-identity": cache_identity, "refresh-resolution": refresh_resolution,
+     "runtime": runtime, "record-build": record_build, "vectors": vectors, "rollupx-execution": rollupx_execution}[args.mode](args)
 
 
 if __name__ == "__main__":
