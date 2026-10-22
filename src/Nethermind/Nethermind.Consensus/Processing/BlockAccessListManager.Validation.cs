@@ -355,20 +355,34 @@ public partial class BlockAccessListManager
     private static bool IsSystemUserReadAt0(AccountChangesAtIndex ac, uint index)
         => index == 0 && ac.Address == Address.SystemUser && !HasStateChanges(ac) && ac.StorageReads.Count == 0;
 
+    private static readonly Address[] SystemContracts =
+    [
+        Eip7002Constants.WithdrawalRequestPredeployAddress,
+        Eip7251Constants.ConsolidationRequestPredeployAddress,
+        Eip8282Constants.BuilderDepositRequestPredeployAddress,
+        Eip8282Constants.BuilderExitRequestPredeployAddress,
+    ];
+
     private static bool IsSystemContract(Address address)
-        => address == Eip7002Constants.WithdrawalRequestPredeployAddress
-        || address == Eip7251Constants.ConsolidationRequestPredeployAddress
-        || address == Eip8282Constants.BuilderDepositRequestPredeployAddress
-        || address == Eip8282Constants.BuilderExitRequestPredeployAddress;
+    {
+        foreach (Address systemContract in SystemContracts)
+        {
+            if (address == systemContract) return true;
+        }
+
+        return false;
+    }
 
     private static ulong SystemContractStorageReads(ReadOnlyBlockAccessList blockAccessList)
-        => StorageReads(blockAccessList, Eip7002Constants.WithdrawalRequestPredeployAddress)
-        + StorageReads(blockAccessList, Eip7251Constants.ConsolidationRequestPredeployAddress)
-        + StorageReads(blockAccessList, Eip8282Constants.BuilderDepositRequestPredeployAddress)
-        + StorageReads(blockAccessList, Eip8282Constants.BuilderExitRequestPredeployAddress);
+    {
+        ulong reads = 0;
+        foreach (Address address in SystemContracts)
+        {
+            reads += (ulong)(blockAccessList.GetAccountChanges(address)?.StorageReads.Length ?? 0);
+        }
 
-    private static ulong StorageReads(ReadOnlyBlockAccessList blockAccessList, Address address)
-        => (ulong)(blockAccessList.GetAccountChanges(address)?.StorageReads.Length ?? 0);
+        return reads;
+    }
 
     private static bool IsToleratedGeneratedOnlyAccount(Address address, uint index, bool hasNoChangesAtIndex, bool hasChargeableReads)
         => hasNoChangesAtIndex
