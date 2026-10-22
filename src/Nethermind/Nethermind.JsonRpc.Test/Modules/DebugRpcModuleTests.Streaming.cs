@@ -10,9 +10,12 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Newtonsoft.Json.Linq;
@@ -132,6 +135,25 @@ public partial class DebugRpcModuleTests
 
         JToken parsed = JToken.Parse(body);
         Assert.That(parsed["failed"]!.Value<bool>(), Is.True, "a cancelled mid-trace is reported as failed");
+    }
+
+    [Test]
+    public void StructLogEnvelopeWriter_BundleDefault_RetainsDurationError()
+    {
+        ArrayBufferWriter<byte> buffer = new();
+        using Utf8JsonWriter writer = new(buffer);
+        StructLogEnvelopeWriter.EmitTraceObject(writer, null, CancellationToken.None,
+            (_, _, _) => throw new TraceDurationFormatException("bad duration"),
+            LimboLogs.Instance.GetClassLogger<DebugRpcModuleTests>(), fallbackGas: 21_000);
+        writer.Flush();
+        JToken parsed = JToken.Parse(Encoding.UTF8.GetString(buffer.WrittenSpan));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["failed"]!.Value<bool>(), Is.True);
+            Assert.That(parsed["error"]!.Value<string>(), Is.EqualTo("tracing failed: bad duration"));
+            Assert.That(parsed["errorCode"]!.Value<int>(), Is.EqualTo(ErrorCodes.InternalError));
+            Assert.That(parsed["gas"]!.Value<int>(), Is.EqualTo(21_000));
+        }
     }
 
     [Test]
@@ -283,5 +305,43 @@ public partial class DebugRpcModuleTests
         JToken sentinel = parsed[1]!;
         Assert.That((string)sentinel["error"]!, Does.Contain("simulated mid-block failure"), "the sentinel must carry the human-readable failure reason");
         Assert.That((int)sentinel["errorCode"]!, Is.EqualTo(ErrorCodes.InternalError), "the sentinel must carry the Geth-equivalent errorCode (generic exceptions map to InternalError)");
+    }
+
+    [Test]
+    public async Task GethLikeBlockNativeStreamingTracer_WhenTracerFailsMidBlock_KeepsWrittenEntriesAndEmitsSentinel()
+    {
+        Transaction first = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction second = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithTransactions(first, second).TestObject;
+
+        using GethLikeTxTraceStreamingBlockResult result = new(
+            (writer, pipeWriter, ct) =>
+            {
+                IBlockTracer tracer = new GethLikeBlockNativeStreamingTracer(
+                    (_, tx) => tx == first ? new NativeNoopTracer(tx, GethTraceOptions.Default) : throw new InvalidOperationException("simulated tracer failure"),
+                    writer, pipeWriter, ct);
+                tracer.StartNewBlockTrace(block);
+                foreach (Transaction tx in block.Transactions)
+                {
+                    tracer.StartNewTxTrace(tx);
+                    tracer.EndTxTrace();
+                }
+            },
+            new CancellationTokenSource(),
+            LimboLogs.Instance.GetClassLogger<DebugRpcModuleTests>());
+
+        Pipe pipe = new();
+        await result.WriteToAsync(pipe.Writer, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+        ReadResult readResult = await pipe.Reader.ReadAsync();
+
+        JArray parsed = JArray.Parse(Encoding.UTF8.GetString(readResult.Buffer.ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed, Has.Count.EqualTo(2));
+            Assert.That((string)parsed[0]["txHash"]!, Is.EqualTo(first.Hash!.ToString()), "the transaction traced before the failure is already written");
+            Assert.That(parsed[0]["result"], Is.Not.Null);
+            Assert.That((string)parsed[1]["error"]!, Does.Contain("simulated tracer failure"));
+        }
     }
 }

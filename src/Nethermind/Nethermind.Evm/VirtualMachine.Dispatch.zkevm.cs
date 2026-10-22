@@ -74,6 +74,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SetExecutionGas(ref TGasPolicy gas, ulong value) => TGasPolicy.SetRemainingGas(ref gas, value);
 
+    /// <summary>Runs the current frame on the dispatch chain.</summary>
+    /// <remarks>The guest never consults a frame code runner, so a frame always runs on the dispatch chain.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private EvmExceptionType RunFrameCode<TTracingInst, TCancelable>(
+        scoped ref EvmStack stack,
+        scoped ref TGasPolicy gas,
+        ref nint programCounter)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag =>
+        RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
     /// <returns>
@@ -156,10 +167,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 stack.Head = head;
                 Instruction instruction = (Instruction)Unsafe.Add(ref code, pc);
-                state.Vm.StartInstructionTrace(instruction, gas, (int)pc, in stack);
+                state.Vm.StartInstructionTrace(instruction, gas, (int)pc, in stack,
+                    TOpcode.TraceGasCost ?? TOpcode.GetSpecTraceGasCost(state.Vm.Spec), TOpcode.StackInputs, TOpcode.StackGrowth);
             }
 
             pc++;
+            nint traceStackHead = head;
             EvmExceptionType exceptionType;
             if (TOpcode.HasCheckedBody)
             {
@@ -173,13 +186,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     // One unsigned test bounds the depth on both sides: below the inputs the difference wraps past the limit.
                     nint aboveInputs = head - TOpcode.StackInputs;
                     if ((nuint)aboveInputs >= (nuint)(EvmStack.MaxStackSize - TOpcode.StackGrowth - TOpcode.StackInputs))
-                        return ExitChain(ref state, gas, pc, head,
-                            aboveInputs < 0 ? EvmExceptionType.StackUnderflow : EvmExceptionType.StackOverflow);
+                    {
+                        EvmExceptionType stackFailure = aboveInputs < 0 ? EvmExceptionType.StackUnderflow : EvmExceptionType.StackOverflow;
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && stackFailure == EvmExceptionType.StackUnderflow)
+                            state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
+                        return ExitChain(ref state, gas, pc, head, stackFailure);
+                    }
                 }
                 else
                 {
                     if (TOpcode.StackInputs != 0 && head < TOpcode.StackInputs)
+                    {
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions)
+                            state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
                         return ExitChain(ref state, gas, pc, head, EvmExceptionType.StackUnderflow);
+                    }
                     if (TOpcode.StackGrowth > 0 && head >= EvmStack.MaxStackSize - TOpcode.StackGrowth)
                         return ExitChain(ref state, gas, pc, head, EvmExceptionType.StackOverflow);
                 }
@@ -224,6 +245,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 gas = GetExecutionGas(ref state.Gas);
             }
 
+            if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions &&
+                !TOpcode.HasCheckedBody && exceptionType == EvmExceptionType.StackUnderflow && TOpcode.StackInputs > 0)
+                state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
+
             if ((!TOpcode.HasCheckedBody && !TOpcode.StaysInline) || TOpcode.CallsOutOfLine)
             {
                 // Reloaded, not held: live across an out-of-line call they would each take a callee-saved register.
@@ -245,7 +270,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Padded code reads STOP past its end, so wherever a successful opcode leaves the counter it resolves to a
             // handler. A failed one can leave it anywhere, so this read waits for the status.
             ip = ref Unsafe.Add(ref code, pc);
-            nint next = handlers[PairAt(ref ip)];
+            nint next = AlignedTable(handlers)[PairAt(ref ip)];
 
             Debug.Assert(state.Vm.ReturnData is null,
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
@@ -315,7 +340,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 stack.Head = head;
                 Instruction instruction = (Instruction)Unsafe.Add(ref code, pc);
-                vm.StartInstructionTrace(instruction, gas, (int)pc, in stack);
+                vm.StartInstructionTrace(instruction, gas, (int)pc, in stack,
+                    GasPolicy.JumpIGasCost.GasCost, stackInputs: 2);
             }
 
             pc++;
@@ -348,7 +374,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (pc != fallthroughPc)
             {
                 ip = ref Unsafe.Add(ref code, pc);
-                nint taken = handlers[ip];
+                nint taken = AlignedTable(handlers)[ip];
                 IL.EnsureLocal(in taken);
 
                 IL.Emit.Ldarg(nameof(stack));
@@ -377,7 +403,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             else
             {
                 ip = ref Unsafe.Add(ref code, fallthroughPc);
-                nint notTaken = handlers[ip];
+                nint notTaken = AlignedTable(handlers)[ip];
                 IL.EnsureLocal(in notTaken);
 
                 IL.Emit.Ldarg(nameof(stack));

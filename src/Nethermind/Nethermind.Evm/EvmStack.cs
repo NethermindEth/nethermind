@@ -78,6 +78,20 @@ public ref partial struct EvmStack
     /// <summary>The length of <see cref="InputData"/>; native width for the same reason as <see cref="CodeLength"/>.</summary>
     internal nint InputDataLength;
     private readonly CodeInfo? _codeInfo;
+
+    /// <summary>The first byte of the stack's slots; slot <c>i</c> from the bottom is at byte <c>i * WordSize</c>, in the <see cref="UInt256"/> limb layout.</summary>
+    /// <remarks>For frame code runners, which read and write stack words in place below <see cref="Head"/>.</remarks>
+    [Experimental("NMEVM0001")]
+    public readonly ref byte StackBase => ref _stack;
+
+    /// <summary>The first byte of the frame's input data, valid for the <see cref="InputDataSize"/> bytes after it.</summary>
+    /// <remarks>For frame code runners; set once the stack is ready to execute.</remarks>
+    [Experimental("NMEVM0001")]
+    public readonly ref readonly byte InputDataStart => ref InputData;
+
+    /// <summary>The length of the frame's input data in bytes.</summary>
+    [Experimental("NMEVM0001")]
+    public readonly nint InputDataSize => InputDataLength;
     private long[]? _jumpDestinations;
 
     /// <summary>Records the frame's input data so CALLDATALOAD and CALLDATACOPY skip resolving it on every opcode.</summary>
@@ -535,25 +549,6 @@ public ref partial struct EvmStack
         ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
         ulong unreachable = Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2) | Unsafe.Add(ref limbs, 3);
         position = new UInt256(limbs, 0, 0, unreachable);
-    }
-
-    /// <summary>Pops a memory position.</summary>
-    /// <remarks>See <see cref="ReadMemoryPositionFromSlot"/> for what the popped value preserves.</remarks>
-    /// <param name="position">The popped position.</param>
-    /// <returns><see langword="false"/> on stack underflow.</returns>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool PopMemoryPosition(out UInt256 position)
-    {
-        Unsafe.SkipInit(out position);
-        nint head = Head - 1;
-        if (head < 0)
-        {
-            return false;
-        }
-        Head = head;
-        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref _stack, head * WordSize), out position);
-        return true;
     }
 
     /// <summary>
@@ -1638,10 +1633,6 @@ public ref partial struct EvmStack
         return EvmExceptionType.None;
     }
 
-    public EvmExceptionType PushSignedInt256<TTracingInst>(in Int256.Int256 value)
-        where TTracingInst : struct, IFlag
-        => PushUInt256<TTracingInst>(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopLimbo()
     {
@@ -2082,27 +2073,6 @@ public ref partial struct EvmStack
 
     Underflow:
         return -1;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryPopSmallIndex(out uint value)
-    {
-        nint head = Head;
-        if (head == 0)
-        {
-            value = 0;
-            return false;
-        }
-        Head = head - 1;
-        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref _stack, (head - 1) << 5));
-        if ((Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2) | Unsafe.Add(ref limbs, 3)) != 0)
-        {
-            value = uint.MaxValue; // Signals a >= 32
-            return true;
-        }
-        ulong low = limbs;
-        value = low <= uint.MaxValue ? (uint)low : uint.MaxValue;
-        return true;
     }
 
     /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must verify <paramref name="depth"/> items and room for one more.</remarks>

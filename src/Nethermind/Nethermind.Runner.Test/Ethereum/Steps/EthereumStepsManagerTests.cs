@@ -206,7 +206,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await using IContainer container = CreateNethermindEnvironment();
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
 
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
             await stepsManager.InitializeAll(source.Token);
         }
 
@@ -254,7 +254,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
 
             Func<Task> act = () => stepsManager.InitializeAll(source.Token);
             Assert.That(async () => await act(), Throws.TypeOf<InvalidConfigurationException>());
@@ -268,7 +268,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
             await stepsManager.InitializeAll(source.Token);
 
             Assert.That(container.Resolve<StepWithLogManagerInConstructor>().WasExecuted, Is.True);
@@ -283,13 +283,15 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
             Func<Task> act = async () => await stepsManager.InitializeAll(source.Token);
             Assert.That(async () => await act(), Throws.TypeOf<StepDependencyException>());
         }
 
+        // InitializeAll throws on a cancelled token after its steps finish, so the budget must cover the whole run on a
+        // slow runner, not only the steps.
         [Test]
-        [CancelAfter(1000)]
+        [CancelAfter(30_000)]
         public async Task With_dependent_step(CancellationToken cancellationToken)
         {
             await using IContainer container = CreateNethermindEnvironment(

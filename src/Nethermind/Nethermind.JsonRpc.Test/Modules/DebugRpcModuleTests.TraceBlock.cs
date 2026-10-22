@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -28,6 +29,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
@@ -49,9 +51,266 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task NativeConfigPreflight_matches_constructor_null_semantics(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("callTracer", "prestateTracer")] string tracer,
+        [Values("null", "{\"withLog\":null,\"diffMode\":null}",
+            "{\"onlyTopCall\":true,\"onlyTopCall\":null,\"diffMode\":true,\"diffMode\":null}")] string configuration)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToString()
+        };
+        JsonElement tracerConfig = JsonSerializer.Deserialize<JsonElement>(configuration);
+        string buffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer, tracerConfig, streamMode = false });
+        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer, tracerConfig, streamMode = true });
+
+        Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
+        Assert.That(streamed, Is.EqualTo(buffered));
+        Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+    }
+
+    [Test]
+    public async Task NativeConfigPreflight_malformed_config_streams_like_buffered(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("callTracer", "prestateTracer")] string tracer,
+        [Values] bool empty)
+    {
+        using Context context = await Context.Create();
+        Block block = empty
+            ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToString()
+        };
+        JsonElement tracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":17,"diffMode":17}""");
+        string buffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer, tracerConfig, streamMode = false });
+        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer, tracerConfig, streamMode = true });
+
+        Assert.That(streamed, Is.EqualTo(buffered));
+        Assert.That(JToken.Parse(streamed)["error"], empty ? Is.Null : Is.Not.Null, streamed);
+    }
+
+    [Test]
+    public async Task NativeStreamTimeout_Valid_duration_keeps_indexed_streaming(
+        [Values("5s", "0s", "-1s", "4294968s")] string timeout)
+    {
+        IParallelBlockTracer parallel = Substitute.For<IParallelBlockTracer>();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton(parallel));
+        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        var options = new { tracer = "callTracer", timeout, streamMode = true };
+
+        using JsonRpcResponse response = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null,
+            Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>());
+        string streamed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        Assert.That(parallel.ReceivedCalls(), Is.Not.Empty, "the consumed native stream must use the indexed path");
+        string buffered = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { tracer = "callTracer", timeout, streamMode = false });
+        Assert.That(streamed, Is.EqualTo(buffered));
+        Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_native_config_errors_are_execution_input_errors(
+        [Values("callTracer", "prestateTracer", "noopTracer")] string tracer,
+        [Values("17", "[]", "\"bad\"", "{\"onlyTopCall\":17,\"diffMode\":17}")] string configuration,
+        [Values] bool empty) =>
+        await AssertNativeConfigError("debug_traceBlockByNumber", tracer, configuration, empty);
+
+    [TestCase("callTracer", "{\"onlyTopCall\":17}", false, false)]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}", false, false)]
+    [TestCase("prestateTracer", "17", false, false)]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}", true, false)]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}", false, true)]
+    public async Task Debug_traceBlockByHash_native_config_errors_are_execution_input_errors(
+        string tracer, string configuration, bool empty, bool unknown) =>
+        await AssertNativeConfigError("debug_traceBlockByHash", tracer, configuration, empty, unknown);
+
+    [Test]
+    public async Task Debug_traceTransaction_native_config_errors_remain_invalid_params() =>
+        await AssertNativeConfigError("debug_traceTransaction", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidParams);
+
+    private static async Task AssertNativeConfigError(string method, string tracer, string configuration, bool empty, bool unknown = false, int? expectedError = null, bool? streamMode = null)
+    {
+        using Context context = await Context.Create();
+        Block block = empty
+            ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        using JsonDocument config = JsonDocument.Parse(configuration);
+
+        object target = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceTransaction" => block.Transactions[0].Hash!,
+            _ => unknown ? TestItem.KeccakD : block.Hash!
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, target,
+            new { tracer, tracerConfig = config.RootElement, timeout = "5s", streamMode });
+        JToken json = JToken.Parse(response);
+
+        if (unknown)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain(TestItem.KeccakD.ToString()), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+        else if (!empty && tracer != "noopTracer")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedError ?? ErrorCodes.InvalidInput), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+        else
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(block.Transactions.Length), response);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    [Repeat(2)]
+    public async Task Debug_native_tracer_host_json_errors_remain_invalid_params_when_buffered(
+        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber")] string method)
+    {
+        string tracer = $"native-host-buffered-{method}-{Guid.NewGuid():N}";
+        GethLikeNativeTracerFactory.RegisterTracer(tracer, static (_, _, _, _) => throw new JsonException("host construction failure"));
+        await AssertNativeConfigError(method, tracer, "{}", empty: false, expectedError: ErrorCodes.InvalidParams, streamMode: false);
+    }
+
+    [Test]
+    public async Task Debug_native_config_errors_keep_sibling_invalid_params(
+        [Values("debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
+        [Values("callTracer", "prestateTracer")] string tracer)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method switch
+        {
+            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlock" => new BlockDecoder().Encode(block).Bytes,
+            "debug_traceTransaction" => block.Transactions[0].Hash!,
+            _ => new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }
+        };
+        object options = new { tracer, tracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":17,"diffMode":17}""") };
+        object[] parameters = method == "debug_traceCall" ? [selector, "latest", options] : [selector, options];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task NativeStreamTimeout_Config_failure_precedes_bad_duration(
+        [Values("callTracer", "prestateTracer")] string tracer)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        var tracerConfig = new { withLog = "yes", diffMode = "yes" };
+        JToken buffered = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { tracer, tracerConfig, timeout = "bad", streamMode = false }));
+        JToken streamed = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { tracer, tracerConfig, timeout = "bad", streamMode = true }));
+
+        Assert.That((int?)buffered["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), buffered.ToString());
+        Assert.That((int?)streamed["error"]?["code"], Is.EqualTo((int?)buffered["error"]?["code"]), streamed.ToString());
+        Assert.That((string?)streamed["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("Cannot parse 'bad'"));
+    }
+
+    [Test]
+    public async Task NativeStreamTimeout_Registered_constructor_failure_preserves_error_boundary(
+        [Values("json", "format", "cancel")] string kind,
+        [Values("bad", "5s")] string timeout)
+    {
+        string tracer = $"native-host-{kind}-{Guid.NewGuid():N}";
+        Exception failure = kind switch
+        {
+            "json" => new JsonException("native host failure"),
+            "format" => new FormatException("native host failure"),
+            _ => new OperationCanceledException("native host failure")
+        };
+        int constructorCalls = 0;
+        GethLikeNativeTracerFactory.RegisterTracer(tracer, (_, _, _, _) =>
+        {
+            constructorCalls++;
+            throw failure;
+        });
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        var options = new { tracer, timeout, streamMode = true };
+
+        if (timeout == "5s")
+        {
+            using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+            Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null,
+                Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>());
+            Assert.That(constructorCalls, Is.Zero, "the native constructor must remain deferred until the writer is consumed");
+
+            JArray envelopes = JArray.Parse(await StreamToStringAsync(result!));
+            Assert.That(constructorCalls, Is.EqualTo(1));
+            Assert.That(envelopes, Has.Count.EqualTo(1));
+            Assert.That((int?)envelopes[0]["errorCode"], Is.EqualTo(ErrorCodes.InternalError));
+            Assert.That((string?)envelopes[0]["error"], Is.EqualTo("tracing failed: native host failure"));
+            Assert.That(envelopes[0]["result"], Is.Null);
+        }
+        else
+        {
+            int expectedCode = kind switch
+            {
+                "json" => ErrorCodes.InvalidParams,
+                "format" => ErrorCodes.InternalError,
+                _ => ErrorCodes.Timeout
+            };
+            JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options));
+
+            Assert.That((int?)response["error"]?["code"], Is.EqualTo(expectedCode), response.ToString());
+            Assert.That(response["result"], Is.Null);
+            Assert.That(response.ToString(), Does.Not.Contain("Cannot parse 'bad'"));
+        }
+    }
+
+    [Test]
+    public async Task NativeStreamTimeout_Unselected_transactions_do_not_validate_bad_duration(
+        [Values("empty", "unmatched")] string selection)
+    {
+        using Context context = await Context.Create();
+        Block block = selection == "empty"
+            ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { tracer = "noopTracer", timeout = "bad", streamMode = true, txHash = selection == "unmatched" ? TestItem.KeccakD : null }));
+
+        Assert.That(response["error"], Is.Null, response.ToString());
+        Assert.That((JArray)response["result"]!, Is.Empty);
+    }
+
     private static IEnumerable<TestCaseData> NativeBooleanConfigCases()
     {
-        foreach (string field in new[] { "onlyTopCall", "withLog", "diffMode" })
+        foreach (string field in new[] { "onlyTopCall", "withLog", "diffMode", "includeEmpty" })
         {
             foreach ((string values, bool expected) in new (string, bool)[]
             {
@@ -79,7 +338,7 @@ public partial class DebugRpcModuleTests
         byte[] code = Prepare.EvmCode.Log(0, 0).Call(TestItem.AddressC, 30_000).STOP().Done;
         Block block = await chain.AddBlock(Build.A.Transaction.WithNonce(nonce).WithCode(code)
             .WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject);
-        string tracer = field == "diffMode" ? "prestateTracer" : "callTracer";
+        string tracer = field is "diffMode" or "includeEmpty" ? "prestateTracer" : "callTracer";
         async Task<JToken> Trace(string json)
         {
             string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
@@ -94,7 +353,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.DeepEquals(actual, baseline), Is.True, actual.ToString());
-            Assert.That(actual["calls"] is not null, Is.EqualTo(field != "diffMode" && !(field == "onlyTopCall" && expected)));
+            Assert.That(actual["calls"] is not null, Is.EqualTo(field is not ("diffMode" or "includeEmpty") && !(field == "onlyTopCall" && expected)));
             Assert.That(actual["logs"] is not null, Is.EqualTo(field == "withLog" && expected));
             Assert.That(actual["pre"] is not null && actual["post"] is not null, Is.EqualTo(field == "diffMode" && expected));
         }
@@ -102,7 +361,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceBlockByNumber_native_boolean_config_rejects_invalid_types(
-        [Values("onlyTopCall", "withLog", "diffMode", "disableCode", "disableStorage")] string field,
+        [Values("onlyTopCall", "withLog", "diffMode", "includeEmpty", "disableCode", "disableStorage")] string field,
         [Values("1", "[]", "{}", "\"invalid\"")] string value)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -122,47 +381,277 @@ public partial class DebugRpcModuleTests
         Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
     }
 
-    [TestCase("result", 0)]
-    [TestCase("result", 1)]
-    [TestCase("result", 2)]
-    [TestCase("null", 0)]
-    [TestCase("undefined", 0)]
-    [TestCase("42", 0)]
-    [TestCase("step", 0)]
-    [TestCase("enter", 0)]
-    [TestCase("fault", 0)]
-    [TestCase("fault", 1)]
-    [TestCase("exit", 0)]
-    [TestCase("exit", 1)]
-    [TestCase("postStep", 0)]
-    [TestCase("postStep", 1)]
-    [TestCase("precedence", 0)]
-    [TestCase("precedence", 1)]
-    [TestCase("stack-input", 0)]
-    [TestCase("stack-input", 1)]
-    [TestCase("slice-input", 0)]
-    [TestCase("slice-input", 1)]
-    [TestCase("uint-input", 0)]
-    [TestCase("uint-input", 1)]
-    [TestCase("slice-padding", 0)]
-    [TestCase("slice-padding", 1)]
-    [TestCase("setup", -1)]
-    [TestCase("missing", -1)]
-    [TestCase("noncallable", -1)]
-    [TestCase("unknown", -1)]
-    [TestCase("syntax", -1)]
-    public Task Debug_traceBlockByNumber_recovers_js_errors_without_replaying_prefixes(string failure, int failAt) =>
-        AssertTraceBlockByNumberJavaScriptRecovery(failure, failAt, null);
+    [Test]
+    public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("0s", "-1s", "121s", "5s")] string timeout,
+        [Values("error", "null", "primitive")] string failure)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToString()
+        };
+        string thrown = failure switch { "null" => "null", "primitive" => "42", _ => "Error('setup-before-timeout')" };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer = "{fault:function(){},setup:function(){throw " + thrown + ";},result:function(){return {};}}", timeout });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JArray traces = (JArray)json["result"]!;
+        Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length), response);
+        for (int i = 0; i < traces.Count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+                Assert.That((string?)traces[i]["error"], Is.Not.Null.And.Not.Empty, response);
+                if (failure != "null")
+                    Assert.That((string?)traces[i]["error"], Does.Contain(failure == "primitive" ? "42" : "setup-before-timeout"), response);
+                Assert.That(traces[i]["result"], Is.Null, response);
+            }
+        }
+    }
 
-    [TestCase("result", 1, 1, TestName = "Debug_traceBlockByNumber_txHash_recovers_middle_result_failure")]
-    [TestCase("step", 2, 2, TestName = "Debug_traceBlockByNumber_txHash_recovers_last_step_failure")]
-    [TestCase("result", 0, 1, TestName = "Debug_traceBlockByNumber_txHash_selected_success_keeps_canonical_index_and_state")]
-    [TestCase("unknown", -1, 2, TestName = "Debug_traceBlockByNumber_txHash_reports_constructor_failure_for_selected_transaction")]
-    [TestCase("result", 0, -1, TestName = "Debug_traceBlockByNumber_unknown_txHash_returns_no_trace")]
-    public Task Debug_traceBlockByNumber_recovers_js_errors_for_txHash(string failure, int failAt, int selectedAt) =>
-        AssertTraceBlockByNumberJavaScriptRecovery(failure, failAt, selectedAt);
+    [Test]
+    public async Task Debug_traceBlockByNumber_rejects_non_object_options([Values("17", "[]", "\"bad\"", "true")] string optionsJson)
+    {
+        using Context context = await Context.Create();
+        using JsonDocument options = JsonDocument.Parse(optionsJson);
 
-    private async Task AssertTraceBlockByNumberJavaScriptRecovery(string failure, int failAt, int? selectedAt)
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            context.Blockchain.BlockTree.Head!.Number, options.RootElement);
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_null_boolean_preserves_trace_output(
+        [Values("disableStorage", "disableStack", "enableMemory", "enableReturnData")] string property,
+        [Values] bool enabled, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        string members = $"\"limit\":1000,\"streamMode\":{streamMode.ToString().ToLowerInvariant()},\"{property}\":{enabled.ToString().ToLowerInvariant()}";
+        using JsonDocument baselineOptions = JsonDocument.Parse("{" + members + "}");
+        using JsonDocument nullOptions = JsonDocument.Parse($"{{\"{property}\":null," + members + "}");
+
+        string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, baselineOptions.RootElement);
+        string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, nullOptions.RootElement);
+
+        Assert.That(JToken.Parse(expected)["error"], Is.Null, expected);
+        Assert.That(JToken.DeepEquals(JToken.Parse(actual), JToken.Parse(expected)), Is.True, actual);
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_streaming_matches_buffered_output([Values] bool enableMemory)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+
+        string buffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { enableMemory, enableReturnData = true, streamMode = false });
+        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { enableMemory, enableReturnData = true, streamMode = true });
+
+        Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
+        Assert.That(JToken.DeepEquals(JToken.Parse(streamed), JToken.Parse(buffered)), Is.True, streamed);
+    }
+
+    [TestCase(false, "\"bad\"", "lookup")]
+    [TestCase(false, "\"5s\"", "lookup")]
+    [TestCase(true, "\"bad\"", "constructor")]
+    [TestCase(true, "\"5s\"", "constructor")]
+    [TestCase(false, "7", "type")]
+    public async Task Debug_traceBlockByNumber_orders_lookup_and_constructor_before_semantic_timeout(
+        bool retainedBlock, string timeoutJson, string expected)
+    {
+        using Context context = await Context.Create();
+        if (retainedBlock)
+            await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number + (retainedBlock ? 0UL : 1UL);
+        JsonElement timeout = JsonSerializer.Deserialize<JsonElement>(timeoutJson);
+        string tracer = retainedBlock ? "unknownTracer" : NativeNoopTracer.NoopTracer;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", blockNumber,
+            new Dictionary<string, object> { ["tracer"] = tracer, ["timeout"] = timeout });
+        JToken json = JToken.Parse(response);
+
+        if (expected == "type")
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            return;
+        }
+
+        if (expected == "lookup")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo($"block #{blockNumber} not found"), response);
+            }
+            return;
+        }
+
+        Assert.That(json["error"], Is.Null, response);
+        JArray traces = (JArray)json["result"]!;
+        Assert.That(traces, Has.Count.EqualTo(context.Blockchain.BlockTree.Head!.Transactions.Length));
+        for (int i = 0; i < traces.Count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(context.Blockchain.BlockTree.Head.Transactions[i].Hash!.ToString()));
+                Assert.That((string?)traces[i]["error"], Does.Contain("unknownTracer"));
+                Assert.That(traces[i]["result"], Is.Null);
+            }
+        }
+    }
+
+    [TestCase("valid")]
+    [TestCase("malformed")]
+    public async Task Debug_traceBlockByNumber_rejects_oversized_timeout_tokens_before_lookup(string kind)
+    {
+        using Context context = await Context.Create();
+        string timeout = kind == "valid" ? new string('0', 64) + "1s" : new string('x', 65);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            context.Blockchain.BlockTree.Head!.Number + 1, new { tracer = NativeNoopTracer.NoopTracer, timeout });
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [TestCase("native", false)]
+    [TestCase("opcode", false)]
+    [TestCase("opcode", true)]
+    [TestCase("javascript", false)]
+    [TestCase("empty-native", false)]
+    [TestCase("empty-opcode", true)]
+    [TestCase("empty-javascript", false)]
+    [TestCase("unmatched-opcode", false)]
+    [TestCase("unmatched-opcode", true)]
+    [TestCase("javascript-valid", false)]
+    [TestCase("native-null-config", false)]
+    [TestCase("native-null-config-valid", false)]
+    public async Task Debug_traceBlockByNumber_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode)
+    {
+        using Context context = await Context.Create();
+        bool empty = scenario.StartsWith("empty", StringComparison.Ordinal);
+        bool unmatched = scenario.StartsWith("unmatched", StringComparison.Ordinal);
+        Block block = empty
+            ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        bool valid = scenario.EndsWith("-valid", StringComparison.Ordinal);
+        Dictionary<string, object> options = new()
+        {
+            ["timeout"] = valid ? "5s" : "bad",
+            ["streamMode"] = streamMode
+        };
+        if (unmatched) options["txHash"] = TestItem.KeccakD;
+        if (scenario.Contains("native", StringComparison.Ordinal)) options["tracer"] = NativeNoopTracer.NoopTracer;
+        if (scenario.Contains("javascript", StringComparison.Ordinal))
+            options["tracer"] = "{fault:function(){},result:function(){return {};}}";
+        if (scenario.StartsWith("native-null-config", StringComparison.Ordinal))
+        {
+            options["tracer"] = "callTracer";
+            options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":true,"onlyTopCall":null,"withLog":null}""");
+        }
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        if (empty || unmatched)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((json["result"] as JArray)?.Count, Is.Zero, response);
+            }
+        }
+        else if (scenario == "javascript")
+        {
+            Assert.That(json["error"], Is.Null, response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
+            foreach (JToken trace in traces)
+                Assert.That((string?)trace["error"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+        }
+        else if (valid)
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(block.Transactions.Length), response);
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> BlockJavaScriptRecoveryCases()
+    {
+        (string Failure, int FailAt, int? SelectedAt)[] cases =
+        [
+            ("result", 0, null),
+            ("result", 1, null),
+            ("result", 2, null),
+            ("null", 0, null),
+            ("undefined", 0, null),
+            ("42", 0, null),
+            ("step", 0, null),
+            ("enter", 0, null),
+            ("fault", 0, null),
+            ("fault", 1, null),
+            ("exit", 0, null),
+            ("exit", 1, null),
+            ("postStep", 0, null),
+            ("postStep", 1, null),
+            ("precedence", 0, null),
+            ("precedence", 1, null),
+            ("stack-input", 0, null),
+            ("stack-input", 1, null),
+            ("slice-input", 0, null),
+            ("slice-input", 1, null),
+            ("uint-input", 0, null),
+            ("uint-input", 1, null),
+            ("slice-padding", 0, null),
+            ("slice-padding", 1, null),
+            ("setup", -1, null),
+            ("missing", -1, null),
+            ("noncallable", -1, null),
+            ("unknown", -1, null),
+            ("syntax", -1, null),
+            ("result", 1, 1),
+            ("step", 2, 2),
+            ("result", 0, 1),
+            ("unknown", -1, 2),
+            ("result", 0, -1)
+        ];
+
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock" })
+        {
+            foreach ((string failure, int failAt, int? selectedAt) in cases)
+            {
+                string? scenario = (failure, failAt, selectedAt) switch
+                {
+                    ("result", 1, 1) => "txHash_recovers_middle_result_failure",
+                    ("step", 2, 2) => "txHash_recovers_last_step_failure",
+                    ("result", 0, 1) => "txHash_selected_success_keeps_canonical_index_and_state",
+                    ("unknown", -1, 2) => "txHash_reports_constructor_failure_for_selected_transaction",
+                    ("result", 0, -1) => "unknown_txHash_returns_no_trace",
+                    _ => null
+                };
+                TestCaseData testCase = new(method, failure, failAt, selectedAt);
+                yield return scenario is null ? testCase : testCase.SetName($"{nameof(Debug_traceBlock_recovers_js_errors_without_replaying_prefixes)}_{method}_{scenario}");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(BlockJavaScriptRecoveryCases))]
+    public async Task Debug_traceBlock_recovers_js_errors_without_replaying_prefixes(
+        string method, string failure, int failAt, int? selectedAt)
     {
         JsRecoveryObservations observations = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -224,7 +713,13 @@ public partial class DebugRpcModuleTests
         };
         Hash256 selectedHash = selectedAt >= 0 ? block.Transactions[selectedAt.Value].Hash! : TestItem.KeccakA;
         object traceOptions = selectedAt is null ? new { tracer } : new { tracer, txHash = selectedHash };
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, traceOptions);
+        object blockSelector = method switch
+        {
+            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlock" => Rlp.Encode(block).Bytes,
+            _ => block.Number
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockSelector, traceOptions);
         JToken actual = JToken.Parse(response);
         Assert.That(actual["error"], Is.Null, response);
         JArray entries = (JArray)actual["result"]!;
@@ -267,9 +762,10 @@ public partial class DebugRpcModuleTests
         if (selectedAt is not null) return;
 
         observations.Enabled = false;
-        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, new { tracer });
-        Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "the recovery flag belongs only to debug_traceBlockByNumber");
-        string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction",
+            block.Transactions[Math.Max(failAt, 0)].Hash!, new { tracer });
+        Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "single-transaction tracing retains its existing error behavior");
+        string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockSelector,
             new { tracer = "callTracer", tracerConfig = new { onlyTopCall = "not-a-boolean" } });
         Assert.That(JToken.Parse(native)["error"], Is.Not.Null, "native tracer failures remain top-level");
     }
@@ -415,7 +911,7 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public void JavaScript_input_abort_never_overrides_public_interrupt([Values(0, 1, 2)] int externalOrder)
+    public void JavaScript_input_abort_never_overrides_public_interrupt([Range(0, 2)] int externalOrder)
     {
         using Engine engine = new(Prague.Instance);
         engine.PrepareNullThrowCapture();
@@ -484,6 +980,30 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(engine.TryGetInputError(failure, out _), Is.False);
             Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors([Values] bool nested)
+    {
+        using Context ctx = await Context.Create();
+        const string script = "{fault:function(){},result:function(){throw Error('mux result failure');}}";
+        Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
+        object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceBlockByNumber", "latest",
+            new { tracer = "muxTracer", tracerConfig = config });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JArray entries = (JArray)json["result"]!;
+        Assert.That(entries, Is.Not.Empty);
+        foreach (JToken entry in entries)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)entry["error"] ?? "", Does.Contain("mux result failure"), response);
+                Assert.That(entry["result"], Is.Null, response);
+            }
         }
     }
 
@@ -632,6 +1152,293 @@ public partial class DebugRpcModuleTests
         }
         public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+    }
+
+    private static IEnumerable<TestCaseData> ReplayAvailabilityCases()
+    {
+        (string Method, bool UsesRlp)[] methods =
+        [
+            ("debug_traceBlockByHash", false),
+            ("debug_traceBlockByNumber", false),
+            ("debug_traceBlock", true),
+            ("debug_traceTransactionInBlockByHash", true),
+            ("debug_traceTransactionInBlockByIndex", true)
+        ];
+        bool[] values = [false, true];
+        string[] suffixes = ["00", "c0"];
+        foreach ((string method, bool usesRlp) in methods)
+            foreach (bool streaming in values)
+                foreach (bool parentAvailable in values)
+                {
+                    yield return new TestCaseData(method, streaming, parentAvailable, "");
+                    if (usesRlp)
+                        foreach (string suffix in suffixes)
+                            yield return new TestCaseData(method, streaming, parentAvailable, suffix);
+                }
+    }
+
+    [TestCaseSource(nameof(ReplayAvailabilityCases))]
+    public async Task Debug_traceBlock_checks_replay_parent_state(
+        string method, bool streaming, bool parentAvailable, string suffix)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithTo(TestItem.AddressC).WithValue(1).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block processed = await chain.AddBlock(transaction);
+        Hash256 retainedRoot = processed.StateRoot!;
+        if (!parentAvailable)
+        {
+            BlockHeader unavailableHeader = parent.Clone();
+            unavailableHeader.StateRoot = TestItem.KeccakA;
+            unavailableHeader.Hash = unavailableHeader.CalculateHash();
+            Block unavailableParent = new(unavailableHeader, [], []);
+            chain.BlockTree.SuggestBlock(unavailableParent, BlockTreeSuggestOptions.ForceDontSetAsMain);
+            parent = unavailableHeader;
+        }
+        Block unprocessed = Build.A.Block.WithParent(parent).WithStateRoot(parentAvailable ? TestItem.KeccakA : retainedRoot)
+            .WithTransactions(transaction).TestObject;
+        chain.BlockTree.SuggestBlock(unprocessed, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Assert.That(chain.BlockTree.TryUpdateMainChain(unprocessed.Header, true, true, unprocessed), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.StateReader.HasStateForBlock(parent), Is.EqualTo(parentAvailable));
+            Assert.That(chain.StateReader.HasStateForBlock(unprocessed.Header), Is.EqualTo(!parentAvailable));
+        }
+        object selector = method switch
+        {
+            "debug_traceBlockByHash" => unprocessed.Hash!,
+            "debug_traceBlockByNumber" => unprocessed.Number,
+            _ => Rlp.Encode(unprocessed).ToString() + suffix
+        };
+        object[] parameters = method switch
+        {
+            "debug_traceTransactionInBlockByHash" => [selector, transaction.Hash!],
+            "debug_traceTransactionInBlockByIndex" => [selector, "0x0"],
+            _ => [selector]
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameters);
+        JToken actual = JToken.Parse(response);
+        if (method == "debug_traceBlock" && suffix.Length != 0)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual["result"], Is.Null, response);
+                Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(actual["error"]?["message"]?.Value<string>(), Does.Contain("decoding block RLP"));
+            }
+            return;
+        }
+        if (!parentAvailable)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual["result"], Is.Null, response);
+                Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.ResourceUnavailable));
+                Assert.That(actual["error"]?["message"]?.Value<string>(),
+                    Is.EqualTo($"No state available for block {parent.Number} ({parent.Hash})"));
+            }
+            return;
+        }
+        Assert.That(actual["error"], Is.Null, response);
+        JToken trace = actual["result"]!;
+        if (method.StartsWith("debug_traceBlock", StringComparison.Ordinal))
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.Count(), Is.EqualTo(1));
+                Assert.That(trace[0]!["txHash"]!.Value<string>(), Is.EqualTo(transaction.Hash!.ToString()));
+            }
+            trace = trace[0]!["result"]!;
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace["gas"]!.Value<long>(), Is.EqualTo(21_000));
+            Assert.That(trace["failed"]!.Value<bool>(), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_canonical_nonce_override_preserves_replay(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method, [Values] bool stream)
+    {
+        using Context context = await Context.Create();
+        ulong nonce = context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(context.Blockchain.BlockTree.Head!.Header, TestItem.AddressA);
+        Transaction transaction = Build.A.Transaction.WithNonce(nonce).WithTo(TestItem.AddressC).WithValue(1)
+            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = await context.Blockchain.AddBlock(transaction);
+        object selector = method == "debug_traceBlockByHash" ? block.Hash! : block.Number;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new GethTraceOptions
+            {
+                StreamMode = stream,
+                StateOverrides = new Dictionary<Address, AccountOverride> { [TestItem.AddressA] = new() { Nonce = nonce + 1 } }
+            });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((json["result"] as JArray)?.Count, Is.EqualTo(1), response);
+            Assert.That((bool?)json["result"]?[0]?["result"]?["failed"], Is.False, response);
+            Assert.That((long?)json["result"]?[0]?["result"]?["gas"], Is.EqualTo(21_000), response);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> SuppliedSignedNonceCases()
+    {
+        foreach (int nonceDelta in new[] { -1, 0, 1 })
+            foreach (bool revert in nonceDelta == 0 ? new[] { false, true } : new[] { false })
+                foreach (bool selectTransaction in new[] { false, true })
+                    foreach (bool overrideNonce in new[] { false, true })
+                        yield return new TestCaseData("debug_traceBlock", nonceDelta, revert, selectTransaction, overrideNonce, false, false);
+
+        foreach (int nonceDelta in new[] { 0, 1 })
+            yield return new TestCaseData("debug_traceBlock", nonceDelta, false, false, false, true, false);
+
+        foreach (string method in new[] { "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex" })
+            foreach (int nonceDelta in new[] { -1, 1 })
+                foreach (bool stream in new[] { false, true })
+                    yield return new TestCaseData(method, nonceDelta, false, false, false, stream, false);
+
+        foreach (string method in new[] { "debug_traceBlock", "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex" })
+            foreach (int nonceDelta in new[] { -1, 1 })
+                foreach (bool stream in new[] { false, true })
+                    foreach (bool selectTransaction in method == "debug_traceBlock" ? new[] { false, true } : new[] { false })
+                        yield return new TestCaseData(method, nonceDelta, false, selectTransaction, false, stream, true);
+    }
+
+    [TestCaseSource(nameof(SuppliedSignedNonceCases))]
+    public async Task Debug_traceBlock_supplied_signed_nonce_is_validated(
+        string method, int nonceDelta, bool revert, bool selectTransaction, bool overrideNonce, bool stream, bool invalidPrefix)
+    {
+        using Context context = await Context.Create();
+        Block parent = context.Blockchain.BlockTree.Head!;
+        ulong stateNonce = context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(parent.Header, TestItem.AddressA);
+        ulong effectiveNonce = overrideNonce ? stateNonce + 7 : stateNonce;
+        byte[] code = revert ? Prepare.EvmCode.Revert(0, 0).Done : Prepare.EvmCode.STOP().Done;
+        Transaction transaction = Build.A.Transaction.WithNonce(invalidPrefix ? effectiveNonce : (ulong)((long)effectiveNonce + nonceDelta))
+            .WithCode(code).WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction[] transactions = invalidPrefix
+            ? [Build.A.Transaction.WithNonce((ulong)((long)effectiveNonce + nonceDelta)).WithTo(TestItem.AddressC)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject, transaction]
+            : [transaction];
+        (Block original, Block supplied) = await CreateSuppliedBlock(context, transactions);
+        string rlp = Rlp.Encode(supplied).ToString();
+        GethTraceOptions options = new()
+        {
+            Tracer = stream ? string.Empty : NativeCallTracer.CallTracer,
+            StreamMode = stream,
+            TxHash = selectTransaction ? transaction.Hash : null,
+            StateOverrides = overrideNonce
+                ? new Dictionary<Address, AccountOverride> { [TestItem.AddressA] = new() { Nonce = effectiveNonce } }
+                : null
+        };
+        object[] parameters = method switch
+        {
+            "debug_traceTransactionInBlockByHash" => [rlp, transaction.Hash!, options],
+            "debug_traceTransactionInBlockByIndex" => [rlp, invalidPrefix ? 1 : 0, options],
+            _ => [rlp, options]
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        Assert.That(context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(original.Header, TestItem.AddressA), Is.EqualTo(stateNonce),
+            "read-only tracing must not persist a sender nonce change");
+
+        if (stream && method != "debug_traceBlock")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?["failed"], Is.True, response);
+                Assert.That((int?)json["result"]?["errorCode"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["result"]?["error"] ?? string.Empty,
+                    Does.Contain(nonceDelta > 0 ? "nonce too high" : "nonce too low"), response);
+            }
+        }
+        else if (stream)
+        {
+            Assert.That(json["error"], Is.Null, response);
+            if (nonceDelta != 0)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((int?)json["result"]?.Last?["errorCode"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                    Assert.That((string?)json["result"]?.Last?["error"] ?? string.Empty,
+                        Does.Contain(nonceDelta > 0 ? "nonce too high" : "nonce too low"), response);
+                }
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((json["result"] as JArray)?.Count, Is.EqualTo(1), response);
+                    Assert.That((bool?)json["result"]?[0]?["result"]?["failed"], Is.False, response);
+                    Assert.That((long?)json["result"]?[0]?["result"]?["gas"], Is.GreaterThan(0), response);
+                }
+            }
+        }
+        else if (nonceDelta != 0)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"] ?? string.Empty,
+                    Does.Contain(nonceDelta > 0 ? "nonce too high" : "nonce too low"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+        else
+        {
+            Assert.That(json["error"], Is.Null, response);
+            JToken frame = json["result"]![0]!["result"]!;
+            Assert.That((string?)frame["value"], Is.EqualTo("0x1"), response);
+            if (revert)
+                Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"), "an EVM REVERT is a trace result, not transaction rejection");
+            else
+                Assert.That((string?)frame["to"], Is.EqualTo(ContractAddress.From(TestItem.AddressA, effectiveNonce).ToString()), response);
+        }
+    }
+
+    [TestCase("debug_traceTransactionInBlockByHash", false)]
+    [TestCase("debug_traceTransactionInBlockByHash", true)]
+    [TestCase("debug_traceTransactionInBlockByIndex", false)]
+    [TestCase("debug_traceTransactionInBlockByIndex", true)]
+    public async Task Supplied_transaction_trace_preserves_validation_boundary(string method, bool stream)
+    {
+        using Context context = await Context.Create();
+        Block parent = context.Blockchain.BlockTree.Head!;
+        ulong nonce = context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(parent.Header, TestItem.AddressA);
+        Transaction target = Build.A.Transaction.WithNonce(nonce).WithTo(TestItem.AddressC).WithValue(1)
+            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction trailing = Build.A.Transaction.WithNonce(nonce + 2).WithTo(TestItem.AddressC).WithValue(1)
+            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        (Block original, Block supplied) = await CreateSuppliedBlock(context, target, trailing);
+        object selector = method == "debug_traceTransactionInBlockByHash" ? target.Hash! : 0;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method,
+            Rlp.Encode(supplied).ToString(), selector, new GethTraceOptions { StreamMode = stream });
+        JToken json = JToken.Parse(response);
+        Assert.That(context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(original.Header, TestItem.AddressA), Is.EqualTo(nonce));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            Assert.That((long?)json["result"]?["gas"], Is.EqualTo(21_000), response);
+        }
+    }
+
+    private static async Task<(Block Original, Block Supplied)> CreateSuppliedBlock(Context context, params Transaction[] transactions)
+    {
+        Block original = await context.Blockchain.AddBlock();
+        Block supplied = new(original.Header.Clone(), transactions, original.Uncles, original.Withdrawals);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original.Transactions, Is.Empty);
+            Assert.That(supplied.Hash, Is.EqualTo(original.Hash), "the supplied body deliberately disagrees with the empty stored header");
+        }
+        return (original, supplied);
     }
 
     [Test]
@@ -795,6 +1602,94 @@ public partial class DebugRpcModuleTests
         }
 
         Assert.That(JToken.DeepEquals(JToken.Parse(limited), expected), Is.True, limited);
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_native_tracer_streams_the_buffered_json(
+        [Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer)] string tracer)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object blockParameter = method switch
+        {
+            "debug_traceBlock" => Rlp.Encode(block).ToString(),
+            "debug_traceBlockByNumber" => block.Number,
+            _ => block.Hash!
+        };
+
+        using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true });
+        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true });
+        string buffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = false });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null, Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>(), "precondition: the block is streamed");
+            Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length), streamed);
+            Assert.That(streamed, Is.EqualTo(buffered));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_native_tracer_with_malformed_config_fails_before_streaming(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer)] string tracer)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object blockParameter = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        // Each tracer rejects the mistyped field of its own config and ignores the other one.
+        var tracerConfig = new { withLog = "yes", diffMode = "yes" };
+
+        JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, tracerConfig, streamMode = true }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"], Is.Not.Null, response.ToString());
+            Assert.That(response["result"], Is.Null, response.ToString());
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_empty_body_keeps_outer_rlp_strictness(
+        [Values("empty", "empty-list", "extra-field", "valid")] string inputKind, [Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        Block block = await chain.AddBlock();
+        byte[] input = inputKind switch
+        {
+            "empty" => [],
+            "empty-list" => [0xc0],
+            _ => Rlp.Encode(block).Bytes
+        };
+        if (inputKind == "extra-field")
+        {
+            RlpReader reader = new(input);
+            int contentLength = reader.ReadSequenceLength();
+            byte[] expanded = new byte[Rlp.LengthOfSequence(contentLength + 1)];
+            RlpWriter writer = new(expanded);
+            writer.StartSequence(contentLength + 1);
+            input.AsSpan(reader.Position).CopyTo(expanded.AsSpan(writer.Position));
+            expanded[^1] = 0x80;
+            input = expanded;
+        }
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlock", input);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (inputKind == "valid")
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((JArray)json["result"]!, Is.Empty, response);
+            }
+            else
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain("decoding block RLP"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
     }
 
     [Test]
@@ -966,15 +1861,11 @@ public partial class DebugRpcModuleTests
                 "jsonrpc": "2.0",
                 "result": [
                     {
-                        "result": {
-                            "0x7f600060-73": 1
-                        },
+                        "result": {},
                         "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
                     },
                     {
-                        "result": {
-                            "0x60006000-33": 1
-                        },
+                        "result": {},
                         "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
                     }
                 ],
@@ -1081,17 +1972,8 @@ public partial class DebugRpcModuleTests
                                 "code": "0xabcd",
                                 "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                             },
-                            "0x0ffd3e46594919c04bcfd4e146203c8255670828": {
-                                "balance": "0x0"
-                            },
                             "0x475674cb523a0a2736b7f7534390288fce16982c": {
                                 "balance": "0xf618"
-                            },
-                            "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837": {
-                                "balance": "0x0",
-                                "storage": {
-                                    "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000"
-                                }
                             }
                         },
                         "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
@@ -1103,9 +1985,6 @@ public partial class DebugRpcModuleTests
                                 "nonce": 4,
                                 "code": "0xabcd",
                                 "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
-                            },
-                            "0x6b5887043de753ecfa6269f947129068263ffbe2": {
-                                "balance": "0x0"
                             },
                             "0x475674cb523a0a2736b7f7534390288fce16982c": {
                                 "balance": "0x24cac"
@@ -1264,6 +2143,29 @@ public partial class DebugRpcModuleTests
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
 
+    [TestCase("debug_traceBlock", -32602)]
+    [TestCase("debug_traceBlockByNumber", -32000)]
+    [TestCase("debug_traceBlockByHash", -32602)]
+    public async Task Debug_traceBlock_routes_reject_malformed_timeout_before_stream_commit(string method, int expectedCode)
+    {
+        using Context context = await Context.Create();
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object? argument = method switch
+        {
+            "debug_traceBlock" => Rlp.Encode(context.Blockchain.BlockTree.Head).ToString(),
+            "debug_traceBlockByNumber" => context.Blockchain.BlockTree.Head!.Number,
+            _ => context.Blockchain.BlockTree.Head!.Hash
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, argument,
+            new { timeout = "bad", streamMode = true });
+        using JsonDocument document = JsonDocument.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.TryGetProperty("result", out _), Is.False);
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(expectedCode));
+        }
+    }
+
     [Test]
     public async Task Debug_traceBlock_json_rpc_request_returns_valid_json([Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
     {
@@ -1333,12 +2235,61 @@ public partial class DebugRpcModuleTests
             if (callback == "step") tracer.SetOperationStack(default);
             return tracer.BuildResult();
         }
-        if (capture || callback == "return")
+        if (capture && callback == "setup")
+        {
+            JavaScriptTraceFailure failure = Assert.Throws<JavaScriptTraceFailure>(() => { using GethLikeTxTrace result = Trace(); })!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failure.InnerException, Is.InstanceOf<ScriptEngineException>());
+                Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.True);
+            }
+        }
+        else if (capture || callback == "return")
         {
             using GethLikeTxTrace result = Trace();
             Assert.That(result.TraceError is null, Is.EqualTo(callback == "return"));
         }
         else Assert.Throws<ScriptEngineException>(() => Trace());
+    }
+
+    [Test]
+    public async Task Capture_setup_keeps_input_diagnostics_and_unrecoverable_boundaries(
+        [Values("input", "host", "fatal", "cancellation", "interrupt", "input-interrupt")] string kind)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        Action fail = kind switch
+        {
+            "input" => () => engine.AbortInput("setup input marker"),
+            "host" => () => throw new InvalidOperationException("setup host failure"),
+            "fatal" => () => throw CreateException(true, true, null),
+            "cancellation" => () => throw new OperationCanceledException(),
+            "interrupt" => engine.Interrupt,
+            _ => () => { engine.AbortInput("setup input marker"); engine.Interrupt(); }
+        };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failSetup=action;}}"))
+            installer.InvokeMethod("install", fail);
+        Exception exception = Assert.Catch(() =>
+        {
+            using GethLikeJavaScriptTxTracer _ = new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(),
+                new GethTraceOptions
+                {
+                    CaptureJavaScriptErrors = true,
+                    Timeout = TimeSpan.Zero,
+                    Tracer = "{fault:function(){},setup:function(){failSetup();throw null;},result:function(){return {};}}"
+                });
+        })!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(exception), Is.EqualTo(kind == "input"), exception.ToString());
+            if (kind == "input")
+            {
+                Assert.That(exception, Is.TypeOf<JavaScriptTraceFailure>());
+                Assert.That(exception.Message, Is.EqualTo("setup input marker"));
+                Assert.That(exception.InnerException, Is.Not.Null);
+            }
+            else Assert.That(exception, Is.Not.TypeOf<JavaScriptTraceFailure>());
+        }
     }
 
     [Test]

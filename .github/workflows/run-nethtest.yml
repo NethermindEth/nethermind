@@ -40,7 +40,7 @@ on:
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
         required: false
-        default: tests-bogota-devnet@v1.1.0
+        default: tests-bogota-devnet@v1.1.1
         type: string
       filter:
         description: Regex filter for test names
@@ -96,7 +96,7 @@ on:
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
         required: false
-        default: tests-bogota-devnet@v1.1.0
+        default: tests-bogota-devnet@v1.1.1
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -135,19 +135,15 @@ env:
   # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250, EIP-8272 and
   # EIP-7906, where the FOCIL archive means Amsterdam plus EIP-7805; nothing inside a fixture
   # separates the two, so the lane names the fork it means through the runner's --forkAlias.
-  FRAMES_VERSION: ${{ inputs.frames_version || 'tests-bogota-devnet@v1.1.0' }}
+  FRAMES_VERSION: ${{ inputs.frames_version || 'tests-bogota-devnet@v1.1.1' }}
   # Minimum cases the pinned release ships across the frame lanes, set to the exact counts it holds.
   # Asserted so a scope resolving to nothing, or to fewer cases, fails rather than reporting a clean run.
-  FRAME_MIN_CASES: '741'
+  FRAME_MIN_CASES: '750'
   # The same floor for the frame transaction-test lane, whose subtree is a much smaller fixture set.
   FRAME_TX_MIN_CASES: '99'
-  # ubuntu-latest runners have 16 GB of RAM. The runner ships with server GC
-  # (throughput-oriented, collects lazily), which previously ballooned past the
-  # runner limit on the full fixture set. Workstation GC keeps the heap tight,
-  # and ConserveMemory trades CPU for headroom on the marginal flat
-  # parallel-execution chunks (same setting the NUnit flat workflow uses).
-  DOTNET_gcServer: '0'
-  DOTNET_GCConserveMemory: '9'
+  # nethtest runs with the server GC from its project. A workstation GC + GCConserveMemory=9 override spent more
+  # than half of each blockTest chunk in GC pauses. Most of the garbage was a production-sized trie node cache
+  # per test, which Ethereum.Test.Base now sizes for EF-test chains.
   # Build/runtime variant for the nethermind-tests-checked matrix: checked builds the
   # runner with TRACE;DEBUG defines (overflow/assert checks); no-intrinsics disables
   # hardware intrinsics at run time (SIMD software-fallback paths). Empty = standard.
@@ -238,49 +234,44 @@ jobs:
                   # sequential config, coarsely chunked. The variant exercises arithmetic
                   # and SIMD-fallback code paths, which are independent of the BAL/parallel
                   # and flat sub-variants, so those add no coverage here. Variant builds run
-                  # slower, so chunks are kept modest but under the job timeout.
+                  # slower; at these counts a chunk stays far under the job timeout.
                   if [ "$type" = "engineTest" ]; then
                     emit "$type" sequential full '' false false 4 3
                   else
-                    emit "$type" sequential full '' false false 4 4
+                    emit "$type" sequential full '' false false 4 2
                   fi
                 elif run_sequential; then
                   # The pyspec NUnit chunks in nethermind-tests.yml ran the whole assembly
                   # unfiltered, so the Amsterdam parallel/batch-read variant classes also
                   # ran under the default (patricia) layout — including parallel-full,
                   # which is the production configuration. Mirror that coverage here.
-                  # Chunk counts are sized to keep every job under ~8 min wall (measured):
-                  # engineTest fixtures run ~2x slower than blockTest, so engine gets more.
+                  # Chunk counts aim at about 6 min of nethtest per job: each job also pays about
+                  # 1-1.5 min of setup and fixture restore, so smaller chunks mostly add overhead.
                   if [ "$type" = "engineTest" ]; then
-                    emit "$type" sequential   full      '' false false 4 7
-                    emit "$type" parallel     amsterdam '' true  false 1 4
-                    emit "$type" batchread    amsterdam '' false true  4 2
-                    emit "$type" parallelfull amsterdam '' true  true  1 4
-                  else
-                    emit "$type" sequential   full      '' false false 4 6
+                    emit "$type" sequential   full      '' false false 4 3
                     emit "$type" parallel     amsterdam '' true  false 1 2
-                    emit "$type" batchread    amsterdam '' false true  4 2
+                    emit "$type" batchread    amsterdam '' false true  4 1
                     emit "$type" parallelfull amsterdam '' true  true  1 2
+                  else
+                    emit "$type" sequential   full      '' false false 4 2
+                    emit "$type" parallel     amsterdam '' true  false 1 1
+                    emit "$type" batchread    amsterdam '' false true  4 1
+                    emit "$type" parallelfull amsterdam '' true  true  1 1
                   fi
                 fi
                 if run_flat; then
-                  # The flat in-memory backend NEVER PRUNES, so state accumulates across a
-                  # chunk: it is both slower per test (heap grows -> GC pressure) and bounded
-                  # by the 16 GB runner limit, hence the denser split than patricia. The
-                  # parallel-exec chunks run short (~2-4 min) but each job pays ~50s fixed
-                  # overhead, so they are merged down to the memory floor: on this v7.3.2 set
-                  # parallel OOMed at 5 chunks and parallel-full at 4, so 6 / 5 are the safe
-                  # minimums. Engine is the heaviest combination.
+                  # Same ~6 min target as above. At these counts the first chunk of every flat lane
+                  # peaked at 1.1-1.9 GB of the 16 GB runner, so memory does not set their size.
                   if [ "$type" = "engineTest" ]; then
-                    emit "$type" flat_sequential  full      1 false false 2 9
-                    emit "$type" flat_parallel    amsterdam 1 true  false 1 6
-                    emit "$type" flat_batchread   amsterdam 1 false true  4 3
-                    emit "$type" flat_parallelfull amsterdam 1 true true  1 5
-                  else
-                    emit "$type" flat_sequential  full      1 false false 4 6
-                    emit "$type" flat_parallel    amsterdam 1 true  false 1 6
+                    emit "$type" flat_sequential  full      1 false false 2 4
+                    emit "$type" flat_parallel    amsterdam 1 true  false 1 2
                     emit "$type" flat_batchread   amsterdam 1 false true  4 2
-                    emit "$type" flat_parallelfull amsterdam 1 true true  1 5
+                    emit "$type" flat_parallelfull amsterdam 1 true true  1 2
+                  else
+                    emit "$type" flat_sequential  full      1 false false 4 2
+                    emit "$type" flat_parallel    amsterdam 1 true  false 1 2
+                    emit "$type" flat_batchread   amsterdam 1 false true  4 1
+                    emit "$type" flat_parallelfull amsterdam 1 true true  1 2
                   fi
                 fi
                 ;;
@@ -288,15 +279,12 @@ jobs:
                 # State tests execute a single tx via the tx processor - the block-level
                 # parallel/batch-read toggles do not apply, only the state layout does.
                 if run_sequential; then
-                  # The state set is memory-heavy even on patricia: 1 chunk GC-thrashed into
-                  # the idle watchdog (same failure as flat state at 3 chunks), so keep 2 -
-                  # the proven-stable floor.
-                  emit "$type" sequential full '' '' '' 4 2
+                  # One chunk runs about 4 min and peaked at 1.9 GB.
+                  emit "$type" sequential full '' '' '' 4 1
                 fi
                 if run_flat; then
-                  # Flat + 4 workers is memory-heavy for the state set; 3 chunks GC-thrashed
-                  # until the idle watchdog killed a chunk, 4 is the proven-stable floor.
-                  emit "$type" flat_sequential full 1 '' '' 4 4
+                  # The first of two chunks peaked at 1.8 GB.
+                  emit "$type" flat_sequential full 1 '' '' 4 2
                 fi
                 ;;
               syncTest)
@@ -595,7 +583,7 @@ jobs:
           # fork and parameterisation but cannot tell apart two fixture files that define the same
           # test. An explicit `filter` input overrides this.
           KNOWN_FAILURES=()
-          if [ "$TEST_TYPE" = "focilTest" ]; then
+          if [ "$TEST_TYPE" = "focilTest" ] && [[ "$RESOLVED_EEST_VERSION" == tests-focil-devnet@* ]]; then
             KNOWN_FAILURES+=(
               # The v0.3.0 release corrects the inclusion-list engine fixtures, so the patterns this
               # lane carried for ethereum/execution-specs#3582, #3406, the EIP-7610 collision scenario
@@ -616,6 +604,16 @@ jobs:
               'test_invalid_block_blob_count.*inclusion_list'
               'test_invalid_tx_max_fee_per_blob_gas.*inclusion_list'
             )
+            # v0.3 expects blob-only IL omissions to fail; remove these skips when upgrading to Heze v2.
+            if [ "$RESOLVED_EEST_VERSION" = "tests-focil-devnet@v0.3.0" ]; then
+              KNOWN_FAILURES+=(
+                'test_block_with_pending_blob_il_tx_is_valid\[fork_Bogota-blockchain_test_engine\]$'
+                'test_transaction_validity_type_3\[fork_Bogota-blockchain_test_engine_inclusion_list_from_state_test-type_3-.*-(exact|extra)_gas-floor_gas_.*\]$'
+                'test_trailing_tx_admission_all_transaction_types\[fork_Bogota-tx_type_3-refund_type_RefundTypes\.STORAGE_CLEAR-blockchain_test_engine_inclusion_list-(exact|extra)_block_gas_limit-typed_trailing_tx\]$'
+                'test_tx_gas_limit_block_boundary\[fork_Bogota-blockchain_test_engine_inclusion_list-type_3_blob-bgl_(0x01ffffe|0x0fffffd)-gas_(equal|one_below)\]$'
+                'test_tx_total_gas_limit_cap\[fork_Bogota-tx_type_3-blockchain_test_engine_inclusion_list_from_state_test-at_cap\]$'
+              )
+            fi
           elif [ "$SCOPE" = "frames" ]; then
             KNOWN_FAILURES+=(
               # The v1.1.0 release also carries the APPROVE changes of ethereum/execution-specs#3801,

@@ -92,7 +92,7 @@ public class GetBlobsHandlerV4Tests
             Assert.That(Metrics.GetBlobsRequestsTotal, Is.EqualTo(1));
             Assert.That(Metrics.GetBlobsRequestsSuccessTotal, Is.Zero);
             Assert.That(Metrics.GetBlobsRequestsFailureTotal, Is.EqualTo(1));
-            txPool.DidNotReceiveWithAnyArgs().TryGetBlobCellsAndProofsV1(default!, default, out _, out _, out _);
+            txPool.DidNotReceiveWithAnyArgs().TryGetBlobCellsAndProofsV1(default!, default, default!, default!, default!);
         }
     }
 
@@ -103,19 +103,7 @@ public class GetBlobsHandlerV4Tests
         BlobCellMask requestedMask = BlobCellMask.FromIndices([3]);
         byte[] cell = new byte[Ckzg.BytesPerCell];
         byte[] proof = new byte[Ckzg.BytesPerProof];
-        txPool.TryGetBlobCellsAndProofsV1(
-                Arg.Any<byte[]>(),
-                requestedMask,
-                out Arg.Any<BlobCellMask>(),
-                out Arg.Any<byte[][]?>(),
-                out Arg.Any<byte[][]?>())
-            .Returns(call =>
-            {
-                call[2] = requestedMask;
-                call[3] = new[] { cell };
-                call[4] = new[] { proof };
-                return true;
-            });
+        ReturnFromPool(txPool, requestedMask, requestedMask, [cell], [proof]);
         GetBlobsHandlerV4 handler = CreateHandler(txPool);
         GetBlobsHandlerV4Request request = new([new byte[Hash256.Size]], ToBitArray(requestedMask));
 
@@ -139,19 +127,7 @@ public class GetBlobsHandlerV4Tests
 
         ITxPool txPool = Substitute.For<ITxPool>();
         BlobCellMask requestedMask = BlobCellMask.FromIndices([3]);
-        txPool.TryGetBlobCellsAndProofsV1(
-                Arg.Any<byte[]>(),
-                requestedMask,
-                out Arg.Any<BlobCellMask>(),
-                out Arg.Any<byte[][]?>(),
-                out Arg.Any<byte[][]?>())
-            .Returns(call =>
-            {
-                call[2] = BlobCellMask.Empty;
-                call[3] = Array.Empty<byte[]>();
-                call[4] = Array.Empty<byte[]>();
-                return true;
-            });
+        ReturnFromPool(txPool, requestedMask, BlobCellMask.Empty, [], []);
         GetBlobsHandlerV4 handler = CreateHandler(txPool);
         GetBlobsHandlerV4Request request = new([new byte[Hash256.Size]], ToBitArray(requestedMask));
 
@@ -171,7 +147,8 @@ public class GetBlobsHandlerV4Tests
     public void Public_api_should_preserve_legacy_constructors()
     {
         ConstructorInfo custodyConstructor = typeof(EngineRpcModule).GetConstructors()
-            .Single(static constructor => constructor.GetParameters().Any(static parameter => parameter.ParameterType == typeof(IBlobCustodyTracker)));
+            .Single(static constructor => constructor.GetParameters().Any(static parameter => parameter.ParameterType == typeof(IBlobCustodyTracker))
+                && constructor.GetParameters().All(static parameter => parameter.ParameterType != typeof(PayloadTransactionCountGuard)));
         Type[] legacyEngineParameters = custodyConstructor.GetParameters()
             .Where(static parameter => parameter.ParameterType != typeof(IBlobCustodyTracker))
             .Select(static parameter => parameter.ParameterType)
@@ -190,6 +167,22 @@ public class GetBlobsHandlerV4Tests
         syncingInfo.IsSyncing().Returns(false);
         return new GetBlobsHandlerV4(txPool, syncingInfo);
     }
+
+    /// <summary>Makes <paramref name="txPool"/> return the given cells and proofs for every requested blob.</summary>
+    private static void ReturnFromPool(ITxPool txPool, BlobCellMask requestedMask, BlobCellMask availableMask, byte[][] cells, byte[][] proofs) =>
+        txPool.TryGetBlobCellsAndProofsV1(Arg.Any<byte[][]>(), requestedMask, Arg.Any<BlobCellMask[]>(), Arg.Any<byte[][]?[]>(), Arg.Any<byte[][]?[]>())
+            .Returns(call =>
+            {
+                byte[][] hashes = call.ArgAt<byte[][]>(0);
+                for (int i = 0; i < hashes.Length; i++)
+                {
+                    call.ArgAt<BlobCellMask[]>(2)[i] = availableMask;
+                    call.ArgAt<byte[][]?[]>(3)[i] = cells;
+                    call.ArgAt<byte[][]?[]>(4)[i] = proofs;
+                }
+
+                return hashes.Length;
+            });
 
     private static BitArray ToBitArray(BlobCellMask mask)
     {

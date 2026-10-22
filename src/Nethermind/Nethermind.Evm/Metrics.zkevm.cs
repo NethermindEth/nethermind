@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -14,24 +15,10 @@ namespace Nethermind.Evm;
 /// </remarks>
 public partial class Metrics
 {
-    internal static long BlockTransactions => 0;
-    internal static float BlockAveGasPrice => 0f;
-    internal static float BlockMinGasPrice => float.MaxValue;
-    internal static float BlockMaxGasPrice => 0f;
-    internal static float BlockEstMedianGasPrice => 0f;
-
-    public static (float Min, float EstMedian, float Ave, float Max)? GetBlockGasPrices() => null;
-
     public static float GasPriceMin => 0f;
     public static float GasPriceMedian => 0f;
     public static float GasPriceAve => 0f;
     public static float GasPriceMax => 0f;
 
-    public static void ResetBlockStats() { }
-
-    internal static void UpdateBlockGasPrice(in UInt256 effectiveGasPrice) { }
-
-    internal static void SeedBlockGasPriceIfEmpty(in UInt256 baseFee) { }
-
-    internal static void PublishBlockGasPriceGauges() { }
+    internal static void PublishBlockGasPrices(Transaction[] transactions, bool isEip1559Enabled, in UInt256 baseFee) { }
 }
