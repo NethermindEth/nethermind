@@ -63,6 +63,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.KeepAlive;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -334,6 +335,29 @@ public class EthereumRunnerTests
             Assert.That((livePool.MaxPendingTxsPerSender, livePool.GasLimit, livePool.Size, livePool.MaxTxSize), Is.EqualTo(original));
             Assert.That((warmPool!.BlobsSupport, warmPool.PersistentBroadcastEnabled, warmPool.ProofsTranslationEnabled),
                 Is.EqualTo((livePool.BlobsSupport, livePool.PersistentBroadcastEnabled, livePool.ProofsTranslationEnabled)));
+        }
+    }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_never_runs_the_engine_keep_alive()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        ConfigProvider config = new(new InitConfig { BaseDbPath = directory.Path }, new MergeConfig { EngineKeepAlive = EngineKeepAliveMode.Both });
+        IMergeConfig? warmMerge = null;
+        EngineKeepAliveService? warmKeepAlive = null;
+
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), config, false, cancellation.Token,
+            configureContainer: builder => builder.RegisterBuildCallback(container =>
+            {
+                warmMerge = container.Resolve<IMergeConfig>();
+                warmKeepAlive = container.Resolve<EngineKeepAliveService>();
+            }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmMerge!.EngineKeepAlive, Is.EqualTo(EngineKeepAliveMode.Off));
+            Assert.That(warmKeepAlive!.IsStarted, Is.False, "the warm node's forkchoice updates did not start it");
         }
     }
 

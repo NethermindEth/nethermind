@@ -143,6 +143,9 @@ public class MergePluginTests
             Assert.That(container.Resolve<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>()
                 is KeepAliveGetBlobsHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, Is.EqualTo(wrapped));
             Assert.That(container.Resolve<EngineKeepAliveService>().IsStarted, Is.False, "started by the first VALID forkchoice update");
+            Assert.That((container.Resolve<IForkchoiceUpdatedHandler>() as KeepAliveForkchoiceUpdatedHandler)?.Inner, Is.Not.InstanceOf<KeepAliveForkchoiceUpdatedHandler>(), "wrapped once");
+            Assert.That((container.Resolve<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>() as KeepAliveGetBlobsHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>)?.Inner,
+                Is.Not.InstanceOf<KeepAliveGetBlobsHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(), "wrapped once");
         }
     }
 

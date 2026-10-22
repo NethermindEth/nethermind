@@ -15,6 +15,8 @@ namespace Nethermind.Merge.Plugin.KeepAlive;
 internal sealed class KeepAliveGetBlobsHandler<TRequest, TResult>(IAsyncHandler<TRequest, TResult> inner, EngineKeepAliveService keepAlive)
     : IAsyncHandler<TRequest, TResult>
 {
+    internal IAsyncHandler<TRequest, TResult> Inner => inner;
+
     public Task<ResultWrapper<TResult>> HandleAsync(TRequest request)
     {
         keepAlive.Signal();
@@ -29,6 +31,8 @@ internal sealed class KeepAliveGetBlobsHandler<TRequest, TResult>(IAsyncHandler<
 internal sealed class KeepAliveForkchoiceUpdatedHandler(IForkchoiceUpdatedHandler inner, EngineKeepAliveService keepAlive)
     : IForkchoiceUpdatedHandler
 {
+    internal IForkchoiceUpdatedHandler Inner => inner;
+
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int fcuVersion)
     {
         keepAlive.Signal();

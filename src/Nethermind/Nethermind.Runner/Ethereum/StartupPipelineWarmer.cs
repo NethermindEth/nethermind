@@ -45,6 +45,7 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.KeepAlive;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
@@ -250,7 +251,10 @@ internal static class StartupPipelineWarmer
                 CollectionsPerUnconditionalDecommit = mergeConfig.CollectionsPerUnconditionalDecommit,
                 SweepMemory = mergeConfig.SweepMemory,
                 CompactMemory = mergeConfig.CompactMemory,
-                PostBlockGcDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)(mergeConfig.SecondsPerSlot * 1000 / 8)
+                PostBlockGcDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)(mergeConfig.SecondsPerSlot * 1000 / 8),
+                // Off whatever its default: the warm node's forkchoice updates would start it, and its ticks would
+                // land in the live node's keep-alive metrics.
+                EngineKeepAlive = EngineKeepAliveMode.Off
             });
     }
 
