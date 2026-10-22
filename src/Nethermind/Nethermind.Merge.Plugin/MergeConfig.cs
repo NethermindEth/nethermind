@@ -44,7 +44,7 @@ namespace Nethermind.Merge.Plugin
         public bool SimulateBlockProduction { get; set; } = false;
         public int? PostBlockGcDelayMs { get; set; } = null;
 
-        public EngineKeepAliveMode EngineKeepAlive { get; set; } = EngineKeepAliveMode.Off;
+        public EngineKeepAliveMode EngineKeepAlive { get; set; } = EngineKeepAliveMode.Both;
 
         public int EngineKeepAliveIntervalMs { get; set; } = 50;
     }

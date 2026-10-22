@@ -45,12 +45,12 @@ public class EngineKeepAliveTests
         new(mode, intervalMs, filePath ?? Path.Combine(NewDirectory(), EngineKeepAliveService.FileName), diskSupported, allowDirect, fileSize, LimboLogs.Instance);
 
     [Test]
-    public void Defaults_are_off_at_fifty_milliseconds()
+    public void Defaults_are_both_at_fifty_milliseconds()
     {
         IMergeConfig config = new ConfigProvider().GetConfig<IMergeConfig>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(config.EngineKeepAlive, Is.EqualTo(EngineKeepAliveMode.Off));
+            Assert.That(config.EngineKeepAlive, Is.EqualTo(EngineKeepAliveMode.Both)); // bench variant
             Assert.That(config.EngineKeepAliveIntervalMs, Is.EqualTo(50));
         }
     }
