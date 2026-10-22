@@ -46,8 +46,7 @@ class ShutterTxSourceTests
         Assert.That(waitTasks, Is.All.Matches<Task>(static t => t is { IsCompletedSuccessfully: true }));
     }
 
-    // A token cancelled just before the wait is registered runs the cancellation callback inline, which then found no
-    // wait to cancel and left the stored one pending forever.
+    // Register runs the callback inline for an already cancelled token, before the wait could be stored.
     [Test]
     public void Wait_for_transactions_with_an_already_cancelled_token_ends_cancelled()
     {
