@@ -90,15 +90,7 @@ public class HistoricalTraceReExecutionTests
         byte[] updatedExistingSlotValue = [0x12, 0x34];
 
         await using FlatDbManager inner = CreateManager();
-        HistoricalFlatDbManager manager = new(
-            inner,
-            _persistenceManager,
-            _historyReader,
-            _trieNodeCache,
-            _resourcePool,
-            enableDetailedMetrics: false,
-            new HistoryScopeGate(),
-            LimboLogs.Instance);
+        HistoricalFlatDbManager manager = CreateHistoricalManager(inner);
         using FlatScopeProvider scopeProvider = CreateScopeProvider(manager, ResourcePool.Usage.ReadOnlyProcessingEnv);
         WorldState worldState = new(scopeProvider, LimboLogs.Instance);
 
@@ -157,15 +149,7 @@ public class HistoricalTraceReExecutionTests
         StorageCell second = new(freshAddr, 12);
 
         await using FlatDbManager inner = CreateManager();
-        HistoricalFlatDbManager manager = new(
-            inner,
-            _persistenceManager,
-            _historyReader,
-            _trieNodeCache,
-            _resourcePool,
-            enableDetailedMetrics: false,
-            new HistoryScopeGate(),
-            LimboLogs.Instance);
+        HistoricalFlatDbManager manager = CreateHistoricalManager(inner);
         using FlatScopeProvider scopeProvider = CreateScopeProvider(manager, ResourcePool.Usage.ReadOnlyProcessingEnv);
         WorldState worldState = new(scopeProvider, LimboLogs.Instance);
 
@@ -196,15 +180,7 @@ public class HistoricalTraceReExecutionTests
         HistoryColumnsWriter.SetWatermark(_historyColumns, HistoricalBlock);
 
         await using FlatDbManager inner = CreateManager();
-        HistoricalFlatDbManager manager = new(
-            inner,
-            _persistenceManager,
-            _historyReader,
-            _trieNodeCache,
-            _resourcePool,
-            enableDetailedMetrics: false,
-            new HistoryScopeGate(),
-            LimboLogs.Instance);
+        HistoricalFlatDbManager manager = CreateHistoricalManager(inner);
         using FlatScopeProvider scopeProvider = CreateScopeProvider(manager, ResourcePool.Usage.MainBlockProcessing);
 
         BlockHeader historicalHeader = Build.A.BlockHeader.WithNumber(HistoricalBlock).WithStateRoot(TestItem.KeccakB).TestObject;
@@ -229,6 +205,16 @@ public class HistoricalTraceReExecutionTests
         _blocksConfig,
         LimboLogs.Instance,
         enableDetailedMetrics: false);
+
+    private HistoricalFlatDbManager CreateHistoricalManager(FlatDbManager inner) => new(
+        inner,
+        _persistenceManager,
+        _historyReader,
+        _trieNodeCache,
+        _resourcePool,
+        enableDetailedMetrics: false,
+        new HistoryScopeGate(),
+        LimboLogs.Instance);
 
     private static FlatScopeProvider CreateScopeProvider(IFlatDbManager manager, ResourcePool.Usage usage) => new(
         new MemDb(),
