@@ -66,7 +66,7 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidKey(string reason, ref Utf8JsonReader reader) =>
-        throw new SafePublicMessageFormatException($"{reason}: \"{reader.GetString()}\"", namesInput: true);
+        throw new SafePublicMessageFormatException($"{reason}: \"{reader.GetString()}\"", omitArgumentPosition: true);
 
     private static UInt256 Parse(ReadOnlySpan<byte> hex)
     {

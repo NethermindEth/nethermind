@@ -1082,7 +1082,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         for (Exception? ex = e; ex is not null; ex = ex.InnerException)
         {
             if (ex is IExceptionWithSafePublicMessage safe)
-                return e is InvalidArgumentException { Index: int index } && !safe.NamesInput
+                return e is InvalidArgumentException { Index: int index } && !safe.OmitArgumentPosition
                     ? $"invalid argument {index}: {ex.Message}"
                     : ex.Message;
         }

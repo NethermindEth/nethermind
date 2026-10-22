@@ -22,7 +22,7 @@ internal sealed class BlockCountConverter : JsonConverter<ulong>
         {
             return GetRegisteredConverter().Read(ref reader, typeToConvert, options);
         }
-        catch (Exception e) when (e is FormatException or JsonException and not IExceptionWithSafePublicMessage
+        catch (Exception e) when (e is (FormatException or JsonException) and not IExceptionWithSafePublicMessage
             && reader.TokenType == JsonTokenType.String
             && reader.GetString() is { } value
             && !ulong.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out _))
