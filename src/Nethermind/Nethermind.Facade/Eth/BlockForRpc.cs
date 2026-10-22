@@ -79,7 +79,8 @@ public class BlockForRpc
             }
 
             // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded.
-            if (specProvider.MergeBlockNumber is null)
+            // A merged chain may not know its merge block (mainnet's chainspec has only a TTD), so the TTD also counts.
+            if (specProvider.MergeBlockNumber is null && specProvider.TerminalTotalDifficulty is null)
             {
                 TotalDifficulty = block.TotalDifficulty;
             }

@@ -4,8 +4,10 @@
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Facade.Test.Eth;
@@ -57,5 +59,20 @@ public class BlockForRpcTests
         Block block = Build.A.Block.WithNumber(1).WithEncodedSize(recordedSize).TestObject;
 
         Assert.That(new BlockForRpc(block, false, MainnetSpecProvider.Instance).Size, Is.EqualTo(recordedSize));
+    }
+
+    [Test]
+    public void Total_difficulty_is_emitted_only_on_chains_that_never_merge([Values] bool hasTerminalTotalDifficulty, [Values] bool hasMergeBlock)
+    {
+        TestSpecProvider specProvider = new(Frontier.Instance) { TerminalTotalDifficulty = hasTerminalTotalDifficulty ? 100 : null };
+        if (hasMergeBlock)
+        {
+            specProvider.UpdateMergeTransitionInfo(10);
+        }
+
+        Block block = Build.A.Block.WithNumber(1).WithTotalDifficulty(17L).TestObject;
+
+        Assert.That(new BlockForRpc(block, false, specProvider).TotalDifficulty,
+            Is.EqualTo(hasTerminalTotalDifficulty || hasMergeBlock ? null : (UInt256?)17));
     }
 }

@@ -179,12 +179,12 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugGetRawTransaction_WhenTransactionNotFound_ReturnsNull()
+    public async Task DebugGetRawTransaction_WhenTransactionNotFound_ReturnsEmptyBytes()
     {
         _debugBridge.GetTransactionFromHash(Keccak.Zero).ReturnsNull();
 
         string serialized = await SerializedRequest("debug_getRawTransaction", Keccak.Zero);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
     [Test]
