@@ -489,6 +489,8 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
+        public IDisposable? BeginResponse() => _progressTracker.BeginResponse();
+
         public void ReleaseRequest(SnapSyncBatch batch, bool responseHandled)
         {
             _progressTracker.ReportRequestReleased(batch);

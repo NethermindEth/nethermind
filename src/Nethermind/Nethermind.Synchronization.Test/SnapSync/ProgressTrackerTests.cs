@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -267,7 +268,7 @@ public class ProgressTrackerTests
 
     // Regression: a restart during the state ranges phase used to start the account ranges over from the beginning.
     [Test]
-    public void A_restarted_run_resumes_from_the_checkpoint_taken_while_no_request_was_in_flight()
+    public void A_restarted_run_resumes_from_a_checkpoint_taken_with_a_request_in_flight()
     {
         int checkpointsSaved = 0;
         SnapCheckpoint? saved = null;
@@ -292,21 +293,27 @@ public class ProgressTrackerTests
         using (ProgressTracker interrupted = CreateProgressTracker(accountRangePartition: 2, snapTrieFactory: snapTrieFactory, snapResume: true, pivot: pivot))
         {
             interrupted.IsFinished(out SnapSyncBatch? accountRange);
-            Assert.That(interrupted.IsFinished(out SnapSyncBatch? blocked), Is.False);
-            Assert.That(blocked, Is.Null, "no request may go out while a checkpoint waits for the one in flight");
-            Assert.That(checkpointsSaved, Is.EqualTo(1));
+            interrupted.IsFinished(out SnapSyncBatch? stillInFlight);
+            Assert.That(stillInFlight?.AccountRangeRequest, Is.Not.Null, "a checkpoint does not hold back the requests");
 
-            ValueHash256 limit = accountRange!.AccountRangeRequest!.LimitHash!.Value;
-            interrupted.UpdateAccountRangePartitionProgress(limit, nextAccount, moreChildrenToRight: true);
-            interrupted.EnqueueAccountStorage(withStorage);
-            interrupted.EnqueueAccountRefresh(toRefresh, refreshFrom, null);
-            interrupted.EnqueueCodeHash(TestItem.ValueKeccaks[3]);
-            interrupted.ReportAccountRangePartitionFinished(limit);
+            using (interrupted.BeginResponse())
+            {
+                ValueHash256 limit = accountRange!.AccountRangeRequest!.LimitHash!.Value;
+                interrupted.UpdateAccountRangePartitionProgress(limit, nextAccount, moreChildrenToRight: true);
+                interrupted.EnqueueAccountStorage(withStorage);
+                interrupted.EnqueueAccountRefresh(toRefresh, refreshFrom, null);
+                interrupted.EnqueueCodeHash(TestItem.ValueKeccaks[3]);
+                interrupted.ReportAccountRangePartitionFinished(limit);
+                interrupted.ReportRequestReleased(accountRange);
+            }
+
             accountRange.Dispose();
 
+            // Taken with the second partition's account range in flight.
             interrupted.IsFinished(out SnapSyncBatch? afterCheckpoint);
             afterCheckpoint!.Dispose();
-            Assert.That(checkpointsSaved, Is.EqualTo(2));
+            stillInFlight.Dispose();
+            Assert.That(checkpointsSaved, Is.EqualTo(3));
         }
 
         // No checkpoint is due in this run, so its requests can all be in flight at once.
@@ -329,6 +336,36 @@ public class ProgressTrackerTests
         }
 
         foreach (SnapSyncBatch batch in batches) batch.Dispose();
+    }
+
+    // A response half handled would leave the checkpoint with its range neither still to do nor recorded as done.
+    [Test]
+    public void A_checkpoint_waits_for_the_response_being_handled()
+    {
+        int checkpointsSaved = 0;
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.SupportsCheckpoints.Returns(true);
+        snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(_ => Interlocked.Increment(ref checkpointsSaved));
+        using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 2, snapTrieFactory: snapTrieFactory, snapResume: true);
+        progressTracker.IsFinished(out SnapSyncBatch? first);
+
+        Task<SnapSyncBatch?> next;
+        using (progressTracker.BeginResponse())
+        {
+            next = Task.Run(() =>
+            {
+                progressTracker.IsFinished(out SnapSyncBatch? batch);
+                return batch;
+            });
+
+            Assert.That(next.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the checkpoint is due, so it waits for the response");
+            Assert.That(Volatile.Read(ref checkpointsSaved), Is.EqualTo(1));
+        }
+
+        Assert.That(next.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(Volatile.Read(ref checkpointsSaved), Is.EqualTo(2));
+        first!.Dispose();
+        next.Result!.Dispose();
     }
 
     [Test]

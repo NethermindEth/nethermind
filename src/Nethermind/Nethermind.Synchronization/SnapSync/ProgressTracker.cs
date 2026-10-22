@@ -83,9 +83,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static readonly TimeSpan DefaultCheckpointInterval = TimeSpan.FromMinutes(5);
 
-        /// <summary>How long a due checkpoint holds back new requests while waiting for the ones in flight, before it is skipped.</summary>
-        private static readonly TimeSpan MaxCheckpointWait = TimeSpan.FromMinutes(2);
-
         /// <summary>
         /// How often the progress is saved for <see cref="ISyncConfig.SnapResume"/>, or <c>null</c> when it is off or the
         /// backend cannot resume.
@@ -97,8 +94,16 @@ namespace Nethermind.Synchronization.SnapSync
         private (ulong Number, Hash256 Hash)? _anchor;
 
         /// <summary>The requests handed out and not released yet, tracked while checkpoints are on.</summary>
-        /// <remarks>A shutdown drops the requests in flight unanswered, so they are still to do; see <see cref="SaveCheckpointAtShutdown"/>.</remarks>
+        /// <remarks>A checkpoint counts them as still to do: whatever their responses write lands after it.</remarks>
         private readonly ConcurrentDictionary<SnapSyncBatch, byte> _requestsInFlight = new();
+
+        /// <summary>Held shared by every response from its first write to its request's release, and exclusively by a checkpoint while it reads the progress.</summary>
+        /// <remarks>
+        /// A checkpoint then sees each request either still in flight with nothing of it recorded, or handled and
+        /// released in full with its writes committed, never a response half handled.
+        /// </remarks>
+        private readonly ReaderWriterLockSlim _responseLock = new(LockRecursionPolicy.NoRecursion);
+        private readonly IDisposable _endResponse;
 
         /// <param name="checkpointInterval">Overrides the interval between checkpoints, so tests do not have to wait it out.</param>
         public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager, TimeSpan? checkpointInterval = null)
@@ -108,6 +113,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             _pivot = pivot;
             _checkpointInterval = syncConfig.SnapResume && snapTrieFactory.SupportsCheckpoints ? checkpointInterval ?? DefaultCheckpointInterval : null;
+            _endResponse = new EndResponse(_responseLock);
 
             int accountRangePartitionCount = syncConfig.SnapSyncAccountRangePartitionCount;
             if (accountRangePartitionCount < 1)
@@ -224,22 +230,7 @@ namespace Nethermind.Synchronization.SnapSync
                 && Stopwatch.GetElapsedTime(_lastCheckpointTimestamp) >= interval
                 && !IsSnapGetRangesFinished())
             {
-                // A checkpoint taken with a request in flight would lose its range, so no request goes out until the
-                // last one is answered - though never for long enough to stall the sync over a checkpoint.
-                if (IsIdle())
-                {
-                    SaveCheckpoint();
-                }
-                else if (Stopwatch.GetElapsedTime(_lastCheckpointTimestamp) < interval + MaxCheckpointWait)
-                {
-                    nextBatch = null;
-                    return false;
-                }
-                else
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Snap - skipped a resume checkpoint, requests were still in flight after {MaxCheckpointWait.TotalMinutes:N0} min (account: {_activeAccountRequests}, storage: {_activeStorageRequests}, code: {_activeCodeRequests}, refresh: {_activeAccRefreshRequests}).");
-                    _lastCheckpointTimestamp = Stopwatch.GetTimestamp();
-                }
+                SaveCheckpoint();
             }
 
             if (!AccountsToRefresh.IsEmpty && Volatile.Read(ref _consecutiveAccountRefreshes) < MAX_CONSECUTIVE_ACCOUNT_REFRESHES)
@@ -300,6 +291,25 @@ namespace Nethermind.Synchronization.SnapSync
 
         /// <summary>Stops counting <paramref name="batch"/> as in flight, once its response has been handled or handed back.</summary>
         public void ReportRequestReleased(SnapSyncBatch batch) => _requestsInFlight.TryRemove(batch, out _);
+
+        /// <summary>Marks a response as being handled until the returned scope is disposed, so that no checkpoint is taken meanwhile.</summary>
+        /// <remarks>
+        /// The scope has to cover the handling and the release of the request on the same thread, and must not be
+        /// nested.
+        /// </remarks>
+        /// <returns>The scope, or <c>null</c> when no checkpoints are taken.</returns>
+        public IDisposable? BeginResponse()
+        {
+            if (_checkpointInterval is null) return null;
+
+            _responseLock.EnterReadLock();
+            return _endResponse;
+        }
+
+        private sealed class EndResponse(ReaderWriterLockSlim responseLock) : IDisposable
+        {
+            public void Dispose() => responseLock.ExitReadLock();
+        }
 
         /// <summary>
         /// Turn-taking, see <see cref="MAX_CONSECUTIVE_ACCOUNT_REFRESHES"/>. Saturating so a long run of refreshes
@@ -588,17 +598,8 @@ namespace Nethermind.Synchronization.SnapSync
             AccountRangeReadyForRequest.Clear();
         }
 
-        private bool IsIdle() => _activeAccountRequests == 0
-                   && _activeStorageRequests == 0
-                   && _activeCodeRequests == 0
-                   && _activeAccRefreshRequests == 0;
-
         /// <summary>Saves a checkpoint of the progress made up to a shutdown, so that a restart after it loses nothing.</summary>
-        /// <remarks>
-        /// To be called once the dispatcher has stopped, when no response is being handled any more. The requests it
-        /// dropped unanswered are counted as still to do, so unlike a checkpoint taken while syncing this one needs no
-        /// pause and covers everything written.
-        /// </remarks>
+        /// <remarks>To be called once the dispatcher has stopped; the requests it dropped unanswered are counted as still to do.</remarks>
         public void SaveCheckpointAtShutdown()
         {
             // Nothing was requested, so there is nothing to keep.
@@ -617,7 +618,19 @@ namespace Nethermind.Synchronization.SnapSync
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                SnapCheckpoint checkpoint = CreateCheckpoint(includeRequestsInFlight: atShutdown);
+                SnapCheckpoint checkpoint;
+                _responseLock.EnterWriteLock();
+                try
+                {
+                    checkpoint = CreateCheckpoint();
+                }
+                finally
+                {
+                    _responseLock.ExitWriteLock();
+                }
+
+                // Responses handled from here on write after the progress read above, so the flush still covers
+                // everything it records as done, and resuming discards what they wrote.
                 _snapTrieFactory.SaveCheckpoint(checkpoint);
                 if (_logger.IsInfo) _logger.Info($"Snap - saved a resume checkpoint{(atShutdown ? " at shutdown" : "")} in {Stopwatch.GetElapsedTime(startTime).TotalSeconds:N1}s ({checkpoint.StoragesToRetrieve.Length + checkpoint.StorageRanges.Length} storage requests queued).");
             }
@@ -631,7 +644,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        private SnapCheckpoint CreateCheckpoint(bool includeRequestsInFlight)
+        private SnapCheckpoint CreateCheckpoint()
         {
             AccountRangeProgress[] partitions = new AccountRangeProgress[AccountRangePartitions.Count];
             int index = 0;
@@ -646,14 +659,11 @@ namespace Nethermind.Synchronization.SnapSync
             foreach (StorageRange range in NextSlotRange) storageRanges.Add(ToProgress(range));
 
             // An account range in flight needs nothing here: its partition records where it starts either way.
-            if (includeRequestsInFlight)
+            foreach ((SnapSyncBatch batch, byte _) in _requestsInFlight)
             {
-                foreach ((SnapSyncBatch batch, byte _) in _requestsInFlight)
-                {
-                    if (batch.StorageRangeRequest is { } storageRange) storageRanges.Add(ToProgress(storageRange));
-                    if (batch.CodesRequest is { } codes) codesToRetrieve.AddRange(codes.AsSpan());
-                    if (batch.AccountsToRefreshRequest is { } refresh) accountsToRefresh.AddRange(refresh.Paths.AsSpan());
-                }
+                if (batch.StorageRangeRequest is { } storageRange) storageRanges.Add(ToProgress(storageRange));
+                if (batch.CodesRequest is { } codes) codesToRetrieve.AddRange(codes.AsSpan());
+                if (batch.AccountsToRefreshRequest is { } refresh) accountsToRefresh.AddRange(refresh.Paths.AsSpan());
             }
 
             (ulong anchorNumber, Hash256 anchorHash) = _anchor!.Value;

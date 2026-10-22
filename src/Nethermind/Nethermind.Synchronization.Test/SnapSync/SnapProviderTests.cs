@@ -1022,16 +1022,20 @@ public class SnapProviderTests
         List<string> Accounts
     );
 
+    public enum Interruption { Crash, CrashWithRequestInFlight, Shutdown }
+
     /// <summary>
     /// A restart keeps what the last checkpoint covers and downloads the rest again, now at a newer root. After a crash,
-    /// what the interrupted run wrote after that checkpoint is still on disk, as when the crash flushed it. A shutdown
-    /// saves a checkpoint of everything written, counting the request it dropped in flight as still to do. Resuming has
-    /// to leave exactly what a run that was never interrupted leaves when its pivot moves at that checkpoint, which is
-    /// the state healing knows how to finish. The accounts past the checkpoint change between the roots, so anything left
-    /// over from the older root shows up as a difference, and the double-write check fails on any key written twice.
+    /// what the interrupted run wrote after that checkpoint is still on disk, as when the crash flushed it, including
+    /// what a request in flight at the checkpoint wrote once answered. A shutdown saves a checkpoint of everything
+    /// written, counting the request it dropped in flight as still to do. Resuming has to leave exactly what a run that
+    /// was never interrupted leaves when its pivot moves at that checkpoint, which is the state healing knows how to
+    /// finish. The accounts past the checkpoint, and the storage requested in flight, change between the roots, so
+    /// anything left over from the older root shows up as a difference, and the double-write check fails on any key
+    /// written twice.
     /// </summary>
     [Test]
-    public async Task Flat_snap_sync_resumed_from_a_checkpoint_matches_a_run_whose_pivot_moved_there([Values] bool shutDownGracefully)
+    public async Task Flat_snap_sync_resumed_from_a_checkpoint_matches_a_run_whose_pivot_moved_there([Values] Interruption interruption)
     {
         const int checkpointedRequests = 6;
 
@@ -1058,19 +1062,33 @@ public class SnapProviderTests
         FlatSnapTrieFactory resumedFactory = CreateFlatSnapTrieFactory(resumedDb, syncConfig);
         IStateSyncPivot resumedPivot = CreatePivot(1, firstRoot);
         byte[]? lastDurableCheckpoint;
-        if (shutDownGracefully)
+        int movePivotAt = checkpointedRequests;
+        ValueHash256? requestedInFlight = null;
+        if (interruption == Interruption.Shutdown)
         {
             await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server, shutDownAtRequest: checkpointedRequests);
             lastDurableCheckpoint = BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata));
         }
         else
         {
-            // The crashed run went on to the end, but the checkpoint after a few requests is the last to reach the disk.
-            lastDurableCheckpoint = null;
-            await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server, beforeRequest: request =>
+            // The crashed run went on to the end, but a checkpoint after a few requests is the last to reach the disk.
+            List<byte[]?> checkpointsBeforeRequest = [];
+            HeldRequests? held = await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server,
+                beforeRequest: _ => checkpointsBeforeRequest.Add(BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata))),
+                holdInFlightFrom: interruption == Interruption.CrashWithRequestInFlight ? checkpointedRequests : null);
+
+            // The checkpoint saved with request n is read before request n + 1. The one saved with the request after the
+            // last one held was taken with them all in flight, so it covers only the requests before the first.
+            int lastCovered = checkpointedRequests;
+            if (interruption == Interruption.CrashWithRequestInFlight)
             {
-                if (request == checkpointedRequests + 1) lastDurableCheckpoint = BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata));
-            });
+                Assert.That(held, Is.Not.Null, "a storage request has to be held in flight");
+                movePivotAt = held!.First;
+                lastCovered = held.Last + 1;
+                requestedInFlight = held.StorageAccount;
+            }
+
+            lastDurableCheckpoint = checkpointsBeforeRequest[lastCovered + 1];
             BasePersistence.WriteSnapCheckpoint(resumedDb, lastDurableCheckpoint);
         }
 
@@ -1086,6 +1104,7 @@ public class SnapProviderTests
         accounts[withChangedBalance] = accounts[withChangedBalance].WithChangedBalance(1000);
         storages[withChangedStorage].Set(SlotKey(0), [0], rlpEncode: false);
         storages[withChangedStorage].Set(SlotKey(1), [0x42]);
+        if (requestedInFlight is { } inFlight) storages[inFlight].Set(SlotKey(2), [0x43]);
         Hash256 secondRoot = CommitSource(1);
 
         MovePivot(resumedPivot, 2, secondRoot);
@@ -1095,7 +1114,7 @@ public class SnapProviderTests
         IStateSyncPivot uninterruptedPivot = CreatePivot(1, firstRoot);
         await RunSnapSync(CreateFlatSnapTrieFactory(uninterruptedDb, syncConfig), syncConfig, uninterruptedPivot, server, beforeRequest: request =>
         {
-            if (request == checkpointedRequests) MovePivot(uninterruptedPivot, 2, secondRoot);
+            if (request == movePivotAt) MovePivot(uninterruptedPivot, 2, secondRoot);
         });
 
         using IPersistence.IPersistenceReader reader = new RocksDbPersistence(resumedDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateReader();
@@ -1160,7 +1179,14 @@ public class SnapProviderTests
     /// Shuts down once this request is made, leaving it unanswered, as a node shutting down drops it. No checkpoint is
     /// taken while syncing then, so the one saved at the shutdown is the only one.
     /// </param>
-    private static async Task RunSnapSync(ISnapTrieFactory factory, ISyncConfig syncConfig, IStateSyncPivot pivot, ISnapStateServer server, Action<int>? beforeRequest = null, int? shutDownAtRequest = null)
+    /// <param name="holdInFlightFrom">
+    /// Leaves the requests made from this one on unanswered up to the first storage request, holding them in flight
+    /// while the next request is made and answered, so the checkpoint taken with that one has them all in flight. Only
+    /// then are they answered. An account range held in flight is what lets a storage request go out before the account
+    /// ranges are done.
+    /// </param>
+    /// <returns>The requests held in flight, if any were.</returns>
+    private static async Task<HeldRequests?> RunSnapSync(ISnapTrieFactory factory, ISyncConfig syncConfig, IStateSyncPivot pivot, ISnapStateServer server, Action<int>? beforeRequest = null, int? shutDownAtRequest = null, int? holdInFlightFrom = null)
     {
         // Small enough that a range takes several requests.
         const long byteLimit = 250;
@@ -1169,8 +1195,11 @@ public class SnapProviderTests
             checkpointInterval: shutDownAtRequest is null ? TimeSpan.Zero : TimeSpan.MaxValue);
         SnapProvider provider = new(tracker, new MemDb(), factory, LimboLogs.Instance);
         using CancellationTokenSource shutdown = new();
+        HeldRequests? held = null;
         SnapSyncRunner runner = new(_ =>
         {
+            List<SnapSyncBatch> inFlight = [];
+            int? firstHeld = null;
             for (int request = 0; ; request++)
             {
                 beforeRequest?.Invoke(request);
@@ -1182,18 +1211,44 @@ public class SnapProviderTests
                     break;
                 }
 
-                using (batch)
+                if (held is null && request >= holdInFlightFrom && batch is not null)
                 {
-                    AnswerFrom(server, provider, batch!, byteLimit);
-                    provider.ReleaseRequest(batch!, responseHandled: true);
+                    firstHeld ??= request;
+                    inFlight.Add(batch);
+                    if (batch.StorageRangeRequest is { } storageRange) held = new HeldRequests(firstHeld.Value, request, storageRange.Accounts[0].Path);
+                    continue;
                 }
+
+                // Nothing else is left to request while the held ones are in flight.
+                if (batch is not null) Answer(batch);
+                else if (inFlight.Count == 0) throw new InvalidOperationException("No request to answer.");
+
+                foreach (SnapSyncBatch answeredLate in inFlight) Answer(answeredLate);
+                inFlight.Clear();
+                // Released before a storage request went out, so holding starts over at the next request.
+                if (held is null) firstHeld = null;
             }
 
             return Task.CompletedTask;
         }, factory, tracker);
 
         await runner.Run(shutdown.Token);
+        return held;
+
+        void Answer(SnapSyncBatch batch)
+        {
+            using (batch)
+            {
+                AnswerFrom(server, provider, batch, byteLimit);
+                provider.ReleaseRequest(batch, responseHandled: true);
+            }
+        }
     }
+
+    /// <param name="First">The number of the first request held in flight.</param>
+    /// <param name="Last">The number of the last request held, the storage request.</param>
+    /// <param name="StorageAccount">The first account of the storage request held.</param>
+    private sealed record HeldRequests(int First, int Last, ValueHash256 StorageAccount);
 
     private static void AnswerFrom(ISnapStateServer server, SnapProvider provider, SnapSyncBatch batch, long byteLimit)
     {

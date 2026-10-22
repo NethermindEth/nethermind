@@ -14,10 +14,11 @@ namespace Nethermind.Synchronization.SnapSync;
 
 /// <summary>The progress of a snap sync state ranges phase, saved so that a restarted run can resume from it.</summary>
 /// <remarks>
-/// Taken only while no request is in flight, so the queues hold every piece of work left: everything below a
-/// partition's <see cref="AccountRangeProgress.NextAccountPath"/> is on disk, as is all storage outside
-/// <see cref="StorageRangesToRefetch"/>. Anything written after the checkpoint is not accounted for and has to be
-/// discarded before the run resumes, because it may come from an older root or be partly lost with the unflushed writes.
+/// Taken while no response is being handled, with the requests in flight counted as still to do, so the queues hold
+/// every piece of work left: everything below a partition's <see cref="AccountRangeProgress.NextAccountPath"/> is on
+/// disk, as is all storage outside <see cref="StorageRangesToRefetch"/>. Anything written after the checkpoint is not
+/// accounted for and has to be discarded before the run resumes, because it may come from an older root or be partly
+/// lost with the unflushed writes.
 /// </remarks>
 public sealed class SnapCheckpoint
 {
