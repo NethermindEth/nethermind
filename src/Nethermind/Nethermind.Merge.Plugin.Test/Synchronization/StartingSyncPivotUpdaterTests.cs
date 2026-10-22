@@ -175,31 +175,34 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
         }
 
-        [TestCase(2, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
-        [TestCase(ISyncConfig.InfiniteAttempts, ISyncConfig.InfiniteAttempts, TestName = "Infinite_attempts_never_fall_back_to_static_pivot")]
-        public async Task TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, int expectedFinalConfigValue)
+        [Test]
+        public async Task Finite_attempts_fall_back_to_static_pivot_after_exhaustion()
         {
-            _syncConfig!.MaxAttemptsToUpdatePivot = maxAttempts;
+            _syncConfig!.MaxAttemptsToUpdatePivot = 2;
             // Finalized hash unset → TrySetFreshPivot returns null → counts as a failed attempt.
+            _beaconSyncStrategy!.GetFinalizedHash().Returns((Hash256?)null);
+
+            // The loop gives up on its own, so wait for it rather than for a fixed time a cold runner can overrun.
+            await CreateUpdater().EnsureSyncPivot(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task Infinite_attempts_never_fall_back_to_static_pivot()
+        {
+            _syncConfig!.MaxAttemptsToUpdatePivot = ISyncConfig.InfiniteAttempts;
             _beaconSyncStrategy!.GetFinalizedHash().Returns((Hash256?)null);
 
             using CancellationTokenSource cts = new();
             Task task = CreateUpdater().EnsureSyncPivot(cts.Token);
 
-            // Finite attempts: the loop gives up on its own, so wait for it rather than for a fixed time a cold runner
-            // can overrun. Infinite attempts: it never completes, so cancel it.
-            if (maxAttempts != ISyncConfig.InfiniteAttempts)
-            {
-                await task.WaitAsync(TimeSpan.FromSeconds(30));
-            }
-            else
-            {
-                await Task.WhenAny(task, Task.Delay(500));
-                cts.Cancel();
-                try { await task; } catch (OperationCanceledException) { }
-            }
+            // The loop never completes, so cancel it.
+            await Task.WhenAny(task, Task.Delay(500));
+            cts.Cancel();
+            try { await task; } catch (OperationCanceledException) { }
 
-            Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(expectedFinalConfigValue));
+            Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(ISyncConfig.InfiniteAttempts));
         }
 
         [Test]
