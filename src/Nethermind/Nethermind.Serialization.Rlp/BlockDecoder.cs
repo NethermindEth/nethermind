@@ -83,7 +83,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(item, rlpBehaviors);
-            byte[] bytes = new byte[Rlp.LengthOfSequence(lengths.Total)];
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(lengths.Total));
             RlpWriter writer = new(bytes);
             EncodeContent(ref writer, item, lengths);
             return new(bytes);
