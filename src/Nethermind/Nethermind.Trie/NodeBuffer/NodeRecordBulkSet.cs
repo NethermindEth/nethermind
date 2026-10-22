@@ -53,7 +53,7 @@ internal static class NodeRecordBulkSet
             ? ParallelUnbalancedWork.BeginWorkerScope(Math.Min(MaxWorkers, RuntimeInformation.ProcessorCount))
             : null;
         using SpareWorkingStates? spares = workers is null ? null : new();
-        BulkSetWorkingState workingState = new();
+        BulkSetWorkingState workingState = BulkSetWorkingState.Rent();
         try
         {
             Source rootNode;
@@ -84,7 +84,7 @@ internal static class NodeRecordBulkSet
         }
         finally
         {
-            workingState.Dispose();
+            BulkSetWorkingState.Return(workingState);
         }
     }
 
@@ -200,13 +200,13 @@ internal static class NodeRecordBulkSet
         public int ChangedMask;
     }
 
-    /// <summary>The working states of one traversal's parallel children, reused by later children and disposed once the traversal ends.</summary>
+    /// <summary>The working states of one traversal's parallel children, reused by later children and returned to the pool once the traversal ends.</summary>
     /// <remarks>A reused working state keeps the records it loaded, so every record loaded in the traversal stays readable until it ends.</remarks>
     private sealed class SpareWorkingStates : IDisposable
     {
         private readonly ConcurrentBag<BulkSetWorkingState> _states = [];
 
-        public BulkSetWorkingState Rent() => _states.TryTake(out BulkSetWorkingState? state) ? state : new();
+        public BulkSetWorkingState Rent() => _states.TryTake(out BulkSetWorkingState? state) ? state : BulkSetWorkingState.Rent();
 
         public void Return(BulkSetWorkingState state)
         {
@@ -216,7 +216,7 @@ internal static class NodeRecordBulkSet
 
         public void Dispose()
         {
-            foreach (BulkSetWorkingState state in _states) state.Dispose();
+            foreach (BulkSetWorkingState state in _states) BulkSetWorkingState.Return(state);
         }
     }
 
@@ -452,12 +452,7 @@ internal static class NodeRecordBulkSet
         private int CopyChildren(NodeRecord branch)
         {
             int childrenStart = _workingState.ReserveChildSpace();
-            NodeRecordRef view = branch.View;
-            for (int i = 0; i < BranchChildCount; i++)
-            {
-                _workingState.Children[childrenStart + i] = view.Child(i);
-            }
-
+            branch.View.CopyChildren(_workingState.Children.Slice(childrenStart, BranchChildCount));
             return childrenStart;
         }
 

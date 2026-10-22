@@ -100,7 +100,7 @@ internal class NodeRecordCodecTests
                 break;
             default:
                 ChildRef[] children = new ChildRef[16];
-                for (int i = 0; i < children.Length; i++) children[i] = view.Child(i);
+                view.CopyChildren(children);
                 encoded = new byte[NodeRlp.BranchLength(children)];
                 written = NodeRlp.WriteBranch(children, encoded);
                 break;

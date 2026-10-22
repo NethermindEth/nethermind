@@ -67,6 +67,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
     private long _inPlaceBytes;
 
     private const int BloomBytesPerKey = 128;
+    private const int BloomBatchSize = 64;
     private const int InitialKeptCapacity = 1024;
 
     private readonly ulong _compressedMaxMemory;
@@ -237,20 +238,26 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
     /// <inheritdoc/>
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => WriteBatch.Start(this, alignedTotalLength);
 
-    /// <summary>Adds the node key hashes of the records written to <paramref name="bytes"/> to the bloom of their generation.</summary>
-    private void CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes)
+    /// <summary>Adds the node key hashes of the records reachable from <paramref name="rootPointer"/> at or past <paramref name="lowerBound"/> to the blooms of their generations.</summary>
+    /// <remarks>The caller must hold a pin on the generations of those records.</remarks>
+    internal void AddToBlooms(ulong rootPointer, ulong lowerBound)
     {
-        BloomFilter? bloom = FindBloom(basePointer);
-        if (bloom is null) return;
-        for (int offset = 0; offset + NodeRecordCodec.HeaderLength <= bytes.Length;)
+        Span<long> nodeKeyHashes = stackalloc long[BloomBatchSize];
+        int count = 0;
+        ulong generation = 0;
+        foreach ((_, ulong pointer, NodeRecord record) in this.EnumerateNodes(rootPointer, lowerBound))
         {
-            ReadOnlySpan<byte> record = bytes[offset..];
-            int length = NodeRecordCodec.Length(record);
-            // Past the last record a failed write leaves zeros, which read as a record without RLP.
-            if (length == NodeRecordCodec.HeaderLength) break;
-            bloom.Add(BinaryPrimitives.ReadUInt64LittleEndian(record[NodeRecordCodec.NodeKeyHashOffset..]));
-            offset += NodeRecordCodec.AlignedLength(length);
+            if (count == BloomBatchSize || pointer >> OffsetBits != generation)
+            {
+                FindBloom(generation << OffsetBits)?.Add(nodeKeyHashes[..count]);
+                count = 0;
+                generation = pointer >> OffsetBits;
+            }
+
+            nodeKeyHashes[count++] = BinaryPrimitives.ReadInt64LittleEndian(record.Span[NodeRecordCodec.NodeKeyHashOffset..]);
         }
+
+        FindBloom(generation << OffsetBits)?.Add(nodeKeyHashes[..count]);
     }
 
     /// <summary>Reserves contiguous zero-filled bytes in the active generation.</summary>
@@ -672,8 +679,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
 
         public void Dispose()
         {
-            if (_buffer is not { } buffer) return;
-            buffer.CompleteWrite(BasePointer, Bytes);
+            if (_buffer is null) return;
             _buffer = null;
             _data = null;
             _cached = this;

@@ -37,6 +37,7 @@ public class Snapshot : RefCountingDisposable
     // construct-then-populate contract working: population always precedes the first count observation.
     // Boxed so publication is a single reference CAS.
     private StrongBox<SnapshotContentCounts>? _sealedCounts;
+    private int _bloomPopulated;
 
     /// <param name="bufferPin">The pin protecting the trie node records this snapshot references; the snapshot takes ownership.</param>
     public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage, INodeRecordBufferPin? bufferPin)
@@ -137,6 +138,20 @@ public class Snapshot : RefCountingDisposable
             foreach ((TreePath path, ulong pointer, NodeRecord record) in BufferPin.Buffer.EnumerateNodes(root, BufferPin.WriteBoundary))
                 yield return (address, path, pointer, record);
         }
+    }
+
+    /// <summary>Adds the node key hashes of the nodes written within this snapshot's range to the blooms of their buffer generations, once.</summary>
+    /// <remarks>
+    /// Called as the compactor worker first takes in a base snapshot, keeping it off the commit path. A node key hash missing from its
+    /// bloom, of a snapshot not yet taken in or of a node no final root reaches, is fine: buffer compaction then keeps a superseded
+    /// record, which only makes the compacted generation unnecessarily bigger.
+    /// </remarks>
+    internal void PopulateBloom()
+    {
+        if (BufferPin is not { Buffer: NodeRecordBuffer buffer } pin || Interlocked.Exchange(ref _bloomPopulated, 1) != 0) return;
+
+        if (From.StateRoot != To.StateRoot) buffer.AddToBlooms(StateRootPointer, pin.WriteBoundary);
+        foreach ((_, ulong root) in StorageRoots) buffer.AddToBlooms(root, pin.WriteBoundary);
     }
 
     /// <summary>The mutable content; only valid for snapshots created for commit (not compacted ones).</summary>

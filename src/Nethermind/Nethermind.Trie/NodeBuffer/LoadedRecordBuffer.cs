@@ -31,11 +31,15 @@ internal sealed class LoadedRecordBuffer : IDisposable
         return store.TryLoad(path, hash, Write, new Target(this, in hash, ref record));
     }
 
-    public void Dispose()
+    /// <summary>Releases every record, which must no longer be read.</summary>
+    public void Clear()
     {
         foreach (byte[] chunk in _chunks) ArrayPool<byte>.Shared.Return(chunk);
         _chunks.Clear();
+        _used = ChunkBytes;
     }
+
+    public void Dispose() => Clear();
 
     /// <summary>Copies a record, or writes the record of RLP as the node of <paramref name="hash"/>, with every child pointer 0.</summary>
     private NodeRecord Add(ReadOnlySpan<byte> node, in ValueHash256 hash)
