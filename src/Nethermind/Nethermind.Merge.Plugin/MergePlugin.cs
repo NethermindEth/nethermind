@@ -35,6 +35,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.KeepAlive;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
@@ -112,6 +113,17 @@ public class MergePluginModule : Module
             .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
 
             .AddModule(new BaseMergePluginModule())
+
+            // Engine keep-alive (off by default): the handlers are wrapped only when it is on.
+            .AddSingleton<EngineKeepAliveService>()
+            .AddDecorator<IForkchoiceUpdatedHandler>(static (ctx, inner) =>
+                KeepAliveDecoration.Decorate(ctx, inner, static (handler, keepAlive) => new KeepAliveForkchoiceUpdatedHandler(handler, keepAlive)))
+            .AddDecorator<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(static (ctx, inner) =>
+                KeepAliveDecoration.Decorate(ctx, inner, static (handler, keepAlive) => new KeepAliveGetBlobsHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>(handler, keepAlive)))
+            .AddDecorator<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(static (ctx, inner) =>
+                KeepAliveDecoration.Decorate(ctx, inner, static (handler, keepAlive) => new KeepAliveGetBlobsHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>(handler, keepAlive)))
+            .AddDecorator<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>(static (ctx, inner) =>
+                KeepAliveDecoration.Decorate(ctx, inner, static (handler, keepAlive) => new KeepAliveGetBlobsHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>(handler, keepAlive)))
 
             .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>();
 }

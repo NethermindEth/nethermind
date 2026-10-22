@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.KeepAlive;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -99,4 +100,10 @@ public interface IMergeConfig : IConfig
 
     [ConfigItem(Description = "Delay, in milliseconds, between `newPayload` and GC trigger. If not set, defaults to 1/8th of `Blocks.SecondsPerSlot`.", DefaultValue = null, HiddenFromDocs = true)]
     int? PostBlockGcDelayMs { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] A background keep-alive that keeps the database device and a CPU core out of their deep idle states between Engine API calls, and measures them. `Off`; `Disk`: reads 4 KiB of a dedicated file in the database directory past the page cache (64-bit Linux only); `Cpu`: spins for 20 microseconds; `Both`. Starts after the first VALID `engine_forkchoiceUpdated`, ticks every `EngineKeepAliveIntervalMs` and at once on each `engine_getBlobs` and `engine_forkchoiceUpdated` call.", DefaultValue = "Off", HiddenFromDocs = true)]
+    EngineKeepAliveMode EngineKeepAlive { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] The interval, in milliseconds, between the ticks of `EngineKeepAlive`.", DefaultValue = "50", HiddenFromDocs = true)]
+    int EngineKeepAliveIntervalMs { get; set; }
 }

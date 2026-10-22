@@ -21,6 +21,9 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.KeepAlive;
 using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Runner.Test.Ethereum;
@@ -121,6 +124,26 @@ public class MergePluginTests
         using IContainer container = BuildContainer();
 
         Assert.That(container.Resolve<IEngineRequestsTracker>(), Is.TypeOf<ClHealthRequestsTracker>());
+    }
+
+    [TestCase(EngineKeepAliveMode.Off, false)]
+    [TestCase(EngineKeepAliveMode.Both, true)]
+    public void Engine_keep_alive_wraps_the_handlers_only_when_on(EngineKeepAliveMode mode, bool wrapped)
+    {
+        _mergeConfig.EngineKeepAlive = mode;
+        using IContainer container = BuildContainer();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IForkchoiceUpdatedHandler>() is KeepAliveForkchoiceUpdatedHandler, Is.EqualTo(wrapped));
+            Assert.That(container.Resolve<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>()
+                is KeepAliveGetBlobsHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>, Is.EqualTo(wrapped));
+            Assert.That(container.Resolve<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>()
+                is KeepAliveGetBlobsHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>, Is.EqualTo(wrapped));
+            Assert.That(container.Resolve<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>()
+                is KeepAliveGetBlobsHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, Is.EqualTo(wrapped));
+            Assert.That(container.Resolve<EngineKeepAliveService>().IsStarted, Is.False, "started by the first VALID forkchoice update");
+        }
     }
 
     [Test]
