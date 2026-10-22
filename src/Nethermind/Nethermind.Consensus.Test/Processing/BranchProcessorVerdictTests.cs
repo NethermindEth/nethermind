@@ -361,4 +361,30 @@ public class BranchProcessorVerdictTests
 
         Assert.That(thrown, Is.TypeOf(expected));
     }
+
+    [TestCase(false, 1, TestName = "Process_BeforeEip7709_PrefetchesBlockhashes")]
+    [TestCase(true, 0, TestName = "Process_WithEip7709_SkipsBlockhashPrefetch")]
+    public void Process_prefetches_blockhashes_only_while_blockhash_reads_them(bool eip7709, int expectedPrefetches)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+
+        IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
+        blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns((block, Array.Empty<TxReceipt>()));
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.TryBeginScopeAtTarget(Arg.Any<BlockHeader>(), out Arg.Any<IDisposable>())
+            .Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip7709Enabled.Returns(eip7709);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
+
+        BranchProcessor branchProcessor = new(blockProcessor, specProvider, worldState, blockhashProvider,
+            Substitute.For<IInclusionListSatisfactionChecker>(), LimboLogs.Instance, Substitute.For<IWorldStateManager>());
+        branchProcessor.Process(parent, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+
+        blockhashProvider.Received(expectedPrefetches).Prefetch(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+    }
 }
