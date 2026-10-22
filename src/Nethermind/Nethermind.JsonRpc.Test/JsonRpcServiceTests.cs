@@ -1172,6 +1172,7 @@ public class JsonRpcServiceTests
         JsonRpcRequest firstRequest = RpcTest.BuildJsonRequest("net_version");
         firstRequest.Id = 1;
         ResultWrapper<string> firstResponse = AssertWrapperResponse<string>(SendRequestWithPool(pool, firstRequest));
+        firstResponse.ObserveStreamedResult(new JsonRpcResponseWriterStreamingIdTests.RecordingObserver(), NullLogger.Instance);
 
         JsonRpcRequest secondRequest = RpcTest.BuildJsonRequest("net_version");
         secondRequest.Id = 2;
@@ -1181,6 +1182,7 @@ public class JsonRpcServiceTests
         Assert.That(secondResponse, Is.Not.SameAs(cached));
         Assert.That(firstResponse.Id, Is.EqualTo(new JsonRpcId(1)));
         Assert.That(secondResponse.Id, Is.EqualTo(new JsonRpcId(2)));
+        Assert.That(secondResponse.StreamedResultObservation, Is.Null);
     }
 
     [Test]
