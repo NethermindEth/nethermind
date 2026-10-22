@@ -388,7 +388,9 @@ public partial class EthRpcModule(
         if (CheckSendTransactionFees(rpcTx) is { } feeError)
             return feeError;
 
-        if (_blockFinder.Head?.Header is { } head
+        // A blob transaction is sent without its sidecar and fails anyway, so the fill and its KZG work would be lost.
+        if (rpcTx is not BlobTransactionForRpc
+            && _blockFinder.Head?.Header is { } head
             && await FillFeesAndGas(rpcTx, head, _specProvider.GetSpec(head)) is { } fillError)
         {
             return ResultWrapper<Hash256>.Fail(fillError.Error, fillError.ErrorCode);
