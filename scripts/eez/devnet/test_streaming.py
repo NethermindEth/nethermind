@@ -41,15 +41,16 @@ class StreamingSourceTests(unittest.TestCase):
             upstream.resolve(args)
         return json.loads(args.output.read_text()), calls
 
-    def test_before_merge_freezes_reviewed_source_core_and_legacy_execution(self):
-        with tempfile.TemporaryDirectory() as directory:
-            manifest, calls = self.invoke(Path(directory))
-            self.assertEqual(manifest["revision"], upstream.REVIEWED_STREAMING_REVISION)
-            self.assertEqual(manifest["core_revision"], "b" * 40)
-            self.assertEqual(manifest["main_at_resolution"], "a" * 40)
-            self.assertEqual(manifest["streaming"]["source"], "reviewed-pr206-before-merge")
-            self.assertFalse(manifest["streaming"]["skip_consensus_layer_calls"])
-            self.assertEqual(calls.count("commits/main"), 1)
+    def test_before_merge_freezes_reviewed_source_core_and_selected_execution(self):
+        for factory, skip_calls in (("EthBlockExecutorFactory", False), ("EezBlockExecutorFactory", True)):
+            with self.subTest(factory=factory), tempfile.TemporaryDirectory() as directory:
+                manifest, calls = self.invoke(Path(directory), factory=factory)
+                self.assertEqual(manifest["revision"], upstream.REVIEWED_STREAMING_REVISION)
+                self.assertEqual(manifest["core_revision"], "b" * 40)
+                self.assertEqual(manifest["main_at_resolution"], "a" * 40)
+                self.assertEqual(manifest["streaming"]["source"], "reviewed-pr206-before-merge")
+                self.assertEqual(manifest["streaming"]["skip_consensus_layer_calls"], skip_calls)
+                self.assertEqual(calls.count("commits/main"), 1)
 
     def test_streaming_main_updates_automatically_and_selects_execution_from_immutable_source(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -67,7 +68,7 @@ class StreamingSourceTests(unittest.TestCase):
                 self.assertFalse((Path(directory) / "manifest.json").exists())
 
     def test_explicit_reviewed_revision_is_replayable_before_merge(self):
-        for revision in ("0b31df7edbe3e062fffdd18ab31d5911da3b51f3", "21e0805628f4bd80bcf41c9d2b8f58c179984072", "32549bff918f5d9ac14ed8a78eace22e5c114d4c", "30e6a1fc319d1bf02a4251dbbee240cefcf9310c"):
+        for revision in (upstream.REVIEWED_STREAMING_REVISION, "0b31df7edbe3e062fffdd18ab31d5911da3b51f3", "21e0805628f4bd80bcf41c9d2b8f58c179984072", "32549bff918f5d9ac14ed8a78eace22e5c114d4c", "30e6a1fc319d1bf02a4251dbbee240cefcf9310c"):
             with self.subTest(revision=revision), tempfile.TemporaryDirectory() as directory:
                 manifest, calls = self.invoke(Path(directory), revision=revision)
                 self.assertEqual(manifest["revision"], revision)
