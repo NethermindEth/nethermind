@@ -166,6 +166,30 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
+    public void InMemoryBytes_CountThePinnedNodeBufferBytesOfBaseSnapshotsOnly([Values] bool compacted)
+    {
+        SnapshotTier tier = compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase;
+        INodeRecordBufferPin pin = Substitute.For<INodeRecordBufferPin>();
+        pin.WriteBoundary.Returns(5UL << 32 | 1000);
+        SnapshotContent content = _resourcePool.GetSnapshotContent(ResourcePool.Usage.ReadOnlyProcessingEnv);
+        content.StateRootPointer = 6UL << 32 | 10;
+        Snapshot snapshot = new(CreateStateId(0), CreateStateId(1), content, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, pin);
+        long before = _repository.InMemoryBytes;
+        long pinned = NodeRecordBuffer.DefaultGenerationBytes + 10 - 1000;
+
+        _repository.TryAdd(snapshot, tier);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.EstimatePinnedNodeBytes(), Is.EqualTo(pinned), "from the pin to the state root, across a generation");
+            Assert.That(_repository.InMemoryBytes - before, Is.EqualTo(compacted ? snapshot.EstimateCompactedMemory() : snapshot.EstimateMemory() + pinned),
+                "a compacted snapshot shares the generations of its base snapshots");
+        }
+
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(1), tier);
+        Assert.That(_repository.InMemoryBytes, Is.EqualTo(before), "removal subtracts what was added");
+    }
+
+    [Test]
     public void Dispose_ReleasesTheBufferPinsOfInMemorySnapshots([Values] bool compacted)
     {
         INodeRecordBufferPin pin = Substitute.For<INodeRecordBufferPin>();

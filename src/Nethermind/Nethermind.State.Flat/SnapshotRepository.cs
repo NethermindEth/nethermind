@@ -208,7 +208,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 Interlocked.Increment(ref _snapshotCount);
                 Metrics.SnapshotCount++;
 
-                long totalBytes = snapshot.EstimateMemory();
+                // A compacted snapshot shares the node buffer generations of the base snapshots it merges, so only these count them.
+                long totalBytes = snapshot.EstimateMemory() + snapshot.EstimatePinnedNodeBytes();
                 Interlocked.Add(ref _inMemoryBytes, totalBytes);
                 Metrics.SnapshotMemory += totalBytes;
                 Metrics.TotalSnapshotMemory += totalBytes;
@@ -330,7 +331,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
                 sortedSnapshots.Remove(stateId);
 
-            long totalBytes = existing.EstimateMemory();
+            long totalBytes = existing.EstimateMemory() + existing.EstimatePinnedNodeBytes();
             Interlocked.Add(ref _inMemoryBytes, -totalBytes);
             Metrics.SnapshotMemory -= totalBytes;
             Metrics.TotalSnapshotMemory -= totalBytes;

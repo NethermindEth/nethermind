@@ -66,6 +66,23 @@ public class Snapshot : RefCountingDisposable
     public long EstimateMemory() => _isSorted ? _sorted!.EstimateMemory() : Counts.EstimateMemory();
     public long EstimateCompactedMemory() => _isSorted ? _sorted!.EstimateCompactedMemory() : Counts.EstimateCompactedMemory();
 
+    /// <summary>Estimates the trie node buffer bytes of this snapshot: those from its pin to its state root record.</summary>
+    /// <remarks>
+    /// The pin keeps them from being dropped. The state root is published last, so the range covers the records the snapshot wrote,
+    /// along with any other writer's records interleaved there. Generations are taken to be <see cref="NodeRecordBuffer.DefaultGenerationBytes"/> long.
+    /// </remarks>
+    public long EstimatePinnedNodeBytes()
+    {
+        if (BufferPin is null) return 0;
+
+        ulong from = BufferPin.WriteBoundary;
+        ulong to = StateRootPointer;
+        if (to <= from) return 0;
+
+        long generations = (long)((to >> NodeRecordBuffer.OffsetBits) - (from >> NodeRecordBuffer.OffsetBits));
+        return generations * NodeRecordBuffer.DefaultGenerationBytes + (uint)to - (uint)from;
+    }
+
     /// <summary>
     /// The mutable content's counts, captured once on first access and immutable afterwards. Racing
     /// first observers may compute different candidates, but CompareExchange publishes exactly one,
