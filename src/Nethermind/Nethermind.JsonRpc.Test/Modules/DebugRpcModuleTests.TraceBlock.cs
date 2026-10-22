@@ -241,7 +241,7 @@ public partial class DebugRpcModuleTests
     [TestCase("debug_traceTransaction", "prestateTracer", ErrorCodes.InvalidParams)]
     [TestCase("debug_traceCall", "callTracer", ErrorCodes.InvalidParams)]
     [TestCase("debug_traceCall", "prestateTracer", ErrorCodes.InvalidParams)]
-    public async Task Debug_native_config_errors_keep_sibling_invalid_params(
+    public async Task Debug_native_config_errors_preserve_route_classification(
         string method, string tracer, int expectedCode)
     {
         using Context context = await Context.Create();
