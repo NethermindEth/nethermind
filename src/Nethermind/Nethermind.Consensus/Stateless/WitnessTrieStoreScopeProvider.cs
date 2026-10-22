@@ -38,6 +38,10 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
     // Storage roots whose trees exist; pending until loaded, then walked once.
     private readonly OptimizedHashSet<ValueHash256> _storageRoots = [];
     private readonly OptimizedHashSet<ValueHash256> _pendingStorageRoots = [];
+    // Set by the leading bits of each pending root and never cleared: most storage nodes a block loads are not pending
+    // roots, and this turns them away without hashing their keccak into the set.
+    private readonly byte[] _pendingRootFilter = new byte[PendingRootFilterLength];
+    private const int PendingRootFilterLength = 4096;
 
     private readonly HashKeyedNodeStorage.HeldChild[] _held = new HashKeyedNodeStorage.HeldChild[BranchChildren];
 
@@ -91,14 +95,21 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
 
     protected override StorageTree CreateStorageTree(Address address, Hash256 storageRoot)
     {
-        if (storageRoot != Keccak.EmptyTreeHash && _storageRoots.Add(storageRoot.ValueHash256)) _pendingStorageRoots.Add(storageRoot.ValueHash256);
+        if (storageRoot != Keccak.EmptyTreeHash && _storageRoots.Add(storageRoot.ValueHash256))
+        {
+            _pendingStorageRoots.Add(storageRoot.ValueHash256);
+            _pendingRootFilter[PendingRootFilterIndex(storageRoot.ValueHash256)] = 1;
+        }
         return base.CreateStorageTree(address, storageRoot);
     }
 
     private void OnStorageNodeLoading(ValueHash256 keccak)
     {
-        if (_pendingStorageRoots.Count != 0 && _pendingStorageRoots.Remove(keccak)) ValidatePaths(keccak.Bytes);
+        if (_pendingRootFilter[PendingRootFilterIndex(keccak)] != 0 && _pendingStorageRoots.Remove(keccak)) ValidatePaths(keccak.Bytes);
     }
+
+    private static int PendingRootFilterIndex(in ValueHash256 keccak) =>
+        Unsafe.As<ValueHash256, ushort>(ref Unsafe.AsRef(in keccak)) & (PendingRootFilterLength - 1);
 
     /// <remarks>Depth first, from a stack rather than by recursion: a call per node, saving the registers the walk
     /// keeps, cost more than the node's own checks.</remarks>
