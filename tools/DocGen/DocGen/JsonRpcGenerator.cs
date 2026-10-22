@@ -9,8 +9,10 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -19,6 +21,7 @@ using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
+using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
 using Spectre.Console;
 using System.Buffers;
@@ -72,6 +75,7 @@ internal static class JsonRpcGenerator
         [typeof(int)] = "_integer_",
         [typeof(IPAddress)] = "_string_",
         [typeof(long)] = "_string_ (hex integer)",
+        [typeof(OwnedByteMemory)] = "_string_ (hex data)",
         [typeof(PublicKey)] = "_string_ (node id, no \"0x\" prefix)",
         [typeof(Signature)] = "_string_ (hex data)",
         [typeof(StorageValuesRequest)] = "map of address to array of _string_ (hex storage slot), 1 to 1024 slots in total",
@@ -95,12 +99,32 @@ internal static class JsonRpcGenerator
         [typeof(MemoryHexConverter)] = "array of _string_ (32-byte hex data)",
         [typeof(PublicKeyConverter)] = "_string_ (hex data)",
         [typeof(StackHexConverter)] = "array of _string_ (hex integer)",
+        [typeof(StorageCellIndexConverter)] = "array of _string_ (32-byte hex data)",
         [typeof(StorageHexConverter)] = "map of _string_ (32-byte hex data)",
+    };
+
+    // Labels for objects whose converter writes them in another form, or writes another value in some cases
+    private static readonly Dictionary<Type, string> _knownConverterObjectNames = new()
+    {
+        [typeof(AccessListForRpc.JsonConverter)] = "array of _object_",
+        [typeof(GethLikeTxTraceConverter)] = "_object_ (the tracer's own result instead when `tracer` is set)",
+        [typeof(SyncingResultJsonConverter)] = "`false` when not syncing, else _object_",
     };
 
     // Members written by hand-rolled object converters, which expose no serializer contract to read them from
     private static readonly Dictionary<Type, (string Name, Type Type, Type? Converter)[]> _knownConverterMembers = new()
     {
+        // The members of each access list item
+        [typeof(AccessListForRpc.JsonConverter)] =
+        [
+            ("address", typeof(Address), null), ("storageKeys", typeof(IEnumerable<UInt256>), typeof(StorageCellIndexConverter)),
+        ],
+        // Forced raw number conversion writes gas as a JSON number
+        [typeof(GethLikeTxTraceConverter)] =
+        [
+            ("failed", typeof(bool), null), ("gas", typeof(int), null), ("returnValue", typeof(byte[]), null),
+            ("structLogs", typeof(List<GethTxTraceEntry>), null),
+        ],
         // A call or create action; a reward writes author, rewardType and value instead,
         // and a self-destruct writes address, balance and refundAddress
         [typeof(ParityTraceActionConverter)] =
@@ -130,6 +154,17 @@ internal static class JsonRpcGenerator
             ("address", typeof(HashSet<AddressAsKey>), null), ("blockHash", typeof(Hash256), null),
             ("fromBlock", typeof(FilterBlockBound), null), ("toBlock", typeof(FilterBlockBound), null),
             ("topics", typeof(IEnumerable<Hash256[]>), null), ("useIndex", typeof(bool), null),
+        ],
+        [typeof(ProofJsonConverter)] =
+        [
+            ("accountProof", typeof(byte[][]), null), ("address", typeof(Address), null), ("balance", typeof(UInt256), null),
+            ("codeHash", typeof(Hash256), null), ("nonce", typeof(ulong), null), ("storageHash", typeof(Hash256), null),
+            ("storageProof", typeof(StorageProof[]), null),
+        ],
+        // Written only while syncing
+        [typeof(SyncingResultJsonConverter)] =
+        [
+            ("currentBlock", typeof(ulong), null), ("highestBlock", typeof(ulong), null), ("startingBlock", typeof(ulong), null),
         ],
     };
 
@@ -406,7 +441,7 @@ internal static class JsonRpcGenerator
         }
 
         if (!omitTypeName)
-            file.WriteLine(_objectTypeName);
+            file.WriteLine(GetObjectTypeName(type, converterType));
 
         if (IsOpaqueJson(type))
             return;
@@ -414,10 +449,11 @@ internal static class JsonRpcGenerator
         foreach ((string name, Type memberType, Type? memberConverter) in GetSerializedMembers(type, converterType))
         {
             string memberJsonType = GetJsonTypeName(memberType, memberConverter);
+            bool isObject = memberJsonType.Equals(_objectTypeName, StringComparison.Ordinal);
 
-            file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {memberJsonType}");
+            file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {(isObject ? GetObjectTypeName(memberType, memberConverter) : memberJsonType)}");
 
-            if (memberJsonType.Equals(_objectTypeName, StringComparison.Ordinal))
+            if (isObject)
                 WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(nodeName), memberConverter);
             else if (memberJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
                 TryGetEnumerableItemType(memberType, out Type? itemType, out bool _))
@@ -578,6 +614,12 @@ internal static class JsonRpcGenerator
             return null;
         }
     }
+
+    private static string GetObjectTypeName(Type type, Type? converterType) =>
+        (converterType ?? GetContract(Nullable.GetUnderlyingType(type) ?? type)?.Converter.GetType()) is { } shapeConverter &&
+        _knownConverterObjectNames.TryGetValue(shapeConverter, out string? name)
+            ? name
+            : _objectTypeName;
 
     private static IEnumerable<(string Name, Type Type, Type? Converter)> GetSerializedMembers(Type type, Type? converterType)
     {

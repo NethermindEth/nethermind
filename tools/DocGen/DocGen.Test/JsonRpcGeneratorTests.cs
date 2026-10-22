@@ -2,10 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
+using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
+using Nethermind.State.Proofs;
 using NUnit.Framework;
 
 namespace Nethermind.DocGen.Test;
@@ -38,6 +46,11 @@ public class JsonRpcGeneratorTests
     [TestCase("debug", "debug_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("eth", "eth_simulateV1", "- `calls`:", "- `traces`:")]
     [TestCase("eth", "eth_getBlockByHash", "- `transactions`: array of _string_ (hash), or array of _object_ (transaction) when `returnFullTransactionObjects` is `true`", "- `hashes`:")]
+    [TestCase("eth", "eth_createAccessList", "- `accessList`: array of _object_", "- `accessList`: _object_")]
+    [TestCase("eth", "eth_getProof", "- `storageHash`:", "- `storageRoot`:")]
+    [TestCase("eth", "eth_syncing", "`result`: `false` when not syncing, else _object_", "- `isSyncing`:")]
+    [TestCase("debug", "debug_getRawBlockAccessList", "`result`: _string_ (hex data)", "- `memory`:")]
+    [TestCase("debug", "debug_traceTransaction", "- `structLogs`:", "- `customTracerResult`:")]
     public void Response_documents_wire_shape(string ns, string method, string documented, string notDocumented)
     {
         string response = ReadResponse(ns, method);
@@ -117,6 +130,36 @@ public class JsonRpcGeneratorTests
             AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0], traceResponse, 4);
             string actionResponse = ReadPropertyBlock(traceResponse, "action", 4);
             AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0].GetProperty("action"), actionResponse, 6);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ConverterWrittenResults()
+    {
+        yield return new TestCaseData("eth", "eth_getProof", new AccountProof());
+        yield return new TestCaseData("eth", "eth_syncing", new SyncingResult { IsSyncing = true });
+        yield return new TestCaseData("debug", "debug_traceTransaction", new GethLikeTxTrace { TxHash = Keccak.Zero });
+    }
+
+    [TestCaseSource(nameof(ConverterWrittenResults))]
+    public void Response_documents_properties_written_by_class_converter(string ns, string method, object result)
+    {
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(result));
+
+        AssertDocumentedProperties(wire.RootElement, ReadResponse(ns, method), 2);
+    }
+
+    [Test]
+    public void Create_access_list_response_documents_access_list_items()
+    {
+        AccessList accessList = new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.One).Build();
+        AccessListResultForRpc result = new(AccessListForRpc.FromAccessList(accessList), UInt256.One, null);
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(result));
+        string accessListResponse = ReadPropertyBlock(ReadResponse("eth", "eth_createAccessList"), "accessList", 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDocumentedProperties(wire.RootElement.GetProperty("accessList")[0], accessListResponse, 4);
+            Assert.That(accessListResponse, Does.Contain("- `storageKeys`: array of _string_ (32-byte hex data)"));
         }
     }
 
