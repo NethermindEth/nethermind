@@ -368,7 +368,9 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
+        // At a zero base fee the tip is the whole charge: max_cost is max_gas at one wei per gas.
         request.MaxFeePerGas = 1;
+        request.MaxPriorityFeePerGas = 1;
         object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"{{{(sufficient ? "0x3d090" : "0x1")}}}"}}""")!;
         object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0"}""")!;
 

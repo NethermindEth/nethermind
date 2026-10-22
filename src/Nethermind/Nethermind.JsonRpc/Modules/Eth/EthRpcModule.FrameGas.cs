@@ -62,6 +62,10 @@ public partial class EthRpcModule
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
         tx.ChainId = _blockchainBridge.GetChainId();
         if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out error)) return Result<FrameForRpc[]>.Fail(error!);
+        // The search picks the frame limits, so a call priced per gas is searched at the budget its prices buy over the
+        // gas cap; the call then runs at the budget they buy over the limits the search filled.
+        ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
+        if (request.PerGasBudget(tx, gasCap) is { } searchBudget) tx.MaxFee = searchBudget;
 
         FrameForRpc[] input = request.Frames!;
         bool[] fillExecution = new bool[input.Length];
@@ -78,7 +82,7 @@ public partial class EthRpcModule
             if (blockOverride?.BaseFeePerGas is not null) blockOverride = blockOverride.WithBaseFee(0);
         }
         Result<TxFrame[]> result = _blockchainBridge.EstimateFrameGas(executionHeader, tx, fillExecution, fillState,
-            _rpcConfig.GasCap.EffectiveGasCap(), _rpcConfig.EstimateErrorMargin, stateOverride, blockOverride, token, out bool executionReverted);
+            gasCap, _rpcConfig.EstimateErrorMargin, stateOverride, blockOverride, token, out bool executionReverted);
         if (executionReverted) errorCode = ErrorCodes.ExecutionReverted;
         if (!result.Success(out TxFrame[]? frames, out error)) return Result<FrameForRpc[]>.Fail(error!);
         return FrameForRpc.FromFrames(frames);
