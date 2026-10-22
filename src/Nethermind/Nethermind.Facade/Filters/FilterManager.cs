@@ -257,8 +257,7 @@ namespace Nethermind.Facade.Filters
                 return null;
             }
 
-            if (logFilter.FromBlock.Type == BlockParameterType.BlockHash && logFilter.FromBlock.Equals(logFilter.ToBlock) &&
-                logFilter.FromBlock.BlockHash != txReceipt.BlockHash)
+            if (logFilter.IsBlockHashFilter && logFilter.FromBlock.BlockHash != txReceipt.BlockHash)
             {
                 return null;
             }
