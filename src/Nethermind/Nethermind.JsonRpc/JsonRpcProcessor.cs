@@ -35,7 +35,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private readonly IJsonRpcService _jsonRpcService;
     private readonly JsonRpcDiagnostics _diagnostics;
     private readonly IProcessExitSource? _processExitSource;
-    // Mirrors the debug module pool size (RpcModules), which bounds how many traced calls can hold a module at once.
+    // The debug module pool size, which bounds how many traced calls can hold a module at once.
     private readonly int _debugModuleInstances;
 
     public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager, IProcessExitSource? processExitSource = null)
@@ -47,7 +47,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
 
         _processExitSource = processExitSource;
-        _debugModuleInstances = jsonRpcConfig.DebugModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16);
+        _debugModuleInstances = jsonRpcConfig.GetDebugModuleConcurrentInstances();
         _diagnostics = new JsonRpcDiagnostics(_jsonRpcConfig, fileSystem, _logger);
     }
 

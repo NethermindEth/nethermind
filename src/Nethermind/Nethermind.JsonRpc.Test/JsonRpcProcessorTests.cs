@@ -471,7 +471,7 @@ public class JsonRpcProcessorTests
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
 
-        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4 }),
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 4 }),
             CreateBatchRequest(
                 CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
                 CreateRequest("2", "debug_traceCall", """[{},"latest",{"tracer":"callTracer"}]"""),
