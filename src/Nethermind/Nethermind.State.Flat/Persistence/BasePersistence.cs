@@ -34,8 +34,8 @@ public static class BasePersistence
     /// <summary>The index of sample <paramref name="sample"/> of <paramref name="sampleCount"/> spread evenly over <paramref name="length"/> keys.</summary>
     internal static int SampleIndex(int sample, int sampleCount, int length) => (int)((long)sample * length / sampleCount);
 
-    /// <summary>How many keys per column decide a block's prefetch: enough that a block with a third of its reads cold
-    /// is sampled cold with over 95% probability.</summary>
+    /// <summary>How many keys per column decide a block's prefetch: a block with half of its sampled misses read from
+    /// disk is decided disk with over 96% probability.</summary>
     public const int PrefetchSamples = 8;
 
     /// <summary>How many of those samples are probed while the previous block of the column was fully cached.</summary>
@@ -597,20 +597,29 @@ public static class BasePersistence
         {
             PrefetchSampling.Column? column = sampling?.Accounts;
             Span<byte> value = stackalloc byte[_accountSpanBufferSize];
-            // Under a page-cache outcome one probe is kept; only a slow read of it makes the block decide in full.
-            if (column?.TrustMissesInMemory() == true && !IsSlowAccountMiss(samples[samples.Length / 2].ToAccountPath, value)) return false;
+            MissTimings misses = default;
+            int sentinel = -1;
+            // Under a page-cache outcome one probe is kept; only a slow read of it makes the block decide in full. That
+            // read warms its key, so it is counted here and not read again.
+            if (column?.TrustMissesInMemory() == true)
+            {
+                sentinel = samples.Length / 2;
+                if (!IsSlowAccountMiss(samples[sentinel].ToAccountPath, value)) return false;
+                misses.AddSlowSentinel();
+            }
 
             int probes = column?.TryProbeFewer() == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
-            MissTimings misses = default;
             for (int i = 0; i < probes; i++)
             {
-                ValueHash256 path = samples[SampleIndex(i, probes, samples.Length)].ToAccountPath;
+                int index = SampleIndex(i, probes, samples.Length);
+                if (index == sentinel) continue;
+                ValueHash256 path = samples[index].ToAccountPath;
                 if (_flatReader.IsAccountCached(path)) continue;
                 if (misses.Missed++ == 0 && column?.TrustMissAsDiskRead() == true) return true;
 
-                long start = Stopwatch.GetTimestamp();
+                long start = Timestamp();
                 int length = _flatReader.GetAccount(path, value);
-                long end = Stopwatch.GetTimestamp();
+                long end = Timestamp();
                 // An absent key, such as a new account, is answered by the filter and says nothing about where the
                 // existing keys live, so its time is not counted.
                 if (length != 0 && misses.Add(IsDiskRead(start, end))) break;
@@ -622,22 +631,31 @@ public static class BasePersistence
         private bool IsSlowAccountMiss(in ValueHash256 path, Span<byte> value)
         {
             if (_flatReader.IsAccountCached(path)) return false;
-            long start = Stopwatch.GetTimestamp();
+            long start = Timestamp();
             int length = _flatReader.GetAccount(path, value);
-            return length != 0 && IsDiskRead(start, Stopwatch.GetTimestamp());
+            return length != 0 && IsDiskRead(start, Timestamp());
         }
 
         private bool SlotsNeedPrefetch(ReadOnlySpan<StorageCell> samples)
         {
             PrefetchSampling.Column? column = sampling?.Slots;
-            // Under a page-cache outcome one probe is kept; only a slow read of it makes the block decide in full.
-            if (column?.TrustMissesInMemory() == true && !IsSlowSlotMiss(samples[samples.Length / 2])) return false;
+            MissTimings misses = default;
+            int sentinel = -1;
+            // Under a page-cache outcome one probe is kept; only a slow read of it makes the block decide in full. That
+            // read warms its key, so it is counted here and not read again.
+            if (column?.TrustMissesInMemory() == true)
+            {
+                sentinel = samples.Length / 2;
+                if (!IsSlowSlotMiss(samples[sentinel])) return false;
+                misses.AddSlowSentinel();
+            }
 
             int probes = column?.TryProbeFewer() == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
-            MissTimings misses = default;
             for (int i = 0; i < probes; i++)
             {
-                ref readonly StorageCell cell = ref samples[SampleIndex(i, probes, samples.Length)];
+                int index = SampleIndex(i, probes, samples.Length);
+                if (index == sentinel) continue;
+                ref readonly StorageCell cell = ref samples[index];
                 ValueHash256 path = cell.Address.ToAccountPath;
                 ValueHash256 slotHash = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
@@ -645,9 +663,9 @@ public static class BasePersistence
                 if (misses.Missed++ == 0 && column?.TrustMissAsDiskRead() == true) return true;
 
                 UInt256 value = default;
-                long start = Stopwatch.GetTimestamp();
+                long start = Timestamp();
                 bool found = _flatReader.TryGetStorage(path, slotHash, ref value);
-                long end = Stopwatch.GetTimestamp();
+                long end = Timestamp();
                 // An absent key, such as a slot written for the first time, is answered by the filter and says nothing
                 // about where the existing keys live, so its time is not counted.
                 if (found && misses.Add(IsDiskRead(start, end))) break;
@@ -663,51 +681,60 @@ public static class BasePersistence
             StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
             if (_flatReader.IsSlotCached(path, slotHash)) return false;
             UInt256 value = default;
-            long start = Stopwatch.GetTimestamp();
+            long start = Timestamp();
             bool found = _flatReader.TryGetStorage(path, slotHash, ref value);
-            return found && IsDiskRead(start, Stopwatch.GetTimestamp());
+            return found && IsDiskRead(start, Timestamp());
         }
 
-        private static bool Decide(PrefetchSampling.Column? column, in MissTimings misses, bool allSamples)
+        private readonly long Timestamp() => sampling?.GetTimestamp() ?? Stopwatch.GetTimestamp();
+    }
+
+    private static bool Decide(PrefetchSampling.Column? column, in MissTimings misses, bool allSamples)
+    {
+        if (misses.IsDisk)
         {
-            if (misses.IsDisk)
-            {
-                column?.RecordDiskRead();
-                return true;
-            }
-
-            if (misses.Timed != 0) column?.RecordPageCacheReads();
-            else column?.RecordNoTimedMiss(fullyCached: allSamples && misses.Missed == 0);
-            return false;
+            column?.RecordDiskRead();
+            return true;
         }
 
-        /// <summary>
-        /// The sampled misses of one column and the timed reads of the existing ones. Two slow reads mean disk, and so does
-        /// one slow read that is at least a quarter of the timed misses, as in a partly cold block. One slow read among
-        /// many fast ones is a scheduler delay or a large page-cache block, and a wrong disk outcome is trusted for
-        /// <see cref="PrefetchSampling.RecheckInterval"/> blocks with a miss.
-        /// </summary>
-        private struct MissTimings
+        if (misses.Timed != 0) column?.RecordPageCacheReads();
+        else column?.RecordNoTimedMiss(fullyCached: allSamples && misses.Missed == 0);
+        return false;
+    }
+
+    /// <summary>
+    /// The sampled misses of one column and the timed reads of the existing ones. Two slow reads mean disk, and so does
+    /// one slow read that is at least a quarter of the timed misses, as in a partly cold block. One slow read among
+    /// many fast ones is a scheduler delay or a large page-cache block, and a wrong disk outcome is trusted for
+    /// <see cref="PrefetchSampling.RecheckInterval"/> blocks with a miss.
+    /// </summary>
+    private struct MissTimings
+    {
+        private const int SlowReadsForDisk = 2;
+        private const int MissesPerSlowRead = 4;
+
+        /// <summary>The sampled keys that missed the block cache, absent ones included.</summary>
+        public int Missed;
+
+        public int Timed { get; private set; }
+        private int _slow;
+
+        /// <summary>Counts the page-cache probe whose slow read made the block decide in full.</summary>
+        public void AddSlowSentinel()
         {
-            private const int SlowReadsForDisk = 2;
-            private const int MissesPerSlowRead = 4;
-
-            /// <summary>The sampled keys that missed the block cache, absent ones included.</summary>
-            public int Missed;
-
-            public int Timed { get; private set; }
-            private int _slow;
-
-            /// <returns>True when the outcome is decided as disk and no further sample needs a read.</returns>
-            public bool Add(bool slow)
-            {
-                Timed++;
-                if (slow) _slow++;
-                return _slow == SlowReadsForDisk;
-            }
-
-            public readonly bool IsDisk => _slow >= SlowReadsForDisk || (_slow == 1 && Timed <= MissesPerSlowRead);
+            Missed++;
+            Add(slow: true);
         }
+
+        /// <returns>True when the outcome is decided as disk and no further sample needs a read.</returns>
+        public bool Add(bool slow)
+        {
+            Timed++;
+            if (slow) _slow++;
+            return _slow == SlowReadsForDisk;
+        }
+
+        public readonly bool IsDisk => _slow >= SlowReadsForDisk || (_slow == 1 && Timed <= MissesPerSlowRead);
     }
 
     public class Reader<TFlatReader, TTrieReader>(

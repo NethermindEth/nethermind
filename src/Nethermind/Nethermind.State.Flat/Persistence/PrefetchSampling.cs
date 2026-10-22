@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+
 namespace Nethermind.State.Flat.Persistence;
 
 /// <summary>
@@ -22,6 +24,13 @@ namespace Nethermind.State.Flat.Persistence;
 /// </remarks>
 public sealed class PrefetchSampling
 {
+    private readonly Func<long> _getTimestamp;
+
+    public PrefetchSampling() : this(Stopwatch.GetTimestamp) { }
+
+    /// <param name="getTimestamp">The <see cref="Stopwatch"/> timestamp source that times the sampled reads.</param>
+    internal PrefetchSampling(Func<long> getTimestamp) => _getTimestamp = getTimestamp;
+
     /// <summary>How many blocks with a block-cache miss trust a disk outcome before one is timed again.</summary>
     public const int RecheckInterval = 16;
 
@@ -34,9 +43,19 @@ public sealed class PrefetchSampling
     /// <summary>How many blocks probe fewer samples after a fully cached streak.</summary>
     public const int CachedRunBlocks = 4;
 
+    /// <summary>The outcomes of the account column, shared by every reader of this persistence.</summary>
     public Column Accounts { get; } = new();
+
+    /// <summary>The outcomes of the storage slot column, shared by every reader of this persistence.</summary>
     public Column Slots { get; } = new();
 
+    /// <summary>A <see cref="Stopwatch"/> timestamp for a timed read of a sampled key.</summary>
+    internal long GetTimestamp() => _getTimestamp();
+
+    /// <summary>
+    /// The remembered outcome of one column. Each method that asks for a trust consumes it, and each <c>Record</c>
+    /// method replaces the outcome; readers of the same persistence call them concurrently.
+    /// </summary>
     public sealed class Column
     {
         private int _trustedDiskMisses;

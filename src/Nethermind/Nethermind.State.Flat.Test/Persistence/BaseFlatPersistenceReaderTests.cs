@@ -84,7 +84,7 @@ public class BaseFlatPersistenceReaderTests
         RecordingStore accountStore = new();
         RecordingStore storageStore = new();
         BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
-            new BaseFlatPersistence.Reader(accountStore, storageStore, fullAddressStorageKey: fullAddressStorageKey));
+            new BaseFlatPersistence.Reader(accountStore, storageStore, fullAddressStorageKey: fullAddressStorageKey), sampling: Sampling(accountStore, storageStore));
         Address[] accounts = new Address[count];
         StorageCell[] slots = new StorageCell[count];
         for (int i = 0; i < count; i++)
@@ -126,7 +126,7 @@ public class BaseFlatPersistenceReaderTests
         Span<byte> key = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         string? coldKey = coldIndex < 0 ? null : Convert.ToHexString(BaseFlatPersistence.EncodeAccountKeyHashed(key, accounts[coldIndex].ToAccountPath));
         RecordingStore accountStore = new(cached: k => k != coldKey);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, new RecordingStore());
         long skipped = Nethermind.Db.Metrics.PrefetchesSkippedCached;
 
         PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
@@ -139,15 +139,13 @@ public class BaseFlatPersistenceReaderTests
     }
 
     // A sampled key missing from the block cache but read at memory speed is in the OS page cache, where a prefetch
-    // only repeats the read: no sample is slow, so nothing is sent. Retried because a scheduler delay of one read can
-    // make it count as a disk read, which only ever sends a prefetch.
+    // only repeats the read: no sample is slow, so nothing is sent.
     [Test]
-    [Retry(3)]
     public void Prefetch_MissedSamplesReadAtMemorySpeed_SendNothing()
     {
         RecordingStore accountStore = new(missDelay: TimeSpan.Zero);
         RecordingStore storageStore = new(missDelay: TimeSpan.Zero);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, storageStore));
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, storageStore);
         Address[] accounts = Accounts(70);
         StorageCell[] slots = accounts.Select(static (address, i) => new StorageCell(address, (UInt256)i)).ToArray();
         long skipped = Nethermind.Db.Metrics.PrefetchesSkippedCached;
@@ -166,7 +164,6 @@ public class BaseFlatPersistenceReaderTests
 
     // One slow read among fast misses is taken as noise, a scheduler delay or a large page-cache block: no prefetch.
     [Test]
-    [Retry(3)]
     public void Prefetch_OneSlowReadAmongFastMisses_SendsNothing()
     {
         const int count = 70;
@@ -174,8 +171,8 @@ public class BaseFlatPersistenceReaderTests
         Span<byte> key = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         // 35 is the fifth of the eight sample indexes for 70 keys.
         string slowKey = Convert.ToHexString(BaseFlatPersistence.EncodeAccountKeyHashed(key, accounts[35].ToAccountPath));
-        RecordingStore accountStore = new(missDelay: TimeSpan.Zero, slowKey: slowKey);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+        RecordingStore accountStore = new(missDelay: TimeSpan.Zero, slow: k => k == slowKey);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, new RecordingStore());
 
         PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
 
@@ -192,7 +189,7 @@ public class BaseFlatPersistenceReaderTests
     public void Prefetch_TwoMissesReadAtDiskSpeed_SendThePrefetch()
     {
         RecordingStore accountStore = new();
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, new RecordingStore());
         Address[] accounts = Accounts(70);
 
         PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
@@ -212,8 +209,8 @@ public class BaseFlatPersistenceReaderTests
         // Samples of 70 keys are at 0, 8, 17, 26, 35, 43, 52 and 61; three of them miss and the middle one is slow.
         string[] misses = [.. new[] { 17, 35, 52 }.Select(i => Convert.ToHexString(
             BaseFlatPersistence.EncodeAccountKeyHashed(new byte[BaseFlatPersistence.AccountKeyLength], accounts[i].ToAccountPath)))];
-        RecordingStore accountStore = new(cached: k => !misses.Contains(k), missDelay: TimeSpan.Zero, slowKey: misses[1]);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+        RecordingStore accountStore = new(cached: k => !misses.Contains(k), missDelay: TimeSpan.Zero, slow: k => k == misses[1]);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, new RecordingStore());
 
         PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
 
@@ -231,8 +228,8 @@ public class BaseFlatPersistenceReaderTests
     {
         Address[] accounts = Accounts(70);
         string existing = AccountKey(accounts[35]);
-        RecordingStore accountStore = new(missDelay: TimeSpan.Zero, slowKey: existing, absent: k => k != existing);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+        RecordingStore accountStore = new(missDelay: TimeSpan.Zero, slow: k => k == existing, absent: k => k != existing);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, new RecordingStore());
 
         PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
 
@@ -245,8 +242,7 @@ public class BaseFlatPersistenceReaderTests
     public void Plan_OnlyAbsentKeysMissing_KeepsNoPageCacheOutcome()
     {
         RecordingStore accountStore = new(missDelay: TimeSpan.Zero, absent: static _ => true);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
-            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: new PrefetchSampling());
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, new RecordingStore());
         Address[] accounts = Accounts(70);
 
         List<int> probes = [];
@@ -268,15 +264,14 @@ public class BaseFlatPersistenceReaderTests
     // The quarter rule at its boundary: one slow read among four timed misses decides disk, among five it does not.
     [TestCase(4, true)]
     [TestCase(5, false)]
-    [Retry(3)]
     public void Prefetch_OneSlowReadIsDiskUpToAQuarterOfTheMisses(int missCount, bool expectPrefetch)
     {
         Address[] accounts = Accounts(70);
         // Samples of 70 keys are at 0, 8, 17, 26, 35, 43, 52 and 61; the first missCount of them miss, the first is slow.
         int[] sampleIndexes = [0, 8, 17, 26, 35, 43, 52, 61];
         string[] misses = [.. sampleIndexes.Take(missCount).Select(i => AccountKey(accounts[i]))];
-        RecordingStore accountStore = new(cached: k => !misses.Contains(k), missDelay: TimeSpan.Zero, slowKey: misses[0]);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+        RecordingStore accountStore = new(cached: k => !misses.Contains(k), missDelay: TimeSpan.Zero, slow: k => k == misses[0]);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, new RecordingStore());
 
         PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
 
@@ -290,12 +285,12 @@ public class BaseFlatPersistenceReaderTests
         Address[] accounts = Accounts(70);
         StorageCell[] slots = accounts.Select(static (address, i) => new StorageCell(address, (UInt256)i)).ToArray();
         RecordingStore probe = new();
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> keyReader = new(new BaseFlatPersistence.Reader(new RecordingStore(), probe));
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> keyReader = Reader(new RecordingStore(), probe);
         UInt256 unused = default;
         keyReader.TryGetSlot(slots[35].Address, slots[35].Index, ref unused);
         string existing = probe.ReadKeys[0];
-        RecordingStore storageStore = new(missDelay: TimeSpan.Zero, slowKey: existing, absent: k => k != existing);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(new RecordingStore(cached: static _ => true), storageStore));
+        RecordingStore storageStore = new(missDelay: TimeSpan.Zero, slow: k => k == existing, absent: k => k != existing);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(new RecordingStore(cached: static _ => true), storageStore);
 
         PlanAndPrefetch(reader, accounts, slots, CancellationToken.None);
 
@@ -303,18 +298,16 @@ public class BaseFlatPersistenceReaderTests
     }
 
     // Under a page-cache outcome the single probe still catches disk: a slow read of it makes the block decide in full,
-    // and two slow misses then send the prefetch at once instead of after the trust runs out.
+    // where it counts as the first slow miss, and the second slow miss then sends the prefetch at once instead of after
+    // the trust runs out.
     [Test]
-    [Retry(3)]
     public void Plan_UnderPageCacheTrust_ASlowProbeDecidesInFull()
     {
         RecordingStore accountStore = new(missDelay: TimeSpan.Zero);
         RecordingStore diskStore = new();
-        PrefetchSampling sampling = new();
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> pageCache = new(
-            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: sampling);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> disk = new(
-            new BaseFlatPersistence.Reader(diskStore, new RecordingStore()), sampling: sampling);
+        PrefetchSampling sampling = Sampling(accountStore, diskStore);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> pageCache = Reader(accountStore, sampling: sampling);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> disk = Reader(diskStore, sampling: sampling);
         Address[] accounts = Accounts(70);
 
         PlanAndPrefetch(pageCache, accounts, [], CancellationToken.None);
@@ -323,9 +316,32 @@ public class BaseFlatPersistenceReaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accountStore.PrefetchedKeys, Is.Empty);
-            // The single probe, then a full decision stopped by its two slow reads.
-            Assert.That(diskStore.ReadKeys, Has.Count.EqualTo(3));
+            // The single probe, then a full decision stopped by the next slow read.
+            Assert.That(diskStore.ReadKeys, Has.Count.EqualTo(2));
             Assert.That(diskStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
+        }
+    }
+
+    // The slow probe warms its key, so the full decision must not read it again and miss its slow read: with one more
+    // slow sample among fast ones the block is still decided disk.
+    [Test]
+    public void Plan_UnderPageCacheTrust_TheWarmedProbeStillCountsAsSlow()
+    {
+        Address[] pageCacheBlock = Accounts(70);
+        Address[] partlyColdBlock = Accounts(70, first: 1_000);
+        // Samples of 70 keys are at 0, 8, 17, 26, 35, 43, 52 and 61; the single probe is the middle sample, 35.
+        string[] cold = [AccountKey(partlyColdBlock[35]), AccountKey(partlyColdBlock[52])];
+        RecordingStore accountStore = new(missDelay: TimeSpan.Zero, slow: k => cold.Contains(k), cacheOnRead: true);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore);
+
+        PlanAndPrefetch(reader, pageCacheBlock, [], CancellationToken.None);
+        int prefetchedAfterPageCacheBlock = accountStore.PrefetchedKeys.Count;
+        PlanAndPrefetch(reader, partlyColdBlock, [], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prefetchedAfterPageCacheBlock, Is.Zero);
+            Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(partlyColdBlock.Length));
         }
     }
 
@@ -337,7 +353,7 @@ public class BaseFlatPersistenceReaderTests
         Span<byte> key = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         string coldKey = Convert.ToHexString(BaseFlatPersistence.EncodeAccountKeyHashed(key, accounts[35].ToAccountPath));
         RecordingStore accountStore = new(cached: k => k != coldKey);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, new RecordingStore());
 
         PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
 
@@ -354,9 +370,7 @@ public class BaseFlatPersistenceReaderTests
     public void Prefetch_AfterADiskRead_SendsWithoutTimingUntilTheRecheck()
     {
         RecordingStore accountStore = new();
-        PrefetchSampling sampling = new();
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
-            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: sampling);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore);
         Address[] accounts = Accounts(70);
         List<int> timedReads = [];
 
@@ -395,13 +409,10 @@ public class BaseFlatPersistenceReaderTests
     // After a block whose misses were read from the page cache, the next MemoryRecheckInterval blocks probe a single
     // sample, which is read fast here, so they send nothing; the block after them decides in full again.
     [Test]
-    [Retry(3)]
     public void Plan_AfterPageCacheReads_ProbesOneSampleUntilTheRecheck()
     {
         RecordingStore accountStore = new(missDelay: TimeSpan.Zero);
-        PrefetchSampling sampling = new();
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
-            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: sampling);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore);
         Address[] accounts = Accounts(70);
         List<int> probes = [];
 
@@ -426,9 +437,7 @@ public class BaseFlatPersistenceReaderTests
     {
         bool cold = false;
         RecordingStore accountStore = new(cached: _ => !cold);
-        PrefetchSampling sampling = new();
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
-            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: sampling);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore);
         Address[] accounts = Accounts(70);
         List<int> probes = [];
 
@@ -454,8 +463,7 @@ public class BaseFlatPersistenceReaderTests
     public void Plan_CachedRun_StartsAfterAFullyCachedStreakAndEnds()
     {
         RecordingStore accountStore = new(cached: static _ => true);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
-            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: new PrefetchSampling());
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, new RecordingStore());
         Address[] accounts = Accounts(70);
         List<int> probes = [];
 
@@ -498,7 +506,7 @@ public class BaseFlatPersistenceReaderTests
     {
         RecordingStore accountStore = new(cached: static _ => true);
         RecordingStore storageStore = new(cached: static _ => true);
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, storageStore));
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, storageStore);
         Address[] accounts = Accounts(count);
         StorageCell[] slots = accounts.Select(static (address, i) => new StorageCell(address, (UInt256)i)).ToArray();
 
@@ -519,7 +527,7 @@ public class BaseFlatPersistenceReaderTests
     {
         RecordingStore accountStore = new();
         RecordingStore storageStore = new();
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, storageStore));
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, storageStore);
         Address[] accounts = Accounts(70);
 
         PlanAndPrefetch(reader, accounts, [new StorageCell(accounts[0], 1)], new CancellationToken(canceled: true));
@@ -539,7 +547,7 @@ public class BaseFlatPersistenceReaderTests
         using CancellationTokenSource cancellation = new();
         RecordingStore accountStore = new(onPrefetch: cancellation.Cancel);
         RecordingStore storageStore = new();
-        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, storageStore));
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = Reader(accountStore, storageStore);
         Address[] accounts = Accounts(200);
 
         PlanAndPrefetch(reader, accounts, [new StorageCell(accounts[0], 1)], cancellation.Token);
@@ -566,23 +574,38 @@ public class BaseFlatPersistenceReaderTests
     private static string AccountKey(Address address) =>
         Convert.ToHexString(BaseFlatPersistence.EncodeAccountKeyHashed(new byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath));
 
-    private static Address[] Accounts(int count)
+    private static Address[] Accounts(int count, int first = 1)
     {
         Address[] accounts = new Address[count];
-        for (int i = 0; i < count; i++) accounts[i] = Address.FromNumber((UInt256)(i + 1));
+        for (int i = 0; i < count; i++) accounts[i] = Address.FromNumber((UInt256)(first + i));
         return accounts;
     }
 
+    private static BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> Reader(RecordingStore accounts, RecordingStore? storage = null,
+        PrefetchSampling? sampling = null)
+    {
+        storage ??= new RecordingStore();
+        return new(new BaseFlatPersistence.Reader(accounts, storage), sampling: sampling ?? Sampling(accounts, storage));
+    }
+
+    /// <summary>Times the sampled reads on the simulated read time of <paramref name="stores"/>, so no test depends on the scheduler.</summary>
+    private static PrefetchSampling Sampling(params RecordingStore[] stores) => new(() => stores.Sum(static store => store.Elapsed));
+
     /// <summary>
     /// Records the keys of scalar reads and prefetches. Every key holds a one-byte value unless <paramref name="absent"/>
-    /// says it does not exist. A read of a key that is not cached takes <paramref name="missDelay"/>, 1 ms by default, as
-    /// a disk read does; <paramref name="slowKey"/> always takes 1 ms.
+    /// says it does not exist. A read of a key that is not cached adds <paramref name="missDelay"/>, 1 ms by default, to
+    /// <see cref="Elapsed"/>, as a disk read does; a <paramref name="slow"/> key always adds 1 ms. With
+    /// <paramref name="cacheOnRead"/> a read key is cached afterwards, as a block-cache fill is.
     /// </summary>
-    private sealed class RecordingStore(Func<string, bool>? cached = null, Action? onPrefetch = null, TimeSpan? missDelay = null, string? slowKey = null,
-        Func<string, bool>? absent = null)
+    private sealed class RecordingStore(Func<string, bool>? cached = null, Action? onPrefetch = null, TimeSpan? missDelay = null,
+        Func<string, bool>? slow = null, Func<string, bool>? absent = null, bool cacheOnRead = false)
         : ISortedKeyValueStore, IReadPrefetcher
     {
         private static readonly TimeSpan DiskRead = TimeSpan.FromMilliseconds(1);
+        private readonly HashSet<string> _readIntoCache = [];
+
+        /// <summary>The simulated time of all reads so far, in <see cref="Stopwatch"/> ticks.</summary>
+        public long Elapsed { get; private set; }
 
         public List<string> ReadKeys { get; } = [];
         public List<string> ProbedKeys { get; } = [];
@@ -603,8 +626,9 @@ public class BaseFlatPersistenceReaderTests
         {
             string hex = Convert.ToHexString(key);
             ReadKeys.Add(hex);
-            TimeSpan delay = hex == slowKey ? DiskRead : cached?.Invoke(hex) == true ? TimeSpan.Zero : missDelay ?? DiskRead;
-            if (delay > TimeSpan.Zero) Thread.Sleep(delay);
+            TimeSpan delay = IsInCache(hex) ? TimeSpan.Zero : slow?.Invoke(hex) == true ? DiskRead : missDelay ?? DiskRead;
+            Elapsed += (long)(delay.TotalSeconds * Stopwatch.Frequency);
+            if (cacheOnRead) _readIntoCache.Add(hex);
             return absent?.Invoke(hex) != true;
         }
 
@@ -612,8 +636,10 @@ public class BaseFlatPersistenceReaderTests
         {
             string hex = Convert.ToHexString(key);
             ProbedKeys.Add(hex);
-            return cached?.Invoke(hex) ?? false;
+            return IsInCache(hex);
         }
+
+        private bool IsInCache(string hex) => cached?.Invoke(hex) == true || _readIntoCache.Contains(hex);
 
         public void Prefetch(ReadOnlySpan<byte> keys, int keyLength)
         {

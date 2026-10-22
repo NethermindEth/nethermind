@@ -80,9 +80,8 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
-    // The columns the plan chose are passed down; the inner reader sends nothing for the others.
     [Test]
-    public async Task Prefetch_PassesThePlannedColumnsDown([Values(IPersistence.PrefetchColumns.Accounts, IPersistence.PrefetchColumns.Slots)] IPersistence.PrefetchColumns columns)
+    public async Task Prefetch_PassesOnlyThePlannedColumnsDown([Values(IPersistence.PrefetchColumns.None, IPersistence.PrefetchColumns.Accounts, IPersistence.PrefetchColumns.Slots)] IPersistence.PrefetchColumns columns)
     {
         FakePersistence inner = new();
         await using CarryForwardCachingPersistence cache = new(inner);
@@ -1130,8 +1129,8 @@ public class CarryForwardCachingPersistenceTests
 
             public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
             {
-                if ((columns & IPersistence.PrefetchColumns.Accounts) != 0) parent.PrefetchedAccounts.AddRange(accounts);
-                if ((columns & IPersistence.PrefetchColumns.Slots) != 0) parent.PrefetchedSlots.AddRange(slots);
+                parent.PrefetchedAccounts.AddRange(accounts);
+                parent.PrefetchedSlots.AddRange(slots);
             }
 
             public void Dispose()
