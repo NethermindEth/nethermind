@@ -66,6 +66,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private int _earlyAdoptedSlots;
     private int _earlyAbandonedSlots;
 
+    // Bench-only (FlatDb.ShadowAccountSplit): the block's account-trie batches, kept for the shadow run at commit.
+    private readonly bool _shadowAccountSplit;
+    private ShadowAccountBatch? _shadowBatch;
+    private static int _shadowFailuresLogged;
+
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
@@ -105,6 +110,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
+
+        _shadowAccountSplit = configuration.ShadowAccountSplit && !isReadOnly && !_trieless;
     }
 
     internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
@@ -138,6 +145,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         _earlyApplyClosed = true;
+        _shadowBatch = null;
         // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
@@ -626,6 +634,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        ShadowAccountBatch? shadowBatch = _shadowBatch;
+        _shadowBatch = null;
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
@@ -636,6 +646,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             using (BlockDiag.Measure(diag, BlockDiag.F.PcStorageTrees))
             {
                 CommitStorageTrees();
+            }
+
+            // Before the state trie commits, so the bundle still serves only the pre-block state nodes.
+            if (shadowBatch is not null && diag is not null && Volatile.Read(ref _stateTree) is { } stateTree)
+            {
+                RunShadowAccountSplit(shadowBatch, diag, blockNumber, _currentStateId.StateRoot.ToCommitment(), stateTree.RootHash);
             }
 
             using (BlockDiag.Measure(diag, BlockDiag.F.PcStateTree))
@@ -726,6 +742,143 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             });
     }
 
+    /// <summary>
+    /// Bench-only: what the block's account-trie batches wrote. Every account as written to the trie, a later batch of
+    /// the block overwriting an earlier one's; and the addresses whose storage root the drain wrote, each with the
+    /// account the state flush had left for it before the drain, or null when there was none.
+    /// </summary>
+    private sealed class ShadowAccountBatch
+    {
+        public Dictionary<AddressAsKey, Account?>? Final;
+        public readonly Dictionary<AddressAsKey, Account?> StorageRootChanged = [];
+
+        /// <returns>Whether <paramref name="accounts"/> was taken over rather than copied, so the batch must not clear it.</returns>
+        public bool Keep(Dictionary<AddressAsKey, Account?> accounts)
+        {
+            if (Final is null)
+            {
+                Final = accounts;
+                return true;
+            }
+
+            foreach (KeyValuePair<AddressAsKey, Account?> entry in accounts) Final[entry.Key] = entry.Value;
+            return false;
+        }
+    }
+
+    // The shadow run reports into the block's diag, so only a block that carries one keeps its batches.
+    private ShadowAccountBatch? GetShadowBatch() =>
+        _shadowAccountSplit && BlockDiag.Current is not null ? _shadowBatch ??= new ShadowAccountBatch() : null;
+
+    /// <summary>Whether this block's account-trie batches are kept for the shadow run. For tests.</summary>
+    internal bool KeepsShadowBatch => _shadowBatch is not null;
+
+    /// <summary>
+    /// Bench-only (<see cref="IFlatDbConfig.ShadowAccountSplit"/>): redoes the block's account-trie update on two
+    /// throw-away state tries built on the pre-block root, to bound what writing the settled accounts concurrently
+    /// with the storage roots would take off the critical path. Arm X writes every changed account and hashes; arm Y
+    /// writes the settled accounts (changed, not deleted, storage root unchanged) and hashes, then the rest and
+    /// hashes again. The arm that runs first alternates with the block number. Both roots are checked against the
+    /// block's.
+    /// </summary>
+    /// <remarks>
+    /// Arm Y writes the settled accounts as the state flush left them, the only values known before the storage roots,
+    /// and leaves them out of its second write; so a storage-changed account taken for settled would end with its old
+    /// storage root and fail the check. The tries copy every node they change and are never committed, so nothing
+    /// shared is written. A failure is counted in the diag and swallowed.
+    /// </remarks>
+    private void RunShadowAccountSplit(ShadowAccountBatch batch, BlockDiag diag, ulong blockNumber, Hash256 preBlockRoot, Hash256 blockRoot)
+    {
+        diag.Set(BlockDiag.C.ShRan, 1);
+        bool leased = false;
+        try
+        {
+            Dictionary<AddressAsKey, Account?> final = batch.Final ?? [];
+            Dictionary<AddressAsKey, Account?> settled = new(final.Count);
+            foreach (KeyValuePair<AddressAsKey, Account?> entry in final)
+            {
+                bool storageRootChanged = batch.StorageRootChanged.TryGetValue(entry.Key, out Account? beforeDrain);
+                // What the first write could have used: the account as the state flush left it.
+                Account? flushed = storageRootChanged ? beforeDrain : entry.Value;
+                if (flushed is not null && !storageRootChanged) settled[entry.Key] = flushed;
+            }
+
+            Dictionary<AddressAsKey, Account?> rest = new(final.Count - settled.Count);
+            foreach (KeyValuePair<AddressAsKey, Account?> entry in final)
+            {
+                if (!settled.ContainsKey(entry.Key)) rest[entry.Key] = entry.Value;
+            }
+
+            diag.Set(BlockDiag.C.ShSettled, settled.Count);
+            diag.Set(BlockDiag.C.ShRest, rest.Count);
+
+            if (!(leased = _snapshotBundle.TryLeaseReadOnlyBundle())) throw new InvalidOperationException("The snapshot bundle is disposed");
+
+            bool xFirst = (blockNumber & 1) == 0;
+            diag.Set(BlockDiag.C.ShXFirst, xFirst ? 1 : 0);
+            Hash256 rootX;
+            Hash256 rootY;
+            if (xFirst)
+            {
+                rootX = RunShadowArmX(diag, preBlockRoot, final);
+                rootY = RunShadowArmY(diag, preBlockRoot, settled, rest);
+            }
+            else
+            {
+                rootY = RunShadowArmY(diag, preBlockRoot, settled, rest);
+                rootX = RunShadowArmX(diag, preBlockRoot, final);
+            }
+
+            diag.Set(BlockDiag.C.ShOk, rootX == blockRoot && rootY == blockRoot ? 1 : 0);
+        }
+        catch (Exception ex)
+        {
+            diag.Set(BlockDiag.C.ShErr, 1);
+            diag.Set(BlockDiag.C.ShOk, 0);
+            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+            if (logger.IsWarn && Interlocked.Increment(ref _shadowFailuresLogged) <= 10) logger.Warn($"Shadow account split failed at block {blockNumber}: {ex}");
+        }
+        finally
+        {
+            if (leased) _snapshotBundle.ReleaseReadOnlyBundleLease();
+        }
+    }
+
+    // Reads nodes as the block's own state tree does: unlike the warmer's adapter, it sees the earlier blocks of this
+    // scope and writes into no cache.
+    private StateTree CreateShadowStateTree(Hash256 preBlockRoot) =>
+        new(new StateTrieStoreAdapter(_snapshotBundle), _logManager) { RootHash = preBlockRoot };
+
+    private Hash256 RunShadowArmX(BlockDiag diag, Hash256 preBlockRoot, Dictionary<AddressAsKey, Account?> accounts)
+    {
+        StateTree tree = CreateShadowStateTree(preBlockRoot);
+        using (BlockDiag.Measure(diag, BlockDiag.F.ShFull))
+        {
+            tree.WriteAccounts(accounts);
+            tree.UpdateRootHash();
+        }
+
+        return tree.RootHash;
+    }
+
+    private Hash256 RunShadowArmY(BlockDiag diag, Hash256 preBlockRoot, Dictionary<AddressAsKey, Account?> settled, Dictionary<AddressAsKey, Account?> rest)
+    {
+        StateTree tree = CreateShadowStateTree(preBlockRoot);
+        using (BlockDiag.Measure(diag, BlockDiag.F.ShP1))
+        {
+            tree.WriteAccounts(settled);
+            tree.UpdateRootHash();
+        }
+
+        using (BlockDiag.Measure(diag, BlockDiag.F.ShP2))
+        {
+            tree.WriteAccounts(rest);
+            tree.UpdateRootHash();
+        }
+
+        return tree.RootHash;
+    }
+
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
     // So I just leave it here.
     private class WriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
@@ -780,12 +933,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         public void Dispose()
         {
+            bool keptForShadow = false;
             try
             {
+                ShadowAccountBatch? shadow = _scope.GetShadowBatch();
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
-                    if (!_dirtyAccounts.TryGetValue(key, out Account? account)) account = _scope.Get(key);
+                    bool flushed = _dirtyAccounts.TryGetValue(key, out Account? account);
+                    // Bench-only: the account as the state flush left it, before its storage root changes below.
+                    shadow?.StorageRootChanged.TryAdd(key, account);
+                    if (!flushed) account = _scope.Get(key);
                     if (account is null)
                     {
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
@@ -806,6 +964,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 }
 
                 OnAccountUpdated = null;
+                keptForShadow = shadow?.Keep(_dirtyAccounts) == true;
 
                 BlockDiag? diag = BlockDiag.Current;
                 diag?.Add(BlockDiag.C.TrieAccounts, _dirtyAccounts.Count);
@@ -827,7 +986,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             finally
             {
-                _dirtyAccounts.Clear();
+                // A dictionary the shadow run took over is its own now.
+                if (!keptForShadow) _dirtyAccounts.Clear();
 
                 Interlocked.Increment(ref _scope._hintSequenceId);
             }

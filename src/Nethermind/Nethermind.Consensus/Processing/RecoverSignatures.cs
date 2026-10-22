@@ -110,7 +110,8 @@ namespace Nethermind.Consensus.Processing
         /// payload; <see langword="null"/> encodes the transactions instead.
         /// </param>
         /// <param name="cancellationToken">Stops recovering the remaining transactions, for a block rejected before processing.</param>
-        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, byte[][]? encodedTransactions = null, CancellationToken cancellationToken = default)
+        /// <param name="diag">Bench-only: the request's diagnostics, stamped when the first sender is recovered and when the last one is.</param>
+        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, byte[][]? encodedTransactions = null, CancellationToken cancellationToken = default, BlockDiag? diag = null)
         {
             ParallelUnbalancedWork.WorkerGroup? group = ParallelUnbalancedWork.GetCurrentGroup();
             if (group?.Concurrency == 1) return;
@@ -122,7 +123,7 @@ namespace Nethermind.Consensus.Processing
             if (current is not null && !current.IsCompleted && current.BlockHash == blockHash)
                 return;
 
-            Recovery recovery = new(this, blockHash, txs, AlignedEncodings(txs, encodedTransactions), releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2), cancellationToken);
+            Recovery recovery = new(this, blockHash, txs, AlignedEncodings(txs, encodedTransactions), releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2), cancellationToken, diag);
             Volatile.Write(ref _current, recovery);
             try
             {
@@ -275,12 +276,13 @@ namespace Nethermind.Consensus.Processing
         /// touched a few times per worker rather than once per transaction; completion is pulsed under the gate the
         /// waiters wait on.
         /// </summary>
-        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, int concurrency, CancellationToken cancellationToken) : IThreadPoolWorkItem, ISenderRecoveryProgress
+        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, int concurrency, CancellationToken cancellationToken, BlockDiag? diag) : IThreadPoolWorkItem, ISenderRecoveryProgress
         {
             private readonly object _gate = new();
             private readonly int _progressBatch = Math.Max(1, txs.Length / (concurrency * ProgressPublicationsPerWorker));
             private int _recovered;
             private volatile bool _completed;
+            private int _firstStamped;
 
             public Hash256 BlockHash => blockHash;
             public Transaction[] Transactions => txs;
@@ -316,6 +318,8 @@ namespace Nethermind.Consensus.Processing
 
                         Interlocked.Add(ref _recovered, recovered);
                     }
+
+                    diag?.Stamp(BlockDiag.P.RecEnd);
                 }
                 catch (Exception e)
                 {
@@ -340,7 +344,12 @@ namespace Nethermind.Consensus.Processing
 
             private bool IsCancellationRequested => cancellationToken.IsCancellationRequested;
 
-            private void Recover(int i) => owner.TryRecover(txs[i], EncodingAt(encodedTransactions, i), releaseSpec);
+            private void Recover(int i)
+            {
+                owner.TryRecover(txs[i], EncodingAt(encodedTransactions, i), releaseSpec);
+                if (diag is not null && Volatile.Read(ref _firstStamped) == 0 && Interlocked.Exchange(ref _firstStamped, 1) == 0)
+                    diag.Stamp(BlockDiag.P.RecStart);
+            }
 
             private static Worker RecoverOne(int i, Worker worker)
             {

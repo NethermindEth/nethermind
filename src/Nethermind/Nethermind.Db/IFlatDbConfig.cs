@@ -148,6 +148,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
     bool ApplyStorageWritesOnIdleThread { get; set; }
 
+    [ConfigItem(Description = "Bench-only. After a block that carries newPayload diagnostics is reported valid, redo its account-trie update on two throw-away state tries: all changed accounts at once, and split into the accounts settled before the storage roots and the rest. The timings go to the block's diagnostics. Never changes what is committed.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool ShadowAccountSplit { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 

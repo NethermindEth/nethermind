@@ -172,6 +172,10 @@ internal sealed partial class PersistentStorageProvider
 
     private void UpdateRootHashesMultiThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
+        // Bench-only: the serial batch creation and sort, then the parallel loop with its join.
+        BlockDiag? diag = BlockDiag.InPhase(BlockDiag.Phase.StorageRoots);
+        BlockDiag.Section prologue = BlockDiag.Measure(diag, BlockDiag.F.WsfPrologue);
+
         // We can recalculate the roots in parallel as they are all independent tries
         using ArrayPoolList<(
             AddressAsKey Key, PerContractState ContractState,
@@ -192,13 +196,18 @@ internal sealed partial class PersistentStorageProvider
                 writeBatch.CreateStorageWriteBatch(kv.Key, contractState.EstimatedChanges)));
         }
 
-        if (storages.Count == 0) return;
+        if (storages.Count == 0)
+        {
+            prologue.Dispose();
+            return;
+        }
 
         // Schedule larger changes first to help balance the work
         storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
+        prologue.Dispose();
 
-        BlockDiag? diag = BlockDiag.InPhase(BlockDiag.Phase.StorageRoots);
         diag?.Add(BlockDiag.C.ParStorageLoops, 1);
+        using BlockDiag.Section loop = BlockDiag.Measure(diag, BlockDiag.F.WsfLoop);
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         ParallelUnbalancedWork.For(
             0,

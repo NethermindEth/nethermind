@@ -35,7 +35,7 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
 
-public class FlatWorldStateScopeProviderTests
+public partial class FlatWorldStateScopeProviderTests
 {
     [Test]
     public void TryBeginScope_ReturnsFalseWhenStateIsRemovedAfterAdvisoryCheck()

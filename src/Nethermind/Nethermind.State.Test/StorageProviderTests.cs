@@ -101,6 +101,43 @@ public partial class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Block_end_commit_times_the_storage_root_prologue_and_loop([Values(2, 3)] int contracts)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        BlockDiag diag = new();
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            BlockDiag outer = BlockDiag.Current;
+            BlockDiag.Current = diag;
+            try
+            {
+                for (int i = 0; i < contracts; i++)
+                {
+                    Address address = Address.FromNumber((UInt256)(i + 1));
+                    provider.CreateAccount(address, 1);
+                    provider.Set(new StorageCell(address, 1), (UInt256)7);
+                }
+
+                provider.Commit(Frontier.Instance);
+            }
+            finally
+            {
+                BlockDiag.Current = outer;
+            }
+        }
+
+        // Only three or more contracts take the parallel path that the two sections split.
+        bool parallel = contracts >= 3;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diag.Get(BlockDiag.F.WsfPrologue).WallTicks > 0, Is.EqualTo(parallel));
+            Assert.That(diag.Get(BlockDiag.F.WsfLoop).WallTicks > 0, Is.EqualTo(parallel));
+            Assert.That(diag.Get(BlockDiag.C.ParStorageLoops), Is.EqualTo(parallel ? 1 : 0));
+        }
+    }
+
+    [Test]
     public void Committed_clear_restores_a_slot_rewritten_to_its_original_value()
     {
         using Context ctx = new(useFlat);

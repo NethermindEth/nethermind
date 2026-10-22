@@ -234,6 +234,24 @@ public class RecoverSignaturesTest
     }
 
     [Test]
+    public void StartRecovery_StampsTheFirstAndTheLastSenderOnTheDiag([Values(2, 6)] int count)
+    {
+        Transaction[] txs = SignedTransactions(count);
+        RecoverSignatures sut = new(_ecdsa, Substitute.For<ISpecProvider>(), Substitute.For<ILogManager>());
+        BlockDiag diag = new();
+
+        sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create(), diag: diag);
+
+        Assert.That(() => sut.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txs.Select(static tx => tx.SenderAddress), Is.All.Not.Null);
+            Assert.That(diag.Get(BlockDiag.P.RecStart), Is.Not.Zero);
+            Assert.That(diag.Get(BlockDiag.P.RecEnd), Is.GreaterThanOrEqualTo(diag.Get(BlockDiag.P.RecStart)));
+        }
+    }
+
+    [Test]
     public void StartRecovery_WhileRunning_PipelineStepLeavesTheBlockAlone()
     {
         using ManualResetEventSlim gate = new();

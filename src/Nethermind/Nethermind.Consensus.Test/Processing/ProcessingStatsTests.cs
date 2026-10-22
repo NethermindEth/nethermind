@@ -105,6 +105,14 @@ public class ProcessingStatsTests
         Assert.That(d.GetProperty("fin").GetProperty("state_root")[1].GetDouble(), Is.EqualTo(5));
         Assert.That(d.GetProperty("cnt").EnumerateObject().Count(), Is.EqualTo((int)BlockDiag.C.Count));
         Assert.That(d.GetProperty("cnt").GetProperty("slot_writes").GetInt64(), Is.EqualTo(42));
+
+        // Bench-only: the shadow account split, the storage-root split and the sender recovery stamps.
+        foreach (string section in new[] { "sh_full", "sh_p1", "sh_p2", "wsf_prologue", "wsf_loop" })
+            Assert.That(d.GetProperty("fin").GetProperty(section).GetArrayLength(), Is.EqualTo(2), section);
+        foreach (string count in new[] { "sh_ran", "sh_settled", "sh_rest", "sh_ok", "sh_x_first", "sh_err" })
+            Assert.That(d.GetProperty("cnt").GetProperty(count).GetInt64(), Is.Zero, count);
+        Assert.That(d.GetProperty("t").GetProperty("rec_start").GetDouble(), Is.EqualTo(-1));
+        Assert.That(d.GetProperty("t").GetProperty("rec_end").GetDouble(), Is.EqualTo(-1));
     }
 
     [TestCase(500_000, 1000, false, TestName = "Below_threshold_no_log")]

@@ -32,6 +32,7 @@ public sealed class BlockDiag
         BEntry, PwCall, PwReturned, PwRun, PwWorkers, BProcessOne, TxsStart, Tx0End, TxsEnd, FinStart, FinEnd,
         Verdict, PwDrained, PreCommitEnd, SwStop,
         HResume, HReturn, RpcDone, HttpWritten, HttpComplete,
+        RecStart, RecEnd,
         Count
     }
 
@@ -42,6 +43,7 @@ public sealed class BlockDiag
         WsJournal, WsStartBatch, WsStorageFlush, WsStateFlush, WsBatchDispose, WsAccountTrie,
         FinSetAccountChanges, FinStateRoot, FinReceiptsWait, FinBalHash,
         PwDrain, PreCommit, PcStorageTrees, PcStateTree, PcSnapshot,
+        ShFull, ShP1, ShP2, WsfPrologue, WsfLoop,
         Count
     }
 
@@ -56,6 +58,7 @@ public sealed class BlockDiag
         EarlyAdoptedSlots, EarlyAbandonedSlots, LateAccounts, PostTxAccounts,
         ParStorageLoops, ParStorageMain, ParStorageHelper, ParBulkSetLoops, ParBulkSetMain, ParBulkSetHelper,
         ParHashCalls, ParHashLoops, ParHashMain, ParHashHelper,
+        ShRan, ShSettled, ShRest, ShOk, ShXFirst, ShErr,
         Count
     }
 
@@ -72,6 +75,7 @@ public sealed class BlockDiag
         "b_entry", "pw_call", "pw_returned", "pw_run", "pw_workers", "b_process_one", "txs_start", "tx0_end", "txs_end", "fin_start", "fin_end",
         "verdict", "pw_drained", "precommit_end", "sw_stop",
         "h_resume", "h_return", "rpc_done", "http_written", "http_complete",
+        "rec_start", "rec_end",
     ];
 
     private static readonly string[] FNames =
@@ -80,6 +84,7 @@ public sealed class BlockDiag
         "ws_journal", "ws_start_batch", "ws_storage_flush", "ws_state_flush", "ws_batch_dispose", "ws_account_trie",
         "set_account_changes", "state_root", "receipts_wait", "bal_hash",
         "pw_drain", "precommit", "pc_storage_trees", "pc_state_tree", "pc_snapshot",
+        "sh_full", "sh_p1", "sh_p2", "wsf_prologue", "wsf_loop",
     ];
 
     private static readonly string[] CNames =
@@ -92,6 +97,7 @@ public sealed class BlockDiag
         "early_adopted_slots", "early_abandoned_slots", "late_accounts", "post_tx_accounts",
         "par_storage_loops", "par_storage_main", "par_storage_helper", "par_bulkset_loops", "par_bulkset_main", "par_bulkset_helper",
         "par_hash_calls", "par_hash_loops", "par_hash_main", "par_hash_helper",
+        "sh_ran", "sh_settled", "sh_rest", "sh_ok", "sh_x_first", "sh_err",
     ];
 
     private readonly long[] _t = new long[(int)P.Count];
@@ -139,6 +145,9 @@ public sealed class BlockDiag
     public void Set(C count, long value) => _c[(int)count] = value;
 
     public long Get(C count) => _c[(int)count];
+
+    /// <summary>The accumulated wall ticks and thread CPU nanoseconds of <paramref name="section"/>.</summary>
+    public (long WallTicks, long CpuNs) Get(F section) => (_wall[(int)section], _cpu[(int)section]);
 
     /// <summary>Adds one timed run of <paramref name="section"/>.</summary>
     public void AddSection(F section, long wallTicks, long cpuNs)
