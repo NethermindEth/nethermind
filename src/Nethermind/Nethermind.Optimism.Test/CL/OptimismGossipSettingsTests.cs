@@ -121,7 +121,7 @@ public class OptimismGossipSettingsTests
         {
             await channel.Reverse.WriteVarintAsync(1024).AsTask().WaitAsync(token);
             await Assert.ThrowsAsync<ChannelClosedException>(async () => await listener.WaitAsync(token));
-            Assert.That(budget.TryAcquire(peer.State.RemotePeerId!), Is.True);
+            Assert.That(budget.AcquireAsync(peer.State.RemotePeerId!, token).IsCompletedSuccessfully, Is.True);
             budget.Release(peer.State.RemotePeerId!);
         }
         finally
@@ -185,7 +185,11 @@ public class OptimismGossipSettingsTests
             Assert.That(idleListener.IsCompleted, Is.False);
             await idle.CloseAsync();
             await idleListener.WaitAsync(token);
-            Assert.That(budget.TryAcquire(peer.State.RemotePeerId!), Is.False, "closing an idle stream must not release the active stream's allowance");
+            using CancellationTokenSource waiting = new();
+            Task acquiring = budget.AcquireAsync(peer.State.RemotePeerId!, waiting.Token);
+            Assert.That(acquiring.IsCompleted, Is.False, "closing an idle stream must not release the active stream's allowance");
+            await waiting.CancelAsync();
+            await Assert.CatchAsync<OperationCanceledException>(() => acquiring);
         }
         finally
         {

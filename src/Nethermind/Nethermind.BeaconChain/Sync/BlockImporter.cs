@@ -527,6 +527,14 @@ public sealed class BlockImporter : IBlockImporter
         }
         else
         {
+            // A branch block may advance its parent across many slots, which a forged signature must not buy.
+            if (verifySignatures && VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == false)
+            {
+                RejectGossip = true;
+                if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: invalid proposer signature");
+                return BlockImportResult.Invalid;
+            }
+
             if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state: the lineage is at {_states.LineageRoot}");
             state = parentState.Clone();
             cache = new EpochCache { Hasher = _lineageCache.Hasher };
@@ -901,10 +909,17 @@ public sealed class BlockImporter : IBlockImporter
                     return BlockImportResult.UnknownParent;
                 }
 
-                if (VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain) == false)
+                // Checked before the clone and multi-epoch advance, which a forged block must not buy.
+                switch (block.ProposerIndex >= (ulong)ancestorState.Validators!.Length ? false
+                    : VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain))
                 {
-                    RejectGossip = true;
-                    return BlockImportResult.Invalid;
+                    case false:
+                        RejectGossip = true;
+                        if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: invalid proposer signature");
+                        return BlockImportResult.Invalid;
+                    case null:
+                        if (_logger.IsDebug) _logger.Debug($"Not advancing the state of {ancestorRoot} for block {blockRoot} at slot {block.Slot}: its proposer {block.ProposerIndex} has no cached key");
+                        return BlockImportResult.UnknownParent;
                 }
 
                 proposerState = ancestorState.Clone();

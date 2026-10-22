@@ -116,14 +116,6 @@ internal sealed class GossipStreamBudget
         }
     }
 
-    internal bool TryAcquire(PeerId peer)
-    {
-        lock (_lock)
-        {
-            return _peers.Count < MaxStreams && _peers.Add(peer);
-        }
-    }
-
     internal void Release(PeerId peer)
     {
         lock (_lock)

@@ -1471,7 +1471,7 @@ public class GloasBlockImporterTests
         Assert.That(result, Is.EqualTo(expected));
         Assert.That(((IBlockImporter)importer).RejectGossip, Is.EqualTo(forgery is not (Forgery.None or Forgery.OtherProposerSigned)),
             "an unverified parent payload precedes expected-proposer rejection, but follows signature rejection");
-        if (pastLookahead && forgery is Forgery.BodyAltered or Forgery.OtherProposer)
+        if (pastLookahead && forgery is Forgery.BodyAltered or Forgery.OtherProposer or Forgery.ProposerPastRegistry)
             Assert.That(allocated, Is.LessThan(128 * 1024), "an invalid signature must be rejected before cloning and advancing the ancestor state");
     }
 

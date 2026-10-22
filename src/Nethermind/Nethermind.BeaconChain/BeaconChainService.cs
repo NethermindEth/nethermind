@@ -53,8 +53,8 @@ public sealed class BeaconChainService(
 
     /// <summary>How long <see cref="StopAsync"/> waits before warning that shutdown is still in progress.</summary>
     internal TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(8);
+    /// <summary>How long <see cref="StopAsync"/> keeps waiting after its warning before it gives up on the driver's work.</summary>
     internal TimeSpan ShutdownHardTimeout { get; set; } = TimeSpan.FromMinutes(5);
-    internal Action<string> AbortShutdown { get; set; } = Environment.FailFast;
     /// <summary>Wait before checkpoint sync starts over after a network failure that outlasted its own retries.</summary>
     internal TimeSpan StartRetryDelay { get; init; } = DefaultStartRetryDelay;
 
@@ -248,8 +248,8 @@ public sealed class BeaconChainService(
 
     /// <summary>Stops the driver and waits for its run loop to finish before dependencies can be disposed.</summary>
     /// <remarks>
-    /// Terminates the process if work cannot drain within the hard deadline: returning while that work
-    /// still runs would allow the node to dispose databases it uses.
+    /// Returns after <see cref="ShutdownHardTimeout"/> even if work has not drained, so an unresponsive
+    /// execution call cannot hold shutdown forever. Work still running then may fail as its databases are disposed.
     /// </remarks>
     public async Task StopAsync()
     {
@@ -268,8 +268,7 @@ public sealed class BeaconChainService(
             }
             catch (TimeoutException)
             {
-                AbortShutdown("Embedded beacon chain shutdown exceeded its hard deadline; terminating before active work loses its databases");
-                await drain;
+                if (_logger.IsError) _logger.Error($"Embedded beacon chain driver did not stop within {ShutdownHardTimeout.TotalMinutes:0.#} min; continuing shutdown while its work still runs");
             }
         }
     }

@@ -1333,6 +1333,31 @@ public class BlockImporterTests
         Assert.That(failed.Contains(chain.BlockRoot), Is.False);
     }
 
+    [Test]
+    public void Forged_branch_block_is_refused_before_its_parent_state_is_copied_and_advanced()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        FailedBlockRoots failed = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), failedBlocks: failed);
+        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x81, signed: true);
+        UnsignedChain.ChainBlock lineage = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0x82, signed: true);
+        // Importing a sibling regenerates and holds the parent's post-state, so the forged block reaches the branch path, not regeneration.
+        UnsignedChain.ChainBlock sibling = chain.Extend(parent.Root, slot: 3, payloadHashByte: 0x84, signed: true);
+        UnsignedChain.ChainBlock branch = chain.Extend(parent.Root, slot: 3 * chain.Spec.SlotsPerEpoch, payloadHashByte: 0x83, signed: true);
+        Assert.That(new[] { parent, lineage, sibling }.Select(b => importer.Import(b.Block, b.Root, verifySignatures: true)), Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+        branch.Block.Signature = ImportableBlobBlock.Altered(branch.Block.Signature);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        BlockImportResult result = importer.Import(branch.Block, branch.Root, verifySignatures: true);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(((IBlockImporter)importer).RejectGossip, Is.True);
+        Assert.That(allocated, Is.LessThan(128 * 1024), "a forged signature must not buy a state copy and a multi-epoch advance");
+        Assert.That(failed.Contains(branch.Root), Is.False, "the signature is not part of the block root, so the honest block must stay importable");
+    }
+
     [TestCase(0UL, false, TestName = "Block_at_the_finalized_slot_is_not_recorded_as_failed")]
     [TestCase(2UL, true, TestName = "Block_not_after_its_parents_slot_is_recorded_as_failed")]
     public void Refusal_before_the_state_transition_is_recorded_only_for_a_validation_failure(ulong slot, bool recorded)

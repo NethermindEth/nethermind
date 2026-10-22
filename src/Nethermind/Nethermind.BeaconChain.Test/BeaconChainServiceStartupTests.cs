@@ -334,7 +334,7 @@ public class BeaconChainServiceStartupTests
     }
 
     [Test]
-    public async Task StopAsync_completes_only_after_a_run_blocked_in_the_pubkey_cache_build_is_released([Values(0, 1, 2)] int deadline)
+    public async Task StopAsync_waits_for_a_run_blocked_in_the_pubkey_cache_build_until_its_hard_deadline([Values(0, 1, 2)] int deadline)
     {
         PubkeyCache pubkeyCache = new();
         TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -345,12 +345,7 @@ public class BeaconChainServiceStartupTests
         await using IContainer container = KickContainer(engine, pubkeyCache, logManager).AddSingleton(store).Build();
         SeedAnchor(store, gloas: false, nextCommittee: false, key: null);
         BeaconChainService service = container.Resolve<BeaconChainService>();
-        TaskCompletionSource aborted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (deadline == 2)
-        {
-            service.ShutdownHardTimeout = TimeSpan.FromMilliseconds(50);
-            service.AbortShutdown = _ => aborted.TrySetResult();
-        }
+        if (deadline == 2) service.ShutdownHardTimeout = TimeSpan.FromMilliseconds(50);
         Task run = service.Start();
         await engine.Called.Task.WaitAsync(TimeSpan.FromSeconds(30));
         gate.Arm();
@@ -358,21 +353,31 @@ public class BeaconChainServiceStartupTests
         await gate.Reached.WaitAsync(TimeSpan.FromSeconds(30));
 
         Task stopping = service.StopAsync();
-
+        bool runUnwoundAtStop;
         try
         {
             if (deadline == 1) await Task.Delay(service.ShutdownTimeout + TimeSpan.FromMilliseconds(100));
-            if (deadline == 2) await aborted.Task.WaitAsync(TimeSpan.FromSeconds(30));
-            Assert.That(stopping.IsCompleted, Is.False, "the run is still inside the cache build");
+            if (deadline == 2) await stopping.WaitAsync(TimeSpan.FromSeconds(30));
+            else Assert.That(stopping.IsCompleted, Is.False, "the run is still inside the cache build");
         }
         finally
         {
+            runUnwoundAtStop = run.IsCompleted;
             gate.Release();
         }
         await stopping.WaitAsync(TimeSpan.FromSeconds(30));
+        await run.WaitAsync(TimeSpan.FromSeconds(30));
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(run.IsCompletedSuccessfully, Is.True, "the run had unwound when the stop completed");
-        Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
+        if (deadline == 2)
+        {
+            Assert.That(runUnwoundAtStop, Is.False, "past the hard deadline the stop gives up instead of holding shutdown forever");
+            Assert.That(logManager.Errors, Has.Count.EqualTo(1), "giving up on running work is reported");
+        }
+        else
+        {
+            Assert.That(run.IsCompletedSuccessfully, Is.True, "the run had unwound when the stop completed");
+            Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
+        }
     }
 
     [Test]

@@ -50,6 +50,42 @@ public class PeerSessionCloseTests
     }
 
     [Test]
+    public async Task Rare_rejected_gossip_does_not_accumulate_to_a_drop(CancellationToken token)
+    {
+        Node node = Create();
+        await using PeerHostScope hosts = new(node.P2P);
+        await node.P2P.StartAsync(token);
+        ManualTimestamper time = new();
+        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: time);
+        manager.AddPeerForTest(RequestFailureCauseTests.AddWedgedSession(node.P2P), PeerAddress, Status);
+
+        // Seven rejections per window, over three windows: more than a flood's eight in total, never eight in one window.
+        for (int i = 0; i < 21; i++)
+        {
+            manager.ReportRejectedGossip(PeerIdentity.PeerId, "invalid aggregate signature");
+            time.Add(PeerManager.RejectedGossipWindow / 6);
+        }
+
+        Assert.That(manager.PeerCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task A_drop_racing_rejected_gossip_still_counts_as_a_fault(CancellationToken token)
+    {
+        Node node = Create();
+        node.Config.FaultDisconnectsBeforeBan = 1;
+        await using PeerHostScope hosts = new(node.P2P);
+        await node.P2P.StartAsync(token);
+        PeerManager manager = node.CreatePeerManager();
+        IBeaconSyncPeer peer = manager.AddPeerForTest(RequestFailureCauseTests.AddWedgedSession(node.P2P), PeerAddress, Status);
+        manager.ReportRejectedGossip(PeerIdentity.PeerId, "invalid aggregate signature");
+
+        await manager.DropForTest(peer, GoodbyeReason.TooManyPeers, "over the configured peer band");
+
+        Assert.That(manager.IsBannedForTest(PeerIdentity.PeerId.ToString()), Is.True, "a non-fault drop must not erase the violation that preceded it");
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task A_peer_whose_session_closes_leaves_the_pool_at_once_without_a_failure_and_a_replacement_dial_is_let_through(CancellationToken token)
     {
