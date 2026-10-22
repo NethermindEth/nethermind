@@ -220,10 +220,8 @@ public class GethTraceOptionsDeserializationTests
 
     [TestCase("disableStack", "{}")]
     [TestCase("limit", "\"bad\"")]
-    public void ByNumber_null_normalization_preserves_invalid_earlier_tokens(string property, string invalid)
-    {
+    public void ByNumber_null_normalization_preserves_invalid_earlier_tokens(string property, string invalid) =>
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GethTraceOptions>(BuildMembers(property, $"{invalid},null"), CreateByNumberSerializerOptions()));
-    }
 
     [TestCase(50_000_000L, "5s")]
     [TestCase(long.MaxValue, "256204778h48m5.4775807s")]
