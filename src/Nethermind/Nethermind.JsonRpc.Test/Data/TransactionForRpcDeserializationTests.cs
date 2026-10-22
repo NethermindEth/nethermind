@@ -242,7 +242,7 @@ public class TransactionForRpcDeserializationTests
     [Test]
     public void Test_DifferingInputAndData_Throws([ValueSource(nameof(DifferingInputAndData))] string txJson) =>
         Assert.That(() => _serializer.Deserialize<TransactionForRpc>(txJson),
-            Throws.TypeOf<SafePublicMessageFormatException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+            Throws.TypeOf<DataAndInputDifferException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
 
     [Test]
     public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized)

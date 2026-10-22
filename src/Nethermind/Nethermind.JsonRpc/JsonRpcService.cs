@@ -369,7 +369,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             string message = e switch
             {
                 // Geth compares data with input inside the call rather than while decoding, so its text has no argument prefix.
-                InvalidArgumentException when reason is RpcTransactionErrors.DataAndInputDiffer => reason,
+                InvalidArgumentException { InnerException: DataAndInputDifferException conflict } => conflict.Message,
                 InvalidArgumentException { Index: int index } when reason is not null => $"invalid argument {index}: {reason}",
                 InvalidArgumentException { Index: int index } => $"invalid argument {index}",
                 _ => reason ?? "Invalid params"
