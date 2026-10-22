@@ -468,6 +468,21 @@ internal class NodeRecordBulkSetTests
             Assert.That(source.FetchCount, Is.Zero, "nodes read from the buffer");
         }
 
+        (ValueHash256 Hash, ulong Pointer) updatedRoot = BulkSet(buffer, source, null, newRoot, [(items[1].key, NewValue), (items[2].key, (byte[])null)], canParallelize: false);
+        Dictionary<Hash256, byte[]> values = items.Skip(3).ToDictionary(item => item.key, item => item.value);
+        values[items[0].key] = NewValue;
+        values[items[1].key] = NewValue;
+        (Hash256 expectedRoot, Dictionary<TreePath, byte[]> expectedNodes) = BuildExpectedTrie(values);
+        HashSet<(TreePath, ulong)> updatedNodes = [.. buffer.EnumerateNodes(updatedRoot.Pointer).Select(node => (node.Path, node.Pointer))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newNodes.Where(node => !updatedNodes.Contains(node)).Select(node => NodeRecordBufferTests.GenerationOf(node.Item2)), Has.Some.LessThanOrEqualTo(newestTrieGeneration),
+                "the update replaces records of the compacted generations");
+            Assert.That(updatedRoot.Hash, Is.EqualTo(expectedRoot.ValueHash256), "root after the update");
+            Assert.That(Rlps(buffer, updatedRoot).OrderBy(node => node.Key), Is.EqualTo(expectedNodes.OrderBy(node => node.Key)), "reachable nodes after the update");
+            Assert.That(source.FetchCount, Is.Zero, "the update reads the compacted generations from the buffer");
+        }
+
         void FillUntil(ulong generation)
         {
             while (fillerRoot.Pointer == 0 || NodeRecordBufferTests.GenerationOf(fillerRoot.Pointer) < generation)
