@@ -37,7 +37,7 @@ jobs:
               all(.[];
                 (.input | test("^[0-9]+\\.ssz$")) and
                 (.hash | test("^[0-9a-f]{64}$")) and
-                (.output | test("^[0-9a-f]{64}$")) and
+                (.output | test("^[0-9a-f]{86}$")) and
                 (.digest | test("^[0-9a-f]{64}$")))
             then .
             else error("invalid pinned block set")
@@ -144,9 +144,9 @@ jobs:
             minutes: 5
           - vm: sp1
             project: Nethermind.Stateless.Sp1Guest
-            # SP1 executes ~500-830 M cycles per block. On zk-testing (6 cores)
-            # that is ~75 s; a GitHub runner is slower and the image pull is on
-            # top, so this is deliberately loose.
+            # SP1 is the slowest of the three guests, a GitHub runner is slower
+            # than zk-testing and the image pull is on top, so this is
+            # deliberately loose.
             minutes: 30
           - vm: openvm
             project: Nethermind.Stateless.OpenVMGuest
@@ -164,7 +164,7 @@ jobs:
       - name: Download input
         working-directory: src/Nethermind/${{ matrix.project }}/bin
         run: |
-          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260930/${{ matrix.block.input }}" \
+          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20261021/${{ matrix.block.input }}" \
             -o "${{ matrix.block.input }}"
           echo "${{ matrix.block.hash }}  ${{ matrix.block.input }}" | sha256sum --status -c - || \
             { echo "::error::Checksum failed"; exit 1; }
@@ -198,11 +198,8 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           set -euo pipefail
-          # The tail of the SSZ result after its 32-byte root: the success flag,
-          # the chain id and the schema id. See Nethermind.Stateless.Executor.
-          suffix=0101000000000000000100
           make run INPUT="${{ matrix.block.input }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
-          grep -q "${{ matrix.block.output }}$suffix" "$RUNNER_TEMP/run.log" || \
+          grep -q "${{ matrix.block.output }}" "$RUNNER_TEMP/run.log" || \
             { echo "::error::Output mismatch"; exit 1; }
           # The line above is a debug print on OpenVM. What gets proven is the
           # digest in the 32-byte public-values window, so assert that too - a

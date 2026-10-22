@@ -20,9 +20,8 @@ public static class Eip8141Constants
     public const ulong P256VerificationGasCost = 6_700;
     public const int ExpiryDataLength = 8;
 
-    // Bounds mempool validation work only, never block execution; ITxPoolConfig.FrameTxMaxVerifyGas is the
-    // operator-configurable mirror.
-    public const ulong MaxVerifyGas = 300_000;
+    // Shared validation-work floor, not the node's configurable headroom or a block-validity limit.
+    public const ulong MaxVerifyGas = 100_000;
 
     /// <summary>
     /// <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c>: the public-mempool cap on the pending frame

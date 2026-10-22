@@ -86,7 +86,7 @@ public class BalCatchUpBenchmark
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
                 .WithWarmupCount(WarmupCount)
-                .WithIterationCount(10)
+                .WithIterationCount(FixtureDir is null ? 10 : 5)
                 .WithGcForce(true));
             AddColumn(StatisticColumn.Min, StatisticColumn.Median, StatisticColumn.P95);
         }
@@ -144,6 +144,21 @@ public class BalCatchUpBenchmark
         if (IsFixture && !Directory.Exists(Path.Combine(DbRoot!, DbNames.Flat)))
             throw new InvalidOperationException($"{DbRoot} holds no flat state database; fixtures need a flat datadir.");
 
+        if (!IsFixture) ValidateWarmLength(BlockLimit ?? SyntheticBlocks);
+
+        try
+        {
+            SetUpSegment();
+        }
+        catch
+        {
+            CleanUpWorkingCopy();
+            throw;
+        }
+    }
+
+    private void SetUpSegment()
+    {
         if (!IsFixture)
         {
             // Produced in memory, so the on-disk pre-state below holds nothing but genesis.
@@ -166,15 +181,12 @@ public class BalCatchUpBenchmark
         }
 
         if (OnDisk) OpenWorkingCopy();
-        if (IsFixture) LoadFixture();
+        if (IsFixture)
+        {
+            LoadFixture();
+            ValidateWarmLength(_segmentData.Count);
+        }
         InstallSegment();
-
-        // Warm iterations replay on one database, which only works while flat finality-driven persistence leaves its
-        // base at the parent; past the reorg window it moves the base on, so longer segments start each run afresh.
-        int warmLimit = (int)_container.Resolve<IFlatDbConfig>().MinReorgDepth;
-        if (FlatDb && !Cold && _segment.Length > warmLimit)
-            throw new InvalidOperationException($"A warm run on flat state replays at most {warmLimit} blocks; set " +
-                (OnDisk ? "NETHERMIND_BALCATCHUP_COLD=1 or " : "") + "NETHERMIND_BALCATCHUP_BLOCKS.");
 
         _beacon.Finalized = _segment[^1].Hash;
         _syncConfig.ReconstructFinalizedStateFromBlockAccessLists = BalCatchUp;
@@ -195,7 +207,16 @@ public class BalCatchUpBenchmark
         int n = _segment.Length;
         IFlatDbConfig flat = _container.Resolve<IFlatDbConfig>();
         Console.WriteLine($"// {Shape}: {n} blocks {_segment[0].Number}-{_segment[^1].Number}, {gas / (ulong)n:N0} gas/block, {txs / n} txs/block, {items / n} BAL items/block, " +
-            $"{(OnDisk ? "on disk" : "in memory")}{(Cold ? ", cold" : "")}, trie warmers {flat.TrieWarmerWorkerCount}");
+            $"{(OnDisk ? "on disk" : "in memory")}{(Cold ? ", fresh process caches" : "")}{(DropCaches ? ", OS page cache dropped" : "")}, trie warmers {flat.TrieWarmerWorkerCount}");
+    }
+
+    private void ValidateWarmLength(int blocks)
+    {
+        // Warm flat runs must keep the replay parent above the finality-driven persistence boundary.
+        ulong warmLimit = new FlatDbConfig().MinReorgDepth;
+        if (FlatDb && !Cold && (ulong)blocks > warmLimit)
+            throw new InvalidOperationException($"A warm run on flat state replays at most {warmLimit} blocks; set " +
+                (OnDisk ? "NETHERMIND_BALCATCHUP_COLD=1 or " : "") + "NETHERMIND_BALCATCHUP_BLOCKS.");
     }
 
     [IterationSetup]
@@ -248,9 +269,20 @@ public class BalCatchUpBenchmark
             Console.WriteLine($"// {Shape} BalCatchUp={BalCatchUp} FlatDb={FlatDb}: persisting the segment's state took {persistMs:N0} ms, {persistMs / _segment.Length:N2} ms per block");
         }
 
-        _container.Dispose();
-        if (_workPath is not null) Directory.Delete(_workPath, recursive: true);
-        if (!IsFixture && _pristinePath is not null) Directory.Delete(_pristinePath, recursive: true);
+        CleanUpWorkingCopy();
+    }
+
+    private void CleanUpWorkingCopy()
+    {
+        try
+        {
+            _container?.Dispose();
+        }
+        finally
+        {
+            if (_workPath is not null && Directory.Exists(_workPath)) Directory.Delete(_workPath, recursive: true);
+            if (!IsFixture && _pristinePath is not null && Directory.Exists(_pristinePath)) Directory.Delete(_pristinePath, recursive: true);
+        }
     }
 
     [Benchmark]
@@ -522,7 +554,7 @@ public class BalCatchUpBenchmark
     /// <summary>Times each block's processing: execution, or the list's application with its state root.</summary>
     private sealed class TimingBlockProcessor(IBlockProcessor inner, BlockTiming timing) : IBlockProcessor
     {
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => inner.TransactionsExecuted += value;
             remove => inner.TransactionsExecuted -= value;

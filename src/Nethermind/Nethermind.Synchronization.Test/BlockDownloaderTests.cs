@@ -160,6 +160,104 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Dispatches_ready_cached_tail_before_requesting_new_headers()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+        List<ulong> suggestedNumbers = [];
+        TaskCompletionSource<object?> allBodiesSuggested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ctx.BlockTree.NewBestSuggestedBlock += (_, args) =>
+        {
+            suggestedNumbers.Add(args.Block.Number);
+            if (suggestedNumbers.Count == 128) allBodiesSuggested.TrySetResult(null);
+        };
+
+        PeerInfo originalPeer = new(Substitute.For<ISyncPeer>());
+        ISyncPeer originalSyncPeer = originalPeer.SyncPeer;
+        originalSyncPeer.IsInitialized.Returns(true);
+        originalSyncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        originalSyncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        originalSyncPeer.HeadHash.Returns(TestItem.KeccakA);
+        originalSyncPeer.HeadNumber.Returns(1000UL);
+
+        PeerInfo preferredPeer = new(Substitute.For<ISyncPeer>());
+        ISyncPeer preferredSyncPeer = preferredPeer.SyncPeer;
+        preferredSyncPeer.IsInitialized.Returns(true);
+        preferredSyncPeer.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.2", 30303));
+        preferredSyncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        preferredSyncPeer.HeadHash.Returns(TestItem.KeccakB);
+        preferredSyncPeer.HeadNumber.Returns(1001UL);
+
+        ctx.PeerPool.GetPeer(originalSyncPeer.Node).Returns(originalPeer);
+        ctx.PeerPool.GetPeer(preferredSyncPeer.Node).Returns(preferredPeer);
+        int allocations = 0;
+        ctx.PeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                PeerInfo peer = Interlocked.Increment(ref allocations) == 1 ? originalPeer : preferredPeer;
+                SyncPeerAllocation allocation = new(AllocationContexts.ForwardHeader, null);
+                allocation.AllocatePeer(peer);
+                return Task.FromResult(allocation);
+            });
+
+        TaskCompletionSource<object?> preferredHeaderRequestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<IOwnedReadOnlyList<BlockHeader>?> blockedHeaderResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ulong> blockedHeaderStart = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        preferredSyncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                preferredHeaderRequestStarted.TrySetResult(null);
+                blockedHeaderStart.TrySetResult(callInfo.ArgAt<ulong>(0));
+                return blockedHeaderResponse.Task;
+            });
+        originalSyncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                ulong start = callInfo.ArgAt<ulong>(0);
+                int count = Math.Min(callInfo.ArgAt<int>(1), (int)(129 - start));
+                return ctx.ResponseBuilder.BuildHeaderResponse(start, count, Response.AllCorrect | Response.WithTransactions);
+            });
+
+        BlocksRequest firstRequest = await ctx.FullSyncFeedComponent.Feed.PrepareRequest()
+            ?? throw new AssertionException("The initial body request was not prepared.");
+        Assert.That(firstRequest.BodiesRequests, Has.Count.EqualTo(128));
+
+        firstRequest.OwnedBodies = await ctx.ResponseBuilder.BuildBlocksResponse(
+            firstRequest.BodiesRequests.Select(static header => header.Hash!).ToArray(),
+            Response.AllCorrect | Response.WithTransactions);
+
+        Assert.That(ctx.FullSyncFeedComponent.Feed.HandleResponse(firstRequest, originalPeer), Is.EqualTo(SyncResponseHandlingResult.OK));
+
+        Task<BlocksRequest> followUpTask = ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+        try
+        {
+            Task firstProgress = await Task.WhenAny(allBodiesSuggested.Task, preferredHeaderRequestStarted.Task, followUpTask)
+                .WaitAsync(TimeSpan.FromSeconds(2));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstProgress, Is.SameAs(allBodiesSuggested.Task),
+                    "ready body dispatch must win before the different preferred peer's header request");
+                Assert.That(suggestedNumbers, Is.EqualTo(Enumerable.Range(1, 128).Select(static number => (ulong)number)),
+                    "all 128 ready bodies must be suggested before the preferred peer's header response is released");
+                Assert.That(blockedHeaderResponse.Task.IsCompleted, Is.False,
+                    "ready body dispatch must not depend on the different preferred peer's gated response");
+            }
+        }
+        finally
+        {
+            if (preferredHeaderRequestStarted.Task.IsCompleted)
+            {
+                ulong start = await blockedHeaderStart.Task.WaitAsync(TimeSpan.FromSeconds(2));
+                blockedHeaderResponse.TrySetResult(await ctx.ResponseBuilder.BuildHeaderResponse(start, 1, Response.AllCorrect));
+            }
+
+            BlocksRequest? cleanupRequest = await followUpTask.WaitAsync(TimeSpan.FromSeconds(2));
+            cleanupRequest?.Dispose();
+        }
+    }
+
+    [Test]
     public async Task Invoke_TryUpdateMainChain_Once()
     {
         ulong headNumber = 100;
@@ -1219,6 +1317,7 @@ public partial class BlockDownloaderTests
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
+            PeerPool.GetPeer(peerInfo.SyncPeer.Node).Returns(peerInfo);
             SemaphoreSlim peerSemaphore = new(1, 1);
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
