@@ -1714,11 +1714,12 @@ public partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Read from the value pinned at transaction start, which is also what chose the dispatch table.
-        return DispatchFlags.Cancelable(_tracerFlags.IsCancelable) switch
-        {
-            false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
-            true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),
-        };
+        // Each arm returns its call directly, so the result is written into this method's return buffer rather than
+        // into a temporary the switch expression's value would be copied from.
+        if (DispatchFlags.Cancelable(_tracerFlags.IsCancelable))
+            return RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas);
+
+        return RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas);
 
     Empty:
         // Return an empty CallResult if there is no machine code to execute.
