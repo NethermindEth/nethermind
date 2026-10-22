@@ -5,13 +5,17 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Db;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -895,6 +899,57 @@ public class PersistedSnapshotCompactorTests
         compactor.DoCompactSnapshot(new StateId(4, Keccak.Compute("b4")));
 
         Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no compaction should have run");
+    }
+
+    // A compaction whose snapshot fails to build or to register frees its region, so it must not leave a catalog
+    // row: the next restart would reload that row over the freed region.
+    [Test]
+    public async Task DoCompactSnapshot_Failure_LeavesNoCatalogRow([Values] bool failRegistration)
+    {
+        using FlatTestContainer tier = NewTier(compactSize: 4);
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 2; i++)
+        {
+            StateId to = new((ulong)i, Keccak.Compute($"p{i}"));
+            SnapshotContent c = new();
+            c.StateNodes[new TreePath(Keccak.Compute($"path{i}"), 4)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
+            using (Snapshot snapshot = new(prev, to, c, _pool, ResourcePool.Usage.MainBlockProcessing))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
+            prev = to;
+        }
+
+        if (failRegistration)
+        {
+            ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+            repository.PersistedSnapshotCount.Returns(_ => tier.Repository.PersistedSnapshotCount);
+            repository.AssemblePersistedSnapshotsForCompaction(Arg.Any<StateId>(), Arg.Any<ulong>())
+                .Returns(call => tier.Repository.AssemblePersistedSnapshotsForCompaction(call.ArgAt<StateId>(0), call.ArgAt<ulong>(1)));
+            repository.When(r => r.AddPersistedSnapshot(Arg.Any<PersistedSnapshot>(), Arg.Any<SnapshotTier>()))
+                .Do(_ => throw new InvalidOperationException());
+            await using PersistedSnapshotCompactor compactor = new(repository, tier.Resolve<IArenaManager>(), tier.Blobs, tier.Resolve<ISnapshotCatalog>(),
+                tier.Config, tier.Resolve<ICompactionSchedule>(), tier.Loader, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+
+            Assert.That(() => compactor.DoCompactSnapshot(prev), Throws.InvalidOperationException);
+        }
+        else
+        {
+            // The compacted snapshot leases the bases' blob arena; hide it from the manager for the compaction only,
+            // so the bases can still release it on teardown.
+            BlobArenaFile?[] blobFiles = (BlobArenaFile?[])typeof(BlobArenaManager)
+                .GetField("_files", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(tier.Blobs)!;
+            BlobArenaFile? blobFile = blobFiles[0];
+            blobFiles[0] = null;
+            try
+            {
+                Assert.That(() => tier.Compactor.DoCompactSnapshot(prev), Throws.InvalidOperationException);
+            }
+            finally
+            {
+                blobFiles[0] = blobFile;
+            }
+        }
+
+        Assert.That(tier.Resolve<ISnapshotCatalog>().Load().Select(e => e.Tier), Is.All.EqualTo(SnapshotTier.PersistedBase));
     }
 
     [Test]

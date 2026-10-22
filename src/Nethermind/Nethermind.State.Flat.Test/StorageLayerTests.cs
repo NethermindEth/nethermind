@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
@@ -64,10 +65,9 @@ public class StorageLayerTests
     public void SnapshotCatalog_SaveLoad_RoundTrips()
     {
         MemDb catalogDb = new();
-        // Same To across three entries with distinct depths (1 / 2 / 4) — mirrors the
-        // runtime case where a base + sub-CompactSize compacted + CompactSized snapshot
-        // all end at the same block. Pre-v7 catalog would collapse these to one entry on
-        // disk; v7 keys by (To, depth) and round-trips all three.
+        // Same To across three entries in distinct tiers — mirrors the runtime case where a
+        // base + sub-CompactSize compacted + CompactSized snapshot all end at the same block.
+        // The catalog keys by (To, tier), like the per-tier buckets, and round-trips all three.
         StateId s_base_from = new(99, Keccak.Compute("block99"));     // depth=1 source
         StateId s_compacted_from = new(98, Keccak.Compute("block98")); // depth=2 source
         StateId s_compactSized_from = new(96, Keccak.Compute("block96")); // depth=4 source
@@ -123,17 +123,62 @@ public class StorageLayerTests
         catalog.Add(new(s_compactedFrom, s2, new(0, 200, 100), SnapshotTier.PersistedSmallCompacted));
 
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Not.Null);
-        Assert.That(catalog.Remove(s1, depth: 1), Is.True);
+        Assert.That(catalog.Remove(s1, SnapshotTier.PersistedBase), Is.True);
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Null);
         Assert.That(catalog.Load().Count(), Is.EqualTo(2));
-        Assert.That(catalog.Remove(missing, depth: 1), Is.False);
+        Assert.That(catalog.Remove(missing, SnapshotTier.PersistedBase), Is.False);
 
-        // Removing one (To, depth) leaves the sibling at the same To intact.
+        // Removing one (To, tier) leaves the sibling at the same To intact.
         Assert.That(FindEntry(catalog, s2, depth: 1), Is.Not.Null);
         Assert.That(FindEntry(catalog, s2, depth: 2), Is.Not.Null);
-        Assert.That(catalog.Remove(s2, depth: 1), Is.True);
+        Assert.That(catalog.Remove(s2, SnapshotTier.PersistedBase), Is.True);
         Assert.That(FindEntry(catalog, s2, depth: 1), Is.Null);
         Assert.That(FindEntry(catalog, s2, depth: 2), Is.Not.Null);
+
+        // A recompaction to a different depth replaces its bucket's snapshot, so it must replace the row
+        // too — a leftover row would reload a reclaimed region on restart.
+        catalog.Add(new(s0, s2, new(0, 300, 100), SnapshotTier.PersistedSmallCompacted));
+        Assert.That(catalog.Load().Select(e => (e.From, e.To, e.Tier)), Is.EquivalentTo(new[] { (s0, s2, SnapshotTier.PersistedSmallCompacted) }));
+    }
+
+    [Test]
+    public void SnapshotCatalog_Load_MigratesUniqueLegacyRowsAndDropsAmbiguousOnes()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        StateId s3 = new(3, Keccak.Compute("3"));
+        StateId s4 = new(4, Keccak.Compute("4"));
+        CatalogEntry unique = new(s3, s4, new(0, 0, 100), SnapshotTier.PersistedBase);
+        CatalogEntry stale = new(s0, s4, new(0, 100, 100), SnapshotTier.PersistedSmallCompacted);
+        CatalogEntry live = new(s1, s4, new(0, 200, 100), SnapshotTier.PersistedSmallCompacted);
+
+        MemDb catalogDb = new();
+        foreach (CatalogEntry entry in new[] { unique, stale, live })
+            catalogDb[LegacyKey(entry)] = EntryValue(entry);
+
+        SnapshotCatalog catalog = new(catalogDb);
+
+        Assert.That(catalog.Load(), Is.EquivalentTo(new[] { unique }));
+        Assert.That(catalogDb.GetAllKeys().Select(key => key.Length), Is.EquivalentTo(new[] { 41 }));
+        Assert.That(catalog.Load(), Is.EquivalentTo(new[] { unique }));
+    }
+
+    // The pre-(To, tier) catalog key: big-endian To block, To root, big-endian depth.
+    private static byte[] LegacyKey(CatalogEntry entry)
+    {
+        byte[] key = new byte[48];
+        BinaryPrimitives.WriteInt64BigEndian(key, (long)entry.To.BlockNumber);
+        entry.To.StateRoot.Bytes.CopyTo(key.AsSpan(8));
+        BinaryPrimitives.WriteInt64BigEndian(key.AsSpan(40), (long)(entry.To.BlockNumber - entry.From.BlockNumber));
+        return key;
+    }
+
+    // The row value layout is unchanged by the re-key, so the current catalog produces it.
+    private static byte[] EntryValue(CatalogEntry entry)
+    {
+        MemDb scratch = new();
+        new SnapshotCatalog(scratch).Add(entry);
+        return scratch.GetAllValues().Single();
     }
 
 

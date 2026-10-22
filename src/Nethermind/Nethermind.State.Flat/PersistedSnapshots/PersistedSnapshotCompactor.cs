@@ -378,7 +378,7 @@ public class PersistedSnapshotCompactor(
             // their respective base snapshots were converted).
             //
             // reservation still holds only the writer's Complete() lease and mergedBloom is owned by no
-            // snapshot yet, so a throw from Fsync / catalog.Add / the snapshot ctor (e.g. disk-full) must free
+            // snapshot yet, so a throw from Fsync / the snapshot ctor (e.g. disk-full) must free
             // both here — the outer finally disposes only the read sessions, and over repeated IO errors the
             // leak exhausts native memory. Both disposes are safe on the ctor-internal-throw path too: the
             // ctor releases only its own lease (not this Complete() one), and BloomFilter.Dispose is idempotent.
@@ -386,7 +386,6 @@ public class PersistedSnapshotCompactor(
             try
             {
                 reservation.Fsync();
-                _catalog.Add(new CatalogEntry(from, to, location, tier));
                 compacted = new(from, to, reservation, blobs, tier, new RefCountedBloomFilter(mergedBloom));
             }
             catch
@@ -399,7 +398,18 @@ public class PersistedSnapshotCompactor(
             using (compacted)
             {
                 reservation.Dispose();
-                snapshotRepository.AddPersistedSnapshot(compacted, tier);
+                // Recorded only once the snapshot is built, and rolled back if indexing it fails: the enclosing
+                // using frees its region, which no row may still point at.
+                _catalog.Add(new CatalogEntry(from, to, location, tier));
+                try
+                {
+                    snapshotRepository.AddPersistedSnapshot(compacted, tier);
+                }
+                catch
+                {
+                    _catalog.Remove(to, tier);
+                    throw;
+                }
                 if (!_schedule.IsCompactSizeBoundary(snapshotTo.BlockNumber) && !_schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber))
                 {
                     // Sub-CompactSize intermediate. The bundle priority means this is never queried

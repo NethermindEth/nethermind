@@ -5,16 +5,21 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// Persists snapshot metadata in a key-value store, keyed by the 48-byte big-endian tuple
-/// <c>(To.BlockNumber, To.StateRoot, depth)</c> where <c>depth = To.BlockNumber - From.BlockNumber</c>
-/// distinguishes entries that share a <c>To</c> across the base/compacted/CompactSized buckets.
+/// Persists snapshot metadata in a key-value store, keyed by the 41-byte big-endian tuple
+/// <c>(To.BlockNumber, To.StateRoot, tier)</c> — the identity the per-tier persisted buckets key their
+/// snapshots by, so a bucket overwrite also overwrites the row and no row outlives its snapshot.
 /// </summary>
+/// <remarks>
+/// Rows of the earlier 48-byte <c>(To.BlockNumber, To.StateRoot, depth)</c> layout are re-keyed on
+/// <see cref="Load"/>; see <see cref="MigrateLegacyRows"/>.
+/// </remarks>
 public sealed class SnapshotCatalog([KeyFilter(DbNames.PersistedSnapshotCatalog)] IDb db) : ISnapshotCatalog
 {
     // On-disk entry value, blitted to/from the store. Pack=1 keeps the fields at fixed contiguous byte
@@ -36,28 +41,27 @@ public sealed class SnapshotCatalog([KeyFilter(DbNames.PersistedSnapshotCatalog)
 
     private static readonly int EntrySize = Unsafe.SizeOf<EntryBytes>();
 
-    private const int KeySize = 48;
+    private const int KeySize = 41;
+    private const int LegacyKeySize = 48;
 
     private readonly IDb _db = db;
 
     public void Add(CatalogEntry entry)
     {
         Span<byte> key = stackalloc byte[KeySize];
-        WriteKey(key, entry.To, Depth(entry));
+        WriteKey(key, entry.To, entry.Tier);
         EntryBytes value = new(entry);
         _db.PutSpan(key, MemoryMarshal.AsBytes(new Span<EntryBytes>(ref value)));
     }
 
-    public bool Remove(in StateId to, long depth)
+    public bool Remove(in StateId to, SnapshotTier tier)
     {
         Span<byte> key = stackalloc byte[KeySize];
-        WriteKey(key, to, depth);
+        WriteKey(key, to, tier);
         if (!_db.KeyExists(key)) return false;
         _db.Remove(key);
         return true;
     }
-
-    private static long Depth(CatalogEntry entry) => (long)(entry.To.BlockNumber - entry.From.BlockNumber);
 
     /// <summary>
     /// Streams catalog entries lazily (unordered). The catalog carries no version of its own; the on-disk
@@ -65,6 +69,8 @@ public sealed class SnapshotCatalog([KeyFilter(DbNames.PersistedSnapshotCatalog)
     /// </summary>
     public IEnumerable<CatalogEntry> Load()
     {
+        MigrateLegacyRows();
+
         foreach (KeyValuePair<byte[], byte[]> kv in _db.GetAll(ordered: false))
         {
             // Entry keys are exactly KeySize; skip any other key (e.g. a legacy version word).
@@ -74,11 +80,50 @@ public sealed class SnapshotCatalog([KeyFilter(DbNames.PersistedSnapshotCatalog)
         }
     }
 
-    private static void WriteKey(Span<byte> span, in StateId to, long depth)
+    /// <summary>
+    /// Re-keys every row of the legacy <c>(To, depth)</c> layout to <c>(To, tier)</c> in one atomic batch.
+    /// </summary>
+    /// <remarks>
+    /// The legacy key let several rows share one bucket slot: a recompaction to a different depth replaced
+    /// the bucket's snapshot, reclaiming its region, but left its row behind. The rows do not tell the live
+    /// one from the stale ones, so a <c>(To, tier)</c> with more than one legacy row is dropped whole; its
+    /// state is rebuilt by re-execution like any other missing persisted snapshot.
+    /// </remarks>
+    private void MigrateLegacyRows()
+    {
+        Dictionary<(StateId To, SnapshotTier Tier), List<KeyValuePair<byte[], byte[]>>> legacyRows = [];
+        foreach (KeyValuePair<byte[], byte[]> kv in _db.GetAll(ordered: false))
+        {
+            if (kv.Key.Length != LegacyKeySize || kv.Value.Length != EntrySize) continue;
+            CatalogEntry entry = ReadEntry(kv.Value);
+            (StateId, SnapshotTier) slot = (entry.To, entry.Tier);
+            if (!legacyRows.TryGetValue(slot, out List<KeyValuePair<byte[], byte[]>>? rows))
+                legacyRows[slot] = rows = [];
+            rows.Add(kv);
+        }
+
+        if (legacyRows.Count == 0) return;
+
+        using IWriteBatch batch = _db.StartWriteBatch();
+        Span<byte> key = stackalloc byte[KeySize];
+        foreach (KeyValuePair<(StateId To, SnapshotTier Tier), List<KeyValuePair<byte[], byte[]>>> slot in legacyRows)
+        {
+            if (slot.Value.Count == 1)
+            {
+                WriteKey(key, slot.Key.To, slot.Key.Tier);
+                batch.PutSpan(key, slot.Value[0].Value);
+            }
+
+            foreach (KeyValuePair<byte[], byte[]> row in slot.Value)
+                batch.Remove(row.Key);
+        }
+    }
+
+    private static void WriteKey(Span<byte> span, in StateId to, SnapshotTier tier)
     {
         BinaryPrimitives.WriteInt64BigEndian(span, (long)to.BlockNumber);
         to.StateRoot.BytesAsSpan.CopyTo(span[8..]);
-        BinaryPrimitives.WriteInt64BigEndian(span[40..], depth);
+        span[40] = (byte)tier;
     }
 
     private static CatalogEntry ReadEntry(ReadOnlySpan<byte> span)
