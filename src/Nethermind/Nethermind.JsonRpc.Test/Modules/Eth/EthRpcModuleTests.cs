@@ -2577,6 +2577,22 @@ public partial class EthRpcModuleTests
             $"gas used ({gasUsed}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
 
+    [TestCase("0xfe", "invalid opcode: INVALID", TestName = "Access list designated invalid opcode")]
+    [TestCase("0x0c", "invalid opcode: opcode 0xc not defined", TestName = "Access list unassigned opcode")]
+    [TestCase("0x01", "stack underflow (0 <=> 2)", TestName = "Access list stack underflow")]
+    public async Task Eth_create_access_list_execution_failure_is_reported_with_the_standard_text(string code, string expected)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","data":"0x01"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"0xc200000000000000000000000000000000000000":{"code":"{{{code}}}"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, true);
+
+        Assert.That(JToken.Parse(serialized).SelectToken("result.error")?.Value<string>(), Is.EqualTo(expected), serialized);
+    }
+
     [Test]
     public async Task Eth_create_access_list_with_state_override()
     {

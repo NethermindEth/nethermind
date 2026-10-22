@@ -510,7 +510,18 @@ namespace Nethermind.Facade
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
 
-            return BuildCallOutput(result, outputTracer, accessTracer.AccessList);
+            CallOutput output = BuildCallOutput(result, outputTracer, accessTracer.AccessList);
+            if (result.TransactionExecuted && output.Error is not null && !output.ExecutionReverted)
+            {
+                // The transaction still carries the access list of the final run, so the rerun fails the same way.
+                BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
+                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, output.Error, cancellationToken, out string failureText))
+                {
+                    output.Error = failureText;
+                }
+            }
+
+            return output;
         }
 
         private static CallOutput BuildCallOutput(TransactionResult result, CallOutputTracer outputTracer, AccessList? accessList)
