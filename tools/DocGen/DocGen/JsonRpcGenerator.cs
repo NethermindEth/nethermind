@@ -52,6 +52,7 @@ internal static class JsonRpcGenerator
         [typeof(AddressAsKey)] = "_string_ (address)",
         [typeof(BigInteger)] = "_string_ (decimal integer)",
         [typeof(BlockParameter)] = $"_string_ (block number or hash or either of {_blockTags}), _object_ (EIP-1898 `{{blockHash, requireCanonical}}` or `{{blockNumber}}`), or {_blockNumberIfNotStrict}",
+        [typeof(BlockTransactions)] = "array of _string_ (hash), or array of _object_ (transaction) when `returnFullTransactionObjects` is `true`",
         [typeof(Bloom)] = "_string_ (hex data)",
         [typeof(bool)] = "_boolean_",
         [typeof(byte)] = "_integer_",
