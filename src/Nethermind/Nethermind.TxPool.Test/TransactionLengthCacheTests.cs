@@ -11,10 +11,8 @@ namespace Nethermind.TxPool.Test;
 
 public class TransactionLengthCacheTests
 {
-    [TestCase(TxType.Legacy)]
-    [TestCase(TxType.EIP1559)]
-    [TestCase(TxType.SetCode)]
-    public void Length_without_blobs_is_cached_when_the_type_has_no_mempool_form(TxType type)
+    [Test]
+    public void Length_without_blobs_is_cached_when_the_type_has_no_mempool_form([Values(TxType.Legacy, TxType.EIP1559, TxType.SetCode)] TxType type)
     {
         ITransactionSizeCalculator calculator = Substitute.For<ITransactionSizeCalculator>();
         calculator.GetLength(Arg.Any<Transaction>(), Arg.Any<bool>()).Returns(100);
@@ -27,11 +25,8 @@ public class TransactionLengthCacheTests
         calculator.Received(1).GetLength(tx, Arg.Any<bool>());
     }
 
-    [TestCase(TxType.Legacy)]
-    [TestCase(TxType.AccessList)]
-    [TestCase(TxType.EIP1559)]
-    [TestCase(TxType.SetCode)]
-    public void Both_lengths_are_equal_when_the_type_has_no_mempool_form(TxType type)
+    [Test]
+    public void Both_lengths_are_equal_when_the_type_has_no_mempool_form([Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode)] TxType type)
     {
         NetworkTransactionSizeCalculator calculator = new(TxDecoder.Instance);
         Transaction tx = Build.A.Transaction.WithType(type).WithAuthorizationCodeIfAuthorizationListTx().SignedAndResolved().TestObject;
@@ -39,9 +34,8 @@ public class TransactionLengthCacheTests
         Assert.That(calculator.GetLength(tx, shouldCountBlobs: false), Is.EqualTo(calculator.GetLength(tx, shouldCountBlobs: true)));
     }
 
-    [TestCase(TxType.Blob)]
-    [TestCase(TxType.FrameTx)]
-    public void Length_without_blobs_is_computed_when_the_type_has_a_mempool_form(TxType type)
+    [Test]
+    public void Length_without_blobs_is_computed_when_the_type_has_a_mempool_form([Values(TxType.Blob, TxType.FrameTx)] TxType type)
     {
         ITransactionSizeCalculator calculator = Substitute.For<ITransactionSizeCalculator>();
         calculator.GetLength(Arg.Any<Transaction>(), true).Returns(200);
