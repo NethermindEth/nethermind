@@ -78,9 +78,10 @@ public class BlockForRpc
                 SlotNumber = block.SlotNumber;
             }
 
-            // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded.
-            // A merged chain may not know its merge block (mainnet's chainspec has only a TTD), so the TTD also counts.
-            if (specProvider.MergeBlockNumber is null && specProvider.TerminalTotalDifficulty is null)
+            // Intentional divergence from Geth: pre-merge blocks, which have a nonzero difficulty (EIP-3675), and every
+            // block of a chain that never merges still emit totalDifficulty when it's loaded. A merged chain may not know
+            // its merge block (mainnet's chainspec has only a TTD), so the TTD also marks a chain as merging.
+            if (!block.Difficulty.IsZero || specProvider.MergeBlockNumber is null && specProvider.TerminalTotalDifficulty is null)
             {
                 TotalDifficulty = block.TotalDifficulty;
             }

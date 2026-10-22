@@ -62,7 +62,8 @@ public class BlockForRpcTests
     }
 
     [Test]
-    public void Total_difficulty_is_emitted_only_on_chains_that_never_merge([Values] bool hasTerminalTotalDifficulty, [Values] bool hasMergeBlock)
+    public void Total_difficulty_is_emitted_for_pre_merge_blocks_and_chains_that_never_merge(
+        [Values] bool hasTerminalTotalDifficulty, [Values] bool hasMergeBlock, [Values] bool preMergeBlock)
     {
         TestSpecProvider specProvider = new(Frontier.Instance) { TerminalTotalDifficulty = hasTerminalTotalDifficulty ? 100 : null };
         if (hasMergeBlock)
@@ -70,9 +71,10 @@ public class BlockForRpcTests
             specProvider.UpdateMergeTransitionInfo(10);
         }
 
-        Block block = Build.A.Block.WithNumber(1).WithTotalDifficulty(17L).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithDifficulty(preMergeBlock ? 17UL : 0UL).WithTotalDifficulty(17L).TestObject;
+        bool chainNeverMerges = !hasTerminalTotalDifficulty && !hasMergeBlock;
 
         Assert.That(new BlockForRpc(block, false, specProvider).TotalDifficulty,
-            Is.EqualTo(hasTerminalTotalDifficulty || hasMergeBlock ? null : (UInt256?)17));
+            Is.EqualTo(preMergeBlock || chainNeverMerges ? (UInt256?)17 : null));
     }
 }
