@@ -75,8 +75,7 @@ public class NodeRecordBufferTests
         byte[] rlp = Leaf(1, 8);
         ulong realPointer = Append(buffer, rlp);
         using WarmedNodeBuffer warmed = new(1);
-        ValueHash256 hash = ValueKeccak.Compute(rlp);
-        warmed.Append(null, TreePath.Empty, hash, rlp, [], out _, out ulong temporaryPointer);
+        ulong temporaryPointer = FlatTestHelpers.Warm(warmed, null, TreePath.Empty, rlp);
 
         using (Assert.EnterMultipleScope())
         {

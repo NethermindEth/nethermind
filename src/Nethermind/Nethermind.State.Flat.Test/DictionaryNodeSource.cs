@@ -17,7 +17,7 @@ using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.Test;
 
-/// <summary>A node source over path-keyed node RLP, for tests and benchmarks: a fetched node is verified and inserted into <paramref name="warmed"/>, which serves it after.</summary>
+/// <summary>A node source over path-keyed node RLP, for tests and benchmarks: a node <paramref name="warmed"/> holds is served from it, otherwise it is fetched and verified.</summary>
 /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
 public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> nodes, WarmedNodeBuffer warmed, Hash256? address)
 {
@@ -29,19 +29,16 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
     /// <summary>A store that reads and writes <paramref name="buffer"/>, combined with the warmed nodes, and loads the nodes neither holds from this source.</summary>
     public INodeRecordStore Over(INodeRecordBuffer buffer) => new Store(this, new WarmedNodeRecordBuffer(buffer, warmed));
 
-    public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record)
+    public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
-        if (warmed.TryGet(address, path, out record, out _)) return true;
-
-        byte[]? rlp = LoadRlp(path);
-        if (rlp is null || ValueKeccak.Compute(rlp) != hash)
+        if (warmed.TryGet(address, path, out NodeRecord record, out _))
         {
-            record = default;
-            return false;
+            action(record.Span, arg);
+            return true;
         }
 
-        warmed.Append(address, path, hash, rlp, [], out record, out _);
-        return true;
+        byte[]? rlp = LoadRlp(path);
+        return rlp is not null && ValueKeccak.Compute(rlp) == hash && Persistence.Pass(rlp, action, arg);
     }
 
     /// <param name="buffer">The buffer holding the trie, which the warmed nodes are combined with.</param>
@@ -81,7 +78,7 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
         public bool IsPreimageMode => false;
         public void Dispose() { }
 
-        private static bool Pass<TArg>(byte[]? rlp, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public static bool Pass<TArg>(byte[]? rlp, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             if (rlp is null) return false;
             byte[] borrowed = rlp.ToArray();
@@ -97,7 +94,7 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
 
         public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => buffer.StartWriteBatch(alignedTotalLength);
 
-        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-            source.TryLoad(path, hash, out record);
+        public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            source.TryLoad(path, hash, action, arg);
     }
 }

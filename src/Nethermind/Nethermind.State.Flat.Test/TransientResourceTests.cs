@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.State.Flat.NodeBuffer;
@@ -69,16 +68,14 @@ public class TransientResourceTests
         for (byte value = 0; value < nodeCount; value++)
         {
             byte[] rlp = FlatTestHelpers.LeafRlp(value);
-            warmedNodeLog.Append(null, TreePath.Empty.Append(value), ValueKeccak.Compute(rlp), rlp, [], out _, out ulong pointer);
+            ulong pointer = FlatTestHelpers.Warm(warmedNodeLog, null, TreePath.Empty.Append(value), rlp);
             if (value == 0) originalPointer = pointer;
         }
 
         resource.Reset();
 
-        byte[] originalRlp = FlatTestHelpers.LeafRlp(0);
-        ValueHash256 originalHash = ValueKeccak.Compute(originalRlp);
         bool foundAfterReset = warmedNodeLog.TryGet(null, TreePath.Empty.Append(0), out _, out _);
-        warmedNodeLog.Append(null, TreePath.Empty.Append(0), originalHash, originalRlp, [], out _, out ulong newPointer);
+        ulong newPointer = FlatTestHelpers.Warm(warmedNodeLog, null, TreePath.Empty.Append(0), FlatTestHelpers.LeafRlp(0));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(resource.WarmedNodeBuffer, Is.SameAs(warmedNodeLog));

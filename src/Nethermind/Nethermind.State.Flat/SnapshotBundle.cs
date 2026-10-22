@@ -331,21 +331,23 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>Finds a record by pointer in the trie node buffer or among the nodes warmed for the current block.</summary>
     internal bool TryLocate(ulong pointer, out NodeRecord record) => _cacheableNodeRecordBuffer!.TryLocate(pointer, out record);
 
-    /// <summary>Loads the record of a trie node the trie node buffer does not hold, for a bulk set or point read.</summary>
+    /// <summary>Loads a trie node the trie node buffer does not hold, for a bulk set or point read, as <see cref="INodeRecordStore.TryLoad"/> does.</summary>
     /// <remarks>
-    /// Tries the nodes warmed for this block by position, then persistence, whose node is trusted to be the one of
-    /// <paramref name="hash"/> and appended to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
-    /// are in the buffer, which their pins keep readable, and <see cref="NodeRecordBuffer"/> resolves warmed nodes by pointer,
-    /// so this source only fetches nodes the buffers reach by no pointer.
+    /// Hands over the record warmed for this block at the position, otherwise the RLP in persistence, whose node is trusted to be the
+    /// one asked for. The nodes of this bundle's changes and of every in-memory snapshot are in the buffer, which their pins keep
+    /// readable, and <see cref="NodeRecordBuffer"/> resolves warmed nodes by pointer, so this source only fetches nodes the buffers
+    /// reach by no pointer.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    internal bool TryLoadTrieNodeRecord(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record)
+    internal bool TryLoadTrieNodeRecord<TArg>(Hash256? address, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         GuardDispose();
 
-        WarmedNodeBuffer warmed = _transientResource.WarmedNodeBuffer;
-        return warmed.TryGet(address, path, out record, out _)
-            || TryLoadNodeRecordFromPersistence(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
+        if (!_transientResource.WarmedNodeBuffer.TryGet(address, path, out NodeRecord record, out _))
+            return _readOnlySnapshotBundle.TryLoadPersistedRlp(address, path, ReadFlags.None, action, arg);
+
+        action(record.Span, arg);
+        return true;
     }
 
     /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node buffer does not hold, for this block's bulk sets.</summary>
@@ -372,13 +374,6 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    /// <summary>Reads the node at <paramref name="path"/> from persistence into <paramref name="warmed"/> as the node of <paramref name="hash"/>.</summary>
-    private static bool TryLoadNodeRecordFromPersistence(ReadOnlySnapshotBundle readOnly, WarmedNodeBuffer warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record)
-    {
-        record = default;
-        return readOnly.TryLoadPersistedRlp(address, path, ReadFlags.None, CachePersistedNodeState.Insert, new CachePersistedNodeState(warmed, address, in path, in hash, ref record));
-    }
-
     /// <summary>Captures a source for private trie updates that may outlive this bundle.</summary>
     internal BackgroundTrieSource CreateBackgroundTrieSource(Hash256 address)
     {
@@ -386,29 +381,26 @@ public sealed class SnapshotBundle : IDisposable
         return new BackgroundTrieSource(_readOnlySnapshotBundle, _nodeRecordBuffer!, _snapshots, address);
     }
 
-    /// <summary>A leased immutable source with private warmed storage, independent of transient-resource retirement.</summary>
+    /// <summary>A leased immutable source, independent of transient-resource retirement.</summary>
     /// <remarks>
     /// Used by <see cref="ScopeProvider.FlatStorageTree"/> to apply storage writes early on the idle thread; the commit then
     /// adopts the resulting root instead of bulk-setting those writes again. That apply runs off the owner thread and may
     /// still run after the block's transient resource is retired or this bundle is recycled, so unlike the bundle's own
     /// tries it cannot read the bundle or its per-block warmed nodes. It reads only the buffer, which its pins keep
-    /// readable, a private <see cref="WarmedNodeBuffer"/>, and persistence through its own lease of the read-only bundle.
+    /// readable, and persistence through its own lease of the read-only bundle.
     /// </remarks>
     internal sealed class BackgroundTrieSource : INodeRecordStore, IDisposable
     {
-        private const int WarmedNodeCapacity = 1024;
-
         private readonly ReadOnlySnapshotBundle _readOnly;
         private readonly INodeRecordBuffer _buffer;
         private readonly Hash256 _address;
-        private readonly WarmedNodeBuffer _warmed = new(WarmedNodeCapacity);
         private readonly INodeRecordBufferPin _pin;
         private readonly INodeRecordBufferPin? _snapshotPin;
 
         internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, INodeRecordBuffer buffer, SnapshotPooledList snapshots, Hash256 address)
         {
             _readOnly = readOnly;
-            _buffer = new WarmedNodeRecordBuffer(buffer, _warmed);
+            _buffer = buffer;
             _address = address;
             readOnly.AcquireLease();
             try
@@ -426,7 +418,6 @@ public sealed class SnapshotBundle : IDisposable
             {
                 readOnly.Dispose();
                 _pin?.Dispose();
-                _warmed.Dispose();
                 throw;
             }
         }
@@ -435,40 +426,14 @@ public sealed class SnapshotBundle : IDisposable
 
         public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _buffer.StartWriteBatch(alignedTotalLength);
 
-        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-            _warmed.TryGet(_address, path, out record, out _) || TryLoadNodeRecordFromPersistence(_readOnly, _warmed, _address, path, hash, out record);
+        public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _readOnly.TryLoadPersistedRlp(_address, path, ReadFlags.None, action, arg);
 
         public void Dispose()
         {
             _snapshotPin?.Dispose();
             _pin.Dispose();
             _readOnly.Dispose();
-            _warmed.Dispose();
-        }
-    }
-
-    /// <summary>Inserts the persisted RLP handed to it into the warmed nodes as the requested node.</summary>
-    /// <remarks>The RLP is trusted to be the node of the requested hash, as warm-up trusts it.</remarks>
-    private readonly ref struct CachePersistedNodeState
-    {
-        public static readonly ReadOnlySpanAction<byte, CachePersistedNodeState> Insert = static (rlp, insert) =>
-            insert._warmed.Append(insert._address, insert._path, insert._hash, rlp, [], out insert._record, out _);
-
-        private readonly WarmedNodeBuffer _warmed;
-        private readonly Hash256? _address;
-        private readonly ref readonly TreePath _path;
-        private readonly ref readonly ValueHash256 _hash;
-        private readonly ref NodeRecord _record;
-
-        /// <param name="record">Set to the inserted record.</param>
-        public CachePersistedNodeState(WarmedNodeBuffer warmed, Hash256? address, ref readonly TreePath path, ref readonly ValueHash256 hash,
-            ref NodeRecord record)
-        {
-            _warmed = warmed;
-            _address = address;
-            _path = ref path;
-            _hash = ref hash;
-            _record = ref record;
         }
     }
 

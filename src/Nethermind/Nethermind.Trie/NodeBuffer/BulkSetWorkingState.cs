@@ -56,7 +56,7 @@ internal readonly struct SetOneFrame(NodeRecord record, byte skip, byte childNib
     public readonly byte ChildNibble = childNibble;
 }
 
-/// <summary>The working memory of one bulk set on one thread: new nodes, their children and commit scratch.</summary>
+/// <summary>The working memory of one bulk set on one thread: new nodes, their children, loaded records and commit scratch.</summary>
 /// <remarks>
 /// Nodes and children are addressed by index, as their lists grow by reallocation, so a reference into them does not survive
 /// an add. All memory is pooled and returned on <see cref="Dispose"/>, dropping the references to entry values and records.
@@ -80,6 +80,9 @@ internal sealed class BulkSetWorkingState : IDisposable
     private NativeMemoryList<int> _recordStarts = NativeMemoryList<int>.Empty();
     private NativeMemoryList<(int Start, int Length)> _messages = NativeMemoryList<(int Start, int Length)>.Empty();
     private NativeMemoryList<ValueHash256> _hashes = NativeMemoryList<ValueHash256>.Empty();
+
+    /// <summary>The nodes loaded from the store, which <see cref="ClearPending"/> keeps.</summary>
+    public LoadedRecordBuffer Loaded { get; } = new();
 
     public Span<PendingNode> Nodes => _nodes.AsSpan();
     public int NodeCount => _nodes.Count;
@@ -138,8 +141,16 @@ internal sealed class BulkSetWorkingState : IDisposable
         Reallocate(ref _hashes, capacity);
     }
 
+    /// <summary>Drops the pending nodes and their children for a reuse in the same traversal.</summary>
+    public void ClearPending()
+    {
+        _nodes.Clear();
+        _children.Clear();
+    }
+
     public void Dispose()
     {
+        Loaded.Dispose();
         _nodes.Dispose();
         _children.Dispose();
         _frames.Dispose();

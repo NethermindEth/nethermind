@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -51,25 +50,17 @@ public sealed class WarmedNodeBuffer(int capacity) : IDisposable
         return false;
     }
 
-    /// <summary>Appends the record of the node <paramref name="rlp"/> with the known child pointers, and indexes it at its position in place of any earlier one.</summary>
+    /// <summary>Reserves bytes for records as <see cref="INodeRecordStore.StartWriteBatch"/> does, addressed by transient pointers.</summary>
     /// <remarks>
-    /// The node is trusted to be the one of <paramref name="hash"/>, which only debug builds check. Nodes are appended along a traversal
-    /// from a known root, each read for the hash its parent references, so a correct traversal appends correct nodes and links a correct
-    /// graph. For the same reason, a record read back from the buffer is not verified either: it is always reached through that traversal.
+    /// Records are trusted to be the nodes of their hashes. Nodes are written along a traversal from a known root, each read for the
+    /// hash its parent references, so a correct traversal writes correct nodes and links a correct graph. For the same reason, a record
+    /// read back from the buffer is not verified either: it is always reached through that traversal.
     /// </remarks>
-    /// <param name="childPointers">Pointers by child slot, or empty to leave every pointer zero.</param>
-    /// <param name="record">The appended record.</param>
-    /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
-    public void Append(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp, ReadOnlySpan<ulong> childPointers,
-        out NodeRecord record, out ulong pointer)
-    {
-        Debug.Assert(ValueKeccak.Compute(rlp) == hash, "A traversal only appends the node its parent references.");
-        ulong localPointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp, childPointers);
-        pointer = localPointer | NodeRecordCodec.TransientPointerMask;
-        _pointers[(address, path)] = pointer;
-        bool located = _buffer.TryLocate(localPointer, out record);
-        Debug.Assert(located, "A record stays readable until the next reset.");
-    }
+    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new TransientWriteBatch(_buffer.StartWriteBatch(alignedTotalLength));
+
+    /// <summary>Indexes the record at <paramref name="pointer"/> at its position, in place of any earlier one.</summary>
+    /// <remarks>Called only once the record is written, so a reader of the position never sees a partial record.</remarks>
+    public void Index(Hash256? address, in TreePath path, ulong pointer) => _pointers[(address, path)] = pointer;
 
     /// <summary>Empties the position index and releases the records appended so far.</summary>
     /// <remarks>No reader or writer may be running, and no record or pointer handed out before may be used after.</remarks>
@@ -80,4 +71,13 @@ public sealed class WarmedNodeBuffer(int capacity) : IDisposable
     }
 
     public void Dispose() => _buffer.Dispose();
+
+    private sealed class TransientWriteBatch(INodeRecordWriteBatch batch) : INodeRecordWriteBatch
+    {
+        public ulong BasePointer => batch.BasePointer | NodeRecordCodec.TransientPointerMask;
+
+        public Span<byte> Bytes => batch.Bytes;
+
+        public void Dispose() => batch.Dispose();
+    }
 }

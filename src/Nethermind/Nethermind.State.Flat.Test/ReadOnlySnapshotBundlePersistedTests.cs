@@ -15,7 +15,6 @@ using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -278,8 +277,7 @@ public class ReadOnlySnapshotBundlePersistedTests
 
         bundle.WarmUp(storage ? address : null, (hash, 0), ValueKeccak.Zero, forDelete: false);
 
-        Assert.That(bundle.TryLoadTrieNodeRecord(storage ? address : null, TreePath.Empty, hash, out NodeRecord record), Is.True);
-        Assert.That(record.Rlp.ToArray(), Is.EqualTo(nodeRlp));
+        Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(storage ? address : null, TreePath.Empty, action, nodes)), Is.EqualTo(nodeRlp));
     }
 
     // Each test snapshot is constructed without a bloom, so it carries the AlwaysTrue

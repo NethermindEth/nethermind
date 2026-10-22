@@ -224,7 +224,7 @@ internal class NodeRecordBulkSetTests
         Assert.That(original.TryLocate(root.Pointer, out NodeRecord rootRecord), Is.True);
         byte[] rlp = rootRecord.Rlp.ToArray();
         // Indexed off the root's position, so only the supplied pointer finds it.
-        warmed.Append(null, TreePath.FromHexString("1"), root.Hash, rlp, [], out _, out ulong pointer);
+        ulong pointer = FlatTestHelpers.Warm(warmed, null, TreePath.FromHexString("1"), rlp);
         (ValueHash256 Hash, ulong Pointer) temporaryRoot = (root.Hash, pointer);
 
         ulong before = Frontier(buffer);
@@ -327,7 +327,7 @@ internal class NodeRecordBulkSetTests
                 break;
             }
             Assert.That(warmed.TryLocate(child.Pointer, out NodeRecord linkedChild) && linkedChild.Hash == child.Data, Is.True);
-            Assert.That(child.Pointer, Is.LessThan(pointer), "the child's bytes were published first");
+            Assert.That(child.Pointer, Is.EqualTo(pointer + (ulong)NodeRecordCodec.AlignedLength(record.Span.Length)), "the path is written in one batch, in descent order");
             if (record.Kind == NodeRecordKind.Extension)
             {
                 record.View.CopyKey(0, extensionKey);
@@ -747,9 +747,12 @@ internal class NodeRecordBulkSetTests
     private sealed class LinkedRecordResolver(Dictionary<TreePath, byte[]> linked, DictionaryNodeSource source) : IScopedTrieStore
     {
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
-        public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            linked.TryGetValue(path, out byte[] rlp) && ValueKeccak.Compute(rlp) == hash.ValueHash256 ? rlp
-            : source.TryLoad(path, hash.ValueHash256, out NodeRecord record) ? record.Rlp.ToArray() : null;
+        public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            TreePath nodePath = path;
+            return linked.TryGetValue(path, out byte[] rlp) && ValueKeccak.Compute(rlp) == hash.ValueHash256 ? rlp
+                : FlatTestHelpers.LoadRlp((action, nodes) => source.TryLoad(nodePath, hash.ValueHash256, action, nodes));
+        }
         public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
             TryLoadRlp(path, hash, flags) ?? throw new MissingTrieNodeException($"Trie node missing hash={hash} path={path}", null, path, hash);
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => this;

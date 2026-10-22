@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -22,10 +23,11 @@ internal static class BufferWarmUp
 
     private static readonly ReadOnlySpanAction<byte, ArrayPoolList<byte>> CopyRlp = static (rlp, scratch) => scratch.AddRange(rlp);
 
-    /// <summary>Reads a pre-block path, then publishes newly fetched records from the deepest node to the root.</summary>
+    /// <summary>Reads a pre-block path, then publishes its newly fetched records in one write batch.</summary>
     /// <remarks>
-    /// Descends while reading and publishes only once the path is read, so every published record links the records published
-    /// before it. Stops silently where the path ends or <paramref name="reader"/> misses, retaining its verified prefix.
+    /// Descends while reading and publishes only once the path is read, so every published record links the records below it,
+    /// and indexes their positions only once all are written. Stops silently where the path ends or <paramref name="reader"/>
+    /// misses, retaining its verified prefix.
     /// </remarks>
     /// <param name="buffer">The buffer holding the pre-block trie, which also resolves the pointers of <paramref name="warmed"/>.</param>
     /// <param name="reader">Reads the nodes neither <paramref name="buffer"/> nor <paramref name="warmed"/> holds.</param>
@@ -83,34 +85,45 @@ internal static class BufferWarmUp
 
         // The parent of the matching leaf: the last frame for an embedded leaf, otherwise the one before it.
         int branchIndex = frames.Count > 0 && frames[^1].Record.Kind == NodeRecordKind.Leaf ? frames.Count - 2 : frames.Count - 1;
-        if (forDelete && reachedKey && branchIndex >= 0) PrefetchSibling(buffer, warmed, reader, address, ref frames.GetRef(branchIndex), scratch);
+        if (forDelete && reachedKey && branchIndex >= 0) PrefetchSibling(buffer, warmed, reader, address, ref frames.GetRef(branchIndex), scratch, records, ref recordsLength);
+        if (recordsLength == 0) return;
 
-        Span<ulong> pointers = stackalloc ulong[BranchChildCount];
-        ulong childPointer = 0;
-        for (int i = frames.Count - 1; i >= 0; i--)
+        using (INodeRecordWriteBatch batch = warmed.StartWriteBatch(recordsLength))
         {
-            ref Frame frame = ref frames.GetRef(i);
-            if (frame.Pointer != 0)
+            Span<byte> written = batch.Bytes;
+            records.AsSpan()[..recordsLength].CopyTo(written);
+            ulong childPointer = 0;
+            for (int i = frames.Count - 1; i >= 0; i--)
             {
-                childPointer = frame.Pointer;
-                continue;
-            }
+                ref Frame frame = ref frames.GetRef(i);
+                if (frame.SiblingRecordOffset >= 0) frame.SiblingPointer = batch.BasePointer + (ulong)frame.SiblingRecordOffset;
+                if (frame.RecordOffset >= 0)
+                {
+                    frame.Pointer = batch.BasePointer + (ulong)frame.RecordOffset;
+                    Span<byte> record = written[frame.RecordOffset..];
+                    if (frame.ChildSlot >= 0 && childPointer != 0) WritePointer(record, frame.ChildSlot, childPointer);
+                    if (frame.SiblingSlot >= 0) WritePointer(record, frame.SiblingSlot, frame.SiblingPointer);
+                }
 
-            pointers.Clear();
-            if (frame.ChildSlot >= 0) pointers[frame.ChildSlot] = childPointer;
-            if (frame.SiblingSlot >= 0) pointers[frame.SiblingSlot] = frame.SiblingPointer;
-            warmed.Append(address, frame.Path, frame.Record.Hash, frame.Record.Rlp, pointers, out _, out childPointer);
+                childPointer = frame.Pointer;
+            }
+        }
+
+        foreach (Frame frame in frames)
+        {
+            if (frame.RecordOffset >= 0) warmed.Index(address, frame.Path, frame.Pointer);
+            if (frame.SiblingRecordOffset >= 0) warmed.Index(address, frame.Path.Append(frame.SiblingSlot), frame.SiblingPointer);
         }
     }
 
     /// <summary>Reads the node <paramref name="child"/> refers to in place, or writes its record from <paramref name="reader"/> to <paramref name="records"/>.</summary>
     /// <remarks>Read RLP is trusted to be the node of the hash its parent holds: the pre-block path reaches the reader only below a subtree unchanged since persistence.</remarks>
-    /// <param name="recordsLength">The bytes of <paramref name="records"/> in use, advanced past a written record.</param>
+    /// <param name="recordsLength">The bytes of <paramref name="records"/> in use, advanced past a written record and its alignment padding.</param>
     /// <returns>False when the reader misses, the RLP is not a valid trie node, or its record does not fit <paramref name="records"/>.</returns>
     private static bool TryRead(INodeRecordBuffer buffer, WarmedNodeBuffer warmed, ReadOnlySnapshotBundle reader, Hash256? address,
         in TreePath path, in ChildRef child, ArrayPoolList<byte> scratch, ArrayPoolList<byte> records, ref int recordsLength, out Frame frame)
     {
-        frame = new Frame { Path = path, ChildSlot = -1, SiblingSlot = -1 };
+        frame = new Frame { Path = path, RecordOffset = -1, ChildSlot = -1, SiblingSlot = -1, SiblingRecordOffset = -1 };
         ulong pointer = child.Pointer;
         if (buffer.TryLocate(pointer, out NodeRecord record) || warmed.TryGet(address, path, out record, out pointer))
         {
@@ -123,17 +136,18 @@ internal static class BufferWarmUp
         if (!reader.TryLoadPersistedRlp(address, path, ReadFlags.None, CopyRlp, scratch)
             || !NodeRecordCodec.TryDecode(scratch.AsSpan(), out NodeRecordKind kind, out ushort hashMask)) return false;
 
-        int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), scratch.Count);
+        int length = NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(BitOperations.PopCount(hashMask), scratch.Count));
         if (length > records.Count - recordsLength) return false;
-        NodeRecordCodec.WriteFromRlp(scratch.AsSpan(), kind, hashMask, child.Data, 0, records.AsSpan()[recordsLength..]);
+        NodeRecordCodec.WriteFromRlp(scratch.AsSpan(), kind, hashMask, child.Data, NodeRecordCodec.NodeKeyHash(address, path), records.AsSpan()[recordsLength..]);
         frame.Record = new NodeRecord(records.AsReadOnlyMemory(), recordsLength);
+        frame.RecordOffset = recordsLength;
         recordsLength += length;
         return true;
     }
 
     /// <summary>Loads the only other child of <paramref name="branch"/>, which it collapses into when the matching leaf is deleted.</summary>
     private static void PrefetchSibling(INodeRecordBuffer buffer, WarmedNodeBuffer warmed, ReadOnlySnapshotBundle reader, Hash256? address,
-        ref Frame branch, ArrayPoolList<byte> scratch)
+        ref Frame branch, ArrayPoolList<byte> scratch, ArrayPoolList<byte> records, ref int recordsLength)
     {
         if (branch.Record.Kind is not (NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch)) return;
 
@@ -149,18 +163,20 @@ internal static class BufferWarmUp
             sibling = candidate;
         }
 
-        if (sibling.Kind != ChildRefKind.Hash || buffer.TryLocate(sibling.Pointer, out _)) return;
-
-        TreePath siblingPath = branch.Path.Append(siblingSlot);
-        if (!warmed.TryGet(address, siblingPath, out _, out ulong pointer))
-        {
-            scratch.Clear();
-            if (!reader.TryLoadPersistedRlp(address, siblingPath, ReadFlags.None, CopyRlp, scratch)) return;
-            warmed.Append(address, siblingPath, sibling.Data, scratch.AsSpan(), [], out _, out pointer);
-        }
+        if (sibling.Kind != ChildRefKind.Hash
+            || !TryRead(buffer, warmed, reader, address, branch.Path.Append(siblingSlot), sibling, scratch, records, ref recordsLength, out Frame loaded)) return;
 
         branch.SiblingSlot = siblingSlot;
-        branch.SiblingPointer = pointer;
+        branch.SiblingPointer = loaded.Pointer;
+        branch.SiblingRecordOffset = loaded.RecordOffset;
+    }
+
+    /// <summary>Writes the pointer of the hash child at <paramref name="slot"/> into <paramref name="record"/>.</summary>
+    private static void WritePointer(Span<byte> record, int slot, ulong pointer)
+    {
+        ushort hashMask = BinaryPrimitives.ReadUInt16LittleEndian(record[NodeRecordCodec.HashMaskOffset..]);
+        int position = BitOperations.PopCount(hashMask & ((1u << slot) - 1));
+        BinaryPrimitives.WriteUInt64LittleEndian(record[(NodeRecordCodec.HeaderLength + NodeRecordCodec.PointerLength * position)..], pointer);
     }
 
     /// <summary>Copies the key nibbles of the leaf or extension <paramref name="rlp"/> to <paramref name="key"/>.</summary>
@@ -179,12 +195,15 @@ internal static class BufferWarmUp
     {
         public TreePath Path;
         public NodeRecord Record;
-        // The pointer of a record read in place, or 0 for a scratch record.
+        // The pointer of the record, 0 for a scratch record until it is published.
         public ulong Pointer;
+        // The offset of a scratch record in the scratch records, or -1 for a record read in place.
+        public int RecordOffset;
         // The slot of the child on the path, or -1 where the path ends.
         public int ChildSlot;
-        // The slot and pointer of the sibling a delete collapses into, or -1 when none is loaded.
+        // The slot, pointer and scratch record offset of the sibling a delete collapses into, as for this node, or -1 when none is loaded.
         public int SiblingSlot;
         public ulong SiblingPointer;
+        public int SiblingRecordOffset;
     }
 }

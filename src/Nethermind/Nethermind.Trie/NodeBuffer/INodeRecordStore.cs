@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeBuffer;
@@ -19,7 +20,11 @@ public interface INodeRecordStore
     /// <param name="alignedTotalLength">The total length of the records, a multiple of the record alignment.</param>
     INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength);
 
-    /// <summary>Loads a node <see cref="TryLocate"/> does not resolve, by its position and hash.</summary>
-    /// <returns>False when the store has no node of <paramref name="hash"/> at <paramref name="path"/>.</returns>
-    bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record);
+    /// <summary>Loads a node <see cref="TryLocate"/> does not resolve, by its position and hash, handing its bytes to <paramref name="action"/>.</summary>
+    /// <remarks>
+    /// The bytes are the node's RLP, or its record when the store holds one, which <see cref="NodeRecordCodec.IsRecord"/> tells apart.
+    /// They are readable only during the call.
+    /// </remarks>
+    /// <returns>False, without calling <paramref name="action"/>, when the store has no node of <paramref name="hash"/> at <paramref name="path"/>.</returns>
+    bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 }

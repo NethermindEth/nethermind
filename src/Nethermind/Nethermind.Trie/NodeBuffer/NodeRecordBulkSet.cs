@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
@@ -51,6 +52,7 @@ internal static class NodeRecordBulkSet
             && entries.Count >= PatriciaTree.MinEntriesToParallelizeThreshold
             ? ParallelUnbalancedWork.BeginWorkerScope(Math.Min(MaxWorkers, RuntimeInformation.ProcessorCount))
             : null;
+        using SpareWorkingStates? spares = workers is null ? null : new();
         BulkSetWorkingState workingState = new();
         try
         {
@@ -62,14 +64,14 @@ internal static class NodeRecordBulkSet
             {
                 // The in-place sorts below the threshold need no separate buffer.
                 BulkSetEntry[] entriesArray = entries.UnsafeGetInternalArray();
-                context = new(store, address, workingState, entriesArray, entriesArray, canParallelize);
+                context = new(store, address, workingState, spares, entriesArray, entriesArray, canParallelize);
                 rootNode = context.LoadRoot(root);
                 updated = context.Update(entries.AsSpan(), entries.AsSpan(), flipped: false, ref path, rootNode);
             }
             else
             {
                 using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
-                context = new(store, address, workingState, entries.UnsafeGetInternalArray(), sortBuffer.UnsafeGetInternalArray(), canParallelize);
+                context = new(store, address, workingState, spares, entries.UnsafeGetInternalArray(), sortBuffer.UnsafeGetInternalArray(), canParallelize);
                 rootNode = context.LoadRoot(root);
                 updated = context.Update(entries.AsSpan(), sortBuffer.AsSpan(), flipped: false, ref path, rootNode);
             }
@@ -198,15 +200,37 @@ internal static class NodeRecordBulkSet
         public int ChangedMask;
     }
 
+    /// <summary>The working states of one traversal's parallel children, reused by later children and disposed once the traversal ends.</summary>
+    /// <remarks>A reused working state keeps the records it loaded, so every record loaded in the traversal stays readable until it ends.</remarks>
+    private sealed class SpareWorkingStates : IDisposable
+    {
+        private readonly ConcurrentBag<BulkSetWorkingState> _states = [];
+
+        public BulkSetWorkingState Rent() => _states.TryTake(out BulkSetWorkingState? state) ? state : new();
+
+        public void Return(BulkSetWorkingState state)
+        {
+            state.ClearPending();
+            _states.Add(state);
+        }
+
+        public void Dispose()
+        {
+            foreach (BulkSetWorkingState state in _states) state.Dispose();
+        }
+    }
+
     /// <summary>What a bulk set on one working state shares: the store it reads and writes, the trie it writes and the arrays its entries are in.</summary>
+    /// <param name="spares">The working states of parallel children, or null when the traversal does not parallelize.</param>
     /// <param name="entries">The array of the entries passed in.</param>
     /// <param name="sortBuffer">The array of the sort buffer, the same as <paramref name="entries"/> when there is none.</param>
-    private readonly struct Context(INodeRecordStore store, Hash256? address, BulkSetWorkingState workingState,
+    private readonly struct Context(INodeRecordStore store, Hash256? address, BulkSetWorkingState workingState, SpareWorkingStates? spares,
         BulkSetEntry[] entries, BulkSetEntry[] sortBuffer, bool canParallelize)
     {
         private readonly INodeRecordStore _store = store;
         private readonly Hash256? _address = address;
         private readonly BulkSetWorkingState _workingState = workingState;
+        private readonly SpareWorkingStates? _spares = spares;
         private readonly BulkSetEntry[] _entries = entries;
         private readonly BulkSetEntry[] _sortBuffer = sortBuffer;
         private readonly bool _canParallelize = canParallelize;
@@ -344,10 +368,11 @@ internal static class NodeRecordBulkSet
         /// <summary>Updates child <paramref name="nibble"/> of <paramref name="level"/> in a working state of its own, committing it when it changed.</summary>
         private void UpdateChild(ParallelChildren level, int nibble)
         {
-            BulkSetWorkingState workingState = new();
+            SpareWorkingStates spares = _spares!;
+            BulkSetWorkingState workingState = spares.Rent();
             try
             {
-                Context context = new(_store, _address, workingState, _entries, _sortBuffer, _canParallelize);
+                Context context = new(_store, _address, workingState, spares, _entries, _sortBuffer, _canParallelize);
                 (int start, int count) = level.Ranges[nibble];
                 Span<BulkSetEntry> entries = (level.Flipped ? _sortBuffer : _entries).AsSpan(start, count);
                 Span<BulkSetEntry> sortBuffer = (level.Flipped ? _entries : _sortBuffer).AsSpan(start, count);
@@ -361,7 +386,7 @@ internal static class NodeRecordBulkSet
             }
             finally
             {
-                workingState.Dispose();
+                spares.Return(workingState);
             }
         }
 
@@ -454,7 +479,7 @@ internal static class NodeRecordBulkSet
             }
 
             Debug.Assert(child.Kind == ChildRefKind.Hash, "Only children of nodes read are loaded.");
-            if (_store.TryLocate(child.Pointer, out NodeRecord record) || _store.TryLoad(path, child.Data, out record))
+            if (_store.TryLocate(child.Pointer, out NodeRecord record) || _workingState.Loaded.TryLoad(_store, path, child.Data, out record))
                 return Source.ForRecord(record, 0);
 
             return ThrowMissingNode(_address, path, child.Data);

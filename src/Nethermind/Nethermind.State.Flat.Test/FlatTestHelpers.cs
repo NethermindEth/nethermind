@@ -26,6 +26,11 @@ namespace Nethermind.State.Flat.Test;
 
 public static class FlatTestHelpers
 {
+    private const int ScratchGenerationBytes = 64 * 1024;
+    private const int RecordAlignment = 8;
+
+    private static readonly ReadOnlySpanAction<byte, List<byte[]>> CollectNode = static (node, nodes) => nodes.Add(node.ToArray());
+
     public static Snapshot MakeSnapshot(IResourcePool pool, Action<SnapshotContent>? populate = null)
     {
         SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
@@ -169,6 +174,39 @@ public static class FlatTestHelpers
 
         private static KeyValuePair<TreePath, byte[]>[] Descendants(KeyValuePair<TreePath, byte[]>[] nodes, TreePath path) =>
             nodes.Where(n => n.Key.Length >= path.Length && n.Key.StartsWith(path)).ToArray();
+    }
+
+    /// <summary>Writes the node <paramref name="rlp"/> to <paramref name="warmed"/> and indexes it at <paramref name="path"/>, as a warm-up does.</summary>
+    /// <returns>The transient pointer of the written record.</returns>
+    public static ulong Warm(WarmedNodeBuffer warmed, Hash256? address, in TreePath path, byte[] rlp)
+    {
+        using PrivateNodeRecordBuffer encoder = new(ScratchGenerationBytes);
+        encoder.TryLocate(encoder.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp, []), out NodeRecord record);
+        ulong pointer = CopyRecord(warmed.StartWriteBatch, record.Span);
+        warmed.Index(address, path, pointer);
+        return pointer;
+    }
+
+    /// <summary>The RLP of the node <paramref name="load"/> hands over, as a record or as RLP, or null when it misses.</summary>
+    public static byte[]? LoadRlp(Func<ReadOnlySpanAction<byte, List<byte[]>>, List<byte[]>, bool> load)
+    {
+        List<byte[]> nodes = [];
+        if (!load(CollectNode, nodes)) return null;
+
+        byte[] node = nodes.Single();
+        // Node RLP is a list, while a record starts with its kind.
+        if (node[0] >= 0xc0) return node;
+
+        using PrivateNodeRecordBuffer copy = new(ScratchGenerationBytes);
+        copy.TryLocate(CopyRecord(copy.StartWriteBatch, node), out NodeRecord record);
+        return record.Rlp.ToArray();
+    }
+
+    private static ulong CopyRecord(Func<int, INodeRecordWriteBatch> startWriteBatch, ReadOnlySpan<byte> record)
+    {
+        using INodeRecordWriteBatch batch = startWriteBatch((record.Length + RecordAlignment - 1) & -RecordAlignment);
+        record.CopyTo(batch.Bytes);
+        return batch.BasePointer;
     }
 
     /// <summary>The RLP of a leaf with an empty key holding <paramref name="value"/>, a distinct valid trie node per value.</summary>

@@ -60,6 +60,10 @@ internal static class NodeRecordCodec
 
     public static ulong PersistentPointer(ulong pointer) => IsTransient(pointer) ? 0 : pointer;
 
+    /// <summary>Whether <paramref name="node"/> is a record rather than a node's RLP.</summary>
+    /// <remarks>A record starts with its <see cref="NodeRecordKind"/>, while node RLP is a list, whose prefix is at least 0xc0.</remarks>
+    public static bool IsRecord(ReadOnlySpan<byte> node) => node[0] < 0xc0;
+
     private const int BranchChildCount = 16;
     private const int MaxKeyNibbles = 64;
     private const int MaxHexPrefixFlag = 3;

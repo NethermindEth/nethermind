@@ -160,22 +160,15 @@ public class SnapshotBundleWarmerTests
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, usage);
 
-        if (warmUp)
-        {
-            bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
-            bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
-        }
-        else
-        {
-            Assert.That(bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, out _), Is.True);
-            Assert.That(bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, out _), Is.True);
-        }
+        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
+        if (warmUp) bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
+        else Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, action, nodes)), Is.EqualTo(persisted[TreePath.Empty]));
 
         Assert.That(reader.Reads, Is.EqualTo(1));
     }
 
     [Test]
-    public void Idle_worker_reads_a_warmed_node_from_persistence_once()
+    public void Idle_worker_loads_a_node_from_persistence()
     {
         Hash256 address = TestItem.KeccakC;
         byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
@@ -185,9 +178,7 @@ public class SnapshotBundleWarmerTests
         using SnapshotPooledList snapshots = new(1);
         using SnapshotBundle.BackgroundTrieSource source = new(readOnly, _buffer, snapshots, address);
 
-        Assert.That(source.TryLoad(TreePath.Empty, root.Hash, out _), Is.True);
-        Assert.That(source.TryLoad(TreePath.Empty, root.Hash, out NodeRecord record), Is.True);
-        Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp));
+        Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => source.TryLoad(TreePath.Empty, root.Hash, action, nodes)), Is.EqualTo(rlp));
         Assert.That(reader.Reads, Is.EqualTo(1));
     }
 
@@ -199,7 +190,7 @@ public class SnapshotBundleWarmerTests
         using WarmedNodeBuffer warmed = new(1);
         ulong pointer;
         if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []);
-        else warmed.Append(null, TreePath.Empty, hash, rlp, [], out _, out pointer);
+        else pointer = FlatTestHelpers.Warm(warmed, null, TreePath.Empty, rlp);
 
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
         source.WarmUp(_buffer, (hash, pointer), ValueKeccak.Zero);
@@ -213,12 +204,11 @@ public class SnapshotBundleWarmerTests
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
         Hash256? address = storage ? TestItem.KeccakC : null;
         byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
-        ValueHash256 hash = ValueKeccak.Compute(rlp);
 
         TransientResource rented = _pool.GetCachedResource(usage);
         try
         {
-            rented.WarmedNodeBuffer.Append(address, TreePath.Empty, hash, rlp, [], out _, out _);
+            FlatTestHelpers.Warm(rented.WarmedNodeBuffer, address, TreePath.Empty, rlp);
         }
         finally
         {
@@ -258,7 +248,7 @@ public class SnapshotBundleWarmerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.Reads, Is.EqualTo(2), "retirement no longer promotes warmed nodes into a shared cache");
-            Assert.That(bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, out _), Is.True);
+            Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, action, nodes)), Is.Not.Null);
             Assert.That(reader.Reads, Is.EqualTo(2), "the replacement transient still reuses its own warmed records");
         }
     }

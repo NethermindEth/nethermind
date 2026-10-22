@@ -1413,7 +1413,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void TryLoadTrieNodeRecord_reads_warmed_then_persisted_and_skips_in_memory_snapshot_nodes([Values] bool storage)
+    public void TryLoadTrieNodeRecord_reads_persisted_without_warming_and_skips_in_memory_snapshot_nodes([Values] bool storage)
     {
         ResourcePool pool = new(new FlatDbConfig());
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
@@ -1440,13 +1440,13 @@ public class FlatWorldStateScopeProviderTests
             FlatTestHelpers.SnapshotList(SnapshotWithNode(ownSnapshotPath, ownSnapshotRlp)));
 
         byte[]? Load(TreePath path, byte[] rlp) =>
-            bundle.TryLoadTrieNodeRecord(address, path, ValueKeccak.Compute(rlp), out NodeRecord record) ? record.Rlp.ToArray() : null;
+            FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, path, action, nodes)) is { } loaded && ValueKeccak.Compute(loaded) == ValueKeccak.Compute(rlp) ? loaded : null;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Load(persistedPath, persistedRlp), Is.EqualTo(persistedRlp), "persisted");
-            Assert.That(Load(persistedPath, persistedRlp), Is.EqualTo(persistedRlp), "warmed");
-            Assert.That(reader.Loads, Is.EqualTo(1), "warmed node read again from persistence");
+            Assert.That(Load(persistedPath, persistedRlp), Is.EqualTo(persistedRlp), "persisted again");
+            Assert.That(reader.Loads, Is.EqualTo(2), "a loaded node is not warmed");
             Assert.That(Load(readOnlySnapshotPath, readOnlySnapshotRlp), Is.Null, "read-only bundle snapshot must be read through the buffer");
             Assert.That(Load(ownSnapshotPath, ownSnapshotRlp), Is.Null, "own snapshot must be read through the buffer");
             Assert.That(Load(ownSnapshotPath, readOnlySnapshotRlp), Is.Null, "snapshot node of another hash");

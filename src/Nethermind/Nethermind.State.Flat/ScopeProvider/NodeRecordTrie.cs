@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -60,7 +61,8 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
     /// <exception cref="MissingTrieNodeException">Neither the warmed nodes nor persistence hold the root.</exception>
     private ulong CopyRootRecord()
     {
-        if (!TryLoad(TreePath.Empty, Root.Hash, out NodeRecord record))
+        using LoadedRecordBuffer loaded = new();
+        if (!loaded.TryLoad(this, TreePath.Empty, Root.Hash, out NodeRecord record))
             throw NodeRecordBulkSet.MissingNode(addressHash, TreePath.Empty, Root.Hash);
 
         return bundle.NodeRecordBuffer!.AppendRecordFromRlp(addressHash, TreePath.Empty, Root.Hash, record.Rlp, []);
@@ -77,8 +79,8 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
 
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => bundle.NodeRecordBuffer!.StartWriteBatch(alignedTotalLength);
 
-    public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-        bundle.TryLoadTrieNodeRecord(addressHash, path, hash, out record);
+    public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        bundle.TryLoadTrieNodeRecord(addressHash, path, action, arg);
 
     private void SetRoot(in (ValueHash256 Hash, ulong Pointer) updated)
     {
@@ -95,6 +97,7 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
     {
         TreePath keyPath = new(key, BulkSetWorkingState.MaxKeyNibbles);
         Span<byte> nodeKey = stackalloc byte[BulkSetWorkingState.MaxKeyNibbles];
+        using LoadedRecordBuffer loaded = new();
         TreePath path = TreePath.Empty;
         ChildRef child = Root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(Root.Hash, Root.Pointer);
         while (true)
@@ -114,7 +117,7 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
                     return path.Length + inlineKeyLength == keyPath.Length && path.Append(nodeKey[..inlineKeyLength]) == keyPath ? value.ToArray() : null;
             }
 
-            if (!TryLocate(child.Pointer, out NodeRecord record) && !TryLoad(path, child.Data, out record))
+            if (!TryLocate(child.Pointer, out NodeRecord record) && !loaded.TryLoad(this, path, child.Data, out record))
             {
                 throw NodeRecordBulkSet.MissingNode(addressHash, path, child.Data);
             }
