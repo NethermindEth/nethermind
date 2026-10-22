@@ -111,8 +111,12 @@ public static class KnownHeaders
             return;
 
         Block block = await ReadBlock(readArchiveBlock, first);
-        if (!Expected(level).Any(info => info.BlockHash == block.ParentHash))
-            throw new EraImportException($"Unknown parent for block {first} in archive: parent hash {block.ParentHash} does not match the header already known at {highestKnown}.");
+        foreach (BlockInfo info in Expected(level))
+        {
+            if (info.BlockHash == block.ParentHash)
+                return;
+        }
+        throw new EraImportException($"Unknown parent for block {first} in archive: parent hash {block.ParentHash} does not match the header already known at {highestKnown}.");
     }
 
     private static async Task EnsureBeaconGapLinksToBeaconHeaders(IBlockTree blockTree, ulong from, ulong to, ulong scanTo, Func<ulong, Task<Block?>> readArchiveBlock, CancellationToken cancellation)
@@ -156,8 +160,12 @@ public static class KnownHeaders
         if (gapStart != blockTree.BestKnownNumber + 1 || blockTree.FindLevel(blockTree.BestKnownNumber) is not { BlockInfos.Length: > 0 } below)
             return;
 
-        if (!Expected(below).Any(info => expectedHashes.Contains(info.BlockHash)))
-            throw new EraVerificationException($"Block {gapStart} in archive does not link to the header already known at {blockTree.BestKnownNumber}.");
+        foreach (BlockInfo info in Expected(below))
+        {
+            if (expectedHashes.Contains(info.BlockHash))
+                return;
+        }
+        throw new EraVerificationException($"Block {gapStart} in archive does not link to the header already known at {blockTree.BestKnownNumber}.");
     }
 
     private static HashSet<Hash256> StoredParents(IBlockTree blockTree, ChainLevelInfo level, ulong number)
