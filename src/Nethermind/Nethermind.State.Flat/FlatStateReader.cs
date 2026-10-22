@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,6 +39,17 @@ public class FlatStateReader(
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
         reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out UInt256? slot);
         value = slot.GetValueOrDefault();
+    }
+
+    public void GetStorage(BlockHeader? baseBlock, Address address, ReadOnlySpan<UInt256> indexes, Span<UInt256> values)
+    {
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        int selfDestructSnapshotIdx = reader.DetermineSelfDestructSnapshotIdx(address);
+        for (int i = 0; i < indexes.Length; i++)
+        {
+            reader.GetSlot(address, indexes[i], selfDestructSnapshotIdx, out UInt256? slot);
+            values[i] = slot.GetValueOrDefault();
+        }
     }
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);

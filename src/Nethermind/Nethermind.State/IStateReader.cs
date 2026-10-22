@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -13,6 +14,15 @@ namespace Nethermind.State
         bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account);
         /// <summary>Reads a storage slot at the selected block, returning zero for a missing account or slot.</summary>
         void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value);
+
+        /// <summary>Reads the storage slots <paramref name="indexes"/> of one account at the selected block into <paramref name="values"/>.</summary>
+        void GetStorage(BlockHeader? baseBlock, Address address, ReadOnlySpan<UInt256> indexes, Span<UInt256> values)
+        {
+            for (int i = 0; i < indexes.Length; i++)
+            {
+                GetStorage(baseBlock, address, in indexes[i], out values[i]);
+            }
+        }
         byte[]? GetCode(Hash256 codeHash);
         byte[]? GetCode(in ValueHash256 codeHash);
         /// <summary>
