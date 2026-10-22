@@ -91,27 +91,11 @@ public class CustomTimeDurationConverterTests
     public void read_go_duration_format_parses_correctly(string json, TimeSpan? expected) =>
         Assert.That(Deserialize(json), Is.EqualTo(expected));
 
-    [Test]
-    public void read_fraction_ignores_current_culture_number_format()
-    {
-        CultureInfo culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
-        culture.NumberFormat.PositiveSign = "1";
-        CultureInfo previous = CultureInfo.CurrentCulture;
-        CultureInfo.CurrentCulture = culture;
-        try
-        {
-            Assert.That(Deserialize("\"0.1s\""), Is.EqualTo(TimeSpan.FromMilliseconds(100)));
-        }
-        finally
-        {
-            CultureInfo.CurrentCulture = previous;
-        }
-    }
-
+    [TestCase("0.1s", 100)]
     [TestCase("1s", 1000)]
+    [TestCase("10s", 10_000)]
     [TestCase("-1s", -1000)]
-    [NonParallelizable]
-    public void read_integer_ignores_current_culture_number_format(string text, int milliseconds)
+    public void read_ignores_current_culture_number_format(string text, int milliseconds)
     {
         CultureInfo culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
         culture.NumberFormat.PositiveSign = "1";
