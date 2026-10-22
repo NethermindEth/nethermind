@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -59,15 +60,19 @@ internal readonly struct SetOneFrame(NodeRecord record, byte skip, byte childNib
 /// <summary>The working memory of one bulk set on one thread: new nodes, their children and commit scratch.</summary>
 /// <remarks>
 /// Nodes and children are addressed by index, as their lists grow by reallocation, so a reference into them does not survive
-/// an add. All memory is pooled and returned on <see cref="Dispose"/>, dropping the references to entry values and records.
+/// an add. Working states are pooled, unless grown past <see cref="MaxPooledNodeCapacity"/> nodes; a returned one drops its references
+/// to entry values and records.
 /// </remarks>
 internal sealed class BulkSetWorkingState : IDisposable
 {
     public const int BranchChildCount = 16;
     public const int MaxKeyNibbles = 64;
 
+    private const int MaxPooled = 64;
     private const int InitialNodeCapacity = 64;
+    private const int MaxPooledNodeCapacity = 4096;
 
+    private static readonly ConcurrentQueue<BulkSetWorkingState> Pool = new();
     private static readonly ChildRef[] EmptyChildren = new ChildRef[BranchChildCount];
 
     private readonly ArrayPoolList<PendingNode> _nodes = new(InitialNodeCapacity);
@@ -94,6 +99,23 @@ internal sealed class BulkSetWorkingState : IDisposable
     public Span<int> RecordStarts => _recordStarts.AsSpan();
     public Span<(int Start, int Length)> Messages => _messages.AsSpan();
     public Span<ValueHash256> Hashes => _hashes.AsSpan();
+
+    public static BulkSetWorkingState Rent() => Pool.TryDequeue(out BulkSetWorkingState? workingState) ? workingState : new BulkSetWorkingState();
+
+    public static void Return(BulkSetWorkingState workingState)
+    {
+        if (Pool.Count < MaxPooled && workingState._nodes.Capacity <= MaxPooledNodeCapacity && workingState._children.Capacity <= MaxPooledNodeCapacity * BranchChildCount)
+        {
+            workingState._nodes.Clear();
+            workingState._children.Clear();
+            workingState.Frames.Clear();
+            Pool.Enqueue(workingState);
+        }
+        else
+        {
+            workingState.Dispose();
+        }
+    }
 
     /// <returns>The index of sixteen empty children.</returns>
     public int ReserveChildSpace()

@@ -51,7 +51,7 @@ internal static class NodeRecordBulkSet
             && entries.Count >= PatriciaTree.MinEntriesToParallelizeThreshold
             ? ParallelUnbalancedWork.BeginWorkerScope(Math.Min(MaxWorkers, RuntimeInformation.ProcessorCount))
             : null;
-        BulkSetWorkingState workingState = new();
+        BulkSetWorkingState workingState = BulkSetWorkingState.Rent();
         try
         {
             Source rootNode;
@@ -82,7 +82,7 @@ internal static class NodeRecordBulkSet
         }
         finally
         {
-            workingState.Dispose();
+            BulkSetWorkingState.Return(workingState);
         }
     }
 
@@ -344,7 +344,7 @@ internal static class NodeRecordBulkSet
         /// <summary>Updates child <paramref name="nibble"/> of <paramref name="level"/> in a working state of its own, committing it when it changed.</summary>
         private void UpdateChild(ParallelChildren level, int nibble)
         {
-            BulkSetWorkingState workingState = new();
+            BulkSetWorkingState workingState = BulkSetWorkingState.Rent();
             try
             {
                 Context context = new(_store, _address, workingState, _entries, _sortBuffer, _canParallelize);
@@ -361,7 +361,7 @@ internal static class NodeRecordBulkSet
             }
             finally
             {
-                workingState.Dispose();
+                BulkSetWorkingState.Return(workingState);
             }
         }
 
