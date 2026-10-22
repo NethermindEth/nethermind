@@ -20,6 +20,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Crypto;
 using Nethermind.Era1.Exceptions;
 using NSubstitute;
+using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.Era1.Test;
 
@@ -352,6 +353,67 @@ public class EraImporterTest
                 Assert.That(targetTree.Head!.Hash, Is.EqualTo(targetParent.Hash));
                 Assert.That(targetTree.FinalizedHash, Is.EqualTo(finalizedBeforeImport));
             }
+        }
+    }
+
+    [Test]
+    public async Task Import_EpochForeignToLocalHeaders_KeepsLocalHeaders([Values] bool withTrustedAccumulators, [Values(1UL, 9UL)] ulong lowestLocalHeader)
+    {
+        const int chainLength = 16;
+        await using IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(chainLength);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        targetTree.SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+
+        Hash256[] localHashes = new Hash256[chainLength];
+        for (ulong i = lowestLocalHeader; i < chainLength; i++)
+        {
+            BlockHeader local = sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Clone();
+            local.ExtraData = [0x4c, 0x4f, 0x43, (byte)i];
+            local.Hash = local.CalculateHash();
+            targetTree.Insert(local, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+            localHashes[i] = local.Hash;
+        }
+
+        string? accumulatorFile = withTrustedAccumulators ? Path.Join(exportPath, EraExporter.AccumulatorFileName) : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, accumulatorFile, CancellationToken.None),
+                Throws.TypeOf<EraVerificationException>());
+            for (ulong i = 1; i < chainLength; i++)
+                Assert.That(targetTree.FindLevel(i)?.BlockInfos.Select(static info => info.BlockHash), i < lowestLocalHeader ? Is.Null : Is.EqualTo(new[] { localHashes[i] }), $"headers at {i}");
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_CancelledOverKnownHeights_ThrowsWithoutReadingArchive()
+    {
+        const int chainLength = 16;
+        await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        int archiveReads = 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                    ctx.Resolve<IBlockTree>(),
+                    1,
+                    chainLength - 1,
+                    _ =>
+                    {
+                        archiveReads++;
+                        return Task.FromResult<Block?>(null);
+                    },
+                    new CancellationToken(canceled: true)),
+                Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(archiveReads, Is.Zero);
         }
     }
 }
