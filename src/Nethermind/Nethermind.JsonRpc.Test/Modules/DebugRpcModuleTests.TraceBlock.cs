@@ -2064,6 +2064,29 @@ public partial class DebugRpcModuleTests
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
 
+    [TestCase("debug_traceBlock", -32602)]
+    [TestCase("debug_traceBlockByNumber", -32000)]
+    [TestCase("debug_traceBlockByHash", -32602)]
+    public async Task Debug_traceBlock_routes_reject_malformed_timeout_before_stream_commit(string method, int expectedCode)
+    {
+        using Context context = await Context.Create();
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object? argument = method switch
+        {
+            "debug_traceBlock" => Rlp.Encode(context.Blockchain.BlockTree.Head).ToString(),
+            "debug_traceBlockByNumber" => context.Blockchain.BlockTree.Head!.Number,
+            _ => context.Blockchain.BlockTree.Head!.Hash
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, argument,
+            new { timeout = "bad", streamMode = true });
+        using JsonDocument document = JsonDocument.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.TryGetProperty("result", out _), Is.False);
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(expectedCode));
+        }
+    }
+
     [Test]
     public async Task Debug_traceBlock_json_rpc_request_returns_valid_json([Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
     {
