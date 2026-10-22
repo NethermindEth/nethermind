@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -432,6 +434,40 @@ public partial class DebugRpcModuleTests
     }
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
+
+    [TestCase("prestateTracer")]
+    [TestCase("callTracer")]
+    [TestCase(null)]
+    public async Task Debug_traceCall_stops_after_the_call(string? tracer)
+    {
+        int requestsProcessed = 0;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { Timeout = -1 })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddDecorator<IExecutionRequestsProcessor>((_, inner) => new CountingExecutionRequestsProcessor(inner, () => requestsProcessed++)));
+        requestsProcessed = 0;
+
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString(), value = "0x1", gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(requestsProcessed, Is.Zero, "nothing after the call reaches the trace, so the block must not be finalized");
+        }
+    }
+
+    private sealed class CountingExecutionRequestsProcessor(IExecutionRequestsProcessor inner, Action onProcess) : IExecutionRequestsProcessor
+    {
+        public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+        {
+            onProcess();
+            inner.ProcessExecutionRequests(block, state, receipts, spec);
+        }
+    }
 
     private class Context : IDisposable
     {
