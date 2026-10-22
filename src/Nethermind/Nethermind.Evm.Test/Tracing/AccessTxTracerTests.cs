@@ -110,6 +110,32 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
+        public void ReportAccess_MixedAddressAndStorageAccess_PreservesAddressesAndDeduplicatesSlots()
+        {
+            AccessTxTracer sut = new(TestItem.AddressA, TestItem.AddressB);
+
+            sut.ReportAccess(
+                [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC],
+                [new StorageCell(TestItem.AddressB, 7), new StorageCell(TestItem.AddressD, 9),
+                    new StorageCell(TestItem.AddressB, 7), new StorageCell(TestItem.AddressB, 3)]);
+
+            (Address Address, UInt256[] StorageKeys)[] entries = sut.AccessList!
+                .Select(static entry => (entry.Address, entry.StorageKeys.ToArray())).ToArray();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries.Select(static entry => entry.Address),
+                    Is.EqualTo(new[] { TestItem.AddressB, TestItem.AddressC, TestItem.AddressD }),
+                    "address-only optimized entries are removed while stored addresses retain their order");
+                Assert.That(entries.Single(static entry => entry.Address == TestItem.AddressB).StorageKeys,
+                    Is.EquivalentTo(new UInt256[] { 7, 3 }), "repeated slots are included once");
+                Assert.That(entries.Single(static entry => entry.Address == TestItem.AddressC).StorageKeys,
+                    Is.Empty, "unoptimized address-only entries remain in the access list");
+                Assert.That(entries.Single(static entry => entry.Address == TestItem.AddressD).StorageKeys,
+                    Is.EqualTo(new UInt256[] { 9 }), "storage access includes addresses missing from the address input");
+            }
+        }
+
+        [Test]
         public void Reverted_call_target_address_is_still_captured_in_access_list()
         {
             // Code deployed at recipient: CALL AddressC, then REVERT

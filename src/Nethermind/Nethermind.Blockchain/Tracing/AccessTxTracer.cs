@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -25,38 +26,38 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 
     public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
-        Dictionary<Address, ISet<UInt256>> dictionary = [];
+        Dictionary<Address, ISet<UInt256>?> dictionary = [];
         foreach (Address address in accessedAddresses)
         {
-            dictionary.Add(address, new HashSet<UInt256>());
+            dictionary.Add(address, null);
         }
 
         foreach (StorageCell storageCell in accessedStorageCells)
         {
-            if (!dictionary.TryGetValue(storageCell.Address, out ISet<UInt256> set))
-            {
-                dictionary[storageCell.Address] = set = new HashSet<UInt256>();
-            }
-
+            ref ISet<UInt256>? set = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, storageCell.Address, out _);
+            set ??= new HashSet<UInt256>();
             set.Add(storageCell.Index);
         }
 
         for (int i = 0; i < addressesToOptimize.Length; i++)
         {
             Address address = addressesToOptimize[i];
-            if (dictionary.TryGetValue(address, out ISet<UInt256> set) && set.Count == 0)
+            if (dictionary.TryGetValue(address, out ISet<UInt256>? set) && set is null)
             {
                 dictionary.Remove(address);
             }
         }
 
         AccessList.Builder builder = new();
-        foreach ((Address address, ISet<UInt256> storageKeys) in dictionary)
+        foreach ((Address address, ISet<UInt256>? storageKeys) in dictionary)
         {
             builder.AddAddress(address);
-            foreach (UInt256 storageKey in storageKeys)
+            if (storageKeys is not null)
             {
-                builder.AddStorage(storageKey);
+                foreach (UInt256 storageKey in storageKeys)
+                {
+                    builder.AddStorage(storageKey);
+                }
             }
         }
 
