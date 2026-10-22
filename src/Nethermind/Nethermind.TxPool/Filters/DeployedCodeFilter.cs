@@ -23,7 +23,7 @@ namespace Nethermind.TxPool.Filters
 
             return state.SenderAccount.HasCode
                 && state.HeadSpec.IsEip3607Enabled
-                && (!state.HeadSpec.IsEip7702Enabled || !worldState.IsDelegatedCode(state.SenderAccount.CodeHash))
+                && (!state.HeadSpec.IsEip7702Enabled || !state.SenderHasDelegatedCode(worldState))
                 ? AcceptTxResult.SenderIsContract
                 : AcceptTxResult.Accepted;
         }
