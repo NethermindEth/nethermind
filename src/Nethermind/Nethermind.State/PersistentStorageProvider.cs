@@ -441,6 +441,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private static Dictionary<StorageCell, StorageChangeTrace> RequireTrace(Dictionary<StorageCell, StorageChangeTrace>? trace)
         => trace ?? throw new InvalidOperationException("Storage tracing is active without a trace accumulator.");
 
+    /// <summary>Bench-only: how many contracts have a storage root to update at the next flush.</summary>
+    internal int RootUpdateCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
+            {
+                if (kvp.Value) count++;
+            }
+
+            return count;
+        }
+    }
+
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         if (_toUpdateRoots.Count == 0)

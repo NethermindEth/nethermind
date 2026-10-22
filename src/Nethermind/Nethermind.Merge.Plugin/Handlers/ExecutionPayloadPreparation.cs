@@ -34,7 +34,12 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
         {
             using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
             _txRootWork = ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions,
-                _ => _txRoot = TxTrie.CalculateRoot(_encodedTransactions));
+                _ =>
+                {
+                    _payload.Diag?.Stamp(BlockDiag.P.TxRootBgStart);
+                    _txRoot = TxTrie.CalculateRoot(_encodedTransactions);
+                    _payload.Diag?.Stamp(BlockDiag.P.TxRootBgEnd);
+                });
         }
     }
 
@@ -51,6 +56,7 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
         if (_txRootWork is not null && ReferenceEquals(_encodedTransactions, _payload.Transactions))
         {
             _txRootWork.WaitForCompletion();
+            _payload.Diag?.Stamp(BlockDiag.P.HTxRoot);
             _payload.TransactionsRoot = _txRoot;
         }
         else

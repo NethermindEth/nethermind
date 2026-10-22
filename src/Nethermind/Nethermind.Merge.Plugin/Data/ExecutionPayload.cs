@@ -107,6 +107,10 @@ public class ExecutionPayload : IExecutionPayloadParams, IExecutionPayloadFactor
 
     protected byte[][] _encodedTransactions = [];
 
+    /// <summary>Bench-only: the diagnostics of the newPayload request that carried this payload.</summary>
+    [JsonIgnore]
+    public BlockDiag? Diag { get; set; }
+
     /// <summary>
     /// Gets or sets an array of RLP-encoded transaction where each item is a byte list (data)
     /// representing <c>TransactionType || TransactionPayload</c> or <c>LegacyTransaction</c> as defined in
@@ -247,8 +251,9 @@ public class ExecutionPayload : IExecutionPayloadParams, IExecutionPayloadFactor
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
             TxRoot = TransactionsRoot ??= TxTrie.CalculateRoot(encodedTransactions),
-            WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
+        Diag?.Stamp(BlockDiag.P.HTxRoot);
+        header.WithdrawalsRoot = BuildWithdrawalsRoot();
 
         Block block = new(header, new BlockBody(transactions.Data, [], Withdrawals))
         {

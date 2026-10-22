@@ -39,6 +39,7 @@ public partial class BlockProcessor
             SetupTxTimingMetrics(block);
 
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+            BlockDiag? diag = BlockDiag.Current;
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
@@ -46,6 +47,7 @@ public partial class BlockProcessor
                 Transaction currentTx = block.Transactions[i];
 
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                if (diag is not null && i == 0) diag.Stamp(BlockDiag.P.Tx0End);
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {

@@ -460,16 +460,58 @@ namespace Nethermind.State
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             GuardInScope();
-            _transientStorageProvider.Commit(tracer);
-            _persistentStorageProvider.Commit(tracer);
-            _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
+            // Bench-only: the block-end commits of the block-processing thread are timed and counted.
+            BlockDiag? diag = commitRoots ? BlockDiag.Current : null;
+            using (BlockDiag.Measure(diag, BlockDiag.F.WsJournal))
+            {
+                _transientStorageProvider.Commit(tracer);
+                _persistentStorageProvider.Commit(tracer);
+                _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
+            }
 
             if (commitRoots)
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
-                writeBatch.OnAccountUpdated += _onAccountUpdated;
-                _persistentStorageProvider.FlushToTree(writeBatch);
-                _stateProvider.FlushToTree(writeBatch);
+                if (diag is not null)
+                {
+                    diag.Add(BlockDiag.C.RootCommits, 1);
+                    diag.Add(BlockDiag.C.ChangedAccounts, _stateProvider.ChangedAccountCount);
+                    diag.Add(BlockDiag.C.StorageAccounts, _persistentStorageProvider.RootUpdateCount);
+                }
+
+                IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch;
+                using (BlockDiag.Measure(diag, BlockDiag.F.WsStartBatch))
+                {
+                    writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                }
+
+                try
+                {
+                    writeBatch.OnAccountUpdated += _onAccountUpdated;
+                    long slotWrites = diag is null ? 0 : Db.Metrics.StorageTreeWrites;
+                    long slotSkipped = diag is null ? 0 : Db.Metrics.StorageSkippedWrites;
+                    using (BlockDiag.Measure(diag, BlockDiag.F.WsStorageFlush))
+                    {
+                        _persistentStorageProvider.FlushToTree(writeBatch);
+                    }
+
+                    if (diag is not null)
+                    {
+                        diag.Add(BlockDiag.C.SlotWrites, Db.Metrics.StorageTreeWrites - slotWrites);
+                        diag.Add(BlockDiag.C.SlotSkipped, Db.Metrics.StorageSkippedWrites - slotSkipped);
+                    }
+
+                    using (BlockDiag.Measure(diag, BlockDiag.F.WsStateFlush))
+                    {
+                        _stateProvider.FlushToTree(writeBatch, diag);
+                    }
+                }
+                finally
+                {
+                    using (BlockDiag.Measure(diag, BlockDiag.F.WsBatchDispose))
+                    {
+                        writeBatch.Dispose();
+                    }
+                }
             }
 
             // Fold this scope's accumulated counters into the global metrics. Runs per-tx commit and

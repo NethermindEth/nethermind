@@ -303,6 +303,9 @@ namespace Nethermind.Consensus.Processing
                 // Snapshot per-tx timing (rents a pooled list for ThreadPool use, null when disabled).
                 // The list is disposed (returning its array to the pool) in BlockDataPolicy.Return.
                 blockData.PerTxTicks = PerTxTimingCollector.Snapshot();
+
+                // Bench-only: the newPayload diagnostics of this block, set by the block-processing thread.
+                blockData.Diag = BlockDiag.Current;
             }
 
             CaptureReportData(blockData);
@@ -766,6 +769,10 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteNumber("cached_contracts_used", data.CurrentCachedContractsUsed - data.StartCachedContractsUsed);
                     writer.WriteEndObject();
 
+                    // Bench-only: this block's request diagnostics and the last completed newPayload response.
+                    data.Diag?.WriteJson(writer, "diag");
+                    BlockDiag.LastCompleted?.WritePost(writer, "post");
+
                     // Per-transaction timing breakdown (when enabled).
                     ArrayPoolList<long>? perTxTicks = data.PerTxTicks;
                     if (perTxTicks is not null && perTxTicks.Count > 0 && txs.Length > 0)
@@ -855,6 +862,7 @@ namespace Nethermind.Consensus.Processing
                 data.Block = null;
                 data.BaseBlock = null;
                 data.PerTxTicks = null;
+                data.Diag = null;
                 data.BlockCount = 0;
                 data.FirstBlockNumber = 0;
                 data.GasUsed = 0;
@@ -958,6 +966,7 @@ namespace Nethermind.Consensus.Processing
             public long DeltaBloomsTime;
             public long DeltaReceiptsRootTime;
             public ArrayPoolList<long>? PerTxTicks;
+            public BlockDiag? Diag;
         }
     }
 }

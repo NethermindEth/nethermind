@@ -211,13 +211,23 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 
+        BlockDiag? diag = BlockDiag.Current;
+        diag?.Stamp(BlockDiag.P.TxsStart);
+        diag?.Set(BlockDiag.C.TxCount, block.Transactions.Length);
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        diag?.Stamp(BlockDiag.P.TxsEnd);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
-        TransactionsExecuted?.Invoke(block);
+        using (BlockDiag.Measure(diag, BlockDiag.F.TxsExecutedEvent))
+        {
+            TransactionsExecuted?.Invoke(block);
+        }
 
-        return FinalizeBlock(block, blockTracer, options, spec, receipts);
+        diag?.Stamp(BlockDiag.P.FinStart);
+        TxReceipt[] finalized = FinalizeBlock(block, blockTracer, options, spec, receipts);
+        diag?.Stamp(BlockDiag.P.FinEnd);
+        return finalized;
     }
 
     protected virtual TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
@@ -238,6 +248,7 @@ public partial class BlockProcessor(
         }
 
         BlockHeader header = block.Header;
+        BlockDiag? diag = BlockDiag.Current;
 
         using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         (Bloom BlockBloom, Hash256 ReceiptsRoot) receiptResults = default;
@@ -252,7 +263,10 @@ public partial class BlockProcessor(
                 ? ParallelUnbalancedWork.BackgroundFor(0, 1, SmallBloomOptions, _ => receiptResults = (Bloom.ZeroLength, CalculateReceiptsRoot(receipts, spec, block)))
                 : null;
 
-        CommitState(spec);
+        using (BlockDiag.Measure(diag, BlockDiag.F.FinCommit1))
+        {
+            CommitState(spec);
+        }
 
         if (spec.IsEip4844Enabled)
         {
@@ -269,47 +283,67 @@ public partial class BlockProcessor(
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
         }
 
-        ApplyMinerRewards(block, blockTracer, spec);
-        _systemContractHandler.ProcessWithdrawals(block, spec);
+        using (BlockDiag.Measure(diag, BlockDiag.F.FinRewardsWithdrawals))
+        {
+            ApplyMinerRewards(block, blockTracer, spec);
+            _systemContractHandler.ProcessWithdrawals(block, spec);
+        }
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-        CommitState(spec);
-
-        _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
-
-        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && TComputesCommitments.IsActive && !bloomsRemoved);
-
-        if (TComputesCommitments.IsActive)
-        {
-            CommitStateAndStorageRoots(spec);
-        }
-        else
+        using (BlockDiag.Measure(diag, BlockDiag.F.FinCommit2))
         {
             CommitState(spec);
         }
 
+        using (BlockDiag.Measure(diag, BlockDiag.F.FinExecRequests))
+        {
+            _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        }
+
+        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && TComputesCommitments.IsActive && !bloomsRemoved);
+
+        using (BlockDiag.Measure(diag, BlockDiag.F.FinCommitRoots))
+        {
+            if (TComputesCommitments.IsActive)
+            {
+                CommitStateAndStorageRoots(spec);
+            }
+            else
+            {
+                CommitState(spec);
+            }
+        }
+
         if (BlockchainProcessor.IsMainProcessingThread)
         {
+            using BlockDiag.Section accountChangesSection = BlockDiag.Measure(diag, BlockDiag.F.FinSetAccountChanges);
             SetAccountChanges(block);
         }
 
         if (TComputesCommitments.IsActive && ShouldComputeStateRoot(header))
         {
+            using BlockDiag.Section stateRootSection = BlockDiag.Measure(diag, BlockDiag.F.FinStateRoot);
             ComputeStateRoot(header);
         }
 
         if (receiptWork is not null)
         {
-            receiptWork.WaitForCompletion();
+            using (BlockDiag.Measure(diag, BlockDiag.F.FinReceiptsWait))
+            {
+                receiptWork.WaitForCompletion();
+            }
             (header.Bloom, header.ReceiptsRoot) = receiptResults;
         }
 
-        _balManager.SetBlockAccessList(block);
-
-        if (TComputesCommitments.IsActive)
+        using (BlockDiag.Measure(diag, BlockDiag.F.FinBalHash))
         {
-            header.Hash = header.CalculateHash();
+            _balManager.SetBlockAccessList(block);
+
+            if (TComputesCommitments.IsActive)
+            {
+                header.Hash = header.CalculateHash();
+            }
         }
 
         if (BlockchainProcessor.IsMainProcessingThread)

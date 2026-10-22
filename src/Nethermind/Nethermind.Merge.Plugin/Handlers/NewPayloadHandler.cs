@@ -144,6 +144,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = _timeProvider.GetTimestamp() + (long)(_timeout.TotalSeconds * _timeProvider.TimestampFrequency);
+        BlockDiag? diag = request.Diag;
+        diag?.Stamp(BlockDiag.P.HEntry);
 
         using ExecutionPayloadPreparation preparation = new(request);
         using CancellationTokenSource senderRecoveryCancellation = new();
@@ -154,6 +156,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             StartSenderRecovery(request, senderRecoveryCancellation.Token);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         }
+        diag?.Stamp(BlockDiag.P.HDecoded);
         if (decodingResult.IsError)
         {
             senderRecoveryCancellation.Cancel();
@@ -162,6 +165,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         Block block = decodingResult.Data;
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
+        if (diag is not null)
+        {
+            block.Diag = diag;
+            diag.BlockHash = request.BlockHash;
+            diag.BlockNumber = request.BlockNumber;
+        }
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
@@ -170,6 +179,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             _lastBlockNumber = block.Number;
             _lastBlockGasLimit = block.Header.GasLimit;
         }
+        diag?.Stamp(BlockDiag.P.HLogged);
 
         // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
         // below come from TryGetBlock, which derives them from the payload's own body, so a matching header hash
@@ -185,6 +195,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // while computed hashes could incorrectly blacklist a valid block.
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
+        diag?.Stamp(BlockDiag.P.HHash);
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
@@ -297,6 +308,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
         // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
         if (!await WaitForParentCommitAsync(parentHeader, deadline)) return NewPayloadV1Result.Syncing;
+        diag?.Stamp(BlockDiag.P.HParent);
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
@@ -362,6 +374,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
+        diag?.Stamp(BlockDiag.P.HPreValidate);
 
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
@@ -663,6 +676,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return;
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
+        request.Diag?.Stamp(BlockDiag.P.HRlp);
         if (transactions.IsError || transactions.Data.Length == 0)
             // TryGetBlock reports the decoding error; nothing to recover otherwise.
             return;
@@ -671,6 +685,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec, request.Transactions, cancellationToken);
+            request.Diag?.Stamp(BlockDiag.P.HRecovery);
         }
         catch (Exception e)
         {
@@ -745,6 +760,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
+        block.Diag?.Stamp(BlockDiag.P.HValidated);
 
         ValidationCompletion blockProcessed = _blockValidationTasks.GetOrAdd(block.Hash!, static _ => new());
         completion = blockProcessed;
@@ -759,6 +775,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             try
             {
                 addResult = await suggest.TimeoutOn(timeoutTask);
+                block.Diag?.Stamp(BlockDiag.P.HSuggested);
             }
             catch (TimeoutException)
             {
@@ -824,8 +841,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
+                block.Diag?.Stamp(BlockDiag.P.HEnqueueCall);
                 TrackQueuedCopy(block.Hash!, ilDigest, Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers)));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
+                block.Diag?.Stamp(BlockDiag.P.HResume);
             }
             else
             {
@@ -930,6 +949,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         try
         {
+            block.Diag?.Stamp(BlockDiag.P.HEnqueueRun);
             ValueTask enqueue;
             using (workers.Enter()) enqueue = _processingQueue.Enqueue(block, processingOptions);
             await enqueue;

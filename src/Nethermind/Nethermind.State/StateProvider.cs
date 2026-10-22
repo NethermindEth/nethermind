@@ -958,16 +958,24 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         Volatile.Write(ref _spareRemovedWithStorage, removed);
     }
 
-    internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+    internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, BlockDiag? diag = null)
     {
         int writes = 0;
         int skipped = 0;
+        int created = 0;
+        int deleted = 0;
 
         foreach (AddressAsKey key in _blockChanges.Keys)
         {
             ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(key);
             if (change.Before != change.After)
             {
+                if (diag is not null)
+                {
+                    if (change.Before is null) created++;
+                    else if (change.After is null) deleted++;
+                }
+
                 change.Before = change.After;
                 writeBatch.Set(key, change.After);
                 writes++;
@@ -982,6 +990,14 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _metrics.IncrementStateTreeWrites(writes);
         if (skipped > 0)
             _metrics.IncrementStateSkippedWrites(skipped);
+
+        if (diag is not null)
+        {
+            diag.Add(BlockDiag.C.StateWrites, writes);
+            diag.Add(BlockDiag.C.StateSkipped, skipped);
+            diag.Add(BlockDiag.C.StateCreated, created);
+            diag.Add(BlockDiag.C.StateDeleted, deleted);
+        }
     }
 
     public bool WarmUp(Address address)

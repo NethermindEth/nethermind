@@ -93,8 +93,12 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
+        // Bench-only: JsonRpcContext.Current is the request's until the first await; other transports get their own.
+        BlockDiag diag = JsonRpcContext.Current?.Diag ?? new BlockDiag();
+        diag.Stamp(BlockDiag.P.ModEntry);
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
+        executionPayload.Diag = diag;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
         executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 
@@ -128,12 +132,15 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (await _locker.WaitAsync(LockTimeout))
         {
             long startTime = Stopwatch.GetTimestamp();
+            diag.Stamp(BlockDiag.P.ModLock);
             try
             {
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
+                diag.Stamp(BlockDiag.P.GcRegion);
                 try
                 {
                     ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    diag.Stamp(BlockDiag.P.HReturn);
                     // The answer is out before the block is committed; the region stays for the commit's allocations
                     // and ends when the block leaves the queue, on the thread that sees it leave.
                     _ = EndNoGCRegionAfterCommitAsync(region, executionPayload.BlockHash);

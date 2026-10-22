@@ -41,6 +41,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
+        context.Diag?.Stamp(Nethermind.Core.BlockDiag.P.RpcDispatch);
         if (context.IsAuthenticated && rpcRequest?.Method?.StartsWith("engine_newPayload", StringComparison.Ordinal) == true)
             gcKeeper.CancelPendingGC();
 
@@ -116,6 +117,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         // Rented before decoding so that requests the pool queues or sheds do not pay for, or hold, decoded params.
         IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
+        context.Diag?.Stamp(Nethermind.Core.BlockDiag.P.RpcRented);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
         {
             contextAwareModule.Context = context;
@@ -152,6 +154,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 return value;
             }
 
+            context.Diag?.Stamp(Nethermind.Core.BlockDiag.P.RpcParams);
             object? invocationResult = Invoke(method, rpcModule, parameters, parameterCount, context);
             ReturnParameters(parameters, returnParametersToPool);
 
@@ -162,6 +165,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     break;
                 case Task task:
                     await task;
+                    context.Diag?.Stamp(Nethermind.Core.BlockDiag.P.RpcDone);
                     resultWrapper = method.ReadTaskResult(task);
                     break;
                 default:

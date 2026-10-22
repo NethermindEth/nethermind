@@ -604,6 +604,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
+        // Bench-only: what the early apply had done when the block-end batch closes it.
+        if (_earlyApplier is not null && BlockDiag.Current is { } diag && diag.Get(BlockDiag.C.RootCommits) <= 1)
+        {
+            diag.Set(BlockDiag.C.EarlyActive, _earlyApplyClosed ? 0 : 1);
+            diag.Set(BlockDiag.C.EarlyAppliedAtBatch, Volatile.Read(ref _earlyAppliedSlots));
+        }
+
         CancelHintBal();
         _earlyApplyClosed = true;
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
@@ -616,10 +623,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
         // bundle before CollectAndApplySnapshot takes the block's changes. No tree means nothing was written.
+        BlockDiag? diag = _isReadOnly ? null : BlockDiag.Current;
         if (!_trieless)
         {
-            CommitStorageTrees();
-            Volatile.Read(ref _stateTree)?.Commit();
+            using (BlockDiag.Measure(diag, BlockDiag.F.PcStorageTrees))
+            {
+                CommitStorageTrees();
+            }
+
+            using (BlockDiag.Measure(diag, BlockDiag.F.PcStateTree))
+            {
+                Volatile.Read(ref _stateTree)?.Commit();
+            }
         }
 
         _storages.Clear();
@@ -627,6 +642,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
+        BlockDiag.Section snapshotSection = BlockDiag.Measure(diag, BlockDiag.F.PcSnapshot);
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
 
         if (shouldAddSnapshot)
@@ -642,6 +658,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
         }
 
+        snapshotSection.Dispose();
         _currentStateId = newStateId;
         _pausePrewarmer = false;
 
@@ -654,6 +671,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int reused = Interlocked.Exchange(ref _earlyReusedSlots, 0);
         int restored = Interlocked.Exchange(ref _earlyRestoredSlots, 0);
         int abandoned = Interlocked.Exchange(ref _earlyAbandonedTrees, 0);
+        if (BlockDiag.Current is { } diag)
+        {
+            diag.Set(BlockDiag.C.EarlyApplied, applied);
+            diag.Set(BlockDiag.C.EarlyReused, reused);
+            diag.Set(BlockDiag.C.EarlyRestored, restored);
+            diag.Set(BlockDiag.C.EarlyAbandoned, abandoned);
+        }
+
         ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
         if (logger.IsDebug) logger.Debug($"Early storage apply block={blockNumber} applied={applied} reused={reused} restored={restored} abandoned={abandoned}");
 
@@ -753,10 +778,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (account is null)
                     {
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
+                        BlockDiag.Current?.Add(BlockDiag.C.TrieStorageCleared, 1);
                         using IWorldStateScopeProvider.IStorageWriteBatch wb = CreateStorageWriteBatch(key.Value, 0);
                         wb.Clear();
                         continue;
                     }
+                    BlockDiag.Current?.Add(BlockDiag.C.TrieStorageRoots, 1);
                     account = account.WithChangedStorageRoot(storageRoot);
                     _dirtyAccounts[key] = account;
 
@@ -769,9 +796,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 OnAccountUpdated = null;
 
+                BlockDiag? diag = BlockDiag.Current;
+                diag?.Add(BlockDiag.C.TrieAccounts, _dirtyAccounts.Count);
+
                 // The per-account flat writes above already carry intra-block state for subsequent txs; only a
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
-                if (!_scope._trieless) _scope.StateTree.WriteAccounts(_dirtyAccounts);
+                using (BlockDiag.Measure(diag, BlockDiag.F.WsAccountTrie))
+                {
+                    if (!_scope._trieless) _scope.StateTree.WriteAccounts(_dirtyAccounts);
+                }
             }
             finally
             {

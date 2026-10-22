@@ -167,6 +167,10 @@ public class Block
     [JsonIgnore]
     public byte[][]? EncodedTransactions { get; set; }
 
+    /// <summary>Bench-only: the diagnostics of the newPayload request that delivered this block, if any.</summary>
+    [JsonIgnore]
+    public BlockDiag? Diag { get; set; }
+
     public override string ToString() => ToString(Format.Short);
 
     public string ToString(Format format) => format switch

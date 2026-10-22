@@ -66,6 +66,10 @@ public class BranchProcessor(
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
+        // Bench-only: the request diagnostics of the block in hand, for the code below on this thread.
+        BlockDiag? outerDiag = BlockDiag.Current;
+        BlockDiag.Current = suggestedBlock.Diag;
+        suggestedBlock.Diag?.Stamp(BlockDiag.P.BEntry);
         ParallelUnbalancedWork.WorkerGroup workerGroup =
             (options.ContainsFlag(ProcessingOptions.ReadOnlyChain) ? null : ParallelUnbalancedWork.GetCurrentGroup()) ?? new(Environment.ProcessorCount);
         // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
@@ -123,7 +127,9 @@ public class BranchProcessor(
             using (workerGroup.Enter())
             {
                 // Start prewarming as early as possible.
+                suggestedBlock.Diag?.Stamp(BlockDiag.P.PwCall);
                 prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+                suggestedBlock.Diag?.Stamp(BlockDiag.P.PwReturned);
                 prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
                 blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
                 BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
@@ -138,6 +144,8 @@ public class BranchProcessor(
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
+                BlockDiag? diag = suggestedBlock.Diag;
+                BlockDiag.Current = diag;
                 boundaryInclusionListSatisfied = null;
                 using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
@@ -167,6 +175,7 @@ public class BranchProcessor(
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
                 Block processedBlock;
                 TxReceipt[] receipts;
+                diag?.Stamp(BlockDiag.P.BProcessOne);
                 try
                 {
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
@@ -233,15 +242,24 @@ public class BranchProcessor(
                 if (notReadOnly && i == blocksCount - 1)
                 {
                     BlockExecutedEventArgs executed = new(suggestedBlock);
+                    diag?.Stamp(BlockDiag.P.Verdict);
                     BlockExecuted?.Invoke(this, executed);
                     verdictGiven = executed.Answered;
                 }
 
                 // Hint producers touch the active snapshot bundle, which CommitTree rotates.
-                DrainAndClear(ref prewarming);
+                using (BlockDiag.Measure(diag, BlockDiag.F.PwDrain))
+                {
+                    DrainAndClear(ref prewarming);
+                }
+                diag?.Stamp(BlockDiag.P.PwDrained);
 
                 // be cautious here as AuRa depends on processing
-                PreCommitBlock(suggestedBlock.Header);
+                using (BlockDiag.Measure(diag, BlockDiag.F.PreCommit))
+                {
+                    PreCommitBlock(suggestedBlock.Header);
+                }
+                diag?.Stamp(BlockDiag.P.PreCommitEnd);
                 processedBlocksCount = i + 1;
 
                 if (notReadOnly)
@@ -291,6 +309,7 @@ public class BranchProcessor(
         {
             try
             {
+                BlockDiag.Current = outerDiag;
                 blockProcessor.TransactionsExecuted -= OnTransactionsExecuted;
                 worldStateCloser?.Dispose();
             }

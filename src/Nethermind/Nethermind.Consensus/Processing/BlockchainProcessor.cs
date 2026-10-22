@@ -682,6 +682,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
 
                 Block block = blockRef.Block;
+                block.Diag?.Stamp(BlockDiag.P.QDequeued);
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
@@ -791,6 +792,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
     {
         error = null;
+        BlockDiag? diag = suggestedBlock.Diag;
+        diag?.Stamp(BlockDiag.P.PEntry);
         if (!_branchBuilder.RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
             return null;
@@ -811,13 +814,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         _stats.CaptureStartStats();
+        diag?.Stamp(BlockDiag.P.PStats);
 
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
+        diag?.Stamp(BlockDiag.P.PBranch);
 
+        diag?.Stamp(BlockDiag.P.SwStart);
         _stopwatch.Restart();
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
         _stopwatch.Stop();
+        diag?.Stamp(BlockDiag.P.SwStop);
         if (processedBlocks is null)
         {
             return null;
@@ -840,7 +847,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         int blockQueueCount = _blockQueue.Reader.Count;
         Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
         Metrics.ProcessingQueueSize = blockQueueCount;
-        _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
+        // The stats read the request's diagnostics from this thread.
+        BlockDiag? outerDiag = BlockDiag.Current;
+        BlockDiag.Current = diag;
+        try
+        {
+            _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
+        }
+        finally
+        {
+            BlockDiag.Current = outerDiag;
+        }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
         if (updateHead)

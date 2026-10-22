@@ -456,6 +456,9 @@ public class Startup : IStartup
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
         long startTime = _jsonRpcLocalStats.IsEnabled ? Stopwatch.GetTimestamp() : 0;
+        // Bench-only diagnostics of engine requests (the authenticated port): one object per request.
+        Nethermind.Core.BlockDiag? diag = jsonRpcUrl.IsAuthenticated ? new Nethermind.Core.BlockDiag() : null;
+        diag?.Stamp(Nethermind.Core.BlockDiag.P.HttpEntry);
 
         if (_jsonRpcProcessor.ProcessExit.IsCancellationRequested)
         {
@@ -468,6 +471,7 @@ public class Startup : IStartup
             await PushErrorResponseAsync(ctx, StatusCodes.Status401Unauthorized, ErrorCodes.InvalidRequest, "Authentication error");
             return;
         }
+        diag?.Stamp(Nethermind.Core.BlockDiag.P.HttpAuth);
 
         if (jsonRpcUrl.MaxRequestBodySize is not null)
         {
@@ -485,10 +489,12 @@ public class Startup : IStartup
         try
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
+            diag?.Stamp(Nethermind.Core.BlockDiag.P.HttpBody);
             JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
             {
                 RemoteAddress = ctx.Connection.RemoteIpAddress,
-                ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
+                ForwardedFor = ctx.Request.Headers["X-Forwarded-For"],
+                Diag = diag
             };
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 
@@ -498,6 +504,7 @@ public class Startup : IStartup
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
+            diag?.Stamp(Nethermind.Core.BlockDiag.P.HttpWritten);
         }
         catch (Exception e) when (responseSink is { BytesWritten: > 0 })
         {
@@ -539,6 +546,12 @@ public class Startup : IStartup
                 if (responseSink is not null)
                 {
                     await responseSink.CompleteAsync(ctx.RequestAborted);
+                }
+
+                if (diag?.BlockHash is not null)
+                {
+                    diag.Stamp(Nethermind.Core.BlockDiag.P.HttpComplete);
+                    Nethermind.Core.BlockDiag.LastCompleted = diag;
                 }
 
                 Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, collectedBody.BytesRead);

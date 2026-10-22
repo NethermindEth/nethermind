@@ -44,5 +44,8 @@ namespace Nethermind.JsonRpc
         /// Kept as <see cref="StringValues"/> so capturing it never builds a string; it is joined only when a debug line is formatted.
         /// </remarks>
         public StringValues ForwardedFor { get; init; }
+
+        /// <summary>Bench-only: the request's diagnostics, created for authenticated (engine) HTTP requests.</summary>
+        public Nethermind.Core.BlockDiag? Diag { get; set; }
     }
 }

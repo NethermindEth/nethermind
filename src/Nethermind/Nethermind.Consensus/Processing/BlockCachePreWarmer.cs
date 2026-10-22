@@ -251,6 +251,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             ReadAhead? readAhead = blockState.ReadsAhead ? new ReadAhead(this, blockState, _readAheadColdReads) : null;
             session.Start(() =>
             {
+                suggestedBlock.Diag?.Stamp(BlockDiag.P.PwRun);
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
                 using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
                 using ParallelUnbalancedWork.BackgroundWork? seedWork = seeds
@@ -274,6 +275,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 try
                 {
                     BeforeTransactionWorkers?.Invoke();
+                    suggestedBlock.Diag?.Stamp(BlockDiag.P.PwWorkers);
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
                     BeforeSeedingJoin?.Invoke();

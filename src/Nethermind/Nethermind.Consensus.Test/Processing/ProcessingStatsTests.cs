@@ -71,6 +71,42 @@ public class ProcessingStatsTests
         Assert.That(entry.Block.TxCount, Is.EqualTo(2));
     }
 
+    [Test]
+    public void Slow_block_JSON_carries_block_diag()
+    {
+        ProcessingStats stats = CreateStats();
+        Block block = Build.A.Block.WithNumber(7).TestObject;
+        BlockDiag diag = new() { BlockHash = block.Hash, BlockNumber = 7 };
+        diag.Stamp(BlockDiag.P.HttpEntry);
+        diag.Stamp(BlockDiag.P.SwStart);
+        diag.Add(BlockDiag.C.SlotWrites, 42);
+        diag.AddSection(BlockDiag.F.FinStateRoot, 10, 5_000);
+
+        BlockDiag? outer = BlockDiag.Current;
+        BlockDiag.Current = diag;
+        try
+        {
+            EmitAndParse(stats, block, 1_000);
+        }
+        finally
+        {
+            BlockDiag.Current = outer;
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(_slowBlockLogger.LogList.Last());
+        JsonElement d = doc.RootElement.GetProperty("diag");
+        Assert.That(d.GetProperty("number").GetUInt64(), Is.EqualTo(7));
+        Assert.That(d.GetProperty("src").GetString(), Is.EqualTo("rpc"));
+        Assert.That(d.GetProperty("t").EnumerateObject().Count(), Is.EqualTo((int)BlockDiag.P.Count));
+        Assert.That(d.GetProperty("t").GetProperty("http_entry").GetDouble(), Is.EqualTo(0));
+        Assert.That(d.GetProperty("t").GetProperty("sw_start").GetDouble(), Is.GreaterThanOrEqualTo(0));
+        Assert.That(d.GetProperty("t").GetProperty("h_entry").GetDouble(), Is.EqualTo(-1));
+        Assert.That(d.GetProperty("fin").EnumerateObject().Count(), Is.EqualTo((int)BlockDiag.F.Count));
+        Assert.That(d.GetProperty("fin").GetProperty("state_root")[1].GetDouble(), Is.EqualTo(5));
+        Assert.That(d.GetProperty("cnt").EnumerateObject().Count(), Is.EqualTo((int)BlockDiag.C.Count));
+        Assert.That(d.GetProperty("cnt").GetProperty("slot_writes").GetInt64(), Is.EqualTo(42));
+    }
+
     [TestCase(500_000, 1000, false, TestName = "Below_threshold_no_log")]
     [TestCase(1_500_000, 1000, true, TestName = "Above_threshold_logs")]
     [TestCase(1_000, 0, true, TestName = "Zero_threshold_logs_all")]
