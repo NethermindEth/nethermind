@@ -231,7 +231,7 @@ public class SyncDispatcherTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(syncFeed._results, Has.Count.EqualTo(syncFeed.Max), "the failed request must be retried");
-            Assert.That(logger.LogList.Exists(static l => l.StartsWith("Failure when executing request")), Is.EqualTo(!peerFault));
+            Assert.That(logger.LogList.Exists(l => l.Contains(failure.Message)), Is.EqualTo(!peerFault));
         }
     }
 
