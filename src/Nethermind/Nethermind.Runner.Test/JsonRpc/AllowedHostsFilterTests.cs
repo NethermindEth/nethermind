@@ -14,6 +14,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
@@ -60,6 +61,21 @@ public class AllowedHostsFilterTests
     [Test]
     public async Task Application_accepts_any_host_by_default([Values(RpcPort, EnginePort)] int port) =>
         Assert.That(await SendAsync(CreateConfig(), port, "evil.com"), Is.EqualTo(StatusCodes.Status204NoContent));
+
+    [TestCase("localhost:8551", ExpectedResult = true)]
+    [TestCase("http://localhost", ExpectedResult = true)]
+    [TestCase("localhost", ExpectedResult = false)]
+    public bool UseAllowedHosts_warns_about_entries_that_never_match(string host)
+    {
+        JsonRpcConfig config = CreateConfig();
+        config.EngineAllowedHosts = [host];
+        TestLogger logger = new();
+
+        new ApplicationBuilder(new ServiceCollection().BuildServiceProvider())
+            .UseAllowedHosts(config, new JsonRpcUrlCollection(LimboLogs.Instance, config, includeWebSockets: false), new ILogger(logger));
+
+        return logger.LogList.Count > 0;
+    }
 
     private static JsonRpcConfig CreateConfig() => new() { Enabled = true, Port = RpcPort, EnginePort = EnginePort };
 

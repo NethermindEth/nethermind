@@ -3,11 +3,11 @@
 
 using System;
 using System.Net;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 
 namespace Nethermind.Runner.JsonRpc;
 
@@ -22,11 +22,12 @@ namespace Nethermind.Runner.JsonRpc;
 internal static class AllowedHostsFilter
 {
     private const string AnyHost = "*";
+    private const string RejectionMessage = "invalid host specified";
 
-    public static void UseAllowedHosts(this IApplicationBuilder app, IJsonRpcConfig config, IJsonRpcUrlCollection urls)
+    public static void UseAllowedHosts(this IApplicationBuilder app, IJsonRpcConfig config, IJsonRpcUrlCollection urls, ILogger logger)
     {
-        StringSegment[]? allowedHosts = ToPatterns(config.AllowedHosts);
-        StringSegment[]? engineAllowedHosts = ToPatterns(config.EngineAllowedHosts);
+        StringSegment[]? allowedHosts = ToPatterns(config.AllowedHosts, nameof(IJsonRpcConfig.AllowedHosts), logger);
+        StringSegment[]? engineAllowedHosts = ToPatterns(config.EngineAllowedHosts, nameof(IJsonRpcConfig.EngineAllowedHosts), logger);
         if (allowedHosts is null && engineAllowedHosts is null) return;
 
         app.Use((ctx, next) =>
@@ -38,7 +39,7 @@ internal static class AllowedHostsFilter
             if (IsAllowed(ctx.Request.Host, patterns)) return next(ctx);
 
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return Task.CompletedTask;
+            return ctx.Response.WriteAsync(RejectionMessage);
         });
     }
 
@@ -46,9 +47,19 @@ internal static class AllowedHostsFilter
     internal static bool IsAllowed(HostString host, StringSegment[]? patterns) =>
         patterns is null ||
         !host.HasValue ||
-        IPAddress.TryParse(host.Host, out _) ||
-        HostString.MatchesAny(host.Value, patterns);
+        HostString.MatchesAny(host.Value, patterns) ||
+        IPAddress.TryParse(host.Host, out _);
 
-    private static StringSegment[]? ToPatterns(string[] hosts) =>
-        Array.IndexOf(hosts, AnyHost) >= 0 ? null : Array.ConvertAll(hosts, static h => new StringSegment(h));
+    private static StringSegment[]? ToPatterns(string[] hosts, string settingName, ILogger logger)
+    {
+        if (Array.IndexOf(hosts, AnyHost) >= 0) return null;
+
+        foreach (string host in hosts)
+        {
+            if (host.AsSpan().IndexOfAny(':', '/') >= 0 && logger.IsWarn)
+                logger.Warn($"JsonRpc.{settingName} entry '{host}' never matches. Use a host name without a port or scheme. IP addresses are always accepted.");
+        }
+
+        return Array.ConvertAll(hosts, static h => new StringSegment(h));
+    }
 }

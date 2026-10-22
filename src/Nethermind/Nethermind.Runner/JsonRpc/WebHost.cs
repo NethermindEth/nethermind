@@ -119,7 +119,8 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
             // Ahead of the startup filters, so that plugin middleware such as SSZ-REST cannot bypass it.
             builder.UseAllowedHosts(
                 _applicationServices.GetRequiredService<IConfigProvider>().GetConfig<IJsonRpcConfig>(),
-                _applicationServices.GetRequiredService<IJsonRpcUrlCollection>());
+                _applicationServices.GetRequiredService<IJsonRpcUrlCollection>(),
+                _logger);
             configure(builder);
 
             return builder.Build();
