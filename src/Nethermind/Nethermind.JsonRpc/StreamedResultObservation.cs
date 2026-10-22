@@ -15,6 +15,7 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
 {
     private bool _resultComplete;
     private bool _observerFailed;
+    private bool _flushStopped;
 
     /// <summary>A writer that forwards to <paramref name="writer"/> and reports what is written to the observer.</summary>
     /// <remarks>A counting writer stays a counting writer, since results such as the logs stream size themselves by it.</remarks>
@@ -28,13 +29,36 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
     {
         try
         {
-            observer.OnCompleted(written && _resultComplete && !_observerFailed);
+            observer.OnCompleted(written && _resultComplete && !_observerFailed && !_flushStopped);
         }
         catch (Exception e)
         {
             if (logger.IsError) logger.Error($"{observer.GetType().Name} failed to complete a streamed result", e);
         }
     }
+
+    /// <summary>Notes a flush that stops the result early.</summary>
+    /// <remarks>
+    /// A result without a status returns normally when a flush reports the reader completed or the flush cancelled,
+    /// for example when an HTTP client disconnects, so such a result can be cut short without an error.
+    /// </remarks>
+    private ValueTask<FlushResult> Flushed(ValueTask<FlushResult> flush)
+    {
+        if (!flush.IsCompletedSuccessfully) return AwaitFlushed(flush);
+
+        FlushResult result = flush.Result;
+        Flushed(result);
+        return new ValueTask<FlushResult>(result);
+    }
+
+    private async ValueTask<FlushResult> AwaitFlushed(ValueTask<FlushResult> flush)
+    {
+        FlushResult result = await flush;
+        Flushed(result);
+        return result;
+    }
+
+    private void Flushed(FlushResult result) => _flushStopped |= result.IsCompleted || result.IsCanceled;
 
     private void Written(ReadOnlySpan<byte> utf8Json)
     {
@@ -66,7 +90,7 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
             writer.Advance(bytes);
         }
 
-        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default) => writer.FlushAsync(cancellationToken);
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default) => observation.Flushed(writer.FlushAsync(cancellationToken));
 
         public override void CancelPendingFlush() => writer.CancelPendingFlush();
 
@@ -102,7 +126,7 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
             WrittenCount += bytes;
         }
 
-        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default) => _writer.FlushAsync(cancellationToken);
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default) => _observation.Flushed(_writer.FlushAsync(cancellationToken));
 
         public override void CancelPendingFlush() => _writer.CancelPendingFlush();
 

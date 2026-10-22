@@ -477,6 +477,26 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
+    public async Task Observer_is_told_a_result_stopped_by_its_flush_did_not_succeed([Values] bool readerCompleted)
+    {
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        RecordingObserver observer = new();
+        using JsonRpcSuccessResponse response = new() { Result = new StopsOnFlushResult(cancelFlush: !readerCompleted) };
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
+        if (readerCompleted) await pipe.Reader.CompleteAsync();
+
+        await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+        await pipe.Reader.CompleteAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Result, Is.EqualTo("[1]"));
+            Assert.That(observer.Succeeded, Is.False);
+        }
+    }
+
+    [Test]
     public async Task Observer_that_throws_does_not_change_the_response([Values] bool deferred)
     {
         using JsonRpcSuccessResponse unobserved = new() { Id = new JsonRpcId(7L), Result = new ChunkedResult(), Streaming = deferred ? CreateStreamingContext() : null };
@@ -553,7 +573,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         return envelope[start.Length..envelope.LastIndexOf(",\"id\":", StringComparison.Ordinal)];
     }
 
-    private sealed class RecordingObserver : IStreamedResultObserver
+    internal sealed class RecordingObserver : IStreamedResultObserver
     {
         private readonly ArrayBufferWriter<byte> _written = new();
 
@@ -586,6 +606,19 @@ public class JsonRpcResponseWriterStreamingIdTests
         {
             Succeeded = succeeded;
             throw new InvalidOperationException();
+        }
+    }
+
+    /// <summary>Stops like the status-less in-tree results do when a flush reports the reader completed or the flush cancelled.</summary>
+    private sealed class StopsOnFlushResult(bool cancelFlush) : IStreamableResult
+    {
+        public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            writer.Write("[1"u8);
+            if (cancelFlush) writer.CancelPendingFlush();
+            FlushResult flush = await writer.FlushAsync(cancellationToken);
+            if (!flush.IsCompleted && !flush.IsCanceled) writer.Write(",2"u8);
+            writer.Write("]"u8);
         }
     }
 
