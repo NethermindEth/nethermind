@@ -5,12 +5,14 @@ using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
@@ -51,6 +53,7 @@ public class JsonRpcGeneratorTests
     [TestCase("eth", "eth_syncing", "`result`: `false` when not syncing, else _object_", "- `isSyncing`:")]
     [TestCase("debug", "debug_getRawBlockAccessList", "`result`: _string_ (hex data)", "- `memory`:")]
     [TestCase("debug", "debug_traceTransaction", "- `structLogs`:", "- `customTracerResult`:")]
+    [TestCase("eth", "eth_getHeaderByNumber", "- `hash`: _string_ (hash) or `null`", "- `baseFeePerGas`: _string_ (hex integer) or `null`")]
     public void Response_documents_wire_shape(string ns, string method, string documented, string notDocumented)
     {
         string response = ReadResponse(ns, method);
@@ -160,6 +163,40 @@ public class JsonRpcGeneratorTests
         {
             AssertDocumentedProperties(wire.RootElement.GetProperty("accessList")[0], accessListResponse, 4);
             Assert.That(accessListResponse, Does.Contain("- `storageKeys`: array of _string_ (32-byte hex data)"));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ResultsWithNullMembers()
+    {
+        yield return new TestCaseData("eth", "eth_getHeaderByNumber",
+            new BlockHeaderForRpc(new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, null!, 0, 0, 0, 0, [])))
+            .SetArgDisplayNames("pending header");
+        yield return new TestCaseData("parity", "parity_pendingTransactions",
+            new ParityTransaction(new Transaction { SenderAddress = Address.Zero, Signature = new Signature(1, 1, 27) }, [], null!))
+            .SetArgDisplayNames("pending contract creation");
+        yield return new TestCaseData("eth", "eth_getTransactionReceipt", new ReceiptForRpc())
+            .SetArgDisplayNames("receipt without recipient");
+        yield return new TestCaseData("trace", "trace_get", ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace
+        {
+            BlockHash = Keccak.Zero,
+            Action = new ParityTraceAction { Type = "reward", RewardType = "block", Author = Address.Zero, TraceAddress = CappedArray<int>.Empty }
+        }).Single()).SetArgDisplayNames("reward trace");
+    }
+
+    [TestCaseSource(nameof(ResultsWithNullMembers))]
+    public void Response_documents_members_written_as_null(string ns, string method, object result)
+    {
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(result));
+        string[] lines = ReadResponse(ns, method).Split('\n');
+        JsonProperty[] nullProperties = [.. wire.RootElement.EnumerateObject().Where(p => p.Value.ValueKind is JsonValueKind.Null)];
+        Assert.That(nullProperties, Is.Not.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (JsonProperty property in nullProperties)
+                Assert.That(lines.Any(line =>
+                        line.StartsWith($"  - `{property.Name}`:", StringComparison.Ordinal) && line.EndsWith(" or `null`", StringComparison.Ordinal)), Is.True,
+                    $"{property.Name} is written as null but not documented as nullable");
         }
     }
 
