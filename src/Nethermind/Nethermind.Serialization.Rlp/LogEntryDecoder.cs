@@ -42,7 +42,7 @@ namespace Nethermind.Serialization.Rlp
             int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd, maxLogs + 1);
             Rlp.GuardLimit(logCount, maxLogs, logsRlpLimit);
 
-            LogEntry[] logs = new LogEntry[logCount];
+            LogEntry[] logs = logCount == 0 ? [] : new LogEntry[logCount];
             for (int i = 0; i < logCount; i++)
             {
                 logs[i] = Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
@@ -65,7 +65,7 @@ namespace Nethermind.Serialization.Rlp
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
             Rlp.GuardLimit(topicCount, rlp.Data.Length - position, RlpLimit.L4);
 
-            Hash256[] topics = new Hash256[topicCount];
+            Hash256[] topics = topicCount == 0 ? [] : new Hash256[topicCount];
             if (topics.Length > 0)
             {
                 rlp.DecodeLogTopic0(ref position, out topics[0]);
