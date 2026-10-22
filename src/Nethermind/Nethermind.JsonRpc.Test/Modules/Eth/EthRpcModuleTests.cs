@@ -624,6 +624,28 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_storage_values_match_the_per_slot_reads()
+    {
+        using Context ctx = await Context.Create();
+        BlockHeader head = ctx.Test.BlockTree.Head!.Header;
+        Dictionary<Address, UInt256[]> requests = new()
+        {
+            [TestItem.AddressA] = [UInt256.One, 2, UInt256.One],
+            [TestItem.AddressF] = [UInt256.One, 3],
+        };
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageValues", requests, "latest");
+
+        string expected = string.Join(",", requests.Select(entry =>
+            $"\"{entry.Key.Bytes.ToHexString(true)}\":[" + string.Join(",", entry.Value.Select(slot =>
+            {
+                ctx.Test.StateReader.GetStorage(head, entry.Key, in slot, out UInt256 value);
+                return $"\"{value.ToBigEndian().ToHexString(true)}\"";
+            })) + "]"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{" + expected + "},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_storage_values_accepts_leading_zero_key()
     {
         using Context ctx = await Context.Create();
