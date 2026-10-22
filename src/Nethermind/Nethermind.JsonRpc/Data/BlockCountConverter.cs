@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Text;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Exceptions;
@@ -22,11 +22,11 @@ internal sealed class BlockCountConverter : JsonConverter<ulong>
         {
             return GetRegisteredConverter().Read(ref reader, typeToConvert, options);
         }
-        catch (Exception e) when (e is FormatException or JsonException && reader.TokenType is JsonTokenType.String or JsonTokenType.Number)
+        catch (Exception e) when (e is FormatException or JsonException and not IExceptionWithSafePublicMessage
+            && reader.TokenType == JsonTokenType.String
+            && reader.GetString() is { } value
+            && !ulong.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out _))
         {
-            string value = reader.TokenType == JsonTokenType.String
-                ? reader.GetString()!
-                : reader.HasValueSequence ? Encoding.UTF8.GetString(reader.ValueSequence) : Encoding.UTF8.GetString(reader.ValueSpan);
             throw new SafePublicMessageFormatException($"invalid hex or decimal integer \"{value}\"");
         }
     }

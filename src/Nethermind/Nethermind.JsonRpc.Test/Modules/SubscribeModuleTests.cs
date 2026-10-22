@@ -495,6 +495,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized), "malformed eth_subscribe/logs args should map to InvalidParams, not InternalError");
         }
 
+        [TestCase("{\"address\":\"0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda\"}", "invalid address: hex has invalid length 19 after decoding; expected 20 for address")]
+        [TestCase("{\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b7\"]}", "hex has invalid length 31 after decoding; expected 32 for topic")]
+        public async Task LogsSubscription_with_malformed_args_returns_invalid_params_with_reason(string args, string reason)
+        {
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
+            string expectedResult = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"{reason}\"}},\"id\":67}}";
+            Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
         [Test]
         public async Task LogsSubscription_with_too_long_string_arguments_returns_invalid_params()
         {
