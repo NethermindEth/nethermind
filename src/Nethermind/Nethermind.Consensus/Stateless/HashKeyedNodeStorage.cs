@@ -314,7 +314,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
             return Unsafe.Add(ref filter, (nuint)Unsafe.ReadUnaligned<int>(ref keccak) & mask);
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int FindHeldListChildren(ReadOnlySpan<byte> rlp, Span<HeldChild> held)
         {
             ref byte first = ref MemoryMarshal.GetReference(rlp);
