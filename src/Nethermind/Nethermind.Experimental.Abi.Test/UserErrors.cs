@@ -395,6 +395,12 @@ public class UserErrors
             "0000000000000000000000000000000000000000000000000000000000002710" + // Length of the array, 10_000
             new string('0', 2 * 320_000) // One word per element, half of what 10_000 `uint256[2]` elements need
         ).SetName("uint256[2][] length beyond input at two words per element");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.Tuple(
+                AbiType.UInt256, AbiType.UInt256, AbiType.UInt256, AbiType.UInt256, AbiType.UInt256, AbiType.UInt256, AbiType.Bytes))),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the array
+            "00000000000000000000000000000000000000000000000000000000000003e8" + // Length of the array, 1000
+            string.Concat(Enumerable.Repeat("0000000000000000000000000000000000000000000000000000000000007d00", 1000)) // Offsets past the end, with no tails
+        ).SetName("(uint256,uint256,uint256,uint256,uint256,uint256,bytes)[] offsets with no tails");
         yield return MalformedInput(new AbiSignature("f").With(AbiType.String),
             "0000000000000000000000000000000000000000000000000000000000000020" +
             "00000000000000000000000000000000000000000000000000000000000f4240").SetName("string length 10^6 beyond input");

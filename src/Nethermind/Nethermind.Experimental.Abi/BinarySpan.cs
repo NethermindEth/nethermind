@@ -6,21 +6,29 @@ using Nethermind.Int256;
 
 namespace Nethermind.Experimental.Abi;
 
+/// <summary>Reads from a scoped reader; see <see cref="BinarySpanReader.Scoped{T, TCtx}"/>.</summary>
 public delegate T BinarySpanReaderFunc<out T, in TCtx>(TCtx ctx, ref BinarySpanReader r);
 
+/// <summary>Forward cursor over an ABI encoding, passed to <see cref="Abi{T}.Read"/>.</summary>
 public ref struct BinarySpanReader
 {
+    private const int InitialDynamicCapacity = 4;
+
     private readonly ReadOnlySpan<byte> _span;
     private int _position;
 
+    /// <summary>Number of bytes after the current position.</summary>
     public readonly int Remaining => _span.Length - _position;
 
+    /// <summary>Creates a reader positioned at the start of <paramref name="span"/>.</summary>
     public BinarySpanReader(ReadOnlySpan<byte> span)
     {
         _span = span;
         _position = 0;
     }
 
+    /// <summary>Returns the next <paramref name="count"/> bytes and advances past them.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">Fewer than <paramref name="count"/> bytes remain.</exception>
     public ReadOnlySpan<byte> ReadBytes(int count)
     {
         ReadOnlySpan<byte> result = _span.Slice(_position, count);
@@ -29,6 +37,9 @@ public ref struct BinarySpanReader
         return result;
     }
 
+    /// <summary>Returns the next <paramref name="length"/> bytes and advances past them and their zero padding to a multiple of 32 bytes.</summary>
+    /// <exception cref="AbiException">The padding is not zero.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The input ends before the padding does.</exception>
     public ReadOnlySpan<byte> ReadBytesPadded(int length)
     {
         ReadOnlySpan<byte> bytes = ReadBytes(length);
@@ -38,8 +49,10 @@ public ref struct BinarySpanReader
         return bytes;
     }
 
-    public void Advance(int bytes) => _position += bytes;
+    internal void Advance(int bytes) => _position += bytes;
 
+    /// <summary>Runs <paramref name="inner"/> on a reader that starts at the current position, then advances past what it read.</summary>
+    /// <remarks>Offsets in an ABI encoding are relative to the start of the enclosing tuple or array, which is where the scoped reader starts.</remarks>
     public T Scoped<T, TCtx>(TCtx ctx, BinarySpanReaderFunc<T, TCtx> inner)
     {
         BinarySpanReader reader = new(_span[_position..]);
@@ -48,7 +61,7 @@ public ref struct BinarySpanReader
         return result;
     }
 
-    public T ReadOffset<T>(AbiReadFunc<T> read, ref int next)
+    internal T ReadOffset<T>(AbiReadFunc<T> read, ref int next)
     {
         ReadOnlySpan<byte> offsetBytes = ReadBytes(32);
         int restorePosition = _position;
@@ -74,17 +87,22 @@ public ref struct BinarySpanReader
             if (headSize > r.Remaining) throw new AbiException();
             if (length == 0) return [];
 
-            T[] values = new T[length];
+            T[] values;
             int next = headSize;
             if (element.IsDynamic)
             {
+                // Only the offsets are known to fit the input, and an element can decode to far more memory than its offset word,
+                // so the result grows with the decoded elements rather than with the declared length.
+                values = new T[Math.Min(length, InitialDynamicCapacity)];
                 for (int i = 0; i < length; i++)
                 {
+                    if (i == values.Length) Array.Resize(ref values, (int)Math.Min(length, 2L * i));
                     values[i] = r.ReadOffset(element.Read, ref next);
                 }
             }
             else
             {
+                values = new T[length];
                 for (int i = 0; i < length; i++)
                 {
                     values[i] = element.Read(ref r);
@@ -96,27 +114,35 @@ public ref struct BinarySpanReader
         });
 }
 
+/// <summary>Writes to a scoped writer; see <see cref="BinarySpanWriter.Scoped{TCtx}"/>.</summary>
 public delegate void BinarySpanWriterAction<in TCtx>(TCtx ctx, ref BinarySpanWriter w);
 
+/// <summary>Forward cursor over an encoding buffer, passed to <see cref="Abi{T}.Write"/>.</summary>
+/// <remarks>Every byte inside the encoding is written, so the buffer does not need to be cleared first.</remarks>
 public ref struct BinarySpanWriter
 {
     private readonly Span<byte> _span;
     private int _position;
 
+    /// <summary>Number of bytes before the current position.</summary>
     public readonly int Written => _position;
 
+    /// <summary>Creates a writer positioned at the start of <paramref name="span"/>.</summary>
     public BinarySpanWriter(Span<byte> span)
     {
         _span = span;
         _position = 0;
     }
 
+    /// <summary>Copies <paramref name="bytes"/> and advances past them.</summary>
+    /// <exception cref="ArgumentException">Fewer bytes remain than <paramref name="bytes"/> holds.</exception>
     public void Write(scoped ReadOnlySpan<byte> bytes)
     {
         bytes.CopyTo(_span[_position..]);
         _position += bytes.Length;
     }
 
+    /// <summary>Copies <paramref name="bytes"/> and zero-pads them to a multiple of 32 bytes, advancing past both.</summary>
     public void WritePadded(scoped ReadOnlySpan<byte> bytes)
     {
         Write(bytes);
@@ -125,8 +151,10 @@ public ref struct BinarySpanWriter
         Take(padding).Clear();
     }
 
-    public void Advance(int bytes) => _position += bytes;
+    internal void Advance(int bytes) => _position += bytes;
 
+    /// <summary>Returns the next <paramref name="size"/> bytes for the caller to fill, and advances past them.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">Fewer than <paramref name="size"/> bytes remain.</exception>
     public Span<byte> Take(int size)
     {
         Span<byte> span = _span[_position..(_position + size)];
@@ -134,6 +162,8 @@ public ref struct BinarySpanWriter
         return span;
     }
 
+    /// <summary>Runs <paramref name="inner"/> on a writer that starts at the current position, then advances past what it wrote.</summary>
+    /// <remarks>Offsets in an ABI encoding are relative to the start of the enclosing tuple or array, which is where the scoped writer starts.</remarks>
     public void Scoped<TCtx>(TCtx ctx, BinarySpanWriterAction<TCtx> inner)
     {
         BinarySpanWriter writer = new(_span[_position..]);
@@ -141,7 +171,7 @@ public ref struct BinarySpanWriter
         _position += writer._position;
     }
 
-    public void WriteOffset<T>(AbiWriteAction<T> write, T value, ref int next)
+    internal void WriteOffset<T>(AbiWriteAction<T> write, T value, ref int next)
     {
         Span<byte> offsetLocation = Take(32);
         // Constant length (rather than `..^sizeof(int)`) lets the JIT unroll the clear.
