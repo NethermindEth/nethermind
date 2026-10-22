@@ -71,7 +71,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     private static readonly TimeSpan AnswerWait = TimeSpan.FromSeconds(30);
 
     [Test]
-    public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash)
+    public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash, [Values] bool txRootFirst)
     {
         using ManualResetEventSlim finishRecovery = new();
         TaskCompletionSource<ParallelUnbalancedWork.WorkerGroup?> entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -95,31 +95,44 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
         ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
         bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
+        Transaction[] transactions = payload.TryGetTransactions().Data!;
+        ISenderRecoveryProgress? inFlightAtDecoding = null;
         payload.OnDecoding = workers =>
         {
             decodingWorkers = workers;
+            inFlightAtDecoding = recovery.GetInFlight(transactions);
             // An invalid hash cancels recovery right after decoding, which could otherwise stop it before its first sender.
-            if (invalidHash && !singleProcessor) Assert.That(entered.Task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Recovery did not start before decoding finished");
+            if (invalidHash && !txRootFirst && !singleProcessor) Assert.That(entered.Task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Recovery did not start before decoding finished");
         };
-        Transaction[] transactions = payload.TryGetTransactions().Data!;
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
             wasProcessed: true, validateSuggestedBlock: true, senderRecovery: recovery,
-            specProvider: container.Resolve<ISpecProvider>());
+            specProvider: container.Resolve<ISpecProvider>(), txRootFirst: txRootFirst);
+        // Started after decoding, recovery can be cancelled by the hash check before it reaches its first sender.
+        bool mayNeverRecover = singleProcessor || (invalidHash && txRootFirst);
         ISenderRecoveryProgress? progress = null;
         try
         {
             ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
             progress = recovery.GetInFlight(transactions);
-            ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor
+            ParallelUnbalancedWork.WorkerGroup? observed = mayNeverRecover
                 ? null : await entered.Task.WaitAsync(AnswerWait);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodingWorkers, Is.Not.Null);
-                Assert.That(observed, singleProcessor ? Is.Null : Is.SameAs(decodingWorkers));
-                Assert.That(entered.Task.IsCompleted, Is.EqualTo(!singleProcessor));
+                Assert.That(inFlightAtDecoding, singleProcessor || txRootFirst ? Is.Null : Is.Not.Null,
+                    txRootFirst ? "recovery started before the transactions root" : "recovery did not start before decoding");
+                if (!mayNeverRecover)
+                {
+                    Assert.That(observed, Is.SameAs(decodingWorkers));
+                    Assert.That(progress, Is.Not.Null);
+                }
+                if (singleProcessor)
+                {
+                    Assert.That(entered.Task.IsCompleted, Is.False);
+                    Assert.That(progress, Is.Null);
+                }
                 Assert.That(result.Data.Status, Is.EqualTo(invalidHash ? PayloadStatus.Invalid : PayloadStatus.Valid));
-                Assert.That(progress, singleProcessor ? Is.Null : Is.Not.Null);
             }
         }
         finally
@@ -129,6 +142,117 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             if (progress is not null)
                 Assert.That(progress.WaitForCompletion(10_000), Is.True);
         }
+    }
+
+    /// <summary>
+    /// The Received line is written once per payload: deferred, after the block is handed to the processing queue
+    /// and before the verdict; otherwise before the block-hash check, as it always was.
+    /// </summary>
+    [Test]
+    public async Task Received_line_is_written_once_on_the_normal_path([Values] bool logAfterEnqueue)
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        int receivedBeforeHandOff = -1;
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            // The suggest is the request's last step on its own thread before the hand-off.
+            configure: (blockTree, stateReader) => blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(_ =>
+                {
+                    receivedBeforeHandOff = logger.ReceivedCount;
+                    return ValueTask.FromResult(AddBlockResult.Added);
+                }),
+            logAfterEnqueue: logAfterEnqueue,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await enqueued.Task.WaitAsync(AnswerWait);
+        // The line must not wait for the verdict, which lands only once it is written.
+        await logger.FirstReceived.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(receivedBeforeHandOff, Is.EqualTo(logAfterEnqueue ? 0 : 1));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>
+    /// A request that ends before the hand-off still writes its Received line, once: on an invalid hash, or when the
+    /// block validator turns the block down.
+    /// </summary>
+    [Test]
+    public async Task Received_line_is_written_once_when_the_request_ends_before_the_hand_off([Values] bool logAfterEnqueue, [Values] bool invalidHash)
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: invalidHash,
+            processingQueue: processingQueue,
+            logAfterEnqueue: logAfterEnqueue,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+        ExecutionPayload payload = ExecutionPayload.Create(block);
+        if (invalidHash) payload.BlockHash = TestItem.KeccakB;
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload).WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    /// <summary>Counts the handler's Received lines; the request writes them from whichever thread it is on.</summary>
+    private sealed class ReceivedLineLogger : InterfaceLogger
+    {
+        private int _receivedCount;
+
+        public int ReceivedCount => Volatile.Read(ref _receivedCount);
+        public Task FirstReceived => _firstReceived.Task;
+        private readonly TaskCompletionSource _firstReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Info(string text)
+        {
+            if (!text.StartsWith("Received ", StringComparison.Ordinal)) return;
+            Interlocked.Increment(ref _receivedCount);
+            _firstReceived.TrySetResult();
+        }
+
+        public void Warn(string text) { }
+        public void Debug(string text) { }
+        public void Trace(string text) { }
+        public void Error(string text, Exception? ex = null) { }
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => false;
+        public bool IsTrace => false;
+        public bool IsError => true;
     }
 
     [Test]
@@ -1244,7 +1368,10 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Func<bool>? parentProcessedNow = null,
         Action<IBlockTree, IStateReader>? configure = null,
         RecoverSignatures? senderRecovery = null,
-        ISpecProvider? specProvider = null)
+        ISpecProvider? specProvider = null,
+        bool txRootFirst = true,
+        bool logAfterEnqueue = true,
+        ILogManager? logManager = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -1257,7 +1384,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
         IMergeSyncController mergeSyncController = Substitute.For<IMergeSyncController>();
         IStateReader stateReader = Substitute.For<IStateReader>();
-        IMergeConfig mergeConfig = new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = timeoutMs };
+        IMergeConfig mergeConfig = new MergeConfig
+        {
+            TerminalTotalDifficulty = "0",
+            NewPayloadBlockProcessingTimeout = timeoutMs,
+            NewPayloadTxRootFirst = txRootFirst,
+            NewPayloadLogAfterEnqueue = logAfterEnqueue
+        };
         IReceiptConfig receiptConfig = new ReceiptConfig();
 
         BlockHeader parent = Build.A.BlockHeader
@@ -1323,6 +1456,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             senderRecovery ?? new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
             specProvider ?? Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
     }
 }

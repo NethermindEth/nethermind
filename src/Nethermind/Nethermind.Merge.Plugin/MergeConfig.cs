@@ -42,5 +42,7 @@ namespace Nethermind.Merge.Plugin
 
         public bool SimulateBlockProduction { get; set; } = false;
         public int? PostBlockGcDelayMs { get; set; } = null;
+        public bool NewPayloadTxRootFirst { get; set; } = true;
+        public bool NewPayloadLogAfterEnqueue { get; set; } = true;
     }
 }

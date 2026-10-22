@@ -79,6 +79,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private ulong _lastBlockNumber;
     private ulong _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
+    private readonly bool _txRootFirst;
+    private readonly bool _logAfterEnqueue;
 
     public NewPayloadHandler(
         IPayloadPreparationService payloadPreparationService,
@@ -123,6 +125,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (mergeConfig.NewPayloadCacheSize > 0)
             _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+        _txRootFirst = mergeConfig.NewPayloadTxRootFirst;
+        _logAfterEnqueue = mergeConfig.NewPayloadLogAfterEnqueue;
         _processingQueue.BlockExecuted += GetProcessingQueueOnBlockExecuted;
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
@@ -133,6 +137,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         < 0 => "👇",
         _ => "  "
     };
+
+    private void LogReceived(string requestStr, Block block)
+    {
+        _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
+        _lastBlockNumber = block.Number;
+        _lastBlockGasLimit = block.Header.GasLimit;
+    }
+
+    /// <summary>A payload's <c>Received</c> line held back until its block is handed to the processing queue.</summary>
+    /// <remarks>Written at most once: by <see cref="Write"/> after the hand-off, or on dispose by a request that ends before it.</remarks>
+    private sealed class ReceivedLine(NewPayloadHandler handler, string requestStr, Block block) : IDisposable
+    {
+        private bool _written;
+
+        public void Write()
+        {
+            if (_written) return;
+            _written = true;
+            handler.LogReceived(requestStr, block);
+        }
+
+        public void Dispose() => Write();
+    }
 
     /// <summary>
     /// Processes the execution payload and returns the <see cref="PayloadStatusV1"/>
@@ -152,9 +179,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
-            // Started before TryGetBlock so recovery overlaps the background transactions-root job it waits for.
-            StartSenderRecovery(request, senderRecoveryCancellation.Token);
-            decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            if (_txRootFirst)
+            {
+                // The transactions root gates the block-hash check, so it takes the workers before recovery does;
+                // recovery then starts on the transactions TryGetBlock decoded. A payload that fails to decode starts none.
+                decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+                if (!decodingResult.IsError) StartSenderRecovery(request, senderRecoveryCancellation.Token);
+            }
+            else
+            {
+                // Started before TryGetBlock so recovery overlaps the background transactions-root job it waits for.
+                StartSenderRecovery(request, senderRecoveryCancellation.Token);
+                decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            }
         }
         diag?.Stamp(BlockDiag.P.HDecoded);
         if (decodingResult.IsError)
@@ -173,12 +210,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         string requestStr = $"New Block:  {request}";
-        if (_logger.IsInfo)
-        {
-            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
-            _lastBlockNumber = block.Number;
-            _lastBlockGasLimit = block.Header.GasLimit;
-        }
+        // Deferred, the line is written once the block is handed to the processing queue, off the path to the hash
+        // check; disposing writes it on every path that returns or throws before that hand-off.
+        using ReceivedLine? receivedLine = _logAfterEnqueue && _logger.IsInfo ? new ReceivedLine(this, requestStr, block) : null;
+        if (receivedLine is null && _logger.IsInfo) LogReceived(requestStr, block);
         diag?.Stamp(BlockDiag.P.HLogged);
 
         // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
@@ -379,7 +414,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers, receivedLine);
 
         switch (result)
         {
@@ -720,7 +755,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers, ReceivedLine? receivedLine)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
@@ -843,6 +878,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
                 block.Diag?.Stamp(BlockDiag.P.HEnqueueCall);
                 TrackQueuedCopy(block.Hash!, ilDigest, Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers)));
+                // The block is on its way to the queue, so the deferred line costs the verdict nothing from here.
+                receivedLine?.Write();
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
                 block.Diag?.Stamp(BlockDiag.P.HResume);
             }
