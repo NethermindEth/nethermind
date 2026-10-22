@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.BlockAccessLists;
@@ -141,6 +142,41 @@ public class BlockAccessListStoreTests
         writer.Pump();
 
         Assert.That(ReadDurable(db, block), Is.EqualTo(bal));
+    }
+
+    [Test]
+    public async Task Decoded_bal_is_not_written_again_when_the_store_holds_it()
+    {
+        TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        BlockAccessListStore store = new(db, null, writer);
+        byte[] stored = [0xc1, 0x80];
+        Block block = Build.A.Block.WithNumber(5).WithBlockAccessList(new ReadOnlyBlockAccessList()).TestObject;
+        store.Insert(block.Number, block.Hash!, stored);
+        writer.Pump();
+
+        store.InsertFromBlockDeferred(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.QueuedCount, Is.Zero);
+            Assert.That(ReadDurable(db, block), Is.EqualTo(stored));
+        }
+    }
+
+    [Test]
+    public async Task Decoded_bal_is_written_when_the_store_does_not_hold_it()
+    {
+        TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        BlockAccessListStore store = new(db, null, writer);
+        ReadOnlyBlockAccessList bal = new();
+        Block block = Build.A.Block.WithNumber(5).WithBlockAccessList(bal).TestObject;
+
+        store.InsertFromBlockDeferred(block);
+        writer.Pump();
+
+        Assert.That(ReadDurable(db, block), Is.EqualTo(BlockAccessListDecoder.EncodeToBytes(bal)));
     }
 
     [Test]
