@@ -124,7 +124,7 @@ public class SnapshotTests
     }
 
     [Test]
-    public void EnumerationIncludesOnlyReachableWritesSinceRetain([Values] bool storage)
+    public void EnumerationAndBloomIncludeOnlyReachableWritesSinceRetain([Values] bool storage)
     {
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using INodeRecordBufferPin originalRetain = buffer.PinHead();
@@ -146,8 +146,12 @@ public class SnapshotTests
             ? snapshot.TryGetStorageNode((address!, TreePath.Empty.Append(1)), out TrieNode? inherited)
             : snapshot.TryGetStateNode(TreePath.Empty.Append(1), out inherited);
         ulong inheritedPointer = buffer.EnumerateNodes(updated.Pointer).First(node => node.Path == TreePath.Empty.Append(1)).Pointer;
+        BloomFilter bloom = ((NodeRecordBuffer)buffer).FindBloom(updated.Pointer)!;
+        snapshot.PopulateBloom();
+        snapshot.PopulateBloom();
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(bloom.Count, Is.EqualTo(2), "only the reachable writes, once");
             Assert.That(updated.Pointer >> 32, Is.EqualTo(original.Pointer >> 32));
             Assert.That(pointers, Has.Length.EqualTo(2));
             Assert.That(pointers, Does.Not.Contain(unrelated.Pointer));

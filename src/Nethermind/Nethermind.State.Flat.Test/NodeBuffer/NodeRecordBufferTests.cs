@@ -531,6 +531,7 @@ public class NodeRecordBufferTests
         buffer.SetRoot(null, Root(-1), kept.Pointer);
         AppendUniqueUntil(scenarioGeneration + 1);
         (ulong Pointer, byte[] Rlp) rewrite = AppendRecord(TestItem.KeccakB, Leaf(-4, 8));
+        buffer.AddToBlooms(rewrite.Pointer, rewrite.Pointer);
         AppendUniqueUntil(scenarioGeneration + LiveGenerations);
 
         bool keeps = compressedBudget > 0;
