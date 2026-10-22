@@ -21,13 +21,14 @@ public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKe
 {
     private readonly TreePath _accountPath = new(ValueKeccak.Compute(address.Bytes), 64);
     private readonly TreePath _startKey = new(startKey, 64);
+    private readonly List<(ValueHash256 Key, ValueHash256 Value)> _slots = [];
     private bool _isComplete;
 
     /// <summary>Whether the account exists and has a non-empty storage trie.</summary>
     public bool HasStorage { get; private set; }
 
     /// <summary>The collected slots as hashed key and 32-byte value, in hashed-key order.</summary>
-    public List<(ValueHash256 Key, ValueHash256 Value)> Slots { get; } = [];
+    public IReadOnlyList<(ValueHash256 Key, ValueHash256 Value)> Slots => _slots;
 
     /// <summary>The hashed key of the first slot after the collected ones, or <see langword="null"/> when none follows.</summary>
     public ValueHash256? NextKey { get; private set; }
@@ -61,7 +62,7 @@ public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKe
         ValueHash256 key = nodeContext.Path.Append(node.Key).Path;
         if (key.CompareTo(_startKey.Path) < 0) return;
 
-        if (Slots.Count >= limit)
+        if (_slots.Count >= limit)
         {
             NextKey = key;
             _isComplete = true;
@@ -72,7 +73,7 @@ public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKe
         ReadOnlySpan<byte> content = reader.DecodeByteArraySpan(RlpLimit.L32);
         ValueHash256 value = default;
         content.CopyTo(value.BytesAsSpan[(ValueHash256.MemorySize - content.Length)..]);
-        Slots.Add((key, value));
+        _slots.Add((key, value));
     }
 
     public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account)
