@@ -58,6 +58,7 @@ public static class BasePersistence
             : new StateId(BinaryPrimitives.ReadUInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
     }
 
+    [SkipLocalsInit]
     internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
     {
         Span<byte> bytes = stackalloc byte[8 + 32];
@@ -464,12 +465,13 @@ public static class BasePersistence
         where TFlatReader : struct, IHashedFlatReader
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
-        private readonly int _accountSpanBufferSize = 256;
+        private const int AccountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
+        [SkipLocalsInit]
         public Account? GetAccount(Address address)
         {
-            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
             int responseSize = _flatReader.GetAccount(address.ToAccountPath, valueBuffer);
             if (responseSize == 0)
             {
@@ -488,9 +490,10 @@ public static class BasePersistence
             return TryGetSlotRaw(address.ToAccountPath, slotHash, ref outValue);
         }
 
+        [SkipLocalsInit]
         public byte[]? GetAccountRaw(in ValueHash256 addrHash)
         {
-            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
             int responseSize = _flatReader.GetAccount(addrHash, valueBuffer);
             return responseSize == 0 ? null : valueBuffer[..responseSize].ToArray();
         }
