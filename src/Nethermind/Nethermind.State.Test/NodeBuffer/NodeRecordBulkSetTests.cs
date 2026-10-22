@@ -448,7 +448,9 @@ internal class NodeRecordBulkSetTests
         (TreePath Path, ulong Pointer)[] nodes = buffer.EnumerateNodes(root.Pointer).Select(node => (node.Path, node.Pointer)).ToArray();
         ulong newestTrieGeneration = nodes.Max(node => NodeRecordBufferTests.GenerationOf(node.Pointer));
         FillUntil(newestTrieGeneration + 1);
+        ulong rewriteStart = Frontier(buffer);
         (ValueHash256 Hash, ulong Pointer) newRoot = BulkSet(buffer, source, null, root, [(items[0].key, NewValue)], canParallelize: false);
+        NodeRecordBufferTests.AddToBlooms(buffer, newRoot.Pointer, rewriteStart);
         HashSet<(TreePath, ulong)> newNodes = [.. buffer.EnumerateNodes(newRoot.Pointer).Select(node => (node.Path, node.Pointer))];
         HashSet<TreePath> rewrittenPaths = [.. nodes.Where(node => !newNodes.Contains(node)).Select(node => node.Path)];
         // Few large filler leaves per generation keep false positives out of the blooms the dropped trie is compacted against.

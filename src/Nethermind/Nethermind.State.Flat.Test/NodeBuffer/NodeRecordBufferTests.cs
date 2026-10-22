@@ -667,6 +667,13 @@ public class NodeRecordBufferTests
         return buffer.TryLocate(pointer, out _);
     }
 
+    /// <summary>Adds the nodes written at or past <paramref name="lowerBound"/> under <paramref name="rootPointer"/> to the blooms, as the compactor worker does for a base snapshot.</summary>
+    public static void AddToBlooms(NodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound)
+    {
+        using IDisposable pin = buffer.PinAll();
+        buffer.AddToBlooms(rootPointer, lowerBound);
+    }
+
     private static bool Resolves(NodeRecordBuffer buffer, (ulong Pointer, byte[] Rlp) record)
     {
         using IDisposable pin = buffer.PinAll();
