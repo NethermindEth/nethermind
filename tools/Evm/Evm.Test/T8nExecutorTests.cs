@@ -73,6 +73,20 @@ public class T8nExecutorTests
         Assert.That(result.PostState.Rejected!.Select(rejected => rejected.Index), Is.EqualTo([0, 1]));
     }
 
+    [Test]
+    public void Execute_names_trace_files_by_included_transaction_count()
+    {
+        T8nCommandArguments arguments = WriteInputs(txs: $"[{SignedTx(TestItem.AddressB, nonce: 1)}, {SignedTx(TestItem.AddressB, nonce: 0)}]");
+        arguments.Trace = true;
+        arguments.OutputBaseDir = Path.Combine(_inputDirectory, "traces");
+
+        T8nExecutionResult result = T8nExecutor.Execute(arguments);
+
+        string[] traceFiles = [.. Directory.GetFiles(arguments.OutputBaseDir, "trace-*.jsonl").Select(path => Path.GetFileName(path))];
+        Assert.That(traceFiles, Has.Length.EqualTo(2).And.All.StartWith("trace-0-"));
+        Assert.That(traceFiles, Does.Contain($"trace-0-{result.PostState.Receipts!.Single().TransactionHash}.jsonl"));
+    }
+
     [TestCase("-1", false)]
     [TestCase("0x80", true)]
     public void Execute_applies_block_reward_unless_disabled(string reward, bool coinbaseRewarded)

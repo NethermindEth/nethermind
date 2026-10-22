@@ -133,7 +133,9 @@ public static class T8nExecutor
             blockReceiptsTracer.EndTxTrace();
             if (fileTracer is not null)
             {
-                File.Move(fileTracer.FileNames.Last(), Path.Combine(arguments.OutputBaseDir, $"trace-{txIndex}-{transaction.Hash}.jsonl"), overwrite: true);
+                // As in geth, the file index counts only the transactions included before this one.
+                int includedIndex = transactionExecutionReport.SuccessfulTransactions.Count;
+                File.Move(fileTracer.FileNames.Last(), Path.Combine(arguments.OutputBaseDir, $"trace-{includedIndex}-{transaction.Hash}.jsonl"), overwrite: true);
             }
 
             if (transactionResult.TransactionExecuted)
