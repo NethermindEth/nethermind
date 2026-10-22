@@ -279,22 +279,39 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         {
             ref byte filter = ref _filter;
             nuint mask = _filterMask;
-            // From the last child, so each child's bit shifts in below those after it. Native-width arithmetic
-            // throughout: 32-bit values would cost the guest an extension apiece.
-            ref byte keccak = ref Unsafe.Add(ref first, FullBranchFirstKeccak + (BranchChildren - 1) * KeccakItemLength);
-            nuint candidates = 0;
             // Any bit but the keccak prefix's, collected rather than branched on.
             nuint otherPrefixBits = 0;
-            for (int child = 0; child < BranchChildren; child++)
-            {
-                otherPrefixBits |= (nuint)(Unsafe.Add(ref keccak, -1) ^ KeccakItem);
-                // Sign-extended: the mask is below 2^31, and a zero-extension would cost the guest an instruction.
-                nuint index = (nuint)Unsafe.ReadUnaligned<int>(ref keccak) & mask;
-                candidates = candidates * 2 + Unsafe.Add(ref filter, index);
-                keccak = ref Unsafe.Subtract(ref keccak, KeccakItemLength);
-            }
+            // Unrolled, so each child's offsets fold into its loads. From the last child, so each child's bit shifts in
+            // below those after it.
+            nuint candidates = FilterChild(ref first, 15, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 14, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 13, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 12, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 11, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 10, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 9, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 8, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 7, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 6, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 5, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 4, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 3, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 2, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 1, ref filter, mask, ref otherPrefixBits);
+            candidates = candidates * 2 + FilterChild(ref first, 0, ref filter, mask, ref otherPrefixBits);
 
             return otherPrefixBits == 0 ? (int)candidates : -1;
+        }
+
+        /// <summary>Gets the filter's byte for the keccak of a full branch's <paramref name="child"/>, collecting its
+        /// prefix's bits but the keccak prefix's into <paramref name="otherPrefixBits"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nuint FilterChild(ref byte first, int child, ref byte filter, nuint mask, ref nuint otherPrefixBits)
+        {
+            ref byte keccak = ref Unsafe.Add(ref first, FullBranchFirstKeccak + child * KeccakItemLength);
+            otherPrefixBits |= (nuint)(Unsafe.Add(ref keccak, -1) ^ KeccakItem);
+            // Sign-extended: the mask is below 2^31, and a zero-extension would cost the guest an instruction.
+            return Unsafe.Add(ref filter, (nuint)Unsafe.ReadUnaligned<int>(ref keccak) & mask);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
