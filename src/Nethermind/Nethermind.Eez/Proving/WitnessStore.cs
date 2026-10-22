@@ -58,7 +58,7 @@ public sealed class WitnessStore([KeyFilter(WitnessStore.DbName)] IDb db) : IWit
             return;
         }
 
-        db.DeleteBlockNumberRange(_prunedBelow, number, DbName);
+        db.DeleteBlockNumberRange(_prunedBelow, number);
         db.ReclaimBlockNumberRange(_prunedBelow, number);
         _prunedBelow = number;
     }
