@@ -499,7 +499,17 @@ public partial class DebugRpcModuleTests
 
         if (expected is "type" or "eager")
         {
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            bool missingTransaction = expected == "eager" && method == "debug_traceTransaction";
+            int expectedCode = missingTransaction ? ErrorCodes.ResourceNotFound : ErrorCodes.InvalidParams;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+                if (missingTransaction)
+                {
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("transaction not found"), response);
+                    Assert.That(json["result"], Is.Null, response);
+                }
+            }
             return;
         }
 
