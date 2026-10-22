@@ -1314,7 +1314,7 @@ public partial class BlockProcessorTests
 
     private sealed class BoundaryHidingBlockProcessor(IBlockProcessor inner, bool rewards) : IBlockProcessor
     {
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => inner.TransactionsExecuted += value;
             remove => inner.TransactionsExecuted -= value;
@@ -2225,6 +2225,7 @@ public partial class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance,
+            Substitute.For<IWorldStateManager>(),
             preWarmer);
 
         return (processor, branchProcessor, stateProvider, stateHeaderProvider);
@@ -2255,7 +2256,7 @@ public partial class BlockProcessorTests
         (BlockProcessor processor, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).TestObject).TestObject;
         bool executed = false;
-        processor.TransactionsExecuted += () => executed = true;
+        processor.TransactionsExecuted += _ => executed = true;
 
         StateNotRetainedException exception = Assert.Throws<StateNotRetainedException>(() =>
             branchProcessor.Process(parent, [block], ProcessingOptions.None, NullBlockTracer.Instance))!;
@@ -2398,7 +2399,7 @@ public partial class BlockProcessorTests
         (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch();
 
         bool eventFired = false;
-        processor.TransactionsExecuted += () => eventFired = true;
+        processor.TransactionsExecuted += _ => eventFired = true;
 
         using IDisposable scope = stateProvider.BeginScope(null);
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -2515,9 +2516,18 @@ public partial class BlockProcessorTests
         Assert.That(accountChanges!.Select(static address => address.Value), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressC }));
     }
 
+    // One method per case: the assertion reads the process-wide Evm.Metrics.GasPriceMax, which any other block
+    // processed in the assembly sets, and a [NonParallelizable] on a parameterized method does not isolate it
+    // (nunit/nunit#3371).
     [Test]
     [NonParallelizable]
-    public void ProcessOne_OnOrOffTheMainProcessingThread_PublishesBlockGasPricesOnlyOnIt([Values] bool isBlockProcessingThread)
+    public void ProcessOne_OnTheMainProcessingThread_PublishesBlockGasPrices() => AssertProcessOnePublishesBlockGasPricesOnlyOnTheMainThread(true);
+
+    [Test]
+    [NonParallelizable]
+    public void ProcessOne_OffTheMainProcessingThread_DoesNotPublishBlockGasPrices() => AssertProcessOnePublishesBlockGasPricesOnlyOnTheMainThread(false);
+
+    private void AssertProcessOnePublishesBlockGasPricesOnlyOnTheMainThread(bool isBlockProcessingThread)
     {
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
         transactionsExecutor.ProcessTransactions(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<BlockReceiptsTracer>(), Arg.Any<CancellationToken>())
@@ -2626,7 +2636,7 @@ public partial class BlockProcessorTests
             NullBlockTracer.Instance);
 
         int externalHandlerCallCount = 0;
-        processor.TransactionsExecuted += () => externalHandlerCallCount++;
+        processor.TransactionsExecuted += _ => externalHandlerCallCount++;
 
         using IDisposable scope = stateProvider.BeginScope(null);
         Block block2 = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
@@ -2732,7 +2742,7 @@ public partial class BlockProcessorTests
     {
         IBlockProcessor processor = NullBlockProcessor.Instance;
 
-        Action handler = () => { };
+        Action<Block> handler = _ => { };
         processor.TransactionsExecuted += handler;
         processor.TransactionsExecuted -= handler;
     }
@@ -4226,7 +4236,8 @@ public partial class BlockProcessorTests
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
             new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<IWorldStateManager>());
 
         return new(block, stateHeaderProvider.Parent!, balManager, handler, executor, branchProcessor, container);
     }
@@ -4689,7 +4700,7 @@ public partial class BlockProcessorTests
 
         public int Attempts { get; private set; }
 
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => inner.TransactionsExecuted += value;
             remove => inner.TransactionsExecuted -= value;
@@ -4738,7 +4749,7 @@ public partial class BlockProcessorTests
         public int Attempts { get; private set; }
         public ProcessingOptions ObservedOptions { get; private set; }
 
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => inner.TransactionsExecuted += value;
             remove => inner.TransactionsExecuted -= value;

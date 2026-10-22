@@ -27,8 +27,9 @@ public static class StateOverridesExtensions
         overridableCodeInfoRepository.ResetPrecompileOverrides(spec);
         if (overrides is not null)
         {
-            foreach ((Address address, AccountOverride accountOverride) in overrides)
+            foreach ((Address address, AccountOverride? value) in overrides)
             {
+                AccountOverride accountOverride = value ?? new AccountOverride();
                 if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
                     throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
 
@@ -86,6 +87,18 @@ public static class StateOverridesExtensions
         }
     }
 
+    /// <summary>
+    /// Returns the error for an invalid precompile move, or <see langword="null"/> if the move is valid.
+    /// </summary>
+    /// <param name="source">The account to move.</param>
+    /// <param name="destination">The account to move the precompile to.</param>
+    /// <param name="isPrecompile">Whether the caller's code repository resolves the source as a precompile.</param>
+    /// <param name="overrides">The account overrides to apply.</param>
+    public static string? GetPrecompileMoveError(Address source, Address destination, bool isPrecompile, Dictionary<Address, AccountOverride> overrides) =>
+        !isPrecompile ? $"Account {source} is not a precompile"
+        : overrides.ContainsKey(destination) ? $"account {destination} is already overridden"
+        : null;
+
     private static void UpdateCode(
         this IWorldState stateProvider,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
@@ -96,16 +109,9 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.MovePrecompileToAddress is not null)
         {
-            if (!overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile)
-            {
-                throw new ArgumentException($"Account {address} is not a precompile");
-            }
-
-            // As in geth, a precompile cannot be moved onto an account that is overridden itself.
-            if (overrides.ContainsKey(accountOverride.MovePrecompileToAddress))
-            {
-                throw new ArgumentException($"account {accountOverride.MovePrecompileToAddress} is already overridden");
-            }
+            string? error = GetPrecompileMoveError(address, accountOverride.MovePrecompileToAddress,
+                overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile, overrides);
+            if (error is not null) throw new ArgumentException(error);
 
             overridableCodeInfoRepository.MovePrecompile(
                 currentSpec,
