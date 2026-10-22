@@ -25,11 +25,10 @@ using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
 using NSubstitute;
 using NUnit.Framework;
-using System.IO.Abstractions;
+using System.Net;
 using System.Security.Cryptography;
 using Nethermind.Blockchain.Headers;
 using Nethermind.EraE.Config;
-using Nethermind.Logging;
 using Nethermind.EraE.Store;
 using EraImportException = Nethermind.Era1.EraImportException;
 using KnownHeaders = Nethermind.Era1.KnownHeaders;
@@ -599,19 +598,17 @@ public class EraImporterTests
         await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
         IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
         string eraFile = EraPathUtils.GetAllEraFiles(sourceCtx.ResolveTempDirPath(), EraETestModule.TestNetwork).Single();
-        byte[] checksum = SHA256.HashData(await File.ReadAllBytesAsync(eraFile));
-        IRemoteEraClient client = Substitute.For<IRemoteEraClient>();
-        client.FetchManifestAsync(Arg.Any<CancellationToken>())
-            .Returns(new Dictionary<uint, RemoteEraEntry> { [0] = new(Path.GetFileName(eraFile), checksum) });
-        client.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                File.Copy(eraFile, callInfo.ArgAt<string>(1));
-                return Task.CompletedTask;
-            });
+        byte[] eraBytes = await File.ReadAllBytesAsync(eraFile);
+        string manifest = $"{Convert.ToHexStringLower(SHA256.HashData(eraBytes))}  {Path.GetFileName(eraFile)}\n";
+        HttpClient httpClient = new(new FakeEraServerHandler(Path.GetFileName(eraFile), eraBytes, manifest));
         await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree, configure: builder => builder
-            .AddSingleton<IEraStoreFactory>(ctx => new EraStoreFactory(
-                ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockValidator>(), ctx.Resolve<IFileSystem>(), ctx.Resolve<IEraEConfig>(), ctx.Resolve<ILogManager>(), null, client)));
+            .AddSingleton(httpClient)
+            .AddSingleton<IEraEConfig>(new EraEConfig
+            {
+                MaxEraSize = 16,
+                NetworkName = EraETestModule.TestNetwork,
+                RemoteBaseUrl = "http://era.test/"
+            }));
         IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
         if (localHeadersMatchArchive)
             InsertArchiveHeaders(targetTree, sourceTree, lowestLocalHeader, chainLength, MainChainHeader);
@@ -708,6 +705,18 @@ public class EraImporterTests
     {
         for (ulong i = 1; i < chainLength; i++)
             Assert.That(targetTree.FindBlock(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, i), Is.Null, $"archive body {i}");
+    }
+
+    private sealed class FakeEraServerHandler(string eraFileName, byte[] eraBytes, string manifest) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            string name = request.RequestUri!.Segments[^1];
+            HttpContent? content = name == eraFileName
+                ? new ByteArrayContent(eraBytes)
+                : name == new EraEConfig().RemoteChecksumFile ? new StringContent(manifest) : null;
+            return Task.FromResult(new HttpResponseMessage(content is null ? HttpStatusCode.NotFound : HttpStatusCode.OK) { Content = content! });
+        }
     }
 
     private sealed class RewritingStoreFactory(IEraStoreFactory inner, Func<ulong, Block, Block> rewrite) : IEraStoreFactory

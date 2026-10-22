@@ -48,6 +48,8 @@ public static class KnownHeaders
     /// starts from the parent hash of that header.
     /// When the lowest inserted beacon header is above the best known number and inside the range, the heights between
     /// them are checked the same way from that header, and the lowest of them must link to the header at the best known number.
+    /// When the range ends below that header, only the block at the height after the best known number is read, and its parent
+    /// must be the header at the best known number.
     /// The method writes nothing. It returns without a check for a run that has no local header above it, and for a
     /// run that ends at <paramref name="to"/> when height <paramref name="to"/> + 1 has no local header.
     /// </remarks>
@@ -120,7 +122,17 @@ public static class KnownHeaders
 
         ulong anchorNumber = lowestBeacon.Number;
         ulong gapStart = Math.Max(Math.Max(from, 1UL), blockTree.BestKnownNumber + 1);
-        if (anchorNumber <= scanTo || anchorNumber <= gapStart || anchorNumber > to + 1 || blockTree.FindLevel(anchorNumber) is not { BlockInfos.Length: > 0 } level)
+        if (anchorNumber <= scanTo || anchorNumber <= gapStart)
+            return;
+
+        if (anchorNumber > to + 1)
+        {
+            if (gapStart <= to)
+                EnsureLinksToBestKnown(blockTree, gapStart, [(await ReadBlock(readArchiveBlock, gapStart)).ParentHash!]);
+            return;
+        }
+
+        if (blockTree.FindLevel(anchorNumber) is not { BlockInfos.Length: > 0 } level)
             return;
 
         ICollection<Hash256> expectedHashes;
@@ -136,6 +148,11 @@ public static class KnownHeaders
         }
 
         expectedHashes = await EnsureAncestors(anchorNumber, expectedHashes, gapStart, readArchiveBlock, cancellation);
+        EnsureLinksToBestKnown(blockTree, gapStart, expectedHashes);
+    }
+
+    private static void EnsureLinksToBestKnown(IBlockTree blockTree, ulong gapStart, ICollection<Hash256> expectedHashes)
+    {
         if (gapStart != blockTree.BestKnownNumber + 1 || blockTree.FindLevel(blockTree.BestKnownNumber) is not { BlockInfos.Length: > 0 } below)
             return;
 

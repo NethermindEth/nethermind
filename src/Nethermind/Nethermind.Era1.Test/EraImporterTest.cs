@@ -491,6 +491,32 @@ public class EraImporterTest
     }
 
     [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_RangeEndsInsideBeaconGap_MustLinkToBestKnown([Values] bool linked)
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, _) = await BuildBeaconGapEnv(foreignBeaconHeaders: false);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+            Block first = linked
+                ? sourceTree.FindBlock(5, BlockTreeLookupOptions.None)!
+                : Build.A.Block.WithNumber(5).WithParentHash(Keccak.OfAnEmptyString).TestObject;
+
+            Func<Task> check = () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                targetTree,
+                5,
+                8,
+                number => Task.FromResult(number == 5 ? first : sourceTree.FindBlock(number, BlockTreeLookupOptions.None)),
+                CancellationToken.None);
+
+            if (linked)
+                Assert.That(check, Throws.Nothing);
+            else
+                Assert.That(check, Throws.TypeOf<EraVerificationException>());
+        }
+    }
+
+    [Test]
     public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_CancelledOverKnownHeights_ThrowsWithoutReadingArchive()
     {
         const int chainLength = 16;
