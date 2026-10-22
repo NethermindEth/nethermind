@@ -20,9 +20,12 @@ public class Examples
         Hash256 secretHash = Keccak.Compute("secret");
         byte[] cipher = "cipher"u8.ToArray();
         byte[] encoded = AbiCodec.Encode(signature, (secretHash, cipher));
-        Assert.That(encoded, Is.EqualTo(AbiCodec.Encode(signature, (secretHash.ValueHash256, cipher))));
-
         (ValueHash256 decodedHash, _) = AbiCodec.Decode(signature, encoded);
-        Assert.That(decodedHash.ToHash256(), Is.EqualTo(secretHash));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Is.EqualTo(AbiCodec.Encode(signature, (secretHash.ValueHash256, cipher))));
+            Assert.That(decodedHash.ToHash256(), Is.EqualTo(secretHash));
+        }
     }
 }

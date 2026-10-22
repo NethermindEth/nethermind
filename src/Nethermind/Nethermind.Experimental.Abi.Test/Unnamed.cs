@@ -22,9 +22,13 @@ public class Unnamed
             "0000000000000000000000005a4eab120fb44eb6684e5e32785702ff45ea344d"); // Contents of `data`, `abi.encode(batcher)`
 
         byte[] inner = AbiCodec.Decode(new AbiSignature().With(AbiType.Bytes), data);
+        Address decoded = AbiCodec.Decode(new AbiSignature().With(AbiType.Address), inner);
 
-        Assert.That(inner, Is.EqualTo(data[64..]));
-        Assert.That(AbiCodec.Decode(new AbiSignature().With(AbiType.Address), inner), Is.EqualTo(batcher));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner, Is.EqualTo(data[64..]));
+            Assert.That(decoded, Is.EqualTo(batcher));
+        }
     }
 
     private static IEnumerable<TestCaseData> NamedTestCases()
