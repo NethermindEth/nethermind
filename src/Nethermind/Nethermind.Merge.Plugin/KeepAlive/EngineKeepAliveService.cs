@@ -202,7 +202,7 @@ public sealed class EngineKeepAliveService : IDisposable
             DiskReadProbe disk = DiskReadProbe.Open(_filePath, _fileSize, _allowDirect);
             SetDiskReadMode(disk.Mode);
             if (disk.Mode != DiskKeepAliveReadMode.Direct && _logger.IsInfo)
-                _logger.Info($"Engine keep-alive: O_DIRECT is not available for {_filePath}; reading after dropping the block from the page cache.");
+                _logger.Info($"Engine keep-alive: O_DIRECT is not available for {_filePath}; reading after dropping the file from the page cache.");
             return disk;
         }
         catch (Exception e)
@@ -257,7 +257,7 @@ public sealed class EngineKeepAliveService : IDisposable
             if (disk.Mode != modeBefore)
             {
                 SetDiskReadMode(disk.Mode);
-                if (_logger.IsInfo) _logger.Info($"Engine keep-alive: O_DIRECT reads of {disk.Path} were refused; reading after dropping the block from the page cache.");
+                if (_logger.IsInfo) _logger.Info($"Engine keep-alive: O_DIRECT reads of {disk.Path} were refused; reading after dropping the file from the page cache.");
             }
 
             long micros = elapsed * 1_000_000 / Stopwatch.Frequency;

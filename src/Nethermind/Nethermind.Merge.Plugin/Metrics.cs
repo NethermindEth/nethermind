@@ -148,7 +148,7 @@ namespace Nethermind.Merge.Plugin
         public static IMetricObserver EngineKeepAliveJitterMicros { get; set; } = NoopMetricObserver.Instance;
 
         [GaugeMetric]
-        [Description("How engine keep-alive reads reach the device: 0 none, 1 O_DIRECT, 2 after dropping the block from the page cache")]
+        [Description("How engine keep-alive reads reach the device: 0 none, 1 O_DIRECT, 2 after dropping the file from the page cache")]
         public static int EngineKeepAliveDiskReadMode { get; set; }
     }
 }

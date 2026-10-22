@@ -14,9 +14,9 @@ namespace Nethermind.Merge.Plugin.KeepAlive;
 /// </summary>
 /// <remarks>
 /// The file is opened with <c>O_DIRECT</c>, and each read goes to the device. Where the file system refuses
-/// <c>O_DIRECT</c> (at open, or at the first read), the probe falls back to dropping the block from the page cache
-/// with <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> before a buffered <c>pread</c>; the block is clean, so the kernel
-/// drops it and the read goes to the device. The file is written once with random bytes and synced, so its blocks
+/// <c>O_DIRECT</c> (at open, or at the first read), the probe falls back to dropping the file from the page cache
+/// with <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> before each buffered <c>pread</c>, without read-ahead; the file is
+/// clean, so the kernel drops it and the read goes to the device. The file is written once with random bytes and synced, so its blocks
 /// are allocated on the device: a hole, or a block a file system can compress away, would be read without a request.
 /// </remarks>
 internal sealed class DiskReadProbe : IDisposable
@@ -117,8 +117,10 @@ internal sealed class DiskReadProbe : IDisposable
     {
         if (Mode == DiskKeepAliveReadMode.DropCache)
         {
-            // Best effort: a block the kernel keeps is read from the cache and shows as a fast read.
-            PosixFadvise(_fd, offset, BlockSize, POSIX_FADV_DONTNEED);
+            // The whole file, not the block: the page cache can hold the file in large folios, and the kernel drops
+            // only the folios that lie wholly inside the range (on 7.0, one 4 KiB block was never dropped). The file
+            // is small and only this probe reads it. Best effort: a block the kernel keeps shows as a fast read.
+            PosixFadvise(_fd, 0, 0, POSIX_FADV_DONTNEED);
         }
 
         nint read;

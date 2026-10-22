@@ -31,6 +31,6 @@ public enum DiskKeepAliveReadMode
     /// <summary><c>pread</c> on a file opened with <c>O_DIRECT</c>.</summary>
     Direct = 1,
 
-    /// <summary><c>posix_fadvise(POSIX_FADV_DONTNEED)</c> on the block, then a buffered <c>pread</c>.</summary>
+    /// <summary><c>posix_fadvise(POSIX_FADV_DONTNEED)</c> on the file, then a buffered <c>pread</c>.</summary>
     DropCache = 2,
 }
