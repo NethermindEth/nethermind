@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
@@ -21,14 +22,14 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
             if (value.Balance is not null)
             {
                 writer.WritePropertyName("balance"u8);
-                TypeInfoJsonSerializer.Serialize(writer, value.Balance, options);
+                WriteValue(writer, value.Balance, options);
             }
 
             ForcedNumberConversion.Value = NumberConversion.Decimal;
             if (value.Nonce is not null)
             {
                 writer.WritePropertyName("nonce"u8);
-                TypeInfoJsonSerializer.Serialize(writer, value.Nonce, options);
+                WriteValue(writer, value.Nonce, options);
             }
 
             if (!value.Code.IsEmpty || value.IncludeEmptyCode)
@@ -57,6 +58,9 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
             ForcedNumberConversion.Value = previousValue;
         }
     }
+
+    private static void WriteValue(Utf8JsonWriter writer, UInt256? value, JsonSerializerOptions options) =>
+        ((JsonConverter<UInt256?>)TypeInfoJsonSerializer.GetTypeInfo<UInt256?>(options).Converter).Write(writer, value, options);
 
     public override NativePrestateTracerAccount? Read(
         ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>

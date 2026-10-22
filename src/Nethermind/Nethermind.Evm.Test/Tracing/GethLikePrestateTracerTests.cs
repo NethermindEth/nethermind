@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,6 +28,60 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Write_WhenAccountPrimitivesArePresent_PreservesConvertersAndNullOmission(
+        [Values] bool includeValues, [Values] bool customConverter)
+    {
+        NativePrestateTracerAccount account = new()
+        {
+            Balance = includeValues ? UInt256.One : null,
+            Nonce = includeValues ? (UInt256)2 : null
+        };
+        JsonSerializerOptions options = new(SerializerOptions) { WriteIndented = false };
+        if (customConverter) options.Converters.Insert(0, new PrimitiveModeConverter());
+        string expected = includeValues
+            ? customConverter ? """{"balance":"Hex","nonce":"Decimal"}""" : """{"balance":"0x1","nonce":2}"""
+            : "{}";
+        NumberConversion previousValue = ForcedNumberConversion.Value;
+        try
+        {
+            ForcedNumberConversion.Value = NumberConversion.Raw;
+
+            string json = JsonSerializer.Serialize(account, options);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json, Is.EqualTo(expected), "each field must use the configured converter and number format");
+                Assert.That(ForcedNumberConversion.Value, Is.EqualTo(NumberConversion.Raw), "serialization must restore the caller's format");
+            }
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = previousValue;
+        }
+    }
+
+    [Test]
+    public void Write_WhenPrimitiveConverterThrows_RestoresNumberConversion()
+    {
+        NativePrestateTracerAccount account = new() { Balance = UInt256.One, Nonce = UInt256.One };
+        JsonSerializerOptions options = new(SerializerOptions);
+        options.Converters.Insert(0, new PrimitiveModeConverter(throwOnNonce: true));
+        NumberConversion previousValue = ForcedNumberConversion.Value;
+        try
+        {
+            ForcedNumberConversion.Value = NumberConversion.Raw;
+
+            Assert.Throws<InvalidOperationException>(() => JsonSerializer.Serialize(account, options));
+
+            Assert.That(ForcedNumberConversion.Value, Is.EqualTo(NumberConversion.Raw), "a failed converter must not leak its field's format");
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = previousValue;
+        }
+    }
+
     private static IEnumerable<TestCaseData> AuthoritySignatureCases()
     {
         yield return new TestCaseData(UInt256.One, UInt256.One, 0, true, true);
@@ -1266,4 +1322,17 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         .PushData(TestItem.AddressC.ToString(false, false).PadLeft(64, '0'))
         .Op(Instruction.SELFDESTRUCT)
         .Done;
+
+    private sealed class PrimitiveModeConverter(bool throwOnNonce = false) : JsonConverter<UInt256?>
+    {
+        public override void Write(Utf8JsonWriter writer, UInt256? value, JsonSerializerOptions options)
+        {
+            if (throwOnNonce && ForcedNumberConversion.Value == NumberConversion.Decimal)
+                throw new InvalidOperationException("nonce serialization failed");
+            writer.WriteStringValue(ForcedNumberConversion.Value.ToString());
+        }
+
+        public override UInt256? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+    }
 }
