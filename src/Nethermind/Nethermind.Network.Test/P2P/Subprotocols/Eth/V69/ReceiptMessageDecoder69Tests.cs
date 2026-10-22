@@ -41,7 +41,6 @@ public class ReceiptMessageDecoder69Tests
 
         RlpReader context = new(encoded);
         TxReceipt? decoded = decoder.Decode(ref context, RlpBehaviors.Eip658Receipts);
-        Array.Clear(encoded);
 
         Assert.That(decoded, Is.Not.Null);
         using (Assert.EnterMultipleScope())
