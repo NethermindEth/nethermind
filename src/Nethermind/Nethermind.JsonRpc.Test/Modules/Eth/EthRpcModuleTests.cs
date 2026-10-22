@@ -624,9 +624,9 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_storage_values_match_the_per_slot_reads()
+    public async Task Eth_get_storage_values_match_the_per_slot_reads([Values] bool useFlatDb)
     {
-        using Context ctx = await Context.Create();
+        using Context ctx = await Context.Create(useFlatDb: useFlatDb);
         BlockHeader head = ctx.Test.BlockTree.Head!.Header;
         Dictionary<Address, UInt256[]> requests = new()
         {
