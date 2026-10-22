@@ -374,27 +374,32 @@ public partial class EthRpcModule(
             ? ResultWrapper<Hash256>.Fail(UnknownAccount, ErrorCodes.InvalidInput)
             : result;
 
-    /// <summary>The fee rule <paramref name="rpcTx"/> breaks as a transaction to send, or null when its fees pass.</summary>
-    /// <remarks>Blob transactions are not sent this way, so they are not checked.</remarks>
-    protected ResultWrapper<Hash256>? CheckSendTransactionFees(SignableTransactionForRpc rpcTx) =>
-        rpcTx is not BlobTransactionForRpc
-        && _blockFinder.Head?.Header is { } head
-        && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(head).IsEip1559Enabled) is { } feeError
-            ? ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput)
+    /// <summary>
+    /// Checks the fees of <paramref name="rpcTx"/> as a transaction to send and fills the fees and gas it leaves out.
+    /// </summary>
+    /// <returns>The error that stops the send, or null when the check and the fill pass.</returns>
+    /// <remarks>
+    /// A blob transaction is sent without its sidecar and fails anyway, so it is not checked or filled:
+    /// the fill and its KZG work would be lost.
+    /// </remarks>
+    protected async Task<ResultWrapper<Hash256>?> CheckAndFillSendTransaction(SignableTransactionForRpc rpcTx)
+    {
+        if (rpcTx is BlobTransactionForRpc || _blockFinder.Head?.Header is not { } head)
+            return null;
+
+        IReleaseSpec spec = _specProvider.GetSpec(head);
+        if (FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
+            return ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput);
+
+        return await FillFeesAndGas(rpcTx, head, spec) is { } fillError
+            ? ResultWrapper<Hash256>.Fail(fillError.Error, fillError.ErrorCode)
             : null;
+    }
 
     private async Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
     {
-        if (CheckSendTransactionFees(rpcTx) is { } feeError)
-            return feeError;
-
-        // A blob transaction is sent without its sidecar and fails anyway, so the fill and its KZG work would be lost.
-        if (rpcTx is not BlobTransactionForRpc
-            && _blockFinder.Head?.Header is { } head
-            && await FillFeesAndGas(rpcTx, head, _specProvider.GetSpec(head)) is { } fillError)
-        {
-            return ResultWrapper<Hash256>.Fail(fillError.Error, fillError.ErrorCode);
-        }
+        if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
+            return sendError;
 
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
