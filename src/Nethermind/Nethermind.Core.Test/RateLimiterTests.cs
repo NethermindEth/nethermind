@@ -27,14 +27,14 @@ public class RateLimiterTests
         long counter = 0;
         TimeSpan[] maxBacklog = new TimeSpan[concurrency];
 
-        Task[] tasks = Enumerable.Range(0, concurrency).Select(async task =>
+        Task[] tasks = Enumerable.Range(0, concurrency).Select(async caller =>
         {
             while (Environment.TickCount64 < deadline)
             {
                 Interlocked.Increment(ref counter);
                 Task wait = rateLimiter.WaitAsync(CancellationToken.None);
                 TimeSpan backlog = rateLimiter.Backlog;
-                if (backlog > maxBacklog[task]) maxBacklog[task] = backlog;
+                if (backlog > maxBacklog[caller]) maxBacklog[caller] = backlog;
                 await wait;
             }
         }).ToArray();
@@ -44,8 +44,9 @@ public class RateLimiterTests
         int effectivePerSec = (int)(counter / ((Environment.TickCount64 - startTime) / 1000.0));
         // A stalled runner lowers the rate, so only the backlog shows that the limiter does not over-delay:
         // each caller holds at most one slot, and the backlog includes the slot the reader just took.
-        // Task.Delay truncates to whole milliseconds and its timer can fire early, so a caller can wake up to 2 ms before its slot.
-        TimeSpan backlogLimit = TimeSpan.FromSeconds((double)(concurrency + 1) / eventPerSec) + TimeSpan.FromMilliseconds(2);
+        // Task.Delay truncates to whole milliseconds, and timers run on a clock that moves in 4 ms steps on Linux with HZ=250,
+        // so a caller can wake up to 5 ms before its slot.
+        TimeSpan backlogLimit = TimeSpan.FromSeconds((double)(concurrency + 1) / eventPerSec) + TimeSpan.FromMilliseconds(5);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(effectivePerSec, Is.LessThanOrEqualTo((int)(eventPerSec * 1.5)));
