@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -92,9 +93,8 @@ public class TransactionReceiptsSubscription : Subscription
 
         BlockHeader header = e.BlockHeader;
         IReleaseSpec spec = _specProvider.GetSpec(header);
-        Block? block = null;
         // Holds each receipt as a ReceiptForRpc, or as its SerializedJson when it is shared with other subscriptions.
-        List<object> receipts = [];
+        using ArrayPoolList<object> receipts = new(_filterHashes is null ? e.TxReceipts.Length : Math.Min(_filterHashes.Count, e.TxReceipts.Length));
         int cumulativeLogIndex = 0;
         EventPayloads payloads = default;
         bool payloadsResolved = false;
@@ -112,21 +112,13 @@ public class TransactionReceiptsSubscription : Subscription
                 continue;
             }
 
-            // Looked up on the first match, as a filtered subscription matches nothing in most blocks.
-            block ??= _blockTree.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
-            if (block is null)
-            {
-                if (_logger.IsDebug) _logger.Debug($"TransactionReceipts subscription {Id}: block {header.ToString(BlockHeader.Format.FullHashAndNumber)} not found, its receipts are not published.");
-                return;
-            }
-
             if (!payloadsResolved)
             {
                 payloads = _payloads.ForEvent(e);
                 payloadsResolved = true;
             }
 
-            receipts.Add(CreateReceiptPayload(payloads, i, header, receipt, block.Transactions[i], spec, cumulativeLogIndex));
+            receipts.Add(CreateReceiptPayload(payloads, i, e, spec, cumulativeLogIndex));
 
             // Update cumulative log index
             cumulativeLogIndex += receipt.Logs?.Length ?? 0;
@@ -143,15 +135,16 @@ public class TransactionReceiptsSubscription : Subscription
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} sent {receipts.Count} receipts of block {header.Number}.");
     }
 
-    private static object CreateReceiptPayload(EventPayloads payloads, int position, BlockHeader header, TxReceipt receipt, Transaction transaction, IReleaseSpec spec, int cumulativeLogIndex)
+    private static object CreateReceiptPayload(EventPayloads payloads, int position, ReceiptsEventArgs e, IReleaseSpec spec, int cumulativeLogIndex)
     {
         if (payloads.TryGet(position, out SerializedJson payload)) return payload;
 
+        TxReceipt receipt = e.TxReceipts[position];
         ReceiptForRpc receiptForRpc = new(
             receipt.TxHash!,
             receipt,
-            header.Timestamp,
-            transaction.GetGasInfo(spec, header),
+            e.BlockHeader.Timestamp,
+            e.Transactions?[position].GetGasInfo(spec, e.BlockHeader) ?? default,
             cumulativeLogIndex
         );
 

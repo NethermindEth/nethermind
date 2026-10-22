@@ -82,13 +82,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             return serialized;
         }
 
-        /// <summary>Builds the event the monitor raises for a block whose transactions the block tree returns.</summary>
-        private ReceiptsEventArgs CreateReceiptsEventArgs(BlockHeader blockHeader, TxReceipt[] receipts, bool wasRemoved = false, bool logIndexPerReceipt = false, Transaction[]? transactions = null)
+        /// <summary>Builds the event the monitor raises for a block, with a transaction per receipt.</summary>
+        private static ReceiptsEventArgs CreateReceiptsEventArgs(BlockHeader blockHeader, TxReceipt[] receipts, bool wasRemoved = false, bool logIndexPerReceipt = false, Transaction[]? transactions = null)
         {
             transactions ??= receipts.Select(static r => Build.A.Transaction.WithHash(r.TxHash!).TestObject).ToArray();
             Block block = Build.A.Block.WithHeader(blockHeader).WithTransactions(transactions).TestObject;
-            _blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(block);
-            return new ReceiptsEventArgs(blockHeader, receipts, wasRemoved, logIndexPerReceipt);
+            return new ReceiptsEventArgs(block, receipts, wasRemoved, logIndexPerReceipt);
         }
 
         private static JsonElement[] GetReceipts(string? serialized)
@@ -216,7 +215,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             string? serialized = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out _, shouldReceiveResult: false);
 
             Assert.That(serialized, Is.Null);
-            _blockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
         }
 
         [Test]
@@ -308,6 +306,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 Assert.That(result.TryGetProperty("blobGasUsed", out JsonElement blobGasUsed) ? blobGasUsed.GetString() : null, Is.EqualTo(isBlobTx ? "0x40000" : null));
                 Assert.That(result.TryGetProperty("blobGasPrice", out JsonElement blobGasPrice) ? blobGasPrice.GetString() : null, Is.EqualTo(isBlobTx ? "0x1" : null));
             }
+        }
+
+        [Test]
+        public void TransactionReceiptsSubscription_without_block_transactions_still_delivers()
+        {
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
+            TxReceipt receipt = Build.A.Receipt.WithBlockNumber(1).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
+
+            string? serialized = GetTransactionReceiptsSubscriptionResult(null, new ReceiptsEventArgs(blockHeader, [receipt]), out _);
+
+            Assert.That(GetTransactionHashes(serialized), Is.EqualTo(new[] { TestItem.KeccakA.ToString() }));
         }
 
         [Test]
