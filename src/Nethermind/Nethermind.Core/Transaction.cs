@@ -210,12 +210,12 @@ namespace Nethermind.Core
         public UInt256? MaxFeePerBlobGas { get; set; } // eip4844
 
         /// <summary>
-        /// The aggregate fee budget, in wei, of an EIP-8141 frame transaction carrying EIP-7999 fees
-        /// <c>[max_fee, max_priority_fee_per_gas]</c>; <c>null</c> for one carrying per-gas fee caps.
+        /// The EIP-8141 <c>max_fee</c>: the total fee, in wei, a frame transaction pays at most for its execution,
+        /// state and blob gas. Zero for every other type.
         /// </summary>
-        /// <remarks>Such a transaction has no <c>max_fee_per_gas</c>; <see cref="DecodedMaxFeePerGas"/> then holds
+        /// <remarks>A frame transaction has no <c>max_fee_per_gas</c>; <see cref="DecodedMaxFeePerGas"/> holds
         /// <see cref="FrameTxValidation.ImpliedMaxFeePerGas"/>, the per-gas view mempool and block-building policy read.</remarks>
-        public UInt256? MaxFee { get; set; }
+        public UInt256 MaxFee { get; set; }
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 

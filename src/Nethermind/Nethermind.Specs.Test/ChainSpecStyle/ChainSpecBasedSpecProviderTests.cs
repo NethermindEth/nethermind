@@ -1013,7 +1013,6 @@ public class ChainSpecBasedSpecProviderTests
         const ulong eip7906Timestamp = 40;
         const ulong eip7805Timestamp = 50;
         const ulong eip8037Timestamp = 60;
-        const ulong eip7999Timestamp = 70;
         ChainSpec chainSpec = new()
         {
             Parameters = new ChainParameters
@@ -1025,7 +1024,6 @@ public class ChainSpecBasedSpecProviderTests
                 Eip7906TransitionTimestamp = eip7906Timestamp,
                 Eip7805TransitionTimestamp = eip7805Timestamp,
                 Eip8037TransitionTimestamp = eip8037Timestamp,
-                Eip7999TransitionTimestamp = eip7999Timestamp,
             },
             EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
@@ -1034,8 +1032,6 @@ public class ChainSpecBasedSpecProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7999Timestamp - 1)).IsEip7999Enabled, Is.False);
-            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7999Timestamp)).IsEip7999Enabled, Is.True);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8141Timestamp - 1)).IsEip8141Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8141Timestamp)).IsEip8141Enabled, Is.True);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8250Timestamp - 1)).IsEip8250Enabled, Is.False);

@@ -94,7 +94,7 @@ public class LightTransaction : Transaction
         Address? payerAddress = null,
         UInt256? payerExposure = null,
         Address? paymaster = null,
-        UInt256? maxFee = null)
+        UInt256 maxFee = default)
         : this(timestamp, sender, nonce, hash, value, gasLimit, gasPrice, maxFeePerGas, maxFeePerBlobGas,
             blobVersionHashes, poolIndex, size, proofVersion, blobCellMask, sparseBlobNetworkSize, 0,
             type, expiryDeadline, nonceKeys, payerAddress, payerExposure, paymaster, maxFee)
@@ -124,7 +124,7 @@ public class LightTransaction : Transaction
         Address? payerAddress,
         UInt256? payerExposure,
         Address? paymaster,
-        UInt256? maxFee)
+        UInt256 maxFee)
     {
         Type = type;
         Hash = hash;
@@ -134,8 +134,8 @@ public class LightTransaction : Transaction
         GasLimit = gasLimit;
         GasPrice = gasPrice; // means MaxPriorityFeePerGas
         DecodedMaxFeePerGas = maxFeePerGas;
-        // The record writes max_fee_per_blob_gas as zero for an EIP-7999 max_fee transaction, which has none.
-        MaxFeePerBlobGas = maxFee is null ? maxFeePerBlobGas : null;
+        // The record writes max_fee_per_blob_gas as zero for a frame transaction, which has none.
+        MaxFeePerBlobGas = type.SupportsFrames() ? null : maxFeePerBlobGas;
         MaxFee = maxFee;
         BlobVersionedHashes = blobVersionHashes;
         Timestamp = timestamp;

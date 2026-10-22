@@ -37,11 +37,12 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     /// supply one per entry the signed transaction will carry; entries with signature bytes are still verified.</remarks>
     public FrameSignatureForRpc[]? Signatures { get; set; }
 
-    /// <summary><c>max_fee_per_blob_gas</c>, a field of the signed payload unless it carries <see cref="MaxFee"/>.</summary>
+    /// <summary>A per-blob-gas price a call may give in place of <see cref="MaxFee"/>; not a field of the payload.</summary>
     public UInt256? MaxFeePerBlobGas { get; set; }
 
-    /// <summary>EIP-7999 <c>max_fee</c>: one budget, in wei, for all of the transaction's gas, in place of
-    /// <c>maxFeePerGas</c> and <c>maxFeePerBlobGas</c>.</summary>
+    /// <summary>EIP-8141 <c>max_fee</c>: one budget, in wei, for all of the transaction's execution, state and blob gas.</summary>
+    /// <remarks>Reported in place of <c>maxFeePerGas</c>, which the payload does not carry. A call may give
+    /// <c>maxFeePerGas</c> and <c>maxFeePerBlobGas</c> instead, which buy the budget those prices would.</remarks>
     public UInt256? MaxFee { get; set; }
 
     /// <summary><c>blob_versioned_hashes</c>, an unconditional field of the signed payload.</summary>
@@ -62,17 +63,9 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
 
         // Covered by the sig hash, so always reported: a consumer must be able to rebuild the payload.
-        if (transaction.MaxFee is { } maxFee)
-        {
-            // The per-gas cap the base reported is derived, not signed.
-            MaxFee = maxFee;
-            MaxFeePerGas = null;
-        }
-        else
-        {
-            MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
-        }
-
+        // The per-gas cap the base reported is derived, not signed.
+        MaxFee = transaction.MaxFee;
+        MaxFeePerGas = null;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
@@ -108,25 +101,35 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         tx.NonceKeys = NonceKeys;
         tx.Frames = frames;
         tx.FrameSignatures = signatures;
-        tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
         tx.BlobVersionedHashes = BlobVersionedHashes;
-        // EIP-7999 admits only the max_fee shape, so a call priced per gas is converted to the budget those prices
-        // buy, as the per-gas shape escrows it: the per-gas cap over max_gas plus the per-blob cap over the blob gas.
-        UInt256? maxFee = MaxFee ?? (spec is { IsEip7999Enabled: true } ? BudgetFor(tx, MaxFeePerGas ?? UInt256.Zero, spec) : null);
-        if (maxFee is { } budget)
-        {
-            tx.MaxFee = budget;
-            tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(budget, totalFrameGas);
-            tx.MaxFeePerBlobGas = null;
-        }
-
+        // A call priced per gas is converted to the budget those prices buy: the per-gas cap over max_gas plus the
+        // per-blob cap over the blob gas.
+        tx.MaxFee = MaxFee ?? BudgetFor(tx, MaxFeePerGas ?? UInt256.Zero, MaxFeePerBlobGas ?? UInt256.Zero, spec);
+        tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(tx.MaxFee, totalFrameGas);
         return tx;
     }
 
     public override bool ShouldSetBaseFee() => base.ShouldSetBaseFee() || MaxFee.IsPositive();
 
-    private static UInt256 BudgetFor(Transaction tx, in UInt256 maxFeePerGas, IReleaseSpec spec)
+    /// <summary>The budget a call priced per gas buys over <paramref name="maxGas"/>, or <see langword="null"/> for one
+    /// naming a <c>max_fee</c>.</summary>
+    /// <remarks>For a run whose <c>max_gas</c> is not known when the call is converted, such as a frame gas search.</remarks>
+    public UInt256? PerGasBudget(Transaction tx, ulong maxGas) =>
+        MaxFee is null ? Price(tx, MaxFeePerGas ?? UInt256.Zero, MaxFeePerBlobGas ?? UInt256.Zero, maxGas) : null;
+
+    /// <remarks>Without a fork to price <c>max_gas</c> by, the frame gas sum stands in.</remarks>
+    private static UInt256 BudgetFor(Transaction tx, in UInt256 maxFeePerGas, in UInt256 maxFeePerBlobGas, IReleaseSpec? spec)
     {
+        if (maxFeePerGas.IsZero && maxFeePerBlobGas.IsZero)
+        {
+            return UInt256.Zero;
+        }
+
+        if (spec is null)
+        {
+            return Price(tx, maxFeePerGas, maxFeePerBlobGas, tx.GasLimit);
+        }
+
         // The measurements below assume the processor's structural checks; a transaction failing them is left for the
         // processor to reject with its own error, and any budget will do.
         if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out _)
@@ -138,13 +141,17 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         // Measured as the processor does before pricing, so max_gas here is the one the budget is checked against.
         if (tx.NonceKeys is not null) tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
 
-        return !FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
-            || UInt256.MultiplyOverflow(maxFeePerGas, (UInt256)maxGas, out UInt256 gasBudget)
-            || UInt256.MultiplyOverflow(tx.MaxFeePerBlobGas.GetValueOrDefault(), (UInt256)tx.GetBlobGas(), out UInt256 blobBudget)
-            || UInt256.AddOverflow(gasBudget, blobBudget, out UInt256 budget)
-                ? UInt256.MaxValue
-                : budget;
+        return FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
+            ? Price(tx, maxFeePerGas, maxFeePerBlobGas, maxGas)
+            : UInt256.MaxValue;
     }
+
+    private static UInt256 Price(Transaction tx, in UInt256 maxFeePerGas, in UInt256 maxFeePerBlobGas, ulong maxGas) =>
+        UInt256.MultiplyOverflow(maxFeePerGas, (UInt256)maxGas, out UInt256 gasBudget)
+        || UInt256.MultiplyOverflow(maxFeePerBlobGas, (UInt256)tx.GetBlobGas(), out UInt256 blobBudget)
+        || UInt256.AddOverflow(gasBudget, blobBudget, out UInt256 budget)
+            ? UInt256.MaxValue
+            : budget;
 
     public new static FrameTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);

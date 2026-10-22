@@ -701,7 +701,6 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = 1000;
 
         CallOutputTracer tracer = new();
         TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0, tracer: tracer);
@@ -731,9 +730,6 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = 1000;
-        tx.GasPrice = 1;                 // max_priority_fee_per_gas
-        tx.DecodedMaxFeePerGas = 10;
 
         const ulong baseFee = 7;
         CallOutputTracer tracer = new();
@@ -755,72 +751,21 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_BlobFrameTx_MaxFeePerBlobGasBelowBlobBaseFee_Invalid()
+    public void Execute_TxParamMaxCost_BlobCarryingFrameTx_PricesBlobLegAtBlobBaseFee()
     {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.BlobVersionedHashes = [new byte[32]];
-
-        const ulong excessBlobGas = 50_000_000;
-        UInt256 feePerBlobGas = FeePerBlobGas(excessBlobGas);
-        Assert.That(feePerBlobGas, Is.GreaterThan(UInt256.One), "excess chosen so the blob base fee exceeds 1");
-        tx.MaxFeePerBlobGas = feePerBlobGas - 1;
-
-        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.InsufficientSenderBalance));
-            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
-            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
-        }
-    }
-
-    [Test]
-    public void Execute_TxParamMaxCost_BlobCarryingFrameTx_ReservesBlobLegAtBlobBaseFeeNotMaxFee()
-    {
-        // max_cost's blob leg reserves at the actual blob_base_fee, not max_fee_per_blob_gas.
+        // max_cost's blob leg is the blob gas at the block's blob_base_fee, paid from the max_fee budget.
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
             .PushData(0x06).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
         tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = 1000;
 
         TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        // Gas leg is the blobless Execute_TxParam_MaxCost value the same frame shape observes (max fee 1).
-        UInt256 expectedMaxCost = BlobFreeMaxCost + ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
-        AssertStorage(Observer, 0, expectedMaxCost);
-        UInt256 maxFeePricedMaxCost = BlobFreeMaxCost + tx.MaxFeePerBlobGas.Value * BlobGasCalculator.CalculateBlobGas(1);
-        Assert.That(expectedMaxCost, Is.LessThan(maxFeePricedMaxCost),
-            "max_cost priced below the max_fee_per_blob_gas reservation, i.e. at the blob base fee");
-    }
-
-    [TestCase(7ul, 2ul, 10ul, 2ul, TestName = "Execute_NonZeroBaseFee_PremiumIsTheRequestedPriorityFee")]
-    [TestCase(7ul, 5ul, 8ul, 1ul, TestName = "Execute_NonZeroBaseFee_PremiumCappedByMaxFeeMinusBaseFee")]
-    public void Execute_NonZeroBaseFee_PaysBeneficiaryThePremiumAndBurnsTheBaseFee(
-        ulong baseFee, ulong priorityFee, ulong maxFee, ulong expectedPremium)
-    {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.GasPrice = priorityFee;
-        tx.DecodedMaxFeePerGas = maxFee;
-
-        CallOutputTracer tracer = new();
-        TransactionResult result = Process(tx, baseFeePerGas: baseFee, tracer: tracer);
-
-        Assert.That(result.TransactionExecuted, Is.True);
-        UInt256 spentGas = (UInt256)tracer.GasSpent;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(spentGas * expectedPremium), "beneficiary gets the premium only");
-            Assert.That(_stateProvider.GetBalance(Sender) + _stateProvider.GetBalance(Beneficiary),
-                Is.EqualTo(1.Ether - spentGas * baseFee), "the base fee share is burned");
-        }
+        // Gas leg is the blobless Execute_TxParam_MaxCost value the same frame shape observes (a tip of 1 per gas).
+        AssertStorage(Observer, 0, BlobFreeMaxCost + ExpectedBlobFee(excessBlobGas: 0, blobCount: 1));
     }
 
     [Test]
@@ -829,7 +774,6 @@ public partial class FrameTxProcessorTests
         const ulong baseFee = 7;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.DecodedMaxFeePerGas = 10;
 
         FeesTracer tracer = new();
         TransactionResult result = Process(tx, baseFeePerGas: baseFee, tracer: tracer);
@@ -846,34 +790,15 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_MaxFeeBelowBaseFee_ReturnsMaxFeePerGasBelowBaseFee()
+    public void Execute_RequiredMaxFeeOverflows_RejectedWithoutCreditingBeneficiary()
     {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.DecodedMaxFeePerGas = 5;
-
-        TransactionResult result = Process(tx, baseFeePerGas: 10);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
-            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
-            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
-        }
-    }
-
-    [Test]
-    public void Execute_MaxFeeTimesGasLimitOverflows_RejectedWithoutCreditingBeneficiary()
-    {
-        // max_fee = max_priority = 2^255 with an even gas limit wraps maxCost to 0 mod 2^256: unchecked,
-        // the payer gate passes for free and a wrapped premium is credited out of nothing.
+        // A base fee of 2^255 with an even max_gas wraps required_max_fee to 0 mod 2^256: unchecked, the budget
+        // check passes for free and a wrapped fee is collected out of nothing.
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Recipient));
-        tx.GasPrice = UInt256.One << 255;
-        tx.DecodedMaxFeePerGas = UInt256.One << 255;
+        tx.MaxFee = UInt256.MaxValue;
 
-        TransactionResult result = Process(tx);
+        TransactionResult result = Process(tx, baseFeePerGas: UInt256.One << 255);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1005,8 +930,7 @@ public partial class FrameTxProcessorTests
     [TestCase((byte)0x00, 6UL, TestName = "Execute_TxParam_TxType")]
     [TestCase((byte)0x01, 0UL, TestName = "Execute_TxParam_Nonce")]
     [TestCase((byte)0x03, 1UL, TestName = "Execute_TxParam_MaxPriorityFee")]
-    [TestCase((byte)0x04, 1UL, TestName = "Execute_TxParam_MaxFee")]
-    [TestCase((byte)0x05, 0UL, TestName = "Execute_TxParam_MaxBlobFee")]
+    [TestCase((byte)0x04, DefaultMaxFeeWei, TestName = "Execute_TxParam_MaxFee")]
     [TestCase((byte)0x06, BlobFreeMaxCost, TestName = "Execute_TxParam_MaxCost")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
@@ -4247,8 +4171,12 @@ public partial class FrameTxProcessorTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1, // max_priority_fee_per_gas
-            DecodedMaxFeePerGas = 1,
+            // Ample at a zero base fee, so the tip of 1 per gas bounds max_cost to max_gas.
+            MaxFee = DefaultMaxFee,
         };
+
+    private const ulong DefaultMaxFeeWei = 1_000_000_000_000_000_000;
+    private static readonly UInt256 DefaultMaxFee = DefaultMaxFeeWei;
 
     [Test]
     public void Execute_AssertionOpcodeOutsideAssertFrame_HaltsExceptionally(
@@ -5634,8 +5562,6 @@ public partial class FrameTxProcessorTests
             tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: storageHelper));
         }
 
-        // Leaves a priority fee over the base fee, so the beneficiary is credited in every case.
-        tx.DecodedMaxFeePerGas = 2;
         if (framePayer == FramePayer.CodelessSponsor)
         {
             tx.FrameSignatures =
@@ -5754,7 +5680,6 @@ public partial class FrameTxProcessorTests
                 stateGasLimit: (ulong)(GasCostOf.NewAccountState + GasCostOf.CodeDepositState * senderInit.Length), UInt256.Zero, default),
             SelfVerifyFrame());
         tx.SenderAddress = smartSender;
-        tx.DecodedMaxFeePerGas = 2;
 
         using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: true), (UInt256)baseFeePerGas, out TxReceipt receipt);
         JsonElement pre = document.RootElement.GetProperty("pre");

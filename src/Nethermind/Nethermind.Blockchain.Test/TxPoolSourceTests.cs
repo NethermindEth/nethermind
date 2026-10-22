@@ -423,8 +423,8 @@ public class TxPoolSourceTests
             Nonce = 0,
             GasLimit = 1_000_000,
             GasPrice = 1,
+            MaxFee = 1.Ether,
             DecodedMaxFeePerGas = 100.GWei,
-            MaxFeePerBlobGas = 1000,
             Frames =
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
@@ -477,21 +477,19 @@ public class TxPoolSourceTests
         Assert.That(result.Contains(tx), Is.EqualTo(coversBudget));
     }
 
-    private static readonly OverridableReleaseSpec BogotaWithMaxFee = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip7999Enabled = true };
+    private static readonly OverridableReleaseSpec BogotaFrames = new(Bogota.Instance) { IsEip8141Enabled = true };
     private static readonly BlockHeader MaxFeeParent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).WithBaseFee(1.GWei).TestObject;
 
     /// <summary>A max_fee frame tx one wei short of <c>required_max_fee</c> at <see cref="MaxFeeParent"/>'s child, or exactly at it.</summary>
     private static Transaction BuildMaxFeeFrameTx(bool blobs, bool coversBudget, out UInt256 baseFee)
     {
-        baseFee = BaseFeeCalculator.Calculate(MaxFeeParent, BogotaWithMaxFee);
-        BlobGasCalculator.TryCalculateFeePerBlobGas(0, BogotaWithMaxFee.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+        baseFee = BaseFeeCalculator.Calculate(MaxFeeParent, BogotaFrames);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(0, BogotaFrames.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
 
         Transaction tx = BuildFrameBlobTxWithSidecar(senderByte: 1, blobCount: blobs ? 1 : 0);
         if (!blobs) tx.NetworkWrapper = null;
         tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
-        tx.MaxFeePerBlobGas = null;
-        tx.MaxFee = 0;
-        FrameTxValidation.TryCalculateGasBudget(tx, BogotaWithMaxFee, out _, out _, out ulong maxGas);
+        FrameTxValidation.TryCalculateGasBudget(tx, BogotaFrames, out _, out _, out ulong maxGas);
         UInt256 requiredMaxFee = (UInt256)maxGas * baseFee + (UInt256)tx.GetBlobGas() * feePerBlobGas;
         UInt256 maxFee = coversBudget ? requiredMaxFee : requiredMaxFee - 1;
         tx.MaxFee = maxFee;
@@ -502,7 +500,7 @@ public class TxPoolSourceTests
 
     private static Transaction[] GetMaxFeeFrameTxSelection(ITxPool txPool)
     {
-        TestSingleReleaseSpecProvider specProvider = new(BogotaWithMaxFee);
+        TestSingleReleaseSpecProvider specProvider = new(BogotaFrames);
         txPool.SupportsBlobs.Returns(true);
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);

@@ -44,12 +44,9 @@ public static class FrameTxValidation
     public const string ArbitrarySignatureWithSigner = "ARBITRARY signatures must not name a signer";
     public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
-    public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
-    public const string MaxFeeNotEnabled = "max_fee fees are not enabled";
-    public const string PerGasFeesNotAllowed = "per-gas fee caps are not allowed once max_fee fees are enabled";
 
     /// <summary>
     /// Runs the EIP-8141 §Constraints checks a frame transaction can be judged on without state, over its frame
@@ -242,15 +239,6 @@ public static class FrameTxValidation
             }
         }
 
-        // A value check, not a presence check: the decoder always populates both blob fields. Refusing a
-        // blob-carrying frame tx here would be a block-validity rule, since BlockValidator reaches this.
-        bool hasBlobs = transaction.BlobVersionedHashes is { Length: > 0 };
-        if (!hasBlobs && transaction.MaxFeePerBlobGas is { IsZero: false })
-        {
-            error = BlobFeeWithoutBlobs;
-            return false;
-        }
-
         // The EIP-7594 blob-count limit and versioned-hash version byte need the release spec, so they
         // are enforced by FrameTxFieldsTxValidator rather than in this stateless check.
         return true;
@@ -285,26 +273,12 @@ public static class FrameTxValidation
         return total;
     }
 
-    /// <summary>The highest uniform per-gas price an EIP-7999 <c>max_fee</c> covers over <paramref name="gasLimit"/>.</summary>
+    /// <summary>The highest uniform per-gas price <c>max_fee</c> covers over <paramref name="gasLimit"/>.</summary>
     /// <remarks>Policy only, for the mempool and block-building code that ranks by a per-gas cap: execution checks
     /// the budget itself. Over <see cref="Transaction.GasLimit"/>, which omits the intrinsic cost, it overstates
     /// the cap execution enforces, so a transaction it admits can still fail the budget check at inclusion.</remarks>
     public static UInt256 ImpliedMaxFeePerGas(in UInt256 maxFee, ulong gasLimit) =>
         gasLimit == 0 ? maxFee : maxFee / gasLimit;
-
-    /// <summary>Whether the fee fields of <paramref name="transaction"/> take the shape the fork requires.</summary>
-    /// <remarks>EIP-7999 replaces <c>[max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c> with
-    /// <c>[max_fee, max_priority_fee_per_gas]</c>. The decoder tells them apart without fork context.</remarks>
-    public static bool HasFeesForFork(Transaction transaction, IReleaseSpec spec, out string? error)
-    {
-        error = (transaction.MaxFee is not null, spec.IsEip7999Enabled) switch
-        {
-            (true, false) => MaxFeeNotEnabled,
-            (false, true) => PerGasFeesNotAllowed,
-            _ => null
-        };
-        return error is null;
-    }
 
     /// <summary>
     /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's
@@ -667,53 +641,24 @@ public static class FrameTxValidation
         ulong MaxGas) : IIntrinsicGasMemo;
 
     /// <summary>
-    /// The EIP-8141 <c>TXPARAM(0x06)</c> maximum cost of <paramref name="transaction"/>: its whole gas budget
-    /// priced at <c>max_fee_per_gas</c>, plus the blob gas priced at <c>max_fee_per_blob_gas</c>.
+    /// The most <paramref name="transaction"/> can cost its payer at any base fees: its <c>max_fee</c>, which bounds
+    /// the <c>TXPARAM(0x06)</c> <c>max_cost</c> execution collects at the including block's base fees.
     /// </summary>
-    /// <remarks>
-    /// The upper-bound form: the gas leg is exactly what execution escrows, while the blob leg is priced at
-    /// <c>max_fee_per_blob_gas</c> where execution escrows at the actual blob base fee. Callers that must not
-    /// under-reserve (the mempool exposure bound, the simulated APPROVE gate) want this form.
-    /// </remarks>
-    /// <returns><c>false</c> when the transaction cannot be priced or the cost overflows; <paramref name="maxCost"/> is then 0.</returns>
+    /// <remarks>Callers that must not under-reserve (the mempool exposure bound, the simulated APPROVE gate) want this form.</remarks>
+    /// <returns><c>false</c> when the transaction cannot be priced; <paramref name="maxCost"/> is then 0.</returns>
     public static bool TryCalculateMaxCost(Transaction transaction, IReleaseSpec spec, out UInt256 maxCost)
     {
-        maxCost = UInt256.Zero;
-        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas))
-        {
-            return false;
-        }
-
-        // EIP-7999: max_cost depends on the including block's base fees, and max_fee bounds it at any of them.
-        if (transaction.MaxFee is { } maxFee)
-        {
-            maxCost = maxFee;
-            return true;
-        }
-
-        if (UInt256.MultiplyOverflow((UInt256)maxGas, transaction.DecodedMaxFeePerGas, out UInt256 gasCost))
-        {
-            return false;
-        }
-
-        ulong blobGas = transaction.GetBlobGas();
-        if (UInt256.MultiplyOverflow((UInt256)blobGas, transaction.MaxFeePerBlobGas.GetValueOrDefault(), out UInt256 blobCost)
-            || UInt256.AddOverflow(gasCost, blobCost, out maxCost))
-        {
-            maxCost = UInt256.Zero;
-            return false;
-        }
-
-        return true;
+        bool priced = TryCalculateGasBudget(transaction, spec, out _, out _, out _);
+        maxCost = priced ? transaction.MaxFee : UInt256.Zero;
+        return priced;
     }
 
-    /// <summary>Whether an EIP-7999 <c>max_fee</c> covers <c>required_max_fee</c> at the given base fees; always
-    /// <see langword="true"/> for per-gas fees.</summary>
+    /// <summary>Whether <c>max_fee</c> covers <c>required_max_fee</c> at the given base fees.</summary>
     /// <remarks>The inclusion check execution makes, for block building to skip a transaction that would fail it.
     /// A pooled blob record carries no frames, so there the frame gas sum, a lower bound on <c>max_gas</c>, stands in.</remarks>
     public static bool CoversRequiredMaxFee(Transaction transaction, IReleaseSpec spec, in UInt256 baseFee, in UInt256 feePerBlobGas)
     {
-        if (transaction.MaxFee is not { } maxFee)
+        if (!transaction.SupportsFrames)
         {
             return true;
         }
@@ -721,6 +666,7 @@ public static class FrameTxValidation
         ulong maxGas = transaction.Frames is not null && TryCalculateGasBudget(transaction, spec, out _, out _, out ulong gasBudget)
             ? gasBudget
             : transaction.GasLimit;
+        UInt256 maxFee = transaction.MaxFee;
         return !UInt256.MultiplyOverflow((UInt256)transaction.GetBlobGas(), feePerBlobGas, out UInt256 blobFee)
             && FrameTxFeeBudget.TryCalculate(in maxFee, in transaction.MaxPriorityFeePerGas, maxGas, in baseFee, in blobFee, out UInt256 requiredMaxFee, out _)
             && maxFee >= requiredMaxFee;

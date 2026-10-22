@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -11,24 +10,14 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>EIP-7999 <c>max_fee</c> budgets for frame transactions, on Bogota with EIP-8141 switched on.</summary>
+/// <summary>The EIP-8141 <c>max_fee</c> budget of frame transactions.</summary>
 public partial class FrameTxProcessorTests
 {
     private const ulong BudgetBaseFee = 7;
-
-    private void UseBogotaFrames(bool eip7999)
-    {
-        _spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip7999Enabled = eip7999 };
-        _specProvider = new TestSpecProvider(_spec);
-        _transactionProcessor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
-    }
 
     private static Transaction WithMaxFee(Transaction tx, UInt256 maxFee, UInt256 maxPriorityFeePerGas)
     {
@@ -36,7 +25,6 @@ public partial class FrameTxProcessorTests
         tx.GasPrice = maxPriorityFeePerGas;
         // As the decoder sets it, so a per-gas reading of the transaction sees the cap it would on the wire.
         tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(maxFee, FrameTxValidation.TotalGasLimit(tx.Frames));
-        tx.MaxFeePerBlobGas = null;
         return tx;
     }
 
@@ -60,7 +48,6 @@ public partial class FrameTxProcessorTests
     [TestCase(1_000_000ul, BudgetBaseFee, 3ul, TestName = "Execute_MaxFee_TipCappedByBudget")]
     public void Execute_MaxFee_BurnsBaseFeeAndPaysTipWithinBudget(ulong priorityFee, ulong maxFeePerMaxGas, ulong extra)
     {
-        UseBogotaFrames(eip7999: true);
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         ulong maxGas = MaxGas(tx);
@@ -88,27 +75,23 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_MaxFee_TipUsesUnusedHeadroomWherePerGasCapWouldNot([Values] bool eip7999)
+    public void Execute_MaxFee_TipUsesUnusedHeadroom()
     {
-        // max_fee_per_gas 8 at base fee 7 caps the per-gas tip at 1; the same money as a budget does not.
-        UseBogotaFrames(eip7999);
+        // A per-gas cap of 8 at base fee 7 would cap the tip at 1 per gas; the same money as a budget does not.
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.GasPrice = 5;
-        tx.DecodedMaxFeePerGas = 8;
-        if (eip7999) WithMaxFee(tx, (UInt256)MaxGas(tx) * 8, 5);
+        WithMaxFee(tx, (UInt256)MaxGas(tx) * 8, 5);
 
         CallOutputTracer output = new();
         TransactionResult result = Process(tx, baseFeePerGas: BudgetBaseFee, tracer: output);
 
         Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
-        Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo((UInt256)output.GasSpent * (eip7999 ? 5ul : 1ul)));
+        Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo((UInt256)output.GasSpent * 5));
     }
 
     [Test]
     public void Execute_MaxFee_BelowRequiredMaxFee_Invalid([Values] bool covered)
     {
-        UseBogotaFrames(eip7999: true);
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         UInt256 required = (UInt256)MaxGas(tx) * BudgetBaseFee;
@@ -131,7 +114,6 @@ public partial class FrameTxProcessorTests
     [Test]
     public void Execute_MaxFee_CoversBlobGasWithoutPerBlobCap([Values] bool covered)
     {
-        UseBogotaFrames(eip7999: true);
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlobVersionedHashes = [new byte[32]];
@@ -152,27 +134,6 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    [Test]
-    public void Execute_FeeShape_MustMatchFork([Values] bool eip7999, [Values] bool maxFeeShape)
-    {
-        UseBogotaFrames(eip7999);
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        if (maxFeeShape) WithMaxFee(tx, 1.Ether, 1);
-
-        TransactionResult result = Process(tx, baseFeePerGas: 1);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.EqualTo(eip7999 == maxFeeShape), result.ErrorDescription);
-            if (eip7999 != maxFeeShape)
-            {
-                Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-                Assert.That(result.ErrorDescription, Is.EqualTo(eip7999 ? FrameTxValidation.PerGasFeesNotAllowed : FrameTxValidation.MaxFeeNotEnabled));
-            }
-        }
-    }
-
     [TestCase((byte)0x04, TestName = "Execute_MaxFee_TxParam_MaxFee")]
     [TestCase((byte)0x05, TestName = "Execute_MaxFee_TxParam_MaxBlobFeeHalts")]
     [TestCase((byte)0x06, TestName = "Execute_MaxFee_TxParam_MaxCost")]
@@ -180,7 +141,6 @@ public partial class FrameTxProcessorTests
     public void Execute_MaxFee_Introspection(byte param)
     {
         const ulong tip = 100;
-        UseBogotaFrames(eip7999: true);
         Instruction read = param == (byte)Instruction.GASPRICE ? Instruction.GASPRICE : Instruction.TXPARAM;
         Prepare code = read == Instruction.TXPARAM ? Prepare.EvmCode.PushData(param).Op(read) : Prepare.EvmCode.Op(read);
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
@@ -218,7 +178,6 @@ public partial class FrameTxProcessorTests
     [TestCase(1ul, false, TestName = "Execute_MaxFee_PricedSimulation_IsHeldToTheBudget")]
     public void Execute_MaxFee_SimulationBudgetCheck(ulong maxFee, bool executes)
     {
-        UseBogotaFrames(eip7999: true);
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = WithMaxFee(FrameTx(nonce: 0, SelfVerifyFrame()), maxFee, 0);
 
@@ -227,13 +186,13 @@ public partial class FrameTxProcessorTests
         Assert.That(result.TransactionExecuted, Is.EqualTo(executes), result.ErrorDescription);
     }
 
-    // A per-gas RPC call converted to a budget must buy what that price buys without EIP-7999.
+    // A per-gas RPC call converted to a budget must buy what that price buys: max_gas at the base fee.
     [Test]
-    public void Execute_PerGasRpcCallAtTheBaseFee_ConvertsToACoveringBudget([Values] bool eip7999)
+    public void Execute_PerGasRpcCallAtTheBaseFee_ConvertsToACoveringBudget()
     {
-        UseBogotaFrames(eip7999);
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(FrameTx(nonce: 0, SelfVerifyFrame()));
+        rpc.MaxFee = null;
         rpc.MaxFeePerGas = BudgetBaseFee;
         rpc.MaxPriorityFeePerGas = 0;
         Transaction tx = rpc.ToTransaction(spec: Spec).Data!;
@@ -243,7 +202,7 @@ public partial class FrameTxProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tx.MaxFee is not null, Is.EqualTo(eip7999));
+            Assert.That(tx.MaxFee, Is.EqualTo((UInt256)MaxGas(tx) * BudgetBaseFee));
             Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
         }
     }
@@ -252,10 +211,9 @@ public partial class FrameTxProcessorTests
     [Test]
     public void Execute_PerGasRpcCallWithOversizedNonceKeys_IsRejectedAsMalformed()
     {
-        UseBogotaFrames(eip7999: true);
-        _spec.IsEip8250Enabled = true;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(FrameTx(nonce: 0, SelfVerifyFrame()));
+        rpc.MaxFee = null;
         rpc.MaxFeePerGas = BudgetBaseFee;
         UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
         // Full-width keys, so the set overruns the nonce_calldata bound the measurement enforces.
@@ -272,7 +230,6 @@ public partial class FrameTxProcessorTests
     [Test]
     public void Execute_MaxFee_GasSearchProbeDefersTheBudgetCheck([Values] bool probe)
     {
-        UseBogotaFrames(eip7999: true);
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         WithMaxFee(tx, (UInt256)MaxGas(tx) * BudgetBaseFee - 1, 0);

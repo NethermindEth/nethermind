@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            // EIP-7999: the pool ranks a max_fee by a per-gas view that leaves out intrinsic gas, so the budget the
+            // EIP-8141: the pool ranks a max_fee by a per-gas view that leaves out intrinsic gas, so the budget the
             // processor checks is checked here too, rather than failing at execution in every block built.
             Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec)
                 && FrameTxValidation.CoversRequiredMaxFee(tx, spec, baseFee, UInt256.Zero);
@@ -206,7 +206,7 @@ namespace Nethermind.Consensus.Producers
                     }
 
                     // A frameless record only bounds max_gas from below, so a max_fee is checked exactly on the full tx.
-                    if (validateForkSensitiveState || (blobTx.MaxFee is not null && blobTx.Frames is null))
+                    if (validateForkSensitiveState || (blobTx.SupportsFrames && blobTx.Frames is null))
                     {
                         if (validateForkSensitiveState
                             && blobTx is LightTransaction lightTransaction

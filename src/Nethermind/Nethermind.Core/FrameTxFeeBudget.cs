@@ -5,7 +5,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core;
 
-/// <summary>The EIP-7999 aggregate <c>max_fee</c> budget of an EIP-8141 frame transaction.</summary>
+/// <summary>The <c>max_fee</c> budget of an EIP-8141 frame transaction.</summary>
 /// <remarks>One budget covers execution, state and blob gas: no resource has its own per-gas cap.</remarks>
 public static class FrameTxFeeBudget
 {
@@ -66,7 +66,7 @@ public static class FrameTxFeeBudget
 
     /// <summary>The uniform per-gas price <paramref name="maxCost"/> escrows for execution and state gas.</summary>
     /// <remarks>What <c>GASPRICE</c> reads: <c>base_fee_per_gas</c> plus the escrowed tip spread over <c>max_gas</c>.
-    /// EIP-7999 defines no per-gas price for the budget, so this is the price at which the escrow is spent in full.</remarks>
+    /// EIP-8141 defines no per-gas price for the budget, so this is the price at which the escrow is spent in full.</remarks>
     public static UInt256 EffectiveGasPrice(in UInt256 maxCost, ulong maxGas, in UInt256 blobFee)
     {
         UInt256 gasCost = maxCost > blobFee ? maxCost - blobFee : UInt256.Zero;

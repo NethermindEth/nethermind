@@ -135,14 +135,14 @@ namespace Nethermind.TxPool
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 
         public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) =>
-            !tx.CarriesBlobs || (tx.MaxFee is null ? tx.MaxFeePerBlobGas >= currentPricePerBlobGas : !tx.IsBelowBlobBaseFee(currentPricePerBlobGas));
+            !tx.CarriesBlobs || !tx.IsBelowBlobBaseFee(currentPricePerBlobGas);
 
         /// <summary>Whether <paramref name="tx"/> cannot cover the blob base fee; never for a transaction without blob fees.</summary>
-        /// <remarks>An EIP-7999 <c>max_fee</c> has no per-blob-gas cap, so the bound is its budget covering the blob gas
+        /// <remarks>An EIP-8141 <c>max_fee</c> has no per-blob-gas cap, so the bound is its budget covering the blob gas
         /// alone: a lower bound on what execution requires, which adds the execution and state gas.</remarks>
         public static bool IsBelowBlobBaseFee(this Transaction tx, in UInt256 currentPricePerBlobGas) =>
-            tx.MaxFee is { } maxFee
-                ? tx.CarriesBlobs && (UInt256.MultiplyOverflow((UInt256)tx.GetBlobGas(), currentPricePerBlobGas, out UInt256 blobFee) || maxFee < blobFee)
+            tx.SupportsFrames
+                ? tx.CarriesBlobs && (UInt256.MultiplyOverflow((UInt256)tx.GetBlobGas(), currentPricePerBlobGas, out UInt256 blobFee) || tx.MaxFee < blobFee)
                 : tx.MaxFeePerBlobGas < currentPricePerBlobGas;
 
         public static bool CanBeBroadcast(this Transaction tx) => !tx.CarriesBlobs && tx.GetLength() <= MaxSizeOfTxForBroadcast;
@@ -278,10 +278,10 @@ namespace Nethermind.TxPool
         {
             bool overflow = false;
 
-            // EIP-7999: max_fee bounds what execution, state and blob gas can cost together.
-            if (tx.MaxFee is { } maxFee)
+            // EIP-8141: max_fee bounds what execution, state and blob gas can cost together.
+            if (tx.SupportsFrames)
             {
-                return UInt256.AddOverflow(currentCost, maxFee, out cumulativeCost)
+                return UInt256.AddOverflow(currentCost, tx.MaxFee, out cumulativeCost)
                     | UInt256.AddOverflow(cumulativeCost, (UInt256)tx.Value, out cumulativeCost);
             }
 

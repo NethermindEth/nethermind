@@ -60,15 +60,15 @@ public class LightTxDecoder : TxDecoder<Transaction>
     /// </remarks>
     private static int TrailingContentLength(Transaction tx, Address? paymaster)
     {
-        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null or { IsZero: true } && tx.MaxFee is null) return 0;
+        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null or { IsZero: true } && tx.MaxFee.IsZero) return 0;
 
         // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
         // nonce_keys list a groupless record still writes, whose first element is a scalar.
         return (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
                + Rlp.LengthOf(tx.PayerAddress)
                + Rlp.LengthOf(tx.PayerExposure ?? default)
-               + (paymaster is null && tx.MaxFee is null ? 0 : Rlp.LengthOf(paymaster))
-               + (tx.MaxFee is { } maxFee ? Rlp.LengthOf(maxFee) : 0);
+               + (paymaster is null && tx.MaxFee.IsZero ? 0 : Rlp.LengthOf(paymaster))
+               + (tx.MaxFee.IsZero ? 0 : Rlp.LengthOf(tx.MaxFee));
     }
 
     public static byte[] Encode(Transaction tx)
@@ -88,7 +88,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.GasLimit);
         writer.Encode(tx.GasPrice);
         writer.Encode(tx.DecodedMaxFeePerGas);
-        // An EIP-7999 max_fee transaction has no max_fee_per_blob_gas; its max_fee is a trailing slot.
+        // A frame transaction has no max_fee_per_blob_gas; its max_fee is a trailing slot.
         writer.Encode(tx.MaxFeePerBlobGas.GetValueOrDefault());
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
@@ -121,8 +121,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
             // The placeholder for a transaction that never reached the exposure gate, read back as absent.
             // A genuine zero price collapses onto it and costs the same: the fallback's fee terms are zero too.
             writer.Encode(tx.PayerExposure ?? default);
-            if (paymaster is not null || tx.MaxFee is not null) writer.Encode(paymaster);
-            if (tx.MaxFee is { } maxFee) writer.Encode(maxFee);
+            // A zero max_fee is absent, as it reads back.
+            if (paymaster is not null || !tx.MaxFee.IsZero) writer.Encode(paymaster);
+            if (!tx.MaxFee.IsZero) writer.Encode(tx.MaxFee);
         }
 
         return bytes;
@@ -173,7 +174,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         Address? payerAddress = null;
         UInt256? payerExposure = null;
         Address? paymaster = null;
-        UInt256? maxFee = null;
+        UInt256 maxFee = default;
         if (ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1)
         {
             // Legacy records end in a flat nonce_keys list, whose first element is a scalar; the grouped form

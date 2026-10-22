@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test.Comparison;
 
-/// <summary>Replacement of EIP-7999 <c>max_fee</c> frame transactions, which bump the budget rather than a per-gas cap.</summary>
+/// <summary>Replacement of EIP-8141 frame transactions, which bump the budget rather than a per-gas cap.</summary>
 public class CompareReplacedTxByFeeTests
 {
     // The replacement doubles its gas, so its implied per-gas cap falls although its budget rises by 10%.

@@ -72,7 +72,6 @@ public class GethGenesisParityTests
         [nameof(ChainSpecParamsJson.Eip7668TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip7709TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip7979TransitionTimestamp)] = StandaloneEip,
-        [nameof(ChainSpecParamsJson.Eip7999TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8116TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8131TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8151TransitionTimestamp)] = StandaloneEip,

@@ -584,23 +584,6 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
     }
 
-    [TestCase(0ul, ExpectedResult = true, TestName = "IsWellFormed_BloblessFrameTxWithZeroMaxFeePerBlobGas_ReturnsTrue")]
-    [TestCase(1ul, ExpectedResult = false, TestName = "IsWellFormed_BloblessFrameTxWithNonZeroMaxFeePerBlobGas_ReturnsFalse")]
-    public bool IsWellFormed_BloblessFrameTxMaxFeePerBlobGas(ulong maxFeePerBlobGas)
-    {
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = TestBlockchainIds.ChainId,
-            SenderAddress = TestItem.AddressA,
-            Frames = [SelfVerify(PrefixFrameGas)],
-            FrameSignatures = [],
-            MaxFeePerBlobGas = maxFeePerBlobGas,
-        };
-
-        return new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, Eip8141Prototype.Instance).AsBool();
-    }
-
     private static Transaction BuildBlobCarryingFrameTx(ProofVersion version)
     {
         if (!KzgPolynomialCommitments.IsInitialized)
@@ -621,7 +604,6 @@ public class TxValidatorTests
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
-            MaxFeePerBlobGas = 1,
             BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
             NetworkWrapper = wrapper,
         };
@@ -915,8 +897,8 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
-    // Regression (EIP-8141): the decoder always populates max_fee_per_blob_gas and blob_versioned_hashes,
-    // so a presence-based blob gate would reject every frame tx off the wire. Both shapes are well-formed.
+    // Regression (EIP-8141): the decoder always populates blob_versioned_hashes, so a presence-based blob gate
+    // would reject every frame tx off the wire. Both shapes are well-formed.
     [TestCase(false, TestName = "IsWellFormed_DecodedNonBlobFrameTx_Accepted")]
     [TestCase(true, TestName = "IsWellFormed_DecodedBlobCarryingFrameTx_Accepted")]
     public void IsWellFormed_DecodedFrameTx_GatesOnBlobFieldsByValue(bool carriesBlobs)
@@ -929,9 +911,8 @@ public class TxValidatorTests
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
-            GasPrice = 1,               // max_priority_fee_per_gas
-            DecodedMaxFeePerGas = 100,  // max_fee_per_gas
-            MaxFeePerBlobGas = carriesBlobs ? (UInt256)1 : UInt256.Zero,
+            GasPrice = 1, // max_priority_fee_per_gas
+            MaxFee = 100,
             BlobVersionedHashes = carriesBlobs ? [[KzgPolynomialCommitments.KzgBlobHashVersionV1, .. new byte[31]]] : null,
         };
 
@@ -1358,19 +1339,6 @@ public class TxValidatorTests
         Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidBlobVersionedHashVersion));
     }
 
-    [Test]
-    public void IsWellFormed_FrameTxWithoutMaxFeePerBlobGas_ReturnFalse()
-    {
-        Transaction tx = BuildBlobFrameTx(blobCount: 1);
-        tx.MaxFeePerBlobGas = null;
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-
-        ValidationResult result = txValidator.IsWellFormed(tx, Eip8141Prototype.Instance);
-
-        Assert.That(result.AsBool(), Is.False);
-        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxMissingMaxFeePerBlobGas));
-    }
-
     // A fork lowering the per-tx blob limit must evict an over-limit type-6 at head revalidation.
     private static IEnumerable<TestCaseData> HeadRevalidationBlobCountCases()
     {
@@ -1405,10 +1373,9 @@ public class TxValidatorTests
         .WithShardBlobTxTypeAndFields(blobCount)
         .SignedAndResolved().TestObject;
 
-    private static OverridableReleaseSpec BogotaFrames(bool eip7999) =>
-        new(Bogota.Instance) { IsEip8141Enabled = true, IsEip7999Enabled = eip7999 };
+    private static readonly OverridableReleaseSpec BogotaFrames = new(Bogota.Instance) { IsEip8141Enabled = true };
 
-    private static Transaction MaxFeeShapeFrameTx(bool maxFeeShape, UInt256 maxPriorityFeePerGas, bool blobs = false)
+    private static Transaction MaxFeeFrameTx(UInt256 maxPriorityFeePerGas, bool blobs = false)
     {
         Transaction tx = new()
         {
@@ -1418,62 +1385,21 @@ public class TxValidatorTests
             Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
             GasPrice = maxPriorityFeePerGas,
-            DecodedMaxFeePerGas = 1,
-            MaxFeePerBlobGas = 0,
+            MaxFee = 1,
+            DecodedMaxFeePerGas = 0,
         };
         if (blobs) tx.BlobVersionedHashes = [Bytes.FromHexString("0x01" + new string('0', 62))];
-        if (maxFeeShape)
-        {
-            tx.MaxFee = 1;
-            tx.MaxFeePerBlobGas = null;
-        }
-
         return tx;
     }
 
-    // EIP-7999: the decoder tells the fee shapes apart, so the fork gate is a validation rule, enforced at
-    // admission and again at a fork transition, where pooled transactions of the old shape are evicted.
+    // max_fee has no per-gas cap to order the tip against, and covers blob gas without a per-blob-gas cap.
     [Test]
-    public void IsWellFormed_FrameTxFeeShape_GatedOnEip7999([Values] bool eip7999, [Values] bool maxFeeShape, [Values] bool atHead)
+    public void IsWellFormed_FrameTxTipAboveImpliedFeeCap_IsValid([Values] bool blobs, [Values] bool atHead)
     {
-        Transaction tx = MaxFeeShapeFrameTx(maxFeeShape, maxPriorityFeePerGas: 1);
+        Transaction tx = MaxFeeFrameTx(maxPriorityFeePerGas: 100, blobs);
         ITxValidator validator = atHead ? new HeadTxValidator() : new TxValidator(TestBlockchainIds.ChainId);
 
-        ValidationResult result = validator.IsWellFormed(tx, BogotaFrames(eip7999));
-
-        Assert.That(result.AsBool(), Is.EqualTo(eip7999 == maxFeeShape), result.Error);
-        if (eip7999 != maxFeeShape)
-        {
-            Assert.That(result.Error, Is.EqualTo(eip7999 ? FrameTxValidation.PerGasFeesNotAllowed : FrameTxValidation.MaxFeeNotEnabled));
-        }
-    }
-
-    [Test]
-    public void IsWellFormed_NonFrameTx_IgnoresTheEip7999FeeShapeGate()
-    {
-        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(1).TestObject;
-
-        Assert.That(new HeadTxValidator().IsWellFormed(tx, BogotaFrames(eip7999: true)).AsBool(), Is.True);
-    }
-
-    // A budget has no per-gas cap to order the tip against; the per-gas shape keeps that rule.
-    [Test]
-    public void IsWellFormed_FrameTxTipAboveFeeCap_OnlyInvalidForThePerGasShape([Values] bool eip7999)
-    {
-        Transaction tx = MaxFeeShapeFrameTx(eip7999, maxPriorityFeePerGas: 100);
-
-        ValidationResult result = new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, BogotaFrames(eip7999));
-
-        Assert.That(result.AsBool(), Is.EqualTo(eip7999), result.Error);
-    }
-
-    // The budget covers blob gas too, so a blob-carrying max_fee transaction has no max_fee_per_blob_gas to miss.
-    [Test]
-    public void IsWellFormed_BlobCarryingMaxFeeFrameTx_NeedsNoBlobFeeCap()
-    {
-        Transaction tx = MaxFeeShapeFrameTx(maxFeeShape: true, maxPriorityFeePerGas: 1, blobs: true);
-
-        ValidationResult result = FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, BogotaFrames(eip7999: true));
+        ValidationResult result = validator.IsWellFormed(tx, BogotaFrames);
 
         Assert.That(result.AsBool(), Is.True, result.Error);
     }
@@ -1586,8 +1512,7 @@ public class TxValidatorTests
             SenderAddress = TestItem.AddressA,
             Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
-            DecodedMaxFeePerGas = 100_000,
-            MaxFeePerBlobGas = 1,
+            MaxFee = 100_000,
             BlobVersionedHashes = versionedHashes,
         };
     }

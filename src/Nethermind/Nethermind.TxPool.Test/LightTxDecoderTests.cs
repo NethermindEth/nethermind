@@ -215,7 +215,7 @@ public class LightTxDecoderTests
             + Rlp.LengthOf(tx.GasLimit)
             + Rlp.LengthOf(tx.GasPrice)
             + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
-            + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
+            + Rlp.LengthOf(tx.MaxFeePerBlobGas.GetValueOrDefault())
             + Rlp.LengthOf(tx.BlobVersionedHashes!)
             + Rlp.LengthOf(tx.PoolIndex)
             + Rlp.LengthOf(tx.GetLength())
@@ -233,7 +233,7 @@ public class LightTxDecoderTests
         writer.Encode(tx.GasLimit);
         writer.Encode(tx.GasPrice);
         writer.Encode(tx.DecodedMaxFeePerGas);
-        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        writer.Encode(tx.MaxFeePerBlobGas.GetValueOrDefault());
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
         writer.Encode(tx.GetLength());
@@ -393,14 +393,13 @@ public class LightTxDecoderTests
         }
     }
 
-    // EIP-7999: a max_fee frame transaction has no max_fee_per_blob_gas, so its budget rides in the group.
+    // A frame transaction has no max_fee_per_blob_gas, so its max_fee rides in the group.
     [TestCase(false, TestName = "max_fee alone")]
     [TestCase(true, TestName = "max_fee behind a payer and a paymaster")]
     public void Round_trip_carries_the_max_fee(bool withPayer)
     {
         Transaction tx = BlobCarryingTx(TxType.FrameTx, paymaster: withPayer ? TestItem.AddressC : null);
         tx.MaxFee = 4_000;
-        tx.MaxFeePerBlobGas = null;
         if (withPayer)
         {
             tx.PayerAddress = TestItem.AddressB;
@@ -411,7 +410,7 @@ public class LightTxDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.MaxFee, Is.EqualTo((UInt256?)4_000));
+            Assert.That(decoded.MaxFee, Is.EqualTo((UInt256)4_000));
             Assert.That(decoded.MaxFeePerBlobGas, Is.Null);
             Assert.That(decoded.DecodedMaxFeePerGas, Is.EqualTo(tx.DecodedMaxFeePerGas));
             Assert.That(decoded.PersistedPaymaster, Is.EqualTo(withPayer ? TestItem.AddressC : null));
@@ -420,13 +419,13 @@ public class LightTxDecoderTests
     }
 
     [Test]
-    public void Round_trip_of_a_per_gas_record_has_no_max_fee()
+    public void Round_trip_of_a_blob_record_has_no_max_fee()
     {
-        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx, paymaster: TestItem.AddressC)));
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob)));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.MaxFee, Is.Null);
+            Assert.That(decoded.MaxFee, Is.EqualTo(UInt256.Zero));
             Assert.That(decoded.MaxFeePerBlobGas, Is.EqualTo((UInt256?)3));
         }
     }
@@ -549,7 +548,8 @@ public class LightTxDecoderTests
             GasLimit = 1_000_000,
             GasPrice = 1,
             DecodedMaxFeePerGas = 2,
-            MaxFeePerBlobGas = 3,
+            // A frame transaction has no max_fee_per_blob_gas.
+            MaxFeePerBlobGas = type == TxType.FrameTx ? null : 3,
             BlobVersionedHashes = versionedHashes,
             Value = 5,
             PoolIndex = 11,
@@ -790,7 +790,7 @@ public class LightTxDecoderTests
             + Rlp.LengthOf(tx.GasLimit)
             + Rlp.LengthOf(tx.GasPrice)
             + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
-            + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
+            + Rlp.LengthOf(tx.MaxFeePerBlobGas.GetValueOrDefault())
             + Rlp.LengthOf(tx.BlobVersionedHashes!)
             + Rlp.LengthOf(tx.PoolIndex)
             + Rlp.LengthOf(tx.GetLength())
@@ -809,7 +809,7 @@ public class LightTxDecoderTests
         writer.Encode(tx.GasLimit);
         writer.Encode(tx.GasPrice);
         writer.Encode(tx.DecodedMaxFeePerGas);
-        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        writer.Encode(tx.MaxFeePerBlobGas.GetValueOrDefault());
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
         writer.Encode(tx.GetLength());

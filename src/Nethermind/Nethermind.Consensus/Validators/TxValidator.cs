@@ -91,12 +91,11 @@ public sealed class TxValidator : ITxValidator
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
-            FrameTxGasFieldsTxValidator.Instance,
-            // The frame-tx decoder always populates both blob fields, so the presence-based
-            // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
+            // EIP-8141 fees are [max_fee, max_priority_fee_per_gas]: there is no per-gas cap to order the tip against.
+            // The frame-tx decoder always populates blob_versioned_hashes, so the presence-based
+            // NonBlobFieldsTxValidator would reject every frame tx; this one checks it by value.
             FrameTxFieldsTxValidator.Instance,
             FrameTxNonceKeysTxValidator.Instance,
-            FrameTxFeeShapeTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
             MempoolBlobTxValidator.Instance
         ]));
@@ -253,17 +252,6 @@ public sealed class GasFieldsTxValidator : ITxValidator
         transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? TxErrorMessages.InvalidMaxPriorityFeePerGas : ValidationResult.Success;
 }
 
-/// <summary><see cref="GasFieldsTxValidator"/> for a frame transaction carrying per-gas fee caps.</summary>
-/// <remarks>An EIP-7999 <c>max_fee</c> has no per-gas cap to order against the tip: the budget bounds the tip.</remarks>
-public sealed class FrameTxGasFieldsTxValidator : ITxValidator
-{
-    public static readonly FrameTxGasFieldsTxValidator Instance = new();
-    private FrameTxGasFieldsTxValidator() { }
-
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.MaxFee is null ? GasFieldsTxValidator.Instance.IsWellFormed(transaction, releaseSpec) : ValidationResult.Success;
-}
-
 /// <summary>EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes) plus the
 /// EIP-7594 blob constraints for a blob-carrying frame transaction.</summary>
 public sealed class FrameTxFieldsTxValidator : ITxValidator
@@ -290,12 +278,6 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
         if (blobVersionedHashes is { Length: > 0 })
         {
-            // EIP-7999: the max_fee budget covers blob gas too.
-            if (transaction.MaxFeePerBlobGas is null && transaction.MaxFee is null)
-            {
-                return TxErrorMessages.BlobTxMissingMaxFeePerBlobGas;
-            }
-
             ValidationResult blobGasLimitResult = BlobFieldsTxValidator.ValidateBlobGasLimits(blobVersionedHashes.Length, releaseSpec);
             return !blobGasLimitResult ? blobGasLimitResult : BlobFieldsTxValidator.ValidateBlobVersionedHashes(blobVersionedHashes);
         }
@@ -396,24 +378,6 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
             ? ValidationResult.Success
             : FrameTxValidation.MalformedNonceKeySet;
     }
-}
-
-/// <summary>Admits the EIP-7999 <c>max_fee</c> fee shape of a frame transaction only on forks that define it.</summary>
-/// <remarks>The RLP decoder tells the fee shapes apart without fork context, so the fork gate lives here.
-/// A transaction admitted under one shape is invalid on a head of the other, so this also runs in
-/// <see cref="HeadTxValidator"/> to evict it at the transition.</remarks>
-public sealed class FrameTxFeeShapeTxValidator : ITxValidator
-{
-    public static readonly FrameTxFeeShapeTxValidator Instance = new();
-    private FrameTxFeeShapeTxValidator() { }
-
-    // Also runs on every pooled type at a fork transition, where only a frame transaction has a fee shape to check.
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        (transaction.MaxFee is null && !releaseSpec.IsEip7999Enabled)
-        || !transaction.SupportsFrames
-        || FrameTxValidation.HasFeesForFork(transaction, releaseSpec, out string? feesError)
-            ? ValidationResult.Success
-            : feesError!;
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator

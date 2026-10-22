@@ -55,10 +55,10 @@ namespace Nethermind.TxPool.Comparison
                 : TxComparisonResult.KeepOld;
         }
 
-        /// <summary>The fee caps a replacement must bump: EIP-7999 <c>max_fee</c> when both carry one, else <see cref="Transaction.MaxFeePerGas"/>.</summary>
+        /// <summary>The fee caps a replacement must bump: EIP-8141 <c>max_fee</c> when both are frame transactions, else <see cref="Transaction.MaxFeePerGas"/>.</summary>
         internal static (UInt256 OldFeeCap, UInt256 NewFeeCap) GetFeeCaps(Transaction newTx, Transaction oldTx) =>
-            oldTx.MaxFee is { } oldMaxFee && newTx.MaxFee is { } newMaxFee
-                ? (oldMaxFee, newMaxFee)
+            oldTx.SupportsFrames && newTx.SupportsFrames
+                ? (oldTx.MaxFee, newTx.MaxFee)
                 : (oldTx.MaxFeePerGas, newTx.MaxFeePerGas);
     }
 }

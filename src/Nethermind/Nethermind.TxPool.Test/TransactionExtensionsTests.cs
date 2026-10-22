@@ -296,27 +296,25 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-7999 frame transactions carry no max_fee_per_blob_gas: the budget must cover the blob gas instead.
-        [TestCase(2 * Eip4844Constants.GasPerBlob, ExpectedResult = true, TestName = "CanPayForBlobGas_MaxFeeShape_BudgetCoversBlobGas")]
-        [TestCase(2 * Eip4844Constants.GasPerBlob - 1, ExpectedResult = false, TestName = "CanPayForBlobGas_MaxFeeShape_BudgetShortOfBlobGas")]
-        [TestCase(null, ExpectedResult = false, TestName = "CanPayForBlobGas_PerGasShape_BelowBlobBaseFee")]
-        public bool CanPayForBlobGas_FrameTxFeeShape(ulong? maxFee)
+        // Frame transactions carry no max_fee_per_blob_gas: the max_fee budget must cover the blob gas instead.
+        [TestCase(2 * Eip4844Constants.GasPerBlob, ExpectedResult = true, TestName = "CanPayForBlobGas_FrameTx_BudgetCoversBlobGas")]
+        [TestCase(2 * Eip4844Constants.GasPerBlob - 1, ExpectedResult = false, TestName = "CanPayForBlobGas_FrameTx_BudgetShortOfBlobGas")]
+        public bool CanPayForBlobGas_FrameTx(ulong maxFee)
         {
             Transaction tx = new()
             {
                 Type = TxType.FrameTx,
                 BlobVersionedHashes = [new byte[32]],
                 MaxFee = maxFee,
-                MaxFeePerBlobGas = maxFee is null ? 1 : null,
             };
 
             Assert.That(tx.IsBelowBlobBaseFee(2), Is.Not.EqualTo(tx.CanPayForBlobGas(2)), "the pool gates and the broadcast gate agree");
             return tx.CanPayForBlobGas(currentPricePerBlobGas: 2);
         }
 
-        // EIP-7999: max_fee bounds the whole fee, blob gas included, where max_fee_per_blob_gas would be absent.
+        // max_fee bounds the whole fee of a frame transaction, blob gas included.
         [Test]
-        public void IsOverflowInTxCostAndValue_MaxFeeShape_IsTheBudgetPlusValue()
+        public void IsOverflowInTxCostAndValue_FrameTx_IsTheBudgetPlusValue()
         {
             Transaction tx = new()
             {

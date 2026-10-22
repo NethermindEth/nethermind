@@ -54,7 +54,7 @@ public class FrameTxDecoderTests
             Assert.That(decoded.GasPrice, Is.EqualTo(tx.GasPrice));
             Assert.That(decoded.DecodedMaxFeePerGas, Is.EqualTo(tx.DecodedMaxFeePerGas));
             Assert.That(decoded.MaxFee, Is.EqualTo(tx.MaxFee));
-            Assert.That(decoded.MaxFeePerBlobGas, Is.EqualTo(tx.MaxFee is null ? tx.MaxFeePerBlobGas ?? UInt256.Zero : null));
+            Assert.That(decoded.MaxFeePerBlobGas, Is.Null);
             Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
         }
 
@@ -293,7 +293,7 @@ public class FrameTxDecoderTests
             sender ?? Rlp.Encode(TestItem.AddressA.Bytes),  // sender
             frames ?? Rlp.Encode(Array.Empty<Rlp>()),       // frames
             signatures ?? Rlp.Encode(Array.Empty<Rlp>()),   // signatures
-            fees ?? Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)),
+            fees ?? Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L)),
             Rlp.Encode(Array.Empty<Rlp>()),                 // blob_versioned_hashes
             .. trailing]);
 
@@ -306,18 +306,6 @@ public class FrameTxDecoderTests
         return payload;
     }
 
-
-    [Test]
-    public void ComputeSigHash_MaxFeePerBlobGasChanges_HashChanges()
-    {
-        // The blob fields are part of the signing preimage, so the signature must commit to them.
-        Transaction first = CreateFrameTx();
-        first.MaxFeePerBlobGas = 7;
-        Transaction second = CreateFrameTx();
-        second.MaxFeePerBlobGas = 8;
-
-        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
-    }
 
     [Test]
     public void ComputeSigHash_BlobVersionedHashesChange_HashChanges()
@@ -384,15 +372,10 @@ public class FrameTxDecoderTests
         yield return new TestCaseData(multiKeyed).SetName("Roundtrip_KeyedNonceEnvelope_MultipleKeys");
 
         Transaction blobCarrying = CreateFrameTx();
-        blobCarrying.MaxFeePerBlobGas = 7;
         blobCarrying.BlobVersionedHashes = [FilledBytes(32, 0x01), FilledBytes(32, 0x02)];
         yield return new TestCaseData(blobCarrying).SetName("Roundtrip_WithBlobFields");
 
-        yield return new TestCaseData(WithMaxFee(CreateFrameTx(), 3.Ether)).SetName("Roundtrip_MaxFeeShape");
-
-        Transaction blobCarryingMaxFee = WithMaxFee(CreateFrameTx(), UInt256.MaxValue);
-        blobCarryingMaxFee.BlobVersionedHashes = [FilledBytes(32, 0x01)];
-        yield return new TestCaseData(blobCarryingMaxFee).SetName("Roundtrip_MaxFeeShape_WithBlobs");
+        yield return new TestCaseData(WithMaxFee(CreateFrameTx(), UInt256.MaxValue)).SetName("Roundtrip_MaxFeeAtTheUInt256Maximum");
     }
 
     private static Transaction WithMaxFee(Transaction tx, UInt256 maxFee)
@@ -402,27 +385,27 @@ public class FrameTxDecoderTests
         return tx;
     }
 
-    // EIP-7999 fees are [max_fee, max_priority_fee_per_gas]; the per-gas shape keeps its three fields.
-    [TestCase(2, TestName = "Decode_TwoItemFeeList_IsTheMaxFeeShape")]
-    [TestCase(3, TestName = "Decode_ThreeItemFeeList_IsThePerGasShape")]
-    public void Decode_FeeListArity_SelectsTheFeeShape(int feeCount)
+    // EIP-8141 fees are [max_fee, max_priority_fee_per_gas].
+    [Test]
+    public void Decode_FeeList_ReadsMaxFeeThenPriorityFee()
     {
-        Rlp[] fees = [Rlp.Encode(11L), Rlp.Encode(22L), Rlp.Encode(33L)];
-        RlpReader reader = new(TypedPayload(FrameTxBody(fees: Rlp.Encode(fees[..feeCount]))));
+        RlpReader reader = new(TypedPayload(FrameTxBody(fees: Rlp.Encode(Rlp.Encode(11L), Rlp.Encode(22L)))));
 
         Transaction tx = _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tx.MaxFee, Is.EqualTo(feeCount == 2 ? (UInt256?)11 : null));
-            Assert.That(tx.GasPrice, Is.EqualTo(feeCount == 2 ? (UInt256)22 : 11), "max_priority_fee_per_gas");
-            Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(feeCount == 2 ? null : (UInt256?)33));
+            Assert.That(tx.MaxFee, Is.EqualTo((UInt256)11));
+            Assert.That(tx.GasPrice, Is.EqualTo((UInt256)22), "max_priority_fee_per_gas");
+            Assert.That(tx.MaxFeePerBlobGas, Is.Null);
         }
     }
 
+    // A three-item list is the earlier [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas] shape.
     [TestCase(1, TestName = "Decode_OneItemFeeList_Throws")]
+    [TestCase(3, TestName = "Decode_ThreeItemFeeList_Throws")]
     [TestCase(4, TestName = "Decode_FourItemFeeList_Throws")]
-    public void Decode_FeeListOfNeitherShape_Throws(int feeCount)
+    public void Decode_FeeListOfAnotherLength_Throws(int feeCount)
     {
         Rlp[] fees = [Rlp.Encode(11L), Rlp.Encode(22L), Rlp.Encode(33L), Rlp.Encode(44L)];
         byte[] payload = TypedPayload(FrameTxBody(fees: Rlp.Encode(fees[..feeCount])));
@@ -432,7 +415,7 @@ public class FrameTxDecoderTests
     }
 
     [Test]
-    public void Encode_MaxFeeShape_WritesMaxFeeThenPriorityFee()
+    public void Encode_FeeList_WritesMaxFeeThenPriorityFee()
     {
         Transaction tx = WithMaxFee(CreateFrameTx(frames: []), 11);
         tx.Nonce = 0;
@@ -569,7 +552,6 @@ public class FrameTxDecoderTests
     public void Decode_BoundsTheBlobVersionedHashCount(int hashCount, bool rejected)
     {
         Transaction tx = CreateFrameTx();
-        tx.MaxFeePerBlobGas = 1;
         byte[][] hashes = new byte[hashCount][];
         for (int i = 0; i < hashes.Length; i++)
         {
@@ -790,7 +772,6 @@ public class FrameTxDecoderTests
         proofsManager.ComputeProofsAndCommitments(wrapper);
 
         Transaction tx = CreateFrameTx();
-        tx.MaxFeePerBlobGas = 1;
         tx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
         tx.NetworkWrapper = wrapper;
         return tx;
@@ -830,7 +811,7 @@ public class FrameTxDecoderTests
     }
 
     private static Transaction CreateFrameTx(TxFrame[]? frames = null, TxFrameSignature[]? signatures = null) =>
-        new()
+        WithMaxFee(new Transaction
         {
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
@@ -839,8 +820,7 @@ public class FrameTxDecoderTests
             Frames = frames ?? [Frame()],
             FrameSignatures = signatures ?? [],
             GasPrice = 1.GWei, // max_priority_fee_per_gas
-            DecodedMaxFeePerGas = 30.GWei,
-        };
+        }, 3.GWei);
 
     private static TxFrame Frame(FrameMode mode = FrameMode.Default, FrameFlags flags = FrameFlags.None, Address? target = null, ulong gasLimit = 100_000, ulong stateGasLimit = 0, UInt256 value = default, byte[]? data = null) =>
         new(mode, flags, target, gasLimit, stateGasLimit, value, data ?? Array.Empty<byte>());
