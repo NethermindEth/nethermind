@@ -78,7 +78,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             foreach ((string forkName, GethBlobScheduleEntry blobSettings) in config.BlobSchedule)
             {
                 if (!_blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork)) continue;
-                if (!timestamps.TryGetValue(forkName, out ulong timestamp)) continue;
+                if (!timestamps.TryGetValue(fork.ScheduledBy ?? forkName, out ulong timestamp)) continue;
 
                 BlobScheduleSettings settings = new()
                 {
@@ -180,7 +180,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
     internal static int? BlobScheduleOrder(string forkName) =>
         _blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork) ? fork.Order : null;
 
-    private readonly record struct BlobScheduleFork(int Order);
+    private readonly record struct BlobScheduleFork(int Order, string? ScheduledBy = null);
 
     private readonly record struct OrderedBlobScheduleSettings(int ForkOrder, BlobScheduleSettings Settings);
 
@@ -196,7 +196,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             [nameof(BPO3)] = new(6),
             [nameof(BPO4)] = new(7),
             [nameof(BPO5)] = new(8),
-            [nameof(Bogota)] = new(9),
+            [nameof(Bogota)] = new(9, nameof(BogotaDevnet2)),
         };
 
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec)
