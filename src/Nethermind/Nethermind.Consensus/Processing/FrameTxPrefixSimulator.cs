@@ -40,7 +40,9 @@ public sealed class FrameTxPrefixSimulator(
     private readonly Lock _lock = new();
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(txPoolConfig.FrameTxSimulationTimeoutMs);
-    private readonly ulong _maxVerifyGas = Math.Max(txPoolConfig.FrameTxMaxVerifyGas, Eip8141Constants.MaxVerifyGas);
+    private readonly ulong _maxVerifyGas = Math.Max(txPoolConfig.FrameTxMaxVerifyGas == 0
+        ? TxPoolConfig.DefaultFrameTxMaxVerifyGas
+        : txPoolConfig.FrameTxMaxVerifyGas, Eip8141Constants.MaxVerifyGas);
     private readonly long _headBudgetTicks =
         (long)(txPoolConfig.FrameTxSimulationBudgetPerHeadMs / 1000d * (timeProvider ?? TimeProvider.System).TimestampFrequency);
     private IReadOnlyTxProcessorSource? _source;
