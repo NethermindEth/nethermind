@@ -2410,6 +2410,8 @@ public partial class StorageProviderTests(bool useFlat)
         preBlockCaches.StorageCache.Set(accessedStorageCell, new UInt256([1, 2, 3], isBigEndian: true));
 
         WorldState provider = BuildStorageProvider(ctx);
+        provider.Set(new StorageCell(TestItem.AddressA, 2), 5);
+        provider.Commit(Paris.Instance);
         provider.Get(accessedStorageCell, out UInt256 storageValue43);
         Assert.That(storageValue43, Is.EqualTo((UInt256)0x010203));
         provider.ClearStorage(TestItem.AddressA);

@@ -1473,12 +1473,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            if (!exists && _backend is null)
+            {
+                CreateStorageTree();
+                valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out _);
+                exists = BlockChange.HasClear;
+            }
+
             if (!exists)
             {
-                bool hadTree = _backend is not null;
                 LoadFromTreeStorage(in storageCell, out value);
-                if (!hadTree) valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out _);
-
                 valueChange.Set(value, value, isInitialValue: false);
             }
             else
