@@ -743,7 +743,7 @@ public class DebugRpcModule(
         Transaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
-            // execution-apis types the result as bytes, and Geth returns empty bytes for an unknown transaction.
+            // execution-apis types the result as bytes with no not-found null, so an unknown transaction is empty bytes.
             return ResultWrapper<ArrayPoolList<byte>>.Success(ArrayPoolList<byte>.Empty());
         }
 
