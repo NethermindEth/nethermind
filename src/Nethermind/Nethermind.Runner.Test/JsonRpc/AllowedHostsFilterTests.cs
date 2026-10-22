@@ -69,6 +69,21 @@ public class AllowedHostsFilterTests
     {
         JsonRpcConfig config = CreateConfig();
         config.EngineAllowedHosts = [host];
+        return Warns(config);
+    }
+
+    [TestCase("*", ExpectedResult = true)]
+    [TestCase("https://app.example.com", ExpectedResult = false)]
+    public bool UseAllowedHosts_warns_about_any_cors_origin(string corsOrigin)
+    {
+        JsonRpcConfig config = CreateConfig();
+        config.AllowedHosts = ["localhost"];
+        config.CorsOrigins = [corsOrigin];
+        return Warns(config);
+    }
+
+    private static bool Warns(JsonRpcConfig config)
+    {
         TestLogger logger = new();
 
         new ApplicationBuilder(new ServiceCollection().BuildServiceProvider())

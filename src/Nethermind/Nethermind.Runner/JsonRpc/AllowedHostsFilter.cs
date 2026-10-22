@@ -30,6 +30,9 @@ internal static class AllowedHostsFilter
         StringSegment[]? engineAllowedHosts = ToPatterns(config.EngineAllowedHosts, nameof(IJsonRpcConfig.EngineAllowedHosts), logger);
         if (allowedHosts is null && engineAllowedHosts is null) return;
 
+        if (allowedHosts is not null && Array.IndexOf(config.CorsOrigins, AnyHost) >= 0 && logger.IsWarn)
+            logger.Warn("JsonRpc.AllowedHosts is set but JsonRpc.CorsOrigins is '*', so web pages can still call the JSON-RPC server. Set JsonRpc.CorsOrigins too.");
+
         app.Use((ctx, next) =>
         {
             StringSegment[]? patterns = urls.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) && url.IsAuthenticated
