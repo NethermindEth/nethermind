@@ -534,10 +534,11 @@ public class Eip4758Tests : VirtualMachineTestsBase
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
         AccountChangesAtIndex? victimChanges = bal.GetAccountChanges(victim);
         AccountChangesAtIndex? beneficiaryChanges = bal.GetAccountChanges(Existing);
+        Assert.That(victimChanges, Is.Not.Null);
+        Assert.That(beneficiaryChanges, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(victimChanges, Is.Not.Null);
             Assert.That(victimChanges!.BalanceChange, Is.Null, "funded and swept within the transaction");
             Assert.That(beneficiaryChanges!.BalanceChange?.Value, Is.EqualTo(1 + VictimBalance));
             if (enabled)
