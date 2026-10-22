@@ -528,7 +528,9 @@ public sealed class BlockImporter : IBlockImporter
         else
         {
             // A branch block may advance its parent across many slots, which a forged signature must not buy.
-            if (verifySignatures && VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == false)
+            // An uncached key within the registry is a recently added validator, checked by the transition itself.
+            if (verifySignatures && (block.ProposerIndex >= (ulong)parentState.Validators!.Length
+                || VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == false))
             {
                 RejectGossip = true;
                 if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: invalid proposer signature");

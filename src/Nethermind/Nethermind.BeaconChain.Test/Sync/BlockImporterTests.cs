@@ -1334,7 +1334,7 @@ public class BlockImporterTests
     }
 
     [Test]
-    public void Forged_branch_block_is_refused_before_its_parent_state_is_copied_and_advanced()
+    public void Forged_branch_block_is_refused_before_its_parent_state_is_copied_and_advanced([Values] bool proposerPastRegistry)
     {
         UnsignedChain chain = UnsignedChain.Create();
         FailedBlockRoots failed = new();
@@ -1345,17 +1345,21 @@ public class BlockImporterTests
         UnsignedChain.ChainBlock sibling = chain.Extend(parent.Root, slot: 3, payloadHashByte: 0x84, signed: true);
         UnsignedChain.ChainBlock branch = chain.Extend(parent.Root, slot: 3 * chain.Spec.SlotsPerEpoch, payloadHashByte: 0x83, signed: true);
         Assert.That(new[] { parent, lineage, sibling }.Select(b => importer.Import(b.Block, b.Root, verifySignatures: true)), Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
-        branch.Block.Signature = ImportableBlobBlock.Altered(branch.Block.Signature);
+        // A proposer past the registry has no cached key to check the signature against.
+        if (proposerPastRegistry) branch.Block.Message!.ProposerIndex = ulong.MaxValue;
+        else branch.Block.Signature = ImportableBlobBlock.Altered(branch.Block.Signature);
+        Hash256 branchRoot = SszRoots.HashTreeRoot(branch.Block.Message!);
 
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        BlockImportResult result = importer.Import(branch.Block, branch.Root, verifySignatures: true);
+        BlockImportResult result = importer.Import(branch.Block, branchRoot, verifySignatures: true);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
         Assert.That(((IBlockImporter)importer).RejectGossip, Is.True);
-        Assert.That(allocated, Is.LessThan(128 * 1024), "a forged signature must not buy a state copy and a multi-epoch advance");
-        Assert.That(failed.Contains(branch.Root), Is.False, "the signature is not part of the block root, so the honest block must stay importable");
+        Assert.That(allocated, Is.LessThan(128 * 1024), "a forged proposal must not buy a state copy and a multi-epoch advance");
+        if (!proposerPastRegistry)
+            Assert.That(failed.Contains(branchRoot), Is.False, "the signature is not part of the block root, so the honest block must stay importable");
     }
 
     [TestCase(0UL, false, TestName = "Block_at_the_finalized_slot_is_not_recorded_as_failed")]
