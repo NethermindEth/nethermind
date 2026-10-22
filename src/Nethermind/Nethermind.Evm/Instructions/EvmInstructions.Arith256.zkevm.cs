@@ -81,9 +81,8 @@ public static unsafe partial class EvmInstructions
         }
 
         Unsafe.SkipInit(out result);
-        Unsafe.SkipInit(out UInt256 remainder);
         fixed (UInt256* pa = &a, pb = &b, pq = &result)
-            Accelerators.DivRem256((ulong*)pa, (ulong*)pb, (ulong*)pq, (ulong*)&remainder);
+            ZiskArithmetic.Divide((ulong*)pa, (ulong*)pb, (ulong*)pq);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

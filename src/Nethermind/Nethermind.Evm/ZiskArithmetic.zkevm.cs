@@ -3,14 +3,15 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm;
 
-/// <summary>The EVM's 256-bit arithmetic on ZisK's <c>arith256</c> and <c>arith256_mod</c> precompiles.</summary>
+/// <summary>The EVM's 256-bit arithmetic on ZisK's <c>arith256</c> and <c>arith256_mod</c> precompiles and its library division.</summary>
 /// <remarks>
-/// bflat lists both precompile P/Invokes in the JIT's <c>JitZkCsrPInvokes</c>, so each call below is the single CSR
+/// bflat lists both precompile P/Invokes in the JIT's <c>JitZkCsrPInvokes</c>, so each precompile call below is the single CSR
 /// write that runs the precompile, which changes no register. The library wrappers they replace are calls, around
 /// which every handler saved and reloaded the state it carries. Only code behind <c>ZiskFlag</c> reaches this.
 /// Every operand is a 256-bit integer as four 64-bit limbs, least significant first; a result must not alias an
@@ -45,6 +46,11 @@ internal static unsafe class ZiskArithmetic
             Accelerators.Arith256Mod(a, (ulong*)one, (ulong*)zero, modulus, result);
     }
 
+    /// <summary>Computes the quotient <c>a / b</c> into <paramref name="quotient"/>, which may alias an operand; a zero divisor gives zero.</summary>
+    /// <remarks>The ZisK library routine behind the little-endian U256 ABI, reached through its call thunk in the runtime.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Divide(ulong* a, ulong* b, ulong* quotient) => zkvm_u256_le_div(a, b, quotient);
+
     /// <summary>Computes the low 256 bits of <c>a * b</c> into <paramref name="low"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -54,4 +60,7 @@ internal static unsafe class ZiskArithmetic
         fixed (UInt256* zero = &Unsafe.AsRef(in UInt256.Zero))
             Accelerators.Arith256(a, b, (ulong*)zero, low, (ulong*)&high);
     }
+
+    [DllImport("__Internal", ExactSpelling = true), SuppressGCTransition]
+    private static extern int zkvm_u256_le_div(ulong* a, ulong* b, ulong* quotient);
 }
