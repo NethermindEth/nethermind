@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
@@ -58,5 +59,13 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
         return bytesArray is null ? throw new JsonException("Invalid hash property name.") : new Hash256(bytesArray);
     }
 
-    public override void WriteAsPropertyName(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options) => writer.WritePropertyName(value.ToString());
+    [SkipLocalsInit]
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options)
+    {
+        Span<byte> hashBytes = stackalloc byte[Hash256.Size * 2 + 2];
+        hashBytes[0] = (byte)'0';
+        hashBytes[1] = (byte)'x';
+        value.Bytes.OutputBytesToByteHex(hashBytes[2..], false);
+        writer.WritePropertyName(hashBytes);
+    }
 }
