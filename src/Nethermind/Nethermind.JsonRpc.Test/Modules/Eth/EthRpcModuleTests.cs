@@ -2714,16 +2714,35 @@ public partial class EthRpcModuleTests
     public async Task Eth_createAccessList_lists_only_addresses_an_opcode_names(string code, string[] expected)
     {
         using Context ctx = await Context.CreateWithOsakaEnabled();
-        string stateOverride = $$$"""
-            {"{{{AccessListContract}}}":{"code":"{{{code}}}"},
-             "{{{DelegatedAccount}}}":{"code":"0xef0100c300000000000000000000000000000000000000"},
-             "0xc300000000000000000000000000000000000000":{"code":"0x00"}}
-            """;
 
-        (JToken result, _) = await CallCreateAccessList(ctx, $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}"}""", stateOverride, optimize: true);
+        (JToken result, _) = await CallCreateAccessList(ctx, AccessListContractCall, AccessListStateOverride(code), optimize: true);
 
         Assert.That(result["accessList"]!.Select(static e => e["address"]!.Value<string>()), Is.EqualTo(expected), result.ToString());
     }
+
+    // The list names the delegated account but not its target, so the reported gas must pay cold access for the target,
+    // as a transaction carrying that list does, even though tracing the access warms every account the run touches.
+    [Test]
+    public async Task Eth_createAccessList_gas_pays_cold_access_for_a_delegation_target_it_leaves_out()
+    {
+        // 21,000 intrinsic and 2,400 for the listed account, then five PUSH1, PUSH20 and GAS (20), and a CALL paying
+        // warm access for the listed account (100) and cold access for its delegation target (2,600, EIP-7702).
+        const long expectedGas = 21_000 + 2_400 + 20 + 100 + 2_600;
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx, AccessListContractCall, AccessListStateOverride(CallCode(DelegatedAccount)), optimize: true);
+
+        Assert.That(gasUsed, Is.EqualTo(expectedGas), result.ToString());
+    }
+
+    private static string AccessListContractCall => $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}"}""";
+
+    // The contract under test runs code; the delegated account delegates to a contract that only stops.
+    private static string AccessListStateOverride(string code) => $$$"""
+        {"{{{AccessListContract}}}":{"code":"{{{code}}}"},
+         "{{{DelegatedAccount}}}":{"code":"0xef0100c300000000000000000000000000000000000000"},
+         "0xc300000000000000000000000000000000000000":{"code":"0x00"}}
+        """;
 
     [Test]
     public async Task Eth_createAccessList_leaves_out_an_authority_the_call_names()

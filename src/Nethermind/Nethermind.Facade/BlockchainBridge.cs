@@ -506,6 +506,7 @@ namespace Nethermind.Facade
             CancellationTxTracer tracer = compositeTracer.WithCancellation(cancellationToken);
             TransactionResult result;
             bool stop;
+            bool droppedWarmAddresses;
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -517,9 +518,20 @@ namespace Nethermind.Facade
                 AccessList? discovered = referencedTracer is null
                     ? accessTracer.AccessList
                     : KeepReferencedAddresses(accessTracer.AccessList, referencedTracer.Addresses, previousAccessList);
+                droppedWarmAddresses = discovered?.Count.AddressesCount != accessTracer.AccessList?.Count.AddressesCount;
                 stop = !result.TransactionExecuted || HasConverged(previousAccessList, discovered);
                 previousAccessList = discovered;
             } while (!stop);
+
+            // Tracing access charges every account a run touches as warm, as if it were listed. When the list leaves
+            // one out, such as a delegation target, a transaction carrying the list pays cold for it, so the gas and
+            // outcome come from a run with the list alone.
+            if (droppedWarmAddresses && result.TransactionExecuted)
+            {
+                outputTracer.Reset();
+                tx.AccessList = previousAccessList;
+                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, outputTracer.WithCancellation(cancellationToken), rejectsTipAboveFeeCap: true);
+            }
 
             return BuildCallOutput(result, outputTracer, previousAccessList);
         }
