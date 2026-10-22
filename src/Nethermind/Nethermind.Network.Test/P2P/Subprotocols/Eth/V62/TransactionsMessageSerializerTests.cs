@@ -73,6 +73,28 @@ public class TransactionsMessageSerializerTests
         TxDecoder.TxObjectPool.Return(second.Transactions[0]);
     }
 
+    [TestCase(TxType.Legacy)]
+    [TestCase(TxType.AccessList)]
+    [TestCase(TxType.EIP1559)]
+    [TestCase(TxType.SetCode)]
+    public void Length_matches_the_wire_encoding(TxType type)
+    {
+        TransactionsMessageSerializer serializer = new();
+        Transaction transaction = Build.A.Transaction.WithType(type).WithAuthorizationCodeIfAuthorizationListTx().SignedAndResolved().TestObject;
+        using TransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
+
+        int length = serializer.GetLength(message, out int contentLength);
+        IByteBuffer buffer = Unpooled.Buffer();
+        serializer.Serialize(buffer, message);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contentLength, Is.EqualTo(2 * TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm)));
+            Assert.That(length, Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
+            Assert.That(buffer.ReadableBytes, Is.EqualTo(length));
+        }
+    }
+
     [Test]
     public void Roundtrip_init()
     {

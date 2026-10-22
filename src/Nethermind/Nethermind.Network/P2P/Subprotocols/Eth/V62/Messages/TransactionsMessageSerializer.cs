@@ -87,7 +87,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             contentLength = 0;
             for (int i = 0; i < message.Transactions.Count; i++)
             {
-                contentLength += TxDecoder.GetLength(message.Transactions[i], RlpBehaviors.InMempoolForm);
+                Transaction tx = message.Transactions[i];
+                contentLength += tx.SupportsBlobs || tx.SupportsFrames
+                    ? TxDecoder.GetLength(tx, RlpBehaviors.InMempoolForm)
+                    : TransactionDecoder.GetWrappedTxLength(tx.Type, tx.GetLength());
             }
 
             return Rlp.LengthOfSequence(contentLength);
