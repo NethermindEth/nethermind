@@ -106,12 +106,12 @@ public static partial class Merkle
             int pairs = leaves.Length / 2;
             for (int level = 0; ;)
             {
-                for (int i = 0; i < pairs; i++)
+                UInt256* parent = firstNode;
+                for (UInt256* pair = children, end = children + 2 * pairs; pair != end; pair += 2, parent++)
                 {
-                    UInt256* pair = children + 2 * i;
                     if (IsZeroSubtree(in pair[0], level) && IsZeroSubtree(in pair[1], level))
                     {
-                        firstNode[i] = ZeroHash(level + 1);
+                        *parent = ZeroHash(level + 1);
                         continue;
                     }
 
@@ -120,7 +120,7 @@ public static partial class Merkle
                     Sha256F(&parameters);
                     parameters.Input = padding;
                     Sha256F(&parameters);
-                    firstNode[i] = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
+                    *parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
                 }
 
                 if (++level >= depth)
@@ -158,7 +158,7 @@ public static partial class Merkle
         fixed (UInt256* pair = &left)
         {
             // The precompile requires 8-byte aligned operands; the locals and the RVA padding block are.
-            Sha256Block block;
+            NodePair block;
             if (adjacent && ((nuint)pair & 7) == 0)
             {
                 parameters.Input = (ulong*)pair;
@@ -240,12 +240,6 @@ public static partial class Merkle
         public ulong Word1;
         public ulong Word2;
         public ulong Word3;
-    }
-
-    private struct Sha256Block
-    {
-        public UInt256 Left;
-        public UInt256 Right;
     }
 
     internal const int Sp1Sha256ScheduleLength = 64;

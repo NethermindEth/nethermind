@@ -192,8 +192,10 @@ public static partial class Merkle
     public static void MixIn(ref UInt256 root, int value)
     {
         ulong v = value < 0 ? ulong.MaxValue : 0L;
-        UInt256 lengthPart = new((ulong)value, v, v, v);
-        HashPair(in root, in lengthPart, out root);
+        NodePair pair;
+        pair.Left = root;
+        pair.Right = new((ulong)value, v, v, v);
+        HashPair(in pair.Left, in pair.Right, out root);
     }
 
     // EIP-7495 mixes the static active_fields bitvector into the progressive container root.
@@ -242,25 +244,32 @@ public static partial class Merkle
 
         // The `numLeaves`-sized subtree is the left child; the remaining chunks recurse into the right.
         int subtreeChunkCount = (int)Math.Min((ulong)count, Math.Min(numLeaves, (ulong)int.MaxValue));
-        UInt256 subtree;
+        NodePair children;
         if (subtreeChunkCount <= chunks.Length)
         {
-            Merkleize(out subtree, chunks[..subtreeChunkCount], ReadOnlySpan<UInt256>.Empty, numLeaves);
+            if (numLeaves == 1)
+                children.Left = chunks[0];
+            else
+                Merkleize(out children.Left, chunks[..subtreeChunkCount], ReadOnlySpan<UInt256>.Empty, numLeaves);
+
             chunks = chunks[subtreeChunkCount..];
         }
         else
         {
-            Merkleize(out subtree, chunks, lastChunk, numLeaves);
+            Merkleize(out children.Left, chunks, lastChunk, numLeaves);
             chunks = lastChunk = ReadOnlySpan<UInt256>.Empty;
         }
 
-        UInt256 continuation = UInt256.Zero;
         if (chunks.Length + lastChunk.Length != 0)
         {
-            MerkleizeProgressive(out continuation, chunks, lastChunk, checked(numLeaves * 4));
+            MerkleizeProgressive(out children.Right, chunks, lastChunk, checked(numLeaves * 4));
+        }
+        else
+        {
+            children.Right = UInt256.Zero;
         }
 
-        HashPair(in subtree, in continuation, out root);
+        HashPair(in children.Left, in children.Right, out root);
     }
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value)
@@ -378,4 +387,11 @@ public static partial class Merkle
     }
 
     private const int StackNodeLimit = 32;
+
+    /// <summary>Two sibling nodes side by side, as a single 64-byte block that hashing reads in place.</summary>
+    private struct NodePair
+    {
+        public UInt256 Left;
+        public UInt256 Right;
+    }
 }
