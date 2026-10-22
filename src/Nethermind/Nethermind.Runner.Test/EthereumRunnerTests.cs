@@ -859,6 +859,62 @@ public class EthereumRunnerTests
         }
     }
 
+    /// <summary>
+    /// <see cref="ReviewBlockTree"/> waits until the blocks left unprocessed at the last shutdown are processed,
+    /// which can take days on an archive node. JSON-RPC and health checks must not wait for it, but block
+    /// production must. An era import waits for it and holds the network back, so then JSON-RPC waits too.
+    /// </summary>
+    [Test]
+    public async Task Rpc_does_not_wait_for_block_tree_review(
+        [Values("mainnet", "gnosis", "op-mainnet", "taiko-alethia", "xdc")] string network,
+        [Values] bool eraImport)
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
+        configProvider.Initialize();
+        if (eraImport) configProvider.GetConfig<IEraConfig>().ImportDirectory = "era";
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        try
+        {
+            Dictionary<Type, HashSet<Type>> dependencies = [];
+            HashSet<Type> GetDependencies(Type step) =>
+                dependencies.TryGetValue(step, out HashSet<Type>? set) ? set : dependencies[step] = [];
+
+            foreach (StepInfo step in runner.LifetimeScope.Resolve<IEthereumStepsLoader>().ResolveStepsImplementations())
+            {
+                GetDependencies(step.StepBaseType).UnionWith(step.Dependencies);
+                foreach (Type dependent in step.Dependents) GetDependencies(dependent).Add(step.StepBaseType);
+            }
+
+            HashSet<Type> TransitiveDependencies(Type step)
+            {
+                HashSet<Type> visited = [];
+                Stack<Type> toVisit = new(GetDependencies(step));
+                while (toVisit.TryPop(out Type? current))
+                {
+                    if (visited.Add(current)) foreach (Type dependency in GetDependencies(current)) toVisit.Push(dependency);
+                }
+                return visited;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TransitiveDependencies(typeof(StartRpc)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraImport));
+                Assert.That(TransitiveDependencies(typeof(StartHealthChecks)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraImport));
+                Assert.That(TransitiveDependencies(typeof(StartBlockProducer)), Does.Contain(typeof(ReviewBlockTree)));
+            }
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
     public async Task Smoke_CanResolveAllSteps((string file, ConfigProvider configProvider) testCase, int testIndex)
     {
