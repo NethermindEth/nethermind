@@ -1031,6 +1031,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    // Benchmark test image only: Linux 5.10 (the NUC) aborts in RocksDB's asynchronous MultiGet (folly io_uring).
+    private static readonly bool SkipAsyncPrefetch = true;
+
     /// <summary>
     /// Starts one native asynchronous MultiGet for fixed-length keys so that their blocks are in the block cache
     /// before the scalar reads that need them. The values are discarded.
@@ -1042,7 +1045,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// </remarks>
     internal void Prefetch(ReadOnlySpan<byte> keys, int keyLength, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
-        if (keyLength <= 0 || keys.Length < keyLength || !_prefetches.TryBegin()) return;
+        if (SkipAsyncPrefetch || keyLength <= 0 || keys.Length < keyLength || !_prefetches.TryBegin()) return;
         bool pending = false;
         int count = keys.Length / keyLength;
         IColumnFamilyHandle[]? families = null;
