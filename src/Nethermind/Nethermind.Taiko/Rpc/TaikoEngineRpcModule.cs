@@ -32,6 +32,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.Taiko.Config;
+using Nethermind.Taiko.TaikoSpec;
 using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
@@ -604,7 +605,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         while (currentBlock is not null &&
                currentBlock.Transactions.Length > 0 &&
-               HasAnchorV4Prefix(currentBlock.Transactions[0].Data))
+               HasAnchorV4Prefix(currentBlock))
         {
             if (currentBlock.Number == 0)
             {
@@ -644,8 +645,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return null;
     }
 
-    private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data) => data.Length >= 4 && (AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4])
-            || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(data.Span[..4]));
+    private bool HasAnchorV4Prefix(Block block)
+    {
+        ReadOnlySpan<byte> data = block.Transactions[0].Data.Span;
+        return data.Length >= 4 && (AnchorV4Selector.AsSpan().SequenceEqual(data[..4])
+            || (AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(data[..4])
+                && _specProvider.GetSpec(block.Header) is ITaikoReleaseSpec { IsAnchorV4WithSignalSlotsEnabled: true }));
+    }
 
     /// <inheritdoc />
     public ResultWrapper<bool> taikoDebug_clearTxPoolForReorg()
