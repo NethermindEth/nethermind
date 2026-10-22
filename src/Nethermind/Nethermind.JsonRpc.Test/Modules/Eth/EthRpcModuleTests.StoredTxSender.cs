@@ -79,7 +79,7 @@ public partial class EthRpcModuleTests
         Transaction expected = block.Transactions[1];
         using ArrayPoolList<byte> expectedRawList = TxDecoder.Instance.EncodeToArrayPoolList(expected, RlpBehaviors.SkipTypedWrapping);
         byte[] expectedRaw = expectedRawList.ToArray();
-        ((IClearableCache)test.Container.Resolve<IBlockStore>()).ClearCache();
+        EvictBlocks(test);
 
         ResultWrapper<TransactionForRpc> byNumber = test.EthRpcModule.eth_getTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 1);
         ResultWrapper<TransactionForRpc> byHash = test.EthRpcModule.eth_getTransactionByBlockHashAndIndex(block.Hash!, 1);

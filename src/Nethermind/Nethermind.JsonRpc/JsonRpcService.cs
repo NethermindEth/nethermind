@@ -15,6 +15,7 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Exceptions;
@@ -113,18 +114,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
-        JsonRpcErrorResponse? value = PrepareParameters(
-            request,
-            methodName,
-            method,
-            out object?[]? parameters,
-            out int parameterCount,
-            out bool returnParametersToPool);
-        if (value is not null)
-        {
-            return value;
-        }
-
+        // Rented before decoding so that requests the pool queues or sheds do not pay for, or hold, decoded params.
         IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
         {
@@ -135,6 +125,33 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         IResultWrapper? resultWrapper = null;
         try
         {
+            JsonRpcErrorResponse? value;
+            object?[]? parameters;
+            int parameterCount;
+            bool returnParametersToPool;
+            try
+            {
+                value = PrepareParameters(
+                    request,
+                    methodName,
+                    method,
+                    out parameters,
+                    out parameterCount,
+                    out returnParametersToPool);
+            }
+            catch (Exception ex)
+            {
+                // Binding failures are answered inside; anything escaping is a node fault, not an invocation error.
+                returnImmediately = true;
+                return ReturnErrorResponse(request, ex);
+            }
+
+            if (value is not null)
+            {
+                returnImmediately = true;
+                return value;
+            }
+
             object? invocationResult = Invoke(method, rpcModule, parameters, parameterCount, context);
             ReturnParameters(parameters, returnParametersToPool);
 
@@ -623,6 +640,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             TargetParameterCountException or ArgumentException =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
+
+            TraceDurationFormatException when isStreaming =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.Message, null, in request.IdRef, returnAction),
 
             JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
@@ -1167,12 +1187,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
         /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
-        internal JsonRpcErrorResponse MapException(Exception exception) =>
-            methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction) && exception is Modules.DebugModule.DebugRpcModule.TransactionTraceNotFoundException
-                ? service.GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, exception.Message, null, in request.IdRef, null)
-                : methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction) && exception is Nethermind.Blockchain.Tracing.GethStyle.TraceDurationFormatException
-                ? service.GetErrorResponse(methodName, ErrorCodes.InvalidInput, exception.Message, null, in request.IdRef, null)
-                : service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+        internal JsonRpcErrorResponse MapException(Exception exception)
+        {
+            if (methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction))
+            {
+                if (exception is Modules.DebugModule.DebugRpcModule.TransactionTraceNotFoundException)
+                    return service.GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, exception.Message, null, in request.IdRef, null);
+                if (exception is Nethermind.Blockchain.Tracing.GethStyle.TraceDurationFormatException)
+                    return service.GetErrorResponse(methodName, ErrorCodes.InvalidInput, exception.Message, null, in request.IdRef, null);
+            }
+
+            return service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+        }
 
         /// <summary>Reports one completed execution, excluding an unwritten or request-cancelled response.</summary>
         /// <remarks>A failure without request cancellation, including a transport exception, counts as an error.</remarks>

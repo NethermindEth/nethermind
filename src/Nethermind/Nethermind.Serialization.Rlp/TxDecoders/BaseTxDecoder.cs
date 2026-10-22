@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -83,6 +84,7 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
 
     /// <summary>Decodes the <c>[nonce, gas_price, gas_limit, to, value, data]</c> fields, with <c>max_fee_per_gas</c>
     /// after the gas price when <paramref name="hasMaxFeePerGas"/> is set.</summary>
+    [SkipLocalsInit]
     protected static void DecodeLegacyFields(Transaction transaction, ref RlpReader decoderContext, bool hasMaxFeePerGas)
     {
         LiteRlpReader rlp = new(decoderContext.Data);

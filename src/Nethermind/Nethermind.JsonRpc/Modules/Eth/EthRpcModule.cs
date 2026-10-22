@@ -77,7 +77,7 @@ public partial class EthRpcModule(
     HashesOnlyBlockReader? hashesOnlyBlockReader = null,
     IReceiptFinder? storedReceiptFinder = null) : IEthRpcModule
 {
-    public const int GetProofStorageKeyLimit = 1000;
+    public const int GetProofStorageKeyLimit = 1024;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
     private const string UnknownAccount = "unknown account";
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -539,10 +539,15 @@ public partial class EthRpcModule(
             ? feePerBlobGas
             : null;
 
+        // Only the defaults FillDefaults will read are estimated: an estimate can scan recent blocks or call L1.
         TxFillContext fillContext = new()
         {
-            GasPrice = await _gasPriceOracle.GetGasPriceEstimate(),
-            MaxPriorityFeePerGas = _gasPriceOracle.GetMaxPriorityGasFeeEstimate(),
+            GasPrice = rpcTx is not EIP1559TransactionForRpc && legacyTx.GasPrice is null
+                ? await _gasPriceOracle.GetGasPriceEstimate()
+                : default,
+            MaxPriorityFeePerGas = rpcTx is EIP1559TransactionForRpc { GasPrice: null, MaxPriorityFeePerGas: null }
+                ? _gasPriceOracle.GetMaxPriorityGasFeeEstimate()
+                : default,
             BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)),
             BlobBaseFee = blobBaseFee,
             Spec = spec,
@@ -999,19 +1004,19 @@ public partial class EthRpcModule(
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
                 }
             case FilterType.PendingTransactionFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
                 }
             case FilterType.LogFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
                 }
             default:
                 {
@@ -1032,7 +1037,7 @@ public partial class EthRpcModule(
             bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
             if (id < 0 || !filterFound)
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
             }
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
@@ -1144,13 +1149,15 @@ public partial class EthRpcModule(
 
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return GetStateFailureResult<AccountProof>(header);
+            return _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet() || !WasStatePruned(header)
+                ? GetStateFailureResult<AccountProof>(header)
+                : ResultWrapper<AccountProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
         }
 
         using RentedTimeout timeout = _rpcConfig.RentTimeout();
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
-        return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
+        return ResultWrapper<AccountProof>.Success(EchoStorageKeys(accountProofCollector.BuildResult(), storageKeys));
     }
 
     public ResultWrapper<ulong> eth_chainId()
@@ -1310,6 +1317,27 @@ public partial class EthRpcModule(
 
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+
+    /// <summary>Trims each proof key that was not sent full width, so it is echoed as a quantity.</summary>
+    internal static AccountProof EchoStorageKeys(AccountProof proof, StorageKeys storageKeys)
+    {
+        StorageProof[] storageProofs = proof.StorageProofs;
+        for (int i = 0; i < storageProofs.Length; i++)
+        {
+            if (!storageKeys.IsFullWidth(i))
+            {
+                storageProofs[i].Key = storageProofs[i].Key!.WithoutLeadingZeros().ToArray();
+            }
+        }
+
+        return proof;
+    }
+
+    /// <remarks>
+    /// Blocks ahead of the processed head and side-chain blocks may simply never have been processed.
+    /// </remarks>
+    private bool WasStatePruned(BlockHeader header) =>
+        _blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header);
 
     private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());

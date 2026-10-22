@@ -4,13 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Blockchain;
@@ -19,6 +22,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Nethermind.Core.Crypto;
@@ -45,13 +49,12 @@ public partial class DebugRpcModuleTests
         Assert.That(chain.BlockTree.FindHeader(block.Hash!), Is.Not.Null);
         Assert.That(chain.BlockTree.FindBlock(block.Hash!), Is.Null);
         counter.Enabled = true;
-        Nethermind.Core.Test.IO.FlushRecordingPipeWriter pipe = new(keepOutput: true);
+        FlushRecordingPipeWriter pipe = new(keepOutput: true);
         using JsonRpcResponse rpcResponse = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_traceTransaction", transaction.Hash!,
             new { timeout, streamMode });
-        await JsonRpcResponseWriter.WriteAsync(pipe, rpcResponse, Nethermind.Serialization.Json.EthereumJsonSerializer.JsonOptions,
-            System.Threading.CancellationToken.None);
-        string response = System.Text.Encoding.UTF8.GetString(pipe.WrittenSpan);
-        TestContext.Out.WriteLine($"streamMode={streamMode} timeout={timeout} calls={counter.Calls} response={response}");
+        await JsonRpcResponseWriter.WriteAsync(pipe, rpcResponse, EthereumJsonSerializer.JsonOptions,
+            CancellationToken.None);
+        string response = Encoding.UTF8.GetString(pipe.WrittenSpan);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(counter.Calls, Is.Zero);
@@ -143,15 +146,15 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("unknown")]
-    [TestCase("native")]
-    [TestCase("config")]
-    [TestCase("config-valid-timeout")]
-    [TestCase("native-valid-timeout")]
-    [TestCase("type")]
-    [TestCase("oversized")]
-    [TestCase("extension")]
-    public async Task Debug_traceTransaction_semantic_timeout_phase(string scenario)
+    private static readonly string[] TraceTransactionSemanticTimeoutScenarios =
+    [
+        "unknown", "native", "config", "config-valid-timeout",
+        "native-valid-timeout", "type", "oversized", "extension"
+    ];
+
+    [Test]
+    public async Task Debug_traceTransaction_semantic_timeout_phase(
+        [ValueSource(nameof(TraceTransactionSemanticTimeoutScenarios))] string scenario)
     {
         using Context context = await Context.Create();
         Transaction transaction = await AddBlockWithTransfer(context);
@@ -203,6 +206,98 @@ public partial class DebugRpcModuleTests
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
             Assert.That(json["result"], Is.Null, response);
             if (diagnostic is not null) Assert.That(json["error"]?.ToString(), Does.Contain(diagnostic), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_timeout_wire_contract(
+        [Values("bad", "type", "oversized", "5s", "0s", "-1s", "4294968s")] string duration)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        object timeout = duration switch
+        {
+            "type" => 7,
+            "oversized" => new string('x', 65),
+            _ => duration
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (bool? streamMode in new bool?[] { null, false, true })
+                foreach (string? tracer in new[] { null, "noopTracer" })
+                    foreach (bool known in new[] { false, true })
+                    {
+                        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
+                            known ? transaction.Hash! : TestItem.KeccakD, new { timeout, streamMode, tracer });
+                        string expected = duration is "type" or "oversized"
+                            ? """{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}"""
+                            : !known
+                                ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""
+                                : duration == "bad"
+                                    ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}"""
+                                    : tracer is null
+                                        ? """{"jsonrpc":"2.0","result":{"structLogs":[],"gas":21000,"failed":false,"returnValue":"0x"},"id":67}"""
+                                        : """{"jsonrpc":"2.0","result":{},"id":67}""";
+
+                        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer),
+                            $"streamMode={streamMode}, tracer={tracer}, known={known}");
+                    }
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_javascript_duration_policy(
+        [Values("bad", "5s", "0s", "-1s", "4294968s")] string timeout,
+        [Values(null, false, true)] bool? streamMode)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        const string tracer = "{fault:function(){},result:function(){return {};}}";
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
+            transaction.Hash!, new { tracer, timeout, streamMode });
+        string expected;
+        if (timeout == "bad")
+        {
+            expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}""";
+        }
+        else if (timeout == "5s")
+        {
+            expected = """{"jsonrpc":"2.0","result":{},"id":67}""";
+        }
+        else
+        {
+            TimeSpan duration = TimeSpan.FromSeconds(timeout == "0s" ? 0 : timeout == "-1s" ? -1 : 4_294_968);
+            ArgumentOutOfRangeException error = new("options", duration, "Tracer timeout must be between 1ns and 2m.");
+            expected = JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                error = new { code = ErrorCodes.InvalidParams, message = error.Message, data = $"{error.GetType()}: {error.Message}" },
+                id = 67
+            });
+        }
+
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_javascript_constructor_precedes_duration(
+        [Values("callbacks", "setup")] string failure,
+        [Values(null, false, true)] bool? streamMode)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        string tracer = failure == "callbacks" ? "{}"
+            : "{fault:function(){},setup:function(){throw Error('setup-before-timeout');},result:function(){return {};}}";
+        string validDuration = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
+            transaction.Hash!, new { tracer, timeout = "5s", streamMode });
+        string badDuration = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
+            transaction.Hash!, new { tracer, timeout = "bad", streamMode });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(validDuration)["error"], Is.Not.Null, validDuration);
+            Assert.That(badDuration, Is.EqualTo(validDuration));
         }
     }
 
@@ -578,9 +673,6 @@ public partial class DebugRpcModuleTests
                         "code": "0xabcd",
                         "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                     },
-                    "0x0000000000000000000000000000000000000000": {
-                        "balance": "0x0"
-                    },
                     "0x475674cb523a0a2736b7f7534390288fce16982c": {
                         "balance": "0xf618"
                     }
@@ -677,7 +769,7 @@ public partial class DebugRpcModuleTests
         yield return new TestCaseData(
             contractTransaction,
             new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer },
-            """{"jsonrpc":"2.0","result":{"0x60006020-2":1},"id":67}"""
+            """{"jsonrpc":"2.0","result":{},"id":67}"""
         )
         { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
 
@@ -714,12 +806,6 @@ public partial class DebugRpcModuleTests
                         "nonce": 3,
                         "code": "0xabcd",
                         "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
-                    },
-                    "0x0ffd3e46594919c04bcfd4e146203c8255670828": {
-                        "balance": "0x0",
-                        "storage": {
-                            "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000"
-                        }
                     },
                     "0x475674cb523a0a2736b7f7534390288fce16982c": {
                         "balance": "0xf618"
