@@ -405,9 +405,9 @@ public class SnapStateServerTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(() => context.Server.GetTrieNodes(pathSet, context.RootHash, default),
-                    Throws.TypeOf<RlpException>().With.Message.EqualTo(expectedException.Message), "malformed trie payloads retain the account decoder error");
+                    Throws.TypeOf(expectedException.GetType()).With.Message.EqualTo(expectedException.Message), "malformed trie payloads retain the account decoder error");
                 Assert.That(() => context.Server.GetStorageRanges(context.RootHash, accounts, null, null, 4000, default),
-                    Throws.TypeOf<RlpException>().With.Message.EqualTo(expectedException.Message), "malformed range payloads retain the account decoder error");
+                    Throws.TypeOf(expectedException.GetType()).With.Message.EqualTo(expectedException.Message), "malformed range payloads retain the account decoder error");
             }
             return;
         }
