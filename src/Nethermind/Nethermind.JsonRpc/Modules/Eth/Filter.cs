@@ -8,6 +8,7 @@ using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 
@@ -113,9 +114,10 @@ public class Filter : IJsonRpcParam
                 }
 
                 HashSet<AddressAsKey> result = new(addressCount);
+                int index = 0;
                 foreach (JsonElement element in token.EnumerateArray())
                 {
-                    result.Add(new(ParseAddress(element)));
+                    result.Add(new(ParseAddress(element, index++)));
                 }
 
                 return result;
@@ -173,17 +175,38 @@ public class Filter : IJsonRpcParam
         return topics;
     }
 
-    private static Address ParseAddress(JsonElement element)
+    private static Address ParseAddress(JsonElement element, int index = -1)
     {
         Span<byte> bytes = stackalloc byte[Core.Address.Size];
-        return TryDecodeHex(element, bytes) ? new Address(bytes) : new Address(element.ToString());
+        if (TryDecodeHex(element, bytes))
+        {
+            return new Address(bytes);
+        }
+
+        byte[] decoded = Bytes.FromHexString(element.ToString());
+        return decoded.Length == Core.Address.Size
+            ? new Address(decoded)
+            : throw new SafePublicMessageFormatException(index < 0
+                ? $"invalid address: {GetInvalidLengthMessage(decoded.Length, Core.Address.Size, "address")}"
+                : $"invalid address at index {index}: {GetInvalidLengthMessage(decoded.Length, Core.Address.Size, "address")}");
     }
 
     private static Hash256 ParseHash(JsonElement element)
     {
         Span<byte> bytes = stackalloc byte[Hash256.Size];
-        return TryDecodeHex(element, bytes) ? new Hash256(bytes) : new Hash256(element.ToString());
+        if (TryDecodeHex(element, bytes))
+        {
+            return new Hash256(bytes);
+        }
+
+        byte[] decoded = Bytes.FromHexString(element.ToString());
+        return decoded.Length == Hash256.Size
+            ? new Hash256(decoded)
+            : throw new SafePublicMessageFormatException(GetInvalidLengthMessage(decoded.Length, Hash256.Size, "topic"));
     }
+
+    private static string GetInvalidLengthMessage(int length, int expectedLength, string name) =>
+        $"hex has invalid length {length} after decoding; expected {expectedLength} for {name}";
 
     /// <summary>
     /// Decodes a JSON string of exactly <paramref name="destination"/>'s length in even-length hex straight from its UTF-8 bytes.

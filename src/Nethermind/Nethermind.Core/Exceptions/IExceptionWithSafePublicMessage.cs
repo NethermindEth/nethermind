@@ -8,4 +8,9 @@ namespace Nethermind.Core.Exceptions;
 /// </summary>
 public interface IExceptionWithSafePublicMessage
 {
+    /// <summary>
+    /// Whether <see cref="System.Exception.Message"/> already names the input it rejects, so it is exposed without the
+    /// position of the JSON-RPC argument that carried that input.
+    /// </summary>
+    bool NamesInput => false;
 }

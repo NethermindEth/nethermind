@@ -8,4 +8,10 @@ namespace Nethermind.Core.Exceptions;
 /// <summary>
 /// A <see cref="FormatException"/> whose <see cref="Exception.Message"/> is safe to propagate to external callers.
 /// </summary>
-public sealed class SafePublicMessageFormatException(string message) : FormatException(message), IExceptionWithSafePublicMessage;
+/// <param name="message">The public message.</param>
+/// <param name="namesInput">See <see cref="IExceptionWithSafePublicMessage.NamesInput"/>.</param>
+public sealed class SafePublicMessageFormatException(string message, bool namesInput = false) : FormatException(message), IExceptionWithSafePublicMessage
+{
+    /// <inheritdoc/>
+    public bool NamesInput => namesInput;
+}

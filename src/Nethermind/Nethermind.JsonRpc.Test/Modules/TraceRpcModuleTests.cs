@@ -1229,7 +1229,7 @@ public class TraceRpcModuleTests
             "\"fromBlock\":\"0x1\"", "\"toBlock\":\"latest\"", "\"fromBlock\":\"0x1\",\"toBlock\":null",
             "\"fromBlock\":\"earliest\",\"toBlock\":\"latest\""
         })
-            yield return new TestCaseData($"{{\"blockHash\":\"{TestItem.KeccakA}\",{bounds}}}", ErrorMessages.BlockHashAndRange);
+            yield return new TestCaseData($"{{\"blockHash\":\"{TestItem.KeccakA}\",{bounds}}}", $"invalid argument 0: {ErrorMessages.BlockHashAndRange}");
 
         foreach (string bound in new[] { "fromBlock", "toBlock" })
             foreach (string value in new[]
@@ -1237,7 +1237,7 @@ public class TraceRpcModuleTests
             $"\"{TestItem.KeccakA}\"", $"{{\"blockHash\":\"{TestItem.KeccakA}\"}}",
             $"{{\"blockHash\":\"{TestItem.KeccakA}\",\"requireCanonical\":true}}"
         })
-                yield return new TestCaseData($"{{\"{bound}\":{value}}}", "block hash is not a block number or tag");
+                yield return new TestCaseData($"{{\"{bound}\":{value}}}", "invalid argument 0: block hash is not a block number or tag");
     }
 
     [TestCaseSource(nameof(InvalidTraceFilterBlocks))]
@@ -1599,7 +1599,7 @@ public class TraceRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", filter.RootElement);
 
-        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid trace filter mode, expected \"intersection\" or \"union\""},"id":67}"""));
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 0: invalid trace filter mode, expected \"intersection\" or \"union\""},"id":67}"""));
     }
 
     [Test]

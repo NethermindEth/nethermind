@@ -3,9 +3,12 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;
@@ -33,20 +36,37 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
         }
 
         int length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
-        if (length is 0 or > MaxLength)
+        if (length == 0)
         {
             throw new JsonException();
         }
 
-        if (reader.HasValueSequence)
+        if (length > MaxLength)
         {
-            Span<byte> span = stackalloc byte[length];
-            reader.ValueSequence.CopyTo(span);
-            return Parse(span);
+            ThrowInvalidKey("storage key too long (want at most 32 bytes)", ref reader);
         }
 
-        return Parse(reader.ValueSpan);
+        try
+        {
+            if (reader.HasValueSequence)
+            {
+                Span<byte> span = stackalloc byte[length];
+                reader.ValueSequence.CopyTo(span);
+                return Parse(span);
+            }
+
+            return Parse(reader.ValueSpan);
+        }
+        catch (FormatException)
+        {
+            ThrowInvalidKey("invalid hex in storage key", ref reader);
+            return default;
+        }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidKey(string reason, ref Utf8JsonReader reader) =>
+        throw new SafePublicMessageFormatException($"{reason}: \"{reader.GetString()}\"", namesInput: true);
 
     private static UInt256 Parse(ReadOnlySpan<byte> hex)
     {

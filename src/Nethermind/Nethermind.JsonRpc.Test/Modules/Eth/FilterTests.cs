@@ -8,6 +8,7 @@ using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
@@ -150,13 +151,13 @@ public class FilterTests
     }
 
     [TestCase("""{"address":"0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5g"}""", typeof(FormatException))]
-    [TestCase("""{"address":["0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda"]}""", typeof(ArgumentException))]
+    [TestCase("""{"address":["0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda"]}""", typeof(SafePublicMessageFormatException))]
     [TestCase("""{"address":["0XC2D77D118326C33BBE36EBEABF4F7ED6BC2DDA5C"]}""", typeof(FormatException))]
-    [TestCase("""{"address":[123]}""", typeof(ArgumentException))]
-    [TestCase("""{"address":[null]}""", typeof(ArgumentException))]
-    [TestCase("""{"address":"0x"}""", typeof(ArgumentException))]
+    [TestCase("""{"address":[123]}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"address":[null]}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"address":"0x"}""", typeof(SafePublicMessageFormatException))]
     [TestCase("""{"topics":["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fz7"]}""", typeof(FormatException))]
-    [TestCase("""{"topics":[["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7aa"]]}""", typeof(ArgumentException))]
+    [TestCase("""{"topics":[["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7aa"]]}""", typeof(SafePublicMessageFormatException))]
     [TestCase("""{"topics":[[true]]}""", typeof(FormatException))]
     [TestCase("""{"topics":[null,null,null,null,null]}""", typeof(JsonException))]
     public void ReadJson_rejects_invalid_address_or_topic(string json, Type expectedException)

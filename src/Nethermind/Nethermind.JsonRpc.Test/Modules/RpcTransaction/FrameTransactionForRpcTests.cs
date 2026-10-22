@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -105,7 +106,7 @@ public class FrameTransactionForRpcTests
         }
     }
 
-    [TestCase("0x12", typeof(ArgumentException))]
+    [TestCase("0x12", typeof(SafePublicMessageFormatException))]
     [TestCase("0xzz", typeof(FormatException))]
     public void FrameSignature_RejectsMalformedSigner(string signer, Type expectedException)
     {
@@ -135,7 +136,7 @@ public class FrameTransactionForRpcTests
 
     [Test]
     public void Frame_RejectsEmptyTarget() =>
-        Assert.That(() => Serializer.Deserialize<FrameForRpc>("""{"target":"0x"}"""), Throws.ArgumentException);
+        Assert.That(() => Serializer.Deserialize<FrameForRpc>("""{"target":"0x"}"""), Throws.TypeOf<SafePublicMessageFormatException>());
 
     private static JsonDocument SerializeToJson(TransactionForRpc rpc) => JsonDocument.Parse(Serializer.Serialize(rpc));
 
