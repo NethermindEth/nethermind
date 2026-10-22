@@ -14,7 +14,8 @@ public sealed partial class UInt256Comparer
 
     public partial int GetHashCode(UInt256 obj)
     {
-        ulong hash = SpanExtensions.MixSlotIndex(ref Unsafe.As<UInt256, byte>(ref obj));
+        // Passed as words: taking the parameter's address would copy the caller's index into a temporary first.
+        ulong hash = SpanExtensions.MixSlotIndex(obj.u0, obj.u1, obj.u2, obj.u3);
         return (int)(hash ^ (hash >> 32));
     }
 }
