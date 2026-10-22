@@ -39,7 +39,7 @@ public static class FlatTestHelpers
     }
 
     /// <summary>A buffer with 64 KiB generations, so tests can rotate it cheaply.</summary>
-    public static INodeRecordBuffer NewTestBuffer() => new NodeRecordBuffer(0, 64 * 1024, NodeRecordBuffer.DefaultLiveGenerations);
+    public static INodeRecordBuffer NewTestBuffer() => new NodeRecordBuffer(0, 64 * 1024);
 
     /// <summary>A trie-node path with all nibbles after its length cleared.</summary>
     public static TreePath CanonicalPath(in ValueHash256 hash, int length) => new TreePath(hash, 64).Truncate(length);

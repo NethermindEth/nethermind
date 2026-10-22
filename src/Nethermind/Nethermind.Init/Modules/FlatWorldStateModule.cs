@@ -64,7 +64,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
-            .AddSingleton<INodeRecordBuffer, IFlatDbConfig>(c => new NodeRecordBuffer(c.CompressedNodeRecordBufferMemoryBudget, NodeRecordBuffer.DefaultGenerationBytes, c.NodeRecordBufferLiveGenerations))
+            .AddSingleton<INodeRecordBuffer, IFlatDbConfig>(c => new NodeRecordBuffer(c.CompressedNodeRecordBufferMemoryBudget, NodeRecordBuffer.DefaultGenerationBytes))
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()

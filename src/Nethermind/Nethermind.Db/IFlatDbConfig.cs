@@ -138,9 +138,6 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Memory budget, in bytes, for the compacted generations of the trie node buffer; the oldest are freed beyond it. It also sizes the buffer's storage root index.", DefaultValue = "524288000")]
     ulong CompressedNodeRecordBufferMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "Number of the newest trie node buffer generations kept readable in place; older unpinned ones are compacted into the compressed budget.", DefaultValue = "1")]
-    int NodeRecordBufferLiveGenerations { get; set; }
-
     [ConfigItem(Description = "Trie warmer worker count (-1 for the larger of 3/4 of the processor count and 1.5 per processor up to 12, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 

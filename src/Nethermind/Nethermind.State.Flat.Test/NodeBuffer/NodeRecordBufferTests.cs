@@ -25,18 +25,18 @@ public class NodeRecordBufferTests
 {
     private const int GenerationBytes = 64 * 1024;
     private const int RecordAlignment = 8;
-    public const int LiveGenerations = NodeRecordBuffer.DefaultLiveGenerations;
+    public const int LiveGenerations = NodeRecordBuffer.LiveGenerations;
     public const int CompactionTimeoutMilliseconds = 10_000;
     public const int PollingMilliseconds = 10;
 
     [Test]
     public void Contract_write_batch_holds_every_record_written_to_it()
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         using IDisposable pin = buffer.PinAll();
         buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(Leaf(0, 8)), Leaf(0, 8), []);
         byte[][] rlps = [Leaf(1, 8), Leaf(2, 8)];
-        using NodeRecordBuffer scratch = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer scratch = new(0, GenerationBytes);
         byte[][] records = [.. rlps.Select(rlp => scratch.TryLocate(scratch.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, []), out NodeRecord record) ? record.Span.ToArray() : [])];
         int recordLength = (records[0].Length + RecordAlignment - 1) & -RecordAlignment;
         ulong pointer;
@@ -71,7 +71,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Real_buffer_rejects_transient_pointers()
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         byte[] rlp = Leaf(1, 8);
         ulong realPointer = Append(buffer, rlp);
         using WarmedNodeBuffer warmed = new(1);
@@ -101,7 +101,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Generation_blooms_have_at_least_one_key_of_capacity([Values(0, 1, 127, 128, GenerationBytes)] int generationBytes)
     {
-        using NodeRecordBuffer buffer = new(0, generationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, generationBytes);
         using IDisposable pin = buffer.PinAll();
         ulong pointer = buffer.Reserve(0, out _, out _);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
@@ -116,7 +116,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Generation_buffers_stay_at_the_same_native_address_during_compacting_collections([Values(2 * 1024 * 1024, 4 * 1024 * 1024 + 1)] int length)
     {
-        using NodeRecordBuffer nodeBuffer = new(0, length, LiveGenerations);
+        using NodeRecordBuffer nodeBuffer = new(0, length);
         nodeBuffer.Reserve(RecordAlignment, out NativeNodeBuffer buffer, out _);
         ref byte address = ref MemoryMarshal.GetReference(buffer.GetSpan());
         buffer.GetSpan()[0] = 1;
@@ -144,7 +144,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Retains_capture_exact_allocation_boundaries_and_copies_preserve_them()
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         using NodeRecordBufferPin first = buffer.PinHead();
         ulong firstPointer = buffer.Reserve(RecordAlignment, out _, out _);
         using NodeRecordBufferPin second = buffer.PinHead();
@@ -169,7 +169,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Retain_boundary_clamps_failed_reservation_overshoot([Values(GenerationBytes + 8L, (1L << 32) + 8)] long used)
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         object active = typeof(NodeRecordBuffer).GetField("_active", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(buffer)!;
         active.GetType().GetField("Used")!.SetValue(active, used);
         using NodeRecordBufferPin retain = buffer.PinHead();
@@ -185,7 +185,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Concurrent_reservations_never_precede_their_retain_boundary()
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         Parallel.For(0, 16, thread =>
         {
             for (int i = 0; i < 1024; i++)
@@ -214,7 +214,7 @@ public class NodeRecordBufferTests
     public void Pin_all_keeps_generations_in_place_until_every_pin_is_released([Values] bool compressed, [Values] bool overlapping)
     {
         const int generationBytes = 4096;
-        using NodeRecordBuffer buffer = new(2048, generationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(2048, generationBytes);
         buffer.Reserve(0, out NativeNodeBuffer original, out _);
         byte[] rlp = Leaf(1, 1000);
         ulong pointer = AppendAt(buffer, TestItem.KeccakA, rlp);
@@ -254,7 +254,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Overlapping_pin_alls_do_not_keep_old_generations_from_being_freed([Values] bool compressed)
     {
-        using NodeRecordBuffer buffer = new(compressed ? 1UL << 20 : 0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(compressed ? 1UL << 20 : 0, GenerationBytes);
         ulong pointer = Append(buffer, Leaf(1, 8));
         buffer.Reserve(0, out NativeNodeBuffer original, out _);
         IDisposable reader = buffer.PinAll();
@@ -283,7 +283,7 @@ public class NodeRecordBufferTests
     {
         const int generationBytes = 4096;
         // One compacted generation of these records fits the budget, two do not.
-        using NodeRecordBuffer buffer = new(4096, generationBytes, liveGenerations: 1);
+        using NodeRecordBuffer buffer = new(4096, generationBytes);
         byte[] firstRlp = Leaf(1, 2500);
         ulong first = AppendAt(buffer, TestItem.KeccakA, firstRlp);
         IDisposable holdsFirst = buffer.PinAll();
@@ -313,7 +313,7 @@ public class NodeRecordBufferTests
     public void Lookup_uses_full_generation_ids_when_the_ring_slot_is_reused()
     {
         const int generationBytes = 256;
-        using NodeRecordBuffer buffer = new(0, generationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, generationBytes);
         byte[] previous = Leaf(1, 8);
         byte[] current = Leaf(2, 8);
         ulong pointer = Append(buffer, previous);
@@ -339,7 +339,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Shutdown_defers_free_until_every_pin_is_released([Values] bool readerFinishesFirst)
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         using NodeRecordBufferPin retain = buffer.PinHead();
         ulong pointer = Append(buffer, Leaf(1, 8));
         Assert.That(buffer.TryLocate(pointer, out NodeRecord record), Is.True);
@@ -379,7 +379,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Shutdown_releases_storage_when_queued_compaction_finishes()
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         ulong pointer = buffer.Reserve(GenerationBytes, out NativeNodeBuffer first, out _);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
         while (GenerationOf(buffer.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
@@ -393,7 +393,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Compaction_failure_is_reported_and_does_not_prevent_shutdown_cleanup()
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         ulong pointer = buffer.Reserve(GenerationBytes, out NativeNodeBuffer malformed, out _);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
         // A garbage header claims far more RLP than the generation holds.
@@ -420,9 +420,9 @@ public class NodeRecordBufferTests
     }
 
     [Test]
-    public void Records_resolve_in_place_until_their_generation_drops([Values(1, LiveGenerations)] int liveGenerations)
+    public void Records_resolve_in_place_until_their_generation_drops()
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, liveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         using NodeRecordBufferPin first = buffer.PinHead();
         NodeRecordBufferPin? middle = null;
         NodeRecordBufferPin? middleCopy = null;
@@ -448,7 +448,7 @@ public class NodeRecordBufferTests
         AssertResolvesFrom(buffer, records, middleCopy!.Generation, "a copy keeps its generation and every later one after the original is disposed");
 
         middleCopy.Dispose();
-        AssertResolvesFrom(buffer, records, activeGeneration - (ulong)liveGenerations + 1, "only the live generations resolve after the last release");
+        AssertResolvesFrom(buffer, records, activeGeneration - LiveGenerations + 1, "only the live generations resolve after the last release");
 
         using NodeRecordBufferPin oversizeRetain = buffer.PinHead();
         byte[] oversize = Leaf(-1, GenerationBytes + 1);
@@ -467,7 +467,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Retain_copy_cannot_resurrect_a_generation_dropped_by_a_concurrent_release()
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         using NodeRecordBufferPin retain = buffer.PinHead();
         while (GenerationOf(buffer.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
         retain.Dispose();
@@ -479,7 +479,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Root_index_returns_the_newest_matching_root([Values] bool storage)
     {
-        using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         Hash256? address = storage ? TestItem.KeccakA : null;
         NodeRecordBufferPin retain = buffer.PinHead();
         ulong droppedPointer = Append(buffer, Leaf(-1, 8));
@@ -521,7 +521,7 @@ public class NodeRecordBufferTests
     public void Dropped_generation_keeps_last_record_per_path_not_rewritten_later([Values(0UL, 1UL << 20)] ulong compressedBudget)
     {
         const ulong scenarioGeneration = 32;
-        using NodeRecordBuffer buffer = new(compressedBudget, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(compressedBudget, GenerationBytes);
         List<(ulong Pointer, byte[] Rlp)> unique = [];
         AppendUniqueUntil(scenarioGeneration);
         (ulong Pointer, byte[] Rlp) superseded = AppendRecord(TestItem.KeccakA, Leaf(-1, 8));
@@ -565,7 +565,7 @@ public class NodeRecordBufferTests
         const int threadCount = 16;
         const int recordsPerThread = 10_000;
         const int recordsPerRetain = 1_000;
-        using NodeRecordBuffer buffer = new(1 << 20, GenerationBytes, LiveGenerations);
+        using NodeRecordBuffer buffer = new(1 << 20, GenerationBytes);
         using NodeRecordBufferPin? retain = compacting ? null : buffer.PinHead();
         ulong[][] pointers = new ulong[threadCount][];
         NodeRecordBufferPin?[] threadRetains = new NodeRecordBufferPin?[threadCount];
