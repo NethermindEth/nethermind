@@ -4322,7 +4322,7 @@ namespace Nethermind.TxPool.Test
             byte[] publicKey = [.. q.X!, .. q.Y!];
             Address signer = new(Keccak.Compute(publicKey).Bytes[12..]);
 
-            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
+            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, new byte[TxFrameSignature.P256SignatureLength])];
             byte[] signature = key.SignHash(FrameTxSigHash.ComputeValue(tx).Bytes);
 
             UInt256 s = new(signature.AsSpan(32, 32), isBigEndian: true);
@@ -6577,8 +6577,8 @@ namespace Nethermind.TxPool.Test
                 Frames = frames,
                 FrameSignatures =
                 [
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, default),
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, default),
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
                 ],
                 GasLimit = 1_000_000,
                 GasPrice = feePerGas ?? 1.GWei,

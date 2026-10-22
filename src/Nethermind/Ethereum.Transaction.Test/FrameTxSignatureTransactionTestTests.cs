@@ -79,7 +79,7 @@ public class FrameTxSignatureTransactionTestTests : TransactionTestBase
 
         // compute_sig_hash covers the entry's metadata and elides only its raw bytes, so the placeholder
         // entry must be installed before hashing.
-        TxFrameSignature entry = new(TxFrameSignature.SchemeSecp256k1, signer, default, default);
+        TxFrameSignature entry = new(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
         tx.FrameSignatures = [entry];
         Signature signature = _ecdsa.Sign(TestItem.PrivateKeyB, FrameTxSigHash.ComputeValue(tx));
 

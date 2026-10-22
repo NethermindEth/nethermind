@@ -235,6 +235,17 @@ public class FrameTxDecoderTests
     }
 
     [Test]
+    public void ComputeSigHash_CanonicalHashSignatureLengthChange_HashChanges()
+    {
+        Transaction first = CreateFrameTx(signatures:
+            [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(65, 0x11))]);
+        Transaction second = CreateFrameTx(signatures:
+            [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(66, 0x11))]);
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    [Test]
     public void ComputeSigHash_ExplicitDigestSignatureBytesChange_HashChanges()
     {
         // A 32-byte msg signs an external digest; its raw bytes stay in the preimage.
