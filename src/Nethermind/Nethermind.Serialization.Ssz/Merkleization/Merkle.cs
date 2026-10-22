@@ -329,16 +329,12 @@ public static partial class Merkle
 
         int nodeCount = (count + 1) / 2;
         UInt256[]? rented = null;
-        Span<UInt256> nodes = nodeCount <= StackNodeLimit
+        // One node beyond the first level's lets a lone last node pair with a zero hash in place.
+        Span<UInt256> nodes = nodeCount < StackNodeLimit
             ? stackalloc UInt256[StackNodeLimit]
-            : rented = ArrayPool<UInt256>.Shared.Rent(nodeCount);
+            : rented = ArrayPool<UInt256>.Shared.Rent(nodeCount + 1);
 
         int pairs = value.Length / 2;
-        for (int i = 0; i < pairs; i++)
-        {
-            HashNodes(in value[2 * i], in value[2 * i + 1], 0, out nodes[i]);
-        }
-
         if (value.Length % 2 == 1)
         {
             HashNodes(in value[^1], lastChunk.Length == 1 ? lastChunk[0] : UInt256.Zero, 0, out nodes[pairs]);
@@ -348,21 +344,29 @@ public static partial class Merkle
             HashNodes(in lastChunk[0], UInt256.Zero, 0, out nodes[pairs]);
         }
 
-        for (int level = 1; level < depth; level++)
+        if (!TryHashTree(value[..(2 * pairs)], nodes, nodeCount, depth))
         {
-            int parentCount = nodeCount / 2;
-            for (int i = 0; i < parentCount; i++)
+            for (int i = 0; i < pairs; i++)
             {
-                HashNodes(in nodes[2 * i], in nodes[2 * i + 1], level, out nodes[i]);
+                HashNodes(in value[2 * i], in value[2 * i + 1], 0, out nodes[i]);
             }
 
-            if (nodeCount % 2 == 1)
+            for (int level = 1; level < depth; level++)
             {
-                HashNodes(in nodes[nodeCount - 1], ZeroHash(level), level, out nodes[parentCount]);
-                parentCount++;
-            }
+                int parentCount = nodeCount / 2;
+                for (int i = 0; i < parentCount; i++)
+                {
+                    HashNodes(in nodes[2 * i], in nodes[2 * i + 1], level, out nodes[i]);
+                }
 
-            nodeCount = parentCount;
+                if (nodeCount % 2 == 1)
+                {
+                    HashNodes(in nodes[nodeCount - 1], ZeroHash(level), level, out nodes[parentCount]);
+                    parentCount++;
+                }
+
+                nodeCount = parentCount;
+            }
         }
 
         root = nodes[0];

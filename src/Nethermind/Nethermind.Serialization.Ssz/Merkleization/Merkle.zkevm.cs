@@ -71,6 +71,71 @@ public static partial class Merkle
         return node.u0 == zeroHash.u0 && node.u1 == zeroHash.u1 && node.u2 == zeroHash.u2 && node.u3 == zeroHash.u3;
     }
 
+    /// <summary>
+    /// Hashes the sibling pairs of <paramref name="leaves"/> into the first nodes of <paramref name="nodes"/>, then reduces
+    /// the <paramref name="nodeCount"/> nodes level by level up to <paramref name="depth"/>, leaving the root in the first.
+    /// </summary>
+    /// <returns><c>false</c>, having hashed nothing, unless ZisK's SHA-256 compression can read the leaves in place.</returns>
+    /// <remarks>
+    /// One loop owns the state and parameter block for the whole tree, so a pair costs its two compressions, the state
+    /// reset and the digest, without the per-pair call, setup and spills of <see cref="HashNodes"/>. A parent never
+    /// overwrites a node the level has yet to read, as parent <c>i</c> lies at or before child <c>2i</c>; and a lone last
+    /// node pairs with the zero hash written after it, so <paramref name="nodes"/> must hold one node more than
+    /// <paramref name="nodeCount"/>.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static unsafe bool TryHashTree(ReadOnlySpan<UInt256> leaves, Span<UInt256> nodes, int nodeCount, int depth)
+    {
+        if (!ZiskSha256FFlag.IsActive)
+            return false;
+
+        fixed (UInt256* firstLeaf = leaves)
+        fixed (UInt256* firstNode = nodes)
+        {
+            // The precompile requires 8-byte aligned operands; the node buffer is.
+            if (((nuint)firstLeaf & 7) != 0)
+                return false;
+
+            ref readonly Sha256State initialState = ref Unsafe.As<ulong, Sha256State>(ref MemoryMarshal.GetReference(Sha256InitialState));
+            ulong* padding = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
+            Sha256State state;
+            Sha256FParameters parameters;
+            parameters.State = (ulong*)&state;
+
+            UInt256* children = firstLeaf;
+            int pairs = leaves.Length / 2;
+            for (int level = 0; ;)
+            {
+                for (int i = 0; i < pairs; i++)
+                {
+                    UInt256* pair = children + 2 * i;
+                    if (IsZeroSubtree(in pair[0], level) && IsZeroSubtree(in pair[1], level))
+                    {
+                        firstNode[i] = ZeroHash(level + 1);
+                        continue;
+                    }
+
+                    state = initialState;
+                    parameters.Input = (ulong*)pair;
+                    Sha256F(&parameters);
+                    parameters.Input = padding;
+                    Sha256F(&parameters);
+                    firstNode[i] = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
+                }
+
+                if (++level >= depth)
+                    return true;
+
+                if (nodeCount % 2 == 1)
+                    nodes[nodeCount] = ZeroHash(level);
+
+                children = firstNode;
+                pairs = (nodeCount + 1) / 2;
+                nodeCount = pairs;
+            }
+        }
+    }
+
     /// <summary>Hashes the 64-byte concatenation of two chunks with the zkVM's SHA-256 compression.</summary>
     /// <remarks>
     /// A 64-byte message is exactly one block, and the block after it is always the same padding, so the
