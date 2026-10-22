@@ -2699,6 +2699,52 @@ public partial class EthRpcModuleTests
         Assert.That(result["accessList"]!.ToArray(), Is.Empty);
     }
 
+    private const string AccessListContract = "0xc200000000000000000000000000000000000000";
+    private const string DelegatedAccount = "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1";
+
+    // CALL with zero value and empty buffers to the PUSH20 address, then STOP.
+    private static string CallCode(string address) => $"0x6000600060006000600073{address[2..]}5af100";
+
+    // Like Geth, the optimized list holds only addresses an opcode named, never those the EVM warmed on its own.
+    [TestCase("0x600060006000f000", new string[0], TestName = "Access list leaves out a contract the call created")]
+    [TestCase("0x6000600060006000600073aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5af100", new[] { "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        TestName = "Access list keeps an address a call names")]
+    [TestCase("0x6000600060006000600073d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d15af100", new[] { DelegatedAccount },
+        TestName = "Access list leaves out the delegation target of a called account")]
+    public async Task Eth_createAccessList_lists_only_addresses_an_opcode_names(string code, string[] expected)
+    {
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+        string stateOverride = $$$"""
+            {"{{{AccessListContract}}}":{"code":"{{{code}}}"},
+             "{{{DelegatedAccount}}}":{"code":"0xef0100c300000000000000000000000000000000000000"},
+             "0xc300000000000000000000000000000000000000":{"code":"0x00"}}
+            """;
+
+        (JToken result, _) = await CallCreateAccessList(ctx, $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}"}""", stateOverride, optimize: true);
+
+        Assert.That(result["accessList"]!.Select(static e => e["address"]!.Value<string>()), Is.EqualTo(expected), result.ToString());
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_leaves_out_an_authority_the_call_names()
+    {
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+        ulong chainId = ctx.Test.SpecProvider.ChainId;
+        AuthorizationTuple authorization = new EthereumEcdsa(chainId).Sign(TestItem.PrivateKeyB, chainId, new Address("0xc300000000000000000000000000000000000000"), 0);
+        SetCodeTransactionForRpc transaction = new()
+        {
+            From = new Address(CreateAccessListSender),
+            To = new Address(AccessListContract),
+            AuthorizationList = AuthorizationListForRpc.FromAuthorizationList([authorization]),
+        };
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{AccessListContract}}}":{"code":"{{{CallCode(TestItem.AddressB.ToString())}}}"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, true);
+
+        Assert.That(JToken.Parse(serialized).SelectToken("result.accessList")?.ToArray(), Is.Empty, serialized);
+    }
+
     [Test]
     public async Task Eth_createAccessList_input_error_embeds_tx_hash()
     {
