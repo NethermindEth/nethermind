@@ -49,23 +49,20 @@ public interface ILogIndexConfig : IConfig
     public int MaxSavingQueueSize { get; set; }
 
     [ConfigItem(
-        Description = "Maximum degree of parallelism for fetching receipts.",
-        DefaultValue = "Max(ProcessorCount / 2, 1)",
-        HiddenFromDocs = true
+        Description = "Maximum degree of parallelism for fetching receipts. Lower it to reduce the CPU load of the log index backfill, at the cost of a longer backfill.",
+        DefaultValue = "Max(ProcessorCount / 4, 1)"
     )]
     public int MaxReceiptsParallelism { get; set; }
 
     [ConfigItem(
-        Description = "Maximum degree of parallelism for aggregating batches.",
-        DefaultValue = "Max(ProcessorCount / 2, 1)",
-        HiddenFromDocs = true
+        Description = "Maximum degree of parallelism for aggregating batches. Lower it to reduce the CPU load of the log index backfill, at the cost of a longer backfill.",
+        DefaultValue = "Max(ProcessorCount / 4, 1)"
     )]
     public int MaxAggregationParallelism { get; set; }
 
     [ConfigItem(
-        Description = "Maximum degree of parallelism for compressing overgrown key values.",
-        DefaultValue = "Max(ProcessorCount / 2, 1)",
-        HiddenFromDocs = true
+        Description = "Maximum degree of parallelism for compressing overgrown key values. Lower it to reduce the CPU load of the log index backfill, at the cost of a longer backfill.",
+        DefaultValue = "Max(ProcessorCount / 4, 1)"
     )]
     public int MaxCompressionParallelism { get; set; }
 
