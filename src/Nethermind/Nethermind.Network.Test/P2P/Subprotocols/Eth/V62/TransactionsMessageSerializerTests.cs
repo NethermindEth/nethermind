@@ -73,11 +73,8 @@ public class TransactionsMessageSerializerTests
         TxDecoder.TxObjectPool.Return(second.Transactions[0]);
     }
 
-    [TestCase(TxType.Legacy)]
-    [TestCase(TxType.AccessList)]
-    [TestCase(TxType.EIP1559)]
-    [TestCase(TxType.SetCode)]
-    public void Length_matches_the_wire_encoding(TxType type)
+    [Test]
+    public void Length_matches_the_wire_encoding([Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode)] TxType type)
     {
         TransactionsMessageSerializer serializer = new();
         Transaction transaction = Build.A.Transaction.WithType(type).WithAuthorizationCodeIfAuthorizationListTx().SignedAndResolved().TestObject;

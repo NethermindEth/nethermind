@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -88,9 +89,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             for (int i = 0; i < message.Transactions.Count; i++)
             {
                 Transaction tx = message.Transactions[i];
-                contentLength += tx.MayHaveNetworkForm
+                int txLength = tx.MayHaveNetworkForm
                     ? TxDecoder.GetLength(tx, RlpBehaviors.InMempoolForm)
                     : TransactionDecoder.GetWrappedTxLength(tx.Type, tx.GetLength());
+                Debug.Assert(txLength == TxDecoder.GetLength(tx, RlpBehaviors.InMempoolForm), "cached transaction length is stale");
+                contentLength += txLength;
             }
 
             return Rlp.LengthOfSequence(contentLength);
