@@ -1277,10 +1277,10 @@ public partial class EngineModuleTests
         Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
 
         TaskCompletionSource processingRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource blockRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<BlockRemovedEventArgs> blockRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnBlockRemoved(object? sender, BlockRemovedEventArgs e)
         {
-            if (e.BlockHash == block.Hash) blockRemoved.TrySetResult();
+            if (e.BlockHash == block.Hash) blockRemoved.TrySetResult(e);
         }
 
         ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingRelease = processingRelease.Task;
@@ -1305,7 +1305,8 @@ public partial class EngineModuleTests
             }
 
             // A suggested header can be visible before its chain level; removal follows the commit.
-            await blockRemoved.Task.WaitAsync(GateTimeout);
+            BlockRemovedEventArgs removed = await blockRemoved.Task.WaitAsync(GateTimeout);
+            Assert.That(removed.ProcessingResult, Is.EqualTo(ProcessingResult.Success), $"{removed.Message} {removed.Exception}");
             Assert.That(blockTree.WasProcessed(block.Number, block.Hash!), Is.True);
         }
         finally
