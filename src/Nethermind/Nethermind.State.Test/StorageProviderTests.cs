@@ -2402,6 +2402,26 @@ public partial class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void First_read_of_a_contract_without_storage_does_not_read_the_backend()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        LocalMetrics metrics = (LocalMetrics)typeof(WorldState)
+            .GetField("_localMetrics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(provider)!;
+        long readsBefore = metrics.StorageTreeReads;
+        long cacheBefore = metrics.StorageTreeCache;
+
+        provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo(UInt256.Zero));
+            Assert.That(metrics.StorageTreeReads - readsBefore, Is.Zero);
+            Assert.That(metrics.StorageTreeCache - cacheBefore, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Selfdestruct_persist_between_commit()
     {
         PreBlockCaches preBlockCaches = new(TestPreBlockCachesConfig.Small);
