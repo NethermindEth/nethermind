@@ -89,50 +89,51 @@ public static partial class Merkle
         if (!ZiskSha256FFlag.IsActive)
             return false;
 
-        fixed (UInt256* firstLeaf = leaves)
-        fixed (UInt256* firstNode = nodes)
+        // ZisK's collector never moves objects, so the nodes need no pinning: pinned locals would stay on the stack
+        // and spill around every compression.
+        UInt256* firstLeaf = (UInt256*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(leaves));
+        UInt256* firstNode = (UInt256*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(nodes));
+
+        // The precompile requires 8-byte aligned operands; the node buffer is.
+        if (((nuint)firstLeaf & 7) != 0)
+            return false;
+
+        ref readonly Sha256State initialState = ref Unsafe.As<ulong, Sha256State>(ref MemoryMarshal.GetReference(Sha256InitialState));
+        ulong* padding = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
+        Sha256State state;
+        Sha256FParameters parameters;
+        parameters.State = (ulong*)&state;
+
+        UInt256* children = firstLeaf;
+        int pairs = leaves.Length / 2;
+        for (int level = 0; ;)
         {
-            // The precompile requires 8-byte aligned operands; the node buffer is.
-            if (((nuint)firstLeaf & 7) != 0)
-                return false;
-
-            ref readonly Sha256State initialState = ref Unsafe.As<ulong, Sha256State>(ref MemoryMarshal.GetReference(Sha256InitialState));
-            ulong* padding = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
-            Sha256State state;
-            Sha256FParameters parameters;
-            parameters.State = (ulong*)&state;
-
-            UInt256* children = firstLeaf;
-            int pairs = leaves.Length / 2;
-            for (int level = 0; ;)
+            UInt256* parent = firstNode;
+            for (UInt256* pair = children, end = children + 2 * pairs; pair != end; pair += 2, parent++)
             {
-                UInt256* parent = firstNode;
-                for (UInt256* pair = children, end = children + 2 * pairs; pair != end; pair += 2, parent++)
+                if (IsZeroSubtree(in pair[0], level) && IsZeroSubtree(in pair[1], level))
                 {
-                    if (IsZeroSubtree(in pair[0], level) && IsZeroSubtree(in pair[1], level))
-                    {
-                        *parent = ZeroHash(level + 1);
-                        continue;
-                    }
-
-                    state = initialState;
-                    parameters.Input = (ulong*)pair;
-                    Sha256F(&parameters);
-                    parameters.Input = padding;
-                    Sha256F(&parameters);
-                    *parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
+                    *parent = ZeroHash(level + 1);
+                    continue;
                 }
 
-                if (++level >= depth)
-                    return true;
-
-                if (nodeCount % 2 == 1)
-                    nodes[nodeCount] = ZeroHash(level);
-
-                children = firstNode;
-                pairs = (nodeCount + 1) / 2;
-                nodeCount = pairs;
+                state = initialState;
+                parameters.Input = (ulong*)pair;
+                Sha256F(&parameters);
+                parameters.Input = padding;
+                Sha256F(&parameters);
+                *parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
             }
+
+            if (++level >= depth)
+                return true;
+
+            if (nodeCount % 2 == 1)
+                nodes[nodeCount] = ZeroHash(level);
+
+            children = firstNode;
+            pairs = (nodeCount + 1) / 2;
+            nodeCount = pairs;
         }
     }
 
@@ -145,12 +146,7 @@ public static partial class Merkle
     [SkipLocalsInit]
     private static unsafe void HashPairWithSha256F(in UInt256 left, in UInt256 right, out UInt256 parent)
     {
-        ReadOnlySpan<ulong> initialState = Sha256InitialState;
-        Sha256State state;
-        state.Word0 = initialState[0];
-        state.Word1 = initialState[1];
-        state.Word2 = initialState[2];
-        state.Word3 = initialState[3];
+        Sha256State state = Unsafe.As<ulong, Sha256State>(ref MemoryMarshal.GetReference(Sha256InitialState));
 
         bool adjacent = Unsafe.AreSame(ref Unsafe.Add(ref Unsafe.AsRef(in left), 1), ref Unsafe.AsRef(in right));
         Sha256FParameters parameters;
