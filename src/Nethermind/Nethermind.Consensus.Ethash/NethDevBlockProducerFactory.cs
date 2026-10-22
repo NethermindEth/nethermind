@@ -82,8 +82,14 @@ internal sealed class NethDevBlockProducerFactory(
 
         public async Task StopAsync()
         {
-            await first.StopAsync();
-            await second.StopAsync();
+            try
+            {
+                await first.StopAsync();
+            }
+            finally
+            {
+                await second.StopAsync();
+            }
         }
 
         public bool IsProducingBlocks(ulong? maxProducingInterval) =>
