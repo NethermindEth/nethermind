@@ -771,9 +771,10 @@ public class DebugRpcModule(
 
     public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
     {
-        SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeaderWithBody(blockParameter);
-        // Unknown blocks, including an unknown safe or finalized one, are -32001 per execution-apis.
-        if (searchResult.IsError && searchResult.Error != BlockFinderExtensions.HeaderNotFound && searchResult.ErrorCode != ErrorCodes.UnknownBlockError)
+        // The access list is stored apart from the body, so a block whose body expired can still serve it,
+        // and a pre-Amsterdam one stays -32001 rather than 4444.
+        SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError && searchResult.Error != BlockFinderExtensions.HeaderNotFound)
         {
             return ResultWrapper<OwnedByteMemory>.Fail(searchResult);
         }
