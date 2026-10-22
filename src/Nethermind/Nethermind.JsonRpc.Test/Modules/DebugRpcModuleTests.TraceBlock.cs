@@ -200,7 +200,7 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_native_config_errors_keep_sibling_invalid_params(
+    public async Task Debug_native_config_errors_preserve_route_classification(
         [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
         [Values("callTracer", "prestateTracer")] string tracer,
         [Values(null, "bad", "5s")] string? timeout,
@@ -431,7 +431,7 @@ public partial class DebugRpcModuleTests
             yield return new TestCaseData(true, "\"5s\"", "constructor", method);
             yield return new TestCaseData(false, "7", "type", method);
         }
-        yield return new TestCaseData(false, "\"bad\"", "eager", "debug_traceTransaction");
+        yield return new TestCaseData(false, "\"bad\"", "lookup-tx", "debug_traceTransaction");
         yield return new TestCaseData(false, "\"bad\"", "eager", "debug_intermediateRoots");
     }
 
@@ -499,16 +499,17 @@ public partial class DebugRpcModuleTests
 
         if (expected is "type" or "eager")
         {
-            bool missingTransaction = expected == "eager" && method == "debug_traceTransaction";
-            int expectedCode = missingTransaction ? ErrorCodes.ResourceNotFound : ErrorCodes.InvalidParams;
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            return;
+        }
+
+        if (expected == "lookup-tx")
+        {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
-                if (missingTransaction)
-                {
-                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("transaction not found"), response);
-                    Assert.That(json["result"], Is.Null, response);
-                }
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("transaction not found"), response);
+                Assert.That(json["result"], Is.Null, response);
             }
             return;
         }
