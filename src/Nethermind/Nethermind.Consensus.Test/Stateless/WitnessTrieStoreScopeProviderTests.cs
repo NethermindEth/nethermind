@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Reflection;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -37,6 +38,16 @@ public class WitnessTrieStoreScopeProviderTests
         byte[] root = Branch(readLeaf, unreadLeaf);
 
         AssertScopeOpens(valid, readLeaf, unreadLeaf, root);
+    }
+
+    /// <remarks>Values of each RLP length form, so the leaf's list takes a short and a long prefix.</remarks>
+    [Test]
+    public void Scope_checks_leaves_whatever_their_value_length([Values(1, 20, 56, 200)] int valueLength, [Values] bool valid)
+    {
+        byte[] readLeaf = Leaf(KeyNibbles - 1);
+        byte[] unreadLeaf = Leaf(KeyNibbles - 1 + (valid ? 0 : 1), new byte[valueLength]);
+
+        AssertScopeOpens(valid, readLeaf, unreadLeaf, Branch(readLeaf, unreadLeaf));
     }
 
     /// <remarks>A branch of sixteen hashed children, most of them absent from the witness, as nearly all are.</remarks>
@@ -78,6 +89,47 @@ public class WitnessTrieStoreScopeProviderTests
         }
 
         AssertScopeOpens(valid, state);
+    }
+
+    /// <remarks>The walk's memo budget spans the block's walks: a fresh one per storage root would let roots sharing a
+    /// subtree each walk twice the witness' bytes before the memo engages. Two storage roots share a leaf here, so the
+    /// state trie and both storage tries are walked.</remarks>
+    [Test]
+    public void Walk_spends_one_memo_budget_across_walks()
+    {
+        byte[] sharedLeaf = Leaf(KeyNibbles - 1);
+        byte[] storageLeafA = Leaf(KeyNibbles - 1, [.. LeafValue, 0x0a]);
+        byte[] storageLeafB = Leaf(KeyNibbles - 1, [.. LeafValue, 0x0b]);
+        byte[] storageRootA = Branch(sharedLeaf, storageLeafA);
+        byte[] storageRootB = Branch(sharedLeaf, storageLeafB);
+        Address addressA = TestItem.AddressA;
+        int nibbleA = FirstNibble(addressA);
+        Address addressB = Array.Find(TestItem.Addresses, address => FirstNibble(address) != nibbleA)!;
+        int nibbleB = FirstNibble(addressB);
+        byte[] accountLeafA = AccountLeaf(addressA, storageRootA);
+        byte[] accountLeafB = AccountLeaf(addressB, storageRootB);
+        byte[][] stateChildren = new byte[BranchChildren][];
+        stateChildren[nibbleA] = accountLeafA;
+        stateChildren[nibbleB] = accountLeafB;
+        byte[] stateRoot = Branch(stateChildren);
+        byte[][] state = [sharedLeaf, storageLeafA, storageLeafB, storageRootA, storageRootB, accountLeafA, accountLeafB, stateRoot];
+        using Witness witness = CreateWitness(state);
+        WitnessTrieStoreScopeProvider provider = new(witness, NullLogManager.Instance);
+        FieldInfo budget = typeof(WitnessTrieStoreScopeProvider).GetField("_bytesBeforeMemo", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.That(budget, Is.Not.Null, "The memo budget field was renamed");
+        long before = (long)budget.GetValue(provider)!;
+
+        Assert.That(provider.TryBeginScope(Build.A.BlockHeader.WithStateRoot(Keccak.Compute(stateRoot)).TestObject, new LocalMetrics(),
+            out IWorldStateScopeProvider.IScope scope), Is.True);
+        using (scope)
+        {
+            scope.CreateStorageTree(addressA).Get(UInt256.One, out _);
+            scope.CreateStorageTree(addressB).Get(UInt256.One, out _);
+        }
+
+        long walked = stateRoot.Length + accountLeafA.Length + accountLeafB.Length
+            + storageRootA.Length + storageLeafA.Length + storageRootB.Length + storageLeafB.Length + 2 * sharedLeaf.Length;
+        Assert.That((long)budget.GetValue(provider)!, Is.EqualTo(before - walked));
     }
 
     public enum StorageAccess { Read, Write, Clear, ClearThenWrite }
@@ -135,6 +187,13 @@ public class WitnessTrieStoreScopeProviderTests
             valid ? Throws.Nothing : Throws.TypeOf<TrieException>());
     }
 
+    private static int FirstNibble(Address address) => Keccak.Compute(address.Bytes).Bytes[0] >> 4;
+
+    private static byte[] AccountLeaf(Address address, byte[] storageRoot) =>
+        Rlp.Encode(
+            Rlp.Encode(HexPrefix.ToBytes(Nibbles.BytesToNibbleBytes(Keccak.Compute(address.Bytes).Bytes)[1..], isLeaf: true)),
+            Rlp.Encode(Rlp.Encode(new Account(UInt256.One).WithChangedStorageRoot(Keccak.Compute(storageRoot))).Bytes)).Bytes;
+
     private static byte[] Leaf(int nibbles, byte[] value = null) =>
         Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(new byte[nibbles], isLeaf: true)), Rlp.Encode(value ?? LeafValue)).Bytes;
 
@@ -145,6 +204,7 @@ public class WitnessTrieStoreScopeProviderTests
         Array.Fill(items, Rlp.OfEmptyByteArray);
         for (int i = 0; i < children.Length; i++)
         {
+            if (children[i] is null) continue;
             items[i] = children[i].Length < Hash256.Size ? new Rlp(children[i]) : Rlp.Encode(Keccak.Compute(children[i]).Bytes);
         }
 
