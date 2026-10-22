@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
         private readonly bool _isBlockHashFilter;
-        private readonly ReceiptsEventPayloadCache<FilterKey>.Membership _payloads;
+        private readonly ReceiptsEventPayloadCache<Filter>.Membership _payloads;
 
         public LogsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             FilterStore? store,
             IBlockTree? blockTree,
             ILogManager? logManager,
-            ReceiptsEventPayloadCache<FilterKey> payloads,
+            ReceiptsEventPayloadCache<Filter> payloads,
             Filter? filter = null)
             : base(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
@@ -94,41 +94,40 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         }
 
         /// <summary>Creates the cache the logs subscriptions of one factory share their serialized logs through.</summary>
-        internal static ReceiptsEventPayloadCache<FilterKey> CreatePayloadCache() => new(static e =>
+        internal static ReceiptsEventPayloadCache<Filter> CreatePayloadCache() => new(static e =>
         {
             int logs = 0;
             foreach (TxReceipt receipt in e.TxReceipts) logs += receipt.Logs?.Length ?? 0;
             return logs;
-        });
+        }, FilterComparer.Instance);
 
         /// <summary>
-        /// A key equal for filters accepting the same logs of the same blocks, or <c>null</c> for one accepting every log
-        /// of every block.
+        /// The filter as its payload cache key, or <c>null</c> for one accepting every log of every block.
         /// </summary>
-        private FilterKey? GetFilterKey(Filter? filter) =>
+        private Filter? GetFilterKey(Filter? filter) =>
             filter is null || _filter is { AcceptsAnyBlock: true, FromBlock.Type: BlockParameterType.Latest, ToBlock.Type: BlockParameterType.Latest }
                 ? null
-                : new FilterKey(filter);
+                : filter;
 
-        /// <summary>The parts of a <see cref="Filter"/> that decide which logs it accepts.</summary>
+        /// <summary>Equates filters accepting the same logs of the same blocks.</summary>
         /// <remarks>Addresses are compared as a set; topics position by position, in order.</remarks>
-        internal readonly struct FilterKey(Filter filter) : IEquatable<FilterKey>
+        internal sealed class FilterComparer : IEqualityComparer<Filter>
         {
-            private readonly Filter _filter = filter;
+            public static readonly FilterComparer Instance = new();
 
-            public bool Equals(FilterKey other) =>
-                _filter.FromBlock == other._filter.FromBlock
-                && _filter.ToBlock == other._filter.ToBlock
-                && (_filter.Address is null ? other._filter.Address is null : other._filter.Address is not null && _filter.Address.SetEquals(other._filter.Address))
-                && (_filter.Topics ?? []).SequenceEqual(other._filter.Topics ?? [], TopicComparer.Instance);
+            public bool Equals(Filter? x, Filter? y) =>
+                ReferenceEquals(x, y)
+                || x is not null && y is not null
+                && x.FromBlock == y.FromBlock
+                && x.ToBlock == y.ToBlock
+                && (x.Address is null ? y.Address is null : y.Address is not null && x.Address.SetEquals(y.Address))
+                && (x.Topics ?? []).SequenceEqual(y.Topics ?? [], TopicComparer.Instance);
 
-            public override bool Equals(object? obj) => obj is FilterKey other && Equals(other);
-
-            public override int GetHashCode()
+            public int GetHashCode(Filter filter)
             {
                 int addresses = 0;
-                foreach (AddressAsKey address in _filter.Address ?? []) addresses += address.GetHashCode();
-                return HashCode.Combine(_filter.FromBlock, _filter.ToBlock, addresses);
+                foreach (AddressAsKey address in filter.Address ?? []) addresses += address.GetHashCode();
+                return HashCode.Combine(filter.FromBlock, filter.ToBlock, addresses);
             }
 
             private sealed class TopicComparer : IEqualityComparer<Hash256[]?>

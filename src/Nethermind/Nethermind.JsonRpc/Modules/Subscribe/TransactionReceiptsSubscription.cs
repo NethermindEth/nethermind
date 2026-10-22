@@ -22,7 +22,7 @@ public class TransactionReceiptsSubscription : Subscription
     private readonly IReceiptMonitor _receiptMonitor;
     private readonly IBlockTree _blockTree;
     private readonly HashSet<ValueHash256>? _filterHashes;
-    private readonly ReceiptsEventPayloadCache<TransactionHashesKey>.Membership _payloads;
+    private readonly ReceiptsEventPayloadCache<HashSet<ValueHash256>>.Membership _payloads;
 
     public TransactionReceiptsSubscription(
         IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -39,7 +39,7 @@ public class TransactionReceiptsSubscription : Subscription
         IReceiptMonitor receiptCanonicalityMonitor,
         IBlockTree blockTree,
         ILogManager logManager,
-        ReceiptsEventPayloadCache<TransactionHashesKey> payloads,
+        ReceiptsEventPayloadCache<HashSet<ValueHash256>> payloads,
         TransactionHashesFilter? filter)
         : base(jsonRpcDuplexClient, MaxQueuedBlocks)
     {
@@ -59,31 +59,14 @@ public class TransactionReceiptsSubscription : Subscription
 
         _filterHashes = filter?.TransactionHashes;
 
-        _payloads = payloads.Join(_filterHashes is null ? null : new TransactionHashesKey(_filterHashes));
+        _payloads = payloads.Join(_filterHashes);
         _receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} will track ReceiptsInserted.");
     }
 
     /// <summary>Creates the cache the receipts subscriptions of one factory share their serialized receipts through.</summary>
-    internal static ReceiptsEventPayloadCache<TransactionHashesKey> CreatePayloadCache() =>
-        new(static e => e.TxReceipts.Length);
-
-    /// <summary>A transaction hashes filter, equal to another one with the same hashes in any order.</summary>
-    internal readonly struct TransactionHashesKey(HashSet<ValueHash256> hashes) : IEquatable<TransactionHashesKey>
-    {
-        private readonly HashSet<ValueHash256> _hashes = hashes;
-
-        public bool Equals(TransactionHashesKey other) => _hashes.SetEquals(other._hashes);
-
-        public override bool Equals(object? obj) => obj is TransactionHashesKey other && Equals(other);
-
-        public override int GetHashCode()
-        {
-            int hash = 0;
-            foreach (ValueHash256 transactionHash in _hashes) hash += transactionHash.GetHashCode();
-            return hash;
-        }
-    }
+    internal static ReceiptsEventPayloadCache<HashSet<ValueHash256>> CreatePayloadCache() =>
+        new(static e => e.TxReceipts.Length, HashSet<ValueHash256>.CreateSetComparer());
 
     private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => ScheduleAction(() => TryPublishReceipts(e));
 

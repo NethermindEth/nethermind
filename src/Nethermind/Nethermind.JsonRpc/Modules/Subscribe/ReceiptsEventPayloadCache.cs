@@ -32,12 +32,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 /// </remarks>
 /// <typeparam name="TKey">The type of the filter keys.</typeparam>
 /// <param name="payloadCount">The number of payloads an event can have, each addressed by its position.</param>
-internal sealed class ReceiptsEventPayloadCache<TKey>(Func<ReceiptsEventArgs, int> payloadCount)
-    where TKey : struct, IEquatable<TKey>
+/// <param name="comparer">The equality of filter keys, or <c>null</c> for the default one.</param>
+internal sealed class ReceiptsEventPayloadCache<TKey>(Func<ReceiptsEventArgs, int> payloadCount, IEqualityComparer<TKey>? comparer = null)
+    where TKey : class
 {
     private readonly ConditionalWeakTable<ReceiptsEventArgs, Lazy<byte[]>?[]> _payloads = [];
     private readonly ConditionalWeakTable<ReceiptsEventArgs, Lazy<byte[]>?[]>.CreateValueCallback _createSlots = e => new Lazy<byte[]>?[payloadCount(e)];
-    private readonly Dictionary<TKey, Group> _groups = [];
+    private readonly Dictionary<TKey, Group> _groups = new(comparer);
     private readonly Group _unfiltered = new(null);
     private readonly Lock _lock = new();
     private int _members;
