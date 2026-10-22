@@ -1,14 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -64,6 +72,45 @@ public partial class DebugRpcModuleTests
             Assert.That(slots, Is.EqualTo(ExpectedSlots(StorageRangeInitialSlots, extraSlots: txIndex)));
             Assert.That(result["nextKey"]!.Type, Is.EqualTo(JTokenType.Null));
         }
+    }
+
+    [Test]
+    public async Task Debug_storageRangeAt_starts_at_key_prefix([Values("0x", "0x80")] string keyStart)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        (Address contract, Block block) = await AddStorageRangeBlocks(chain);
+
+        JToken result = await StorageRangeAt(chain, block.Hash!, 0, contract, keyStart, 100);
+
+        string start = keyStart.PadRight(2 + 2 * Hash256.Size, '0');
+        List<(string, string)> slots = ((JObject)result["storage"]!).Properties().Select(static p => (p.Name, (string)p.Value["value"]!)).ToList();
+        Assert.That(slots, Is.EqualTo(ExpectedSlots(StorageRangeInitialSlots, extraSlots: 0).Where(s => string.CompareOrdinal(s.Key, start) >= 0)));
+    }
+
+    [TestCase(0, true)]
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    public async Task Debug_storageRangeAt_includes_pre_block_system_calls(int txIndex, bool emptyBlock)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Prague.Instance));
+        Block block = emptyBlock ? await chain.AddBlock() : (await AddStorageRangeBlocks(chain)).Block;
+        string slotKey = ValueKeccak.Compute(((UInt256)((block.Number - 1) % Eip2935Constants.RingBufferSize)).ToBigEndian()).ToString();
+
+        JToken result = await StorageRangeAt(chain, block.Hash!, txIndex, Eip2935Constants.BlockHashHistoryAddress, slotKey, 1);
+
+        Assert.That((string?)result["storage"]?[slotKey]?["value"], Is.EqualTo(block.ParentHash!.ToString()), "the EIP-2935 parent hash is stored before the first transaction");
+    }
+
+    [Test]
+    public async Task Debug_storageRangeAt_fails_when_the_replay_ignores_the_boundary()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(static builder => builder.AddDecorator<IBlockProcessor, ForcedBlockAccessListBlockProcessor>());
+        (Address contract, Block block) = await AddStorageRangeBlocks(chain);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_storageRangeAt", block.Hash!, 1, contract, "0x", 100);
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
     }
 
     [Test]
@@ -139,11 +186,27 @@ public partial class DebugRpcModuleTests
         return slots.OrderBy(static s => s.Key, System.StringComparer.Ordinal).ToList();
     }
 
-    private static async Task<JToken> StorageRangeAt(TestRpcBlockchain chain, Hash256 blockHash, int txIndex, Address address, string keyStart, int maxResult)
+    private static async Task<JToken> StorageRangeAt(TestRpcBlockchain chain, Hash256 blockHash, int txIndex, Address address, string? keyStart, int maxResult)
     {
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_storageRangeAt", blockHash, txIndex, address, keyStart, maxResult);
         JToken json = JToken.Parse(response);
         Assert.That(json["error"], Is.Null, response);
         return json["result"]!;
+    }
+
+    /// <summary>Forces the full block access list, as the BAL recorder does, so a replay runs past its boundary.</summary>
+    private sealed class ForcedBlockAccessListBlockProcessor(IBlockProcessor inner, IBlockAccessListManager balManager) : IBlockProcessor
+    {
+        public event Action<Block>? TransactionsExecuted
+        {
+            add => inner.TransactionsExecuted += value;
+            remove => inner.TransactionsExecuted -= value;
+        }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+        {
+            balManager.ForceConstructGeneratedBlockAccessList = true;
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        }
     }
 }

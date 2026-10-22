@@ -311,19 +311,17 @@ public class GethStyleTracer(
         if ((uint)txIndex >= (uint)Math.Max(block.Transactions.Length, 1)) throw new ArgumentOutOfRangeException(nameof(txIndex));
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header);
-        BlockHeader? stateHeader = FindParent(block);
-        if (txIndex > 0)
-        {
-            IBlockTracer boundary = TransactionTraceBoundary.Wrap(NullBlockTracer.Instance.WithCancellation(cancellationToken), block.Transactions[txIndex - 1].Hash);
-            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
+        TransactionTraceBoundary boundary = TransactionTraceBoundary.BeforeTransaction(NullBlockTracer.Instance.WithCancellation(cancellationToken), block, txIndex);
+        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
+        // A processor that must build the full block access list executes the whole block, past the boundary.
+        if (!boundary.HasExecuted) throw new InvalidOperationException($"Block {block.Hash} was replayed past transaction {txIndex}, so the state before it is not available.");
 
-            // The prefix state is committed into the environment's overlay so that its tries can be walked.
-            IWorldState worldState = scope.Component.WorldState;
-            worldState.Commit(specProvider.GetSpec(block.Header), commitRoots: true);
-            worldState.CommitTree(block.Number);
-            stateHeader = block.Header.Clone();
-            stateHeader.StateRoot = worldState.StateRoot;
-        }
+        // The prefix state is committed into the environment's overlay so that its tries can be walked.
+        IWorldState worldState = scope.Component.WorldState;
+        worldState.Commit(specProvider.GetSpec(block.Header), commitRoots: true);
+        worldState.CommitTree(block.Number);
+        BlockHeader stateHeader = block.Header.Clone();
+        stateHeader.StateRoot = worldState.StateRoot;
 
         return scope.Component.StateReader.CollectStorageRange(stateHeader, address, startKey, limit);
     }
