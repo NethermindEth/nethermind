@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
@@ -62,10 +63,11 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
     [SkipLocalsInit]
     public override void WriteAsPropertyName(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options)
     {
-        Span<byte> hashBytes = stackalloc byte[Hash256.Size * 2 + 2];
+        Unsafe.SkipInit(out HexWriter.HexBuffer72 hashBuffer);
+        Span<byte> hashBytes = MemoryMarshal.AsBytes((Span<ulong>)hashBuffer);
         hashBytes[0] = (byte)'0';
         hashBytes[1] = (byte)'x';
-        value.Bytes.OutputBytesToByteHex(hashBytes[2..], false);
-        writer.WritePropertyName(hashBytes);
+        HexEncoder.Encode32Bytes(ref hashBytes[2], ref MemoryMarshal.GetReference(value.Bytes));
+        writer.WritePropertyName(hashBytes[..(Hash256.Size * 2 + 2)]);
     }
 }
