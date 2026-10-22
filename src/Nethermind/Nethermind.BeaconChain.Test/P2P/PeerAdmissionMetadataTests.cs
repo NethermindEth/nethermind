@@ -52,9 +52,9 @@ public class PeerAdmissionMetadataTests
         // A band of exactly two: the pending admission must count once, or the second peer is refused at the ceiling.
         client.Config.TargetPeerCount = 2;
         client.Config.MaxPeerCount = 2;
-        // Answers identify and status like a beacon node but not metadata: its na leaves our metadata request waiting for its bound.
+        StallingMetadataProtocol metadata = new();
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
-            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
+            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus), additionalProtocol: metadata);
 
         await using PeerHostScope hosts = new(client, other);
         await hosts.StartAsync(token, client.P2P, other.P2P);
@@ -66,7 +66,7 @@ public class PeerAdmissionMetadataTests
         }
 
         Task<bool> silentAdmission = peerManager.TryAddPeerAsync(silentAddress, token);
-        await PeerSessionNodes.WaitUntilAsync(() => peerManager.PeerCount == 1, "fixture: the silent peer was never recorded", token);
+        await metadata.Requested.Task.WaitAsync(token);
         bool usableWhileMetadataPends = !silentAdmission.IsCompleted && peerManager.GetBestPeers(0).Count == 1;
         Task<bool> otherAdmission = peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token);
 
@@ -87,8 +87,9 @@ public class PeerAdmissionMetadataTests
         Node client = CreateNode();
         await using BeaconDiscovery discovery = new(client.Config, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
             new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), new ManualTimestamper(), LimboLogs.Instance);
+        StallingMetadataProtocol metadata = new();
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
-            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
+            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus), additionalProtocol: metadata);
 
         await using PeerHostScope hosts = new(client);
         await client.P2P.StartAsync(token);
@@ -100,7 +101,7 @@ public class PeerAdmissionMetadataTests
         }
 
         Task<bool> admission = peerManager.TryAddPeerAsync(silentAddress, token);
-        await PeerSessionNodes.WaitUntilAsync(() => peerManager.PeerCount == 1, "fixture: the silent peer was never recorded", token);
+        await metadata.Requested.Task.WaitAsync(token);
         Assert.That(admission.IsCompleted, Is.False, "fixture: the metadata is still awaited");
         peerManager.GetBestPeers(0).Single().ReportFailure(PeerFailureReason.ProtocolViolation, "a block failed its parent-root check");
         Assert.That(client.P2P.TryGetEstablishedSession(silent.Peer.Identity.PeerId, out ISession? session), Is.True);

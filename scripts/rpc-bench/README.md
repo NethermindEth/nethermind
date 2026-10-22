@@ -7,6 +7,32 @@ benchmark runner, reusing the EXPB workflow's DB snapshots.
 Drives three load tools and can optionally capture a JetBrains dotTrace snapshot
 and post-process it to XML.
 
+### Kohaku wallet request capture
+
+`kohaku-wallet.py` records real Sepolia wallet requests through a local HTTP proxy,
+including RPC errors, and replays the captured requests sequentially. It runs
+transfer, Railgun shield and balance commands as dry runs, blocks transaction
+submission, and keeps wallet copies and logs in ignored repository directories.
+The default CLI installation, encrypted wallet and credential runbook are the
+local wallet lab under `C:/base/projects/blank/fv-lc-reseach/tools`; paths can be
+overridden on the command line. Credentials are read locally and redacted from
+saved output.
+
+```powershell
+python scripts/rpc-bench/kohaku-wallet.py self-test
+python scripts/rpc-bench/kohaku-wallet.py capture --upstream http://FULL_NODE:8545 --output artifacts/wallet/full-first --tag full-first
+python scripts/rpc-bench/kohaku-wallet.py replay --input artifacts/wallet/full-first/rpc.jsonl --upstream http://127.0.0.1:28545 --output artifacts/wallet/light-first --tag light-first
+```
+
+Repeat replay into separate output directories to measure warmed requests.
+`--block 0xBLOCK` pins omitted or `latest` state selectors to a shared recent
+block; the recording identifies each rewrite and preserves explicit selectors.
+Choose a block available on both clients. Replay preserves request order, rather
+than the original wallet's concurrency or calls to hosted indexers and POI
+services. Compare wallet wall time separately from RPC latency, report failed
+requests separately, and identify the first measured pass and cache/bootstrap
+state explicitly. A first pass on a synced node does not imply a cold database.
+
 **Which runner, and what it can serve.** The `arch` input picks the box:
 `amd64` (default) is `reproducible-benchmarks` with snapshots under `/mnt/sda`,
 `arm64` is `reproducible-benchmarks-arm` with snapshots under `/data`. Every

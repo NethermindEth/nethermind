@@ -19,12 +19,20 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 
 namespace Nethermind.Network.Libp2p;
 
-/// <summary>The libp2p stack the node's libp2p hosts run on: TCP, Noise, yamux, identify, ping and optionally gossipsub.</summary>
-/// <remarks>Built from the component packages, so the node ships none of the transports the meta package adds (WebRTC, WebSockets, relay, QUIC, TLS) or their dependencies.</remarks>
+/// <summary>The libp2p stack the node's hosts run on: TCP/Noise with Yamux or Mplex, optional QUIC, identify, ping and optional gossipsub.</summary>
+/// <remarks>Uses component packages without the meta package's WebRTC, WebSocket and circuit-relay dependencies.</remarks>
 public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     : PeerFactoryBuilderBase<Libp2pStackBuilder, Libp2pStackPeerFactory>(serviceProvider)
 {
     private bool _pubsub;
+    private bool _quic;
+
+    /// <summary>Adds the authenticated QUIC v1 transport, with its native stream multiplexing.</summary>
+    public Libp2pStackBuilder WithQuic()
+    {
+        _quic = true;
+        return this;
+    }
 
     /// <summary>Adds gossipsub (v1.0 to v1.3) and floodsub to the protocols every session offers.</summary>
     public Libp2pStackBuilder WithPubsub()
@@ -36,12 +44,15 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(IpTcpProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(NoiseProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(YamuxProtocol))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(MplexProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(MultistreamProtocol))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(QuicProtocol))]
     protected override ProtocolRef[] BuildStack(IEnumerable<ProtocolRef> additionalProtocols)
     {
         ProtocolRef tcp = Get<IpTcpProtocol>();
         ProtocolRef[] appSelector = [Get<MultistreamProtocol>()];
-        Connect([tcp], [Get<MultistreamProtocol>()], [Get<NoiseProtocol>()], [Get<MultistreamProtocol>()], [Get<YamuxProtocol>()], appSelector);
+        ProtocolRef[] multiplexers = [Get<YamuxProtocol>(), Get<MplexProtocol>()];
+        Connect([tcp], [Get<MultistreamProtocol>()], [Get<NoiseProtocol>()], [Get<MultistreamProtocol>()], multiplexers, appSelector);
 
         List<ProtocolRef> apps = [Get<IdentifyProtocol>(), Get<IdentifyPushProtocol>(), Get<PingProtocol>(), .. additionalProtocols];
         if (_pubsub)
@@ -52,6 +63,12 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
         // A typed array is one choice of protocols; a collection expression would bind to the params array and chain them instead.
         ProtocolRef[] choices = [.. apps];
         Connect(appSelector, choices);
+        if (_quic)
+        {
+            ProtocolRef quic = Get<QuicProtocol>();
+            Connect([quic], appSelector);
+            return [tcp, quic];
+        }
         return [tcp];
     }
 }

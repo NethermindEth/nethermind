@@ -226,7 +226,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             StorageRangeMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetStorageRangeMessage()
                 {
-                    StorageRange = range,
+                    StorageRange = range.Copy(),
                     ResponseBytes = bytesLimit
                 }, _getStorageRangeRequests, token));
 

@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Multiformats.Address;
-using Multiformats.Address.Protocols;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -167,7 +166,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         _dialHistory = discovery?.DialHistory ?? new PeerDialHistory(_timestamper);
         _localCustody = new DiscoveryNodeCustodySource(discovery);
         _outboundDialGate = new SemaphoreSlim(Math.Max(1, config.MaxConcurrentOutboundDials));
-        ValidateStaticPeers(StaticPeerAddresses());
+        ValidateStaticPeers(StaticPeerAddresses(), config.QuicPort > 0);
 
         // A session the remote side opened has no dial here to admit it through; this is its only way in.
         p2p.SessionEstablished += OnSessionEstablished;
@@ -712,7 +711,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     }
 
     /// <summary>Dials discovered candidates, at most <see cref="IBeaconChainConfig.MaxConcurrentOutboundDials"/> at once, while the pool has room; returns once every dial has ended.</summary>
-    internal Task DialDiscoveredPeersAsync(IAsyncEnumerable<BeaconPeerCandidate> candidates, CancellationToken token)
+    public Task DialDiscoveredPeersAsync(IAsyncEnumerable<BeaconPeerCandidate> candidates, CancellationToken token)
         => ScheduleDialsAsync(candidates, Math.Max(1, _config.MaxConcurrentOutboundDials), WaitForAdmissionCapacityAsync, DialCandidateAsync,
             (candidate, e) => { if (_logger.IsDebug) _logger.Debug($"Dialing discovered beacon chain peer {candidate.Multiaddress} failed: {DescribeFailure(e)}"); }, token);
 
@@ -1076,7 +1075,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <summary>Refuses a static peer the maintenance round could never dial.</summary>
     /// <exception cref="InvalidConfigurationException">An address does not decode, has no peer id, or uses an unsupported address form.</exception>
-    private static void ValidateStaticPeers(string[] addresses)
+    private static void ValidateStaticPeers(string[] addresses, bool quicEnabled)
     {
         foreach (string address in addresses)
         {
@@ -1090,11 +1089,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 throw new InvalidConfigurationException($"BeaconChain.StaticPeers entry '{address}' is not a multiaddr: {e.Message}", ExitCodes.ForbiddenOptionValue);
             }
 
-            bool supported = multiaddress.Has<IP4>() || multiaddress.Has<IP6>()
-                || address.Split('/') is ["", "dns" or "dns4" or "dns6", _, "tcp", _, "p2p", _];
-            if (multiaddress.GetPeerId() is null || !supported)
+            string[] parts = address.Split('/');
+            bool tcp = parts is ["", "ip4" or "ip6" or "dns" or "dns4" or "dns6", _, "tcp", _, "p2p", _];
+            bool quic = quicEnabled && parts is ["", "ip4" or "ip6", _, "udp", _, "quic-v1", "p2p", _];
+            bool validPort = parts.Length > 4 && ushort.TryParse(parts[4], out ushort port) && port != 0;
+            if (multiaddress.GetPeerId() is null || !validPort || !(tcp || quic))
             {
-                throw new InvalidConfigurationException($"BeaconChain.StaticPeers entry '{address}' must name an IP address or a DNS TCP endpoint with a /p2p/<peer-id> component.", ExitCodes.ForbiddenOptionValue);
+                throw new InvalidConfigurationException($"BeaconChain.StaticPeers entry '{address}' must name a TCP endpoint or an enabled QUIC IP endpoint with a /p2p/<peer-id> component.", ExitCodes.ForbiddenOptionValue);
             }
         }
     }
@@ -1904,6 +1905,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     {
         public const string BlocksByRange = "Blocks-by-range";
         public const string BlocksByRoot = "Blocks-by-root";
+        public const string LightClientBootstrap = "Light-client-bootstrap";
+        public const string LightClientUpdate = "Light-client-update";
+        public const string LightClientFinality = "Light-client-finality";
+        public const string LightClientOptimistic = "Light-client-optimistic";
         public const string ColumnsByRange = "Data-column-sidecars-by-range";
         public const string ColumnsByRoot = "Data-column-sidecars-by-root";
         public const string EnvelopesByRange = "Execution-payload-envelopes-by-range";
@@ -2586,6 +2591,18 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
             Served(RequestName.BlocksByRoot, timing => p2p.RequestBlocksByRootAsync(Session, roots, token, timing), token);
+
+        public Task<LightClientBootstrap> RequestLightClientBootstrapAsync(Hash256 root, CancellationToken token) =>
+            Served(RequestName.LightClientBootstrap, timing => p2p.RequestLightClientBootstrapAsync(Session, root, token, timing), token);
+
+        public Task<LightClientUpdate> RequestLightClientUpdateAsync(ulong period, CancellationToken token) =>
+            Served(RequestName.LightClientUpdate, timing => p2p.RequestLightClientUpdateAsync(Session, period, token, timing), token);
+
+        public Task<LightClientFinalityUpdate> RequestLightClientFinalityAsync(CancellationToken token) =>
+            Served(RequestName.LightClientFinality, timing => p2p.RequestLightClientFinalityAsync(Session, token, timing), token);
+
+        public Task<LightClientOptimisticUpdate> RequestLightClientOptimisticAsync(CancellationToken token) =>
+            Served(RequestName.LightClientOptimistic, timing => p2p.RequestLightClientOptimisticAsync(Session, token, timing), token);
 
         public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
             Served(RequestName.ColumnsByRange, timing => p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token, timing), token);
