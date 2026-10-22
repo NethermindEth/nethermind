@@ -5,10 +5,18 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Experimental.Abi;
 
+/// <summary>Thrown when a value cannot be encoded, or when an input is not the canonical encoding under a signature.</summary>
 public class AbiException(Exception? innerException = null) : Exception(null, innerException);
 
+/// <summary>Encodes and decodes call data, return data and event data under typed <see cref="AbiSignature{T}"/>s.</summary>
+/// <remarks>See the <see href="https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding">ABI encoding specification</see>.</remarks>
 public static class AbiCodec
 {
+    /// <summary>Encodes <paramref name="arg"/> under <paramref name="signature"/> into a new array: the method ID, if any, followed by the arguments.</summary>
+    /// <exception cref="AbiException">
+    /// <paramref name="arg"/> cannot be encoded, e.g. a <c>bytesN</c> or <c>T[k]</c> value of the wrong length.
+    /// Any other exception raised while encoding becomes the <see cref="Exception.InnerException"/>.
+    /// </exception>
     public static byte[] Encode<T>(AbiSignature<T> signature, T arg)
     {
         try
@@ -23,6 +31,16 @@ public static class AbiCodec
         }
     }
 
+    /// <summary>Encodes <paramref name="arg"/> under <paramref name="signature"/> into <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// Bytes of <paramref name="destination"/> past the encoding are left unchanged, and on failure it may be partly written.
+    /// <paramref name="destination"/> must not overlap the memory of <paramref name="arg"/>.
+    /// </remarks>
+    /// <returns>The number of bytes written, equal to <see cref="AbiSignature{T}.Size(T)"/>.</returns>
+    /// <exception cref="AbiException">
+    /// <paramref name="destination"/> is shorter than the encoding, or <paramref name="arg"/> cannot be encoded.
+    /// Any other exception raised while encoding becomes the <see cref="Exception.InnerException"/>.
+    /// </exception>
     public static int Encode<T>(AbiSignature<T> signature, T arg, Span<byte> destination)
     {
         try

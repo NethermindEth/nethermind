@@ -5,6 +5,7 @@ namespace Nethermind.Experimental.Abi;
 
 public static partial class AbiType
 {
+    /// <summary>Returns the codec for the empty tuple <c>()</c>, whose encoding is empty.</summary>
     public static Abi<ValueTuple> Tuple() => new()
     {
         Name = "()",
@@ -13,6 +14,8 @@ public static partial class AbiType
         HeadSize = 0,
     };
 
+    /// <summary>Returns the codec for a tuple of the given components.</summary>
+    /// <remarks>The tuple is dynamic when any component is dynamic. Nesting tuples changes the canonical name, so it does not extend the component count.</remarks>
     public static Abi<T> Tuple<T>(Abi<T> abi)
     {
         int headSize = abi.HeadSize;
@@ -51,6 +54,7 @@ public static partial class AbiType
         };
     }
 
+    /// <inheritdoc cref="Tuple{T}(Abi{T})"/>
     public static Abi<(T1, T2)> Tuple<T1, T2>(Abi<T1> abi1, Abi<T2> abi2)
     {
         int headSize = checked(abi1.HeadSize + abi2.HeadSize);
@@ -93,6 +97,7 @@ public static partial class AbiType
         };
     }
 
+    /// <inheritdoc cref="Tuple{T}(Abi{T})"/>
     public static Abi<(T1, T2, T3)> Tuple<T1, T2, T3>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3)
     {
         int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize);
@@ -138,6 +143,7 @@ public static partial class AbiType
         };
     }
 
+    /// <inheritdoc cref="Tuple{T}(Abi{T})"/>
     public static Abi<(T1, T2, T3, T4)> Tuple<T1, T2, T3, T4>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4)
     {
         int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize);
@@ -186,6 +192,7 @@ public static partial class AbiType
         };
     }
 
+    /// <inheritdoc cref="Tuple{T}(Abi{T})"/>
     public static Abi<(T1, T2, T3, T4, T5)> Tuple<T1, T2, T3, T4, T5>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4, Abi<T5> abi5)
     {
         int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize + abi5.HeadSize);
@@ -237,6 +244,7 @@ public static partial class AbiType
         };
     }
 
+    /// <inheritdoc cref="Tuple{T}(Abi{T})"/>
     public static Abi<(T1, T2, T3, T4, T5, T6)> Tuple<T1, T2, T3, T4, T5, T6>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4, Abi<T5> abi5, Abi<T6> abi6)
     {
         int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize + abi5.HeadSize + abi6.HeadSize);
@@ -291,6 +299,7 @@ public static partial class AbiType
         };
     }
 
+    /// <inheritdoc cref="Tuple{T}(Abi{T})"/>
     public static Abi<(T1, T2, T3, T4, T5, T6, T7)> Tuple<T1, T2, T3, T4, T5, T6, T7>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4, Abi<T5> abi5, Abi<T6> abi6, Abi<T7> abi7)
     {
         int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize + abi5.HeadSize + abi6.HeadSize + abi7.HeadSize);

@@ -9,8 +9,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Experimental.Abi;
 
+/// <summary>Codecs for the standard ABI types.</summary>
+/// <remarks>See the <see href="https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding">ABI encoding specification</see>.</remarks>
 public static partial class AbiType
 {
+    /// <summary><c>uint256</c>.</summary>
     public static readonly Abi<UInt256> UInt256 = new()
     {
         Name = "uint256",
@@ -26,6 +29,7 @@ public static partial class AbiType
         },
     };
 
+    /// <summary><c>int256</c>.</summary>
     public static readonly Abi<Int256.Int256> Int256 = new()
     {
         Name = "int256",
@@ -33,6 +37,7 @@ public static partial class AbiType
         Write = (ref BinarySpanWriter w, Int256.Int256 v) => ((UInt256)v).ToBigEndian(w.Take(32)),
     };
 
+    /// <summary>Returns the codec for <c>uintN</c>, where <c>N</c> is the bit width of <typeparamref name="T"/>.</summary>
     public static Abi<T> UIntN<T>() where T : IBinaryInteger<T>, IUnsignedNumber<T>, IMinMaxValue<T> => new()
     {
         Name = $"uint{T.Zero.GetByteCount() * 8}",
@@ -50,6 +55,7 @@ public static partial class AbiType
         },
     };
 
+    /// <summary>Returns the codec for <c>intN</c>, where <c>N</c> is the bit width of <typeparamref name="T"/>.</summary>
     public static Abi<T> IntN<T>() where T : IBinaryInteger<T>, ISignedNumber<T>, IMinMaxValue<T> => new()
     {
         Name = $"int{T.Zero.GetByteCount() * 8}",
@@ -67,16 +73,25 @@ public static partial class AbiType
         },
     };
 
+    /// <summary><c>uint64</c>.</summary>
     public static readonly Abi<UInt64> UInt64 = UIntN<UInt64>();
+    /// <summary><c>uint32</c>.</summary>
     public static readonly Abi<UInt32> UInt32 = UIntN<UInt32>();
+    /// <summary><c>uint16</c>.</summary>
     public static readonly Abi<UInt16> UInt16 = UIntN<UInt16>();
+    /// <summary><c>uint8</c>.</summary>
     public static readonly Abi<Byte> UInt8 = UIntN<Byte>();
 
+    /// <summary><c>int64</c>.</summary>
     public static readonly Abi<Int64> Int64 = IntN<Int64>();
+    /// <summary><c>int32</c>.</summary>
     public static readonly Abi<Int32> Int32 = IntN<Int32>();
+    /// <summary><c>int16</c>.</summary>
     public static readonly Abi<Int16> Int16 = IntN<Int16>();
+    /// <summary><c>int8</c>.</summary>
     public static readonly Abi<SByte> Int8 = IntN<SByte>();
 
+    /// <summary><c>bool</c>.</summary>
     public static readonly Abi<Boolean> Bool = new()
     {
         Name = "bool",
@@ -89,6 +104,7 @@ public static partial class AbiType
         Write = (ref BinarySpanWriter w, Boolean v) => UInt256.Write(ref w, v ? 1u : 0u),
     };
 
+    /// <summary><c>address</c>.</summary>
     public static readonly Abi<Address> Address = new()
     {
         Name = "address",
@@ -106,6 +122,8 @@ public static partial class AbiType
         },
     };
 
+    /// <summary>Returns the codec for the dynamic-length array <c>T[]</c>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="abi"/> has a zero <see cref="Abi{T}.HeadSize"/>, such as <c>()</c>.</exception>
     public static Abi<T[]> Array<T>(Abi<T> abi)
     {
         ArgumentOutOfRangeException.ThrowIfZero(abi.HeadSize);
@@ -139,6 +157,8 @@ public static partial class AbiType
         };
     }
 
+    /// <summary>Returns the codec for the fixed-length array <c>T[k]</c>, where <c>k</c> is <paramref name="length"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative.</exception>
     public static Abi<T[]> Array<T>(Abi<T> abi, int length)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
@@ -167,6 +187,7 @@ public static partial class AbiType
         };
     }
 
+    /// <summary><c>bytes</c>.</summary>
     public static readonly Abi<byte[]> Bytes = new()
     {
         Name = "bytes",
@@ -191,6 +212,8 @@ public static partial class AbiType
         }
     };
 
+    /// <summary>Returns the codec for <c>bytesM</c>, where <c>M</c> is <paramref name="length"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is not between 1 and 32.</exception>
     public static Abi<byte[]> BytesM(int length)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
@@ -208,6 +231,7 @@ public static partial class AbiType
         };
     }
 
+    /// <summary><c>bytes32</c>, as a <see cref="ValueHash256"/>.</summary>
     public static readonly Abi<ValueHash256> Bytes32 = new()
     {
         Name = "bytes32",
@@ -217,6 +241,7 @@ public static partial class AbiType
 
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
+    /// <summary><c>string</c>, encoded as UTF-8.</summary>
     public static readonly Abi<String> String = new()
     {
         Name = "string",
@@ -247,6 +272,8 @@ public static partial class AbiType
         }
     };
 
+    /// <summary><c>uint</c>, an alias of <see cref="UInt256"/>.</summary>
     public static readonly Abi<UInt256> UInt = UInt256;
+    /// <summary><c>int</c>, an alias of <see cref="Int256"/>.</summary>
     public static readonly Abi<Int256.Int256> Int = Int256;
 }

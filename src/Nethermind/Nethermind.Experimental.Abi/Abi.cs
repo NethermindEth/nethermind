@@ -3,14 +3,27 @@
 
 namespace Nethermind.Experimental.Abi;
 
+/// <summary>Reads a value at the reader's position and advances past its encoding.</summary>
 public delegate T AbiReadFunc<out T>(ref BinarySpanReader r);
+/// <summary>Writes the encoding of <paramref name="value"/> at the writer's position and advances past it.</summary>
 public delegate void AbiWriteAction<in T>(ref BinarySpanWriter w, T value);
+/// <summary>Returns the length of the tail encoding of <paramref name="value"/>.</summary>
 public delegate int AbiSizeFunc<in T>(T value);
 
+/// <summary>Codec for one ABI type: its canonical name, how its values are read and written, and the size of their encodings.</summary>
+/// <remarks>
+/// The built-in codecs are in <see cref="AbiType"/>. A custom codec must keep <see cref="Read"/>, <see cref="Write"/> and the sizes consistent:
+/// <see cref="Write"/> writes exactly <see cref="Size(T)"/> bytes and <see cref="Read"/> consumes exactly the bytes <see cref="Write"/> would write.
+/// Both start at the value's own encoding, its tail for dynamic types: the enclosing tuple or array writes and checks the offset.
+/// See the <see href="https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding">ABI encoding specification</see>.
+/// </remarks>
 public class Abi<T>
 {
+    /// <summary>Canonical type name, as used in signatures, e.g. <c>uint256</c> or <c>(address,bytes)[]</c>.</summary>
     public required string Name { get; init; }
+    /// <summary>Reads a value, throwing <see cref="AbiException"/> when its encoding is not canonical.</summary>
     public required AbiReadFunc<T> Read { get; init; }
+    /// <summary>Writes the encoding of a value.</summary>
     public required AbiWriteAction<T> Write { get; init; }
 
     /// <summary>Number of bytes a value of this type takes in the head of an enclosing tuple or array.</summary>
