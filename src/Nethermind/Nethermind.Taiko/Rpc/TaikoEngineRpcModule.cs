@@ -331,6 +331,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
+        Transaction? estimatedTx = null;
+        ulong estimatedLength = 0;
 
         void Restore(Snapshot snapshot, ulong gasUsed)
         {
@@ -387,7 +389,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                     continue;
                 }
 
-                if (!batch.TryAddTx(tx))
+                if (!ReferenceEquals(estimatedTx, tx))
+                {
+                    estimatedLength = Batch.EstimateTxLength(tx, txDecoder);
+                    estimatedTx = tx;
+                }
+
+                if (!batch.TryAddTx(tx, estimatedLength))
                 {
                     Restore(snapshot, gasUsedBefore);
 
@@ -432,9 +440,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         public ArrayPoolList<Transaction> Transactions { get; } = new(transactionsListCapacity);
 
-        public bool TryAddTx(Transaction tx)
+        public bool TryAddTx(Transaction tx, ulong estimatedLength)
         {
-            ulong estimatedLength = EstimateTxLength(tx);
             if (_length + estimatedLength <= _maxBytes)
             {
                 Transactions.Add(tx);
@@ -462,7 +469,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
-        private readonly ulong EstimateTxLength(Transaction tx)
+        public static ulong EstimateTxLength(Transaction tx, IRlpDecoder<Transaction> txDecoder)
         {
             int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
             using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
