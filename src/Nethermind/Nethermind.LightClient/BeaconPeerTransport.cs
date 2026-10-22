@@ -32,6 +32,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     private readonly BeaconPeerManager _peers;
     private readonly LightClientGossip _gossip;
     private readonly Nethermind.Logging.ILogger _logger;
+    private readonly PeerRequests _bootstrapRequests;
+    private readonly PeerRequests _updateRequests;
+    private readonly PeerRequests _optimisticRequests;
+    private readonly PeerRequests _finalityRequests;
     private readonly CancellationTokenSource _stop = new();
     private Task? _peerLoop;
 
@@ -43,6 +47,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         TimeProvider? time = null, int quicPort = 9051)
     {
         _logger = logManager.GetClassLogger<BeaconPeerTransport>();
+        _bootstrapRequests = new(time);
+        _updateRequests = new(time);
+        _optimisticRequests = new(time);
+        _finalityRequests = new(time);
         _gossip = new(spec, logManager, time);
         bool quicSupported = QuicListener.IsSupported && QuicConnection.IsSupported;
         if (!quicSupported && quicPort > 0 && _logger.IsWarn)
@@ -103,31 +111,18 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         _gossip.Start(_p2p.GetTopic, finality, optimistic, token);
 
     internal Task<LightClientBootstrap> BootstrapAsync(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken token) =>
-        RequestAsync((peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken), validate, token);
+        RequestAsync(_bootstrapRequests, (peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken), validate, token);
 
     internal Task<LightClientUpdate> UpdateAsync(ulong period, Func<LightClientUpdate, CancellationToken, Task> validate, CancellationToken token) =>
-        RequestAsync((peer, peerToken) => peer.RequestLightClientUpdateAsync(period, peerToken), validate, token);
+        RequestAsync(_updateRequests, (peer, peerToken) => peer.RequestLightClientUpdateAsync(period, peerToken), validate, token);
 
     internal Task<LightClientFinalityUpdate?> PollFinalityAsync(Func<LightClientFinalityUpdate, CancellationToken, Task<bool>> validate, CancellationToken token) =>
-        PollFromPeersAsync(() => _peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientFinalityAsync(peerToken), validate, token);
+        _finalityRequests.PollAsync(() => _peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientFinalityAsync(peerToken), validate, token);
 
     internal Task<LightClientOptimisticUpdate?> PollOptimisticAsync(Func<LightClientOptimisticUpdate, CancellationToken, Task<bool>> validate, CancellationToken token) =>
-        PollFromPeersAsync(() => _peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientOptimisticAsync(peerToken), validate, token);
+        _optimisticRequests.PollAsync(() => _peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientOptimisticAsync(peerToken), validate, token);
 
-    internal static async Task<T?> PollFromPeersAsync<T>(Func<IReadOnlyList<IBeaconSyncPeer>> getPeers,
-        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task<bool>> validate, CancellationToken token,
-        TimeProvider? timeProvider = null) where T : class
-    {
-        token.ThrowIfCancellationRequested();
-        IReadOnlyList<IBeaconSyncPeer> peers;
-        while ((peers = getPeers()).Count == 0)
-            await Task.Delay(TimeSpan.FromSeconds(1), timeProvider ?? TimeProvider.System, token);
-        (T? response, bool sawInapplicable) = await RequestFromPeersAsync(peers, request, validate, token, timeProvider);
-        if (response is null && !sawInapplicable) throw new IOException("No beacon peer supplied an applicable light-client update.");
-        return response;
-    }
-
-    private async Task<T> RequestAsync<T>(Func<IBeaconSyncPeer, CancellationToken, Task<T>> request,
+    private async Task<T> RequestAsync<T>(PeerRequests requests, Func<IBeaconSyncPeer, CancellationToken, Task<T>> request,
         Func<T, CancellationToken, Task> validate, CancellationToken token) where T : class
     {
         Func<T, CancellationToken, Task<bool>> validateAndAccept = async (response, cancellationToken) =>
@@ -139,7 +134,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            (T? response, _) = await RequestFromPeersAsync(_peers.GetBestPeers(0), request, validateAndAccept, token);
+            (T? response, _) = await requests.RequestAsync(_peers.GetBestPeers(0), request, validateAndAccept, token);
             if (response is not null) return response;
 
             if (Stopwatch.GetElapsedTime(lastStatus) >= TimeSpan.FromSeconds(10))
@@ -152,51 +147,76 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         }
     }
 
-    internal static async Task<(T? Response, bool SawInapplicable)> RequestFromPeersAsync<T>(IReadOnlyList<IBeaconSyncPeer> peers,
-        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task<bool>> validate, CancellationToken token,
-        TimeProvider? timeProvider = null) where T : class
+    internal sealed class PeerRequests(TimeProvider? timeProvider = null)
     {
-        bool sawInapplicable = false;
-        foreach (IBeaconSyncPeer peer in peers)
+        private string? _lastAttemptedPeerId;
+
+        internal async Task<T?> PollAsync<T>(Func<IReadOnlyList<IBeaconSyncPeer>> getPeers,
+            Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task<bool>> validate,
+            CancellationToken token) where T : class
         {
             token.ThrowIfCancellationRequested();
-            using CancellationTokenSource peerTimeout = new(PeerRequestTimeout, timeProvider ?? TimeProvider.System);
-            using CancellationTokenSource peerAttempt = CancellationTokenSource.CreateLinkedTokenSource(token, peerTimeout.Token);
-            T response;
-            try
+            IReadOnlyList<IBeaconSyncPeer> peers;
+            while ((peers = getPeers()).Count == 0)
+                await Task.Delay(TimeSpan.FromSeconds(1), timeProvider ?? TimeProvider.System, token);
+            (T? response, bool sawInapplicable) = await RequestAsync(peers, request, validate, token);
+            if (response is null && !sawInapplicable) throw new IOException("No beacon peer supplied an applicable light-client update.");
+            return response;
+        }
+
+        internal async Task<(T? Response, bool SawInapplicable)> RequestAsync<T>(IReadOnlyList<IBeaconSyncPeer> peers,
+            Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task<bool>> validate,
+            CancellationToken token) where T : class
+        {
+            int start = 0;
+            for (int i = 0; i < peers.Count; i++)
             {
-                response = await request(peer, peerAttempt.Token);
+                if (peers[i].Id == _lastAttemptedPeerId) start = (i + 1) % peers.Count;
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-            catch (OperationCanceledException) when (peerTimeout.IsCancellationRequested)
+            bool sawInapplicable = false;
+            for (int offset = 0; offset < peers.Count; offset++)
             {
-                peer.ReportFailure(PeerFailureReason.RequestFailed, "Light-client request timed out.");
-                continue;
-            }
-            catch (Exception exception)
-            {
-                peer.ReportFailure(PeerFailureReason.RequestFailed, exception.Message);
-                continue;
-            }
-            try
-            {
-                if (!await validate(response, token))
+                IBeaconSyncPeer peer = peers[(start + offset) % peers.Count];
+                token.ThrowIfCancellationRequested();
+                _lastAttemptedPeerId = peer.Id;
+                using CancellationTokenSource peerTimeout = new(PeerRequestTimeout, timeProvider ?? TimeProvider.System);
+                using CancellationTokenSource peerAttempt = CancellationTokenSource.CreateLinkedTokenSource(token, peerTimeout.Token);
+                T response;
+                try
                 {
-                    token.ThrowIfCancellationRequested();
-                    sawInapplicable = true;
+                    response = await request(peer, peerAttempt.Token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch (OperationCanceledException) when (peerTimeout.IsCancellationRequested)
+                {
+                    peer.ReportFailure(PeerFailureReason.RequestFailed, "Light-client request timed out.");
                     continue;
                 }
+                catch (Exception exception)
+                {
+                    peer.ReportFailure(PeerFailureReason.RequestFailed, exception.Message);
+                    continue;
+                }
+                try
+                {
+                    if (!await validate(response, token))
+                    {
+                        token.ThrowIfCancellationRequested();
+                        sawInapplicable = true;
+                        continue;
+                    }
+                }
+                catch (IrrelevantLightClientUpdateException) { sawInapplicable = true; continue; }
+                catch (LightClientLocalStateException) { sawInapplicable = true; continue; }
+                catch (InvalidDataException exception)
+                {
+                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, exception.Message);
+                    continue;
+                }
+                return (response, false);
             }
-            catch (IrrelevantLightClientUpdateException) { sawInapplicable = true; continue; }
-            catch (LightClientLocalStateException) { sawInapplicable = true; continue; }
-            catch (InvalidDataException exception)
-            {
-                peer.ReportFailure(PeerFailureReason.ProtocolViolation, exception.Message);
-                continue;
-            }
-            return (response, false);
+            return (null, sawInapplicable);
         }
-        return (null, sawInapplicable);
     }
 
     public async ValueTask DisposeAsync()
