@@ -615,7 +615,8 @@ public class DebugRpcModule(
             return stateError;
         }
 
-        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options);
+        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
+            return StreamBlockTrace(header, options, validateStructLogTimeout: true);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
@@ -638,6 +639,10 @@ public class DebugRpcModule(
         catch (ArgumentNullException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.InvalidInput);
+        }
+        catch (TraceDurationFormatException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
     }
 

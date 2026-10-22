@@ -200,9 +200,11 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_native_config_errors_keep_sibling_invalid_params(
-        [Values("debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
-        [Values("callTracer", "prestateTracer")] string tracer)
+    public async Task Debug_native_config_errors_preserve_route_classification(
+        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
+        [Values("callTracer", "prestateTracer")] string tracer,
+        [Values(null, "bad", "5s")] string? timeout,
+        [Values("17", "[]")] string invalidValue)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
@@ -213,14 +215,18 @@ public partial class DebugRpcModuleTests
             "debug_traceTransaction" => block.Transactions[0].Hash!,
             _ => new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }
         };
-        object options = new { tracer, tracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":17,"diffMode":17}""") };
+        JsonElement tracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"onlyTopCall":{{invalidValue}},"diffMode":{{invalidValue}}}""");
+        object options = timeout is null ? new { tracer, tracerConfig } : (object)new { tracer, timeout, tracerConfig };
         object[] parameters = method == "debug_traceCall" ? [selector, "latest", options] : [selector, options];
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
+        int expectedCode = method == "debug_traceBlockByHash" ? ErrorCodes.InvalidInput : ErrorCodes.InvalidParams;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
             Assert.That(json["result"], Is.Null, response);
+            if (method == "debug_traceBlockByHash")
+                Assert.That(json["error"]!.ToString(), Does.Contain("Cannot convert"), response);
         }
     }
 
@@ -415,6 +421,20 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    private static IEnumerable<TestCaseData> BlockTimeoutPrecedenceCases()
+    {
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
+        {
+            yield return new TestCaseData(false, "\"bad\"", "lookup", method);
+            yield return new TestCaseData(false, "\"5s\"", "lookup", method);
+            yield return new TestCaseData(true, "\"bad\"", "constructor", method);
+            yield return new TestCaseData(true, "\"5s\"", "constructor", method);
+            yield return new TestCaseData(false, "7", "type", method);
+        }
+        yield return new TestCaseData(false, "\"bad\"", "lookup-tx", "debug_traceTransaction");
+        yield return new TestCaseData(false, "\"bad\"", "eager", "debug_intermediateRoots");
+    }
+
     [Test]
     public async Task Debug_traceBlockByNumber_rejects_non_object_options([Values("17", "[]", "\"bad\"", "true")] string optionsJson)
     {
@@ -460,13 +480,9 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.DeepEquals(JToken.Parse(streamed), JToken.Parse(buffered)), Is.True, streamed);
     }
 
-    [TestCase(false, "\"bad\"", "lookup")]
-    [TestCase(false, "\"5s\"", "lookup")]
-    [TestCase(true, "\"bad\"", "constructor")]
-    [TestCase(true, "\"5s\"", "constructor")]
-    [TestCase(false, "7", "type")]
-    public async Task Debug_traceBlockByNumber_orders_lookup_and_constructor_before_semantic_timeout(
-        bool retainedBlock, string timeoutJson, string expected)
+    [TestCaseSource(nameof(BlockTimeoutPrecedenceCases))]
+    public async Task Debug_traceBlock_orders_lookup_and_constructor_before_semantic_timeout(
+        bool retainedBlock, string timeoutJson, string expected, string method)
     {
         using Context context = await Context.Create();
         if (retainedBlock)
@@ -475,13 +491,26 @@ public partial class DebugRpcModuleTests
         ulong blockNumber = context.Blockchain.BlockTree.Head!.Number + (retainedBlock ? 0UL : 1UL);
         JsonElement timeout = JsonSerializer.Deserialize<JsonElement>(timeoutJson);
         string tracer = retainedBlock ? "unknownTracer" : NativeNoopTracer.NoopTracer;
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", blockNumber,
+        object selector = method == "debug_traceBlockByNumber" ? blockNumber
+            : retainedBlock ? context.Blockchain.BlockTree.Head!.Hash! : TestItem.KeccakD;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
             new Dictionary<string, object> { ["tracer"] = tracer, ["timeout"] = timeout });
         JToken json = JToken.Parse(response);
 
-        if (expected == "type")
+        if (expected is "type" or "eager")
         {
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            return;
+        }
+
+        if (expected == "lookup-tx")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("transaction not found"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
             return;
         }
 
@@ -490,7 +519,8 @@ public partial class DebugRpcModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
-                Assert.That((string?)json["error"]?["message"], Is.EqualTo($"block #{blockNumber} not found"), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo(method == "debug_traceBlockByNumber"
+                    ? $"block #{blockNumber} not found" : $"Cannot find header for block hash: {selector}"), response);
             }
             return;
         }
@@ -509,31 +539,36 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("valid")]
-    [TestCase("malformed")]
-    public async Task Debug_traceBlockByNumber_rejects_oversized_timeout_tokens_before_lookup(string kind)
+    [Test]
+    public async Task Debug_traceBlock_rejects_oversized_timeout_tokens_before_lookup(
+        [Values("valid", "malformed")] string kind,
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
     {
         using Context context = await Context.Create();
         string timeout = kind == "valid" ? new string('0', 64) + "1s" : new string('x', 65);
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
-            context.Blockchain.BlockTree.Head!.Number + 1, new { tracer = NativeNoopTracer.NoopTracer, timeout });
+        object selector = method == "debug_traceBlockByNumber" ? context.Blockchain.BlockTree.Head!.Number + 1 : TestItem.KeccakD;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method,
+            selector, new { tracer = NativeNoopTracer.NoopTracer, timeout });
 
         Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
     }
 
-    [TestCase("native", false)]
-    [TestCase("opcode", false)]
-    [TestCase("opcode", true)]
-    [TestCase("javascript", false)]
-    [TestCase("empty-native", false)]
-    [TestCase("empty-opcode", true)]
-    [TestCase("empty-javascript", false)]
-    [TestCase("unmatched-opcode", false)]
-    [TestCase("unmatched-opcode", true)]
-    [TestCase("javascript-valid", false)]
-    [TestCase("native-null-config", false)]
-    [TestCase("native-null-config-valid", false)]
-    public async Task Debug_traceBlockByNumber_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode)
+    private static IEnumerable<TestCaseData> BlockTimeoutRouteCases()
+    {
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
+        {
+            foreach (string scenario in new[] { "native", "javascript", "empty-native", "empty-javascript", "javascript-valid", "native-null-config", "native-null-config-valid" })
+                foreach (bool streamMode in new[] { false, true })
+                    yield return new TestCaseData(scenario, streamMode, scenario.EndsWith("-valid", StringComparison.Ordinal) ? "valid" : "bad", method);
+            foreach (string scenario in new[] { "opcode", "empty-opcode", "unmatched-opcode" })
+                foreach (string duration in new[] { "bad", "valid", "type", "oversized" })
+                    foreach (bool streamMode in new[] { false, true })
+                        yield return new TestCaseData(scenario, streamMode, duration, method);
+        }
+    }
+
+    [TestCaseSource(nameof(BlockTimeoutRouteCases))]
+    public async Task Debug_traceBlock_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode, string duration, string method)
     {
         using Context context = await Context.Create();
         bool empty = scenario.StartsWith("empty", StringComparison.Ordinal);
@@ -541,10 +576,10 @@ public partial class DebugRpcModuleTests
         Block block = empty
             ? await context.Blockchain.AddBlock()
             : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
-        bool valid = scenario.EndsWith("-valid", StringComparison.Ordinal);
+        bool valid = duration == "valid";
         Dictionary<string, object> options = new()
         {
-            ["timeout"] = valid ? "5s" : "bad",
+            ["timeout"] = duration switch { "valid" => "5s", "type" => 7, "oversized" => new string('x', 65), _ => "bad" },
             ["streamMode"] = streamMode
         };
         if (unmatched) options["txHash"] = TestItem.KeccakD;
@@ -557,9 +592,18 @@ public partial class DebugRpcModuleTests
             options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":true,"onlyTopCall":null,"withLog":null}""");
         }
 
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, options);
         JToken json = JToken.Parse(response);
-        if (empty || unmatched)
+        if (duration is "type" or "oversized")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+        else if (empty || unmatched)
         {
             using (Assert.EnterMultipleScope())
             {
@@ -578,13 +622,17 @@ public partial class DebugRpcModuleTests
         else if (valid)
         {
             Assert.That(json["error"], Is.Null, response);
-            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(block.Transactions.Length), response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length), response);
+            for (int i = 0; i < traces.Count; i++)
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
         }
         else
         {
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That(json["result"], Is.Null, response);
                 Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot parse 'bad' as a duration"), response);
             }
         }
@@ -2123,7 +2171,9 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlock_returns_error_for_genesis([Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
+    public async Task Debug_traceBlock_returns_error_for_genesis(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(null, "bad")] string? timeout)
     {
         using Context context = await Context.Create();
 
@@ -2133,7 +2183,8 @@ public partial class DebugRpcModuleTests
             _ => context.Blockchain.BlockTree.Genesis!.Hash
         };
 
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, arg, new GethTraceOptions());
+        object options = timeout is null ? new GethTraceOptions() : new { tracer = NativeNoopTracer.NoopTracer, timeout };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, arg, options);
 
         using JsonDocument doc = JsonDocument.Parse(response);
         JsonElement root = doc.RootElement;
@@ -2145,7 +2196,7 @@ public partial class DebugRpcModuleTests
 
     [TestCase("debug_traceBlock", -32602)]
     [TestCase("debug_traceBlockByNumber", -32000)]
-    [TestCase("debug_traceBlockByHash", -32602)]
+    [TestCase("debug_traceBlockByHash", -32000)]
     public async Task Debug_traceBlock_routes_reject_malformed_timeout_before_stream_commit(string method, int expectedCode)
     {
         using Context context = await Context.Create();

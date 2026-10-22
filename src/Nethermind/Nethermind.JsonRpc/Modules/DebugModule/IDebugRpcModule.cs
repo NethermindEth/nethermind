@@ -52,7 +52,8 @@ public interface IDebugRpcModule : IRpcModule
         [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block hash and replays the block that is already present in the database.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null);
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash,
+        [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlockByHash, but replays a block that has been rejected as invalid and is held in the bad-block store.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, GethTraceOptions? options = null);
