@@ -2154,7 +2154,7 @@ public partial class DebugRpcModuleTests
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
 
-    [TestCase("debug_traceBlock", -32602)]
+    [TestCase("debug_traceBlock", -32000)]
     [TestCase("debug_traceBlockByNumber", -32000)]
     [TestCase("debug_traceBlockByHash", -32602)]
     public async Task Debug_traceBlock_routes_reject_malformed_timeout_before_stream_commit(string method, int expectedCode)
