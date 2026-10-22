@@ -185,7 +185,7 @@ public partial class DebugRpcModuleTests
                         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
                             known ? transaction.Hash! : TestItem.KeccakD, new { timeout, streamMode, tracer });
                         string expected = duration is "type" or "oversized"
-                            ? """{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}"""
+                            ? """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 1"},"id":67}"""
                             : !known
                                 ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""
                                 : duration == "bad"

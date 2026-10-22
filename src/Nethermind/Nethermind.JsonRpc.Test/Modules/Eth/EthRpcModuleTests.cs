@@ -770,7 +770,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x1");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 0\"},\"id\":67}"));
     }
 
     [Test]
@@ -1693,7 +1693,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "'0x1234567890123456789012345678901234567890123456789012345678901234567890'", "true");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 0\"},\"id\":67}"));
     }
 
     [Test]
