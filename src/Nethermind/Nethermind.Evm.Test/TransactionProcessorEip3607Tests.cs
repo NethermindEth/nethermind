@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -42,31 +43,18 @@ public class TransactionProcessorEip3607Tests
     [TearDown]
     public void TearDown() => _worldStateCloser?.Dispose();
 
-    [Test]
-    public void Sender_with_delegation_is_accepted()
+    private static IEnumerable<TestCaseData> SenderCodeCases()
     {
-        TransactionResult result = ExecuteFromSenderWithCode(Bytes.Concat(Eip7702Constants.DelegationHeader, TestItem.AddressC.Bytes));
-
-        Assert.That(result.TransactionExecuted, Is.True);
+        yield return new TestCaseData(Bytes.Concat(Eip7702Constants.DelegationHeader, TestItem.AddressC.Bytes), TransactionResult.Ok)
+        { TestName = "Delegated sender is accepted" };
+        yield return new TestCaseData(new byte[] { 0x60, 0x00, 0x60, 0x00, 0xf3 }, TransactionResult.SenderHasDeployedCode)
+        { TestName = "Contract sender is rejected" };
+        yield return new TestCaseData(Bytes.Concat(Eip7702Constants.DelegationHeader, new byte[19]), TransactionResult.SenderHasDeployedCode)
+        { TestName = "Delegation header of wrong length is rejected" };
     }
 
-    [Test]
-    public void Sender_with_contract_code_is_rejected()
-    {
-        TransactionResult result = ExecuteFromSenderWithCode([0x60, 0x00, 0x60, 0x00, 0xf3]);
-
-        Assert.That(result, Is.EqualTo(TransactionResult.SenderHasDeployedCode));
-    }
-
-    [Test]
-    public void Sender_with_delegation_header_of_wrong_length_is_rejected()
-    {
-        TransactionResult result = ExecuteFromSenderWithCode(Bytes.Concat(Eip7702Constants.DelegationHeader, new byte[19]));
-
-        Assert.That(result, Is.EqualTo(TransactionResult.SenderHasDeployedCode));
-    }
-
-    private TransactionResult ExecuteFromSenderWithCode(byte[] code)
+    [TestCaseSource(nameof(SenderCodeCases))]
+    public void Sender_with_code(byte[] code, TransactionResult expected)
     {
         IReleaseSpec spec = _specProvider.GenesisSpec;
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
@@ -88,6 +76,8 @@ public class TransactionProcessorEip3607Tests
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
 
-        return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+        TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        Assert.That(result, Is.EqualTo(expected));
     }
 }
