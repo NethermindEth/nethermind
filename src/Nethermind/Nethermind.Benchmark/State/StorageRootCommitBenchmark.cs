@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -43,11 +44,13 @@ public class StorageRootCommitBenchmark
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _baseStateId;
     private Address _address = null!;
 
     private FlatWorldStateScope _scope = null!;
+    private CapturingCommitTarget _commitTarget = null!;
 
     [Params(1, 8, 100, 1000)]
     public int ChangedSlots { get; set; }
@@ -59,6 +62,7 @@ public class StorageRootCommitBenchmark
 
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
+        _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(1);
         _address = DeriveAddress(1);
 
@@ -67,12 +71,11 @@ public class StorageRootCommitBenchmark
         SnapshotPooledList prevSnapshots = new(0);
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty());
-        NullTrieNodeCache cache = new();
+            PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
         SnapshotBundle bundle = new(
-            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
-        FlatWorldStateScope scope = new(
+        using FlatWorldStateScope scope = new(
             currentStateId: initialStateId,
             snapshotBundle: bundle,
             codeDb: new NullCodeDb(),
@@ -95,11 +98,19 @@ public class StorageRootCommitBenchmark
 
         scope.Commit(blockNumber: BaseBlockNumber);
 
-        FlatSnapshot snapshot = commitTarget.LastSnapshot
+        using FlatSnapshot snapshot = commitTarget.LastSnapshot
             ?? throw new InvalidOperationException("GlobalSetup: commit produced no snapshot");
         snapshot.TryAcquire();
         _baseSnapshots.Add(snapshot);
         _baseStateId = new StateId(BaseBlockNumber, scope.RootHash);
+    }
+
+    [GlobalCleanup]
+    public void GlobalCleanup()
+    {
+        IterationCleanup();
+        foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
+        _nodeRecordBuffer.Dispose();
     }
 
     [IterationSetup]
@@ -114,16 +125,15 @@ public class StorageRootCommitBenchmark
 
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty());
-        NullTrieNodeCache cache = new();
+            PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
         SnapshotBundle bundle = new(
-            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        CapturingCommitTarget commitTarget = new();
+            readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        _commitTarget = new CapturingCommitTarget();
         _scope = new FlatWorldStateScope(
             currentStateId: _baseStateId,
             snapshotBundle: bundle,
             codeDb: new NullCodeDb(),
-            commitTarget: commitTarget,
+            commitTarget: _commitTarget,
             configuration: _config,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
@@ -134,6 +144,8 @@ public class StorageRootCommitBenchmark
     {
         _scope?.Dispose();
         _scope = null!;
+        _commitTarget?.LastSnapshot?.Dispose();
+        _commitTarget = null!;
     }
 
     [Benchmark]
