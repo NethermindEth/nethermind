@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -379,10 +380,18 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         NativePrestateTracerAccount account = _prestate[addr];
         account.Storage ??= [];
 
-        if (!account.Storage.ContainsKey(index))
+        ref UInt256 storage = ref CollectionsMarshal.GetValueRefOrAddDefault(account.Storage, index, out bool exists);
+        if (!exists)
         {
-            _worldState!.Get(new StorageCell(addr, index), out UInt256 storage);
-            account.Storage.Add(index, storage);
+            try
+            {
+                _worldState!.Get(new StorageCell(addr, index), out storage);
+            }
+            catch
+            {
+                account.Storage.Remove(index);
+                throw;
+            }
         }
     }
 
