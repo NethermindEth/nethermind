@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Collections;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -19,4 +20,7 @@ internal static partial class WitnessNodeStorage
         foreach (byte[] node in nodes) SecuredTriePath.ValidateWitnessNode(node);
         return new HashKeyedNodeStorage(nodes);
     }
+
+    /// <summary>Builds a trie store over <see cref="Create"/>'s node storage.</summary>
+    public static ITrieStore CreateTrieStore(IOwnedReadOnlyList<byte[]> state) => new RawTrieStore(Create(state));
 }

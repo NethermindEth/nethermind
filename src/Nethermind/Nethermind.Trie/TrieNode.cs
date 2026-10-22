@@ -342,6 +342,10 @@ namespace Nethermind.Trie
             ResolveUnknownNodeWithContext(tree, path, readFlags, bufferPool);
         }
 
+        /// <summary>Reports a node that is resolved from the RLP it holds rather than loaded, where this build does; see
+        /// <c>TrieNode.std.cs</c>.</summary>
+        partial void OnEmbeddedNodeResolving(ITrieNodeResolver tree, in TreePath path, CappedArray<byte> rlp);
+
         /// <summary>
         /// Highly optimized
         /// </summary>
@@ -367,6 +371,10 @@ namespace Nethermind.Trie
                 WriteLoadedRlp(rlp = new CappedArray<byte>(fullRlp));
                 // A node referenced by hash is constructed persisted already.
                 if (!IsPersisted) IsPersisted = true;
+            }
+            else
+            {
+                OnEmbeddedNodeResolving(tree, path, rlp);
             }
 
             if (!DecodeRlp(rlp.AsSpan(), bufferPool, out int numberOfItems))

@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -28,9 +29,30 @@ internal static partial class WitnessNodeStorage
         return new DepthCheckingNodeStorage(new NodeStorage(db, INodeStorage.KeyScheme.Hash));
     }
 
+    /// <summary>Builds a trie store over <see cref="Create"/>'s node storage that also checks each inlined node a trie
+    /// operation visits against its depth.</summary>
+    public static ITrieStore CreateTrieStore(IOwnedReadOnlyList<byte[]> state) => new DepthCheckingTrieStore(Create(state));
+
+    /// <remarks>Re-implements <see cref="ITrieStore.GetTrieStore"/>, which <see cref="RawTrieStore"/> does not let a
+    /// subclass override.</remarks>
+    private sealed class DepthCheckingTrieStore(INodeStorage nodeStorage) : RawTrieStore(nodeStorage), ITrieStore
+    {
+        private readonly INodeStorage _nodeStorage = nodeStorage;
+
+        IScopedTrieStore ITrieStore.GetTrieStore(Hash256? address) => new DepthCheckingScopedTrieStore(_nodeStorage, address);
+    }
+
+    /// <summary>Checks each node a trie walk resolves from its parent's RLP, which <see cref="DepthCheckingNodeStorage"/>
+    /// never serves, against its depth.</summary>
+    private sealed class DepthCheckingScopedTrieStore(INodeStorage nodeStorage, Hash256? address)
+        : RawScopedTrieStore(nodeStorage, address), IEmbeddedNodeObserver
+    {
+        public void OnEmbeddedNodeResolving(in TreePath path, ReadOnlySpan<byte> rlp) => SecuredTriePath.ValidateAtDepth(rlp, path.Length);
+    }
+
     /// <summary>Checks each node it serves against the depth of the path it is read at.</summary>
     /// <remarks>The host's trie walks track the full path of the node they load, so its length is the node's depth. A node
-    /// inlined in its parent is not loaded here and goes unchecked.</remarks>
+    /// inlined in its parent is not loaded here; <see cref="DepthCheckingScopedTrieStore"/> checks it.</remarks>
     private sealed class DepthCheckingNodeStorage(INodeStorage inner) : INodeStorage
     {
         public INodeStorage.KeyScheme Scheme

@@ -83,6 +83,32 @@ public class SecuredTriePathTests
             overlong && delete ? Throws.TypeOf<TrieException>() : Throws.Nothing);
     }
 
+    public enum InlinedNode { SlotLeaf, Sibling }
+
+    public enum SlotAccess { Read, Write, Delete }
+
+    /// <remarks>
+    /// Below an extension of 60 nibbles, a branch and its leaves are short enough to be inlined in their parents, so they are
+    /// resolved from that RLP rather than loaded. An overlong slot leaf is visited by every access; an overlong sibling only
+    /// by a delete that collapses the branch into it.
+    /// </remarks>
+    [Test]
+    public void Inlined_leaf_is_checked_once_visited([Values] InlinedNode overlong, [Values] SlotAccess access)
+    {
+        const int ExtensionNibbles = 60;
+        byte[] slotKey = SlotKey();
+        byte[] slotLeafPath = slotKey[(ExtensionNibbles + 1)..];
+        byte[] slotLeaf = Leaf(overlong == InlinedNode.SlotLeaf ? [0, .. slotLeafPath] : slotLeafPath, StorageValue);
+        byte[] sibling = Leaf(new byte[KeyNibbles - ExtensionNibbles - (overlong == InlinedNode.Sibling ? 0 : 1)], StorageValue);
+        byte[] branch = Branch((slotKey[ExtensionNibbles], slotLeaf), (slotKey[ExtensionNibbles] ^ 1, sibling));
+        byte[] extension = Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(slotKey[..ExtensionNibbles], isLeaf: false)), Reference(branch)).Bytes;
+        Assert.That(branch, Has.Length.LessThan(Hash256.Size), "the branch and its leaves must be inlined");
+
+        bool visited = overlong == InlinedNode.SlotLeaf || access == SlotAccess.Delete;
+        Assert.That(() => AccessStorage(extension, [], access == SlotAccess.Read ? StorageAccess.Read : StorageAccess.Write, access == SlotAccess.Delete ? UInt256.Zero : 2),
+            visited ? Throws.TypeOf<TrieException>() : Throws.Nothing);
+    }
+
     private static void ReadBalance(byte[] root, params byte[][] nodes)
     {
         using Witness witness = CreateWitness([.. nodes, root]);
@@ -146,11 +172,14 @@ public class SecuredTriePathTests
         Array.Fill(items, Rlp.OfEmptyByteArray);
         foreach ((int slot, byte[] child) in children)
         {
-            items[slot] = child.Length < Hash256.Size ? new Rlp(child) : Rlp.Encode(Keccak.Compute(child).Bytes);
+            items[slot] = Reference(child);
         }
 
         return Rlp.Encode(items).Bytes;
     }
+
+    /// <summary>A parent's reference to <paramref name="child"/>: the child itself when shorter than a keccak, as a trie inlines it.</summary>
+    private static Rlp Reference(byte[] child) => child.Length < Hash256.Size ? new Rlp(child) : Rlp.Encode(Keccak.Compute(child).Bytes);
 
     private static Witness CreateWitness(byte[][] state) => new()
     {
