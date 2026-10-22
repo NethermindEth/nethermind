@@ -715,7 +715,7 @@ public class DebugModuleTests
             Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>()).Returns(trace);
 
         using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceTransaction(TestItem.KeccakA,
-            new GethTraceOptions { Tracer = streaming ? null : "noopTracer", StreamMode = streaming });
+            new GethTraceOptions { Tracer = streaming ? string.Empty : "noopTracer", StreamMode = streaming });
         Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
         if (streaming)
         {
