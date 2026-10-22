@@ -58,7 +58,7 @@ public class Startup : IStartup
     private const string RequestBodyTimeoutMessage = "Request body read timed out.";
 
     private JsonRpcProcessor _jsonRpcProcessor = null!;
-    private JsonRpcService _jsonRpcService = null!;
+    private IJsonRpcService _jsonRpcService = null!;
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
     private EthereumJsonSerializer _jsonSerializer = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
@@ -69,7 +69,7 @@ public class Startup : IStartup
 
     internal Startup(
         JsonRpcProcessor jsonRpcProcessor,
-        JsonRpcService jsonRpcService,
+        IJsonRpcService jsonRpcService,
         IJsonRpcLocalStats jsonRpcLocalStats,
         EthereumJsonSerializer jsonSerializer,
         IJsonRpcConfig jsonRpcConfig,
@@ -155,13 +155,13 @@ public class Startup : IStartup
             app,
             services.GetRequiredService<IWebHostEnvironment>(),
             services.GetRequiredService<JsonRpcProcessor>(),
-            services.GetRequiredService<JsonRpcService>(),
+            services.GetRequiredService<IJsonRpcService>(),
             services.GetRequiredService<IJsonRpcLocalStats>(),
             services.GetRequiredService<EthereumJsonSerializer>(),
             services.GetRequiredService<ApplicationLifetime>());
     }
 
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, JsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
 
         EthereumJsonSerializer.WarmupSerializer(
