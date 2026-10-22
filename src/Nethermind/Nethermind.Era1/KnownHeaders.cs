@@ -46,6 +46,8 @@ public static class KnownHeaders
     /// has one, requires that block to pass <see cref="EnsureMatch"/>, and then walks down the run by parent hash.
     /// When the run reaches <paramref name="to"/> and height <paramref name="to"/> + 1 has a local header, the walk
     /// starts from the parent hash of that header.
+    /// When the lowest inserted beacon header is above the best known number and inside the range, the heights between
+    /// them are checked the same way from that header, and the lowest of them must link to the header at the best known number.
     /// The method writes nothing. It returns without a check for a run that has no local header above it, and for a
     /// run that ends at <paramref name="to"/> when height <paramref name="to"/> + 1 has no local header.
     /// </remarks>
@@ -92,21 +94,12 @@ public static class KnownHeaders
         }
 
         await EnsureTopLinksToKnownHeaders(blockTree, from, to, highestKnown, readArchiveBlock);
+        await EnsureBeaconGapLinksToBeaconHeaders(blockTree, from, to, scanTo, readArchiveBlock, cancellation);
 
         if (lowestWithoutHeader is null || to >= highestKnown || scanTo < to || blockTree.FindLevel(to + 1) is not { BlockInfos.Length: > 0 } levelAbove)
             return;
 
-        HashSet<Hash256> parents = [];
-        foreach (BlockInfo info in Expected(levelAbove))
-        {
-            if (blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, to + 1) is { ParentHash: { } parentHash })
-                parents.Add(parentHash);
-        }
-
-        if (parents.Count == 0)
-            throw new EraVerificationException($"Header known at {to + 1} is not stored, so the archive blocks below it cannot be checked.");
-
-        await EnsureAncestors(to + 1, parents, lowestWithoutHeader.Value, readArchiveBlock, cancellation);
+        await EnsureAncestors(to + 1, StoredParents(blockTree, levelAbove, to + 1), lowestWithoutHeader.Value, readArchiveBlock, cancellation);
     }
 
     private static async Task EnsureTopLinksToKnownHeaders(IBlockTree blockTree, ulong from, ulong to, ulong highestKnown, Func<ulong, Task<Block?>> readArchiveBlock)
@@ -120,7 +113,52 @@ public static class KnownHeaders
             throw new EraImportException($"Unknown parent for block {first} in archive: parent hash {block.ParentHash} does not match the header already known at {highestKnown}.");
     }
 
-    private static async Task EnsureAncestors(ulong anchorNumber, ICollection<Hash256> expectedHashes, ulong lowest, Func<ulong, Task<Block?>> readArchiveBlock, CancellationToken cancellation)
+    private static async Task EnsureBeaconGapLinksToBeaconHeaders(IBlockTree blockTree, ulong from, ulong to, ulong scanTo, Func<ulong, Task<Block?>> readArchiveBlock, CancellationToken cancellation)
+    {
+        if (blockTree.LowestInsertedBeaconHeader is not { } lowestBeacon)
+            return;
+
+        ulong anchorNumber = lowestBeacon.Number;
+        ulong gapStart = Math.Max(Math.Max(from, 1UL), blockTree.BestKnownNumber + 1);
+        if (anchorNumber <= scanTo || anchorNumber <= gapStart || anchorNumber > to + 1 || blockTree.FindLevel(anchorNumber) is not { BlockInfos.Length: > 0 } level)
+            return;
+
+        ICollection<Hash256> expectedHashes;
+        if (anchorNumber <= to)
+        {
+            Block anchor = await ReadBlock(readArchiveBlock, anchorNumber);
+            EnsureMatch(blockTree, anchor);
+            expectedHashes = [anchor.ParentHash!];
+        }
+        else
+        {
+            expectedHashes = StoredParents(blockTree, level, anchorNumber);
+        }
+
+        expectedHashes = await EnsureAncestors(anchorNumber, expectedHashes, gapStart, readArchiveBlock, cancellation);
+        if (gapStart != blockTree.BestKnownNumber + 1 || blockTree.FindLevel(blockTree.BestKnownNumber) is not { BlockInfos.Length: > 0 } below)
+            return;
+
+        if (!Expected(below).Any(info => expectedHashes.Contains(info.BlockHash)))
+            throw new EraVerificationException($"Block {gapStart} in archive does not link to the header already known at {blockTree.BestKnownNumber}.");
+    }
+
+    private static HashSet<Hash256> StoredParents(IBlockTree blockTree, ChainLevelInfo level, ulong number)
+    {
+        HashSet<Hash256> parents = [];
+        foreach (BlockInfo info in Expected(level))
+        {
+            if (blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number) is { ParentHash: { } parentHash })
+                parents.Add(parentHash);
+        }
+
+        if (parents.Count == 0)
+            throw new EraVerificationException($"Header known at {number} is not stored, so the archive blocks below it cannot be checked.");
+
+        return parents;
+    }
+
+    private static async Task<ICollection<Hash256>> EnsureAncestors(ulong anchorNumber, ICollection<Hash256> expectedHashes, ulong lowest, Func<ulong, Task<Block?>> readArchiveBlock, CancellationToken cancellation)
     {
         for (ulong number = anchorNumber - 1; number >= lowest; number--)
         {
@@ -131,6 +169,8 @@ public static class KnownHeaders
                 throw new EraVerificationException($"Block {number} hash {block.Hash} in archive is not an ancestor of the header already known at {anchorNumber}.");
             expectedHashes = [block.ParentHash!];
         }
+
+        return expectedHashes;
     }
 
     private static async Task<Block> ReadBlock(Func<ulong, Task<Block?>> readArchiveBlock, ulong number)

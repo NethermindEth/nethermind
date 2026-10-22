@@ -392,6 +392,104 @@ public class EraImporterTest
         }
     }
 
+    private static async Task<(IContainer Source, IContainer Target, IBlockTree TargetTree, string ExportPath)> BuildBeaconGapEnv(bool foreignBeaconHeaders)
+    {
+        const int chainLength = 16;
+        const ulong bestKnown = 4;
+        const ulong lowestBeacon = 10;
+        IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+        IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        targetTree.SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+
+        for (ulong i = 1; i <= bestKnown; i++)
+            targetTree.Insert(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+
+        targetTree.LowestInsertedHeader = sourceTree.FindHeader(1, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+        for (ulong i = chainLength - 1; i >= lowestBeacon; i--)
+        {
+            BlockHeader beacon = sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Clone();
+            if (foreignBeaconHeaders)
+            {
+                beacon.ExtraData = [0x42, 0x43, (byte)i];
+                beacon.Hash = beacon.CalculateHash();
+            }
+
+            targetTree.Insert(beacon, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded | BlockTreeInsertHeaderOptions.BeaconHeaderMetadata | BlockTreeInsertHeaderOptions.NotOnMainChain);
+        }
+
+        return (sourceCtx, targetCtx, targetTree, sourceCtx.ResolveTempDirPath());
+    }
+
+    [Test]
+    public async Task Import_ArchiveForeignToBeaconHeadersAboveGap_WritesNothingInGap()
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, string exportPath) = await BuildBeaconGapEnv(foreignBeaconHeaders: true);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.LowestInsertedHeader?.Number, Is.LessThan(5UL));
+                Assert.That(targetTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(10UL));
+                Assert.That(
+                    () => targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, null, CancellationToken.None),
+                    Throws.TypeOf<EraVerificationException>());
+                for (ulong i = 5; i < 10; i++)
+                    Assert.That(targetTree.FindLevel(i), Is.Null, $"level {i}");
+            }
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BeaconGap_MustLinkToBeaconHeaders([Values] bool linked)
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, _) = await BuildBeaconGapEnv(foreignBeaconHeaders: !linked);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+            Task Check() => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                targetTree,
+                0,
+                15,
+                number => Task.FromResult(sourceTree.FindBlock(number, BlockTreeLookupOptions.None)),
+                CancellationToken.None);
+
+            if (linked)
+                Assert.That(Check, Throws.Nothing);
+            else
+                Assert.That(Check, Throws.TypeOf<EraVerificationException>());
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BeaconGapStartsAtForeignBlock_Throws()
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, _) = await BuildBeaconGapEnv(foreignBeaconHeaders: false);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+            Block foreign = Build.A.Block.WithNumber(5).WithParentHash(Keccak.OfAnEmptyString).TestObject;
+
+            Assert.That(
+                () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                    targetTree,
+                    5,
+                    15,
+                    number => Task.FromResult(number == 5 ? foreign : sourceTree.FindBlock(number, BlockTreeLookupOptions.None)),
+                    CancellationToken.None),
+                Throws.TypeOf<EraVerificationException>());
+        }
+    }
+
     [Test]
     public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_CancelledOverKnownHeights_ThrowsWithoutReadingArchive()
     {
