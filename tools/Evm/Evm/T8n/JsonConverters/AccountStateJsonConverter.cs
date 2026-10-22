@@ -19,6 +19,7 @@ public class AccountStateJsonConverter : JsonConverter<AccountState>
         Converters =
         {
             new UInt256Converter(),
+            new ULongConverter(),
             new ByteArrayConverter(),
         }
     };
