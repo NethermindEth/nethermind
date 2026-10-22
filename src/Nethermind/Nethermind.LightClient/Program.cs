@@ -181,9 +181,6 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             ?? throw new InvalidDataException("Verified beacon header has no execution block hash.");
         VerifiedHead provisionalHead = new(initialHeader.Beacon!.Slot, initialHeader.Execution?.BlockNumber ?? 0,
             initialHash, initialHeader.Execution?.StateRoot ?? Hash256.Zero);
-        VerifiedHead? head = null;
-        VerifiedHead? latestHead = null;
-        ulong finalizedExecutionTimestamp = 0;
         ulong ExecutionTime(VerifiedHead verified) => spec.GenesisTime + verified.Slot * spec.SecondsPerSlot;
         status.SetStage(StartupStage.Execution);
         await using ExecutionPeerTransport execution = new(network, logManager,
@@ -202,41 +199,16 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             BlockHeader executionHeader = await execution.GetHeaderByHashAsync(hash, token);
             return (new(header.Beacon!.Slot, executionHeader.Number, hash, executionHeader.StateRoot!), executionHeader.Timestamp);
         }
-        async Task PublishFinalizedAsync(CancellationToken token)
-        {
-            LightClientHeader header = Volatile.Read(ref persistedFinalized);
-            Hash256 hash = header.Execution?.BlockHash ?? header.ExecutionBlockHash
-                ?? throw new InvalidDataException("Verified finalized header has no execution block hash.");
-            VerifiedHead? current = Volatile.Read(ref head);
-            if (current?.BlockHash == hash && current.Slot == header.Beacon!.Slot) return;
-            (VerifiedHead verified, ulong timestamp) = current?.BlockHash == hash
-                ? (current with { Slot = header.Beacon!.Slot }, finalizedExecutionTimestamp)
-                : await ResolveAsync(header, token);
-            finalizedExecutionTimestamp = timestamp;
-            execution.UpdateHead(verified, timestamp);
-            Volatile.Write(ref head, verified);
-            if (Volatile.Read(ref latestHead) is not { } latest || latest.Slot <= verified.Slot)
-                Volatile.Write(ref latestHead, verified);
-            logger.LogInformation("Finalized execution block {BlockNumber} verified", verified.Number);
-        }
-        async Task PublishOptimisticAsync(CancellationToken token)
-        {
-            LightClientHeader header = Volatile.Read(ref persistedOptimistic);
-            Hash256 optimisticHash = header.Execution?.BlockHash ?? header.ExecutionBlockHash
-                ?? throw new InvalidDataException("Verified optimistic header has no execution block hash.");
-            VerifiedHead? current = Volatile.Read(ref latestHead);
-            if (current?.BlockHash == optimisticHash && current.Slot == header.Beacon!.Slot) return;
-            (VerifiedHead verified, _) = current?.BlockHash == optimisticHash
-                ? (current with { Slot = header.Beacon!.Slot }, ExecutionTime(current))
-                : await ResolveAsync(header, token);
-            if (Volatile.Read(ref head) is { } finalized && verified.Number < finalized.Number) return;
-            Volatile.Write(ref latestHead, verified);
-        }
+        ConsensusPublisher publisher = new(() => Volatile.Read(ref persistedFinalized),
+            () => Volatile.Read(ref persistedOptimistic), ResolveAsync, execution.UpdateHead, clock);
         if (initialHeader.Execution is not null)
-            await PublishFinalizedAsync(bootstrapTimeout.Token);
+        {
+            await publisher.PublishFinalizedAsync(bootstrapTimeout.Token);
+            logger.LogInformation("Finalized execution block {BlockNumber} verified", publisher.Heads.Finalized!.Number);
+        }
         VerifiedHead GetHead() =>
-            Volatile.Read(ref head) ?? throw new RpcException(-32000, "Waiting for an authenticated execution header.");
-        VerifiedHead? GetLatestHead() => Volatile.Read(ref latestHead);
+            publisher.Heads.Finalized ?? throw new RpcException(-32000, "Waiting for an authenticated execution header.");
+        VerifiedHead? GetLatestHead() => publisher.Heads.Latest;
         VerifiedHead? GetFreshLatestHead()
         {
             VerifiedHead? snapshot = GetLatestHead();
@@ -249,7 +221,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         try
         {
             beacon.StartGossip(ProcessFinalityAsync, ProcessOptimisticAsync, app.Lifetime.ApplicationStopping);
-            status.Initialize(rpc.InvokeAsync, subscriptions.HandleAsync, GetLatestHead, () => Volatile.Read(ref head),
+            status.Initialize(rpc.InvokeAsync, subscriptions.HandleAsync, GetLatestHead, () => publisher.Heads.Finalized,
                 execution.GetHostedAccountProgress, () => execution.LogHistoryProgress);
             await SyncAsync(app.Lifetime.ApplicationStopping);
         }
@@ -318,39 +290,38 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             await Task.WhenAll(workers);
         }
 
-        async Task PublishConsensusAsync(CancellationToken cancellationToken)
+        Task PublishConsensusAsync(CancellationToken cancellationToken)
         {
             (bool HasWarned, VerifiedHead? Head) finalizedWarning = default;
             (bool HasWarned, VerifiedHead? Head) optimisticWarning = default;
             Hash256? subscriptionHash = null;
-            try
+            VerifiedHead? loggedFinalized = publisher.Heads.Finalized;
+            return publisher.RunAsync(Observe, ReportFailure, cancellationToken);
+
+            void ReportFailure(bool finalized, Exception exception)
             {
-                while (!cancellationToken.IsCancellationRequested)
+                if (finalized)
+                    logger.LogWarning(exception, "Waiting for an execution header authenticated by finalized consensus");
+                else
+                    logger.LogWarning(exception, "Publishing consensus progress failed; retaining the last verified finalized head");
+            }
+
+            void Observe(ConsensusPublisher.PublishedHeads snapshot)
+            {
+                if (snapshot.Finalized is { } finalized && finalized != loggedFinalized)
                 {
-                    try { await PublishFinalizedAsync(cancellationToken); }
-                    catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-                    {
-                        logger.LogWarning(exception, "Waiting for an execution header authenticated by finalized consensus");
-                    }
-                    try
-                    {
-                        await PublishOptimisticAsync(cancellationToken);
-                    }
-                    catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-                    {
-                        logger.LogWarning(exception, "Publishing consensus progress failed; retaining the last verified finalized head");
-                    }
-                    WarnIfStale(Volatile.Read(ref head), 30 * 60, "Finalized", ref finalizedWarning);
-                    WarnIfStale(Volatile.Read(ref latestHead), OptimisticHeadMaxAgeSeconds, "Optimistic", ref optimisticWarning);
-                    if (GetFreshLatestHead() is { } observed && observed.BlockHash != subscriptionHash)
-                    {
-                        subscriptions.PublishHead(observed);
-                        subscriptionHash = observed.BlockHash;
-                    }
-                    await Task.Delay(TimeSpan.FromSeconds(1), clock, cancellationToken);
+                    logger.LogInformation("Finalized execution block {BlockNumber} verified", finalized.Number);
+                    loggedFinalized = finalized;
+                }
+                WarnIfStale(snapshot.Finalized, 30 * 60, "Finalized", ref finalizedWarning);
+                WarnIfStale(snapshot.Latest, OptimisticHeadMaxAgeSeconds, "Optimistic", ref optimisticWarning);
+                if (snapshot.Latest is { } observed && IsHeadFresh(observed, OptimisticHeadMaxAgeSeconds) &&
+                    observed.BlockHash != subscriptionHash)
+                {
+                    subscriptions.PublishHead(observed);
+                    subscriptionHash = observed.BlockHash;
                 }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
 
             void WarnIfStale(VerifiedHead? current, ulong maximumAgeSeconds, string kind,
                 ref (bool HasWarned, VerifiedHead? Head) warning)

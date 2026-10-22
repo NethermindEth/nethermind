@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Threading.Channels;
 using Nethermind.BeaconChain.Spec;
@@ -10,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.LightClient.Consensus;
+using Nethermind.Int256;
 
 namespace Nethermind.LightClient.Test;
 
@@ -616,6 +618,354 @@ public class ConsensusTests
         Assert.That(repairs, Is.Zero);
     }
 
+    [Test]
+    public async Task Held_finalized_resolution_does_not_delay_a_persisted_optimistic_slot_at_the_same_execution_hash()
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        harness.Finalized = PublicationHeader(100, 90);
+        harness.Optimistic = PublicationHeader(198, 120);
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Resolve = async (header, token) =>
+        {
+            Assert.That(header.ExecutionBlockHash, Is.EqualTo(harness.Finalized.ExecutionBlockHash),
+                "the already resolved optimistic hash needs no execution request");
+            entered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            throw new InvalidOperationException("Canceled resolution cannot return a header.");
+        };
+        using CancellationTokenSource stop = new();
+        Task loop = harness.Start(stop.Token);
+        try
+        {
+            await entered.Task;
+            PublicationSource source = new();
+            using VerifiedRpc rpc = new(source, () => harness.Publisher.Heads.Finalized!, 1,
+                getLatestHead: () => harness.Publisher.Heads.Latest,
+                isLatestHeadFresh: head => head.IsFresh(200, 10));
+            object syncing = await rpc.InvokeAsync("eth_syncing", default, CancellationToken.None);
+            object number = await rpc.InvokeAsync("eth_blockNumber", default, CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(harness.Publisher.Heads.Finalized!.Slot, Is.EqualTo(80));
+                Assert.That(harness.Publisher.Heads.Latest, Is.EqualTo(ResolvedPublicationHeader(harness.Optimistic).Head));
+                Assert.That(syncing, Is.EqualTo(false));
+                Assert.That(number, Is.EqualTo("0x78"));
+                Assert.That(source.Requests, Is.Zero);
+                Assert.That(harness.Observations.Select(snapshot => snapshot.Latest!.Slot), Is.EqualTo(new ulong[] { 198 }));
+                Assert.That(harness.Advertised, Is.Empty);
+                Assert.That(harness.Failures, Is.Empty);
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+        Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+    }
+
+    [Test]
+    public async Task Publication_commits_preserve_newer_optimistic_heads_and_the_finalized_floor(
+        [Values] bool finalizedFirst, [Values("none", "slot", "number")] string floor)
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        harness.Finalized = PublicationHeader(floor == "slot" ? 200UL : 190UL, floor == "number" ? (byte)150 : (byte)130);
+        harness.Optimistic = PublicationHeader(198, 140);
+        TaskCompletionSource<(VerifiedHead Head, ulong Timestamp)> finalized = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<(VerifiedHead Head, ulong Timestamp)> optimistic = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Resolve = (header, token) => (header.ExecutionBlockHash == harness.Finalized.ExecutionBlockHash
+            ? finalized.Task : optimistic.Task).WaitAsync(token);
+        using CancellationTokenSource stop = new();
+        Task loop = harness.Start(stop.Token);
+        try
+        {
+            if (finalizedFirst) finalized.SetResult(ResolvedPublicationHeader(harness.Finalized));
+            else optimistic.SetResult(ResolvedPublicationHeader(harness.Optimistic));
+            await harness.Clock.WaitForTimersAsync(2);
+            Assert.That(harness.Publisher.Heads.Latest!.Slot,
+                Is.EqualTo(finalizedFirst ? harness.Finalized.Beacon!.Slot : 198UL));
+            if (finalizedFirst) optimistic.SetResult(ResolvedPublicationHeader(harness.Optimistic));
+            else finalized.SetResult(ResolvedPublicationHeader(harness.Finalized));
+            await harness.Clock.WaitForTimersAsync(3);
+
+            VerifiedHead expectedFinalized = ResolvedPublicationHeader(harness.Finalized).Head;
+            VerifiedHead expectedLatest = floor == "none" ? ResolvedPublicationHeader(harness.Optimistic).Head : expectedFinalized;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(harness.Publisher.Heads.Finalized, Is.EqualTo(expectedFinalized));
+                Assert.That(harness.Publisher.Heads.Latest, Is.EqualTo(expectedLatest));
+                Assert.That(harness.Publisher.Heads.Latest!.Slot, Is.GreaterThanOrEqualTo(expectedFinalized.Slot));
+                Assert.That(harness.Publisher.Heads.Latest!.Number, Is.GreaterThanOrEqualTo(expectedFinalized.Number));
+                Assert.That(harness.Advertised, Is.EqualTo(new[] { ResolvedPublicationHeader(harness.Finalized) }));
+                Assert.That(harness.Failures, Is.Empty);
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+    }
+
+    [Test]
+    public async Task A_newer_optimistic_branch_can_lower_execution_height_above_finality()
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        harness.Optimistic = PublicationHeader(198, 110, branch: 1);
+        using CancellationTokenSource stop = new();
+        Task loop = harness.Start(stop.Token);
+        try
+        {
+            await harness.Clock.WaitForTimersAsync(3);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(harness.Publisher.Heads.Latest, Is.EqualTo(ResolvedPublicationHeader(harness.Optimistic).Head));
+                Assert.That(harness.Publisher.Heads.Latest!.Number, Is.LessThan(120));
+                Assert.That(harness.Publisher.Heads.Latest!.Number, Is.GreaterThan(harness.Publisher.Heads.Finalized!.Number));
+                Assert.That(harness.Advertised, Is.Empty);
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+    }
+
+    [Test]
+    public async Task Same_hash_publication_reuses_execution_metadata_at_a_higher_beacon_slot([Values] bool finalized)
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        if (finalized) harness.Finalized = PublicationHeader(198, 80);
+        else harness.Optimistic = PublicationHeader(198, 120);
+        harness.Resolve = (_, _) => throw new InvalidOperationException("An unchanged execution hash must not be fetched again.");
+        using CancellationTokenSource stop = new();
+        Task loop = harness.Start(stop.Token);
+        try
+        {
+            await harness.Clock.WaitForTimersAsync(3);
+            ConsensusPublisher.PublishedHeads snapshot = harness.Publisher.Heads;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot.Latest!.Slot, Is.EqualTo(198));
+                Assert.That(snapshot.Latest.Number, Is.EqualTo(finalized ? 80 : 120));
+                Assert.That(snapshot.Latest.IsFresh(200, 10), Is.True);
+                Assert.That(snapshot.FinalizedTimestamp, Is.EqualTo(PublicationTimestamp));
+                Assert.That(harness.Advertised.Count, Is.EqualTo(finalized ? 1 : 0));
+                Assert.That(harness.Failures, Is.Empty);
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+    }
+
+    [Test]
+    public async Task Publication_failure_retains_heads_and_retries_after_one_virtual_second([Values] bool finalized)
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        ConsensusPublisher.PublishedHeads before = harness.Publisher.Heads;
+        if (finalized) harness.Finalized = PublicationHeader(190, 130);
+        else harness.Optimistic = PublicationHeader(198, 140);
+        IOException failure = new("Execution header is unavailable.");
+        harness.Resolve = (_, _) => throw failure;
+        using CancellationTokenSource stop = new();
+        Task loop = harness.Start(stop.Token);
+        try
+        {
+            await harness.Clock.WaitForTimersAsync(3);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(harness.Publisher.Heads, Is.EqualTo(before));
+                Assert.That(harness.Failures, Is.EqualTo(new[] { (finalized, (Exception)failure) }));
+                Assert.That(harness.Advertised, Is.Empty);
+            }
+            harness.Resolve = static (header, _) => Task.FromResult(ResolvedPublicationHeader(header));
+            Assert.That(harness.Clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
+            await harness.Clock.WaitForTimersAsync(3);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(finalized ? harness.Publisher.Heads.Finalized : harness.Publisher.Heads.Latest,
+                    Is.EqualTo(ResolvedPublicationHeader(finalized ? harness.Finalized : harness.Optimistic).Head));
+                Assert.That(harness.Advertised.Count, Is.EqualTo(finalized ? 1 : 0));
+                Assert.That(harness.Failures.Count, Is.EqualTo(1));
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+    }
+
+    [Test]
+    public async Task Publication_shutdown_cancels_and_joins_inflight_resolution([Values] bool finalized)
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        ConsensusPublisher.PublishedHeads before = harness.Publisher.Heads;
+        if (finalized) harness.Finalized = PublicationHeader(190, 130);
+        else harness.Optimistic = PublicationHeader(198, 140);
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Resolve = async (header, token) =>
+        {
+            entered.TrySetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                canceled.TrySetResult();
+                await release.Task;
+            }
+            return ResolvedPublicationHeader(header);
+        };
+        using CancellationTokenSource stop = new();
+        Task loop = harness.Start(stop.Token);
+        try
+        {
+            await entered.Task;
+            await stop.CancelAsync();
+            await canceled.Task;
+            Assert.That(loop.IsCompleted, Is.False, "shutdown must join the resolver's cleanup");
+        }
+        finally
+        {
+            release.TrySetResult();
+            await StopRepairLoopAsync(loop, stop);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Publisher.Heads, Is.EqualTo(before));
+            Assert.That(harness.Advertised, Is.Empty);
+            Assert.That(harness.Failures, Is.Empty);
+            Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task An_observer_failure_cancels_and_joins_sibling_publication_before_propagating()
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        harness.Finalized = PublicationHeader(190, 130);
+        TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Resolve = async (header, token) =>
+        {
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            finally
+            {
+                canceled.TrySetResult();
+                await release.Task;
+            }
+            return ResolvedPublicationHeader(header);
+        };
+        InvalidOperationException failure = new("Observer failed.");
+        harness.Observe = _ => throw failure;
+        using CancellationTokenSource stop = new();
+        Task loop = harness.Start(stop.Token);
+        Exception? propagated = null;
+        try
+        {
+            await canceled.Task;
+            Assert.That(loop.IsCompleted, Is.False);
+        }
+        finally
+        {
+            release.TrySetResult();
+            try { await loop; }
+            catch (Exception exception) { propagated = exception; }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(propagated, Is.SameAs(failure));
+            Assert.That(stop.IsCancellationRequested, Is.False, "the publication owner cancels its own siblings");
+            Assert.That(harness.Advertised, Is.Empty);
+            Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Already_canceled_publication_does_not_read_or_observe_candidates()
+    {
+        RepairClock clock = new();
+        int callbacks = 0;
+        ConsensusPublisher publisher = new(() => { callbacks++; return PublicationHeader(80, 80); },
+            () => { callbacks++; return PublicationHeader(180, 120); },
+            (header, _) => { callbacks++; return Task.FromResult(ResolvedPublicationHeader(header)); },
+            (_, _) => callbacks++, clock);
+        using CancellationTokenSource stop = new();
+        await stop.CancelAsync();
+        await publisher.RunAsync(_ => callbacks++, (_, _) => callbacks++, stop.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callbacks, Is.Zero);
+            Assert.That(publisher.Heads.Finalized, Is.Null);
+            Assert.That(publisher.Heads.Latest, Is.Null);
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    private const ulong PublicationTimestamp = 12345;
+
+    private static LightClientHeader PublicationHeader(ulong slot, byte number, byte branch = 0)
+    {
+        byte[] hash = new byte[32];
+        hash[0] = number;
+        hash[1] = branch;
+        return new() { Beacon = new() { Slot = slot }, ExecutionBlockHash = new(hash) };
+    }
+
+    private static (VerifiedHead Head, ulong Timestamp) ResolvedPublicationHeader(LightClientHeader header) =>
+        (new(header.Beacon!.Slot, header.ExecutionBlockHash!.Bytes[0], header.ExecutionBlockHash, Hash(0x21)), PublicationTimestamp);
+
+    private sealed class PublicationSource : IExecutionStateSource
+    {
+        internal int Requests;
+        public Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken) => Unexpected<Account>();
+        public Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key, CancellationToken cancellationToken) => Unexpected<UInt256>();
+        public Task<byte[]> GetCodeAsync(Account account, CancellationToken cancellationToken) => Unexpected<byte[]>();
+        public Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken) => Unexpected<BlockHeader>();
+        public Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken) => Unexpected<Hash256[]>();
+
+        private Task<T> Unexpected<T>()
+        {
+            Interlocked.Increment(ref Requests);
+            throw new InvalidOperationException("Head freshness RPC must not request execution data.");
+        }
+    }
+
+    private sealed class PublicationHarness
+    {
+        private LightClientHeader _finalized = PublicationHeader(80, 80);
+        private LightClientHeader _optimistic = PublicationHeader(180, 120);
+        private Func<LightClientHeader, CancellationToken, Task<(VerifiedHead Head, ulong Timestamp)>> _resolve =
+            static (header, _) => Task.FromResult(ResolvedPublicationHeader(header));
+
+        internal RepairClock Clock { get; } = new();
+        internal ConsensusPublisher Publisher { get; }
+        internal ConcurrentQueue<ConsensusPublisher.PublishedHeads> Observations { get; } = new();
+        internal ConcurrentQueue<(VerifiedHead Head, ulong Timestamp)> Advertised { get; } = new();
+        internal ConcurrentQueue<(bool Finalized, Exception Failure)> Failures { get; } = new();
+        internal Action<ConsensusPublisher.PublishedHeads>? Observe { get; set; }
+        internal LightClientHeader Finalized { get => Volatile.Read(ref _finalized); set => Volatile.Write(ref _finalized, value); }
+        internal LightClientHeader Optimistic { get => Volatile.Read(ref _optimistic); set => Volatile.Write(ref _optimistic, value); }
+        internal Func<LightClientHeader, CancellationToken, Task<(VerifiedHead Head, ulong Timestamp)>> Resolve
+        {
+            set => Volatile.Write(ref _resolve, value);
+        }
+
+        internal PublicationHarness() => Publisher = new(() => Finalized, () => Optimistic,
+            (header, token) => Volatile.Read(ref _resolve)(header, token),
+            (head, timestamp) => Advertised.Enqueue((head, timestamp)), Clock);
+
+        internal Task Start(CancellationToken token) => Publisher.RunAsync(snapshot =>
+        {
+            Observations.Enqueue(snapshot);
+            Observe?.Invoke(snapshot);
+        }, (finalized, exception) => Failures.Enqueue((finalized, exception)), token);
+
+        internal async Task SeedAsync()
+        {
+            await Publisher.PublishFinalizedAsync(CancellationToken.None);
+            using CancellationTokenSource stop = new();
+            Task loop = Start(stop.Token);
+            await StopRepairLoopAsync(loop, stop);
+            Observations.Clear();
+            Advertised.Clear();
+            Failures.Clear();
+        }
+    }
+
     private static async Task StopRepairLoopAsync(Task loop, CancellationTokenSource stop)
     {
         await stop.CancelAsync();
@@ -634,6 +984,10 @@ public class ConsensusTests
         public override long GetTimestamp() => Interlocked.Read(ref _ticks);
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(GetTimestamp());
         internal async Task NextTimerAsync() => await _created.Reader.ReadAsync();
+        internal async Task WaitForTimersAsync(int count)
+        {
+            while (ActiveTimers < count) await NextTimerAsync();
+        }
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
