@@ -624,8 +624,12 @@ internal static class JsonRpcGenerator
         }
     }
 
+    // The member's converter, else the type's own, decides the shape of the object
+    private static Type? GetShapeConverter(Type type, Type? converterType) =>
+        converterType ?? GetContract(Nullable.GetUnderlyingType(type) ?? type)?.Converter.GetType();
+
     private static string GetObjectTypeName(Type type, Type? converterType) =>
-        (converterType ?? GetContract(Nullable.GetUnderlyingType(type) ?? type)?.Converter.GetType()) is { } shapeConverter &&
+        GetShapeConverter(type, converterType) is { } shapeConverter &&
         _knownConverterObjectNames.TryGetValue(shapeConverter, out string? name)
             ? name
             : _objectTypeName;
@@ -634,7 +638,7 @@ internal static class JsonRpcGenerator
     {
         JsonTypeInfo? contract = GetContract(type);
 
-        if (((converterType ?? contract?.Converter.GetType()) is { } shapeConverter &&
+        if ((GetShapeConverter(type, converterType) is { } shapeConverter &&
             _knownConverterMembers.TryGetValue(shapeConverter, out (string, Type, Type?)[]? members)) ||
             _knownConverterMembers.TryGetValue(type, out members))
             return members;
