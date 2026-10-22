@@ -6,7 +6,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Test.Mocks;
@@ -42,6 +44,27 @@ public class SyncDispatcherTests
             }
 
             request.Result = result;
+        }
+    }
+
+    private class FailFirstDispatchDownloader(Exception failure) : ISyncDownloader<TestBatch>
+    {
+        private int _dispatchCount;
+
+        public Task Dispatch(PeerInfo peerInfo, TestBatch request, CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _dispatchCount) == 1)
+            {
+                throw failure;
+            }
+
+            request.Result = new int[request.Length];
+            for (int i = 0; i < request.Length; i++)
+            {
+                request.Result[i] = request.Start + i;
+            }
+
+            return Task.CompletedTask;
         }
     }
 
@@ -182,6 +205,33 @@ public class SyncDispatcherTests
         for (int i = 0; i < syncFeed.Max; i++)
         {
             Assert.That(syncFeed._results.Contains(i), Is.True, i.ToString());
+        }
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Failed_dispatch_is_retried_and_warns_only_for_non_peer_faults([Values] bool peerFault, CancellationToken cancellationToken)
+    {
+        Exception failure = peerFault
+            ? new SubprotocolException("Receipt count mismatch with block transactions count")
+            : new InvalidOperationException("node fault");
+        TestLogger logger = new() { IsDebug = false, IsTrace = false };
+        TestSyncFeed syncFeed = new(max: 8);
+        await using TestSyncPeerPool peerPool = new();
+        await using SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new FailFirstDispatchDownloader(failure),
+            peerPool,
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            new OneLoggerLogManager(new ILogger(logger)));
+
+        syncFeed.Activate();
+        await dispatcher.Start(cancellationToken).WaitAsync(cancellationToken);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(syncFeed._results, Has.Count.EqualTo(syncFeed.Max), "the failed request must be retried");
+            Assert.That(logger.LogList.Exists(static l => l.StartsWith("Failure when executing request")), Is.EqualTo(!peerFault));
         }
     }
 
