@@ -383,15 +383,21 @@ public partial class EthRpcModule(
             ? ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput)
             : null;
 
-    private Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
+    private async Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
     {
         if (CheckSendTransactionFees(rpcTx) is { } feeError)
-            return Task.FromResult(feeError);
+            return feeError;
+
+        if (_blockFinder.Head?.Header is { } head
+            && await FillFeesAndGas(rpcTx, head, _specProvider.GetSpec(head)) is { } fillError)
+        {
+            return ResultWrapper<Hash256>.Fail(fillError.Error, fillError.ErrorCode);
+        }
 
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
         {
-            return Task.FromResult(ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput));
+            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
         }
 
         tx.ChainId = _blockchainBridge.GetChainId();
@@ -399,7 +405,7 @@ public partial class EthRpcModule(
         UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;
 
         TxHandlingOptions options = nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
-        return SendTx(tx, options);
+        return await SendTx(tx, options);
     }
 
     public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
@@ -534,6 +540,35 @@ public partial class EthRpcModule(
 
         legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
+        if (await FillFeesAndGas(rpcTx, head, spec) is { } fillError)
+            return ResultWrapper<FillTransactionResult>.Fail(fillError.Error, fillError.ErrorCode);
+
+        legacyTx.ChainId ??= chainId;
+
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec);
+        if (!txResult.Success(out Transaction tx, out string error))
+            return ResultWrapper<FillTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
+
+        tx.ChainId = chainId;
+
+        if (rpcTx is BlobTransactionForRpc { Blobs: not null } withSidecar
+            && withSidecar.TryAttachSidecar(tx, spec.BlobProofVersion) is { } attachError)
+        {
+            return ResultWrapper<FillTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
+        }
+
+        return ResultWrapper<FillTransactionResult>.Success(new FillTransactionResult
+        {
+            Tx = TransactionForRpc.FromTransaction(tx)
+        });
+    }
+
+    /// <summary>Fills the fees and gas <paramref name="rpcTx"/> leaves out, as geth does for a transaction to build.</summary>
+    /// <returns>The error that stops the fill, or null when the fill succeeds.</returns>
+    private async Task<(string Error, int ErrorCode)?> FillFeesAndGas(SignableTransactionForRpc rpcTx, BlockHeader head, IReleaseSpec spec)
+    {
+        LegacyTransactionForRpc legacyTx = (LegacyTransactionForRpc)rpcTx;
+
         UInt256? blobBaseFee = head.ExcessBlobGas is { } excessBlobGas
             && BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas)
             ? feePerBlobGas
@@ -555,13 +590,13 @@ public partial class EthRpcModule(
 
         Result fillResult = rpcTx.FillDefaults(fillContext);
         if (!fillResult)
-            return ResultWrapper<FillTransactionResult>.Fail(fillResult.Error!, ErrorCodes.InvalidInput);
+            return (fillResult.Error!, ErrorCodes.InvalidInput);
 
         // A fee cap left in place next to a filled priority fee must still cover it.
         if (rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: { } filledFeeCap, MaxPriorityFeePerGas: { } filledPriorityFee }
             && FeeDefaultRules.OrderError(filledFeeCap, filledPriorityFee) is { } orderError)
         {
-            return ResultWrapper<FillTransactionResult>.Fail(orderError, ErrorCodes.InvalidInput);
+            return (orderError, ErrorCodes.InvalidInput);
         }
 
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
@@ -569,7 +604,7 @@ public partial class EthRpcModule(
             using RentedTimeout timeout = _rpcConfig.RentTimeout();
             Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
             if (!frameGasResult)
-                return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
+                return (frameGasResult.Error!, errorCode);
             frameTx.Frames = frameGasResult.Data;
         }
 
@@ -580,29 +615,12 @@ public partial class EthRpcModule(
                 new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider) { ChecksFork = false },
                 rpcTx, BlockParameter.Latest, stateOverride: null);
             if (gasEstimate.Result.ResultType != ResultType.Success)
-                return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
+                return (gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
 
             rpcTx.Gas = (ulong)gasEstimate.Data!.Value;
         }
 
-        legacyTx.ChainId ??= chainId;
-
-        Result<Transaction> txResult = rpcTx.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec);
-        if (!txResult.Success(out Transaction tx, out string error))
-            return ResultWrapper<FillTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
-
-        tx.ChainId = chainId;
-
-        if (rpcTx is BlobTransactionForRpc { Blobs: not null } withSidecar
-            && withSidecar.TryAttachSidecar(tx, spec.BlobProofVersion) is { } attachError)
-        {
-            return ResultWrapper<FillTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
-        }
-
-        return ResultWrapper<FillTransactionResult>.Success(new FillTransactionResult
-        {
-            Tx = TransactionForRpc.FromTransaction(tx)
-        });
+        return null;
     }
 
     public async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)

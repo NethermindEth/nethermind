@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
@@ -165,6 +166,35 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
         _ = oracle.Received(estimatesGasPrice ? 1 : 0).GetGasPriceEstimate();
         oracle.Received(estimatesPriorityFee ? 1 : 0).GetMaxPriorityGasFeeEstimate();
+    }
+
+    [Test]
+    public async Task Send_without_gas_and_fees_fills_them([Values("{}", """{"type":"0x0"}""")] string feeFields)
+    {
+        UInt256 suggestedFee = 1_000_000_000;
+        IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
+        oracle.GetGasPriceEstimate().Returns(new ValueTask<UInt256>(suggestedFee));
+        oracle.GetMaxPriorityGasFeeEstimate().Returns(suggestedFee);
+        ITxSender txSender = Substitute.For<ITxSender>();
+        Transaction? sent = null;
+        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+            .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithGasPriceOracle(oracle).WithTxSender(txSender).Build(new TestSpecProvider(London.Instance));
+
+        JsonObject request = JsonNode.Parse(feeFields)!.AsObject();
+        request["from"] = TestItem.AddressC.ToString();
+        request["to"] = FeeRecipient;
+        request["value"] = "0x1";
+        string serialized = await test.TestEthRpc("eth_sendTransaction", JsonSerializer.Deserialize<object>(request.ToJsonString()));
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent!.GasLimit, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated");
+            Assert.That(sent.MaxPriorityFeePerGas, Is.EqualTo(suggestedFee), "the tip must come from the gas price oracle");
+            Assert.That(sent.MaxFeePerGas, Is.GreaterThanOrEqualTo(suggestedFee), "the fee cap must cover the tip");
+        }
     }
 
     private async Task<string?> FeeDefaultsError(string method, string feeFields, bool london)
