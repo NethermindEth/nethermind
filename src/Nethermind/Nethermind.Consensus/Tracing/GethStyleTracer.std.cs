@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing;
@@ -302,6 +303,29 @@ public class GethStyleTracer(
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
         scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
         return tracer.BuildResult();
+    }
+
+    public StorageRangeVisitor StorageRangeAt(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken)
+    {
+        if (block.IsGenesis) throw new GenesisNotTraceableException();
+        if ((uint)txIndex >= (uint)Math.Max(block.Transactions.Length, 1)) throw new ArgumentOutOfRangeException(nameof(txIndex));
+
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header);
+        BlockHeader? stateHeader = FindParent(block);
+        if (txIndex > 0)
+        {
+            IBlockTracer boundary = TransactionTraceBoundary.Wrap(NullBlockTracer.Instance.WithCancellation(cancellationToken), block.Transactions[txIndex - 1].Hash);
+            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
+
+            // The prefix state is committed into the environment's overlay so that its tries can be walked.
+            IWorldState worldState = scope.Component.WorldState;
+            worldState.Commit(specProvider.GetSpec(block.Header), commitRoots: true);
+            worldState.CommitTree(block.Number);
+            stateHeader = block.Header.Clone();
+            stateHeader.StateRoot = worldState.StateRoot;
+        }
+
+        return scope.Component.StateReader.CollectStorageRange(stateHeader, address, startKey, limit);
     }
 
     public IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
@@ -647,5 +671,5 @@ public class GethStyleTracer(
         public UInt256? BlobBaseFee { get; set; }
     }
 
-    public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor);
+    public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor, IStateReader StateReader);
 }

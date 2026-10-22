@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Tracing;
 
@@ -54,6 +55,13 @@ public interface IGethStyleTracer
     /// <param name="cancellationToken">Cooperative cancellation.</param>
     /// <returns>Post-tx state roots in execution order; failed transactions still produce a root.</returns>
     IReadOnlyCollection<Hash256> TraceBlockIntermediateRoots(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken);
+    /// <summary>
+    /// Collects storage slots of <paramref name="address"/> as they are before transaction <paramref name="txIndex"/>
+    /// of <paramref name="block"/> runs, replaying the preceding transactions on the parent state.
+    /// </summary>
+    /// <param name="startKey">The hashed slot key to start at.</param>
+    /// <param name="limit">The maximum number of slots to collect.</param>
+    StorageRangeVisitor StorageRangeAt(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken);
     IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken);
     IEnumerable<string> TraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken);
 }
