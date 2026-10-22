@@ -738,7 +738,7 @@ public partial class ForwardHeaderProviderTests
         Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, cancellation.Token);
         Assert.That(async () => await headerTask(), Throws.InstanceOf<OperationCanceledException>());
         // The validation itself must stop early: only the seals already in flight when the token was cancelled run.
-        Assert.That(sealValidator.SealsValidated, Is.LessThan(128));
+        Assert.That(sealValidator.SealsValidated, Is.InRange(1, 127));
     }
 
     [Test]
