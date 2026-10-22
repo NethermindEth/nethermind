@@ -191,6 +191,9 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
         _hasFinalState = true;
     }
 
+    /// <summary>Writes the block's state, code and checkpoint in one batch, without syncing it: the block's index rows
+    /// were synced first, so a crash that loses this batch only replays, from the last checkpoint that reached disk,
+    /// blocks whose rows already exist.</summary>
     public void CommitBlock()
     {
         RequireHealthy();
@@ -203,7 +206,6 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
             IColumnsWriteBatch<Columns> batch = _batch;
             _batch = null;
             batch.Dispose();
-            _db.SyncWal();
             CurrentState = next;
             BlockHash = hash;
             _pendingBlock = null;
@@ -216,7 +218,9 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
         }
     }
 
-    public byte[]? GetCode(in ValueHash256 codeHash) =>
+    public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => GetCodeArray(in codeHash);
+
+    internal byte[] GetCodeArray(in ValueHash256 codeHash) =>
         codeHash == ValueKeccak.OfAnEmptyString ? [] :
         _pendingCode.TryGetValue(codeHash, out byte[]? code) ? code :
         _db.GetColumnDb(Columns.Code)[codeHash.Bytes] ?? _sourceCode[codeHash.Bytes]

@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Headers;
@@ -26,6 +28,19 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase(null)]
+    [TestCase("missingTracer")]
+    public async Task Debug_traceTransaction_unknown_hash_returns_geth_error_before_tracer_validation(string? tracer)
+    {
+        using Context context = await Context.Create();
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
+            TestItem.KeccakA, new GethTraceOptions { Tracer = tracer! });
+
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(
+            """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""))
+            .Using(JToken.EqualityComparer));
+    }
+
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
     [TestCaseSource(nameof(TraceTransactionContractSource))]
     public async Task Debug_traceTransaction(Func<TestRpcBlockchain, Transaction> factory, GethTraceOptions options, string expected)
@@ -77,6 +92,46 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(result["failed"]?.Value<bool>(), Is.False, response);
             Assert.That(result["gas"]?.Value<ulong>(), Is.EqualTo(GasCostOf.Transaction));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_callTracer_log_index_continues_from_preceding_transactions()
+    {
+        using Context context = await Context.Create();
+
+        ulong nonce = context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction first = Build.A.Transaction
+            .WithNonce(nonce)
+            .WithCode(Prepare.EvmCode.Log(0, 0).Log(0, 0).STOP().Done)
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Transaction second = Build.A.Transaction
+            .WithNonce(nonce + 1)
+            .WithCode(Prepare.EvmCode.Log(0, 0).STOP().Done)
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await context.Blockchain.AddBlock(first, second);
+
+        GethTraceOptions options = new()
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""")
+        };
+        string trace = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", second.Hash, options);
+        string blockTrace = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", context.Blockchain.BlockTree.Head!.Number, options);
+        string receipt = await RpcTest.TestSerializedRequest(context.Blockchain.EthRpcModule, "eth_getTransactionReceipt", second.Hash);
+
+        JToken traceLog = JToken.Parse(trace)["result"]!["logs"]!.Single();
+        JToken blockTraceLog = JToken.Parse(blockTrace)["result"]![1]!["result"]!["logs"]!.Single();
+        JToken receiptLog = JToken.Parse(receipt)["result"]!["logs"]!.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string)receiptLog["logIndex"]!, Is.EqualTo("0x2"));
+            Assert.That((string)traceLog["index"]!, Is.EqualTo("0x2"));
+            Assert.That((string)blockTraceLog["index"]!, Is.EqualTo("0x2"));
         }
     }
 
@@ -342,10 +397,8 @@ public partial class DebugRpcModuleTests
                     "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
                         "balance": "0x3635c9adc5de9f09e5",
                         "nonce": 3,
-                        "code": "0xabcd"
-                    },
-                    "0x0000000000000000000000000000000000000000": {
-                        "balance": "0x0"
+                        "code": "0xabcd",
+                        "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                     },
                     "0x475674cb523a0a2736b7f7534390288fce16982c": {
                         "balance": "0xf618"
@@ -443,7 +496,7 @@ public partial class DebugRpcModuleTests
         yield return new TestCaseData(
             contractTransaction,
             new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer },
-            """{"jsonrpc":"2.0","result":{"0x60006020-2":1},"id":67}"""
+            """{"jsonrpc":"2.0","result":{},"id":67}"""
         )
         { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
 
@@ -478,13 +531,8 @@ public partial class DebugRpcModuleTests
                     "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
                         "balance": "0x3635c9adc5de9f09e5",
                         "nonce": 3,
-                        "code": "0xabcd"
-                    },
-                    "0x0ffd3e46594919c04bcfd4e146203c8255670828": {
-                        "balance": "0x0",
-                        "storage": {
-                            "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000"
-                        }
+                        "code": "0xabcd",
+                        "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                     },
                     "0x475674cb523a0a2736b7f7534390288fce16982c": {
                         "balance": "0xf618"

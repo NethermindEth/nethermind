@@ -752,7 +752,7 @@ public class DepositTransactionBuilderTest
                 Logs = [depositLog],
                 FrameReceipts =
                 [
-                    new FrameReceiptForRpc { Status = depositFrameStatus, Logs = [depositLog.ToLogEntry()] },
+                    new FrameReceiptForRpc { Status = depositFrameStatus, Logs = [depositLog] },
                     new FrameReceiptForRpc { Status = otherFrameStatus, Logs = [] },
                 ],
                 BlockHash = SomeHash,
@@ -783,8 +783,8 @@ public class DepositTransactionBuilderTest
                 Logs = [revertedLog, committedLog],
                 FrameReceipts =
                 [
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [revertedLog.ToLogEntry()] },
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [committedLog.ToLogEntry()] },
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [revertedLog] },
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [committedLog] },
                 ],
                 BlockHash = SomeHash,
             },
@@ -820,8 +820,8 @@ public class DepositTransactionBuilderTest
                 Logs = [depositLog, unrelatedLog],
                 FrameReceipts =
                 [
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [unrelatedLog.ToLogEntry()] },
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [depositLog.ToLogEntry()] },
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [unrelatedLog] },
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [depositLog] },
                 ],
                 BlockHash = SomeHash,
             },
@@ -834,7 +834,7 @@ public class DepositTransactionBuilderTest
     /// <summary>Each field the attribution compares has to be able to reject a frame log on its own: the
     /// credited log is the one that is decoded, so a mismatched <c>Data</c> would carry the wrong mint.</summary>
     [TestCaseSource(nameof(FrameLogMismatchCases))]
-    public void DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(LogEntry frameLog)
+    public void DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(LogEntryForRpc frameLog)
     {
         LogEntryForRpc depositLog = DepositLog(SomeAddressA, SomeAddressB, SomeDepositEvent().ToBytes(), 0);
 
@@ -900,15 +900,15 @@ public class DepositTransactionBuilderTest
     /// <summary>A frame log matching the receipt's deposit log in every field but one.</summary>
     private static TestCaseData[] FrameLogMismatchCases()
     {
-        LogEntry depositLog = DepositLog(SomeAddressA, SomeAddressB, SomeDepositEvent().ToBytes(), 0).ToLogEntry();
+        LogEntryForRpc depositLog = DepositLog(SomeAddressA, SomeAddressB, SomeDepositEvent().ToBytes(), 0);
         DepositLogEventV0 otherEvent = SomeDepositEvent() with { Value = 1 };
 
         return
         [
-            new TestCaseData(new LogEntry(SomeAddressC, depositLog.Data, depositLog.Topics)) { TestName = "DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(Address)" },
-            new TestCaseData(new LogEntry(depositLog.Address, depositLog.Data, [DepositEvent.ABIHash])) { TestName = "DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(TopicCount)" },
-            new TestCaseData(new LogEntry(depositLog.Address, depositLog.Data, [.. depositLog.Topics[..3], SomeHash])) { TestName = "DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(Topic)" },
-            new TestCaseData(new LogEntry(depositLog.Address, otherEvent.ToBytes(), depositLog.Topics)) { TestName = "DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(Data)" },
+            new TestCaseData(new LogEntryForRpc { Address = SomeAddressC, Data = depositLog.Data, Topics = depositLog.Topics }) { TestName = "DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(Address)" },
+            new TestCaseData(new LogEntryForRpc { Address = depositLog.Address, Data = depositLog.Data, Topics = [DepositEvent.ABIHash] }) { TestName = "DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(TopicCount)" },
+            new TestCaseData(new LogEntryForRpc { Address = depositLog.Address, Data = depositLog.Data, Topics = [.. depositLog.Topics[..3], SomeHash] }) { TestName = "DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(Topic)" },
+            new TestCaseData(new LogEntryForRpc { Address = depositLog.Address, Data = otherEvent.ToBytes(), Topics = depositLog.Topics }) { TestName = "DeriveUserDeposits_FrameTx_MismatchedFrameLogIsUnattributable(Data)" },
         ];
     }
 

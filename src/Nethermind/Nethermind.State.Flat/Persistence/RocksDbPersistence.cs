@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -22,6 +23,7 @@ public class RocksDbPersistence : IPersistence, IDisposable
     ];
 
     private readonly IColumnsDb<FlatDbColumns> _db;
+    private readonly ITrieNodeLog _trieNodeLog;
     private readonly bool _storeSupportsIngest;
     private readonly WriteBufferAdjuster _adjuster;
     private int _layoutPersisted;
@@ -38,15 +40,16 @@ public class RocksDbPersistence : IPersistence, IDisposable
     /// <remarks>Bounded so a graceful shutdown is not held for minutes when compaction is behind.</remarks>
     private static readonly TimeSpan IngestBackpressureBudget = TimeSpan.FromSeconds(30);
 
-    public RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null, IProcessExitSource? exitSource = null)
+    public RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, ITrieNodeLog trieNodeLog, IFlatDbConfig? config = null, IProcessExitSource? exitSource = null)
     {
         _db = db;
+        _trieNodeLog = trieNodeLog;
         _exitToken = exitSource?.Token ?? CancellationToken.None;
         _logger = logManager.GetClassLogger<RocksDbPersistence>();
         _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
         _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
         _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), _logger);
-        _useSstIngestion = config?.PersistViaSstIngestion ?? false;
+        _useSstIngestion = (config?.PersistViaSstIngestion ?? false) && trieNodeLog is NullTrieNodeLog;
 
         // A pending ingest marker means a previous run crashed between the first ingest and the pointer advance;
         // it must be rolled forward (and any orphaned staging files swept) whenever the store supports ingestion,
@@ -59,10 +62,16 @@ public class RocksDbPersistence : IPersistence, IDisposable
             : null;
     }
 
-    public void Flush() => _db.Flush();
+    public void Flush()
+    {
+        _trieNodeLog.Drain();
+        _db.Flush();
+    }
 
     public void Clear()
     {
+        BasePersistence.MarkWipeStarted(_db);
+        _trieNodeLog.Clear();
         BasePersistence.ClearAllColumns(_db);
         if (_stagingDir is not null && Directory.Exists(_stagingDir))
         {
@@ -79,50 +88,62 @@ public class RocksDbPersistence : IPersistence, IDisposable
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        IColumnDbSnapshot<FlatDbColumns> snapshot = CreateGatedSnapshot(flags);
+        ITrieNodeLog.IView view = OpenGatedView(flags);
         try
         {
             BaseTriePersistence.Reader trieReader = new(
-                snapshot.GetColumn(FlatDbColumns.StateTopNodes),
-                snapshot.GetColumn(FlatDbColumns.StateNodes),
-                snapshot.GetColumn(FlatDbColumns.StorageNodes),
-                snapshot.GetColumn(FlatDbColumns.FallbackNodes)
+                view.GetColumn(FlatDbColumns.StateTopNodes),
+                view.GetColumn(FlatDbColumns.StateNodes),
+                view.GetColumn(FlatDbColumns.StorageNodes),
+                view.GetColumn(FlatDbColumns.FallbackNodes)
             );
 
-            StateId currentState = BasePersistence.ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
+            StateId currentState = BasePersistence.ReadCurrentState(view.Snapshot.GetColumn(FlatDbColumns.Metadata));
 
             return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
                 new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(
                     new BaseFlatPersistence.Reader(
-                        (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account),
-                        (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage),
+                        (ISortedKeyValueStore)view.Snapshot.GetColumn(FlatDbColumns.Account),
+                        (ISortedKeyValueStore)view.Snapshot.GetColumn(FlatDbColumns.Storage),
                         isPreimageMode: false,
                         rlpWrapSlots: _rlpWrapSlots
                     )
                 ),
                 trieReader,
                 currentState,
-                new Reactive.AnonymousDisposable(() =>
-                {
-                    snapshot.Dispose();
-                })
+                view
             );
         }
         catch
         {
-            snapshot.Dispose();
+            view.Dispose();
             throw;
+        }
+    }
+
+    private ITrieNodeLog.IView OpenGatedView(ReaderFlags flags)
+    {
+        if (!_useSstIngestion) return _trieNodeLog.OpenView(_db, flags);
+
+        _ingestGate.EnterReadLock();
+        try
+        {
+            return _trieNodeLog.OpenView(_db, flags);
+        }
+        finally
+        {
+            _ingestGate.ExitReadLock();
         }
     }
 
     private IColumnDbSnapshot<FlatDbColumns> CreateGatedSnapshot(ReaderFlags flags = ReaderFlags.None)
     {
-        if (!_useSstIngestion) return _db.CreateSnapshot(flags);
+        if (!_useSstIngestion) return flags == ReaderFlags.None ? _db.CreateSnapshot() : _db.CreateSnapshot(flags);
 
         _ingestGate.EnterReadLock();
         try
         {
-            return _db.CreateSnapshot(flags);
+            return flags == ReaderFlags.None ? _db.CreateSnapshot() : _db.CreateSnapshot(flags);
         }
         finally
         {
@@ -496,8 +517,9 @@ public class RocksDbPersistence : IPersistence, IDisposable
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
-        // Gated like a reader's: the batch decides its tombstones by scanning this snapshot, so one taken inside
-        // an ingest window would delete against a base whose columns are at different states.
+        bool bypass = from == StateId.Sync || to == StateId.Sync || flags.HasFlag(WriteFlags.DisableWAL);
+        if (bypass) _trieNodeLog.Drain();
+
         IColumnDbSnapshot<FlatDbColumns> dbSnap = CreateGatedSnapshot();
         StateId currentState = BasePersistence.ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (from != StateId.Sync && to != StateId.Sync && currentState != from)
@@ -512,13 +534,25 @@ public class RocksDbPersistence : IPersistence, IDisposable
         }
 
         IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
+        ITrieNodeLog.IWriteBatch logBatch;
+        try
+        {
+            logBatch = _trieNodeLog.StartWriteBatch(batch, bypass);
+        }
+        catch
+        {
+            batch.Clear();
+            batch.Dispose();
+            dbSnap.Dispose();
+            throw;
+        }
 
         IWriteBatch accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
         IWriteBatch storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
-        IWriteBatch stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
-        IWriteBatch stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
-        IWriteBatch storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
-        IWriteBatch fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
+        IWriteBatch stateTopNodesBatch = logBatch.Wrap(FlatDbColumns.StateTopNodes, _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags));
+        IWriteBatch stateNodesBatch = logBatch.Wrap(FlatDbColumns.StateNodes, _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags));
+        IWriteBatch storageNodesBatch = logBatch.Wrap(FlatDbColumns.StorageNodes, _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags));
+        IWriteBatch fallbackNodesBatch = logBatch.Wrap(FlatDbColumns.FallbackNodes, _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags));
 
         BaseTriePersistence.WriteBatch trieWriteBatch = new(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
@@ -548,16 +582,38 @@ public class RocksDbPersistence : IPersistence, IDisposable
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
-                if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
-                    BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
-                if (_rlpWrapSlots)
-                    BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
-                batch.Dispose();
-                dbSnap.Dispose();
-                _adjuster.OnBatchDisposed();
-                if (!flags.HasFlag(WriteFlags.DisableWAL))
+                // The log is made durable and its version put into this batch's metadata before RocksDB commits, and
+                // confirmed to the log only once RocksDB has committed and flushed its WAL.
+                bool batchWritten = false;
+                try
                 {
-                    _db.Flush(onlyWal: true);
+                    logBatch.Commit();
+                    if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
+                        BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
+                    if (_rlpWrapSlots)
+                        BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
+                    batchWritten = true;
+                    batch.Dispose();
+                    if (!flags.HasFlag(WriteFlags.DisableWAL))
+                    {
+                        // A log-backed batch needs the sync to throw, so a version RocksDB did not make durable is never confirmed;
+                        // without the log the WAL flush keeps its previous error handling.
+                        if (bypass || _trieNodeLog is NullTrieNodeLog) _db.Flush(onlyWal: true);
+                        else _db.SyncWal();
+                    }
+                    logBatch.Confirm();
+                }
+                finally
+                {
+                    if (!batchWritten)
+                    {
+                        // The log side failed, so nothing of this batch may reach RocksDB.
+                        batch.Clear();
+                        batch.Dispose();
+                    }
+                    dbSnap.Dispose();
+                    _adjuster.OnBatchDisposed();
+                    logBatch.Dispose();
                 }
             })
         );

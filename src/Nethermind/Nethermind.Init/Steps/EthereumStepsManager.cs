@@ -67,7 +67,11 @@ namespace Nethermind.Init.Steps
                 } while (allRequiredSteps.Any(s => !s.IsCompleted));
             }
 
-            if (!HasTarget) return;
+            if (!HasTarget)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return;
+            }
 
             // A command's exit code is the target's outcome, so anything short of it completing has to surface
             // as an exception for Program to map. Review every task first, not just the ones the loop happened
@@ -83,11 +87,17 @@ namespace Nethermind.Init.Steps
         }
 
 
-        private (List<Task> AllSteps, Task? TargetTask) CreateAndExecuteSteps(CancellationToken cancellationToken)
+        internal async Task InitializeThrough(Type target, CancellationToken cancellationToken, params Type[] skippedSteps)
+        {
+            (List<Task> steps, _) = CreateAndExecuteSteps(cancellationToken, target, skippedSteps);
+            await Task.WhenAll(steps);
+        }
+
+        private (List<Task> AllSteps, Task? TargetTask) CreateAndExecuteSteps(CancellationToken cancellationToken, Type? target = null, params Type[] skippedSteps)
         {
             Dictionary<Type, StepWrapper> stepInfoMap = [];
             List<StepInfo> resolvedSteps = _loader.ResolveStepsImplementations().ToList();
-            Type? target = ResolveTarget(resolvedSteps);
+            target ??= ResolveTarget(resolvedSteps);
 
             foreach (StepInfo stepInfo in resolvedSteps)
             {
@@ -137,6 +147,14 @@ namespace Nethermind.Init.Steps
                 }
             }
 
+            foreach (Type skipped in skippedSteps)
+            {
+                if (stepInfoMap.TryGetValue(skipped, out StepWrapper? step))
+                {
+                    step.Dependencies.Clear();
+                    step.MarkCompleted();
+                }
+            }
             if (target is not null) PruneToTarget(stepInfoMap, target);
 
             if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
@@ -144,7 +162,8 @@ namespace Nethermind.Init.Steps
             Task? targetTask = null;
             foreach ((Type stepBaseType, StepWrapper stepWrapper) in stepInfoMap)
             {
-                Task stepTask = ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
+                Task stepTask = Array.IndexOf(skippedSteps, stepBaseType) >= 0
+                    ? Task.CompletedTask : ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
                 allRequiredSteps.Add(stepTask);
                 if (stepBaseType == target) targetTask = stepTask;
             }
@@ -172,7 +191,7 @@ namespace Nethermind.Init.Steps
 
                 if (_logger.IsDebug) _logger.Debug($"Step {stepWrapper.StepInfo.StepType.Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             }
-            catch (Exception exception) when (exception is not TaskCanceledException)
+            catch (Exception exception) when (exception is not TaskCanceledException && (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
             {
                 if (stepWrapper.Step.MustInitialize)
                 {
@@ -405,6 +424,8 @@ namespace Nethermind.Init.Steps
 
                 await Task.WhenAll(dependentSteps.Select(s => s.StepTask));
             }
+
+            public void MarkCompleted() => _taskCompletedSource.TrySetResult();
 
             public async Task RunStep(CancellationToken cancellationToken)
             {

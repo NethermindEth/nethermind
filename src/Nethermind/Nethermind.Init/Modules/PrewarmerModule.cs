@@ -42,7 +42,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
         }
     }
 
-    public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig) : Module, IMainProcessingModule
+    public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig, ICodeCache codeCache) : Module, IMainProcessingModule
     {
         protected override void Load(ContainerBuilder builder)
         {
@@ -68,10 +68,23 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
                         ctx.Resolve<IPrewarmerState>(),
-                        ctx.Resolve<ILogManager>()
+                        ctx.Resolve<ILogManager>(),
+                        ctx.ResolveOptional<ICodeCache>(),
+                        blocksConfig.PrefetchBlockAccessListCode
                     );
                 })
-                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
+                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
+
+                // Envs that must send every lookup to the world state, as witness generation does, register their own.
+                .AddSingleton<BlockCodeCache>(_ => new BlockCodeCache(codeCache))
+                .Bind<ICodeCache, BlockCodeCache>()
+                // On the factory rather than the adapter, as parallel execution builds its adapters from it.
+                .AddDecorator<TransactionProcessorAdapterFactory>(static (ctx, inner) =>
+                {
+                    if (ctx.Resolve<IPrewarmerState>().IsPrewarmer) return inner;
+                    BlockCodeCache blockCodeCache = ctx.Resolve<BlockCodeCache>();
+                    return transactionProcessor => new BlockCodeCacheTxAdapter(inner(transactionProcessor), blockCodeCache);
+                });
 
             if (blocksConfig.PrecompileCacheMaxKilobytes > 0)
             {

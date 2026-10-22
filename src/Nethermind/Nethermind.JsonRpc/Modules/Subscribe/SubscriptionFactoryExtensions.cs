@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
 using Nethermind.Core.Specs;
@@ -20,12 +21,13 @@ public static class SubscriptionFactoryExtensions
         IBlockTree? blockTree,
         ILogManager? logManager,
         ISpecProvider specProvider,
-        IBlockForRpcFactory blockForRpcFactory
-        ) => subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
+        IBlockForRpcFactory blockForRpcFactory)
+    {
+        NewHeadPayloadCache payloads = new(specProvider, blockForRpcFactory);
+        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
             SubscriptionType.EthSubscription.NewHeads,
-            (jsonRpcDuplexClient, args) =>
-            new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, blockForRpcFactory, args)
-            );
+            (jsonRpcDuplexClient, args) => new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, payloads, args));
+    }
 
     public static void RegisterLogsSubscription(
         this ISubscriptionFactory subscriptionFactory,
@@ -54,12 +56,13 @@ public static class SubscriptionFactoryExtensions
         this ISubscriptionFactory subscriptionFactory,
         ITxPool? txPool,
         ISpecProvider? specProvider,
-        ILogManager? logManager
-        ) => subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
+        ILogManager? logManager)
+    {
+        PendingTransactionPayloadCache payloads = new(specProvider ?? throw new ArgumentNullException(nameof(specProvider)));
+        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
             SubscriptionType.EthSubscription.NewPendingTransactions,
-            (jsonRpcDuplexClient, args) =>
-            new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, specProvider, logManager, args)
-            );
+            (jsonRpcDuplexClient, args) => new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, payloads, logManager, args));
+    }
 
     public static void RegisterDroppedPendingTransactionsSubscription(
         this ISubscriptionFactory subscriptionFactory,

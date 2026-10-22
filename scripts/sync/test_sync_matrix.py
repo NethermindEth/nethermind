@@ -9,14 +9,30 @@ every op-*/world-* sync, and filtering on "hoodi" also selected "taiko-hoodi".
 """
 
 import json
+import re
 import subprocess
 import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 SELECT = REPO / "scripts" / "sync" / "select-networks.sh"
+CHECK_SHAPES = REPO / "scripts" / "sync" / "check-runner-shapes.sh"
 SYNC_LIB = REPO / ".github" / "actions" / "sync-chain" / "lib.sh"
 MATRIX = REPO / "scripts" / "config" / "testnet-matrix.json"
+MATRIX_WORKFLOWS = [
+    REPO / ".github" / "workflows" / name
+    for name in ("sync-supported-chains.yml", "sync-master-validation.yml")
+]
+
+
+def provisioning_expression(workflow):
+    """The jq expression a matrix builder uses to pick each entry's provisioning model."""
+    match = re.search(
+        r"provisioning_model: \((.*?)\n\s*\),", workflow.read_text(), re.DOTALL
+    )
+    if match is None:
+        raise AssertionError(f"{workflow.name} has no provisioning_model expression")
+    return " ".join(match.group(1).split())
 
 
 def select(matrix, network_filter):
@@ -29,6 +45,12 @@ def select(matrix, network_filter):
         check=True,
     )
     return [entry["network"] for entry in json.loads(out.stdout)]
+
+
+def check_shapes(matrix):
+    return subprocess.run(
+        [str(CHECK_SHAPES)], input=json.dumps(matrix), capture_output=True, text=True
+    )
 
 
 def sh(snippet):
@@ -109,6 +131,102 @@ class TestnetMatrixTest(unittest.TestCase):
             self.assertEqual(missing, set(), f"{entry.get('network')} is missing {missing}")
             self.assertIsInstance(entry["local_ssd_count"], int)
             self.assertIsInstance(entry["spot"], bool)
+
+    def test_every_entry_syncs_on_local_ssd_its_machine_type_can_carry(self):
+        matrix = json.loads(MATRIX.read_text())
+        for entry in matrix:
+            with self.subTest(network=entry["network"]):
+                self.assertRegex(entry["machine_type"], r"^(c2|c3d)-")
+                # Zero leaves the sync on the 100 GB boot disk; startup-script.sh only warns.
+                self.assertGreaterEqual(entry["local_ssd_count"], 1)
+        result = check_shapes(matrix)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class RunnerShapeCheckTest(unittest.TestCase):
+    def check(self, machine_type, local_ssd_count):
+        entry = {"network": "n", "machine_type": machine_type, "local_ssd_count": local_ssd_count}
+        return entry, check_shapes([entry])
+
+    def test_shapes_the_runner_can_boot_pass_through_unchanged(self):
+        for machine_type, count in (
+            ("c2-standard-8", 2),
+            ("c3d-standard-8-lssd", 1),
+            ("c3d-standard-30-lssd", 2),
+            ("c3d-highmem-8-lssd", 1),
+            ("c3d-highmem-360-lssd", 32),
+            ("c3d-standard-8", 0),
+            ("c3-standard-8-lssd", 2),
+            ("n2-standard-8", 4),
+        ):
+            with self.subTest(machine_type=machine_type, local_ssd_count=count):
+                entry, result = self.check(machine_type, count)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), [entry])
+
+    def test_shapes_the_runner_cannot_boot_are_rejected(self):
+        for machine_type, count in (
+            ("c3d-standard-8-lssd", 2),
+            ("c3d-standard-16-lssd", 2),
+            ("c3d-highmem-8-lssd", 2),
+            ("c3d-highcpu-8-lssd", 1),
+            ("c3d-standard-8", 1),
+        ):
+            with self.subTest(machine_type=machine_type, local_ssd_count=count):
+                _, result = self.check(machine_type, count)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(f"::error title=Sync matrix::n: {machine_type}", result.stderr)
+
+    def test_both_matrix_builders_check_the_final_matrix(self):
+        for workflow in MATRIX_WORKFLOWS:
+            with self.subTest(workflow=workflow.name):
+                text = workflow.read_text()
+                self.assertIn("check-runner-shapes.sh", text)
+                # After the machine_type override is applied, or the override goes unchecked.
+                self.assertLess(text.index("$machine_type"), text.index("check-runner-shapes.sh"))
+
+
+class ProvisioningModelTest(unittest.TestCase):
+    """STANDARD must only come from an explicit request; anything unstated resolves to SPOT."""
+
+    def resolve(self, model_input, config):
+        out = subprocess.run(
+            [
+                "jq", "-nr",
+                "--arg", "model", model_input,
+                "--argjson", "config", json.dumps(config),
+                provisioning_expression(MATRIX_WORKFLOWS[0]),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return out.stdout.strip()
+
+    def test_both_matrix_builders_share_one_expression(self):
+        first, second = (provisioning_expression(w) for w in MATRIX_WORKFLOWS)
+        self.assertEqual(first, second)
+
+    def test_an_entry_without_a_spot_key_resolves_to_spot(self):
+        self.assertEqual(self.resolve("Default", {"network": "new-chain"}), "SPOT")
+
+    def test_a_null_spot_resolves_to_spot(self):
+        self.assertEqual(self.resolve("Default", {"spot": None}), "SPOT")
+
+    def test_spot_true_resolves_to_spot(self):
+        self.assertEqual(self.resolve("Default", {"spot": True}), "SPOT")
+
+    def test_an_explicit_spot_false_is_honoured(self):
+        self.assertEqual(self.resolve("Default", {"spot": False}), "STANDARD")
+
+    def test_an_empty_input_behaves_like_default(self):
+        self.assertEqual(self.resolve("", {}), "SPOT")
+
+    def test_the_spot_input_overrides_spot_false(self):
+        self.assertEqual(self.resolve("Spot", {"spot": False}), "SPOT")
+
+    def test_the_standard_input_overrides_spot_true(self):
+        self.assertEqual(self.resolve("Standard", {"spot": True}), "STANDARD")
 
 
 if __name__ == "__main__":

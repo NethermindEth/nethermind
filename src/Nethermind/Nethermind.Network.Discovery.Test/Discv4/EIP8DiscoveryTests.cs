@@ -28,6 +28,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                                  "000000000000000000018208ae820d058443b9a3550102";
             PingMsg ping = _messageSerializationService.Deserialize<PingMsg>(Bytes.FromHexString(encodedPing));
             Assert.That(ping.Version, Is.EqualTo(4));
+            Assert.That(ping.EnrSequence, Is.EqualTo(1));
 
             encodedPing = "577be4349c4dd26768081f58de4c6f375a7a22f3f7adda654d1428637412c3d7fe917cadc56d4e5e" +
                           "7ffae1dbe3efffb9849feb71b262de37977e7c7a44e677295680e9e38ab26bee2fcbae207fba3ff3" +
@@ -39,6 +40,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                           "6d922dc3";
             ping = _messageSerializationService.Deserialize<PingMsg>(Bytes.FromHexString(encodedPing));
             Assert.That(ping.Version, Is.EqualTo(555));
+            Assert.That(ping.EnrSequence, Is.Null);
         }
 
         [Test]

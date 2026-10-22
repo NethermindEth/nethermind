@@ -142,6 +142,7 @@ CHOSEN_ZONE=""
 MODEL_USED=""
 INSTANCE_JSON=""
 QUOTA_SEEN=""
+OFFERED=false
 
 for model in "${MODELS[@]}"; do
   build_create_args "$model"
@@ -167,6 +168,12 @@ for model in "${MODELS[@]}"; do
       INSTANCE_JSON="$out"
       break 2
     fi
+    if grep -qE "$NOT_OFFERED_CREATE_ERR" <<<"$err"; then
+      echo "::notice title=GCP runner::${zone} does not offer ${MACHINE_TYPE}, trying next"
+      delete_partial "$zone"
+      continue
+    fi
+    OFFERED=true
     if grep -qE "$QUOTA_CREATE_ERR" <<<"$err"; then
       # Quota is per-region, so the sibling zones would fail identically.
       QUOTA_BLOCKED+="${region} "
@@ -189,19 +196,38 @@ for model in "${MODELS[@]}"; do
     cleanup_failed
     exit 1
   done
+  # Offered nowhere means a misspelt machine type, which a STANDARD retry cannot fix.
+  [ "$OFFERED" = true ] || break
 done
+
+if [ -z "$CHOSEN_ZONE" ] && [ "$OFFERED" != true ]; then
+  echo "::error title=GCP runner::${MACHINE_TYPE} is not offered in any of ${ZONES}"
+  cleanup_failed
+  exit 1
+fi
 
 if [ -z "$CHOSEN_ZONE" ]; then
   echo "::error title=GCP runner::could not create ${MACHINE_TYPE} in any of ${ZONES}"
   if [ -n "$QUOTA_SEEN" ]; then
     echo "::error title=GCP runner::regions at quota:${QUOTA_SEEN}"
   fi
+  if [ "${#MODELS[@]}" -eq 1 ] && [ "$PROVISIONING_MODEL" = SPOT ] && [ -z "$QUOTA_SEEN" ]; then
+    echo "::error title=GCP runner::no SPOT capacity in any zone and STANDARD was not requested; re-run later, or re-dispatch with an explicit STANDARD provisioning model if on-demand cost is acceptable"
+    {
+      echo "spot_exhausted=true"
+      echo "spot_exhausted_at=$(date +%s)"
+    } >> "$GITHUB_OUTPUT"
+  fi
   cleanup_failed
   exit 1
 fi
 
-if [ "$MODEL_USED" != "$PROVISIONING_MODEL" ]; then
-  echo "::warning title=GCP runner::fell back to ${MODEL_USED} (no ${PROVISIONING_MODEL} capacity)"
+if [ "$MODEL_USED" = STANDARD ]; then
+  if [ "$PROVISIONING_MODEL" = STANDARD ]; then
+    echo "::warning title=GCP runner::${RUNNER_LABEL} runs on STANDARD (requested explicitly), billed at on-demand rates"
+  else
+    echo "::warning title=GCP runner::${RUNNER_LABEL} fell back to STANDARD (no ${PROVISIONING_MODEL} capacity), billed at on-demand rates"
+  fi
 fi
 
 INSTANCE_IP=$(jq -r '(if type == "array" then .[0] else . end)
@@ -215,6 +241,7 @@ echo "created ${INSTANCE_NAME} in ${CHOSEN_ZONE} as ${MODEL_USED}, ip ${INSTANCE
   echo "runner_id=${RUNNER_ID}"
   echo "provisioning_model_used=${MODEL_USED}"
 } >> "$GITHUB_OUTPUT"
+echo "- \`${RUNNER_LABEL}\` → ${MODEL_USED} in ${CHOSEN_ZONE} (${MACHINE_TYPE})" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 deadline=$((SECONDS + BOOT_TIMEOUT))
 last_vm_check=0

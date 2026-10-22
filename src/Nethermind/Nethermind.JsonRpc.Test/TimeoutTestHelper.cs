@@ -1,37 +1,28 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Threading;
 
 namespace Nethermind.JsonRpc.Test;
 
 internal static class TimeoutTestHelper
 {
-    private const int TimeoutCancellationTokenPoolSize = 64;
-
+    /// <summary>Creates the source the next timeout rent in the calling async flow will receive.</summary>
     internal static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
     {
-        JsonRpcConfig config = new();
-        List<CancellationTokenSource> rentedTimeouts = new(TimeoutCancellationTokenPoolSize);
-        for (int i = 0; i < TimeoutCancellationTokenPoolSize; i++)
-        {
-            rentedTimeouts.Add(config.BuildTimeoutCancellationToken());
-        }
-
-        for (int i = 0; i < rentedTimeouts.Count; i++)
-        {
-            rentedTimeouts[i].Dispose();
-        }
-
         TrackingCancellationTokenSource timeout = new();
-        JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        JsonRpcConfigExtension.UseForNextTimeoutInFlow(timeout);
         return timeout;
     }
 
+    /// <summary>Whether a request rented <paramref name="timeout"/> and returned it for reuse.</summary>
+    internal static bool WasReturned(CancellationTokenSource timeout) => JsonRpcConfigExtension.EndTimeoutInFlow(timeout);
+
     internal static void DisposeIfNotAlreadyObserved(TrackingCancellationTokenSource timeout)
     {
-        if (timeout.DisposeCount == 0)
+        // Only a source returned within the flow is held by nobody: one returned from another flow is in the shared pool,
+        // where disposing it would fail the next rent anywhere in the process.
+        if (JsonRpcConfigExtension.EndTimeoutInFlow(timeout) && timeout.DisposeCount == 0)
         {
             timeout.Dispose();
         }

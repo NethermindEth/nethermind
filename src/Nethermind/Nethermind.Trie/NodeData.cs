@@ -39,7 +39,12 @@ public sealed class BranchData : INodeData
     private BranchData(in BranchArray branches) => _branches = branches;
 
     public ref readonly BranchArray Branches => ref _branches;
-    public ref object? this[int index] => ref _branches[index];
+    public ref object? this[int index]
+    {
+        // Reached once per level of every trie walk; a walk as large as PatriciaTree.SetNew exhausts the inliner's budget before it.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => ref _branches[index];
+    }
 
     INodeData INodeData.Clone() => new BranchData(in _branches);
 
@@ -51,7 +56,7 @@ public sealed class BranchData : INodeData
     }
 }
 
-public class ExtensionData : INodeWithKey
+public sealed class ExtensionData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Extension;
 
@@ -112,7 +117,7 @@ public class ExtensionData : INodeWithKey
     INodeData INodeData.Clone() => new ExtensionData(Key, Value);
 }
 
-public class LeafData : INodeWithKey
+public sealed partial class LeafData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Leaf;
     public int Length => 0;
@@ -125,7 +130,6 @@ public class LeafData : INodeWithKey
 
     private readonly CappedArray<byte> _value;
 
-    public byte[]? Key { get; set; }
     public CappedArray<byte> Value => _value;
     public TrieNode? StorageRoot { get; set; }
 
@@ -147,6 +151,4 @@ public class LeafData : INodeWithKey
     public ref object? this[int index] => throw new IndexOutOfRangeException();
 
     INodeData INodeData.Clone() => new LeafData(Key, _value);
-
-    public LeafData CloneWithNewValue(CappedArray<byte> value) => new(Key, value, StorageRoot);
 }

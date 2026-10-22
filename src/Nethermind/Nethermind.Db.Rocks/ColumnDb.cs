@@ -20,7 +20,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, ISstIngestible
+public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb, ISstIngestible
 {
     private static long _sstIngestSeq;
 
@@ -53,6 +53,10 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     }
 
     public string Name { get; }
+
+    /// <inheritdoc/>
+    void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder) =>
+        _mainDb.GetManyWithColumnFamily(keys, keyLength, values, decoder, _columnFamily);
 
     byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags) => _reader.Get(key, flags);
 
@@ -711,6 +715,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
+    public void FlushOrThrow() => _mainDb.FlushWithColumnFamilyOrThrow(_columnFamily);
+
     public void Compact() => _mainDb.CompactOpenRange(_columnFamily, forceBottommost: false);
 
     /// <inheritdoc/>
@@ -750,28 +756,18 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _rocksDb.SetOptions(_columnFamily, options);
     }
 
-    public byte[]? FirstKey
-    {
-        get
-        {
-            using Iterator iterator = _mainDb.CreateIterator(_mainDb.CreateReadOptions(), ch: _columnFamily);
-            iterator.SeekToFirst();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
-    }
+    public byte[]? FirstKey => _mainDb.GetEdgeKey(first: true, _columnFamily);
 
-    public byte[]? LastKey
-    {
-        get
-        {
-            using Iterator iterator = _mainDb.CreateIterator(_mainDb.CreateReadOptions(), ch: _columnFamily);
-            iterator.SeekToLast();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
-    }
+    public byte[]? LastKey => _mainDb.GetEdgeKey(first: false, _columnFamily);
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) =>
         _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily, flags);
+
+    /// <inheritdoc/>
+    public bool TryGetCeilingInSnapshot(
+        scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
+        _reader.TryGetCeilingInSnapshot(lowerBoundInclusive, upperBoundExclusive, keyBuffer, out keyLength, valueBuffer, out valueLength);
 
     public bool TryGetCeiling(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,

@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 # Checks that the images we publish carry Nethermind's OCI labels rather than the ones they would
-# otherwise inherit from the .NET base image (which in turn inherits Ubuntu's).
+# otherwise inherit from the .NET base image (which in turn inherits Ubuntu's). It also checks
+# required exposed-port metadata on the published client images.
 #
 # The labels fed by a build arg are the fragile ones: an ARG is scoped to the stage that declares
 # it, so a final stage that does not redeclare COMMIT_HASH, VERSION and BUILD_TIMESTAMP still
@@ -227,11 +228,21 @@ for dockerfile in "${dockerfiles[@]}"; do
   check_label org.opencontainers.image.revision "$commit_hash"
   # build_timestamp is RFC 3339 by construction, so matching it exactly is also the format check.
   check_label org.opencontainers.image.created "$build_timestamp"
+
+  case "$dockerfile" in
+    Dockerfile | Dockerfile.chiseled)
+      if ! docker image inspect --format '{{json .Config.ExposedPorts}}' "$tag" |
+        jq -e 'has("30303/tcp") and has("30303/udp")' > /dev/null; then
+        echo "FAIL: $dockerfile must expose TCP and UDP port 30303" >&2
+        failures=$((failures + 1))
+      fi
+      ;;
+  esac
 done
 
 if [[ $failures -gt 0 ]]; then
-  echo "$failures label check(s) failed" >&2
+  echo "$failures image metadata check(s) failed" >&2
   exit 1
 fi
 
-echo "All image labels are correct"
+echo "All image labels and required exposed ports are correct"

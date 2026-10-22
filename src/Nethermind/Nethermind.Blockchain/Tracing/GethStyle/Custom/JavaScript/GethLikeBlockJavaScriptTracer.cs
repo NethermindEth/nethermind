@@ -20,17 +20,29 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     private int _index;
     // Validated on construction so an unusable tracer is refused before any transaction; inline code keeps the
     // runtime it was compiled in, with its script cached.
-    private TracerRuntime? _runtime = TracerRuntime.CreateValidated(options.Tracer);
+    private TracerRuntime? _runtime = CreateRuntime(options);
     private GethLikeJavaScriptTxTracer? _currentTxTracer;
     private Hash256? _blockHash;
     private UInt256 _baseFee;
+
+    private static TracerRuntime? CreateRuntime(GethTraceOptions options)
+    {
+        try
+        {
+            return TracerRuntime.CreateValidated(options.Tracer);
+        }
+        catch (ArgumentException exception) when (options.CaptureJavaScriptErrors)
+        {
+            throw new JavaScriptTraceFailure(exception);
+        }
+    }
 
     public override void StartNewBlockTrace(Block block)
     {
         _ctx.block = block.Number;
         _blockHash = block.Hash;
         _baseFee = block.BaseFeePerGas;
-        _index = 0;
+        _index = options.TxHash is { } txHash ? block.GetTransactionIndex(txHash.ValueHash256) : 0;
         base.StartNewBlockTrace(block);
     }
 

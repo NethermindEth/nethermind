@@ -4,9 +4,12 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto;
@@ -51,7 +54,7 @@ public static class EthereumEcdsaExtensions
 
         if (tx.Type == TxType.Legacy && isEip155Enabled)
         {
-            tx.Signature.V = tx.Signature.V + 8 + 2 * ecdsa.ChainId;
+            tx.Signature.V = CalculateV(ecdsa.ChainId, tx.Signature.RecoveryId == 1);
         }
     }
 
@@ -76,7 +79,31 @@ public static class EthereumEcdsaExtensions
         Signature signature = tx.Signature
             ?? throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
 
-        return RecoverAddress(ecdsa, tx, signature, useSignatureChainId);
+        return RecoverAddress(ecdsa, tx, signature, default, useSignatureChainId);
+    }
+
+    /// <summary>
+    /// Recovers the address that signed the transaction, reading the signed payload out of the
+    /// transaction's own encoding rather than encoding it again.
+    /// </summary>
+    /// <param name="ecdsa">The ECDSA implementation used for recovery.</param>
+    /// <param name="tx">The transaction the encoding belongs to.</param>
+    /// <param name="encoded">
+    /// The transaction's canonical encoding with typed transactions left unwrapped, as
+    /// <see cref="RlpBehaviors.SkipTypedWrapping"/> produces and an execution payload carries.
+    /// </param>
+    /// <param name="useSignatureChainId">Whether to use the chain id encoded in a legacy EIP-155 signature.</param>
+    /// <returns>The recovered address, or <see langword="null"/> when recovery fails.</returns>
+    /// <remarks>
+    /// Shares the sender cache with <see cref="RecoverAddress(IEthereumEcdsa, Transaction, bool)"/>. An encoding whose
+    /// trailing r and s differ from the transaction's signature is ignored and the transaction is encoded instead.
+    /// </remarks>
+    public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, Transaction tx, ReadOnlySpan<byte> encoded, bool useSignatureChainId = false)
+    {
+        Signature signature = tx.Signature
+            ?? throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
+
+        return RecoverAddress(ecdsa, tx, signature, encoded, useSignatureChainId);
     }
 
     /// <summary>
@@ -95,11 +122,11 @@ public static class EthereumEcdsaExtensions
             return false;
         }
 
-        address = RecoverAddress(ecdsa, tx, signature, useSignatureChainId);
+        address = RecoverAddress(ecdsa, tx, signature, default, useSignatureChainId);
         return address is not null;
     }
 
-    private static Address? RecoverAddress(IEthereumEcdsa ecdsa, Transaction tx, Signature signature, bool useSignatureChainId)
+    private static Address? RecoverAddress(IEthereumEcdsa ecdsa, Transaction tx, Signature signature, ReadOnlySpan<byte> encoded, bool useSignatureChainId)
     {
         Hash256? txHash = tx.Type == TxType.Legacy ? null : tx.Hash;
         if (txHash is not null && _senderCache.TryGet(txHash.ValueHash256, out Address? cached))
@@ -107,7 +134,8 @@ public static class EthereumEcdsaExtensions
             return cached;
         }
 
-        ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
+        // The recovered sender is cached under this transaction's hash, so an encoding of another transaction must not be hashed.
+        ValueHash256 hash = SignatureHash(ecdsa, tx, signature, encoded, useSignatureChainId, checkOwnership: true);
         Address? recovered = ecdsa.RecoverAddress(signature, in hash);
 
         if (txHash is not null && recovered is not null)
@@ -150,10 +178,8 @@ public static class EthereumEcdsaExtensions
     {
         useSignatureChainId &= signature.ChainId.HasValue;
 
-        // feels like it is the same check twice
-        bool applyEip155 = useSignatureChainId
-                           || signature.V == CalculateV(ecdsa.ChainId, false)
-                           || signature.V == CalculateV(ecdsa.ChainId, true);
+        // Compared through the chain id the signature carries: 2 * chainId + 35 overflows a ulong for the largest chain ids.
+        bool applyEip155 = useSignatureChainId || signature.ChainId == ecdsa.ChainId;
         ulong chainId = tx.Type switch
         {
             TxType.Legacy when useSignatureChainId => signature.ChainId
@@ -191,25 +217,51 @@ public static class EthereumEcdsaExtensions
     {
         if (tx.Signature is not { } signature) return false;
 
-        // A type whose signed bytes are not a prefix of its encoding falls back to encoding the transaction.
-        ValueHash256 hash = TxDecoder.TryGetSignedPayload(encoded, tx.Type, out ReadOnlySpan<byte> signedPayload)
-            ? SignedPayloadHash(ecdsa, tx, signature, signedPayload, useSignatureChainId)
-            : CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
+        ValueHash256 hash = SignatureHash(ecdsa, tx, signature, encoded, useSignatureChainId);
 
         return EthereumEcdsa.RecoverPublicKeyRaw(signature.Bytes, signature.RecoveryId, hash.Bytes, publicKey);
     }
 
+    // A type whose signed bytes are not a prefix of its encoding, no encoding at all, or, when checked, the encoding
+    // of another transaction falls back to encoding the transaction.
+    private static ValueHash256 SignatureHash(
+        IEthereumEcdsa ecdsa, Transaction tx, Signature signature, ReadOnlySpan<byte> encoded, bool useSignatureChainId, bool checkOwnership = false) =>
+        TxDecoder.TryGetSignedPayload(encoded, tx.Type, out ReadOnlySpan<byte> signedPayload)
+            && (!checkOwnership || EndsWithSignature(encoded, signedPayload, signature))
+            ? SignedPayloadHash(ecdsa, tx, signature, signedPayload, useSignatureChainId)
+            : CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
+
+    // The r and s that follow the signed payload tie the encoding to the transaction it was decoded with.
+    private static bool EndsWithSignature(ReadOnlySpan<byte> encoded, ReadOnlySpan<byte> signedPayload, Signature signature)
+    {
+        encoded.Overlaps(signedPayload, out int offset);
+        RlpReader reader = new(encoded[(offset + signedPayload.Length)..]);
+        reader.SkipItem();
+        return reader.DecodeByteArraySpan().SequenceEqual(signature.RAsSpan.WithoutLeadingZeros())
+            && reader.DecodeByteArraySpan().SequenceEqual(signature.SAsSpan.WithoutLeadingZeros());
+    }
+
     /// <summary>Hashes a signed payload that is already encoded, behind the sequence header the signer used.</summary>
+    /// <remarks>The message is assembled in one buffer and hashed in one pass, which is cheaper than feeding an
+    /// incremental sponge write by write.</remarks>
+    [SkipLocalsInit]
     private static ValueHash256 SignedPayloadHash(
         IEthereumEcdsa ecdsa, Transaction tx, Signature signature, scoped ReadOnlySpan<byte> signedPayload, bool useSignatureChainId)
     {
         (bool applyEip155, ulong chainId) = SigningParameters(ecdsa, tx, signature, useSignatureChainId);
         bool typed = tx.Type != TxType.Legacy;
         int eip155Length = !typed && applyEip155 && chainId != 0 ? Rlp.LengthOf(chainId) + 2 : 0;
+        int contentLength = signedPayload.Length + eip155Length;
+        int length = (typed ? 1 : 0) + Rlp.LengthOfSequence(contentLength);
 
-        KeccakRlpWriter writer = new();
+        byte[]? rented = null;
+        Span<byte> message = length <= StackMessageLimit
+            ? stackalloc byte[StackMessageLimit]
+            : rented = SafeArrayPool<byte>.Shared.Rent(length);
+
+        RlpWriter writer = new(message);
         if (typed) WriteByte(ref writer, (byte)tx.Type);
-        writer.StartSequence(signedPayload.Length + eip155Length);
+        writer.StartSequence(contentLength);
         WriteRaw(ref writer, signedPayload);
 
         if (eip155Length > 0)
@@ -220,8 +272,14 @@ public static class EthereumEcdsaExtensions
             WriteByte(ref writer, Rlp.EmptyByteArrayByte);
         }
 
-        return writer.GetValueHash();
+        ValueHash256 hash = ValueKeccak.Compute(message[..length]);
+
+        if (rented is not null) SafeArrayPool<byte>.Shared.Return(rented);
+
+        return hash;
     }
+
+    private const int StackMessageLimit = 1024;
 
     // The write primitives are explicit interface implementations, so they are reached through the constraint.
     private static void WriteByte<TWriter>(ref TWriter writer, byte value)
@@ -230,7 +288,22 @@ public static class EthereumEcdsaExtensions
     private static void WriteRaw<TWriter>(ref TWriter writer, scoped ReadOnlySpan<byte> bytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(bytes);
 
-    public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
+    /// <summary>The largest chain id for which both EIP-155 <c>v</c> values fit a ulong.</summary>
+    public const ulong MaxEip155ChainId = (ulong.MaxValue - 36) / 2;
+
+    /// <summary>EIP-155 <c>v</c> for <paramref name="chainId"/>; throws <see cref="OverflowException"/> where no such <c>v</c> fits a ulong.</summary>
+    public static ulong CalculateV(ulong chainId, bool addParity = true)
+        => TryCalculateV(chainId, addParity, out ulong v) ? v : throw new OverflowException($"No EIP-155 v fits a ulong for chain id {chainId}.");
+
+    /// <summary>EIP-155 <c>v</c> for <paramref name="chainId"/>; false where no such <c>v</c> fits a ulong.</summary>
+    public static bool TryCalculateV(ulong chainId, bool addParity, out ulong v)
+    {
+        ulong parity = addParity ? 1u : 0u;
+        // Past the shared bound, only the parity-0 v (2^64 - 1) still fits.
+        bool fits = chainId <= MaxEip155ChainId + (1 - parity);
+        v = fits ? chainId * 2 + 35 + parity : 0;
+        return fits;
+    }
 
     public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
     {

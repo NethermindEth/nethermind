@@ -85,20 +85,22 @@ public class ShutterTxSource(
         return tcs.Task;
     }
 
+    // Registrations are disposed outside _syncObject: CancellationTokenRegistration.Dispose blocks until an
+    // in-flight callback returns, and that callback (CancelWaitForTransactions) needs the same lock.
     private void CancelWaitForTransactions(ulong slot, ulong taskId)
     {
+        (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask;
         lock (_syncObject)
         {
-            if (_keyWaitTasks.TryGetValue(slot, out Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks))
+            if (!_keyWaitTasks.TryGetValue(slot, out Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks)
+                || !slotWaitTasks.Remove(taskId, out waitTask))
             {
-                if (slotWaitTasks.TryGetValue(taskId, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
-                {
-                    waitTask.Tcs.TrySetException(new OperationCanceledException());
-                    waitTask.Ctr.Dispose();
-                }
-                slotWaitTasks.Remove(taskId);
+                return;
             }
         }
+
+        waitTask.Tcs.TrySetException(new OperationCanceledException());
+        waitTask.Ctr.Dispose();
     }
 
     public bool HaveTransactionsArrived(ulong slot) => _txCache.Contains(slot);
@@ -108,26 +110,40 @@ public class ShutterTxSource(
         ShutterTransactions transactions = txLoader.LoadTransactions(head, parentHeader, keys);
         _txCache.Set(keys.Slot, transactions);
 
+        Dictionary<ulong, (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr)>? slotWaitTasks;
         lock (_syncObject)
         {
-            if (_keyWaitTasks.Remove(keys.Slot, out Dictionary<ulong, (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr)>? slotWaitTasks))
-            {
-                slotWaitTasks.ForEach(waitTask =>
-                {
-                    waitTask.Value.Tcs.TrySetResult();
-                    waitTask.Value.Ctr.Dispose();
-                });
-            }
+            _keyWaitTasks.Remove(keys.Slot, out slotWaitTasks);
         }
+
+        slotWaitTasks?.ForEach(waitTask =>
+        {
+            waitTask.Value.Tcs.TrySetResult();
+            waitTask.Value.Ctr.Dispose();
+        });
 
         return transactions;
     }
 
     public void Dispose()
     {
+        List<CancellationTokenRegistration> registrations = [];
         lock (_syncObject)
         {
-            _keyWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask => waitTask.Value.Item2.Dispose()));
+            foreach (Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> slotWaitTasks in _keyWaitTasks.Values)
+            {
+                foreach ((TaskCompletionSource _, CancellationTokenRegistration ctr) in slotWaitTasks.Values)
+                {
+                    registrations.Add(ctr);
+                }
+            }
+
+            _keyWaitTasks.Clear();
+        }
+
+        foreach (CancellationTokenRegistration ctr in registrations)
+        {
+            ctr.Dispose();
         }
     }
 }

@@ -93,7 +93,7 @@ internal sealed class CapturingCommitTarget : IFlatCommitTarget
 /// <summary>Code DB stub — none of these benchmarks exercise contract code storage.</summary>
 internal sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
 {
-    public byte[] GetCode(in ValueHash256 codeHash) => null;
+    public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => default;
 
     public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
         => NullCodeSetter.Instance;

@@ -7,14 +7,18 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -25,10 +29,13 @@ public class BranchProcessor(
     IBlockhashProvider blockhashProvider,
     IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
     ILogManager logManager,
+    IWorldStateManager worldStateManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
+
+    private readonly Lazy<IWorldStateScopeProvider> _inclusionListParentState = new(worldStateManager.CreateResettableWorldState);
 
     private const int MaxUncommittedBlocks = 64;
 
@@ -50,11 +57,17 @@ public class BranchProcessor(
 
     private IDisposable BeginTargetScope(Block targetBlock) => stateProvider.BeginScopeAtTarget(targetBlock.Header);
 
+    private IWorldStateScopeProvider.IScope OpenInclusionListParentScope(BlockHeader? parent)
+        => _inclusionListParentState.Value.TryBeginScope(parent, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope)
+            ? scope : throw new StateNotRetainedException("Parent state is unavailable for inclusion-list validation");
+
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
+        ParallelUnbalancedWork.WorkerGroup workerGroup =
+            (options.ContainsFlag(ProcessingOptions.ReadOnlyChain) ? null : ParallelUnbalancedWork.GetCurrentGroup()) ?? new(Environment.ProcessorCount);
         // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
         // inconsistent pair would warm one state and execute another without any other symptom.
         Debug.Assert(suggestedBlock.IsGenesis ? baseBlock is null : baseBlock?.Hash == suggestedBlock.ParentHash,
@@ -87,33 +100,46 @@ public class BranchProcessor(
         Exception? processingException = null;
         bool verdictGiven = false;
 
+        bool useBalForInclusionList = false;
+        bool? boundaryInclusionListSatisfied = null;
+        // Production, tracing and simulation do not report inclusion-list compliance.
+        bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
+
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
-        blockProcessor.TransactionsExecuted += CancelBackgroundWork;
+        void OnTransactionsExecuted(Block processedBlock)
+        {
+            backgroundCancellation?.Cancel();
+            if (checkInclusionList && !useBalForInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 })
+                boundaryInclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
+        }
+        blockProcessor.TransactionsExecuted += OnTransactionsExecuted;
 
         try
         {
-            // Start prewarming as early as possible
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-            Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
-
-            blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
-            BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
+            Task? prefetchBlockhash;
+            using (workerGroup.Enter())
+            {
+                // Start prewarming as early as possible.
+                prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+                prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
+                BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
+            }
 
             BlockHeader? preBlockBaseBlock = baseBlock;
 
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-            // Production, tracing and eth_simulate never report inclusion-list compliance.
-            bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
 
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
+                boundaryInclusionListSatisfied = null;
+                using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
                 {
                     // Refresh spec
@@ -134,6 +160,8 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
+                useBalForInclusionList = checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 }
+                    && spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis;
                 ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
                     ? options
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
@@ -161,10 +189,39 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
-                // A signal, not a rejection: the block is still committed, and it reads post-execution
-                // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
-                bool inclusionListSatisfied = !checkInclusionList
-                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
+                // Only the processed header carries the EIP-8037 dimensions, and its consensus twin is what a
+                // later re-validation of this block is handed, so an inclusion list judged then sees the same gas.
+                // Nothing records them for a block with no transaction to record, and since the header's total is
+                // their maximum, spending no gas puts both at zero.
+                if (processedBlock.GasUsed == 0) processedBlock.Header.GasUsedPerDimension ??= (0, 0);
+                suggestedBlock.Header.GasUsedPerDimension = processedBlock.Header.GasUsedPerDimension;
+
+                // Finalized BAL values include post-execution credits; reverse them only for accounts the checker reads.
+                bool inclusionListSatisfied = true;
+                if (useBalForInclusionList)
+                {
+                    IWorldStateScopeProvider.IScope? parentScope = null;
+                    try
+                    {
+                        InclusionListCommittedState boundaryState = new(stateProvider, (uint)processedBlock.Transactions.Length + 1,
+                            () => processedBlock.BlockAccessList ?? (processedBlock.EncodedBlockAccessList is { } encoded
+                                ? BlockAccessListDecoder.Instance.Decode(encoded)
+                                : processedBlock.GeneratedBlockAccessList is { } generated
+                                    ? BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(generated)) : null),
+                            () => new ScopeReadOnlyStateProvider(parentScope ??= OpenInclusionListParentScope(preBlockBaseBlock)));
+                        inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, boundaryState);
+                        if (!boundaryState.Available) throw new InvalidOperationException("Inclusion-list transaction-boundary state is unavailable");
+                    }
+                    finally
+                    {
+                        parentScope?.Dispose();
+                    }
+                }
+                else if (checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 })
+                {
+                    inclusionListSatisfied = boundaryInclusionListSatisfied
+                        ?? throw new InvalidOperationException("Inclusion list was not checked after transactions");
+                }
                 processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
                 suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
 
@@ -209,15 +266,6 @@ public class BranchProcessor(
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
-
-                // Calculate the transaction hashes in the background and release tx sequence memory
-                // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
-                // Though we still want to release the memory even if syncing rather than processing live
-                // Empty blocks have nothing to hash, so skip the ThreadPool dispatch entirely.
-                if (suggestedBlock.Transactions.Length > 0)
-                {
-                    TxHashCalculator.CalculateInBackground(suggestedBlock);
-                }
             }
 
             return processedBlocks;
@@ -225,7 +273,8 @@ public class BranchProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             processingException = ex;
-            if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            // Cancelling the token is reported by whoever cancelled it: a processing timeout or shutdown.
+            if (_logger.IsWarn && !(ex is OperationCanceledException && token.IsCancellationRequested)) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             DrainAndClear(ref prewarming);
 
@@ -242,7 +291,7 @@ public class BranchProcessor(
         {
             try
             {
-                blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+                blockProcessor.TransactionsExecuted -= OnTransactionsExecuted;
                 worldStateCloser?.Dispose();
             }
             finally
@@ -267,25 +316,5 @@ public class BranchProcessor(
     {
         DisposableExtensions.DisposeAndNull(ref prewarming);
         preWarmer?.ClearCaches();
-    }
-
-    private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
-    {
-        public static void CalculateInBackground(Block suggestedBlock) =>
-            // Memory has been reserved on the transactions to delay calculate the hashes
-            // We calculate the hashes in the background to release that memory
-            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlock), preferLocal: false);
-
-        void IThreadPoolWorkItem.Execute()
-        {
-            // Hashes will be required for PersistentReceiptStorage in TryUpdateMainChain ForkchoiceUpdatedHandler
-            // Which occurs after the block has been processed; however the block is stored in cache and picked up
-            // from there so we can calculate the hashes now for that later use.
-            foreach (Transaction tx in suggestedBlock.Transactions)
-            {
-                // Calculate the hashes to release the memory from the transactionSequence
-                tx.CalculateHashInternal();
-            }
-        }
     }
 }

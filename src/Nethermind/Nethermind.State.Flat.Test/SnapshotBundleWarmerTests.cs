@@ -8,8 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -434,7 +434,7 @@ public class SnapshotBundleWarmerTests
         {
             Assert.That(live, Is.Not.SameAs(warmed));
             Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(warmed.FullRlp.ToArray(), Is.EqualTo(invalidRlp));
+            Assert.That(warmed.FullRlp, Is.SequenceEqualTo(invalidRlp));
             Assert.That(cache.TryGet(cacheAddress, in path, hash, out _), Is.False);
         }
 
@@ -493,13 +493,13 @@ public class SnapshotBundleWarmerTests
             Assert.That(ReadWarmedChild().TryResolveNode(warmer, ref childPath), Is.False);
         }
 
-        StateTrieStoreAdapter state = new(bundle, new ConcurrencyController(1));
+        StateTrieStoreAdapter state = new(bundle);
         ITrieNodeResolver live = storage ? state.GetStorageTrieNodeResolver(address) : state;
         Assert.That(live.FindCachedOrUnknown(childPath, child.Keccak!), Is.SameAs(child));
         TrieNode liveParent = live.FindCachedOrUnknown(rootPath, branch.Keccak!);
         TrieNode liveChild = liveParent.GetChildWithChildPath(live, ref childPath, 0)!;
         Assert.That(() => liveChild.ResolveNode(live, childPath), Throws.Nothing);
-        Assert.That(liveChild.FullRlp.ToArray(), Is.EqualTo(child.FullRlp.ToArray()));
+        Assert.That(liveChild.FullRlp, Is.SequenceEqualTo(child.FullRlp));
     }
 
     private static ITrieNodeResolver WarmerResolver(SnapshotBundle bundle, Hash256? address)

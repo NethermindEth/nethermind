@@ -19,7 +19,7 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase(ILogManager logManager)
     {
-        protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
+        protected readonly OptimizedDictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private int _protectedPosition = Resettable.EmptyPosition;
@@ -92,7 +92,7 @@ namespace Nethermind.State
                     continue;
                 }
 
-                ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, change.StorageCell);
+                ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(change.StorageCell);
                 if (Unsafe.IsNullRef(ref head))
                 {
                     throw new InvalidOperationException($"Missing head entry for {change.StorageCell} at position {position}");
@@ -173,7 +173,7 @@ namespace Nethermind.State
             // skip hashing the 52-byte cell.
             if (_intraBlockCache.Count != 0)
             {
-                ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, storageCell);
+                ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
                 if (!Unsafe.IsNullRef(ref head))
                 {
                     value = head.Value;
@@ -201,7 +201,7 @@ namespace Nethermind.State
         {
             // Overwrites the head in place, never removes+re-adds — ClearStorage relies on this
             // to legally clear slots while enumerating _intraBlockCache.
-            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            ref HeadChange head = ref _intraBlockCache.GetValueRefOrAddDefault(cell, out bool exists);
             PushUpdate(in cell, value, ref head, exists);
         }
 
@@ -223,8 +223,10 @@ namespace Nethermind.State
             bool firstWriteThisTx = !exists || head.CurrentIdx <= currentSnapshot;
             int originalIdx = firstWriteThisTx ? prevIdx : head.OriginalIdx;
 
-            head = new HeadChange(value, _changes.Count, originalIdx);
-            _changes.Add(new Change(in cell, value, StorageChangeType.Update, prevIdx, originalIdx));
+            int index = _changes.Count;
+            head.Set(value, index, originalIdx);
+            CollectionsMarshal.SetCount(_changes, index + 1);
+            CollectionsMarshal.AsSpan(_changes)[index].SetUpdate(in cell, in value, prevIdx, originalIdx);
         }
 
         protected void PushStorageClear(int journalIndex)
@@ -250,7 +252,7 @@ namespace Nethermind.State
             {
                 if (cell.Address == address)
                 {
-                    ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, cell);
+                    ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(cell);
                     ClearSlot(in cell, ref head, exists: true);
                 }
             }
@@ -264,24 +266,35 @@ namespace Nethermind.State
         /// </summary>
         protected struct Change(in StorageCell storageCell, in UInt256 value, StorageChangeType changeType, int prevIdx, int originalIdx)
         {
-            public readonly StorageCell StorageCell = storageCell;
+            public StorageCell StorageCell = storageCell;
             public UInt256 Value = value;
-            public readonly StorageChangeType ChangeType = changeType;
+            public StorageChangeType ChangeType = changeType;
 
             /// <summary>
             /// Index into <c>_changes</c> of the previous change for the same cell, or the derived
             /// provider's clear journal for <see cref="StorageChangeType.StorageClear"/>.
             /// </summary>
-            public readonly int PrevIdx = prevIdx;
+            public int PrevIdx = prevIdx;
 
             /// <summary>
             /// Index into <c>_changes</c> of this cell's value at the transaction's start (its EIP-2200
             /// "original"), or -1 when that is the block-level value in <c>_originalValues</c>. Carried
             /// forward on later same-tx writes so <see cref="PersistentStorageProvider.GetOriginal"/> is O(1).
             /// </summary>
-            public readonly int OriginalIdx = originalIdx;
+            public int OriginalIdx = originalIdx;
 
-            public bool IsNull => ChangeType == StorageChangeType.Null;
+            public readonly bool IsNull => ChangeType == StorageChangeType.Null;
+
+            /// <summary>Overwrites this entry in place with an update of <paramref name="storageCell"/> to <paramref name="value"/>.</summary>
+            /// <remarks><inheritdoc cref="HeadChange.Set" path="/remarks"/></remarks>
+            public void SetUpdate(in StorageCell storageCell, in UInt256 value, int prevIdx, int originalIdx)
+            {
+                StorageCell = storageCell;
+                Value = value;
+                ChangeType = StorageChangeType.Update;
+                PrevIdx = prevIdx;
+                OriginalIdx = originalIdx;
+            }
         }
 
         protected enum StorageChangeType
@@ -298,8 +311,20 @@ namespace Nethermind.State
         protected struct HeadChange(in UInt256 value, int currentIdx, int originalIdx)
         {
             public UInt256 Value = value;
-            public readonly int CurrentIdx = currentIdx;
-            public readonly int OriginalIdx = originalIdx;
+            public int CurrentIdx { readonly get; private set; } = currentIdx;
+            public int OriginalIdx { readonly get; private set; } = originalIdx;
+
+            /// <summary>Overwrites the head in place.</summary>
+            /// <remarks>
+            /// Assigning a new head through a ref builds it in a temporary and block-copies it, which the guest
+            /// does through corelib's out-of-line <c>Memmove</c>; field stores move the words directly.
+            /// </remarks>
+            public void Set(in UInt256 value, int currentIdx, int originalIdx)
+            {
+                Value = value;
+                CurrentIdx = currentIdx;
+                OriginalIdx = originalIdx;
+            }
         }
     }
 }

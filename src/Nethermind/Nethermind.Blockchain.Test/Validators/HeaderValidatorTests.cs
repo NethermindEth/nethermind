@@ -10,6 +10,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -133,8 +134,10 @@ public class HeaderValidatorTests
         _parentBlock = Build.A.Block
             .WithNumber(5)
             .WithSlotNumber(10)
+            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithEmptyRequestsHash()
             .WithBlockAccessList(emptyBal)
             .WithEncodedBlockAccessList(emptyEncodedBal)
@@ -147,8 +150,10 @@ public class HeaderValidatorTests
             .WithParent(_parentBlock)
             .WithNumber(_parentBlock.Number + 1)
             .WithSlotNumber(7)
+            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithEmptyRequestsHash()
             .WithBlockAccessList(emptyBal)
             .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
@@ -179,8 +184,10 @@ public class HeaderValidatorTests
 
         _block = Build.A.Block
             .WithNumber(6)
+            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithEmptyRequestsHash()
             .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
             .TestObject;
@@ -210,6 +217,107 @@ public class HeaderValidatorTests
         {
             Assert.That(result, Is.False);
             Assert.That(error, Is.EqualTo(BlockErrorMessages.SlotNumberNotEnabled));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom, [Values(0ul, 1ul)] ulong number)
+    {
+        bool expectedResult = eip7668 == zeroLengthBloom;
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec),
+            new OneLoggerLogManager(new(_testLogger)));
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(number)
+            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .WithSlotNumber(0)
+            .WithBloom(zeroLengthBloom ? Bloom.ZeroLength : Bloom.Empty)
+            .TestObject;
+        header.Hash = header.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, Is.EqualTo(expectedResult ? null : BlockErrorMessages.InvalidLogsBloomLength(eip7668)));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> OrphanedHeaderFieldCases()
+    {
+        const ulong lastPreShanghai = MainnetSpecProvider.ShanghaiBlockTimestamp - 1;
+        const ulong firstShanghai = MainnetSpecProvider.ShanghaiBlockTimestamp;
+        const ulong lastPreCancun = MainnetSpecProvider.CancunBlockTimestamp - 1;
+        const ulong firstCancun = MainnetSpecProvider.CancunBlockTimestamp;
+        const ulong firstPrague = MainnetSpecProvider.PragueBlockTimestamp;
+        Hash256 withdrawalsRoot = Keccak.EmptyTreeHash;
+        Hash256 requestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+        Hash256 beaconRoot = Keccak.Zero;
+
+        yield return new TestCaseData(firstShanghai, null, null, null, null, null, BlockErrorMessages.MissingWithdrawalsRoot)
+            .SetName("Shanghai_null_withdrawals_root_is_rejected");
+        yield return new TestCaseData(lastPreShanghai, withdrawalsRoot, null, null, null, null, BlockErrorMessages.WithdrawalsRootNotEnabled)
+            .SetName("Pre_Shanghai_withdrawals_root_is_rejected");
+        yield return new TestCaseData(firstCancun, withdrawalsRoot, 0ul, null, null, beaconRoot, BlockErrorMessages.MissingExcessBlobGas)
+            .SetName("Cancun_null_excess_blob_gas_is_rejected");
+        yield return new TestCaseData(firstCancun, withdrawalsRoot, null, 0ul, null, beaconRoot, BlockErrorMessages.MissingBlobGasUsed)
+            .SetName("Cancun_null_blob_gas_used_is_rejected");
+        yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, 0ul, null, null, BlockErrorMessages.NotAllowedExcessBlobGas)
+            .SetName("Pre_Cancun_excess_blob_gas_is_rejected");
+        yield return new TestCaseData(lastPreCancun, withdrawalsRoot, 0ul, null, null, null, BlockErrorMessages.NotAllowedBlobGasUsed)
+            .SetName("Pre_Cancun_blob_gas_used_is_rejected");
+        yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, null, requestsHash, null, BlockErrorMessages.RequestsNotEnabled)
+            .SetName("Pre_Prague_requests_hash_is_rejected");
+        yield return new TestCaseData(firstCancun, withdrawalsRoot, 0ul, 0ul, null, null, BlockErrorMessages.MissingParentBeaconBlockRoot)
+            .SetName("Cancun_null_parent_beacon_block_root_is_rejected");
+        yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, null, null, beaconRoot, BlockErrorMessages.ParentBeaconBlockRootNotEnabled)
+            .SetName("Pre_Cancun_parent_beacon_block_root_is_rejected");
+        yield return new TestCaseData(lastPreShanghai, null, null, null, null, null, null)
+            .SetName("Last_pre_Shanghai_header_is_accepted");
+        yield return new TestCaseData(firstShanghai, withdrawalsRoot, null, null, null, null, null)
+            .SetName("First_Shanghai_header_is_accepted");
+        yield return new TestCaseData(firstCancun, withdrawalsRoot, 0ul, 0ul, null, beaconRoot, null)
+            .SetName("First_Cancun_header_is_accepted");
+        yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, null, null, null, null)
+            .SetName("Last_pre_Cancun_header_is_accepted");
+        // Values no parent could produce: the ExcessBlobGas comparison must still be skipped when orphaned.
+        yield return new TestCaseData(firstCancun, withdrawalsRoot, 131072ul, 393216ul, null, beaconRoot, null)
+            .SetName("Cancun_header_with_arbitrary_blob_gas_values_is_accepted");
+        yield return new TestCaseData(firstPrague, withdrawalsRoot, 0ul, 0ul, requestsHash, beaconRoot, null)
+            .SetName("Prague_header_is_accepted");
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(OrphanedHeaderFieldCases))]
+    public void When_orphaned_header_field_presence_matches_fork(
+        ulong timestamp, Hash256? withdrawalsRoot, ulong? blobGasUsed, ulong? excessBlobGas, Hash256? requestsHash, Hash256? parentBeaconBlockRoot, string? expectedError)
+    {
+        _validator = new HeaderValidator(_blockTree, Always.Valid, MainnetSpecProvider.Instance,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(MainnetSpecProvider.ParisBlockNumber + 1)
+            .WithTimestamp(timestamp)
+            .WithWithdrawalsRoot(withdrawalsRoot)
+            .WithBlobGasUsed(blobGasUsed)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithRequestsHash(requestsHash)
+            .WithParentBeaconBlockRoot(parentBeaconBlockRoot)
+            .TestObject;
+        header.Hash = header.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
         }
     }
 

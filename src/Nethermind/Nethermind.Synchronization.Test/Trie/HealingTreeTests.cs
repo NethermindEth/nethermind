@@ -160,12 +160,13 @@ public class HealingTreeTests
     }
 
     /// <summary>The read members of <see cref="IKeyValueStoreWithBatching"/> a code DB can be asked through.</summary>
-    public enum CodeRead { Get, Indexer, GetSpan, GetIntoSpan, GetOwnedMemory, KeyExists }
+    public enum CodeRead { Get, Indexer, GetSpan, GetIntoSpan, GetOwnedMemory, KeyExists, NativeSlice, NativeSliceOverNativeStore }
 
     [Test]
     public void code_recovery_reaches_every_read_member([Values] CodeRead read)
     {
-        using TestMemDb db = new();
+        // Execution reads code through the native slice, so that read must heal like the rest.
+        using TestMemDb db = read == CodeRead.NativeSliceOverNativeStore ? new NativeTestMemDb() : new TestMemDb();
         (HealingCodeDb codeDb, ICodeRecovery recovery) = HealingCodeDbOver(db);
         recovery.Recover(_key.ValueHash256, Arg.Any<CancellationToken>()).Returns(Task.FromResult<byte[]?>(_rlp));
 
@@ -207,6 +208,7 @@ public class HealingTreeTests
         CodeRead.GetIntoSpan => ReadIntoSpan(codeDb),
         CodeRead.GetOwnedMemory => ReadOwnedMemory(codeDb),
         CodeRead.KeyExists => codeDb.KeyExists(_key.Bytes) ? db[_key.Bytes] : null,
+        CodeRead.NativeSlice or CodeRead.NativeSliceOverNativeStore => ReadNativeSlice(codeDb),
         _ => throw new ArgumentOutOfRangeException(nameof(read), read, null)
     };
 
@@ -220,6 +222,19 @@ public class HealingTreeTests
         finally
         {
             codeDb.DangerousReleaseMemory(span);
+        }
+    }
+
+    private static byte[]? ReadNativeSlice(HealingCodeDb codeDb)
+    {
+        ReadOnlySpan<byte> slice = codeDb.GetNativeSlice(_key.Bytes, out nint handle);
+        try
+        {
+            return slice.IsNull() ? null : slice.ToArray();
+        }
+        finally
+        {
+            codeDb.DangerousReleaseHandle(handle);
         }
     }
 
@@ -408,7 +423,7 @@ public class HealingTreeTests
 
             if (keyScheme == INodeStorage.KeyScheme.HalfPath)
             {
-                Assert.That(mainWorldState.GetCode(_codeAddress), Is.EqualTo(_code));
+                Assert.That(mainWorldState.GetCode(_codeAddress), Is.SequenceEqualTo(_code));
             }
         }
     }

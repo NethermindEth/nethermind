@@ -3,7 +3,6 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -18,12 +17,6 @@ public class GetPayloadV4Result<TVersionedExecutionPayload>(Block block, UInt256
 
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";
-
-    public override bool ValidateFork(ISpecProvider specProvider)
-    {
-        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp));
-        return spec.RequestsEnabled && !spec.IsEip7594Enabled;
-    }
 }
 
 public class GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder) : GetPayloadV4Result<ExecutionPayloadV3>(block, blockFees, blobsBundle, executionRequests, shouldOverrideBuilder);

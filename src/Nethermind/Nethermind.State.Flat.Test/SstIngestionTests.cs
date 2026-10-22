@@ -20,6 +20,7 @@ using Nethermind.RocksDbBindings;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
@@ -338,7 +339,7 @@ public class SstIngestionTests
 
     /// <summary>Observes the fatal-exit decision instead of taking it, which a test process cannot survive.</summary>
     private sealed class ObservablePersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig config, IProcessExitSource? exitSource = null)
-        : RocksDbPersistence(db, logManager, config, exitSource)
+        : RocksDbPersistence(db, logManager, NullTrieNodeLog.Instance, config, exitSource)
     {
         public int FatalShutdownCount { get; private set; }
 
@@ -1054,7 +1055,7 @@ public class SstIngestionTests
     public void PersistViaSstIngestion_on_MemDb_falls_back_and_round_trips()
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> memDb = new();
-        RocksDbPersistence persistence = new(memDb, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
+        RocksDbPersistence persistence = new(memDb, LimboLogs.Instance, NullTrieNodeLog.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
         StateId s1 = State(1, 1);
         UInt256 v1 = Slot(0x11);
 

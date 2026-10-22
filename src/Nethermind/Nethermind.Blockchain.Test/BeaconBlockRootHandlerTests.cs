@@ -160,7 +160,7 @@ public class BeaconBlockRootHandlerTests
             Assert.That(transaction.GasLimit, Is.EqualTo(spec.IsEip8037Enabled ? 31_566_720UL : 30_000_000UL));
             Assert.That(transaction.SenderAddress, Is.EqualTo(Address.SystemUser));
             Assert.That(transaction.To, Is.EqualTo(Eip4788Constants.BeaconRootsAddress));
-            Assert.That(transaction.Data.ToArray(), Is.EqualTo(BeaconRoot.Bytes.ToArray()));
+            Assert.That(transaction.Data, Is.SequenceEqualTo(BeaconRoot.Bytes));
             Assert.That(transaction.Value, Is.EqualTo(UInt256.Zero));
             Assert.That(transaction.GasPrice, Is.EqualTo(UInt256.Zero));
             Assert.That(transaction.AccessList, Is.EqualTo(new AccessList.Builder().AddAddress(Eip4788Constants.BeaconRootsAddress).Build()));

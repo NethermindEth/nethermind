@@ -39,8 +39,6 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
     private ModExpPrecompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(5);
-
     public string Name => "MODEXP";
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;

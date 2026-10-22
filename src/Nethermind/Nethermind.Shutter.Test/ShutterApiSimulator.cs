@@ -71,7 +71,6 @@ public class ShutterApiSimulator(
     public void InsertShutterReceipts(Block block, in LogEntry[] logs)
     {
         TxReceipt[] receipts = new TxReceipt[logs.Length];
-        block.Header.Bloom = new(logs);
         // one log per receipt
         for (int i = 0; i < logs.Length; i++)
         {

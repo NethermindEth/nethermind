@@ -53,8 +53,8 @@ public static class Eip8037BlockGasInclusionCheck
     /// <summary>
     /// Calculates EIP-8037 execution block gas after removing state gas and applying the EIP-7976 calldata floor.
     /// </summary>
-    public static ulong CalculateBlockExecutionGas(ulong preRefundGas, ulong blockStateGas, ulong calldataFloor)
-        => Math.Max(preRefundGas.SaturatingSub(blockStateGas), calldataFloor);
+    public static ulong CalculateBlockExecutionGas(ulong gasUsed, ulong blockStateGas, ulong calldataFloor)
+        => Math.Max(gasUsed.SaturatingSub(blockStateGas), calldataFloor);
 
     /// <summary>Single source for the per-dimension block gas a transaction reserves, shared by block production admission and end-of-block validation.</summary>
     /// <returns>

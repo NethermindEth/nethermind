@@ -342,7 +342,7 @@ public class ZeroNettyP2PHandlerTests
             session.Received(2).ReceiveMessage(Arg.Any<ZeroPacket>());
             if (owner is not null)
             {
-                Assert.That(owner.Memory.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+                Assert.That(owner.Memory, Is.SequenceEqualTo(new byte[] { 1, 2, 3 }));
                 owner.Dispose();
                 Assert.That(retainedBuffer.ReferenceCount, Is.Zero);
             }
@@ -401,7 +401,7 @@ public class ZeroNettyP2PHandlerTests
             handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 8));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(decoded.Data.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3, 4 }));
+                Assert.That(decoded.Data, Is.SequenceEqualTo(new byte[] { 1, 2, 3, 4 }));
                 // Read Hash only after reuse so its delayed preimage must survive the overwrite.
                 Assert.That(decoded.Hash, Is.EqualTo(expectedHash));
             }

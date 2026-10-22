@@ -96,7 +96,8 @@ public class Eip2930Tests
 
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json)!;
 
-        Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.AccessList));
+        // A null accessList is the same as an omitted one, so it doesn't select the access-list type.
+        Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.EIP1559));
         Assert.That(((AccessListTransactionForRpc)transactionForRpc).AccessList, Is.Null);
     }
 

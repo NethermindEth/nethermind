@@ -11,29 +11,6 @@ namespace Nethermind.JsonRpc;
 internal static class JsonRpcArrayReader
 {
 
-    public static int CountItems(ReadOnlyMemory<byte> arrayBody)
-    {
-        Utf8JsonReader reader = new(arrayBody.Span, isFinalBlock: true, state: default);
-        if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
-        {
-            ThrowExpectedJsonArray();
-        }
-
-        int count = 0;
-        while (reader.Read())
-        {
-            if (reader.TokenType == JsonTokenType.EndArray)
-            {
-                return count;
-            }
-
-            reader.Skip();
-            count++;
-        }
-
-        return ThrowIncompleteJsonArray();
-    }
-
     public static bool TryReadNextItem(
         ReadOnlyMemory<byte> arrayBody,
         ref int offset,
@@ -63,22 +40,7 @@ internal static class JsonRpcArrayReader
         itemLength = 0;
         Utf8JsonReader reader = new(arrayBody.Span[offset..], isFinalBlock: true, state: readerState);
 
-        if (!started)
-        {
-            if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
-            {
-                ThrowExpectedJsonArray();
-            }
-
-            started = true;
-        }
-
-        if (!reader.Read())
-        {
-            ThrowIncompleteJsonArray();
-        }
-
-        if (reader.TokenType == JsonTokenType.EndArray)
+        if (!TryReadItemStart(ref reader, ref started))
         {
             offset += (int)reader.BytesConsumed;
             readerState = reader.CurrentState;
@@ -94,11 +56,35 @@ internal static class JsonRpcArrayReader
         return true;
     }
 
+    /// <summary>Moves <paramref name="reader"/> onto the first token of the next array item.</summary>
+    /// <param name="reader">Before the array's start while <paramref name="started"/> is <c>false</c>, otherwise on the previous item's last token.</param>
+    /// <param name="started">Whether the array's start was already read; set once it is.</param>
+    /// <returns><c>false</c> if <paramref name="reader"/> is on the array's end instead.</returns>
+    public static bool TryReadItemStart(ref Utf8JsonReader reader, ref bool started)
+    {
+        if (!started)
+        {
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
+            {
+                ThrowExpectedJsonArray();
+            }
+
+            started = true;
+        }
+
+        if (!reader.Read())
+        {
+            ThrowIncompleteJsonArray();
+        }
+
+        return reader.TokenType != JsonTokenType.EndArray;
+    }
+
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowExpectedJsonArray() =>
         throw new JsonException("Expected JSON array.");
 
     [DoesNotReturn, StackTraceHidden]
-    private static int ThrowIncompleteJsonArray() =>
+    private static void ThrowIncompleteJsonArray() =>
         throw new JsonException("Incomplete JSON array.");
 }

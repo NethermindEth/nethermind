@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
@@ -11,9 +12,11 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Test.P2P.Subprotocols;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -59,6 +62,12 @@ public class ProtocolHandlerBaseTests
         public void ScheduleHandlerSyncServeTask(TestRequestMessage request) =>
             BackgroundTaskScheduler.TryScheduleSyncServe<TestProtocolHandler, TestRequestMessage, TestResponseMessage, TestSyncServeRequestHandler>(this, request);
         public TestRequestMessage Deserialize(byte[] data) => Deserialize<TestRequestMessage>(data);
+        public void HandleProjectionFailure(MessageDictionary<ProjectionRequestMessage, int> requests, IByteBuffer content) =>
+            HandleCorrelatedResponse<ProjectionRequestMessage, ProjectionResponseMessage, int>(
+                requests,
+                content,
+                content.ReadableBytes,
+                static (_, _) => throw new InvalidOperationException("projection failed"));
         public override void Init() { }
         public override void Dispose() { }
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
@@ -77,16 +86,29 @@ public class ProtocolHandlerBaseTests
         }
     }
 
-    private sealed class NoopBackgroundTaskScheduler : IBackgroundTaskScheduler
-    {
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
-            where TReq : notnull, IBackgroundTaskRequest<TReq> => true;
-    }
-
     private readonly struct TestSyncServeRequestHandler : ISyncServeRequestHandler<TestProtocolHandler, TestRequestMessage, TestResponseMessage>
     {
         public static Task<TestResponseMessage> Execute(TestProtocolHandler handler, TestRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new TestResponseMessage());
+    }
+
+    /// <summary>
+    /// Records the runner delegate the most recently scheduled task was dispatched with.
+    /// </summary>
+    /// <remarks>
+    /// A cached runner is handed to the scheduler by reference, so repeated scheduling yielding the same
+    /// instance is what proves no per-call wrapper delegate is allocated.
+    /// </remarks>
+    private sealed class RunnerCapturingBackgroundTaskScheduler : IBackgroundTaskScheduler
+    {
+        public Delegate? CapturedRunner { get; private set; }
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            CapturedRunner = fulfillFunc;
+            return true;
+        }
     }
 
     /// <summary>Records the name each scheduled task is reported under.</summary>
@@ -126,8 +148,14 @@ public class ProtocolHandlerBaseTests
     {
         NameCapturingBackgroundTaskScheduler scheduler = new();
         TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
-        TestRequestMessage request = new();
 
+        Schedule(handler, path, new TestRequestMessage());
+
+        Assert.That(scheduler.ReportedName, Is.EqualTo(nameof(TestRequestMessage)));
+    }
+
+    private static void Schedule(TestProtocolHandler handler, SchedulingPath path, TestRequestMessage request)
+    {
         switch (path)
         {
             case SchedulingPath.SyncServeTask:
@@ -143,14 +171,42 @@ public class ProtocolHandlerBaseTests
                 handler.ScheduleBackgroundTaskFor(request);
                 break;
         }
-
-        Assert.That(scheduler.ReportedName, Is.EqualTo(nameof(TestRequestMessage)));
     }
 
     private sealed class TestResponseMessage : P2PMessage
     {
         public override int PacketType => 2;
         public override string Protocol => "test";
+    }
+
+    private sealed class ProjectionRequestMessage : Eth66MessageBase
+    {
+        public ProjectionRequestMessage(long requestId) : base(false) => RequestId = requestId;
+
+        public override int PacketType => 3;
+        public override string Protocol => "eth";
+        public bool IsDisposed { get; private set; }
+
+        public override void Dispose()
+        {
+            IsDisposed = true;
+            base.Dispose();
+        }
+    }
+
+    private sealed class ProjectionResponseMessage : Eth66MessageBase
+    {
+        public ProjectionResponseMessage(long requestId) : base(false) => RequestId = requestId;
+
+        public override int PacketType => 4;
+        public override string Protocol => "eth";
+        public bool IsDisposed { get; private set; }
+
+        public override void Dispose()
+        {
+            IsDisposed = true;
+            base.Dispose();
+        }
     }
 
     [Test]
@@ -192,35 +248,52 @@ public class ProtocolHandlerBaseTests
     }
 
     [Test]
-    public void Sync_serve_task_scheduling_does_not_allocate_wrapper_delegate()
+    public void Scheduling_does_not_allocate_wrapper_delegate([Values] SchedulingPath path)
     {
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), new NoopBackgroundTaskScheduler());
+        RunnerCapturingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), scheduler);
         TestRequestMessage request = new();
 
-        handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
+        Schedule(handler, path, request);
+        Delegate? firstRunner = scheduler.CapturedRunner;
 
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Schedule(handler, path, request);
 
-        handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        Assert.That(allocated, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstRunner, Is.Not.Null);
+            Assert.That(scheduler.CapturedRunner, Is.SameAs(firstRunner));
+        }
     }
 
     [Test]
-    public void Sync_serve_value_task_scheduling_does_not_allocate_wrapper_delegate()
+    public void Correlated_response_disposes_decoded_message_when_projection_fails()
     {
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), new NoopBackgroundTaskScheduler());
-        TestRequestMessage request = new();
+        IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();
+        ProjectionResponseMessage response = new(111);
+        serializationService.Deserialize<ProjectionResponseMessage>(Arg.Any<IByteBuffer>()).Returns(callInfo =>
+        {
+            IByteBuffer content = (IByteBuffer)callInfo[0];
+            content.SkipBytes(content.ReadableBytes);
+            return response;
+        });
+        TestProtocolHandler handler = new(
+            Substitute.For<ISession>(),
+            TimeSpan.FromMilliseconds(50),
+            serializationService: serializationService);
+        MessageDictionary<ProjectionRequestMessage, int> requests = new(handler);
+        Request<ProjectionRequestMessage, int> request = new(new ProjectionRequestMessage(111));
+        requests.Send(request);
 
-        handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
+        using DisposableByteBuffer content = UndecodableResponse.Create(111).AsDisposable();
+        Assert.That(() => handler.HandleProjectionFailure(requests, content), Throws.TypeOf<InvalidOperationException>());
 
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-
-        handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        Assert.That(allocated, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.IsDisposed, Is.True);
+            Assert.That(request.Message.IsDisposed, Is.True);
+            Assert.That(request.CompletionSource.Task.IsCanceled, Is.True);
+        }
     }
 
     [Test]

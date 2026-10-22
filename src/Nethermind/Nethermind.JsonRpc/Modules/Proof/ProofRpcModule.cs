@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
@@ -116,26 +115,20 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            if (spec.IsEip8116Enabled)
+            {
+                tracedReceipts.SetEip8116GasUsed();
+            }
 
-            int logIndexStart = GetLogIndexStart(txs, storedReceipts, txIndex);
+            int logIndexStart = spec.IsEip8116Enabled ? 0 : GetLogIndexStart(txs, storedReceipts, txIndex);
 
+            TxReceipt provenReceipt = new(receipt) { Index = txIndex, BlockHash = block.Hash, BlockNumber = block.Number };
             receiptWithProof.Receipt = new ReceiptForRpc(
                 txHash,
-                receipt,
+                provenReceipt,
                 block.Timestamp,
                 txs[txIndex].GetGasInfo(spec, block.Header),
                 logIndexStart);
-            // ReceiptForRpc (and each LogEntryForRpc) copies the stored Index and block coordinates; the proofs below
-            // attest to the resolved block and the transaction's position in it.
-            receiptWithProof.Receipt.TransactionIndex = txIndex;
-            receiptWithProof.Receipt.BlockHash = block.Hash;
-            receiptWithProof.Receipt.BlockNumber = block.Number;
-            foreach (LogEntryForRpc log in receiptWithProof.Receipt.Logs)
-            {
-                log.TransactionIndex = txIndex;
-                log.BlockHash = block.Hash!;
-                log.BlockNumber = block.Number;
-            }
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, tracedReceipts, txIndex);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), txIndex);
 
@@ -171,14 +164,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
+            using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
             AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 
             return ResultWrapper<AccountProofWithMeta>.Success(new AccountProofWithMeta
             {
-                Proof = accountProofCollector.BuildResult(),
+                Proof = EthRpcModule.EchoStorageKeys(accountProofCollector.BuildResult(), storageKeys),
                 Meta = new ProofMeta
                 {
                     NodeLookups = diagnostics.NodeLookups,

@@ -16,7 +16,10 @@ public sealed partial class JumpDestinationAnalyzer
 {
     // Volatile so a thread reading a bitmap another thread built sees it complete; threads that use shared code first
     // at the same time each build it, and the bitmaps are identical.
-    private volatile long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
+    private volatile long[]? _jumpDestinationBitmap = (codeInfo.CodeLength == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
+
+    /// <summary>The bitmap jumps are checked against when EIP-7979 adds no destination.</summary>
+    private long[] PlainJumpBitmap => JumpDestinationBitmap;
 
     private const int BytesPerUInt64 = sizeof(ulong);
     private const int ScalarWordThreshold = 64;

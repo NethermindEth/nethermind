@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -34,7 +35,7 @@ public class ImporterTests
         _trieDb = new MemDb();
         _stateTree = new StateTree(new RawScopedTrieStore(_trieDb), LimboLogs.Instance);
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
         _importer = new Importer(new NodeStorage(_trieDb), _persistence, LimboLogs.Instance);
     }
 

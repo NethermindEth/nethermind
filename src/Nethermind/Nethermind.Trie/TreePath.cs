@@ -21,7 +21,7 @@ namespace Nethermind.Trie;
 /// </summary>
 [Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
-public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
+public partial struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 {
     public const int MemorySize = 36;
     public ValueHash256 Path;
@@ -37,7 +37,11 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         Length = length;
     }
 
-    public int Length { get; private set; }
+    // Word-sized, in the room the struct's padding leaves: a zkVM guest proves a 32-bit access at several times an
+    // aligned 64-bit one.
+    private nint _length;
+
+    public int Length { readonly get => (int)_length; private set => _length = value; }
 
     public static TreePath FromPath(ReadOnlySpan<byte> pathHash)
     {
@@ -159,7 +163,8 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            int offset = index / 2;
+            // Unsigned, so the halving is a single shift and every negative index, -1 included, falls outside the span.
+            int offset = (int)((uint)index / 2);
             Span<byte> theSpan = Span;
             int b = theSpan[offset];
             if ((index & 1) == 0)
@@ -174,7 +179,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         set
         {
-            int offset = index / 2;
+            int offset = (int)((uint)index / 2);
             Span<byte> theSpan = Span;
             ref byte b = ref theSpan[offset];
             if ((index & 1) == 0)

@@ -40,9 +40,12 @@ public class FlatDbConfig : IFlatDbConfig
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
+    public bool DeferStorageTrieCommit { get; set; } = true;
+    public bool ApplyStorageWritesOnIdleThread { get; set; } = true;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
+    public ulong MaxInMemorySnapshotBytes { get; set; } = 0;
     public ulong MaxReorgDepth { get; set; } = 256;
     public ulong MinReorgDepth { get; set; } = 128;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
@@ -63,4 +66,15 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong PersistedSnapshotMaxCompactSize { get; set; } = 1024 * 1024;
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
+    public double InMemorySnapshotBloomBitsPerKey { get; set; } = 14.0;
+    public bool TrieNodeLogEnabled { get; set; } = false;
+    public long TrieNodeLogStateBytes { get; set; } = 500.MiB;
+    public long TrieNodeLogStorageBytes { get; set; } = 500.MiB;
+    public int TrieNodeLogStateShardCount { get; set; } = 2;
+    public int TrieNodeLogStorageShardCount { get; set; } = 2;
+    public int TrieNodeLogMergeLag { get; set; } = 1;
+    public bool TrieNodeLogDrainOnShutdown { get; set; } = false;
+    public int TrieNodeLogMaxConcurrentMerges { get; set; } = 2;
+    public int TrieNodeLogMergeBacklogMargin { get; set; } = 2;
+    public int TrieNodeLogSecondLevelMergeLag { get; set; } = 1;
 }

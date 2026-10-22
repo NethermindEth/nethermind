@@ -41,6 +41,7 @@ namespace Nethermind.Api
         public int BackgroundTaskMaxNumber { get; set; } = 2048;
         public bool InRunnerTest { get; set; } = false;
         public bool EvmWarmupEnabled { get; set; } = true;
+        public bool PipelineWarmupEnabled { get; set; } = true;
         public string? DataDir { get; set; }
         public bool HealCanonicalChain { get; set; } = false;
         public long HealCanonicalChainDepth { get; set; } = 8192;

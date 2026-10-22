@@ -5,7 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Nodes;
+using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -15,9 +18,12 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.EthStats;
+using Nethermind.Evm.State;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
@@ -29,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using NUnit.Framework;
@@ -208,6 +215,48 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
+    [TestCase("sepolia.json", 5)]
+    [TestCase("sepolia_archive.json", 5)]
+    [TestCase("hoodi.json", 5)]
+    [TestCase("hoodi_archive.json", 5)]
+    [TestCase("mainnet.json", 30)]
+    [TestCase("mainnet_archive.json", 30)]
+    [TestCase("mainnet_aztec.json", 30)]
+    public void Presets_use_shared_bootnodes_and_preserve_genesis(string configFile, int expectedBootnodeCount)
+    {
+        ConfigProvider configProvider = GetConfigProvider(configFile);
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile(initConfig.ChainSpecPath);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider, chainSpec, useTestSpecProvider: false))
+            .Build();
+        NetworkNode[] bootnodes = container.Resolve<INetworkConfig>().Bootnodes;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootnodes, Has.Length.EqualTo(expectedBootnodeCount));
+            Assert.That(bootnodes.Select(static node => node.ToString()),
+                Is.EqualTo(chainSpec.Bootnodes.Select(static node => node.ToString())));
+        }
+
+        foreach (NetworkNode bootnode in bootnodes)
+        {
+            if (bootnode.IsEnr)
+                Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr, out _), Is.True, bootnode.ToString());
+            else
+                Assert.That(bootnode.IsEnode, Is.True, bootnode.ToString());
+        }
+
+        using ILifetimeScope processingScope = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
+        IWorldState worldState = processingScope.Resolve<IWorldState>();
+        using IDisposable stateScope = worldState.BeginScope(IWorldState.PreGenesis);
+        Block genesis = processingScope.Resolve<IGenesisBuilder>().Build();
+
+        Assert.That(genesis.Hash!.ToString(), Is.EqualTo(initConfig.GenesisHash));
+    }
+
     [TestCase("*")]
     public void Tracer_timeout_default_is_correct(string configWildcard) => Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);
 
@@ -224,6 +273,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("archive", false)]
     [TestCase("mainnet.json", true)]
+    [TestCase("mainnet_aztec.json", true)]
     [TestCase("sepolia.json", true)]
     [TestCase("gnosis.json", true)]
     [TestCase("chiado.json", true)]
@@ -258,6 +308,48 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<ISyncConfig, ulong>(configWildcard, static c => c.AncientReceiptsBarrier, barrier);
     }
 
+    /// <summary>
+    /// An Aztec node traces about 3,600 recent blocks (debug_traceTransaction), so its flat history keeps a rolling
+    /// window with headroom over that, indexed per transaction so a trace does not replay the block ahead of it, and
+    /// its own db path means it always syncs fresh onto the flat backend. Its archiver reads L1 through eth_getLogs,
+    /// which the log index serves.
+    /// </summary>
+    [Test]
+    public void Aztec_config_keeps_a_trace_window()
+    {
+        Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.Enabled, true);
+        Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.HistoryEnabled, true);
+        Test<IFlatDbConfig, HistoryRetentionMode>("mainnet_aztec.json", static c => c.HistoryRetention, HistoryRetentionMode.Rolling);
+        Test<IFlatDbConfig, ulong>("mainnet_aztec.json", static c => c.HistoryRetentionBlocks, 4096UL);
+        Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.HistoryTransactionIndexEnabled, true);
+        Test<ILogIndexConfig, bool>("mainnet_aztec.json", static c => c.Enabled, true);
+        Test<IInitConfig, string>("mainnet_aztec.json", static c => c.BaseDbPath, "nethermind_db/mainnet_aztec");
+    }
+
+    /// <summary>
+    /// mainnet_aztec.json is mainnet.json plus the Aztec node's own settings. Only the pivot is kept in step by the
+    /// sync script, so anything else changed in mainnet.json and not carried over fails here.
+    /// </summary>
+    [Test]
+    public void Aztec_config_is_mainnet_plus_its_own_settings()
+    {
+        JsonObject mainnet = ReadConfig("mainnet.json");
+        JsonObject aztec = ReadConfig("mainnet_aztec.json");
+        foreach ((string section, string key) in (ReadOnlySpan<(string, string)>)[("Init", "BaseDbPath"), ("Init", "LogFileName"), ("Metrics", "NodeName")])
+        {
+            ((JsonObject)mainnet[section]!).Remove(key);
+            ((JsonObject)aztec[section]!).Remove(key);
+        }
+
+        aztec.Remove("FlatDb");
+        aztec.Remove("LogIndex");
+
+        Assert.That(JsonNode.DeepEquals(aztec, mainnet), Is.True, "mainnet_aztec.json has drifted from mainnet.json");
+
+        static JsonObject ReadConfig(string file) =>
+            JsonNode.Parse(File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", file)))!.AsObject();
+    }
+
     [TestCase("^spaceneth", "nethermind_db")]
     [TestCase("spaceneth", "spaceneth_db")]
     public void Base_db_path_is_set(string configWildcard, string startWith) => Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => Assert.That(p, Does.StartWith(startWith), cf));
@@ -271,6 +363,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("mainnet_archive.json", true)]
     [TestCase("mainnet.json", true)]
+    [TestCase("mainnet_aztec.json", true)]
     [TestCase("poacore", true)]
     [TestCase("gnosis", true)]
     [TestCase("volta", false)]
@@ -497,6 +590,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         "hoodi_archive.json",
         "mainnet_archive.json",
         "mainnet.json",
+        "mainnet_aztec.json",
         "poacore.json",
         "poacore_archive.json",
         "gnosis.json",

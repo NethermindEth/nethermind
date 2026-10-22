@@ -43,7 +43,7 @@ public class DisposableScopeOverridableEnvTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.Component.WorldState.GetCodeHash(TestItem.AddressA), Is.EqualTo(Keccak.Compute(code)));
-            Assert.That(scope.Component.CodeInfoRepository.GetCachedCodeInfo(TestItem.AddressA, false, Prague.Instance, out _).Code.ToArray(), Is.EqualTo(code));
+            Assert.That(scope.Component.CodeInfoRepository.GetCachedCodeInfo(TestItem.AddressA, false, Prague.Instance, out _).Code, Is.SequenceEqualTo(code));
         }
     }
 
@@ -158,6 +158,24 @@ public class DisposableScopeOverridableEnvTests
             });
 
         Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)456));
+    }
+
+    [Test]
+    public void PrecompileMoveError_ChecksSourceBeforeDestination([Values] bool isPrecompile, [Values] bool destinationOverridden)
+    {
+        Dictionary<Address, AccountOverride> overrides = [];
+        if (destinationOverridden) overrides.Add(TestItem.AddressB, new());
+        string? expected = !isPrecompile ? $"Account {TestItem.AddressA} is not a precompile"
+            : destinationOverridden ? $"account {TestItem.AddressB} is already overridden" : null;
+
+        string? actual = StateOverridesExtensions.GetPrecompileMoveError(
+            TestItem.AddressA, TestItem.AddressB, isPrecompile, overrides);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(overrides.Count, Is.EqualTo(destinationOverridden ? 1 : 0));
+        }
     }
 
     private sealed class TestContext : IDisposable

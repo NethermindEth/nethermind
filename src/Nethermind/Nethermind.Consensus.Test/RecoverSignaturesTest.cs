@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Concurrent;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Core;
 using NUnit.Framework;
 using Nethermind.Consensus.Processing;
@@ -16,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Serialization.Rlp;
 using Autofac;
 
 namespace Nethermind.Consensus.Test;
@@ -54,6 +58,38 @@ public class RecoverSignaturesTest
 
         Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
         Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+    }
+
+    [Test]
+    public void RecoverData_FrameTxOnlyBlock_RecoversSecp256k1Signer()
+    {
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = BlockchainIds.GenericNonRealNetwork,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, default, default)],
+            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, default)],
+            DecodedMaxFeePerGas = 100,
+        };
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = new Ecdsa().Sign(signer, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, vrs)];
+
+        Block block = Build.A.Block.WithTransactions([tx]).TestObject;
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        RecoverSignatures sut = new(_ecdsa, specProvider, Substitute.For<ILogManager>());
+
+        sut.RecoverData(block);
+
+        Assert.That(tx.FrameSignatures[0].Recovered?.Signer, Is.EqualTo(signer.Address));
+        Assert.That(tx.FrameSignatures[0].Recovered?.Message, Is.EqualTo(sigHash));
     }
 
     [Test]
@@ -125,6 +161,79 @@ public class RecoverSignaturesTest
     private const int PollMs = 5;
 
     [Test]
+    public void Recovery_shares_worker_budget_with_authorization_lists([Values] bool background, [Range(0, 1)] int budget, [Values] bool shared)
+    {
+        ConcurrentBag<int> observedBudgets = [];
+        IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
+        ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<ValueHash256>()).Returns(_ =>
+        {
+            observedBudgets.Add(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0);
+            return TestItem.AddressA;
+        });
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsAuthorizationListEnabled.Returns(true);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IEthereumEcdsa>(ecdsa)
+            .Build();
+        RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
+        Transaction[] txs = new Transaction[4];
+        for (int i = 0; i < txs.Length; i++)
+        {
+            AuthorizationTuple[] authorizations = new AuthorizationTuple[4];
+            for (int j = 0; j < authorizations.Length; j++)
+                authorizations[j] = _ecdsa.Sign(TestItem.PrivateKeyB, 0, Address.Zero, (ulong)j);
+            txs[i] = Build.A.Transaction.WithType(TxType.SetCode).WithNonce((ulong)i)
+                .WithAuthorizationCode(authorizations).SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+        }
+
+        ParallelUnbalancedWork.WorkerGroup? group = shared ? new(budget == 0 ? 2 : budget) : null;
+        using ParallelUnbalancedWork.WorkerScope? entered = group?.Enter();
+        using ParallelUnbalancedWork.WorkerScope? outer = budget == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(budget);
+        if (background)
+        {
+            recovery.StartRecovery(TestItem.KeccakA, txs, spec);
+            Assert.That(() => recovery.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+            if (group?.Concurrency == 1) recovery.RecoverData(txs, spec);
+        }
+        else recovery.RecoverData(txs, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observedBudgets.Count, Is.InRange(16, 20));
+            int expectedBudget = group?.Concurrency ?? (background ? Math.Max(1, Environment.ProcessorCount / 2) : budget == 0 ? Environment.ProcessorCount : budget);
+            Assert.That(observedBudgets, Is.All.EqualTo(expectedBudget));
+            Assert.That(txs.Select(tx => tx.SenderAddress), Is.All.EqualTo(TestItem.AddressA));
+            Assert.That(txs.SelectMany(tx => tx.AuthorizationList!).Select(auth => auth.Authority), Is.All.EqualTo(TestItem.AddressA));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer ?? entered));
+        }
+    }
+
+    /// <summary>
+    /// Block warming looks a block's transactions up by hash on its own threads, the mempool runs' takeover among them;
+    /// background recovery hashes each transaction it recovers as it goes, so none of them is hashed there.
+    /// </summary>
+    [Test]
+    public void StartRecovery_LeavesEveryTransactionItRecoveredHashed([Values(2, 6)] int count)
+    {
+        // Decoded as a payload is: hashed on the first read.
+        Transaction[] txs = TxsDecoder.DecodeTxs(
+            [.. SignedTransactions(count).Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)], skipErrors: false).Transactions;
+        Assert.That(txs.Select(static tx => tx.IsHashCalculated), Is.All.False, "precondition: decoding leaves the hashes to the first read");
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        RecoverSignatures sut = new(_ecdsa, specProvider, Substitute.For<ILogManager>());
+
+        sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create());
+
+        Assert.That(() => sut.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txs.Select(static tx => tx.SenderAddress), Is.All.EqualTo(TestItem.AddressA));
+            Assert.That(txs.Select(static tx => tx.IsHashCalculated), Is.All.True);
+        }
+    }
+
+    [Test]
     public void StartRecovery_WhileRunning_PipelineStepLeavesTheBlockAlone()
     {
         using ManualResetEventSlim gate = new();
@@ -133,7 +242,7 @@ public class RecoverSignaturesTest
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject,
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithSenderAddress(null).TestObject,
         ];
-        // The block constructor copies the array, as the engine payload path does.
+        // The block constructor copies the array, so only the shared transaction objects identify the recovery.
         Block block = new(Build.A.BlockHeader.TestObject, txs, []);
         RecoverSignatures sut = CreateSut(gate, txs[0], txs[1]);
 
@@ -188,6 +297,22 @@ public class RecoverSignaturesTest
     }
 
     [Test]
+    public void StartRecovery_Cancelled_LeavesTheRemainingSendersToThePipeline([Values] bool parallel)
+    {
+        using ManualResetEventSlim gate = new();
+        using CancellationTokenSource cts = new();
+        // More transactions than workers, so a cancelled parallel run cannot have claimed them all.
+        Transaction[] txs = SignedTransactions(parallel ? Environment.ProcessorCount + 4 : 2);
+        RecoverSignatures sut = CreateSut(gate, txs);
+
+        sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create(), cancellationToken: cts.Token);
+        cts.Cancel();
+        ReleaseAndDrain(gate, sut, txs);
+
+        Assert.That(txs.Select(static tx => tx.SenderAddress), Has.Some.Null);
+    }
+
+    [Test]
     public void StartRecovery_ResentPayload_DoesNotStartASecondRecovery()
     {
         using ManualResetEventSlim gate = new();
@@ -226,8 +351,54 @@ public class RecoverSignaturesTest
             Has.Some.SameAs(container.Resolve<RecoverSignatures>()));
     }
 
-    private static Transaction Signed(PrivateKey signer, ulong nonce) =>
-        Build.A.Transaction.WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
+    public enum Encodings { SignedTampered, Swapped, Short }
+
+    /// <summary>Signed payloads are hashed out of the given encodings, and encodings of other transactions are ignored.</summary>
+    [Test]
+    public void Recovery_HashesSignedPayloadsOutOfAlignedEncodings(
+        [Values] bool background, [Values] Encodings kind, [Values(TxType.Legacy, TxType.EIP1559)] TxType type)
+    {
+        // Legacy senders bypass the sender cache, and a random nonce gives typed transactions hashes it has not seen.
+        // An encoding carrying the transaction's own signature over another payload makes its use show in the
+        // recovered addresses.
+        ulong nonce = TestContext.CurrentContext.Random.NextULong(ulong.MaxValue / 2);
+        Transaction[] txs = [Signed(TestItem.PrivateKeyA, nonce, type), Signed(TestItem.PrivateKeyB, nonce + 1, type)];
+        byte[][] encodings = kind switch
+        {
+            Encodings.SignedTampered => [EncodeTampered(txs[0]), EncodeTampered(txs[1])],
+            Encodings.Swapped => [Encode(txs[1]), Encode(txs[0])],
+            _ => [Encode(txs[0])],
+        };
+        bool used = kind == Encodings.SignedTampered;
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        RecoverSignatures sut = new(_ecdsa, specProvider, Substitute.For<ILogManager>());
+
+        if (background)
+        {
+            sut.StartRecovery(TestItem.KeccakA, txs, spec, encodings);
+            Assert.That(() => sut.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+        }
+        else
+        {
+            sut.RecoverData(new Block(Build.A.BlockHeader.TestObject, txs, []) { EncodedTransactions = encodings });
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txs[0].SenderAddress, used ? Is.Not.EqualTo(TestItem.PrivateKeyA.Address) : Is.EqualTo(TestItem.PrivateKeyA.Address));
+            Assert.That(txs[1].SenderAddress, used ? Is.Not.EqualTo(TestItem.PrivateKeyB.Address) : Is.EqualTo(TestItem.PrivateKeyB.Address));
+        }
+    }
+
+    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+    private static byte[] EncodeTampered(Transaction tx) =>
+        Encode(Build.A.Transaction.WithType(tx.Type).WithChainId(tx.ChainId).WithNonce(tx.Nonce + 2).WithSignature(tx.Signature!).TestObject);
+
+    private static Transaction Signed(PrivateKey signer, ulong nonce, TxType type = TxType.Legacy) =>
+        Build.A.Transaction.WithType(type).WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
 
     private static Transaction[] SignedTransactions(int count) =>
         Enumerable.Range(0, count).Select(static nonce => Signed(TestItem.PrivateKeyA, (ulong)nonce)).ToArray();

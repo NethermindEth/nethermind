@@ -205,6 +205,7 @@ public class SeqlockCacheTests
         SeqlockCache<SameHashKey, UInt256> cache = new(2);
         using Barrier start = new(4);
         Task[] tasks = new Task[4];
+        int totalHits = 0;
         for (int worker = 0; worker < tasks.Length; worker++)
         {
             int workerId = worker;
@@ -227,10 +228,13 @@ public class SeqlockCacheTests
                     }
                     if (clear && (i & 1023) == 0) cache.Clear();
                 }
-                Assert.That(hits, Is.GreaterThan(0));
+                Interlocked.Add(ref totalHits, hits);
             });
         }
         await Task.WhenAll(tasks);
+        // Not per worker: a writer preempted mid-write keeps its entry locked, and while both ways of the set are
+        // locked every read misses, which can span a running worker's whole loop.
+        Assert.That(totalHits, Is.GreaterThan(0));
     }
 
     [Test]
@@ -759,9 +763,12 @@ public class SeqlockCacheTests
     {
         // All keys share the same hash → same 2 slots (way 0 + way 1).
         // The hash-signature check always passes, so correctness relies on seqlock + Equals.
-        SeqlockCache<SameHashKey, object> cache = new();
+        SeqlockCache<SameHashKey, object> cache = new(1);
 
         const int keyCount = 16;
+        const int writerCount = 4;
+        // Keeps every cache below one 16-bit sequence cycle, past which a stalled reader can hit the documented ABA.
+        const int roundsPerCache = (1 << 16) / (writerCount * keyCount) - 1;
         SameHashKey[] keys = new SameHashKey[keyCount];
         object[] values = new object[keyCount];
         for (int i = 0; i < keyCount; i++)
@@ -770,26 +777,36 @@ public class SeqlockCacheTests
             values[i] = new object(); // unique reference identity
         }
 
-        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(2));
+        using CancellationTokenSource cts = new();
         string? failure = null;
         int failureCount = 0;
 
-        // 4 writers continuously cycling through all key-value pairs
-        Task[] writers = new Task[4];
-        for (int w = 0; w < writers.Length; w++)
+        // 4 writers continuously cycling through all key-value pairs, moving to a fresh cache before its sequences can wrap
+        Task writing = Task.Run(() =>
         {
-            writers[w] = Task.Run(() =>
+            Task[] writers = new Task[writerCount];
+            while (!cts.IsCancellationRequested && failure is null)
             {
-                while (!cts.IsCancellationRequested && failure is null)
+                SeqlockCache<SameHashKey, object> current = cache;
+                for (int w = 0; w < writers.Length; w++)
                 {
-                    for (int i = 0; i < keyCount; i++)
+                    writers[w] = Task.Run(() =>
                     {
-                        SameHashKey k = keys[i];
-                        cache.Set(in k, values[i]);
-                    }
+                        for (int round = 0; round < roundsPerCache && failure is null; round++)
+                        {
+                            for (int i = 0; i < keyCount; i++)
+                            {
+                                SameHashKey k = keys[i];
+                                current.Set(in k, values[i]);
+                            }
+                        }
+                    });
                 }
-            });
-        }
+
+                Task.WaitAll(writers);
+                Volatile.Write(ref cache, new SeqlockCache<SameHashKey, object>(1));
+            }
+        });
 
         // 4 readers: if TryGetValue(key_i) hits, the value MUST be values[i]
         Task[] readers = new Task[4];
@@ -800,10 +817,11 @@ public class SeqlockCacheTests
             {
                 while (!cts.IsCancellationRequested && failure is null)
                 {
+                    SeqlockCache<SameHashKey, object> current = Volatile.Read(ref cache);
                     for (int i = 0; i < keyCount; i++)
                     {
                         SameHashKey k = keys[i];
-                        if (cache.TryGetValue(in k, out object? val) && val is not null
+                        if (current.TryGetValue(in k, out object? val) && val is not null
                             && !ReferenceEquals(val, values[i]))
                         {
                             Interlocked.Increment(ref failureCount);
@@ -817,7 +835,10 @@ public class SeqlockCacheTests
             });
         }
 
-        Task.WaitAll(writers);
+        // Cancel from the test thread: a timer callback needs a pool thread, which the spinning tasks can starve.
+        Thread.Sleep(TimeSpan.FromSeconds(2));
+        cts.Cancel();
+        writing.Wait();
         Task.WaitAll(readers);
 
         Assert.That(failure, Is.Null, $"wrong key-value pairing detected {failureCount} time(s)");

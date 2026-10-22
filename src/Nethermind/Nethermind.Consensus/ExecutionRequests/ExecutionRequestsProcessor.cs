@@ -11,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -22,7 +21,7 @@ using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
+public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
 {
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
 
@@ -89,16 +88,24 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
     {
         _transactionProcessor = transactionProcessor;
-        _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
-        _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
-        _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
-        _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
+        SetSystemCallHashes();
     }
+
+    /// <summary>Stamps the system calls with their transaction hashes.</summary>
+    /// <remarks>
+    /// Implemented in <c>ExecutionRequestsProcessor.std.cs</c> only. The zkEVM guest leaves the hashes unset, as
+    /// the EIP-4788 beacon root system call always does: executing a system call does not read its hash, while
+    /// computing one resolves the transaction encoder's generic virtual methods through the NativeAOT type loader.
+    /// That is sound while the hashes reach nothing the guest outputs or validates: the calls get no receipt, run only
+    /// under the private <c>CallOutputTracer</c> in <c>ReadRequests</c>, and the block access list keys their changes
+    /// by block access index rather than by transaction.
+    /// </remarks>
+    partial void SetSystemCallHashes();
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Hints the prewarmer with the fixed queue words that every enabled dequeue system call reads. The addresses are
-    /// taken from the system calls themselves, so the hint cannot drift from the accounts the calls actually target.
+    /// Hints the prewarmer with the fixed queue words that every enabled dequeue system call reads, at the contract
+    /// addresses the spec resolves for this block, which are the same addresses the dequeue calls target.
     /// </remarks>
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
     {
@@ -108,28 +115,28 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
         bool hasContract = false;
         if (spec.WithdrawalRequestsEnabled)
         {
-            AddQueueContract(builder, _withdrawalTransaction);
+            AddQueueContract(builder, spec.Eip7002ContractAddress!);
             hasContract = true;
         }
 
         if (spec.ConsolidationRequestsEnabled)
         {
-            AddQueueContract(builder, _consolidationTransaction);
+            AddQueueContract(builder, spec.Eip7251ContractAddress!);
             hasContract = true;
         }
 
         if (spec.BuilderRequestsEnabled)
         {
-            AddQueueContract(builder, _builderDepositTransaction);
-            AddQueueContract(builder, _builderExitTransaction);
+            AddQueueContract(builder, _builderDepositTransaction.To!);
+            AddQueueContract(builder, _builderExitTransaction.To!);
             hasContract = true;
         }
 
         return hasContract ? builder.Build() : null;
 
-        static void AddQueueContract(AccessList.Builder builder, SystemCall dequeueCall)
+        static void AddQueueContract(AccessList.Builder builder, Address queueContract)
         {
-            builder.AddAddress(dequeueCall.To!);
+            builder.AddAddress(queueContract);
             for (ulong slot = 0; slot < QueueStorageOffset; slot++)
             {
                 UInt256 index = slot;
@@ -150,14 +157,14 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
 
             if (spec.WithdrawalRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7002ContractAddress, ref requests, _withdrawalTransaction,
+                ReadRequests(block, state, spec.Eip7002ContractAddress!, ref requests, ForContract(_withdrawalTransaction, spec.Eip7002ContractAddress!),
                     ExecutionRequestType.WithdrawalRequest,
                     BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
             }
 
             if (spec.ConsolidationRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests, _consolidationTransaction,
+                ReadRequests(block, state, spec.Eip7251ContractAddress!, ref requests, ForContract(_consolidationTransaction, spec.Eip7251ContractAddress!),
                     ExecutionRequestType.ConsolidationRequest,
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
             }
@@ -174,28 +181,14 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
                     BlockErrorMessages.BuilderExitsContractEmpty, BlockErrorMessages.BuilderExitsContractFailed);
             }
 
-            RecordRequests(block, ref requests);
+            block.ExecutionRequests = [.. requests];
+            block.Header.RequestsHash =
+                ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
         }
         finally
         {
             requests.Dispose();
         }
-    }
-
-    /// <summary>
-    /// Records the requests derived from execution onto the block and computes the requests hash.
-    /// </summary>
-    /// <remarks>
-    /// The request system calls are always executed (their state effects matter); this only controls
-    /// whether the derived requests are written back to the block header. Stateless validation
-    /// overrides this to a no-op so the block keeps the consensus-layer-provided requests hash, which
-    /// the statelessly re-executed state transition does not re-derive.
-    /// </remarks>
-    protected virtual void RecordRequests(Block block, ref ArrayPoolListRef<byte[]> requests)
-    {
-        block.ExecutionRequests = [.. requests];
-        block.Header.RequestsHash =
-            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 
     private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ref ArrayPoolListRef<byte[]> requests)
@@ -275,6 +268,20 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
         data.AsSpan(dataOffset + AbiWordSize, length).CopyTo(buffer.Slice(bufferOffset, length));
         bufferOffset += length;
     }
+
+    /// <summary>Returns the dequeue call for <paramref name="contractAddress"/>, reusing the prehashed template when the chain uses the predeploy.</summary>
+    private static SystemCall ForContract(SystemCall template, Address contractAddress) =>
+        template.To == contractAddress
+            ? template
+            : new SystemCall
+            {
+                Value = 0,
+                Data = Array.Empty<byte>(),
+                To = contractAddress,
+                SenderAddress = Address.SystemUser,
+                GasLimit = GasLimit,
+                GasPrice = 0,
+            };
 
     private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
         Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)

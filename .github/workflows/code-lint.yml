@@ -18,13 +18,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Free up disk space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -43,7 +36,7 @@ jobs:
             -p:EnforceCodeStyleInBuild=true \
             -p:TreatWarningsAsErrors=false \
             -p:GenerateDocumentationFile=true \
-            -p:NoWarn=CS0419%3BCS1570%3BCS1572%3BCS1573%3BCS1574%3BCS1584%3BCS1587%3BCS1591%3BCS1658%3BCS1711%3BCS1712%3BCS1723%3BCS1734%3BCS1735%3BNU1701%3BNUnit1032 2>&1 | awk '!seen[$0]++' | tee /tmp/build.log
+            -p:NoWarn=CS0419%3BCS1570%3BCS1572%3BCS1573%3BCS1574%3BCS1584%3BCS1587%3BCS1591%3BCS1658%3BCS1711%3BCS1712%3BCS1723%3BCS1734%3BCS1735%3BNU1701%3BNUnit1032%3BNMEVM0001 2>&1 | awk '!seen[$0]++' | tee /tmp/build.log
           ! grep -qP "warning (IDE|CA)\d+" /tmp/build.log
 
   rpc-bench-scripts:
@@ -85,8 +78,26 @@ jobs:
       - name: Run script test suites
         run: python -m unittest discover -s scripts/ci -p 'test*.py' -v
 
-      - name: Test code review publication guards
-        run: node --test scripts/ci/test-open-code-review.cjs
+  zisk-bench-scripts:
+    name: Test zkVM benchmark scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # Covers the emulator-log parse the guest cost report is built on, and the check that
+      # stateless-tests.yml still builds its matrix from inputs.json rather than restating it.
+      # Both fail silently otherwise: a drifted parse reports nothing, a second block list
+      # lets the benchmark report on blocks the tests never verified.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/zisk-bench -p 'test*.py' -v
 
   expb-script-tests:
     name: Test EXPB campaign driver

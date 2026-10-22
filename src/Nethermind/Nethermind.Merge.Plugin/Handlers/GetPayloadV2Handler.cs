@@ -20,6 +20,8 @@ public class GetPayloadV2Handler(
     ILogManager logManager)
     : GetPayloadHandlerBase<GetPayloadV2Result>(EngineApiVersions.GetPayload.V2, payloadPreparationService, specProvider, logManager)
 {
+    protected override bool ValidateFork(IReleaseSpec spec) => !spec.IsCancunEnabled;
+
     protected override GetPayloadV2Result GetPayloadResultFromBlock(IBlockProductionContext context) =>
         new(context.CurrentBestBlock!, context.BlockFees);
 }

@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.CodeAnalysis;
@@ -276,7 +278,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.ShouldRevert, Is.False);
-                Assert.That(result.Output.ToArray(), Is.EqualTo(expected));
+                Assert.That(result.Output, Is.SequenceEqualTo(expected));
                 Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(largeOutput.Length));
             }
         }
@@ -298,7 +300,7 @@ namespace Nethermind.Evm.Test
             {
                 Assert.That(tracer.Assigned, Is.True);
                 Assert.That(result.ShouldRevert, Is.EqualTo(reverts));
-                Assert.That(result.Output.ToArray(), Is.EqualTo(assignedOutput));
+                Assert.That(result.Output, Is.SequenceEqualTo(assignedOutput));
             }
         }
 
@@ -323,7 +325,7 @@ namespace Nethermind.Evm.Test
 
             ExecuteDirect(secondCode);
 
-            Assert.That(retainedOutput.ToArray(), Is.EqualTo(firstOutput));
+            Assert.That(retainedOutput, Is.SequenceEqualTo(firstOutput));
         }
 
         [Test]
@@ -356,7 +358,45 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
-                Assert.That(result.Output.ToArray(), Is.EqualTo(new byte[] { 0x2a }));
+                Assert.That(result.Output, Is.SequenceEqualTo(new byte[] { 0x2a }));
+            }
+        }
+
+        [Test]
+        public void Top_level_create_deployed_code_survives_a_later_nested_return()
+        {
+            byte[] runtimeCode = Prepare.EvmCode
+                .PushData(0x2a).PushData(0).Op(Instruction.MSTORE8)
+                .PushData(1).PushData(0).Op(Instruction.RETURN)
+                .Op(Instruction.STOP).Op(Instruction.STOP).Op(Instruction.STOP)
+                .Op(Instruction.STOP).Op(Instruction.STOP).Op(Instruction.STOP)
+                .Done;
+            Assert.That(BitOperations.IsPow2(runtimeCode.Length), "precondition: a power-of-two length would fill the reusable scratch exactly");
+            byte[] initCode = Prepare.EvmCode.StoreDataInMemory(0, runtimeCode)
+                .RETURN(0, (UInt256)runtimeCode.Length)
+                .Done;
+            (Block block, Transaction deployTx) = PrepareInitTx(Activation, 100_000, initCode);
+            Address deployed = ContractAddress.From(Sender, deployTx.Nonce);
+            _processor.Execute(deployTx, new BlockExecutionContext(block.Header, Spec), new ReceiptOnlyTracer());
+
+            Address filler = TestItem.AddressC;
+            byte[] fillerOutput = Enumerable.Repeat((byte)0x99, runtimeCode.Length).ToArray();
+            TestState.CreateAccount(filler, UInt256.Zero);
+            TestState.InsertCode(filler,
+                Prepare.EvmCode.StoreDataInMemory(0, fillerOutput).RETURN(0, (UInt256)fillerOutput.Length).Done,
+                SpecProvider.GenesisSpec);
+
+            Assert.That(TestState.GetCode(deployed), Is.SequenceEqualTo(runtimeCode), "precondition: the create stores the returned bytes");
+
+            ExecuteDirect(Prepare.EvmCode
+                .CALL(100_000, filler, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .RETURN(0, (UInt256)runtimeCode.Length)
+                .Done, new ReceiptOnlyTracer());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(fillerOutput.Length), "the nested return went through the reusable scratch");
+                Assert.That(TestState.GetCode(deployed), Is.SequenceEqualTo(runtimeCode), "later return staging must not rewrite stored code");
             }
         }
 
@@ -376,10 +416,81 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(tracer.Outputs.Count, Is.GreaterThanOrEqualTo(2));
-                Assert.That(tracer.Outputs[0].ToArray(), Is.EqualTo(largeOutput));
-                Assert.That(tracer.Outputs[1].ToArray(), Is.EqualTo(smallOutput));
+                Assert.That(tracer.Outputs[0], Is.SequenceEqualTo(largeOutput));
+                Assert.That(tracer.Outputs[1], Is.SequenceEqualTo(smallOutput));
                 Assert.That(Machine.RetainedReturnDataScratchLength, Is.Zero);
             }
+        }
+
+        [TestCase(false, false, false, false, true, TestName = "Nested_return_scratch_WithoutRetainingTracer_IsUsed")]
+        [TestCase(true, false, false, false, false, TestName = "Nested_return_scratch_WhenTracingActions_IsNotUsed")]
+        [TestCase(false, true, false, false, false, TestName = "Nested_return_scratch_WhenTracingInstructions_IsNotUsed")]
+        [TestCase(false, false, true, false, false, TestName = "Nested_return_scratch_WhenTracingMemory_IsNotUsed")]
+        [TestCase(false, false, false, true, false, TestName = "Nested_return_scratch_WhenTracingReturnData_IsNotUsed")]
+        public void Nested_return_scratch_follows_tracer_capabilities(
+            bool actions, bool instructions, bool memory, bool returnData, bool expectScratch)
+        {
+            (Address largeTarget, _, byte[] largeOutput, _) = SetUpSiblingReturnTargets(false);
+            byte[] parentCode = Prepare.EvmCode
+                .CALL(100_000, largeTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+
+            ExecuteDirect(parentCode, new TracingFlagsTracer(actions, instructions, memory, returnData));
+
+            Assert.That(Machine.RetainedReturnDataScratchLength,
+                expectScratch ? Is.GreaterThanOrEqualTo(largeOutput.Length) : Is.Zero,
+                "a tracer that may keep a nested output must disable the reusable return scratch");
+        }
+
+        [Test]
+        public void Top_level_output_uses_scratch_only_when_the_tracer_reads_no_output(
+            [Values] bool reverts, [Values] bool tracesOutput, [Values] bool isCreate)
+        {
+            byte[] data = [0x01, 0x02, 0x03];
+            Prepare code = Prepare.EvmCode.StoreDataInMemory(0, data);
+
+            TransactionSubstate result = ExecuteDirect(
+                (reverts ? code.REVERT(0, (UInt256)data.Length) : code.RETURN(0, (UInt256)data.Length)).Done,
+                new OutputFilterTracer(tracesOutput),
+                isCreate ? ExecutionType.CREATE : ExecutionType.TRANSACTION);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.ShouldRevert, Is.EqualTo(reverts));
+                Assert.That(result.Output, Is.SequenceEqualTo(data));
+                Assert.That(Machine.RetainedReturnDataScratchLength,
+                    tracesOutput || isCreate ? Is.Zero : Is.GreaterThanOrEqualTo(data.Length),
+                    "only a call whose output no tracer reads may stage it in the reusable scratch");
+            }
+        }
+
+        [Test]
+        public void Transaction_output_reaches_only_a_tracer_that_reads_it([Values] bool reverts, [Values] bool tracesOutput)
+        {
+            byte[] data = [0x01, 0x02, 0x03];
+            Prepare code = Prepare.EvmCode.StoreDataInMemory(0, data);
+
+            OutputFilterAllTracer tracer = Execute(
+                new OutputFilterAllTracer(tracesOutput),
+                (reverts ? code.REVERT(0, (UInt256)data.Length) : code.RETURN(0, (UInt256)data.Length)).Done);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.StatusCode, Is.EqualTo(reverts ? StatusCode.Failure : StatusCode.Success));
+                Assert.That(tracer.ReturnValue, tracesOutput ? Is.EqualTo(data) : Is.Empty);
+            }
+        }
+
+        private sealed class OutputFilterTracer(bool tracesOutput) : TxTracer, ITxOutputTracingFilter
+        {
+            public override bool IsTracingReceipt => true;
+            public bool IsTracingOutput => tracesOutput;
+        }
+
+        private sealed class OutputFilterAllTracer(bool tracesOutput) : TestAllTracerWithOutput, ITxOutputTracingFilter
+        {
+            public bool IsTracingOutput => tracesOutput;
         }
 
         private (Address LargeTarget, Address SmallTarget, byte[] LargeOutput, byte[] SmallOutput) SetUpSiblingReturnTargets(bool smallReverts)
@@ -421,6 +532,17 @@ namespace Nethermind.Evm.Test
             }
         }
 
+        private sealed class TracingFlagsTracer : TxTracer
+        {
+            public TracingFlagsTracer(bool actions, bool instructions, bool memory, bool returnData)
+            {
+                IsTracingActions = actions;
+                IsTracingInstructions = instructions;
+                IsTracingMemory = memory;
+                IsTracingReturnData = returnData;
+            }
+        }
+
         private sealed class RetainingOutputTracer : TxTracer
         {
             public override bool IsTracingActions => true;
@@ -432,7 +554,7 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        private TransactionSubstate ExecuteDirect(byte[] code, ITxTracer? tracer = null)
+        private TransactionSubstate ExecuteDirect(byte[] code, ITxTracer? tracer = null, ExecutionType executionType = ExecutionType.TRANSACTION)
         {
             if (!TestState.AccountExists(Recipient)) TestState.CreateAccount(Recipient, UInt256.Zero);
 
@@ -441,7 +563,7 @@ namespace Nethermind.Evm.Test
             using StackAccessTracker accessTracker = new();
             Snapshot snapshot = TestState.TakeSnapshot();
             using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromULong(1_000_000), ExecutionType.TRANSACTION, env, in accessTracker, in snapshot);
+                EthereumGasPolicy.FromULong(1_000_000), executionType, env, in accessTracker, in snapshot);
             Machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.Block.TestObject.Header, Spec));
             Machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
 
@@ -536,7 +658,7 @@ namespace Nethermind.Evm.Test
             RetainedCreateInputTracer tracer = new(Machine);
 
             Execute(tracer, createCode);
-            Assert.That(tracer.CreateInput.ToArray(), Is.EqualTo(initCode));
+            Assert.That(tracer.CreateInput, Is.SequenceEqualTo(initCode));
 
             byte[] replacement = new byte[EvmPooledMemory.WordSize];
             Array.Fill(replacement, (byte)0xa5);
@@ -550,7 +672,7 @@ namespace Nethermind.Evm.Test
             {
                 Assert.That(tracer.CreateReverted, Is.True);
                 Assert.That(tracer.SecondTopLevelState, Is.SameAs(tracer.FirstTopLevelState));
-                Assert.That(tracer.CreateInput.ToArray(), Is.EqualTo(initCode));
+                Assert.That(tracer.CreateInput, Is.SequenceEqualTo(initCode));
             }
         }
 

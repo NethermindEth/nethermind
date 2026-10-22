@@ -31,6 +31,12 @@ namespace Nethermind.Serialization.Rlp
             int untilPosition = position + topicsLength;
 
             using ArrayPoolListRef<Hash256> topics = new(topicCount);
+            if (position < untilPosition)
+            {
+                rlp.DecodeZeroPrefixLogTopic0(ref position, out Hash256 topic0);
+                topics.Add(topic0);
+            }
+
             while (position < untilPosition)
             {
                 rlp.DecodeZeroPrefixKeccakNonNull(ref position, out Hash256 topic);
@@ -63,10 +69,10 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
             decoderContext.SkipItem();
 
-            decoderContext.Position = DecodeCompactData(new(decoderContext.Data), decoderContext.Position, out byte[] data);
+            decoderContext.Position = DecodeCompactData(new(decoderContext.Data), decoderContext.Position, out ReadOnlySpan<byte> data, out int zeroPrefix);
             decoderContext.Check(logEntryCheck);
 
-            item = new LogEntryStructRef(address, data, topics);
+            item = new LogEntryStructRef(address, data, topics, zeroPrefix);
         }
 
         public static Hash256[] DecodeTopics(RlpReader reader)
@@ -74,6 +80,11 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = reader.ReadSequenceLength();
             int untilPosition = reader.Position + sequenceLength;
             using ArrayPoolListRef<Hash256> topics = new(sequenceLength * 2 / Rlp.LengthOfKeccakRlp);
+            if (reader.Position < untilPosition)
+            {
+                topics.Add(reader.DecodeZeroPrefixLogTopic0());
+            }
+
             while (reader.Position < untilPosition)
             {
                 topics.Add(reader.DecodeZeroPrefixKeccakNonNull());
@@ -122,13 +133,19 @@ namespace Nethermind.Serialization.Rlp
         /// <returns>The position past the data.</returns>
         private static int DecodeCompactData(LiteRlpReader rlp, int position, out byte[] data)
         {
-            rlp.DecodePositiveInt(ref position, out int zeroPrefix);
-            rlp.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> rlpData);
-
-            Rlp.GuardLimit(zeroPrefix, LogEntryDataRlpLimit.Limit - rlpData.Length, LogEntryDataRlpLimit);
-
+            position = DecodeCompactData(rlp, position, out ReadOnlySpan<byte> rlpData, out int zeroPrefix);
             data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));
+            return position;
+        }
+
+        private static int DecodeCompactData(LiteRlpReader rlp, int position, out ReadOnlySpan<byte> data, out int zeroPrefix)
+        {
+            rlp.DecodePositiveInt(ref position, out zeroPrefix);
+            rlp.DecodeByteArraySpan(ref position, out data);
+
+            Rlp.GuardLimit(zeroPrefix, LogEntryDataRlpLimit.Limit - data.Length, LogEntryDataRlpLimit);
+
             return position;
         }
 

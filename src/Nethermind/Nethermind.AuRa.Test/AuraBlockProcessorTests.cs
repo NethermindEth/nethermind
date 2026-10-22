@@ -29,6 +29,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -163,10 +164,10 @@ namespace Nethermind.AuRa.Test
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(Array.Empty<byte>()));
-                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.EqualTo(Array.Empty<byte>()));
-                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Array.Empty<byte>()));
-                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.SequenceEqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.SequenceEqualTo(Array.Empty<byte>()));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
@@ -174,10 +175,10 @@ namespace Nethermind.AuRa.Test
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(Bytes.FromHexString("0x123")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.EqualTo(Bytes.FromHexString("0x321")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Bytes.FromHexString("0x123")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Bytes.FromHexString("0x321")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(Bytes.FromHexString("0x321")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.SequenceEqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.SequenceEqualTo(Bytes.FromHexString("0x321")));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
@@ -185,10 +186,10 @@ namespace Nethermind.AuRa.Test
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(Bytes.FromHexString("0x456")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.EqualTo(Bytes.FromHexString("0x654")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Bytes.FromHexString("0x456")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Bytes.FromHexString("0x654")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(Bytes.FromHexString("0x654")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.SequenceEqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.SequenceEqualTo(Bytes.FromHexString("0x654")));
             }
         }
 
@@ -237,7 +238,8 @@ namespace Nethermind.AuRa.Test
                 stateProvider,
                 blockhashProvider,
                 new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Substitute.For<IWorldStateManager>());
 
             return (branchProcessor, stateProvider, blockTree, stateHeaderProvider);
         }

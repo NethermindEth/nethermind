@@ -174,8 +174,10 @@ public class ForkInfoTests
     [TestCase(6_000_000ul, HoodiSpecProvider.BPO1Timestamp - 1, "0xe7e0e7ff", HoodiSpecProvider.BPO1Timestamp, "Future Osaka timestamp")]
     [TestCase(7_000_000ul, HoodiSpecProvider.BPO1Timestamp, "0x3893353e", HoodiSpecProvider.BPO2Timestamp, "First BPO1 timestamp")]
     [TestCase(7_000_000ul, HoodiSpecProvider.BPO2Timestamp - 1, "0x3893353e", HoodiSpecProvider.BPO2Timestamp, "Future BPO1 timestamp")]
-    [TestCase(8_000_000ul, HoodiSpecProvider.BPO2Timestamp, "0x23aa1351", 0ul, "First BPO2 timestamp")]
-    [TestCase(8_000_000ul, HoodiSpecProvider.BPO2Timestamp + 100000, "0x23aa1351", 0ul, "Future BPO2 timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.BPO2Timestamp, "0x23aa1351", HoodiSpecProvider.AmsterdamTimestamp, "First BPO2 timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.AmsterdamTimestamp - 1, "0x23aa1351", HoodiSpecProvider.AmsterdamTimestamp, "Future BPO2 timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.AmsterdamTimestamp, "0x3d068b59", 0ul, "First Amsterdam timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.AmsterdamTimestamp + 100000, "0x3d068b59", 0ul, "Future Amsterdam timestamp")]
     public void Fork_id_and_hash_as_expected_on_hoodi(ulong head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -297,6 +299,11 @@ public class ForkInfoTests
     // Local is mainnet Gray Glacier. Remote is also in Gray Glacier, but announces Gopherium (non existing
     // fork) at block 7279999, before Shanghai. Local is incompatible.
     [TestCase(19999999ul, 1667999999ul, "0xf0afd0e3", 1667999999ul, ValidationResult.IncompatibleOrStale, true)]
+
+    // Local is mainnet Petersburg. Remote is Byzantium and announces Petersburg at a wrong block that local has
+    // not reached yet. Remote fork hash is a subset of local forks with a mismatched next: EIP-2124 rule 2
+    // rejects it as stale (geth: ErrRemoteStale).
+    [TestCase(7_300_000ul, 0ul, "0xa00bc324", 7_500_000ul, ValidationResult.RemoteStale)]
 
     //----------------------
     // Timestamp based tests

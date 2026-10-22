@@ -27,6 +27,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
     private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler = transitionConfigurationHandler;
     private readonly IEngineRequestsTracker _engineRequestsTracker = engineRequestsTracker;
+    private readonly PayloadTransactionCountGuard? _transactionCountGuard = transactionCountGuard;
     private readonly SemaphoreSlim _locker = new(1, 1);
     /// <summary>How long an engine API call waits for the lock another call holds.</summary>
     internal static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(8);
@@ -99,19 +100,29 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         if (!executionPayload.ValidateForkOnNewPayload(_specProvider, version))
         {
+            // A payload that does not match the method's structure is invalid params before it is an unsupported fork.
+            if (executionPayload.HasUnboundField)
+            {
+                string unboundError = executionPayload.UnboundFieldError;
+                if (_logger.IsWarn) _logger.Warn(unboundError);
+                return ResultWrapper<PayloadStatusV1>.Fail(unboundError, ErrorCodes.InvalidParams);
+            }
+
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.NewPayload.V2 ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+        // The converter reads "0x" as the EIP-7668 bloom; before the fork it is the zero bloom, as it always was.
+        if (executionPayload.LogsBloom is { IsZeroLength: true } && !releaseSpec.IsEip7668Enabled) executionPayload.LogsBloom = new Bloom();
 
-        ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
+        ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, _transactionCountGuard, out string? error, out Hash256? latestValidHash);
         if (validationResult != ValidationResult.Success)
         {
             if (_logger.IsWarn) _logger.Warn(error!);
             return validationResult == ValidationResult.Fail
                 ? ResultWrapper<PayloadStatusV1>.Fail(error!, ErrorCodes.InvalidParams)
-                : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
+                : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(latestValidHash, error));
         }
 
         if (await _locker.WaitAsync(LockTimeout))
@@ -119,10 +130,6 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                // Start tx-root computation before asynchronous GC-region admission so it can
-                // overlap that work; keep it inside the lock so competing requests cannot run
-                // trie work concurrently.
-                _ = executionPayload.StartTxRootComputation();
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
                 try
                 {

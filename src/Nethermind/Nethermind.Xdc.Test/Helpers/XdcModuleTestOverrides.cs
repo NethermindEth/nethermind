@@ -10,12 +10,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
-using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Xdc.Contracts;
@@ -52,7 +52,8 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
 
             // Environments
-            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
+            .AddSingleton<INonceManager, IChainHeadInfoProvider, IStateHeaderProvider, IStateReader>((chainHeadInfoProvider, stateHeaderProvider, stateReader) =>
+                new NonceManager(chainHeadInfoProvider, stateHeaderProvider, stateReader))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
                 blockProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
@@ -65,10 +66,6 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             // Crypto
             .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(NullTxSender.Instance)
-
-            // Rpc
-            .AddSingleton<IJsonRpcService, JsonRpcService>()
             ;
 
 

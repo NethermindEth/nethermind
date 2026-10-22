@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -81,42 +82,43 @@ public class OptimismEthRpcModule(
         capabilitiesProvider,
         blockForRpcFactory), IOptimismEthRpcModule
 {
-    public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    public override ResultWrapper<IEnumerable<ReceiptForRpc>?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<ReceiptForRpc[]?>.Success(null);
+            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null);
         }
 
         Block? block = searchResult.Object!;
-        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
+        Transaction[] transactions = block.Transactions;
+        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
 
-        OptimismReceiptForRpc[]? result = [.. receipts
-                .Zip(block.Transactions, (receipt, tx) =>
-                    receipt is OptimismTxReceipt optimismTxReceipt
-                        ? new OptimismReceiptForRpc(
-                            tx.Hash!,
-                            optimismTxReceipt,
-                            block.Timestamp,
-                            tx.GetGasInfo(spec, block.Header),
-                            l1BlockGasInfo.GetTxGasInfo(tx),
-                            receipts.GetBlockLogFirstIndex(receipt.Index))
-                        : new OptimismReceiptForRpc(
-                            tx.Hash!,
-                            receipt,
-                            block.Timestamp,
-                            tx.GetGasInfo(spec, block.Header),
-                            receipts.GetBlockLogFirstIndex(receipt.Index)))];
-        return ResultWrapper<ReceiptForRpc[]?>.Success(result);
+        // EIP-8116: logIndex counts within the receipt.
+        ReceiptsForRpc<OptimismReceiptForRpc> result = new(receipts, transactions, spec.IsEip8116Enabled, (target, receipt, tx, logIndexStart) =>
+            target.Populate(
+                tx.Hash!,
+                receipt,
+                block.Timestamp,
+                tx.GetGasInfo(spec, block.Header),
+                receipt is OptimismTxReceipt ? l1BlockGasInfo.GetTxGasInfo(tx) : null,
+                logIndexStart));
+
+        return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
     }
 
-    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
+    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
+        ReportUnknownAccountFirst(rpcTx, await SignAndForwardTransaction(rpcTx));
+
+    private async Task<ResultWrapper<Hash256>> SignAndForwardTransaction(SignableTransactionForRpc rpcTx)
     {
-        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        if (CheckSendTransactionFees(rpcTx) is { } feeError)
+            return feeError;
+
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
@@ -152,7 +154,7 @@ public class OptimismEthRpcModule(
         {
             try
             {
-                forwarded = JsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
+                forwarded = TypeInfoJsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
             }
             catch (JsonException e)
             {
@@ -241,9 +243,9 @@ public class OptimismEthRpcModule(
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
-        RecoverTxSenderIfNeeded(transaction);
-
         TxReceipt? receipt = TryGetMatchingReceipt(_receiptFinder.Get(block), transaction, (int)positionIndex);
+        transaction.SenderAddress ??= receipt?.Sender;
+        RecoverTxSenderIfNeeded(transaction);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction,

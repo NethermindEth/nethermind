@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -14,14 +16,17 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.ServiceStopper;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Int256;
@@ -31,6 +36,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.History.Changesets;
@@ -44,6 +50,45 @@ namespace Nethermind.Runner.Test.Module;
 [TestFixture]
 public class TransactionChangesetIndexModuleTests
 {
+    [Test]
+    public async Task BulkReplay_Rest_ObservesCancellationWithoutCallerWiring([Values] bool cancelBeforeRest)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig
+            {
+                Enabled = true,
+                HistoryEnabled = true,
+                HistoryTransactionIndexDutyCyclePercent = 50
+            }))
+            .Build();
+        BulkFillSessionFactory sessions = container.Resolve<BulkFillSessionFactory>();
+        using CancellationTokenSource cancellation = new();
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (cancelBeforeRest) cancellation.Cancel();
+        Task rest = Task.Run(() =>
+        {
+            started.SetResult();
+            sessions.Rest(TimeSpan.FromMinutes(1), cancellation.Token);
+        });
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (!cancelBeforeRest)
+            {
+                await Task.Delay(100);
+                Assert.That(rest.IsCompleted, Is.False);
+            }
+            cancellation.Cancel();
+            Assert.That(async () => await rest.WaitAsync(TimeSpan.FromSeconds(5)), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(() => sessions.Rest(TimeSpan.FromMilliseconds(1), CancellationToken.None), Throws.Nothing);
+        }
+        finally
+        {
+            cancellation.Cancel();
+            await rest.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     [Test]
     public void GenesisBootstrap_WhenAnchorIsHistorical_LeavesImportToHistoryScan()
     {
@@ -245,37 +290,242 @@ public class TransactionChangesetIndexModuleTests
         .WithBlobGasUsed(0).WithExcessBlobGas(0).WithBaseFeePerGas(0)
         .WithTransactions(transaction).WithWithdrawals().TestObject;
 
-    [TestCase(-1, 1)]
-    [TestCase(1, 1)]
-    [TestCase(4, 4)]
-    [TestCase(64, 16)]
-    public void ParallelTraceBudget_WhenConfigured_BoundsTheWorkerDegree(int configured, int expected)
-    {
-        using ParallelTraceBudget budget = new(new FlatDbConfig { HistoryTransactionIndexTraceParallelism = configured });
-        Assert.That(budget.Degree, Is.EqualTo(expected));
-    }
-
     [Test]
-    public void ParallelTraceBudget_WhenAutomatic_UsesAvailableProcessorsUpToTheLimit()
+    public void BulkReplay_WhenTheUnsyncedScratchTailIsLost_ResumesFromTheDurableCheckpointToTheSameRowsAndState()
     {
-        using ParallelTraceBudget budget = new(0);
+        FlatDbConfig config = new() { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true };
+        using MemDb code = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> history = new();
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
+        builder.RegisterInstance(history)
+            .As<IColumnsDb<FlatHistoryColumns>>()
+            .ExternallyOwned();
+        using IContainer container = builder.Build();
+        HistoryRowFormat format = HistoryRowFormat.Resolve(new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks)), config);
+        Block genesis = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        tree.SuggestBlock(genesis);
+        CrashableScratchFactory scratch = new();
+        using BulkFillSession session = new(scratch, code, TestItem.KeccakA, genesis.Header, false);
+        foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
+            Assert.That(session.ImportPage((ISortedKeyValueStore)history.GetColumnDb(column), format, column, CancellationToken.None), Is.True);
+        session.VerifyAnchor(CancellationToken.None);
+        TransactionChangesetIndex index = container.Resolve<TransactionChangesetIndex>();
+
+        byte[] runtime = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(1)
+            .Op(Instruction.ADD).PushData(0).Op(Instruction.SSTORE).Done;
+        Transaction deployment = Build.A.Transaction.WithCode(Prepare.EvmCode.ForInitOf(runtime).Done)
+            .WithValue(10).WithGasPrice(0).WithGasLimit(200000).WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Address contract = ContractAddress.From(TestItem.AddressA, 0);
+        Block first = Build.A.Block.WithNumber(1).WithParent(genesis).WithPostMergeFlag(true)
+            .WithBlobGasUsed(0).WithExcessBlobGas(0).WithBaseFeePerGas(0).WithWithdrawals(new Withdrawal { Address = TestItem.AddressA, AmountInGwei = 1 }).TestObject;
+        List<Block> chain = [first, NextBlock(first, deployment)];
+        for (ulong nonce = 1; nonce <= 3; nonce++)
+        {
+            chain.Add(NextBlock(chain[^1], Build.A.Transaction.WithTo(contract).WithGasPrice(0).WithGasLimit(100000)
+                .WithNonce(nonce).SignedAndResolved(TestItem.PrivateKeyA).TestObject));
+        }
+        foreach (Block block in chain) Assert.That(tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
+
+        int syncsBeforeReplay = scratch.Syncs;
+        BulkFillScopeProvider provider = new(session, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
+        using (ILifetimeScope scope = ProcessingTransactionIndexBulkFill.BuildReplayScope(container, provider, container.Resolve<IBlockValidationModule[]>()))
+        {
+            IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
+            Replay(session, processor, index, chain[0]);
+            Replay(session, processor, index, chain[1]);
+            scratch.Persist();
+            for (int i = 2; i < chain.Count; i++) Replay(session, processor, index, chain[i]);
+        }
+        Assert.That(scratch.Syncs, Is.EqualTo(syncsBeforeReplay), "replayed blocks and their cleanup leave the scratch WAL to RocksDB; only the index is synced per block");
+        string[] indexRows = Rows(history.GetColumnDb(FlatHistoryColumns.TransactionChangesets));
+        string[] scratchRows = scratch.Rows();
+
+        scratch.Crash();
+        using BulkFillSession restarted = new(scratch, code, TestItem.KeccakA, genesis.Header, false);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(budget.Degree, Is.InRange(1, 16));
-            Assert.That(budget.Degree, Is.LessThanOrEqualTo(Environment.ProcessorCount));
-            if (Environment.ProcessorCount <= 16) Assert.That(budget.Degree, Is.EqualTo(Environment.ProcessorCount));
+            Assert.That(restarted.CurrentState.BlockNumber, Is.EqualTo((ulong)chain[1].Number), "the crash loses every block after the last checkpoint that reached disk");
+            Assert.That(restarted.BlockHash, Is.EqualTo(chain[1].Hash));
+            Assert.That(Enumerable.Range(2, 3).All(i => index.HasRowsOf((ulong)chain[i].Number, chain[i].Hash!)), Is.True,
+                "the index rows of the lost blocks were synced before their scratch commit");
+        }
+
+        restarted.CleanStorage(CancellationToken.None);
+        BulkFillScopeProvider restartedProvider = new(restarted, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
+        using (ILifetimeScope scope = ProcessingTransactionIndexBulkFill.BuildReplayScope(container, restartedProvider, container.Resolve<IBlockValidationModule[]>()))
+        {
+            IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
+            for (int i = 2; i < chain.Count; i++) Replay(restarted, processor, index, chain[i]);
+        }
+
+        restartedProvider.GetStorage(chain[^1].Header, contract, UInt256.Zero, out UInt256 calls);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(new UInt256(3)));
+            Assert.That(Rows(history.GetColumnDb(FlatHistoryColumns.TransactionChangesets)), Is.EqualTo(indexRows), "replaying a block whose rows exist rewrites the same rows");
+            Assert.That(scratch.Rows(), Is.EqualTo(scratchRows), "the replay rebuilds exactly the scratch state the crash lost");
         }
     }
 
-    [TestCase(true, typeof(ChangesetPrefixStateSeedSource), TestName = "WithFlatHistory_TheChangesetSeedSourceWinsOverTheNullDefault")]
-    [TestCase(false, typeof(NullPrefixStateSeedSource), TestName = "WithoutFlatHistory_TheNullDefaultKeepsTheReplay")]
-    public void The_prefix_seed_source_follows_the_flat_history_switch(bool historyEnabled, Type expected)
+    private static void Replay(BulkFillSession session, IBlockchainProcessor processor, TransactionChangesetIndex index, Block block)
+    {
+        session.BeginBlock(block.Header);
+        using TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number);
+        Block isolated = block.WithReplacedHeader(block.Header.Clone());
+        try
+        {
+            Assert.That(processor.Process(isolated, ProcessingTransactionIndexBulkFill.ReplayOptions, capture.Tracer), Is.Not.Null);
+            Assert.That(capture.Commit(), Is.True);
+            index.SyncWal();
+            session.CommitBlock();
+        }
+        finally
+        {
+            isolated.DisposeAccountChanges();
+        }
+        session.CleanStorage(CancellationToken.None);
+    }
+
+    private static string[] Rows(IDb db) => db.GetAll(ordered: true).Select(static row => $"{row.Key.ToHexString()}={row.Value.ToHexString()}").ToArray();
+
+    [TestCase(-1, 1)]
+    [TestCase(0, 1)]
+    [TestCase(1, 1)]
+    [TestCase(4, 4)]
+    [TestCase(64, 16)]
+    public void ParallelTraceBudget_WhenBounded_ClampsTheWorkerDegree(int configured, int expected)
+    {
+        using ParallelTraceBudget budget = ParallelTraceBudget.Bounded(configured);
+        Assert.That(budget.Degree, Is.EqualTo(Math.Min(expected, Environment.ProcessorCount)));
+    }
+
+    [TestCase(true, TestName = "PrefixSeedSource_WithTheTransactionIndexOn_ArmsChangesetSeeds")]
+    [TestCase(false, TestName = "PrefixSeedSource_WithTheTransactionIndexOff_ArmsNothing")]
+    public void PrefixSeedSource_OnAChainWithoutAccessLists_FollowsTheFlatHistorySwitch(bool indexEnabled)
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = historyEnabled }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = indexEnabled }))
             .Build();
+        Assert.That(container.Resolve<ISpecProvider>().GetFinalSpec().BlockLevelAccessListsEnabled, Is.False, "precondition: only the changeset seeds can arm a slot");
 
-        Assert.That(container.Resolve<IPrefixStateSeedSource>(), Is.TypeOf(expected));
+        IPrefixStateSeedSource resolved = container.Resolve<IPrefixStateSeedSource>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.TypeOf<BlockAccessListPrefixStateSeedSource>(), "every node resolves the access list decorator, the one place deciding what seeds a block");
+            Assert.That(resolved.Enabled, Is.EqualTo(indexEnabled), "a block without an access list is left to the changeset source, enabled by the flat history switch");
+        }
+    }
+
+    [TestCase(4, TestName = "ParallelTraceBudgets_ByDefault_TraceAccessListBlocksOnFourWorkers")]
+    [TestCase(1, TestName = "ParallelTraceBudgets_WhenSetToOne_TraceAccessListBlocksSequentially")]
+    [TestCase(0, TestName = "ParallelTraceBudgets_WhenSetToZero_TraceAccessListBlocksSequentially")]
+    public void ParallelTraceBudgets_ForAccessListBlocks_FollowTheTraceBlockSetting(int configured)
+    {
+        JsonRpcConfig rpc = new();
+        if (configured != 4) rpc.TraceBlockParallelism = configured;
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = false }, rpc))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
+            .Build();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        bool parallel = container.Resolve<ParallelTraceBudgets>().TryGetParallel(block.Header, out ParallelTraceBudget budget);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new JsonRpcConfig().TraceBlockParallelism, Is.EqualTo(4), "the default is four workers");
+            Assert.That(parallel, Is.EqualTo(configured >= 2 && Environment.ProcessorCount >= 2), "zero or one traces an access list block sequentially");
+            if (parallel) Assert.That(budget.Degree, Is.EqualTo(Math.Min(configured, Environment.ProcessorCount)), "the degree is the configured setting");
+            Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(parallel), "with no changeset seeds, only access list blocks can start a parallel tracer");
+        }
+    }
+
+    [TestCase(true, true, 2, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceOtherBlocksOnTheTraceBlockSetting")]
+    [TestCase(true, true, 1, false, TestName = "ParallelTraceBudgets_WithChangesetSeedsSetToOne_TraceOtherBlocksSequentially")]
+    [TestCase(true, true, 0, false, TestName = "ParallelTraceBudgets_WithChangesetSeedsSetToZero_TraceOtherBlocksSequentially")]
+    [TestCase(true, false, 2, false, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_NeverTraceOtherBlocksInParallel")]
+    [TestCase(false, true, 2, false, TestName = "ParallelTraceBudgets_WithFlatOff_NeverTraceOtherBlocksInParallel")]
+    public void ParallelTraceBudgets_ForBlocksWithoutAccessLists_FollowTheTraceBlockSetting(bool flatEnabled, bool indexEnabled, int configured, bool expected)
+    {
+        expected &= Environment.ProcessorCount >= 2;
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig
+            {
+                Enabled = flatEnabled,
+                HistoryEnabled = true,
+                HistoryTransactionIndexEnabled = indexEnabled,
+            }, new JsonRpcConfig { TraceBlockParallelism = configured }))
+            .Build();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        bool parallel = container.Resolve<ParallelTraceBudgets>().TryGetParallel(block.Header, out ParallelTraceBudget budget);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parallel, Is.EqualTo(expected), "a block without an access list is traced in parallel only on changeset seeds, on the budget the trace block setting sizes");
+            if (parallel) Assert.That(budget.Degree, Is.EqualTo(configured), "the degree is the configured setting");
+            Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(expected), "the parallel tracer is built only when a seed this chain can take allows two workers");
+        }
+    }
+
+    [Test]
+    public void ParallelTraceBudgets_WithChangesetSeedsOnAnAccessListChain_DrawBothKindsOfBlockFromOneBudget()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true }, new JsonRpcConfig { TraceBlockParallelism = 2 }))
+            .AddSingleton<ISpecProvider>(new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance)))
+            .Build();
+        ParallelTraceBudgets budgets = container.Resolve<ParallelTraceBudgets>();
+        bool expected = Environment.ProcessorCount >= 2;
+
+        bool changesetBlock = budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(1).TestObject, out ParallelTraceBudget changesets);
+        bool accessListBlock = budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(10).TestObject, out ParallelTraceBudget accessLists);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changesetBlock, Is.EqualTo(expected), "a block before access lists is traced in parallel on changeset seeds");
+            Assert.That(accessListBlock, Is.EqualTo(expected), "a block with an access list is traced in parallel on it");
+            if (expected)
+            {
+                Assert.That(changesets, Is.SameAs(container.Resolve<ParallelTraceBudget>()), "changeset seeded blocks draw on the node-wide budget");
+                Assert.That(accessLists, Is.SameAs(changesets), "access list seeded blocks draw on the same budget, so the setting caps both together");
+            }
+            Assert.That(budgets.Degree, Is.EqualTo(Math.Min(2, Environment.ProcessorCount)), "the parallel tracer is sized by the one budget, not a sum");
+        }
+    }
+
+    [TestCase(1, null, 1, TestName = "TraceBudget_WithTheDeprecatedKeySetToOne_TracesSequentiallyAndWarns")]
+    [TestCase(1, 8, 1, TestName = "TraceBudget_WithBothKeysSet_TakesTheDeprecatedKeyAndWarns")]
+    [TestCase(8, 2, 8, TestName = "TraceBudget_WithBothKeysSetTheOtherWay_TakesTheDeprecatedKeyAndWarns")]
+    [TestCase(64, null, 16, TestName = "TraceBudget_WithTheDeprecatedKeyAboveTheCap_ClampsToSixteenAndWarns")]
+    [TestCase(-1, 8, 1, TestName = "TraceBudget_WithTheDeprecatedKeyNegative_ClampsToOneAndWarns")]
+    public void TraceBudget_WithTheDeprecatedKeySet_KeepsItsOldMeaningAndWarns(int legacy, int? traceBlock, int expected)
+    {
+        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(legacy, traceBlock);
+        using (container)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.Degree, Is.EqualTo(expected), "the deprecated key keeps its old meaning and wins over the trace block setting");
+            Assert.That(container.Resolve<ParallelTraceBudgets>().Degree, Is.EqualTo(expected), "the deprecated key sizes the one shared budget");
+            Assert.That(logger.LogList, Has.Some.Contains("FlatDb.HistoryTransactionIndexTraceParallelism is deprecated"));
+        }
+    }
+
+    [TestCase(null, 4, TestName = "TraceBudget_WithTheDeprecatedKeyAtItsDefault_FollowsTheTraceBlockDefaultWithoutWarning")]
+    [TestCase(2, 2, TestName = "TraceBudget_WithTheDeprecatedKeyAtItsDefault_FollowsTheTraceBlockSettingWithoutWarning")]
+    public void TraceBudget_WithTheDeprecatedKeyAtZero_FollowsTheTraceBlockSettingWithoutWarning(int? traceBlock, int configured)
+    {
+        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(0, traceBlock);
+        using (container)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.Degree, Is.EqualTo(Math.Min(configured, Environment.ProcessorCount)), "zero, the published default, means the deprecated key is not set");
+            Assert.That(logger.LogList, Has.None.Contains("deprecated"));
+        }
     }
 
     [Test]
@@ -298,11 +548,17 @@ public class TransactionChangesetIndexModuleTests
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = indexEnabled }))
             .Build();
 
-        IOverridableEnv env = container.Resolve<IOverridableEnvFactory>().Create();
-        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder.AddModule(env));
+        IOverridableEnv traceEnv = container.Resolve<ITraceEnvFactory>().CreateForTracing();
+        IOverridableEnv otherEnv = container.Resolve<IOverridableEnvFactory>().Create();
+        using ILifetimeScope traceScope = container.BeginLifetimeScope(builder => builder.AddModule(traceEnv));
+        using ILifetimeScope otherScope = container.BeginLifetimeScope(builder => builder.AddModule(otherEnv));
 
-        Assert.That(scope.IsRegistered<StateReadOverlaySlot>(), Is.EqualTo(indexEnabled),
-            "the slot exists exactly when the scope provider consults it; a slot nothing reads would let the executor skip a prefix no one supplies");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traceScope.IsRegistered<StateReadOverlaySlot>(), Is.EqualTo(indexEnabled),
+                "the slot exists exactly when the scope provider consults it; a slot nothing reads would let the executor skip a prefix no one supplies");
+            Assert.That(otherScope.IsRegistered<StateReadOverlaySlot>(), Is.False, "only trace environments carry the overlay; every other read-only environment pays nothing for it");
+        }
     }
 
     [Test]
@@ -347,5 +603,79 @@ public class TransactionChangesetIndexModuleTests
         await container.Resolve<StartTransactionChangesetBuilder>().Execute(CancellationToken.None);
 
         stopper.Received(1).AddStoppable(builder);
+    }
+
+    private static (ParallelTraceBudget Budget, TestLogger Logger, IContainer Container) ResolveTraceBudget(int legacy, int? traceBlock)
+    {
+        JsonRpcConfig rpc = new();
+        if (traceBlock is int workers) rpc.TraceBlockParallelism = workers;
+        TestLogger logger = new();
+        IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig
+            {
+                Enabled = true,
+                HistoryEnabled = true,
+                HistoryTransactionIndexEnabled = true,
+                HistoryTransactionIndexTraceParallelism = legacy,
+            }, rpc))
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+            .Build();
+        return (container.Resolve<ParallelTraceBudget>(), logger, container);
+    }
+
+    /// <summary>Keeps what a sync made durable and, on a crash, reopens the scratch with only that.</summary>
+    private sealed class CrashableScratchFactory : IDbFactory
+    {
+        private IScratchImage _live;
+
+        public int Syncs => _live.Syncs;
+        public void Persist() => _live.Persist();
+        public void Crash() => _live = _live.Crash();
+        public string[] Rows() => _live.Rows();
+
+        public IDb CreateDb(DbSettings dbSettings) => throw new NotSupportedException();
+
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => (IColumnsDb<T>)(_live ??= new CrashableColumnsDb<T>());
+    }
+
+    private interface IScratchImage
+    {
+        int Syncs { get; }
+        void Persist();
+        IScratchImage Crash();
+        string[] Rows();
+    }
+
+    private sealed class CrashableColumnsDb<T> : SnapshotableMemColumnsDb<T>, IColumnsDb<T>, IScratchImage where T : struct, Enum
+    {
+        private Dictionary<T, KeyValuePair<byte[], byte[]>[]> _durable = [];
+
+        public int Syncs { get; private set; }
+
+        public void SyncWal()
+        {
+            Syncs++;
+            Persist();
+        }
+
+        public void Persist()
+        {
+            Dictionary<T, KeyValuePair<byte[], byte[]>[]> durable = [];
+            foreach (T column in ColumnKeys) durable[column] = GetColumnDb(column).GetAll().ToArray();
+            _durable = durable;
+        }
+
+        public IScratchImage Crash()
+        {
+            CrashableColumnsDb<T> restarted = new() { _durable = _durable };
+            foreach ((T column, KeyValuePair<byte[], byte[]>[] rows) in _durable)
+            {
+                IDb db = restarted.GetColumnDb(column);
+                foreach (KeyValuePair<byte[], byte[]> row in rows) db.Set(row.Key, row.Value);
+            }
+            return restarted;
+        }
+
+        public string[] Rows() => ColumnKeys.SelectMany(column => TransactionChangesetIndexModuleTests.Rows(GetColumnDb(column)).Select(row => $"{column}:{row}")).ToArray();
     }
 }

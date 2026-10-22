@@ -32,18 +32,23 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
     IReadOnlyBlockTree baseBlockTree,
     IBlockStore baseBlockStore,
+    IHeaderStore baseHeaderStore,
     IDbProvider dbProvider,
     ISpecProvider specProvider,
     IReadOnlyList<IBlockValidationModule> validationModules,
     ILogManager? logManager = null) : ISimulateReadOnlyBlocksProcessingEnvFactory
 {
+    // Read once: the root scope's registrations do not change after it is built.
+    private IReadOnlyQueryModule[]? _readOnlyQueryModules;
+
     public ISimulateReadOnlyBlocksProcessingEnv Create()
     {
+        IReadOnlyQueryModule[] readOnlyQueryModules = _readOnlyQueryModules ??= rootLifetimeScope.Resolve<IReadOnlyQueryModule[]>();
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb, (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>());
-        SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
+        // Over the node's own store, as bodies are: it reads headers still queued for a deferred write.
+        SimulateDictionaryHeaderStore tmpHeaderStore = new(baseHeaderStore);
         SimulateDictionaryBlockStore tmpBlockStore = new(baseBlockStore);
         ChainLevelInfoRepository tmpChainLevelInfoRepository = new(editableDbProvider.BlockInfosDb);
 
@@ -67,14 +72,21 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
-            .Intercept<ITransactionProcessor>(SkipSenderCodeCheckTransactionProcessorFactory.Apply)
-            .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderCodeCheckTransactionProcessorFactory(inner))
+            .Intercept<ITransactionProcessor>(SkipSenderChecksTransactionProcessorFactory.Apply)
+            .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderChecksTransactionProcessorFactory(inner))
+            .AddDecorator<CodeInfoRepositoryFactory>(static (ctx, inner) =>
+            {
+                CodeOverrideStore overrides = ctx.Resolve<CodeOverrideStore>();
+                return worldState => new MovedPrecompileCodeInfoRepository(inner(worldState), worldState, overrides);
+            })
             .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState>(static state =>
                 txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<SimulateRequestState>()
             .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
-            .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());
+            .AddScoped<SimulateReadOnlyBlocksProcessingEnv>()
+            // Last, so nothing above overrides what a module registers; the simulate decorators above still wrap it.
+            .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Simulate));
 
         envLifetimeScope.Disposer.AddInstanceForDisposal(editableDbProvider);
 
@@ -126,7 +138,11 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             new SyncConfig(),
             NullStateBoundary.Instance,
             new BlockTreeLogHider(logManager),
-            new BlockTreeMutationLock());
+            new BlockTreeMutationLock())
+        {
+            // Resetting the overlay head must not rewrite the base tree's levels above it into the in-memory write store.
+            ClearStaleMarkersOnForcedHeadUpdate = false
+        };
     }
 
     private class BlockTreeLogHider(ILogManager baseLogManager) : ILogManager

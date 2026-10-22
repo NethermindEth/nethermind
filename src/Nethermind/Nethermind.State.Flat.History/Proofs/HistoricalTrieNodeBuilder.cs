@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -18,6 +19,12 @@ internal sealed class HistoricalTrieNodeBuilder
     private readonly ArchiveProofNodeCache? _cache;
     private readonly ParallelOptions _fanOutOptions;
     private ConcurrentDictionary<TreePath, byte[]>? _prefetched;
+    // A composed node takes a child its rows record as empty as empty instead of rebuilding it from the history rows:
+    // a small trie has many empty children at the composed depth, and each rebuild reads every history row under the
+    // child's path. The current writers never record a present child as empty, and if one ever did, the node or an
+    // ancestor misses its hash check and LoadRlp resolves it again with this trust turned off.
+    private int _trustedEmptyChildren;
+    private bool _distrustEmptyChildren;
 
     public HistoricalTrieNodeBuilder(TrieHistoryScope scope, ulong block, ResolutionBudget budget, int fanOut, ArchiveProofNodeCache? cache)
     {
@@ -29,23 +36,45 @@ internal sealed class HistoricalTrieNodeBuilder
         _fanOutOptions = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, fanOut), CancellationToken = budget.CancellationToken };
     }
 
-    public byte[] LoadRlp(in TreePath path, Hash256 expectedHash)
+    /// <param name="fromCache">True when the node cache served the node; a prefetched or rebuilt node is a miss.</param>
+    public byte[] LoadRlp(in TreePath path, in ValueHash256 expected, out bool fromCache)
     {
-        ValueHash256 expected = expectedHash.ValueHash256;
-        if (_cache is not null && _cache.TryGet(expected, out byte[]? cached) && cached is not null) return cached;
+        if (_cache is not null && _cache.TryGet(expected, out byte[]? cached) && cached is not null)
+        {
+            fromCache = true;
+            return cached;
+        }
+
+        fromCache = false;
 
         if (_prefetched is not null && _prefetched.TryRemove(path, out byte[]? prefetched) && ValueKeccak.Compute(prefetched) == expected) return Publish(expected, prefetched);
 
         bool rebuilt = false;
+        int trustedBefore = Volatile.Read(ref _trustedEmptyChildren);
         byte[]? rlp = _scope.IsComposed(path.Length) || _scope.HasCommitmentRows(path.Length) ? ResolveRlp(path, _fanOut > 1, out rebuilt) : null;
         if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
+
+        if (!rebuilt && Volatile.Read(ref _trustedEmptyChildren) != trustedBefore)
+        {
+            _distrustEmptyChildren = true;
+            try
+            {
+                rlp = ResolveRlp(path, _fanOut > 1, out rebuilt);
+            }
+            finally
+            {
+                _distrustEmptyChildren = false;
+            }
+
+            if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
+        }
 
         if (!rebuilt) rlp = RebuildRlp(path, _fanOut > 1);
         if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
 
         throw new StateUnavailableException(
             $"The node at {path} as of block {_block} rebuilt to {(rlp is null ? "nothing" : ValueKeccak.Compute(rlp).ToString())} instead of the " +
-            $"{expectedHash} its parent commits to. The flat history rows below that path do not reproduce the proven " +
+            $"{expected} its parent commits to. The flat history rows below that path do not reproduce the proven " +
             "state root, so no proof is served for this height.");
     }
 
@@ -81,25 +110,27 @@ internal sealed class HistoricalTrieNodeBuilder
 
     public static void Prefetch(IReadOnlyList<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work, ParallelOptions options)
     {
-        try
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(
+            options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount);
+        ParallelUnbalancedWork.For(0, work.Count, options, work, static (i, items) =>
         {
-            Parallel.ForEach(work, options, static item =>
-            {
-                byte[]? rlp = item.Builder.ResolveRlp(item.Path, parallelChildren: item.Path.Length == 0 && item.Builder._fanOut > 1, allowRebuild: false);
-                if (rlp is not null) item.Builder._prefetched![item.Path] = rlp;
-            });
-        }
-        catch (AggregateException e)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.Flatten().InnerExceptions[0]).Throw();
-        }
+            (HistoricalTrieNodeBuilder Builder, TreePath Path) item = items[i];
+            byte[]? rlp = item.Builder.ResolveRlp(item.Path, parallelChildren: item.Path.Length == 0 && item.Builder._fanOut > 1, allowRebuild: false);
+            if (rlp is not null) item.Builder._prefetched![item.Path] = rlp;
+            return items;
+        });
     }
 
-    private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, bool allowRebuild = true) => ResolveRlp(path, parallelChildren, out _, allowRebuild);
+    private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, bool allowRebuild = true) => ResolveRlp(path, parallelChildren, out _, out _, allowRebuild);
 
-    private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, out bool rebuilt, bool allowRebuild = true)
+    private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, out bool rebuilt, bool allowRebuild = true) =>
+        ResolveRlp(path, parallelChildren, out rebuilt, out _, allowRebuild);
+
+    /// <param name="empty">True when the rows say no node is at the path as of the block, so a null result needs no rebuild.</param>
+    private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, out bool rebuilt, out bool empty, bool allowRebuild = true)
     {
         rebuilt = false;
+        empty = false;
         if (_scope.IsComposed(path.Length)) return Compose(path, parallelChildren, allowRebuild);
         if (!_scope.HasCommitmentRows(path.Length))
         {
@@ -115,13 +146,18 @@ internal sealed class HistoricalTrieNodeBuilder
                 if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(exact.CurrentValue));
                 if (DemotionCannotHideNewerRows(exact.CurrentSuffix) || !NewerCheckpointRowExists(path, ParentRowCodec.LastBlock(exact.CurrentValue)))
                 {
-                    if (ParentRowCodec.IsEmptyRow(exact.CurrentValue)) return null;
+                    if (ParentRowCodec.IsEmptyRow(exact.CurrentValue))
+                    {
+                        empty = true;
+                        return null;
+                    }
+
                     if (TryMaterialize(exact, out byte[]? fromExact) && fromExact is not null) return fromExact;
                 }
             }
         }
 
-        return ResolveCheckpointed(path, parallelChildren, allowRebuild, out rebuilt);
+        return ResolveCheckpointed(path, parallelChildren, allowRebuild, out rebuilt, out empty);
     }
 
     private bool DemotionCannotHideNewerRows(ulong exactRowBlock) => _scope.Policy.Epoch(exactRowBlock) == _scope.Policy.Epoch(_block);
@@ -132,9 +168,10 @@ internal sealed class HistoricalTrieNodeBuilder
         return chain.MoveNext() && ParentRowCodec.IsValid(chain.CurrentValue) && ParentRowCodec.LastBlock(chain.CurrentValue) > exactLastBlock && ParentRowCodec.LastBlock(chain.CurrentValue) <= _block;
     }
 
-    private byte[]? ResolveCheckpointed(in TreePath path, bool parallelChildren, bool allowRebuild, out bool rebuilt)
+    private byte[]? ResolveCheckpointed(in TreePath path, bool parallelChildren, bool allowRebuild, out bool rebuilt, out bool empty)
     {
         rebuilt = false;
+        empty = false;
         ulong anchor = _scope.Policy.WindowAtOrBelow(_block);
         using CommitmentStore.RowChain chain = _scope.OpenRows(path, exact: false, anchor + 1, _budget, bounded: !allowRebuild && path.Length > 0);
         if (!chain.MoveNext() || !ParentRowCodec.IsValid(chain.CurrentValue))
@@ -146,7 +183,11 @@ internal sealed class HistoricalTrieNodeBuilder
         if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(chain.CurrentValue));
         if (chain.CurrentSuffix <= anchor || ParentRowCodec.LastBlock(chain.CurrentValue) <= _block)
         {
-            if (TryMaterialize(chain, out byte[]? settled)) return settled;
+            if (TryMaterialize(chain, out byte[]? settled))
+            {
+                empty = settled is null;
+                return settled;
+            }
 
             rebuilt = allowRebuild;
             return allowRebuild ? RebuildRlp(path, parallelChildren) : null;
@@ -213,41 +254,39 @@ internal sealed class HistoricalTrieNodeBuilder
 
     private void RunFanOut(Action<int> child)
     {
-        try
-        {
-            Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
-        }
-        catch (AggregateException e)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.Flatten().InnerExceptions[0]).Throw();
-        }
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Math.Max(1, _fanOut));
+        ParallelUnbalancedWork.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
     }
 
     private byte[]? Compose(in TreePath path, bool parallelChildren, bool allowRebuild)
     {
         byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
+        int unknown = 0;
         if (parallelChildren)
         {
             TreePath parent = path;
-            RunFanOut(index => children[index] = ResolveComposedChild(parent.Append(index), allowRebuild));
+            RunFanOut(index =>
+            {
+                children[index] = ResolveComposedChild(parent.Append(index), allowRebuild, out bool known);
+                if (!known) Interlocked.Increment(ref unknown);
+            });
         }
         else
         {
-            for (int index = 0; index < BranchRlp.ChildCount; index++) children[index] = ResolveComposedChild(path.Append(index), allowRebuild);
-        }
-
-        if (!allowRebuild)
-        {
             for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
-                if (children[index] is null) return null;
+                children[index] = ResolveComposedChild(path.Append(index), allowRebuild, out bool known);
+                if (!known) unknown++;
             }
         }
+
+        if (!allowRebuild && unknown > 0) return null;
 
         NodeView[] views = new NodeView[BranchRlp.ChildCount];
         try
         {
             NodeViews.FromChildrenRlp(children, views);
+            PublishChildren(children, views);
 
             NodeView composed = NodeViews.Combine(views);
             try
@@ -368,12 +407,33 @@ internal sealed class HistoricalTrieNodeBuilder
         return leaves;
     }
 
-    private byte[]? ResolveComposedChild(in TreePath childPath, bool allowRebuild)
+    // The views already hold each child's keccak, so the cache can serve the children a later proof descends into.
+    private void PublishChildren(byte[]?[] children, NodeView[] views)
     {
+        if (_cache is null) return;
+
+        for (int index = 0; index < BranchRlp.ChildCount; index++)
+        {
+            if (children[index] is { Length: >= Hash256.Size } child) _cache.Set(views[index].Hash, child);
+        }
+    }
+
+    private byte[]? ResolveComposedChild(in TreePath childPath, bool allowRebuild, out bool known)
+    {
+        known = true;
         if (_prefetched is not null && _prefetched.TryGetValue(childPath, out byte[]? prefetched)) return prefetched;
 
-        byte[]? rlp = ResolveRlp(childPath, parallelChildren: false, out bool rebuilt, allowRebuild);
-        return rlp is null && allowRebuild && !rebuilt ? RebuildRlp(childPath, parallelChildren: false) : rlp;
+        byte[]? rlp = ResolveRlp(childPath, parallelChildren: false, out bool rebuilt, out bool empty, allowRebuild);
+        if (rlp is not null || rebuilt) return rlp;
+        if (empty && !_distrustEmptyChildren)
+        {
+            Interlocked.Increment(ref _trustedEmptyChildren);
+            return null;
+        }
+        if (allowRebuild) return RebuildRlp(childPath, parallelChildren: false);
+
+        known = false;
+        return null;
     }
 
     private void PublishSubtree(TrieNode node)

@@ -161,8 +161,11 @@ public sealed class BeaconHeadersSyncFeed(
         {
             BlockHeader header = headersToAdd[i];
 
-            // Found existing block in the block tree
-            if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
+            // Found existing block in the block tree. The header must be readable too: after a crash a chain level
+            // can outlive a lost deferred header write, and joining there would leave forward sync without the header.
+            if (!_syncConfig.StrictMode
+                && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash())
+                && _blockTree.FindHeader(header.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number) is not null)
             {
                 mergeWhenInserted = true;
                 if (_logger.IsTrace)

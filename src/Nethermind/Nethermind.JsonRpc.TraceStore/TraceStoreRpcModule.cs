@@ -29,6 +29,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     IBlockFinder blockFinder,
     IReceiptFinder receiptFinder,
     ITraceSerializer<ParityLikeTxTrace> traceSerializer,
+    ParityTraceTypes storedTraceTypes,
     IJsonRpcConfig jsonRpcConfig,
     ILogManager logManager,
     int parallelization = 0) : ITraceRpcModule
@@ -38,6 +39,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     private readonly IBlockFinder _blockFinder = blockFinder;
     private readonly IReceiptFinder _receiptFinder = receiptFinder;
     private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer = traceSerializer;
+    private readonly ParityTraceTypes _storedTraceTypes = storedTraceTypes;
     private readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig;
     private readonly int _parallelization = parallelization;
     private readonly ILogger _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
@@ -46,8 +48,14 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     {
         { ParityTraceTypes.Trace, FilterTrace },
         { ParityTraceTypes.StateDiff , FilterStateDiff },
-        { ParityTraceTypes.VmTrace | ParityTraceTypes.Trace, FilterStateVmTrace }
+        { ParityTraceTypes.VmTrace, FilterVmTrace }
     };
+
+    // What live trace_block and trace_filter trace.
+    private const ParityTraceTypes BlockTraceTypes = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
+
+    // The store can only answer for what it records; anything else falls back to live tracing.
+    private bool IsStored(ParityTraceTypes traceTypes) => (traceTypes & ~_storedTraceTypes) == ParityTraceTypes.None;
 
     private static IEnumerable<ParityTxTraceFromStore> FlattenStoreItems(List<List<ParityLikeTxTrace>> blockTraces) =>
         blockTraces.SelectMany(static block => block.SelectMany(ParityTxTraceFromStore.FromTxTrace));
@@ -99,10 +107,10 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>
         _traceModule.trace_rawTransaction(data, traceTypes);
 
-    public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
+    public ResultWrapper<ParityTxTraceFromReplay?> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
     {
         if (TraceRpcModule.TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes)
-            && TryGetStoredTrace(txHash, parityTypes, out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
+            && TryGetStoredTrace(txHash, parityTypes, traceNonCanonical, out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
         {
             return BuildStoreStreamingSingleResult(
                 runStreaming: (writer, pipeWriter, ct) =>
@@ -111,14 +119,21 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     ParityReplayEnvelopeWriter.WriteFromTrace(writer, storedTrace, includeTxHash: true, EthereumJsonSerializer.JsonOptions);
                     FlushPipe(writer, pipeWriter, ct);
                 },
-                runBuffered: () => new ParityTxTraceFromReplay(storedTrace, includeTransactionHash: true));
+                runBuffered: () => new ParityTxTraceFromReplay(storedTrace, includeTransactionHash: true))!;
         }
 
         return _traceModule.trace_replayTransaction(txHash, traceTypes, traceNonCanonical);
     }
 
-    private bool TryGetStoredTrace(Hash256 txHash, ParityTraceTypes traceTypes, out ParityLikeTxTrace? trace)
+    private bool TryGetStoredTrace(Hash256 txHash, ParityTraceTypes traceTypes, bool traceNonCanonical, out ParityLikeTxTrace? trace)
     {
+        // Live replay can answer a transaction with its block's reward, which a stored transaction trace never holds.
+        if ((traceTypes & ParityTraceTypes.Rewards) != ParityTraceTypes.None || !IsStored(traceTypes))
+        {
+            trace = null;
+            return false;
+        }
+
         SearchResult<Hash256> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
         if (blockHashSearch.IsError)
         {
@@ -126,7 +141,8 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             return false;
         }
 
-        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object!));
+        // The receipt index can still point at a block a reorg replaced; live replay refuses it unless asked not to.
+        SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object!, requireCanonical: !traceNonCanonical));
         if (blockSearch.IsError)
         {
             trace = null;
@@ -175,7 +191,13 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockTransactions(BlockParameter blockParameter, string[] traceTypes)
     {
-        SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter);
+        // The pending tag resolves to the head, whose stored traces are not a pending block's.
+        if (TraceRpcModule.IsPending(blockParameter))
+        {
+            return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromReplay>>();
+        }
+
+        SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
         if (blockSearch.IsError)
         {
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(blockSearch);
@@ -183,7 +205,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
         BlockHeader block = blockSearch.Object!;
 
-        if (TraceRpcModule.TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes)
+        if (TraceRpcModule.TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes) && IsStored(parityTypes)
             && TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
             FilterTraces(traces, parityTypes);
@@ -206,11 +228,25 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
     {
-        IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(
-            traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
-            traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
+        (BlockParameter fromBlock, BlockParameter toBlock) = traceFilterForRpc.GetBlockRange();
+        if (TraceRpcModule.IsPending(fromBlock) || TraceRpcModule.IsPending(toBlock))
+        {
+            return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
+        }
 
-        IEnumerable<(SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
+        if (_blockFinder.IsRangeInFuture(fromBlock, toBlock))
+        {
+            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
+        }
+
+        if (!IsStored(BlockTraceTypes))
+        {
+            return _traceModule.trace_filter(traceFilterForRpc);
+        }
+
+        IEnumerable<SearchResult<BlockHeader>> blocksSearch = _blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock, ErrorCodes.StandardResourceNotFound);
+
+        IEnumerable<(SearchResult<BlockHeader> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
         {
             0 => blocksSearch.AsParallel().AsOrdered().Select(GetBlockTraces),
             1 => blocksSearch.Select(GetBlockTraces),
@@ -218,7 +254,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         };
 
         List<List<ParityLikeTxTrace>>? blockTraces = null;
-        foreach ((SearchResult<Block> blockSearch, List<ParityLikeTxTrace>? traces) in blockResults)
+        foreach ((SearchResult<BlockHeader> blockSearch, List<ParityLikeTxTrace>? traces) in blockResults)
         {
             if (blockSearch.IsError)
             {
@@ -234,7 +270,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             (blockTraces ??= []).Add(traces);
         }
 
-        TxTraceFilter filter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
+        TxTraceFilter filter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After ?? 0, traceFilterForRpc.Count, traceFilterForRpc.Mode);
 
         if (blockTraces is null)
         {
@@ -249,44 +285,44 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     foreach (ParityLikeTxTrace trace in blockTracesOne)
                     {
                         ct.ThrowIfCancellationRequested();
-                        foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
-                        {
-                            if (!filter.ShouldUseTxTrace(item.Action)) continue;
-                            JsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
-                        }
+                        ParityTxTraceFromStore.Write(writer, trace, filter, EthereumJsonSerializer.JsonOptions);
                         FlushPipe(writer, pipeWriter, ct);
                     }
                 }
             },
             runBuffered: () => filter.FilterTxTraces(FlattenStoreItems(blockTraces)));
 
-        (SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces) GetBlockTraces(SearchResult<Block> blockSearch)
+        (SearchResult<BlockHeader> BlockSearch, List<ParityLikeTxTrace>? Traces) GetBlockTraces(SearchResult<BlockHeader> blockSearch)
         {
             if (blockSearch.IsError)
             {
                 return (blockSearch, null);
             }
 
-            Block block = blockSearch.Object!;
-            TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces);
+            TryGetBlockTraces(blockSearch.Object!, out List<ParityLikeTxTrace>? traces);
             return (blockSearch, traces);
         }
     }
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
     {
+        if (TraceRpcModule.IsPending(blockParameter))
+        {
+            return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
+        }
+
         // Fork overrides require live re-execution; bypass the store and delegate directly.
         if (fork is not null)
             return _traceModule.trace_block(blockParameter, fork);
 
-        SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter);
+        SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
         if (blockSearch.IsError)
         {
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
         }
 
         BlockHeader block = blockSearch.Object!;
-        if (TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
+        if (IsStored(BlockTraceTypes) && TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
             return BuildStoreStreamingResult<ParityTxTraceFromStore>(
                 runStreaming: (writer, pipeWriter, ct) =>
@@ -294,10 +330,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     foreach (ParityLikeTxTrace trace in traces)
                     {
                         ct.ThrowIfCancellationRequested();
-                        foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
-                        {
-                            JsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
-                        }
+                        ParityTxTraceFromStore.Write(writer, trace, null, EthereumJsonSerializer.JsonOptions);
                         FlushPipe(writer, pipeWriter, ct);
                     }
                 },
@@ -307,32 +340,20 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         return _traceModule.trace_block(blockParameter);
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)
-    {
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
-        if (!traceTransaction.Result) return traceTransaction;
-        using (traceTransaction)
-        {
-            List<ParityTxTraceFromStore> traces = TraceRpcModule.ExtractPositionsFromTxTrace(positions, traceTransaction);
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
-        }
-    }
+    public ResultWrapper<ParityTxTraceFromStore?> trace_get(Hash256 txHash, long[] traceAddress) =>
+        TraceRpcModule.SelectTraceAddress(trace_transaction(txHash), traceAddress);
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash, bool traceNonCanonical = false)
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> trace_transaction(Hash256 txHash, bool traceNonCanonical = false)
     {
-        if (TryGetStoredTrace(txHash, ParityTraceTypes.Trace, out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
+        if (TryGetStoredTrace(txHash, ParityTraceTypes.Trace, traceNonCanonical, out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
         {
             return BuildStoreStreamingResult<ParityTxTraceFromStore>(
                 runStreaming: (writer, pipeWriter, ct) =>
                 {
-                    foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(storedTrace))
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        JsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
-                    }
+                    ParityTxTraceFromStore.Write(writer, storedTrace, null, EthereumJsonSerializer.JsonOptions, ct);
                     FlushPipe(writer, pipeWriter, ct);
                 },
-                runBuffered: () => ParityTxTraceFromStore.FromTxTrace(storedTrace));
+                runBuffered: () => ParityTxTraceFromStore.FromTxTrace(storedTrace))!;
         }
 
         return _traceModule.trace_transaction(txHash, traceNonCanonical);
@@ -395,21 +416,11 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     }
 
 
-    // VmTrace uses flags IsTracingCode, IsTracingInstructions
-    private static void FilterStateVmTrace(ParityLikeTxTrace trace) => trace.VmTrace = null;
+    // VmTrace uses flags IsTracingCode, IsTracingInstructions; the latter also records each operation's ex.store.
+    private static void FilterVmTrace(ParityLikeTxTrace trace) => trace.VmTrace = null;
 
     // StateDiff uses flags IsTracingState, IsTracingStorage
-    private static void FilterStateDiff(ParityLikeTxTrace trace)
-    {
-        trace.StateChanges = null;
-        if (trace.VmTrace is not null)
-        {
-            for (int i = 0; i < trace.VmTrace.Operations.Count; i++)
-            {
-                trace.VmTrace.Operations[i].Store = null!;
-            }
-        }
-    }
+    private static void FilterStateDiff(ParityLikeTxTrace trace) => trace.StateChanges = null;
 
     // A reward entry survives FilterRewards only when rewards are requested; its action is the reward itself, as in live replay.
     private static void FilterTrace(ParityLikeTxTrace trace)

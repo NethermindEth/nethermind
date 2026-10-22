@@ -5,7 +5,10 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
@@ -69,6 +72,35 @@ public class ReceiptsRecoveryTests
 
         Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
         Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
+    }
+
+    // The stored sender deliberately differs from the signer: if recovery ran, the signer would win.
+    [Test]
+    public void TryRecover_should_take_the_stored_sender_instead_of_recovering_it()
+    {
+        Transaction tx = Build.A.Transaction.WithSenderAddress(null).Signed(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).WithSender(TestItem.AddressB).TestObject;
+
+        _receiptsRecovery.TryRecover(block, [receipt]);
+
+        Assert.That(tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "a stored sender must be used without running ecrecover");
+    }
+
+    [Test]
+    public void TryRecover_should_recover_the_sender_when_the_receipt_stores_none()
+    {
+        Transaction tx = Build.A.Transaction.WithSenderAddress(null).Signed(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).WithSender(null!).TestObject;
+
+        _receiptsRecovery.TryRecover(block, [receipt]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "without a stored sender the signer must be recovered");
+            Assert.That(receipt.Sender, Is.EqualTo(TestItem.AddressA), "the recovered sender must be written back onto the receipt");
+        }
     }
 
     // A frame transaction can fail while carrying the logs of the frames that succeeded, so recovery's
@@ -150,5 +182,45 @@ public class ReceiptsRecoveryTests
                 Assert.That(receipts[i].TxHash, Is.EqualTo(transactions[i].Hash), $"receipt {i}");
             }
         }
+    }
+
+    /// <summary>EIP-8116 receipts hold each transaction's own gas, so recovery must not subtract the previous receipt's.</summary>
+    [Test]
+    public void TryRecover_should_derive_gas_used_from_the_receipt_gas_field([Values] bool eip8116Enabled, [Values] bool structRef)
+    {
+        ulong[] gasUsed = [21_000, 30_000, 45_000];
+        ulong[] gasField = eip8116Enabled ? gasUsed : [21_000, 51_000, 96_000];
+        TestSpecProvider specProvider = new(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
+        ReceiptsRecovery recovery = new(new EthereumEcdsa(specProvider.ChainId), specProvider);
+
+        Transaction[] transactions = new Transaction[gasUsed.Length];
+        TxReceipt[] receipts = new TxReceipt[gasUsed.Length];
+        for (int i = 0; i < gasUsed.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
+            receipts[i] = Build.A.Receipt.WithGasUsedTotal(gasField[i]).TestObject;
+        }
+
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        ulong[] recovered = new ulong[receipts.Length];
+        using (IReceiptsRecovery.IRecoveryContext ctx = recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)))
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                if (structRef)
+                {
+                    TxReceiptStructRef receipt = new(receipts[i]);
+                    ctx.RecoverReceiptData(ref receipt);
+                    recovered[i] = receipt.GasUsed;
+                }
+                else
+                {
+                    ctx.RecoverReceiptData(receipts[i]);
+                    recovered[i] = receipts[i].GasUsed;
+                }
+            }
+        }
+
+        Assert.That(recovered, Is.EqualTo(gasUsed));
     }
 }

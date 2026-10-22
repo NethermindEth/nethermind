@@ -26,6 +26,23 @@ public class ResourcePoolTests
         _resourcePool = new ResourcePool(_config);
     }
 
+    /// <summary>The pool metrics are keyed by label value, so labels built apart must still meet in one entry.</summary>
+    [Test]
+    public void PooledResourceLabel_EqualValues_ShareAMetricEntry()
+    {
+        ResourcePool.PooledResourceLabel label = new("MainBlockProcessing", "CachedResource");
+        Dictionary<ResourcePool.PooledResourceLabel, long> counts = new() { [label] = 1 };
+
+        counts[new ResourcePool.PooledResourceLabel("MainBlockProcessing", "CachedResource")] += 1;
+        counts[new ResourcePool.PooledResourceLabel("MainBlockProcessing", "SnapshotContent")] = 1;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counts[label], Is.EqualTo(2));
+            Assert.That(counts, Has.Count.EqualTo(2));
+        }
+    }
+
     [Test]
     public void Test_GetSnapshotContent_ReturnsNewInstance_WhenPoolEmpty()
     {
@@ -59,6 +76,64 @@ public class ResourcePoolTests
         {
             Assert.That(content2.Accounts, Is.Empty);
             Assert.That(content2.StorageNodes, Is.Empty);
+        }
+    }
+
+    /// <summary>Resources created before detailed metrics are enabled must still be counted once a warm pool only rents and returns.</summary>
+    [Test]
+    [NonParallelizable]
+    public void Test_CreatedPooledResource_IsPublished_WhenDetailedMetricsEnabledAfterCreation()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        ResourcePool.PooledResourceLabel label = new(usage.ToString(), "SnapshotContent");
+        bool wasEnabled = Metrics.DetailedMetricsEnabled;
+        Metrics.CreatedPooledResource.TryRemove(label, out _);
+        try
+        {
+            Metrics.DetailedMetricsEnabled = false;
+            _resourcePool.ReturnSnapshotContent(usage, _resourcePool.GetSnapshotContent(usage));
+
+            Metrics.DetailedMetricsEnabled = true;
+            _resourcePool.ReturnSnapshotContent(usage, _resourcePool.GetSnapshotContent(usage));
+
+            Assert.That(Metrics.CreatedPooledResource.TryGetValue(label, out long created) ? created : (long?)null, Is.EqualTo(1));
+        }
+        finally
+        {
+            Metrics.DetailedMetricsEnabled = wasEnabled;
+        }
+    }
+
+    [Test]
+    public void Test_ReturnSnapshotContent_ReusedContentStartsEmpty_WhetherOrNotStorageNodesWereWritten()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.ReadOnlyProcessingEnv;
+        Address address = new("0x1234567890123456789012345678901234567890");
+        SnapshotContent? first = null;
+
+        for (int round = 0; round < 3; round++)
+        {
+            SnapshotContent content = _resourcePool.GetSnapshotContent(usage);
+            first ??= content;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(content, Is.SameAs(first));
+                Assert.That(content.Accounts, Is.Empty);
+                Assert.That(content.ReadAccounts, Is.Empty);
+                Assert.That(content.Storages, Is.Empty);
+                Assert.That(content.SelfDestructedStorageAddresses, Is.Empty);
+                Assert.That(content.StateNodes, Is.Empty);
+                Assert.That(content.StorageNodes, Is.Empty);
+            }
+
+            content.Accounts[address] = new Account(1, 2);
+            content.ReadAccounts[address] = new Account(3, 4);
+            content.Storages[(address, UInt256.One)] = UInt256.One;
+            content.SelfDestructedStorageAddresses[address] = true;
+            content.StateNodes[TreePath.Empty] = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
+            if (round != 1) content.StorageNodes[(TestItem.KeccakA, TreePath.Empty)] = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
+
+            _resourcePool.ReturnSnapshotContent(usage, content);
         }
     }
 
@@ -102,15 +177,14 @@ public class ResourcePoolTests
     }
 
     [Test]
-    public void ShouldPrewarm_AddressOverloadsUseSameHash([Values] bool includeSlot)
+    public void ShouldPrewarm_SecondRequestForTheSameKey_IsDeduplicated([Values] bool includeSlot)
     {
         using TransientResource resource = new(new TransientResource.Size(1024, 1));
         Address address = new("0x1234567890123456789012345678901234567890");
-        ValueAddress valueAddress = new(address.Bytes);
         UInt256? slot = includeSlot ? (UInt256)1 : null;
 
         Assert.That(resource.ShouldPrewarm(address, slot), Is.True);
-        Assert.That(resource.ShouldPrewarm(in valueAddress, slot), Is.False);
+        Assert.That(resource.ShouldPrewarm(address, slot), Is.False);
     }
 
     [Test]

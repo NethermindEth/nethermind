@@ -24,7 +24,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Whether to download/process new blocks.", DefaultValue = "true")]
     bool ProcessingEnabled { get; set; }
 
-    [ConfigItem(Description = "Whether to connect to newly discovered peers.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to start the peer manager. If disabled, Nethermind doesn't initiate connections to any peers, including static and trusted nodes, `Network.StaticPeers`, and peers added via `admin_addPeer`, and doesn't persist peers to the peer database.", DefaultValue = "true")]
     bool PeerManagerEnabled { get; set; }
 
     [ConfigItem(Description = "The path to the chain spec file.", DefaultValue = "chainspec/foundation.json")]
@@ -87,7 +87,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     ulong? ExitOnBlockNumber { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ExitOnInvalidBlock { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]
@@ -104,6 +104,9 @@ public interface IInitConfig : IConfig
         DefaultValue = "true",
         HiddenFromDocs = true)]
     bool EvmWarmupEnabled { get; set; }
+
+    [ConfigItem(Description = "Whether to warm the block processing pipeline before RPC and Engine API startup. Cancellation is requested after 30 seconds, then startup waits for cleanup. Skipped when JSON-RPC is disabled, without the standard Merge plugin, or with custom spec providers, custom processing pipelines, or database diagnostic modes.", DefaultValue = "true")]
+    bool PipelineWarmupEnabled { get; set; }
 
     [ConfigItem(Description = "Whether to repair canonical-chain markers on startup after a canonical mismatch.", DefaultValue = "false", HiddenFromDocs = true)]
     bool HealCanonicalChain { get; set; }

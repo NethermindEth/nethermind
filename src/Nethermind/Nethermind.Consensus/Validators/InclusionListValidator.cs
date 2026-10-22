@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -22,6 +22,7 @@ public static class InclusionListValidator
     public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
         => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator);
 
+    /// <summary>Checks appendability against state after transactions, before withdrawals and request system calls.</summary>
     public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
     {
         if (!spec.InclusionListsEnabled) return true;
@@ -68,6 +69,8 @@ public static class InclusionListValidator
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i]) continue;
+            // EIP-7805 excludes blob transactions from the appendability check.
+            if (il[i].SupportsBlobs) continue;
             // The rules below judge appendability on the account nonce, which a frame transaction does not
             // use (EIP-8369 Profile 2), so reading one through them reports an honest payload as censoring.
             if (il[i].SupportsFrames) continue;
@@ -79,9 +82,7 @@ public static class InclusionListValidator
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
-        // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
-        // way GasLimit - tx.GasLimit would for an oversized tx.
-        if (tx.GasLimit > block.GasLimit - block.GasUsed) return false;
+        if (!FitsRemainingBlockGas(tx, block, spec)) return false;
         // Appendability must match normal execution, so reuse the full well-formedness check, not a subset.
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
@@ -99,29 +100,24 @@ public static class InclusionListValidator
             || UInt256.AddOverflow(txCost, tx.Value, out txCost))
             return false;
 
-        // A blob tx must also cover maxFeePerBlobGas × blob gas up front, or it could never have executed.
-        if (tx.SupportsBlobs
-            && (!BlobGasCalculator.TryCalculateBlobMaxFee(tx.BlobVersionedHashes?.Length ?? 0, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
-                || UInt256.AddOverflow(txCost, blobFee, out txCost)))
-            return false;
-
-        return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
+        return account.Balance >= txCost && account.Nonce == tx.Nonce;
     }
 
-    /// <summary>Balance the sender would have had when an appended transaction executed.</summary>
-    /// <remarks>Withdrawals are the only post-merge credit applied after the block's transactions, so counting
-    /// them into the post-block balance would make an honest proposer look like a censor.</remarks>
-    private static UInt256 SpendableBalance(Block block, Address sender, ref readonly AccountStruct account)
+    /// <summary>Whether an appended transaction's worst-case block gas still fits.</summary>
+    /// <remarks>EIP-8037 admits a transaction only if both its execution and its state reservation fit the
+    /// matching dimension, so measuring it against the header's max(execution, state) rejects transactions the
+    /// spec judges includable. Callers whose block carries no dimensions must not put an EIP-8037 block to this
+    /// check — the max alone under-reports censorship — which is why the engine API declines to answer instead.</remarks>
+    private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec)
     {
-        UInt256 balance = account.Balance;
-        if (block.Withdrawals is not { Length: > 0 }) return balance;
+        // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
+        // way GasLimit - tx.GasLimit would for an oversized tx.
+        if (!spec.IsEip8037Enabled) return tx.GasLimit <= block.GasLimit - block.GasUsed;
 
-        foreach (Withdrawal withdrawal in block.Withdrawals)
-        {
-            if (withdrawal.Address != sender) continue;
-            if (UInt256.SubtractUnderflow(balance, withdrawal.AmountInWei, out balance)) return UInt256.Zero;
-        }
-
-        return balance;
+        (ulong execution, ulong state) = block.Header.GasUsedPerDimension ?? (block.GasUsed, block.GasUsed);
+        return Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation)
+            && Eip8037BlockGasInclusionCheck.Validate(block.GasLimit, execution, state, executionReservation, stateReservation)
+                == Eip8037BlockGasInclusionCheck.Outcome.Ok;
     }
+
 }

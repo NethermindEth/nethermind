@@ -1,40 +1,63 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
-    public class TxPoolContent
+    /// <summary>Response model for <c>txpool_content</c>, written straight from the pool snapshot as each transaction is reached.</summary>
+    [JsonConverter(typeof(TxPoolContentConverter))]
+    public class TxPoolContent(TxPoolInfo info, ulong chainId)
     {
-        public TxPoolContent(TxPoolInfo info, ulong chainId)
+        internal TxPoolInfo Info { get; } = info;
+        internal ulong ChainId { get; } = chainId;
+    }
+
+    internal sealed class TxPoolContentConverter : JsonConverter<TxPoolContent>
+    {
+        private static readonly TxPoolTxKeyConverter KeyConverter = new();
+
+        public override TxPoolContent Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException($"{nameof(TxPoolContentConverter)} is serialize-only");
+
+        public override void Write(Utf8JsonWriter writer, TxPoolContent value, JsonSerializerOptions options)
         {
-            TransactionForRpcContext extraData = new(chainId);
-            Pending = MapByAddress(info.Pending, extraData);
-            Queued = MapByAddress(info.Queued, extraData);
+            TransactionForRpcContext extraData = new(value.ChainId);
+            writer.WriteStartObject();
+            writer.WritePropertyName("pending"u8);
+            WriteByAddress(writer, value.Info.Pending, extraData, options);
+            writer.WritePropertyName("queued"u8);
+            WriteByAddress(writer, value.Info.Queued, extraData, options);
+            writer.WriteEndObject();
         }
 
-        public Dictionary<string, Dictionary<TxPoolTxKey, TransactionForRpc>> Pending { get; set; }
-        public Dictionary<string, Dictionary<TxPoolTxKey, TransactionForRpc>> Queued { get; set; }
-
-        private static Dictionary<string, Dictionary<TxPoolTxKey, TransactionForRpc>> MapByAddress(
+        private static void WriteByAddress(
+            Utf8JsonWriter writer,
             Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> source,
-            in TransactionForRpcContext extraData)
+            in TransactionForRpcContext extraData,
+            JsonSerializerOptions options)
         {
-            Dictionary<string, Dictionary<TxPoolTxKey, TransactionForRpc>> result = new(source.Count);
+            writer.WriteStartObject();
             foreach (KeyValuePair<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> byAddress in source)
             {
-                string key = ((Address)byAddress.Key).ToString(withZeroX: true, withEip55Checksum: true);
-                Dictionary<TxPoolTxKey, TransactionForRpc> txsByNonce = new(byAddress.Value.Count);
+                writer.WritePropertyName(((Address)byAddress.Key).ToString(withZeroX: true, withEip55Checksum: true));
+                writer.WriteStartObject();
                 foreach (KeyValuePair<TxPoolTxKey, Transaction> kv in byAddress.Value)
-                    txsByNonce[kv.Key] = TransactionForRpc.FromTransaction(kv.Value, extraData);
-                result[key] = txsByNonce;
+                {
+                    KeyConverter.WriteAsPropertyName(writer, kv.Key, options);
+                    TypeInfoJsonSerializer.Serialize(writer, TransactionForRpc.FromTransaction(kv.Value, extraData), options);
+                }
+                writer.WriteEndObject();
             }
-            return result;
+            writer.WriteEndObject();
         }
     }
 }

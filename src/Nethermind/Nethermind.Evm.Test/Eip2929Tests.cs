@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -35,6 +36,91 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
             Assert.That(result.StatusCode, Is.EqualTo(1));
             AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
+        }
+
+        [Test]
+        public void Tracer_access_mode_controls_gas_charging(
+            [Values(Instruction.SLOAD, Instruction.BALANCE)] Instruction instruction, [Values] bool traceAccess)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
+            byte[] code = instruction == Instruction.SLOAD
+                ? Prepare.EvmCode.PushData(1).Op(instruction).Op(Instruction.POP).Done
+                : Prepare.EvmCode.PushData(TestItem.AddressC).Op(instruction).Op(Instruction.POP).Done;
+
+            // Leave the default untouched so false cases catch constructor regressions.
+            TestAllTracerWithOutput tracer = traceAccess ? new() { IsTracingAccess = true } : new();
+            Execute(tracer, code);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.IsTracingAccess, Is.EqualTo(traceAccess));
+                Assert.That(tracer.AccessReportCount, Is.EqualTo(traceAccess ? 1 : 0));
+                Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                AssertGas(tracer, GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.Base
+                    + (traceAccess ? GasCostOf.WarmStateRead
+                        : instruction == Instruction.SLOAD ? GasCostOf.ColdSLoad : GasCostOf.ColdAccountAccess));
+            }
+        }
+
+        /// <remarks>The halted frame must leave slot 1 cold, so both runs pay the same gas.</remarks>
+        [Test]
+        public void Cold_sload_out_of_gas_in_a_sub_call_leaves_the_slot_cold()
+        {
+            ulong gasWhenSubCallTouchesTheSlot = GasOfSloadAfterHaltedSubCall(TestItem.AddressD, subCallSlot: 1);
+            ulong gasWhenSubCallTouchesAnotherSlot = GasOfSloadAfterHaltedSubCall(TestItem.AddressE, subCallSlot: 2);
+
+            Assert.That(gasWhenSubCallTouchesTheSlot, Is.EqualTo(gasWhenSubCallTouchesAnotherSlot),
+                "the out-of-gas sub call must not leave the caller's slot warm");
+        }
+
+        private ulong GasOfSloadAfterHaltedSubCall(Address subCall, int subCallSlot)
+            => GasOfCallerAccessAfterFailedSubCall(
+                subCall,
+                Prepare.EvmCode.PushData(subCallSlot).Op(Instruction.SLOAD).Done,
+                subCallGas: 1000,
+                Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Done);
+
+        /// <remarks>The reverted or halted sub call reads the balance of account F; the caller's read of it must still pay cold.</remarks>
+        [Test]
+        public void Account_warmed_in_a_reverted_sub_call_is_cold_again([Values] bool outOfGas)
+        {
+            ulong gasWhenSubCallTouchesTheAccount = GasOfBalanceAfterFailedSubCall(TestItem.AddressD, TestItem.AddressF);
+            ulong gasWhenSubCallTouchesAnotherAccount = GasOfBalanceAfterFailedSubCall(TestItem.AddressE, TestItem.AddressC);
+
+            Assert.That(gasWhenSubCallTouchesTheAccount, Is.EqualTo(gasWhenSubCallTouchesAnotherAccount),
+                "the reverted sub call must not leave the caller's account warm");
+
+            ulong GasOfBalanceAfterFailedSubCall(Address subCall, Address touched)
+            {
+                Prepare subCallCode = Prepare.EvmCode.PushData(touched).Op(Instruction.BALANCE).Op(Instruction.POP);
+                if (!outOfGas) subCallCode.PushData(0).PushData(0).Op(Instruction.REVERT);
+
+                // A cold BALANCE costs 2600: the out-of-gas sub call halts on the charge.
+                return GasOfCallerAccessAfterFailedSubCall(
+                    subCall,
+                    subCallCode.Done,
+                    subCallGas: outOfGas ? 1000 : 50_000,
+                    Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.BALANCE).Done);
+            }
+        }
+
+        /// <summary>Runs a delegate call to <paramref name="subCall"/> that fails, then <paramref name="callerAccess"/> in the caller.</summary>
+        /// <returns>The gas spent by the whole transaction.</returns>
+        private ulong GasOfCallerAccessAfterFailedSubCall(Address subCall, byte[] subCallCode, long subCallGas, byte[] callerAccess)
+        {
+            TestState.CreateAccount(subCall, 1.Ether);
+            TestState.InsertCode(subCall, subCallCode, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .DelegateCall(subCall, subCallGas)
+                .Op(Instruction.POP)
+                .Data(callerAccess)
+                .Op(Instruction.POP)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(code);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), "precondition: only the sub call fails");
+            return result.GasSpent;
         }
 
         private sealed class StorageObservationTracer(bool storage) : TestAllTracerWithOutput
@@ -97,13 +183,6 @@ namespace Nethermind.Evm.Test
                     Assert.That(tracer.Actions, Has.Count.EqualTo(traceActions ? 1 : 0));
                 }
             }
-        }
-
-        protected override TestAllTracerWithOutput CreateTracer()
-        {
-            TestAllTracerWithOutput tracer = base.CreateTracer();
-            tracer.IsTracingAccess = false;
-            return tracer;
         }
     }
 }

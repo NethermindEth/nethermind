@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
@@ -25,11 +26,12 @@ public static class UInt256Extensions
 public class MerkleTests
 {
     [Test]
-    public void Merkleize_matches_padded_binary_tree([Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33)] int count)
+    public void Merkleize_matches_padded_binary_tree(
+        [Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33, 64, 65, 100)] int count, [Values(1, 256)] int minimumWidth, [Values] bool zeroChunks)
     {
         UInt256[] chunks = new UInt256[count];
-        for (int i = 0; i < count; i++) chunks[i] = (UInt256)(i + 1);
-        int width = 1;
+        if (!zeroChunks) for (int i = 0; i < count; i++) chunks[i] = (UInt256)(i + 1);
+        int width = minimumWidth;
         while (width < count) width *= 2;
         UInt256[] tree = new UInt256[width];
         chunks.CopyTo(tree, 0);
@@ -121,7 +123,7 @@ public class MerkleTests
         for (int level = 0; level < 64; level++)
         {
             Merkle.ZeroHashes[level].ToLittleEndian(actual);
-            Assert.That(actual.ToArray(), Is.EqualTo(expected), $"ZeroHashes[{level}]");
+            Assert.That(actual, Is.SequenceEqualTo(expected), $"ZeroHashes[{level}]");
             expected = HashUtility.Hash(expected, expected);
         }
     }

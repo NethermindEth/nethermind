@@ -95,15 +95,21 @@ namespace Nethermind.JsonRpc.Modules.Admin
             }
 
             // ETH protocol (always present)
-            protocols[Protocol.Eth] = new { Version = ethVersion };
+            protocols[Protocol.Eth] = new ProtocolVersion(ethVersion);
 
             // SNAP protocol (if supported)
             if (snapVersion > 0)
             {
-                protocols[Protocol.Snap] = new { Version = snapVersion };
+                protocols[Protocol.Snap] = new ProtocolVersion(snapVersion);
             }
 
             Protocols = protocols;
+        }
+
+        /// <summary>The version a peer runs for one protocol.</summary>
+        public sealed class ProtocolVersion(int version)
+        {
+            public int Version { get; } = version;
         }
 
         private static bool TryGetHandlerVersion(ISession? session, string protocol, out int version)

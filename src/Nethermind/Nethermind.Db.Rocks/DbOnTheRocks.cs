@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -32,7 +33,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb
 {
     protected ILogger _logger;
 
@@ -47,6 +48,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private static readonly FlushOptions _defaultFlushOptions = new();
 
     private bool _isDisposing;
+    private int _pinnedSlices;
+    private readonly InFlightOperations _prefetches = new();
+    private bool _nativeCloseDeferred;
+    private int _nativeClosed;
     private bool _isDisposed;
 
     private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = [];
@@ -60,6 +65,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private ReadOptions _defaultReadOptions = null!;
     private ReadOptions _hintCacheMissOptions = null!;
+    // Block-cache read tier: a read that needs a file fails as incomplete instead of reading it.
+    private ReadOptions _cacheOnlyReadOptions = null!;
+    private const int BlockCacheTier = 1;
     private ReadOptions? _readAheadReadOptions;
     private ReadOptions _seekReadOptions = null!;
 
@@ -81,8 +89,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private readonly List<OptionsHandle> _doNotGcOptions = [];
 
     private readonly IRocksDbConfig _perTableDbConfig;
-    internal bool VerifyChecksum => _perTableDbConfig.VerifyChecksum ?? true;
-    internal ulong ReadAheadSize => _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
+    internal bool VerifyChecksum { get; }
+    internal ulong ReadAheadSize { get; }
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -136,6 +144,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem = fileSystem ?? new RealFileSystem();
         _rocksDbConfigFactory = rocksDbConfigFactory;
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
+        VerifyChecksum = _perTableDbConfig.VerifyChecksum ?? true;
+        ReadAheadSize = _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = CreateLazyReadAheadIteratorManager(null);
         _seekIteratorManager = CreateLazySeekIteratorManager(null);
@@ -749,6 +759,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _hintCacheMissOptions = CreateReadOptions();
         _hintCacheMissOptions.SetFillCache(false);
 
+        _cacheOnlyReadOptions = CreateReadOptions();
+        _cacheOnlyReadOptions.SetReadTier(BlockCacheTier);
+
         // When a readahead flag is on, the next keys are expected to be after the current key. Increasing this value
         // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
         // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
@@ -1037,6 +1050,150 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    /// <summary>
+    /// Starts one native asynchronous MultiGet for fixed-length keys so that their blocks are in the block cache
+    /// before the scalar reads that need them. The values are discarded.
+    /// </summary>
+    /// <remarks>
+    /// The native batch overlaps its disk reads, which scalar reads on one thread cannot. A failed prefetch is only
+    /// logged: the scalar read that follows performs and reports the read itself. <see cref="Dispose"/> refuses new
+    /// prefetches and waits for the ones in flight before it closes the database.
+    /// </remarks>
+    internal void Prefetch(ReadOnlySpan<byte> keys, int keyLength, IColumnFamilyHandle? cf, ReadOptions readOptions)
+    {
+        if (keyLength <= 0 || keys.Length < keyLength || !_prefetches.TryBegin()) return;
+        bool pending = false;
+        int count = keys.Length / keyLength;
+        IColumnFamilyHandle[]? families = null;
+        try
+        {
+            // The binding copies the keys and handles before it returns, so this thread's arrays serve the next batch.
+            byte[][] keyArrays = PrefetchBuffers.Keys(keyLength, count);
+            families = cf is null ? null : PrefetchBuffers.Families(count);
+            for (int i = 0; i < count; i++) keys.Slice(i * keyLength, keyLength).CopyTo(keyArrays[i]);
+            if (families is not null) Array.Fill(families, cf);
+            Task read = _db.MultiGetAsync(keyArrays, families, readOptions).AsTask();
+            Db.Metrics.IncrementPrefetchedKeys(count);
+            if (read.IsCompleted)
+            {
+                if (read.IsFaulted) LogPrefetchFailure(read.Exception!);
+            }
+            else
+            {
+                _ = read.ContinueWith(static (t, state) => ((DbOnTheRocks)state!).EndPrefetch(t), this,
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                pending = true;
+            }
+        }
+        catch (Exception e) when (e is RocksDbException or ObjectDisposedException)
+        {
+            LogPrefetchFailure(e);
+        }
+        finally
+        {
+            // A reused array must not keep a disposed database's column family reachable.
+            if (families is not null) Array.Clear(families);
+            if (!pending) _prefetches.End();
+        }
+    }
+
+    private void EndPrefetch(Task read)
+    {
+        if (read.IsFaulted) LogPrefetchFailure(read.Exception!);
+        _prefetches.End();
+    }
+
+    private void LogPrefetchFailure(Exception e)
+    {
+        if (_logger.IsDebug) _logger.Debug($"DB {Name} prefetch failed: {e.Message}");
+    }
+
+    /// <summary>The prefetch reads that have started and not completed.</summary>
+    internal int PrefetchesInFlight => _prefetches.Count;
+
+    /// <summary>
+    /// Per-thread key and column family arrays for <see cref="Prefetch"/>, one exact-length array per batch size, so
+    /// a batch allocates nothing on the caller side. Batches larger than <see cref="MaxReusedKeys"/> allocate.
+    /// </summary>
+    /// <remarks>Each array is made the first time a thread uses its batch size, so a thread keeps only the sizes it uses.</remarks>
+    private static class PrefetchBuffers
+    {
+        private const int MaxReusedKeys = 64;
+        private const int MaxReusedKeyLengths = 4;
+
+        [ThreadStatic] private static KeyArrays?[]? t_keys;
+        [ThreadStatic] private static IColumnFamilyHandle[]?[]? t_families;
+
+        public static byte[][] Keys(int keyLength, int count)
+        {
+            if (count > MaxReusedKeys) return NewKeys(keyLength, count);
+            KeyArrays?[] byLength = t_keys ??= new KeyArrays?[MaxReusedKeyLengths];
+            for (int i = 0; i < byLength.Length; i++)
+            {
+                KeyArrays? keys = byLength[i];
+                if (keys is null) return (byLength[i] = new KeyArrays(keyLength)).ForCount(count);
+                if (keys.KeyLength == keyLength) return keys.ForCount(count);
+            }
+
+            return NewKeys(keyLength, count);
+        }
+
+        public static IColumnFamilyHandle[] Families(int count)
+        {
+            if (count > MaxReusedKeys) return new IColumnFamilyHandle[count];
+            IColumnFamilyHandle[]?[] byCount = t_families ??= new IColumnFamilyHandle[MaxReusedKeys + 1][];
+            return byCount[count] ??= new IColumnFamilyHandle[count];
+        }
+
+        private static byte[][] NewKeys(int keyLength, int count)
+        {
+            byte[][] keys = new byte[count][];
+            for (int i = 0; i < keys.Length; i++) keys[i] = new byte[keyLength];
+            return keys;
+        }
+
+        /// <summary>One set of key buffers; the array for each batch size references the first buffers of the set.</summary>
+        private sealed class KeyArrays(int keyLength)
+        {
+            private readonly byte[]?[] _keys = new byte[MaxReusedKeys][];
+            private readonly byte[][]?[] _byCount = new byte[MaxReusedKeys + 1][][];
+
+            public int KeyLength { get; } = keyLength;
+
+            public byte[][] ForCount(int count) => _byCount[count] ?? CreateForCount(count);
+
+            private byte[][] CreateForCount(int count)
+            {
+                byte[][] keys = new byte[count][];
+                for (int i = 0; i < count; i++) keys[i] = _keys[i] ??= new byte[KeyLength];
+                return _byCount[count] = keys;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether a read of <paramref name="key"/> is served from the memtables or block cache. The probe runs at the
+    /// block-cache read tier, which never reads a file, so a value that would need disk IO reports not cached.
+    /// </summary>
+    /// <remarks>
+    /// The probe reads the latest version, not the caller's snapshot: it only decides whether a prefetch is worth
+    /// sending, and the latest version lives in the same memtables and blocks. A miss is a status, not an exception,
+    /// and the empty destination copies no value. A failed read counts as not cached; the read that follows reports it.
+    /// </remarks>
+    internal bool IsCached(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf)
+    {
+        if (_isDisposing) return true;
+        try
+        {
+            GetResult result = _db.TryGet(key, default, out _, cf, _cacheOnlyReadOptions);
+            return result is GetResult.Found or GetResult.NotFound;
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
+    }
+
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -1109,20 +1266,78 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, out nint handle, ReadFlags flags)
     {
-        ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
-        if (!_db.TryGetPinned(key, out PinnedSlice slice, cf, readOptions))
+        // Counted before the disposing check, so Dispose either waits for this slice or this read sees it disposing.
+        Interlocked.Increment(ref _pinnedSlices);
+        bool pinned = false;
+        try
         {
-            handle = default;
-            return null;
-        }
+            ObjectDisposedException.ThrowIf(_isDisposing, this);
 
-        ReadOnlySpan<byte> value = slice.Value;
-        handle = slice.DangerousDetach();
-        return value;
+            ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
+            PinnedSlice slice;
+            try
+            {
+                if (!_db.TryGetPinned(key, out slice, cf, readOptions))
+                {
+                    handle = default;
+                    return null;
+                }
+            }
+            catch (RocksDbException e)
+            {
+                HandleFatalDbError(e);
+                throw;
+            }
+
+            ReadOnlySpan<byte> value = slice.Value;
+            handle = slice.DangerousDetach();
+            pinned = true;
+            return value;
+        }
+        finally
+        {
+            if (!pinned) ReleasePinnedSlice();
+        }
     }
 
-    public void DangerousReleaseHandle(nint handle) =>
+    public void DangerousReleaseHandle(nint handle)
+    {
         PinnedSlice.DangerousDestroy(handle);
+        if (handle != 0) ReleasePinnedSlice();
+    }
+
+    /// <summary>How long <see cref="Dispose"/> waits for pinned slices before it leaves the native close to the last release.</summary>
+    internal TimeSpan PinnedSliceDrainTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    private void ReleasePinnedSlice()
+    {
+        if (Interlocked.Decrement(ref _pinnedSlices) == 0 && Volatile.Read(ref _nativeCloseDeferred)) CloseNative();
+    }
+
+    /// <summary>Waits for the slices <see cref="GetNativeSlice(ReadOnlySpan{byte}, IColumnFamilyHandle?, out nint, ReadFlags)"/> handed out to be released.</summary>
+    /// <returns><see langword="false"/> if slices are still pinned after <see cref="PinnedSliceDrainTimeout"/>.</returns>
+    /// <remarks>
+    /// A pinned slice must be released before its database closes, and a background reader, such as a code read ahead
+    /// of execution, can still hold one when shutdown disposes the database.
+    /// </remarks>
+    private bool WaitForPinnedSlices()
+    {
+        long start = Stopwatch.GetTimestamp();
+        SpinWait spin = default;
+        while (Volatile.Read(ref _pinnedSlices) != 0)
+        {
+            if (Stopwatch.GetElapsedTime(start) > PinnedSliceDrainTimeout) return false;
+            spin.SpinOnce();
+        }
+
+        return true;
+    }
+
+    /// <summary>Closes the native database once, from <see cref="Dispose"/> or from the last pinned slice release.</summary>
+    private void CloseNative()
+    {
+        if (Interlocked.Exchange(ref _nativeClosed, 1) == 0) ReleaseUnmanagedResources();
+    }
 
     public void Remove(ReadOnlySpan<byte> key)
     {
@@ -1359,6 +1574,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         try
         {
             readOptions.SetTailing(!ordered);
+            readOptions.SetTotalOrderSeek(true);
             iterator = CreateIterator(readOptions, ch);
 
             if (resumeKey is null)
@@ -1587,6 +1803,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         InnerFlush(familyHandle);
     }
 
+    public void FlushWithColumnFamilyOrThrow(IColumnFamilyHandle familyHandle)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+        try
+        {
+            _db.Flush(_defaultFlushOptions, familyHandle);
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
     private const ulong CompactOnDeletionSlidingWindowKeys = 100_000;
     private const ulong CompactOnDeletionTriggerKeys = 50_000;
     private const double CompactOnDeletionFileRatio = 0.3;
@@ -1748,6 +1978,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         _defaultReadOptions.Dispose();
         _hintCacheMissOptions.Dispose();
+        _cacheOnlyReadOptions.Dispose();
         _readAheadReadOptions?.Dispose();
         _seekReadOptions.Dispose();
 
@@ -1757,8 +1988,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposing, true, false)) return;
+        _prefetches.Close();
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
+        bool drained = WaitForPinnedSlices();
+        // An unfinished prefetch holds its own lease on the native database, which then closes when the read completes.
+        if (!_prefetches.WaitForAll(PinnedSliceDrainTimeout) && _logger.IsWarn)
+            _logger.Warn($"DB {Name} closes when its {PrefetchesInFlight} prefetch reads complete");
 
         foreach (IDisposable dbMetricsUpdater in _metricsUpdaters)
         {
@@ -1769,7 +2005,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (_perTableDbConfig.FlushOnExit != FlushOnExitMode.None)
             InnerFlush(onlyWal: _perTableDbConfig.FlushOnExit == FlushOnExitMode.WalOnly);
-        ReleaseUnmanagedResources();
+
+        if (drained)
+        {
+            CloseNative();
+        }
+        else
+        {
+            // A slice still pinned would read freed memory, so the last release closes the database.
+            if (_logger.IsWarn) _logger.Warn($"DB {Name} closes when its {Volatile.Read(ref _pinnedSlices)} pinned slices are released");
+            Interlocked.Exchange(ref _nativeCloseDeferred, true);
+            if (Volatile.Read(ref _pinnedSlices) == 0) CloseNative();
+        }
 
         _dbsByPath.Remove(_fullPath!, out _);
 
@@ -2159,24 +2406,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public byte[]? FirstKey
-    {
-        get
-        {
-            using Iterator iterator = _db.NewIterator();
-            iterator.SeekToFirst();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
-    }
+    public byte[]? FirstKey => GetEdgeKey(first: true);
 
-    public byte[]? LastKey
+    public byte[]? LastKey => GetEdgeKey(first: false);
+
+    /// <summary>Returns the smallest or largest key of the database or column family, or null when it is empty.</summary>
+    /// <remarks>Uses total order, since a prefix-extractor database (code) otherwise skips its unflushed memtable.</remarks>
+    internal byte[]? GetEdgeKey(bool first, IColumnFamilyHandle? cf = null)
     {
-        get
-        {
-            using Iterator iterator = _db.NewIterator();
-            iterator.SeekToLast();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
+        using ReadOptions readOptions = CreateReadOptions();
+        readOptions.SetTotalOrderSeek(true);
+        using Iterator iterator = CreateIterator(readOptions, cf);
+        if (first) iterator.SeekToFirst();
+        else iterator.SeekToLast();
+        return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
     }
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) => GetViewBetween(firstKey, lastKey, null, flags);
@@ -2221,12 +2464,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // stay correct within the seek key's prefix bucket, so a range crossing buckets can come back short or
         // empty. Total order fixes that at the cost of the prefix index and bloom, so it is asked for only when
         // the range can actually leave the bucket; a range that stays inside one keeps the optimisation.
-        if (CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
+        bool totalOrder = CrossesPrefixBucket(firstKey, lastKey);
+        if (totalOrder) readOptions.SetTotalOrderSeek(true);
         readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = CreateIterator(readOptions, cf);
-        return new RocksdbSortedView(iterator, readOptions);
+        return (flags & ReadFlags.HintRepeatedReads) != 0
+            ? new RebindableRocksdbSortedView(iterator, readOptions, this, firstKey.Length, lastKey.Length, totalOrder)
+            : new RocksdbSortedView(iterator, readOptions);
     }
+
+    /// <inheritdoc/>
+    public bool TryGetCeilingInSnapshot(
+        scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
+        _reader.TryGetCeilingInSnapshot(lowerBoundInclusive, upperBoundExclusive, keyBuffer, out keyLength, valueBuffer, out valueLength);
 
     public bool TryGetCeiling(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
@@ -2257,9 +2509,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         Func<ReadOptions> readOptionsFactory,
         IColumnFamilyHandle? columnFamily,
         Snapshot snapshot
-    ) : RocksDbReader(mainDb, readOptionsFactory, null, columnFamily), IKeyValueStoreSnapshot
+    ) : RocksDbReader(mainDb, readOptionsFactory, null, columnFamily), IKeyValueStoreSnapshot, ISnapshotSortedKeyValueStore
     {
         private int _disposed;
+
+        /// <inheritdoc/>
+        bool ISnapshotSortedKeyValueStore.TryGetCeilingInSnapshot(
+            scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
+            TryGetCeilingInSnapshot(lowerBoundInclusive, upperBoundExclusive, keyBuffer, out keyLength, valueBuffer, out valueLength);
 
         public override void Dispose()
         {
