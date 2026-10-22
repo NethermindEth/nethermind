@@ -84,7 +84,6 @@ jobs:
           - Nethermind.Network.Enr.Test
           - Nethermind.Network.Test
           - Nethermind.OpcodeTracing.Plugin.Test
-          - Nethermind.Optimism.Test
           - Nethermind.PortfolioViewer.Plugin.Test
           - Nethermind.Runner.Test
           - Nethermind.SendPolicy.Plugin.Test

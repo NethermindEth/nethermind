@@ -51,7 +51,6 @@ jobs:
 
             // --- Path rules ---
             const pathToLabel = [
-              { pattern: 'src/Nethermind/Nethermind.Optimism', label: 'optimism' },
               { pattern: 'src/Nethermind/Nethermind.Taiko', label: 'taiko' },
               { pattern: 'src/Nethermind/Nethermind.Xdc', label: 'XDC' },
               { pattern: 'src/Nethermind/Nethermind.Network', label: 'network' },

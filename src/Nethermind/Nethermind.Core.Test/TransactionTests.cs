@@ -197,7 +197,6 @@ public class TransactionTests
     [TestCase(TxType.Blob, false, TestName = "Blob")]
     [TestCase(TxType.SetCode, false, TestName = "SetCode")]
     [TestCase(TxType.FrameTx, true, TestName = "FrameTx")]
-    [TestCase(TxType.DepositTx, false, TestName = "DepositTx")]
     public void SupportsFrames_PerTxType_MatchesExpectation(TxType txType, bool expected)
     {
         Transaction transaction = new() { Type = txType };
@@ -261,6 +260,26 @@ public class TransactionTests
         {
             Assert.That(destination.Frames, Is.SameAs(source.Frames), nameof(Transaction.Frames));
             Assert.That(destination.FrameSignatures, Is.SameAs(source.FrameSignatures), nameof(Transaction.FrameSignatures));
+        }
+    }
+
+    [Test]
+    public void CopyTo_and_pool_return_preserve_then_clear_generic_extension_data()
+    {
+        object extensionData = new();
+        Transaction source = new() { ExtensionData = extensionData, IsSystemTransaction = true };
+        Transaction copy = new();
+
+        source.CopyTo(copy);
+        bool returned = new Transaction.PoolPolicy().Return(source);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(returned, Is.True);
+            Assert.That(copy.ExtensionData, Is.SameAs(extensionData));
+            Assert.That(copy.IsSystemTransaction, Is.True);
+            Assert.That(source.ExtensionData, Is.Null);
+            Assert.That(source.IsSystemTransaction, Is.False);
         }
     }
 }

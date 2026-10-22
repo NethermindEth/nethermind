@@ -17,7 +17,7 @@ Runs on Linux, Windows, and macOS.
 
 ### Supported networks
 
-**Ethereum** · **Gnosis** · **Optimism** · **Taiko** · **World Chain** · **Linea** · **Energy Web**
+**Ethereum** · **Gnosis** · **Taiko** · **Linea** · **Energy Web**
 
 ### Documentation
 
@@ -33,7 +33,7 @@ Nethermind connects operators to the Ethereum network via JSON-RPC over HTTP, We
 
 - **Client diversity:** The Ethereum protocol becomes more resilient when no single node implementation dominates. A bug in any one implementation cannot cause the network to finalize a bad block if multiple independent clients are running.
 
-- **L2 and rollup native:** Each supported L2 network is implemented as a plugin, so the core stays untouched. For OP Stack operators, a rollup node is built directly into the client, fully replacing the separate `op-node` and cutting services from two down to one.
+- **L2 and rollup native:** Each supported L2 network is implemented as a plugin, so the core stays untouched.
 
 - **ZK-readiness:** ZK proving is being built directly into the production execution client. Execution witness capture, stateless block replay, and a minimal EVM binary are complete. See the [ZK roadmap](https://www.nethermind.io/blog/road-to-zk-implementation-nethermind-clients-path-to-proofs) for current status.
 

@@ -21,7 +21,6 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     public ReceiptArrayStorageDecoder() : this(true, true) { }
 
     private static readonly ReceiptStorageDecoder Decoder = new();
-    private static readonly CompactReceiptStorageDecoder CompactDecoder = CompactReceiptStorageDecoder.Instance;
 
     public const int CompactEncoding = 127;
 
@@ -49,14 +48,18 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private int GetContentLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
+    private int GetContentLength(
+        TxReceipt[] items,
+        RlpBehaviors rlpBehaviors,
+        IRlpDecoder<TxReceipt>? compactDecoder = null)
     {
         if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
+            compactDecoder ??= GetCompactDecoder();
             int totalLength = 0;
             for (int i = 0; i < items.Length; i++)
             {
-                totalLength += CompactDecoder.GetLength(items[i], rlpBehaviors);
+                totalLength += compactDecoder.GetLength(items[i], rlpBehaviors);
             }
 
             return totalLength;
@@ -77,7 +80,8 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     {
         if (TrySkipCompactPrefix(ref decoderContext, out _))
         {
-            return TakeCompletePrefix(CompactDecoder.DecodeArray(
+            IRlpDecoder<TxReceipt> compactDecoder = GetCompactDecoder();
+            return TakeCompletePrefix(compactDecoder.DecodeArray(
                 ref decoderContext,
                 RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes));
         }
@@ -106,7 +110,8 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
         if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
-            int totalLength = GetContentLength(items, rlpBehaviors);
+            IRlpDecoder<TxReceipt> compactDecoder = GetCompactDecoder();
+            int totalLength = GetContentLength(items, rlpBehaviors, compactDecoder);
             if (WritesTxHashes(items))
             {
                 writer.WriteByte(CompactEncodingWithTxHashes);
@@ -125,7 +130,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
             for (int i = 0; i < items.Length; i++)
             {
-                CompactDecoder.Encode(ref writer, items[i], rlpBehaviors);
+                compactDecoder.Encode(ref writer, items[i], rlpBehaviors);
             }
         }
         else
@@ -156,7 +161,8 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         if (TrySkipCompactPrefix(ref compactReader, out _))
         {
             RlpReader decoderContext = new(receiptsData[compactReader.Position..]);
-            return TakeCompletePrefix(CompactDecoder.DecodeArray(
+            IRlpDecoder<TxReceipt> compactDecoder = GetCompactDecoder();
+            return TakeCompletePrefix(compactDecoder.DecodeArray(
                 ref decoderContext,
                 RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | compactBehaviors));
         }
@@ -186,9 +192,10 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         if (TrySkipCompactPrefix(ref compactReader, out _))
         {
             RlpReader decoderContext = new(receiptsData[compactReader.Position..]);
+            IRlpDecoder<TxReceipt> compactDecoder = GetCompactDecoder();
             return DecodeArrayAllowingMissingReceipts(
                 ref decoderContext,
-                CompactDecoder,
+                compactDecoder,
                 RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes,
                 includeTrailingItems: true);
         }
@@ -207,7 +214,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
     private static TxReceipt?[] DecodeArrayAllowingMissingReceipts(
         ref RlpReader decoderContext,
-        RlpDecoder<TxReceipt> decoder,
+        IRlpDecoder<TxReceipt> decoder,
         RlpBehaviors rlpBehaviors,
         bool includeTrailingItems = false)
     {
@@ -349,6 +356,13 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
     public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData) =>
         IsCompactEncoding(receiptsData)
-            ? CompactDecoder
+            ? GetCompactRefDecoder()
             : Decoder;
+
+    private static IRlpDecoder<TxReceipt> GetCompactDecoder() =>
+        Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage) ?? CompactReceiptStorageDecoder.Instance;
+
+    private static IReceiptRefDecoder GetCompactRefDecoder() =>
+        GetCompactDecoder() as IReceiptRefDecoder
+        ?? throw new RlpException($"The registered compact receipt decoder must implement {nameof(IReceiptRefDecoder)}.");
 }

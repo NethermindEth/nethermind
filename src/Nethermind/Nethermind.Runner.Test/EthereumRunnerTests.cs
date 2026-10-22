@@ -66,7 +66,6 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Ethereum.Steps;
@@ -691,7 +690,7 @@ public class EthereumRunnerTests
     private static ICollection<(string file, ConfigProvider configProvider)> InitOnce()
     {
         // we need this to discover ChainSpecEngineParameters
-        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters), typeof(XdcChainSpecEngineParameters) };
+        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters), typeof(XdcChainSpecEngineParameters) };
 
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
@@ -740,7 +739,7 @@ public class EthereumRunnerTests
     [OneTimeTearDown]
     public void OneTimeTearDown()
     {
-        // Optimism override decoder globally, which mess up other test
+        // Restore the network decoder registrations changed by the runner tests.
         Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
         if (assembly is not null)
         {

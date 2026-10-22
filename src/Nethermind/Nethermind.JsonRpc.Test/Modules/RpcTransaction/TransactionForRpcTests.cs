@@ -147,7 +147,7 @@ public class TransactionForRpcTests
     public void Unknown_explicit_type_is_ignored() =>
         Assert.That(DeserializeTransactionForRpc("""{"type":"0x7f","maxFeePerGas":"0x7"}"""), Is.TypeOf<EIP1559TransactionForRpc>());
 
-    // Optimism's L2Api reads signed block transactions back through this converter, so the fields must keep the type.
+    // L2 APIs read signed block transactions back through this converter, so the fields must keep the type.
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_signed_transaction_keeps_its_type(Transaction transaction)
     {

@@ -9,7 +9,7 @@ namespace Nethermind.Consensus.Withdrawals;
 /// <summary>
 /// Creates an <see cref="IWithdrawalProcessor"/> for use with a specific <see cref="IWorldState"/>
 /// and <see cref="ITransactionProcessor"/>. This allows chain-specific withdrawal processors
-/// (e.g. AuRa, Optimism) to be constructed with the correct dependencies.
+/// (e.g. AuRa) to be constructed with the correct dependencies.
 /// </summary>
 public interface IWithdrawalProcessorFactory
 {

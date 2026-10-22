@@ -112,10 +112,18 @@ namespace Nethermind.JsonRpc.Test.Data
             }
         }
 
-        [Test]
-        public void Serializing_receipt_does_not_retain_its_logs()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Serializing_receipt_does_not_retain_its_logs(bool withBlockTimestampMetadata)
         {
-            new EthereumJsonSerializer().Serialize(BuildReceiptForRpc(TestItem.KeccakA, 2));
+            ReceiptForRpc receipt = BuildReceiptForRpc(TestItem.KeccakA, 2);
+            if (withBlockTimestampMetadata)
+            {
+                TxReceipt source = receipt.ToReceipt();
+                receipt.Populate(TestItem.KeccakA, source, 1_000, 1_000_200, new(UInt256.One), 0);
+            }
+
+            new EthereumJsonSerializer().Serialize(receipt);
 
             LogEntryForRpc entry = (LogEntryForRpc)typeof(ReceiptLogsForRpc).GetField("_writeEntry", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
             using (Assert.EnterMultipleScope())
@@ -125,6 +133,45 @@ namespace Nethermind.JsonRpc.Test.Data
                 Assert.That(entry.Address, Is.Null);
                 Assert.That(entry.Data, Is.Null);
                 Assert.That(entry.Topics, Is.Null);
+                Assert.That(entry.BlockTimestampMs, Is.Null);
+            }
+        }
+
+        [Test]
+        public void Log_views_preserve_and_reset_optional_block_timestamp_metadata()
+        {
+            ReceiptForRpc receipt = BuildReceiptForRpc(TestItem.KeccakA, 3);
+            TxReceipt source = receipt.ToReceipt();
+            receipt.Populate(TestItem.KeccakA, source, 1_000, 1_000_200, new(UInt256.One), 0);
+
+            ReceiptLogsForRpc logs = (ReceiptLogsForRpc)receipt.Logs!;
+            ReceiptLogsForRpc slice = logs.Slice(1, 2);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(logs[0].BlockTimestampMs, Is.EqualTo(1_000_200));
+                Assert.That(slice[0].BlockTimestampMs, Is.EqualTo(1_000_200));
+                Assert.That(slice[0].LogIndex, Is.EqualTo(1));
+            }
+
+            string generated = new EthereumJsonSerializer().Serialize(receipt);
+            string standard = JsonSerializer.Serialize(receipt, EthereumJsonSerializer.JsonOptions);
+            using (JsonDocument generatedDocument = JsonDocument.Parse(generated))
+            using (JsonDocument standardDocument = JsonDocument.Parse(standard))
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(generatedDocument.RootElement.TryGetProperty("blockTimestampMs", out _), Is.False);
+                Assert.That(standardDocument.RootElement.TryGetProperty("blockTimestampMs", out _), Is.False);
+                Assert.That(generatedDocument.RootElement.GetProperty("logs")[0].GetProperty("blockTimestampMs").GetString(), Is.EqualTo("0xf4308"));
+                Assert.That(standardDocument.RootElement.GetProperty("logs")[0].GetProperty("blockTimestampMs").GetString(), Is.EqualTo("0xf4308"));
+            }
+
+            receipt.Populate(TestItem.KeccakA, source, 1_000, new(UInt256.One), 0);
+            using JsonDocument resetGeneratedDocument = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(receipt));
+            using JsonDocument resetStandardDocument = JsonDocument.Parse(JsonSerializer.Serialize(receipt, EthereumJsonSerializer.JsonOptions));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resetGeneratedDocument.RootElement.GetProperty("logs")[0].TryGetProperty("blockTimestampMs", out _), Is.False);
+                Assert.That(resetStandardDocument.RootElement.GetProperty("logs")[0].TryGetProperty("blockTimestampMs", out _), Is.False);
             }
         }
 

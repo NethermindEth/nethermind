@@ -12,7 +12,7 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// <summary>
 /// Abstract root of the user-signable transaction types (legacy, access list, EIP-1559, blob,
 /// set-code). Declaring an RPC input parameter as this type restricts it, via the type system, to
-/// transactions a user can submit: output-only types such as Optimism deposits derive from
+/// transactions a user can submit: output-only plugin transaction types derive from
 /// <see cref="TransactionForRpc"/> directly and are rejected during deserialization.
 /// </summary>
 /// <remarks>

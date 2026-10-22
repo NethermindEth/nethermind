@@ -18,7 +18,6 @@ using Nethermind.Init.Snapshot;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa;
 using Nethermind.Merge.Plugin;
-using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Shutter;
@@ -56,7 +55,6 @@ public class EthereumStepsLoaderTests
     public void DoubleCheck_PluginsSteps()
     {
         CheckPlugin(new AuRaPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters()) }));
-        CheckPlugin(new OptimismPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters()) }, new OptimismConfig() { ClEnabled = true }));
         CheckPlugin(new TaikoPlugin(new ChainSpec()));
         CheckPlugin(new AuRaMergePlugin(new ChainSpec(), new MergeConfig()));
         CheckPlugin(new SnapshotPlugin(new SnapshotConfig()));

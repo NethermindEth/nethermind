@@ -35,13 +35,17 @@ namespace Nethermind.Core
         // Taiko Anchor transaction
         public bool IsAnchorTx { get; set; }
 
-        // Optimism deposit transaction fields
-        // SourceHash uniquely identifies the source of the deposit
-        public Hash256? SourceHash { get; set; }
-        // Mint is minted on L2, locked on L1, nil if no minting.
-        public UInt256 Mint { get; set; }
-        // Field indicating if this transaction is exempt from the L2 gas limit.
-        public bool IsOPSystemTransaction { get; set; }
+        /// <summary>
+        /// Plugin-owned transaction data that is not part of the core transaction model.
+        /// </summary>
+        /// <remarks>
+        /// Plugins must assign immutable data. Copies share the same reference, and the transaction pool clears
+        /// the reference when a transaction is returned to the pool.
+        /// </remarks>
+        public object? ExtensionData { get; set; }
+
+        /// <summary>Whether this transaction is a system transaction for fee and execution rules.</summary>
+        public bool IsSystemTransaction { get; set; }
 
         public ulong Nonce { get; set; }
         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
@@ -329,9 +333,7 @@ namespace Nethermind.Core
                 builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             }
 
-            builder.AppendLine($"{indent}SourceHash: {SourceHash}");
-            builder.AppendLine($"{indent}Mint:      {Mint}");
-            builder.AppendLine($"{indent}OpSystem:  {IsOPSystemTransaction}");
+            builder.AppendLine($"{indent}System:    {IsSystemTransaction}");
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
@@ -377,9 +379,8 @@ namespace Nethermind.Core
                 obj.ChainId = default;
                 obj.Type = default;
                 obj.IsAnchorTx = default;
-                obj.SourceHash = default;
-                obj.Mint = default;
-                obj.IsOPSystemTransaction = default;
+                obj.ExtensionData = default;
+                obj.IsSystemTransaction = default;
                 obj.Nonce = default;
                 obj.GasPrice = default;
                 obj.GasBottleneck = default;
@@ -436,9 +437,8 @@ namespace Nethermind.Core
             tx.ChainId = ChainId;
             tx.Type = Type;
             tx.IsAnchorTx = IsAnchorTx;
-            tx.SourceHash = SourceHash;
-            tx.Mint = Mint;
-            tx.IsOPSystemTransaction = IsOPSystemTransaction;
+            tx.ExtensionData = ExtensionData;
+            tx.IsSystemTransaction = IsSystemTransaction;
             tx.Nonce = Nonce;
             tx.GasPrice = GasPrice;
             tx.GasBottleneck = GasBottleneck;

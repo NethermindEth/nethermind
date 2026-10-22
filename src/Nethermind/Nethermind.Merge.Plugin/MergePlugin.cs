@@ -118,7 +118,7 @@ public class MergePluginModule : Module
 
 /// <summary>
 /// Common post merge code, also uses by some plugins. These are components generally needed for sync and engine api.
-/// Note: Used by <see cref="OptimismModule"/>, <see cref="TaikoModule"/>, <see cref="AuRaMergeModule"/>
+/// Note: Used by Taiko and AuRa merge modules.
 /// </summary>
 public class BaseMergePluginModule : Module
 {

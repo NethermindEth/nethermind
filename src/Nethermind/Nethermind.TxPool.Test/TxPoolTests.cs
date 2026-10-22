@@ -3326,9 +3326,6 @@ namespace Nethermind.TxPool.Test
             // Should only add non-blob transactions to local pool when underpaid
             bool expectedResult = txType != TxType.Blob;
 
-            // No need to check for deposit tx
-            if (txType == TxType.DepositTx) return;
-
             // Frame txs are rejected at ingress under Prague; EIP-8141 activates at Bogota
             if (txType == TxType.FrameTx) return;
 
@@ -7297,8 +7294,6 @@ namespace Nethermind.TxPool.Test
                         break;
                     case TxType.FrameTx:
                         //Frame txs are rejected at ingress under Prague; EIP-8141 activates at Bogota
-                        continue;
-                    case TxType.DepositTx:
                         continue;
                 }
                 builder.SignedAndResolved(_ethereumEcdsa, signer);

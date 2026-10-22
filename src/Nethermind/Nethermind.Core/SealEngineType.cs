@@ -11,7 +11,6 @@ namespace Nethermind.Core
         public const string NethDev = nameof(NethDev);
         public const string Ethash = nameof(Ethash);
         public const string BeaconChain = nameof(BeaconChain);
-        public const string Optimism = nameof(Optimism);
         public const string Taiko = nameof(Taiko);
     }
 }

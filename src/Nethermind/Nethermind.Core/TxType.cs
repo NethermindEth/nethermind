@@ -11,7 +11,5 @@ namespace Nethermind.Core
         Blob = 3,
         SetCode = 4,
         FrameTx = 6,
-
-        DepositTx = 0x7E,
     }
 }

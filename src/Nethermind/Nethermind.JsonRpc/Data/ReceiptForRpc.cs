@@ -24,6 +24,10 @@ namespace Nethermind.JsonRpc.Data
 
         /// <summary>Sets the fields the constructor sets, so a writer can refill one instance per receipt.</summary>
         protected internal void Populate(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, int logIndexStart)
+            => Populate(txHash, receipt, blockTimestamp, null, gasInfo, logIndexStart);
+
+        /// <summary>Sets the fields the constructor sets, including optional millisecond timestamp metadata, so a writer can refill one instance per receipt.</summary>
+        protected internal void Populate(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, ulong? blockTimestampMs, TxGasInfo gasInfo, int logIndexStart)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -37,8 +41,8 @@ namespace Nethermind.JsonRpc.Data
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
-            if (Logs is ReceiptLogsForRpc logs) logs.Reset(receipt, blockTimestamp, logIndexStart);
-            else Logs = logs = new(receipt, blockTimestamp, logIndexStart);
+            if (Logs is ReceiptLogsForRpc logs) logs.Reset(receipt, blockTimestamp, blockTimestampMs, logIndexStart);
+            else Logs = logs = new(receipt, blockTimestamp, blockTimestampMs, logIndexStart);
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;

@@ -43,6 +43,17 @@ public class BlockForRpc
 
     [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false)
+        : this(block, includeFullTransactionData, specProvider, skipTxs, blockTimestampMs: null)
+    {
+    }
+
+    [SkipLocalsInit]
+    protected BlockForRpc(
+        Block block,
+        bool includeFullTransactionData,
+        ISpecProvider specProvider,
+        bool skipTxs,
+        ulong? blockTimestampMs)
     {
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
@@ -97,7 +108,7 @@ public class BlockForRpc
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
-                    ? GetTransactionsForRpc(block, specProvider.ChainId)
+                    ? GetTransactionsForRpc(block, specProvider.ChainId, blockTimestampMs)
                     : GetTransactionHashes(block.Transactions);
         }
         TransactionsRoot = block.TxRoot;
@@ -184,7 +195,8 @@ public class BlockForRpc
         return hashes;
     }
 
-    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId) => BlockTransactions.FromBlock(block, chainId);
+    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId, ulong? blockTimestampMs) =>
+        BlockTransactions.FromBlock(block, chainId, blockTimestampMs);
 
     private static Hash256[] GetUnclesHashes(BlockHeader[] headers)
     {

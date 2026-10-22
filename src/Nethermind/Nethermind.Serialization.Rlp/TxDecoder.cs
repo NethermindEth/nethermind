@@ -29,7 +29,7 @@ public sealed partial class TxDecoder : TxDecoder<Transaction>
 
         // Only the types whose signature is the trailing v/r/s triplet. A frame transaction (EIP-8250) carries
         // per-frame signatures nested inside its payload and elides bytes there when signing, so its signed
-        // bytes are not a prefix of its encoding; a deposit transaction is not signed at all.
+        // bytes are not a prefix of its encoding; some custom transaction types are not signed at all.
         if (txType is not (TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.Blob or TxType.SetCode))
         {
             return false;

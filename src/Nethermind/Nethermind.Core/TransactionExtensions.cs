@@ -12,7 +12,7 @@ namespace Nethermind.Core
     {
         extension(Transaction tx)
         {
-            public bool IsSystem() => tx is SystemTransaction || tx.SenderAddress == Address.SystemUser || tx.IsOPSystemTransaction;
+            public bool IsSystem() => tx is SystemTransaction || tx.SenderAddress == Address.SystemUser || tx.IsSystemTransaction;
 
             public bool IsFree() => tx.IsSystem() || tx.IsServiceTransaction;
 

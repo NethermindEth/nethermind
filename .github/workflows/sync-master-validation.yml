@@ -107,7 +107,7 @@ jobs:
               ;;
           esac
 
-          # master-validation chains; op-mainnet dropped to cut cost (kept in sync-supported-chains)
+          # Master-validation chains.
           MASTER_CHAINS='["mainnet","gnosis"]'
 
           matrix=$(cat scripts/config/testnet-matrix.json | jq \

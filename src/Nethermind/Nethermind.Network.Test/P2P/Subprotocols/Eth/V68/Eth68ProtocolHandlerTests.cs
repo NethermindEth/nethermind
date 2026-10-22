@@ -1014,7 +1014,7 @@ public class Eth68ProtocolHandlerTests
     }
 
     [TestCase(0, (byte)TxType.Legacy)]
-    [TestCase(100, (byte)TxType.DepositTx)]
+    [TestCase(100, 0x7E)]
     [TestCase(100, byte.MaxValue)]
     public void Should_request_when_announcement_shape_is_invalid(int size, byte type)
     {

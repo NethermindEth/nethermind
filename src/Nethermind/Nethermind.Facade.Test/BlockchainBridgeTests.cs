@@ -349,13 +349,13 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void Call_computes_the_hash_of_other_types()
+    public void Call_computes_the_hash_of_custom_types()
     {
-        // Stands in for a plugin's decoder: core registers none for deposit transactions.
-        TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, new EIP1559TxDecoder());
+        TxType customType = (TxType)0x7D;
+        TxDecoder.Instance.RegisterDecoder(customType, new EIP1559TxDecoder());
         try
         {
-            Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
+            Transaction tx = Build.A.Transaction.WithType(customType).TestObject;
             tx.Hash = TestItem.KeccakA;
 
             _blockchainBridge.Call(Build.A.BlockHeader.TestObject, tx);
@@ -364,7 +364,7 @@ public class BlockchainBridgeTests
         }
         finally
         {
-            TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, null!);
+            TxDecoder.Instance.RegisterDecoder(customType, null!);
         }
     }
 

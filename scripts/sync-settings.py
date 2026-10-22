@@ -12,7 +12,6 @@ CONFIGS_PATH = './src/Nethermind/Nethermind.Runner/configs'
 APPLICATION_JSON = { 'Content-type': 'application/json' }
 REQUEST_TIMEOUT_SECONDS = 30
 ATTEMPTS = 5
-SUPERCHAIN_CHAINS = ["op-mainnet", "op-sepolia", "worldchain-mainnet", "worldchain-sepolia"]
 # Configs that must keep another config's pivot: they take the pivot it was just given instead of fetching their own,
 # so a block landing between two fetches can't leave them on different pivots.
 PIVOT_FOLLOWERS = {"mainnet": ["mainnet_aztec"]}
@@ -41,30 +40,6 @@ configs = {
         "url": "https://api.etherscan.io/v2/api?chainid=11155111",
         "blockReduced": 1000,
         "multiplierRequirement": 1000,
-        "isPoS": True
-    },
-    "op-mainnet": {
-        "url": "https://mainnet.optimism.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": True
-    },
-    "op-sepolia": {
-        "url": "https://sepolia.optimism.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": True
-    },
-    "worldchain-mainnet": {
-        "url": "https://worldchain-mainnet.g.alchemy.com/public",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": True
-    },
-    "worldchain-sepolia": {
-        "url": "https://worldchain-sepolia.g.alchemy.com/public",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
         "isPoS": True
     },
     "linea-mainnet": {
@@ -156,7 +131,6 @@ def writePivot(configurations, baseBlock, pivotHash, pivotTotalDifficulty, isPoS
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fast Sync configuration settings")
     parser.add_argument("-k", "--key", default="", help="etherscan API key")
-    parser.add_argument("--superchain", action="store_true", help="only process superchain chains")
 
     args = parser.parse_args()
     key = args.key
@@ -164,9 +138,6 @@ if __name__ == "__main__":
     print(emoji.emojize("Fast Sync configuration settings initialization     :white_check_mark: "))
     failed = []
     for config, value in configs.items():
-        if args.superchain and config not in SUPERCHAIN_CHAINS:
-            continue
-
         print(emoji.emojize(f"{config.capitalize()} section                                     :white_check_mark: "))
         # Public RPCs intermittently time out or answer with a non-JSON body; one flaky endpoint must not block the others.
         for attempt in range(1, ATTEMPTS + 1):

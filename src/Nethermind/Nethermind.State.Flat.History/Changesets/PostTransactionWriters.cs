@@ -24,8 +24,8 @@ internal static class PostTransactionWriters
 {
     /// <summary>The seal engines whose block processing is the one described here: the standard processor, crediting
     /// withdrawals to their recipients and calling only the contracts the spec names. An AuRa chain credits
-    /// withdrawals through a chainspec contract instead, which writes storage no spec property can name; Optimism
-    /// and Taiko carry their own processors. Their blocks are never chained.
+    /// withdrawals through a chainspec contract instead, which writes storage no spec property can name; Taiko
+    /// carries its own processor. Such blocks are never chained.
     /// The answer is only as good as the provider: <see cref="ISpecProvider.SealEngine"/> is a default interface
     /// implementation returning <see cref="SealEngineType.Ethash"/>, so a provider that adds a block processing step
     /// of its own and leaves the property alone would be taken for a standard chain. Every provider in the tree

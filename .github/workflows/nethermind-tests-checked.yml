@@ -96,7 +96,6 @@ jobs:
           - Nethermind.Network.Dns.Test
           - Nethermind.Network.Enr.Test
           - Nethermind.Network.Test
-          - Nethermind.Optimism.Test
           - Nethermind.Runner.Test
           - Nethermind.SendPolicy.Plugin.Test
           - Nethermind.Serialization.Ssz.Test

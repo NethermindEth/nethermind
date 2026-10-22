@@ -86,6 +86,17 @@ public class BlockTransactionsViewTests
     }
 
     [Test]
+    public void Refilling_an_instance_clears_optional_timestamp_metadata()
+    {
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(DiverseTransactions()[0].Tx, Pending);
+        rpc.BlockTimestampMs = 1_700_000_000_200;
+
+        rpc.Populate(DiverseTransactions()[1].Tx, Pending);
+
+        Assert.That(rpc.BlockTimestampMs, Is.Null);
+    }
+
+    [Test]
     public void Block_view_writes_what_fresh_transactions_write()
     {
         (string Name, Transaction Tx)[] transactions = DiverseTransactions();
@@ -101,6 +112,34 @@ public class BlockTransactionsViewTests
 
                     Assert.That(Serialize(view), Is.EqualTo(Serialize(materialized)), $"{firstName} then {secondName}");
                 }
+        }
+    }
+
+    [Test]
+    public void Block_view_propagates_timestamp_metadata_to_streamed_and_materialized_transactions()
+    {
+        Block block = Build.A.Block
+            .WithNumber(25_000_000)
+            .WithBaseFeePerGas(7)
+            .WithTransactions(DiverseTransactions().Select(static t => t.Tx).Take(2).ToArray())
+            .TestObject;
+        BlockTransactions view = BlockTransactions.FromBlock(block, BlockchainIds.Mainnet, 1_700_000_000_200);
+        BlockForRpc streamed = new(block, includeFullTransactionData: false, MainnetSpecProvider.Instance, skipTxs: true)
+        {
+            Transactions = view,
+        };
+        BlockForRpc materialized = new(block, includeFullTransactionData: false, MainnetSpecProvider.Instance, skipTxs: true)
+        {
+            Transactions = view.Full,
+        };
+
+        using JsonDocument streamedJson = JsonDocument.Parse(Serialize(streamed));
+        using JsonDocument materializedJson = JsonDocument.Parse(Serialize(materialized));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamedJson.RootElement.GetRawText(), Is.EqualTo(materializedJson.RootElement.GetRawText()));
+            Assert.That(streamedJson.RootElement.GetProperty("transactions")[0].GetProperty("blockTimestampMs").GetString(),
+                Is.EqualTo("0x18bcfe568c8"));
         }
     }
 
