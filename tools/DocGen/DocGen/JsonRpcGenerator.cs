@@ -429,13 +429,19 @@ internal static class JsonRpcGenerator
         {
             string memberJsonType = GetJsonTypeName(memberType, memberConverter);
             bool isObject = memberJsonType.Equals(_objectTypeName, StringComparison.Ordinal);
+            Type? itemType = null;
+            bool isObjectCollection = !isObject && memberJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
+                TryGetEnumerableItemType(memberType, out itemType, out bool _);
+            string memberTypeName = isObject ? GetObjectTypeName(memberType, memberConverter) : memberJsonType;
 
-            file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {(isObject ? GetObjectTypeName(memberType, memberConverter) : memberJsonType)}");
+            if (isObjectCollection && memberJsonType.EndsWith(_objectTypeName, StringComparison.Ordinal))
+                memberTypeName = memberJsonType[..^_objectTypeName.Length] + GetObjectTypeName(itemType!, memberConverter);
+
+            file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {memberTypeName}");
 
             if (isObject)
                 WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(nodeName), memberConverter);
-            else if (memberJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
-                TryGetEnumerableItemType(memberType, out Type? itemType, out bool _))
+            else if (isObjectCollection)
                 // A converter on a collection of objects writes its items
                 WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(nodeName), memberConverter);
         }
