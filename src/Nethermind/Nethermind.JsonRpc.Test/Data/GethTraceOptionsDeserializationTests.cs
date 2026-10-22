@@ -353,10 +353,12 @@ public class GethTraceOptionsDeserializationTests
     }
 
     [Test]
-    public void ByNumber_boolean_normalization_preserves_raw_timeout_length_validation()
+    public void ByNumber_boolean_normalization_preserves_raw_timeout_length_validation([Values(true, false)] bool includeNull)
     {
         string timeout = new string('0', 11).Replace("0", "\\u0030", StringComparison.Ordinal) + "1s";
-        string json = $"{{\"disableStack\":null,\"timeout\":\"{timeout}\"}}";
+        string json = includeNull
+            ? $"{{\"disableStack\":null,\"timeout\":\"{timeout}\"}}"
+            : $"{{\"timeout\":\"{timeout}\"}}";
 
         JsonException exception = Assert.Throws<JsonException>(() =>
             JsonSerializer.Deserialize<GethTraceOptions>(json, CreateByNumberSerializerOptions()))!;
