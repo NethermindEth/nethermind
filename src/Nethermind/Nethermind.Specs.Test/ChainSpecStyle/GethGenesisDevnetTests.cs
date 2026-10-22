@@ -128,7 +128,7 @@ public class GethGenesisDevnetTests
     /// <summary>Runs the devnet checks on a synthetic genesis, so they are exercised without <see cref="GenesisDirectoryVariable"/>.</summary>
     [TestCase(nameof(Osaka))]
     [TestCase(nameof(BPO2))]
-    [TestCase(nameof(Bogota))]
+    [TestCase(nameof(BogotaDevnet2))]
     public void Synthetic_genesis_passes_devnet_checks(string forkName)
     {
         NamedReleaseSpec fork = GethGenesisParityTests.MainnetForks.Value.Single(f => f.GetType().Name == forkName);

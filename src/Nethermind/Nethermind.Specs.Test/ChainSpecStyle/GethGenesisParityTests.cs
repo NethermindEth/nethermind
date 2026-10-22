@@ -59,6 +59,12 @@ public class GethGenesisParityTests
         nameof(BogotaDevnet2),
     ];
 
+    /// <summary>Named forks no geth label schedules on this deployment branch, with the reason.</summary>
+    private static readonly Dictionary<string, string> ForksWithoutGethLabel = new()
+    {
+        [nameof(Bogota)] = "bogotaTime schedules BogotaDevnet2 on the bogota-devnet-2 branch",
+    };
+
     /// <summary>Parity <c>*TransitionTimestamp</c> fields a geth genesis cannot set, with the reason.</summary>
     private static readonly Dictionary<string, string> ParityOnlyTransitionTimestamps = new()
     {
@@ -66,6 +72,7 @@ public class GethGenesisParityTests
         [nameof(ChainSpecParamsJson.Eip4844FeeCollectorTransitionTimestamp)] = "Gnosis blob fee collector; Gnosis and Chiado ship Parity chainspecs",
         [nameof(ChainSpecParamsJson.MaxCodeSizeTransitionTimestamp)] = "Gnosis and Chiado code-size limit; L1 genesis gets EIP-170 from spuriousDragon and EIP-7954 from amsterdamTime",
         [nameof(ChainSpecParamsJson.Rip7212TransitionTimestamp)] = "rollup precompile; L1 gets P-256 verification from EIP-7951 in osakaTime",
+        [nameof(ChainSpecParamsJson.Eip7805TransitionTimestamp)] = "bogotaTime schedules BogotaDevnet2 on the bogota-devnet-2 branch",
 
         // Standalone EIPs in no named fork. EIP-7949 has no per-EIP fields, so a geth-style devnet cannot schedule them.
         // TODO: add each to a fork, or give it a *Prototype fork and geth label as EIP-8141 has, once a devnet needs it.
@@ -119,8 +126,11 @@ public class GethGenesisParityTests
     internal static readonly Lazy<NamedReleaseSpec[]> MainnetForks = new(DiscoverMainnetForks);
     internal static readonly Lazy<Dictionary<string, string>> GethTimeKeysByFork = new(DiscoverGethTimeKeys);
 
+    /// <summary>Ancestors a fork's geth label schedules together with the fork, keyed by fork class name.</summary>
+    private static readonly Lazy<Dictionary<string, HashSet<string>>> AncestorsScheduledByLabel = new(DiscoverAncestorsScheduledByLabel);
+
     public static IEnumerable<TestCaseData> TimestampForkCases() =>
-        MainnetForks.Value.Where(IsTimestampFork).Select(f => new TestCaseData(f).SetArgDisplayNames(f.GetType().Name));
+        MainnetForks.Value.Where(static f => IsTimestampFork(f) && !ForksWithoutGethLabel.ContainsKey(f.GetType().Name)).Select(f => new TestCaseData(f).SetArgDisplayNames(f.GetType().Name));
 
     /// <summary>
     /// A geth genesis that schedules <paramref name="fork"/> at <see cref="ForkTime"/>, its ancestors at genesis, gives at
@@ -138,9 +148,10 @@ public class GethGenesisParityTests
         {
             Assert.That(DiffAgainstFork(atFork, fork), Is.Empty, $"geth genesis at {fork.Name} differs from the {fork.GetType().Name} class");
             // Paris is the last fork before Shanghai, but a chain merged at genesis is not the Paris class.
-            if (IsTimestampFork(fork.Parent!))
+            NamedReleaseSpec parent = Ancestry(fork.Parent!).First(f => !IsScheduledByLabelOf(fork, f));
+            if (IsTimestampFork(parent))
             {
-                Assert.That(DiffAgainstFork(beforeFork, fork.Parent!), Is.Empty, $"geth genesis just before {fork.Name} differs from the {fork.Parent!.GetType().Name} class");
+                Assert.That(DiffAgainstFork(beforeFork, parent), Is.Empty, $"geth genesis just before {fork.Name} differs from the {parent.GetType().Name} class");
             }
         }
     }
@@ -189,7 +200,7 @@ public class GethGenesisParityTests
     [Test]
     public void Bogota_blob_schedule_wins_over_bpo5_at_the_same_timestamp()
     {
-        JsonNode genesis = JsonNode.Parse(BuildGethGenesis(Bogota.Instance, ("bogota", 7, 11, 222)))!;
+        JsonNode genesis = JsonNode.Parse(BuildGethGenesis(BogotaDevnet2.Instance, ("bogota", 7, 11, 222)))!;
         genesis["config"]!["bpo5Time"] = ForkTime;
         genesis["config"]!["blobSchedule"]!["bpo5"] = JsonNode.Parse("""{ "target": 3, "max": 6, "baseFeeUpdateFraction": 111 }""");
         IReleaseSpec spec = new ChainSpecBasedSpecProvider(LoadGeth(genesis.ToJsonString())).GetSpec(new ForkActivation(1, ForkTime));
@@ -288,14 +299,38 @@ public class GethGenesisParityTests
         foreach (PropertyInfo property in typeof(GethGenesisConfigJson).GetProperties().Where(static p => IsForkLabel(p) && p.Name.EndsWith("Time", StringComparison.Ordinal)))
         {
             // Read the routed key back instead of trusting the property name: a property may label a differently named fork.
-            GethGenesisConfigJson probe = new();
-            property.SetValue(probe, (ulong?)1);
-            string fork = ((IHasNamedForks)probe).NamedForkTimestamps!.Keys.Single();
-            keys.Add(fork, ToCamelCase(property.Name));
+            keys.Add(NewestFork(RoutedForks(property)), ToCamelCase(property.Name));
         }
 
         return keys;
     }
+
+    private static Dictionary<string, HashSet<string>> DiscoverAncestorsScheduledByLabel()
+    {
+        Dictionary<string, HashSet<string>> ancestors = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PropertyInfo property in typeof(GethGenesisConfigJson).GetProperties().Where(static p => IsForkLabel(p) && p.Name.EndsWith("Time", StringComparison.Ordinal)))
+        {
+            string[] forks = RoutedForks(property);
+            string newest = NewestFork(forks);
+            ancestors[newest] = new HashSet<string>(forks.Where(f => f != newest), StringComparer.OrdinalIgnoreCase);
+        }
+
+        return ancestors;
+    }
+
+    /// <summary>Fork keys <paramref name="property"/> writes, read back instead of trusting the property name.</summary>
+    private static string[] RoutedForks(PropertyInfo property)
+    {
+        GethGenesisConfigJson probe = new();
+        property.SetValue(probe, (ulong?)1);
+        return [.. ((IHasNamedForks)probe).NamedForkTimestamps!.Keys];
+    }
+
+    private static string NewestFork(string[] forks) =>
+        forks.MaxBy(static name => MainnetForks.Value.FirstOrDefault(f => string.Equals(f.GetType().Name, name, StringComparison.OrdinalIgnoreCase)) is { } f ? Ancestry(f).Count() : 0)!;
+
+    private static bool IsScheduledByLabelOf(NamedReleaseSpec fork, NamedReleaseSpec ancestor) =>
+        AncestorsScheduledByLabel.Value.TryGetValue(fork.GetType().Name, out HashSet<string>? covered) && covered.Contains(ancestor.GetType().Name);
 
     internal static bool IsTimestampFork(NamedReleaseSpec fork) => Ancestry(fork).Contains(Shanghai.Instance);
 
@@ -322,7 +357,7 @@ public class GethGenesisParityTests
     /// ancestors, <see cref="ForkTime"/> for the fork itself.
     /// </summary>
     private static IEnumerable<(NamedReleaseSpec Fork, ulong Time)> Schedule(NamedReleaseSpec fork) =>
-        Ancestry(fork).Where(IsTimestampFork).Reverse().Select(f => (f, f == fork ? ForkTime : 0UL));
+        Ancestry(fork).Where(IsTimestampFork).Reverse().Select(f => (f, f == fork || IsScheduledByLabelOf(fork, f) ? ForkTime : 0UL));
 
     private static bool ChangesBlobParams(NamedReleaseSpec fork) =>
         fork.Parent is { } parent
@@ -333,7 +368,7 @@ public class GethGenesisParityTests
     {
         List<string> labels = [];
         Dictionary<string, string> blobEntries = [];
-        foreach ((NamedReleaseSpec f, ulong time) in Schedule(fork))
+        foreach ((NamedReleaseSpec f, ulong time) in Schedule(fork).Where(s => !IsScheduledByLabelOf(fork, s.Fork)))
         {
             string[] keys = GethKeysFor(f);
             labels.AddRange(keys.Select(k => $"\"{k}\": {time}"));

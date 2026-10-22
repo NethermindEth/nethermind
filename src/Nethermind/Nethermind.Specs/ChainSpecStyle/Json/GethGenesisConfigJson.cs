@@ -59,9 +59,24 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? PragueTime { get => GetTime(); set => SetTime(value); }
     public ulong? OsakaTime { get => GetTime(); set => SetTime(value); }
     public ulong? AmsterdamTime { get => GetTime(); set => SetTime(value); }
-    // Devnet fork on top of Amsterdam. The genesis generator emits this as bogotaTime; the fork
-    // class is Bogota.
-    public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for the bogota-devnet-2 fork, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    /// <remarks>
+    /// The bogota-devnet-2 genesis labels its fork Bogota, meaning <see cref="BogotaDevnet2"/>, so the label
+    /// routes there rather than to the <see cref="Bogota"/> fork class. A fork label schedules only the EIPs
+    /// its own class adds, so the label also schedules <see cref="Eip8141Prototype"/> and <see cref="FramesDevnet1"/>,
+    /// the ancestors of <see cref="BogotaDevnet2"/> above Amsterdam. A genesis wanting EIP-7805 inclusion lists
+    /// schedules them through the chainspec's <c>eip7805TransitionTimestamp</c>.
+    /// </remarks>
+    public ulong? BogotaTime
+    {
+        get => GetTime(nameof(BogotaDevnet2));
+        set
+        {
+            SetTime(value, nameof(Eip8141Prototype));
+            SetTime(value, nameof(FramesDevnet1));
+            SetTime(value, nameof(BogotaDevnet2));
+        }
+    }
     /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8250 keyed nonces, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>

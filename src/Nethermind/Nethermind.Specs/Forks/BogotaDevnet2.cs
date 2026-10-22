@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 /// <summary>
 /// The fork bogota-devnet-2 runs: <see cref="FramesDevnet1"/> plus EIP-8253, EIP-4758, EIP-8298 and EIP-8151.
-/// Not scheduled on any network.
+/// Not scheduled on any network; the devnet genesis labels it <c>bogotaTime</c>.
 /// </summary>
 public class BogotaDevnet2() : NamedReleaseSpec<BogotaDevnet2>(FramesDevnet1.Instance)
 {
