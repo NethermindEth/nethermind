@@ -323,17 +323,20 @@ namespace Nethermind.Synchronization.Test
             int succeeded = 0;
             using Barrier barrier = new(threads);
 
-            Task[] tasks = new Task[threads];
+            // Dedicated threads: thread-pool threads parked on the barrier would starve the rest of the process until
+            // the pool has injected enough of them.
+            Thread[] racers = new Thread[threads];
             for (int t = 0; t < threads; t++)
             {
-                tasks[t] = Task.Run(() =>
+                racers[t] = new Thread(() =>
                 {
                     barrier.SignalAndWait();
                     if (peer.TryAllocate(AllocationContexts.Headers))
                         Interlocked.Increment(ref succeeded);
                 });
+                racers[t].Start();
             }
-            Task.WaitAll(tasks);
+            foreach (Thread racer in racers) racer.Join();
 
             Assert.That(succeeded, Is.EqualTo(slots));
             Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(0));

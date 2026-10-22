@@ -689,17 +689,21 @@ public partial class ForwardHeaderProviderTests
         return new PeerInfo(syncPeer);
     }
 
-    private class SlowSealValidator : ISealValidator
+    // Cancels the request from inside the first validation, so the cancellation lands while seals are being validated:
+    // a CancelAfter timer could not fire on a pool whose threads all sleep in this validator.
+    private class SlowSealValidator(CancellationTokenSource cancellation) : ISealValidator
     {
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
-            Thread.Sleep(1000);
+            cancellation.Cancel();
+            Thread.Sleep(200);
             return true;
         }
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
-            Thread.Sleep(1000);
+            cancellation.Cancel();
+            Thread.Sleep(200);
             return true;
         }
     }
@@ -707,7 +711,8 @@ public partial class ForwardHeaderProviderTests
     [Test, MaxTime(7000)]
     public async Task Can_cancel_seal_validation()
     {
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(new SlowSealValidator()));
+        using CancellationTokenSource cancellation = new();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(new SlowSealValidator(cancellation)));
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -720,9 +725,6 @@ public partial class ForwardHeaderProviderTests
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.HeadNumber.Returns(1000UL);
-
-        CancellationTokenSource cancellation = new();
-        cancellation.CancelAfter(100);
 
         ctx.ConfigureBestPeer(peerInfo);
 
