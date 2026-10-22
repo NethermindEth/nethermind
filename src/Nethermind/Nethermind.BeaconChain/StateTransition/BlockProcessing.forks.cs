@@ -378,7 +378,6 @@ public static partial class BlockProcessing
     }
 
     /// <summary>Spec <c>process_proposer_slashing</c>.</summary>
-    /// <remarks>Gloas EIP-7732 clears only the matching proposer's payment in the two-epoch window.</remarks>
     public static partial void ProcessProposerSlashing(ForkState state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures, BlockSignatureBatch? batch)
     {
         BeaconBlockHeader header1 = slashing.SignedHeader1!.Message!;
@@ -405,19 +404,6 @@ public static partial class BlockProcessing
                 throw new BeaconStateException(invalidSignature2);
         }
 
-#if GLOAS
-        // Only the payment recorded for this proposer is cleared: an unrelated same-slot
-        // equivocation must not grief an honest proposer's payment.
-        ulong proposalEpoch = BeaconStateAccessors.ComputeEpochAtSlot(header1.Slot);
-        int? paymentIndex = proposalEpoch == state.GetCurrentEpoch()
-            ? (int)(Presets.SlotsPerEpoch + header1.Slot % Presets.SlotsPerEpoch)
-            : proposalEpoch == state.GetPreviousEpoch()
-                ? (int)(header1.Slot % Presets.SlotsPerEpoch)
-                : null;
-        if (paymentIndex is int index && state.BuilderPendingPayments![index].ProposerIndex == header1.ProposerIndex)
-            state.BuilderPendingPayments[index] = EmptyBuilderPendingPayment();
-
-#endif
         state.SlashValidator((int)header1.ProposerIndex, cache);
     }
 

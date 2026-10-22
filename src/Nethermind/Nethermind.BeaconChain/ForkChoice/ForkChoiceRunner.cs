@@ -2239,20 +2239,19 @@ public sealed class ForkChoiceRunner
         ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
         Validator[] validators = ValidatorsOf(state);
         ulong[] effectiveBalances = new ulong[validators.Length];
-        ulong totalActiveBalance = 0;
+        ulong unslashedActiveBalance = 0;
         for (int i = 0; i < validators.Length; i++)
         {
             Validator validator = validators[i];
-            if (!validator.IsActiveValidator(epoch))
+            if (!validator.IsActiveValidator(epoch) || validator.Slashed)
                 continue;
 
-            totalActiveBalance = checked(totalActiveBalance + validator.EffectiveBalance);
-            if (!validator.Slashed)
-                effectiveBalances[i] = validator.EffectiveBalance;
+            effectiveBalances[i] = validator.EffectiveBalance;
+            unslashedActiveBalance = checked(unslashedActiveBalance + validator.EffectiveBalance);
         }
 
-        // get_total_active_balance counts slashed validators and floors at EFFECTIVE_BALANCE_INCREMENT (specs/phase0/beacon-chain.md).
-        JustifiedBalances balances = new(effectiveBalances, Math.Max(Presets.EffectiveBalanceIncrement, totalActiveBalance));
+        // calculate_committee_fraction takes get_total_balance of the unslashed active validators, floored at EFFECTIVE_BALANCE_INCREMENT (specs/phase0/fork-choice.md).
+        JustifiedBalances balances = new(effectiveBalances, Math.Max(Presets.EffectiveBalanceIncrement, unslashedActiveBalance));
         _justifiedBalances[justified] = balances;
         return balances;
     }

@@ -19,7 +19,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 
 /// <summary>Gloas block and payload processing (EIP-7732).</summary>
 /// <remarks>
-/// Follows ethereum/consensus-specs <c>v1.7.0-beta.3</c>, <c>specs/gloas/beacon-chain.md</c> and
+/// Follows ethereum/consensus-specs <c>v1.7.0-beta.4</c>, <c>specs/gloas/beacon-chain.md</c> and
 /// <c>specs/gloas/fork-choice.md</c> at the same tag.
 /// <para/>
 /// Withdrawals run after the parent payload and before the current bid, because bid processing
@@ -197,7 +197,7 @@ public static partial class GloasBlockProcessing
     private static partial bool HeaderEquals(BeaconBlockHeader a, BeaconBlockHeader b);
 
     /// <summary>Spec <c>BuilderPendingPayment.empty()</c>, in the shape <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/> and <see cref="SettleBuilderPayment"/> write.</summary>
-    private static BuilderPendingPayment EmptyBuilderPendingPayment() =>
+    internal static BuilderPendingPayment EmptyBuilderPendingPayment() =>
         new() { Withdrawal = new BuilderPendingWithdrawal() };
 
     public static partial void ProcessAttesterSlashing(BeaconStateGloas state, AttesterSlashingGloas slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null);

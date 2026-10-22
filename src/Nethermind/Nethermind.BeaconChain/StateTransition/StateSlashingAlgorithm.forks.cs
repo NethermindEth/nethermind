@@ -49,5 +49,15 @@ public static partial class BeaconStateMutators
         ulong proposerReward = whistleblowerReward * Presets.ProposerWeight / Presets.WeightDenominator;
         state.IncreaseBalance(proposerIndex, proposerReward);
         state.IncreaseBalance(whistleblower, whistleblowerReward - proposerReward);
+#if GLOAS
+
+        // [New in Gloas:EIP7732] Every pending payment for a block the slashed validator proposed is dropped, whichever slashing caught it.
+        BuilderPendingPayment[] payments = state.BuilderPendingPayments!;
+        for (int i = 0; i < payments.Length; i++)
+        {
+            if (payments[i].ProposerIndex == (ulong)slashedIndex)
+                payments[i] = GloasBlockProcessing.EmptyBuilderPendingPayment();
+        }
+#endif
     }
 }

@@ -15,7 +15,7 @@ public enum ConsensusPreset
 
 public static class ConsensusSpecArchive
 {
-    public const string Version = "v1.7.0-beta.3";
+    public const string Version = "v1.7.0-beta.4";
 
     // Controls full-suite enumeration; required operation cases run regardless.
     public static bool MainnetEnabled { get; } =
@@ -84,8 +84,8 @@ public static class ConsensusSpecArchive
             string suiteName = preset == ConsensusPreset.Mainnet ? "ConsensusMainnet" : "ConsensusMinimal";
             string root = TestFixtureDownloader.EnsureDownloaded(
                 suiteName, SszConsensusTestLoader.ArchiveUrlTemplate, Version, archiveName, ShouldExtract, ExtractionTag, preset == ConsensusPreset.Mainnet
-                    ? "a50c3eae743fcf69e17e3510b84e94dcabf96977655788c66bdc43a96590fdf5"
-                    : "b26832555fa5a67cc3964bf140ae99cb662f8045d6d205993e3fa27feb39ca6f");
+                    ? "67762986572372a08d3b182535aa760433c86e174e14e0bbd756f350dd19398c"
+                    : "26d09aea70c62ed235a120a95082d544ab1c2e6fe36bd35ea1bd5da62f3b7b68");
             Roots[preset] = root;
             return root;
         }

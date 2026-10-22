@@ -13,7 +13,7 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 
 public class ProposerScoreTests
 {
-    [TestCase(AnchorChange.SlashFirst, 6_400_000_000ul, TestName = "slashed_validator_counts_towards_the_total")]
+    [TestCase(AnchorChange.SlashFirst, 6_000_000_000ul, TestName = "slashed_validator_is_not_in_the_total")]
     [TestCase(AnchorChange.ExitFirst, 6_000_000_000ul, TestName = "exited_validator_is_not_in_the_total")]
     [TestCase(AnchorChange.ZeroBalances, 12_500_000ul, TestName = "zero_total_is_floored_at_one_increment")]
     public void Boosted_block_weight_is_the_proposer_score(AnchorChange change, ulong expectedScore)
