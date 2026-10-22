@@ -11,7 +11,7 @@ namespace Nethermind.Db.Test.LogIndex;
 public class LogIndexConfigTests
 {
     [Test]
-    public void Default_parallelism_leaves_cores_for_block_processing()
+    public void Default_parallelism_of_one_backfill_direction_leaves_cores_for_block_processing()
     {
         LogIndexConfig config = new();
         int total = config.MaxReceiptsParallelism + config.MaxAggregationParallelism + config.MaxCompressionParallelism;
