@@ -1173,7 +1173,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (validate
                 && !SkipSenderChecks
-                && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
+                && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!, _codeInfoRepository))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
                 return TransactionResult.SenderHasDeployedCode;
