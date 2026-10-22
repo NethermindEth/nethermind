@@ -163,6 +163,10 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
                 Unsafe.Add(ref top, pendingCount++) = new PendingNode(held[i].Node, rlp, held[i].Offset, remainingNibbles - 1);
             }
         }
+
+        // The budget spans every walk of the block, or each storage root would get a fresh one.
+        _bytesBeforeMemo = bytesBeforeMemo;
+        _pendingCount = 0;
     }
 
     /// <summary>Validates the node inlined at <paramref name="start"/> of <paramref name="array"/>.</summary>

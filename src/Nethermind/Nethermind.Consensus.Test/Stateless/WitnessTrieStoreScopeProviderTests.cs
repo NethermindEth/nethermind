@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Reflection;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -78,6 +79,31 @@ public class WitnessTrieStoreScopeProviderTests
         }
 
         AssertScopeOpens(valid, state);
+    }
+
+    /// <remarks>The walk's memo budget spans the block's walks: a fresh one per storage root would let roots sharing a
+    /// subtree each walk twice the witness' bytes before the memo engages. A full branch whose children the witness lacks
+    /// is walked on the fast path alone.</remarks>
+    [Test]
+    public void Walk_spends_one_memo_budget_across_walks()
+    {
+        byte[][] children = new byte[BranchChildren][];
+        for (int i = 0; i < BranchChildren; i++)
+        {
+            children[i] = Keccak.Compute([(byte)i]).BytesToArray();
+        }
+
+        byte[] root = Branch(children);
+        using Witness witness = CreateWitness(root);
+        WitnessTrieStoreScopeProvider provider = new(witness, NullLogManager.Instance);
+        FieldInfo budget = typeof(WitnessTrieStoreScopeProvider).GetField("_bytesBeforeMemo", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        long before = (long)budget.GetValue(provider)!;
+
+        Assert.That(provider.TryBeginScope(Build.A.BlockHeader.WithStateRoot(Keccak.Compute(root)).TestObject, new LocalMetrics(),
+            out IWorldStateScopeProvider.IScope scope), Is.True);
+        scope.Dispose();
+
+        Assert.That((long)budget.GetValue(provider)!, Is.EqualTo(before - root.Length));
     }
 
     public enum StorageAccess { Read, Write, Clear, ClearThenWrite }
