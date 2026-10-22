@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
@@ -556,6 +557,57 @@ public partial class EngineModuleTests
                 Assert.That(payload.Data.Status, Is.EqualTo(status));
                 Assert.That(payload.Data.LatestValidHash, Is.EqualTo(expectedLastValid));
             }
+        }
+    }
+
+    [Test, NonParallelizable]
+    public async Task known_invalid_payload_waits_for_its_valid_parent_to_commit([Values] bool commitWithinBudget)
+    {
+        const int budgetMs = 3_000;
+        ManualTimeProvider clock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            mergeConfig: new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = budgetMs },
+            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<TimeProvider>(clock)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block parent = Sibling(chain.BlockTree.Head!);
+        Block child = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).WithNonce(0).WithDifficulty(0)
+            .WithGasLimit(parent.GasLimit).WithGasUsed(parent.GasLimit + 1).TestObject;
+        ExecutionPayload payload = ExecutionPayload.Create(child);
+
+        ResultWrapper<PayloadStatusV1> orphanResult = await rpc.engine_newPayloadV1(payload);
+        Assert.That(orphanResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+
+        using CommitGate parentCommit = new(chain.BranchProcessor, parent.Hash!);
+        ResultWrapper<PayloadStatusV1> parentResult = await rpc.engine_newPayloadV1(ExecutionPayload.Create(parent));
+        Assert.That(parentResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await parentCommit.VerdictGiven.WaitAsync(GateTimeout);
+        Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
+
+        Task<ResultWrapper<PayloadStatusV1>> repeated = rpc.engine_newPayloadV1(payload);
+        ResultWrapper<PayloadStatusV1> result;
+        try
+        {
+            Assert.That(repeated.IsCompleted, Is.False);
+            if (commitWithinBudget)
+                parentCommit.Release();
+            else
+                clock.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
+
+            result = await repeated.WaitAsync(GateTimeout);
+            if (!commitWithinBudget)
+                Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
+        }
+        finally
+        {
+            parentCommit.Release();
+        }
+
+        await chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).AsTask().WaitAsync(GateTimeout);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(commitWithinBudget ? PayloadStatus.Invalid : PayloadStatus.Syncing));
+            Assert.That(result.Data.LatestValidHash, Is.EqualTo(commitWithinBudget ? parent.Hash : null));
+            Assert.That(chain.BlockTree.WasProcessed(parent.Number, parent.Hash!), Is.True);
         }
     }
 
