@@ -45,4 +45,19 @@ class ShutterTxSourceTests
         Assert.That(load.Wait(TimeSpan.FromSeconds(10)), Is.True, "LoadTransactions deadlocked against the cancel callback");
         Assert.That(waitTasks, Is.All.Matches<Task>(static t => t is { IsCompletedSuccessfully: true }));
     }
+
+    // A token cancelled just before the wait is registered runs the cancellation callback inline, which then found no
+    // wait to cancel and left the stored one pending forever.
+    [Test]
+    public void Wait_for_transactions_with_an_already_cancelled_token_ends_cancelled()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
+        ShutterTxSource txSource = ShutterTestsCommon.InitApi(rnd, timestamper).TxSource;
+
+        Task wait = txSource.WaitForTransactions(ShutterTestsCommon.InitialSlot, new CancellationToken(canceled: true));
+
+        Assert.That(() => wait.Wait(TimeSpan.FromSeconds(5)), Throws.InstanceOf<AggregateException>()
+            .With.InnerException.InstanceOf<OperationCanceledException>());
+    }
 }
