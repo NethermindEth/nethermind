@@ -199,7 +199,7 @@ public partial class PatriciaTree
                 break;
             }
 
-            if (consumed == nibbleCount) ThrowPathExceedsKey();
+            if (consumed == nibbleCount && nibbleCount == SecuredKeyNibbles) ThrowPathExceedsKey();
             int nib = Nibbles.NibbleAt(key, consumed);
             TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
             traverseStack.Push(new TraverseStackFrame()

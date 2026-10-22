@@ -56,6 +56,25 @@ public class GuestSecuredPathTests
         Assert.That(() => tree.Set(Key, Array.Empty<byte>()), extraNibbles == 0 ? Throws.Nothing : Throws.TypeOf<TrieException>());
     }
 
+    /// <remarks>The sibling's depth counts the parent extension's nibbles; one more of them pushes each kind of sibling past the key.</remarks>
+    [Test]
+    public void Sibling_below_an_extension_is_checked_once_a_delete_collapses_into_it(
+        [Values(NodeType.Leaf, NodeType.Extension, NodeType.Branch)] NodeType siblingType, [Values] bool overlength)
+    {
+        int extensionNibbles = (siblingType == NodeType.Extension ? KeyNibbles - 3 : KeyNibbles - 2) + (overlength ? 1 : 0);
+        int index = KeyPath[extensionNibbles];
+        TrieNode sibling = siblingType switch
+        {
+            NodeType.Leaf => DecodedLeaf([0]),
+            NodeType.Extension => TrieNodeFactory.CreateExtension([0], Branch((0, DecodedLeaf([])), (1, DecodedLeaf([])))),
+            _ => Branch((0, DecodedLeaf([])), (1, DecodedLeaf([]))),
+        };
+        TrieNode branch = Branch((index, DecodedLeaf(KeyPath[(extensionNibbles + 1)..])), (index ^ 1, sibling));
+        PatriciaTree tree = new() { RootRef = TrieNodeFactory.CreateExtension(KeyPath[..extensionNibbles], branch) };
+
+        Assert.That(() => tree.Set(Key, Array.Empty<byte>()), overlength ? Throws.TypeOf<TrieException>() : Throws.Nothing);
+    }
+
     [Test]
     public void Unsecured_trie_lookup_misses_a_leaf_of_another_length()
     {
