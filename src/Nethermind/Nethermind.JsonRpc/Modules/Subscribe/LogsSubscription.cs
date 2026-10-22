@@ -76,7 +76,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// <remarks>
         /// A block without matches is not queued. A matching block is queued as one entry, so a log-heavy block cannot
         /// overflow the queue of a client that keeps up; the entry references the receipts shared by all subscribers,
-        /// and its logs are created one at a time while sending, so nothing is copied per block or per subscriber.
+        /// and its logs are created one at a time while sending. When subscriptions share logs, the first one to send
+        /// a log stores its serialized form on the event, where it stays while any queue still holds the event.
         /// </remarks>
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
@@ -127,7 +128,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 int addresses = 0;
                 foreach (AddressAsKey address in filter.Address ?? []) addresses += address.GetHashCode();
-                return HashCode.Combine(filter.FromBlock, filter.ToBlock, addresses);
+
+                HashCode hash = new();
+                hash.Add(filter.FromBlock);
+                hash.Add(filter.ToBlock);
+                hash.Add(addresses);
+                foreach (Hash256[]? slot in filter.Topics ?? [])
+                {
+                    hash.Add(slot?.Length ?? -1);
+                    foreach (Hash256 topic in slot ?? []) hash.Add(topic);
+                }
+
+                return hash.ToHashCode();
             }
 
             private sealed class TopicComparer : IEqualityComparer<Hash256[]?>

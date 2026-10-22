@@ -111,7 +111,7 @@ public class ReceiptsEventPayloadCacheTests
     {
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
         using Fixture fixture = new();
-        // A filter with a wildcard topic accepts every log, so it counts as unfiltered and makes the others store.
+        // A filter with a wildcard topic accepts every block, so it counts as unfiltered and makes the others store.
         (CollectingClient anyTopic, _) = fixture.SubscribeToLogs((Address[]?)null, ExpectedLogs(e, null).Count, topics: [null]);
         // Address C's only log is at position 3; the bloom of the first receipt does not match C.
         (CollectingClient client, _) = fixture.SubscribeToLogs(TestItem.AddressC, 1);
