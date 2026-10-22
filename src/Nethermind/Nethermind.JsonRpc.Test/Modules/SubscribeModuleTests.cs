@@ -982,7 +982,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
             _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            AssertDelivery(manualResetEvent, shouldReceiveResult: false);
 
             Assert.That(jsonRpcResults.Count, Is.EqualTo(0));
 
