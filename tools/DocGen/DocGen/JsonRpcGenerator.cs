@@ -47,6 +47,7 @@ internal static class JsonRpcGenerator
         "Nethermind.HealthChecks",
         "Nethermind.JsonRpc"
     ];
+    internal const string GeneratedJsonWriterInterface = "Nethermind.Serialization.Json.IGeneratedJsonWriter";
     private const string _objectTypeName = "_object_";
     private const string _blockTags = "`earliest`, `finalized`, `latest`, `pending`, or `safe`";
     private const string _blockNumberIfNotStrict = "_integer_ (block number, if `JsonRpc.StrictHexFormat` is `false`)";
@@ -690,7 +691,7 @@ internal static class JsonRpcGenerator
                 return null;
 
             // A [GenerateJsonWriter] writer writes exactly the type's metadata contract, which the reflection resolver still builds
-            return typeInfo.Converter.GetType().GetInterface("Nethermind.Serialization.Json.IGeneratedJsonWriter") is null
+            return typeInfo.Converter.GetType().GetInterface(GeneratedJsonWriterInterface) is null
                 ? typeInfo
                 : _metadataResolver.GetTypeInfo(type, EthereumJsonSerializer.JsonOptions);
         }

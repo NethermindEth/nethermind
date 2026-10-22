@@ -176,6 +176,12 @@ public class JsonRpcGeneratorTests
         }
     }
 
+    [Test]
+    public void Generated_writer_is_recognized_by_interface_name(
+        [Values(typeof(BlockForRpc), typeof(ReceiptForRpc), typeof(LogEntryForRpc))] Type type) =>
+        Assert.That(EthereumJsonSerializer.JsonOptions.GetTypeInfo(type).Converter.GetType()
+            .GetInterface(JsonRpcGenerator.GeneratedJsonWriterInterface), Is.Not.Null);
+
     private static IEnumerable<TestCaseData> ResultsWithNullMembers()
     {
         yield return new TestCaseData("eth", "eth_getHeaderByNumber",
