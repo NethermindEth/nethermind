@@ -11,11 +11,12 @@ namespace Nethermind.Db.Test.LogIndex;
 public class LogIndexConfigTests
 {
     [Test]
-    public void Default_parallelism_of_one_backfill_direction_leaves_cores_for_block_processing()
+    public void Default_parallelism_of_both_backfill_directions_stays_near_core_count()
     {
         LogIndexConfig config = new();
-        int total = config.MaxReceiptsParallelism + config.MaxAggregationParallelism + config.MaxCompressionParallelism;
+        // Each direction has its own receipts and aggregation workers; the compressor is shared.
+        int peak = 2 * (config.MaxReceiptsParallelism + config.MaxAggregationParallelism) + config.MaxCompressionParallelism;
 
-        Assert.That(total, Is.LessThanOrEqualTo(Math.Max(Environment.ProcessorCount * 3 / 4, 3)));
+        Assert.That(peak, Is.LessThanOrEqualTo(Math.Max(Environment.ProcessorCount * 5 / 4, 5)));
     }
 }
