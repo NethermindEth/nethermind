@@ -82,6 +82,17 @@ public class BlockStoreTests
     }
 
     [Test]
+    public void Test_cached_block_keeps_its_encoded_size()
+    {
+        BlockStore store = new(new TestMemDb());
+        Block block = Build.A.Block.WithNumber(1).WithEncodedSize(1234).TestObject;
+
+        store.Cache(block);
+
+        Assert.That(store.Get(block.Number, block.Hash!)!.EncodedSize, Is.EqualTo(1234));
+    }
+
+    [Test]
     public void Test_can_set_and_get_metadata()
     {
         TestMemDb db = new();
