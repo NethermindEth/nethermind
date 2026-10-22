@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
 
@@ -48,6 +49,11 @@ public static unsafe partial class Bytes
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ulong Bswap64(ulong value) => BinaryPrimitives.ReverseEndianness(value);
     }
+
+    /// <summary>Reads the 32 big-endian bytes of <paramref name="word"/> as a <see cref="UInt256"/>.</summary>
+    /// <remarks>The constructor on the host. See <c>Bytes.zkevm.cs</c> for the guest form.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static UInt256 ReadUInt256BigEndian(ReadOnlySpan<byte> word) => new(word, isBigEndian: true);
 
     /// <summary>Copies <paramref name="source"/> to the start of <paramref name="destination"/>.</summary>
     /// <remarks>
