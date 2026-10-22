@@ -203,11 +203,7 @@ namespace Nethermind.Evm.Test
         {
             TransactionSubstate substate = new(default, 0, null, null, false);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(substate.Logs, Is.Null, "a substate without a journal has no logs");
-                Assert.That(substate.LogsToArray(), Is.Empty, "a substate without a journal yields no receipt logs");
-            }
+            AssertHasNoLogs(in substate);
         }
 
         [Test]
@@ -215,10 +211,15 @@ namespace Nethermind.Evm.Test
         {
             TransactionSubstate substate = new(EvmExceptionType.OutOfGas, isTracerConnected: false);
 
+            AssertHasNoLogs(in substate);
+        }
+
+        private static void AssertHasNoLogs(in TransactionSubstate substate)
+        {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(substate.Logs, Is.Null);
-                Assert.That(substate.LogsToArray(), Is.Empty);
+                Assert.That(substate.Logs, Is.Null, "a substate without a journal has no logs");
+                Assert.That(substate.LogsToArray(), Is.Empty, "a substate without a journal yields no receipt logs");
             }
         }
 
