@@ -49,6 +49,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
+using Nethermind.EraE.Config;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -832,15 +833,7 @@ public class EthereumRunnerTests
     [TestCase("mainnet")]
     public async Task Pool_retains_simulator_and_is_disposed_on_shutdown(string network)
     {
-        ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
-        configProvider.Initialize();
-        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
-        pluginLoader.Load();
-        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
-        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
-        plugins.Add(new RunnerTestPlugin(true));
-        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        EthereumRunner runner = await CreateRunner(network);
         TxPool.TxPool? pool = null;
         try
         {
@@ -867,18 +860,21 @@ public class EthereumRunnerTests
     [Test]
     public async Task Rpc_does_not_wait_for_block_tree_review(
         [Values("mainnet", "gnosis", "op-mainnet", "taiko-alethia", "xdc")] string network,
-        [Values] bool eraImport)
+        [Values] EraJob eraJob)
     {
-        ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
-        configProvider.Initialize();
-        if (eraImport) configProvider.GetConfig<IEraConfig>().ImportDirectory = "era";
-        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
-        pluginLoader.Load();
-        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
-        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
-        plugins.Add(new RunnerTestPlugin(true));
-        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        EthereumRunner runner = await CreateRunner(network, configProvider =>
+        {
+            IEraConfig eraConfig = configProvider.GetConfig<IEraConfig>();
+            IEraEConfig eraEConfig = configProvider.GetConfig<IEraEConfig>();
+            switch (eraJob)
+            {
+                case EraJob.Era1Import: eraConfig.ImportDirectory = "era"; break;
+                case EraJob.Era1Export: eraConfig.ExportDirectory = "era"; break;
+                case EraJob.EraEImport: eraEConfig.ImportDirectory = "era"; break;
+                case EraJob.EraEExport: eraEConfig.ExportDirectory = "era"; break;
+            }
+        });
+        bool eraStepWaitsForReview = eraJob is not EraJob.None;
         try
         {
             Dictionary<Type, HashSet<Type>> dependencies = [];
@@ -904,8 +900,8 @@ public class EthereumRunnerTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(TransitiveDependencies(typeof(StartRpc)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraImport));
-                Assert.That(TransitiveDependencies(typeof(StartHealthChecks)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraImport));
+                Assert.That(TransitiveDependencies(typeof(StartRpc)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraStepWaitsForReview));
+                Assert.That(TransitiveDependencies(typeof(StartHealthChecks)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraStepWaitsForReview));
                 Assert.That(TransitiveDependencies(typeof(StartBlockProducer)), Does.Contain(typeof(ReviewBlockTree)));
             }
         }
@@ -913,6 +909,29 @@ public class EthereumRunnerTests
         {
             await runner.StopAsync();
         }
+    }
+
+    public enum EraJob
+    {
+        None,
+        Era1Import,
+        Era1Export,
+        EraEImport,
+        EraEExport
+    }
+
+    private static async Task<EthereumRunner> CreateRunner(string network, Action<ConfigProvider>? configure = null)
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
+        configProvider.Initialize();
+        configure?.Invoke(configProvider);
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        return builder.CreateEthereumRunner(plugins, command: null);
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]

@@ -119,7 +119,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
         }
 
         // An era step holds the network back until ReviewBlockTree has processed the blocks left at the last
-        // shutdown, so it is registered only when it has a job to do.
+        // shutdown, so it is registered only when it has a job to do. Keep the conditions in sync with EraCliRunner.Run.
         IEraConfig eraConfig = configProvider.GetConfig<IEraConfig>();
         if (!string.IsNullOrEmpty(eraConfig.ImportDirectory) || !string.IsNullOrEmpty(eraConfig.ExportDirectory))
         {
