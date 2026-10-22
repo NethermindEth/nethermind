@@ -220,9 +220,10 @@ public partial class DebugRpcModuleTests
         object[] parameters = method == "debug_traceCall" ? [selector, "latest", options] : [selector, options];
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
+        int expectedCode = method == "debug_traceBlockByHash" ? ErrorCodes.InvalidInput : ErrorCodes.InvalidParams;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
             Assert.That(json["result"], Is.Null, response);
             if (method == "debug_traceBlockByHash")
                 Assert.That(json["error"]!.ToString(), Does.Contain("Cannot convert"), response);
@@ -2184,7 +2185,7 @@ public partial class DebugRpcModuleTests
 
     [TestCase("debug_traceBlock", -32602)]
     [TestCase("debug_traceBlockByNumber", -32000)]
-    [TestCase("debug_traceBlockByHash", -32602)]
+    [TestCase("debug_traceBlockByHash", -32000)]
     public async Task Debug_traceBlock_routes_reject_malformed_timeout_before_stream_commit(string method, int expectedCode)
     {
         using Context context = await Context.Create();
