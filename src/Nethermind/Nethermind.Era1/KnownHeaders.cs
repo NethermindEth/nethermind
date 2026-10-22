@@ -57,7 +57,7 @@ public static class KnownHeaders
     /// <param name="readArchiveBlock">Reads the archive block stored for a height, or <c>null</c> when the archive has none.</param>
     /// <param name="cancellation">Stops the scan and the walk.</param>
     /// <exception cref="EraVerificationException">An archive block is not an ancestor of the local header above it, or that header is listed at its height but not stored.</exception>
-    /// <exception cref="EraImportException">The archive has no block for a height, or the block it returns has another number.</exception>
+    /// <exception cref="EraImportException">The archive has no block for a height, or the block it returns has another number, or the block above the highest known header has an unknown parent, as the importer reports it.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellation"/> was cancelled.</exception>
     public static async Task EnsureHeaderlessHeightsLinkToKnownHeaders(IBlockTree blockTree, ulong from, ulong to, Func<ulong, Task<Block?>> readArchiveBlock, CancellationToken cancellation)
     {

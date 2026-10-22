@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Builders;
 using System.IO.Abstractions;
@@ -20,7 +21,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Crypto;
 using Nethermind.Era1.Exceptions;
 using NSubstitute;
-using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.Era1.Test;
 
@@ -532,9 +532,8 @@ public class EraImporterTest
         Assert.That(blockTree.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IBlockTree.FindLevel)), Is.LessThan(10));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BlockAboveHighestKnown_MustLinkToIt(bool linked)
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BlockAboveHighestKnown_MustLinkToIt([Values] bool linked)
     {
         const int chainLength = 16;
         await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();

@@ -30,9 +30,9 @@ using System.Security.Cryptography;
 using Nethermind.Blockchain.Headers;
 using Nethermind.EraE.Config;
 using Nethermind.Logging;
+using Nethermind.EraE.Store;
 using EraImportException = Nethermind.Era1.EraImportException;
 using KnownHeaders = Nethermind.Era1.KnownHeaders;
-using Nethermind.EraE.Store;
 
 namespace Nethermind.EraE.Test.Import;
 
