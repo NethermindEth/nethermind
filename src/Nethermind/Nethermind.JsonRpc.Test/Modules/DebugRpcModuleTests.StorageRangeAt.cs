@@ -141,6 +141,17 @@ public partial class DebugRpcModuleTests
         Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
     }
 
+    [Test]
+    public async Task Debug_storageRangeAt_rejects_invalid_key_start([Values(null, "0x000000000000000000000000000000000000000000000000000000000000000000")] string? keyStart)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        (Address contract, Block block) = await AddStorageRangeBlocks(chain);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_storageRangeAt", block.Hash!, 0, contract, keyStart, 1);
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
     /// <summary>
     /// Deploys a contract with <see cref="StorageRangeInitialSlots"/> slots, then adds a block whose transaction
     /// <c>i</c> adds slot <c>StorageRangeInitialSlots + 1 + i</c>.
