@@ -83,8 +83,31 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
     public void CopyChildren(Span<ChildRef> children)
     {
         Debug.Assert(Kind is NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch);
-        RlpReader reader = new(Payload);
         int position = 0;
+        if (Kind == NodeRecordKind.HashedBranch)
+        {
+            // Every child is either 0x80 or a 33-byte hash, so its offset needs no parsing.
+            ReadOnlySpan<byte> payload = Payload;
+            ushort hashMask = HashMask;
+            int offset = 0;
+            for (int i = 0; i < children.Length; i++)
+            {
+                if ((hashMask & (1 << i)) == 0)
+                {
+                    children[i] = default;
+                    offset++;
+                }
+                else
+                {
+                    children[i] = ChildRef.ForHash(new ValueHash256(payload.Slice(offset + 1, ValueHash256.MemorySize)), Pointer(position++));
+                    offset += ValueHash256.MemorySize + 1;
+                }
+            }
+
+            return;
+        }
+
+        RlpReader reader = new(Payload);
         for (int i = 0; i < children.Length; i++)
         {
             children[i] = ReadChild(ref reader, position);
