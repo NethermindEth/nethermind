@@ -275,7 +275,7 @@ public sealed class EngineKeepAliveService : IDisposable
             if (elapsed > SlowReadTicks)
             {
                 Metrics.EngineKeepAliveSlowReads++;
-                if (_logger.IsDebug) _logger.Debug($"Engine keep-alive read took {micros} us ({(signalled ? "signalled" : "timer")} tick, {sincePreviousMs} ms after the previous read).");
+                if (_logger.IsDebug) _logger.Debug($"Engine keep-alive read took {micros} us ({(signalled ? "signalled" : "timer")} tick, {(sincePreviousMs < 0 ? "the first read" : $"{sincePreviousMs} ms after the previous read")}).");
             }
 
             _consecutiveReadErrors = 0;
