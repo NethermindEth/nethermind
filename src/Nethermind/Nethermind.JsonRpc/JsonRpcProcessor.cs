@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -34,6 +35,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private readonly IJsonRpcService _jsonRpcService;
     private readonly JsonRpcDiagnostics _diagnostics;
     private readonly IProcessExitSource? _processExitSource;
+    // Mirrors the debug module pool size (RpcModules), which bounds how many traced calls can hold a module at once.
+    private readonly int _debugModuleInstances;
 
     public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager, IProcessExitSource? processExitSource = null)
     {
@@ -44,6 +47,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
 
         _processExitSource = processExitSource;
+        _debugModuleInstances = jsonRpcConfig.DebugModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16);
         _diagnostics = new JsonRpcDiagnostics(_jsonRpcConfig, fileSystem, _logger);
     }
 
@@ -644,7 +648,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     && request is not null
                     && !isStopped
                     && concurrency > 1
-                    && CanExecuteConcurrently(request)
+                    && CanExecuteConcurrently(request, concurrency)
                     && !(window ??= new BatchExecutionWindow(concurrency, this, context)).IsFull)
                 {
                     batchRequestJsonLifetime.TrackUntilBatchEnd(request);
@@ -711,8 +715,35 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     }
 
     /// <summary>Whether a batch item may execute alongside its neighbours: it only reads state and runs the EVM.</summary>
-    private static bool CanExecuteConcurrently(JsonRpcRequest request) =>
-        request.Method is "eth_call" or "eth_estimateGas" or "eth_createAccessList";
+    /// <remarks>A traced call qualifies only with a native tracer: its trace is then buffered, so the debug module it
+    /// rents returns once it executes rather than once its response is written, and no JavaScript engine runs. The
+    /// debug module pool queues rather than rejects, so a window wider than it would only leave items waiting for a
+    /// module until the rental timeout; such a window keeps traced calls sequential.</remarks>
+    private bool CanExecuteConcurrently(JsonRpcRequest request, int concurrency) =>
+        request.Method is "eth_call" or "eth_estimateGas" or "eth_createAccessList"
+        || (request.Method == "debug_traceCall" && concurrency <= _debugModuleInstances && UsesNativeTracer(request.Params));
+
+    private static bool UsesNativeTracer(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Array
+            || parameters.GetArrayLength() < 3
+            || parameters[2] is not { ValueKind: JsonValueKind.Object } options
+            || !options.TryGetProperty("tracer"u8, out JsonElement tracer)
+            || tracer.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        try
+        {
+            return GethLikeNativeTracerFactory.IsNativeTracer(tracer.GetString()!);
+        }
+        catch (InvalidOperationException)
+        {
+            // An invalid escape fails this item when it executes, not the whole batch here.
+            return false;
+        }
+    }
 
     private Task<JsonRpcResult.Entry> ExecuteInBackground(JsonRpcRequest request, JsonRpcContext context) =>
         Task.Run(() => HandleSingleRequest(request, context).AsTask());
