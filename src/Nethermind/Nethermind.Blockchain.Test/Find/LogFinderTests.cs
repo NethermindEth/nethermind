@@ -343,6 +343,18 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void single_block_filter_reads_receipts_only_when_enumerated()
+    {
+        CountingReceiptFinder counting = new(_receiptStorage);
+        LogFinder logFinder = new(_blockTree, counting, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance);
+        IEnumerable<FilterLog> logs = logFinder.FindLogs(FilterBuilder.New().FromBlock(4).ToBlock(4).Build());
+
+        Assert.That(counting.Calls, Is.Zero);
+        Assert.That(logs.Count(), Is.EqualTo(3));
+        Assert.That(counting.Calls, Is.EqualTo(1));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void filter_all_logs_should_throw_when_to_block_is_not_found()
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
