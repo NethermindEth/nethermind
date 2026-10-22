@@ -433,4 +433,27 @@ public class EraImporterTest
 
         Assert.That(blockTree.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IBlockTree.FindLevel)), Is.LessThan(10));
     }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BlockAboveHighestKnown_MustLinkToIt(bool linked)
+    {
+        const int chainLength = 16;
+        await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+        BlockHeader top = blockTree.FindHeader(blockTree.BestKnownNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
+        Block above = Build.A.Block.WithNumber(top.Number + 1).WithParentHash(linked ? top.Hash! : Keccak.OfAnEmptyString).TestObject;
+
+        Task Check() => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+            blockTree,
+            top.Number + 1,
+            top.Number + 1,
+            number => Task.FromResult<Block?>(number == above.Number ? above : null),
+            CancellationToken.None);
+
+        if (linked)
+            Assert.That(Check, Throws.Nothing);
+        else
+            Assert.That(Check, Throws.TypeOf<EraImportException>().With.Message.Contains("Unknown parent"));
+    }
 }
