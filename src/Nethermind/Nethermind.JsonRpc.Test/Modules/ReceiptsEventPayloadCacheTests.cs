@@ -107,12 +107,13 @@ public class ReceiptsEventPayloadCacheTests
     }
 
     [Test]
-    public void Filtered_logs_subscriber_stores_each_log_at_its_position_in_the_block()
+    public void Filtered_logs_subscriber_stores_each_log_at_its_position_in_the_block_only_next_to_one_accepting_every_log([Values] bool wildcardTopic)
     {
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
         using Fixture fixture = new();
-        // A filter with a wildcard topic accepts every block, so it counts as unfiltered and makes the others store.
-        (CollectingClient anyTopic, _) = fixture.SubscribeToLogs((Address[]?)null, ExpectedLogs(e, null).Count, topics: [null]);
+        // A filter without topic positions accepts every log, so it counts as unfiltered and makes the others store.
+        // A wildcard topic rejects logs without topics, so it does not.
+        (CollectingClient anyTopic, _) = fixture.SubscribeToLogs((Address[]?)null, ExpectedLogs(e, null).Count, topics: wildcardTopic ? [null] : []);
         // Address C's only log is at position 3; the bloom of the first receipt does not match C.
         (CollectingClient client, _) = fixture.SubscribeToLogs(TestItem.AddressC, 1);
 
@@ -122,7 +123,7 @@ public class ReceiptsEventPayloadCacheTests
 
         using ReceiptsEventPayloadCache<LogsFilter>.Membership unfiltered = fixture.LogPayloads.Join(null);
         EventPayloads payloads = unfiltered.ForEvent(e);
-        Assert.That(Enumerable.Range(0, 4).Where(position => payloads.TryGet(position, out _)), Is.EqualTo([3]));
+        Assert.That(Enumerable.Range(0, 4).Where(position => payloads.TryGet(position, out _)), Is.EqualTo(wildcardTopic ? Array.Empty<int>() : [3]));
     }
 
     [Test]

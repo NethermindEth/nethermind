@@ -105,8 +105,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// <summary>
         /// The filter as its payload cache key, or <c>null</c> for one accepting every log of every block.
         /// </summary>
+        /// <remarks>A wildcard topic position still rejects logs with fewer topics, so only a filter without topic positions qualifies.</remarks>
         private Filter? GetFilterKey(Filter? filter) =>
-            filter is null || _filter is { AcceptsAnyBlock: true, FromBlock.Type: BlockParameterType.Latest, ToBlock.Type: BlockParameterType.Latest }
+            filter is null || _filter is { AcceptsAnyBlock: true, FromBlock.Type: BlockParameterType.Latest, ToBlock.Type: BlockParameterType.Latest } && filter.Topics?.Any() != true
                 ? null
                 : filter;
 
