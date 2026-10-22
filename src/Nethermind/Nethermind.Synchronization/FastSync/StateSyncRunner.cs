@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -33,11 +34,20 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
+    ITimestamper timestamper,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
     IVerifyTrieStarter? verifyTrieStarter = null) : IStateSyncRunner
 {
+    /// <summary>The oldest checkpoint anchor a snap sync resumes from; an older checkpoint is discarded and the sync starts over.</summary>
+    /// <remarks>
+    /// The ranges a resumed sync keeps are as old as its anchor, so the longer a node was offline, the more healing has
+    /// to repair, while resuming saves at most one range phase. A day also stays well inside the minimum BAL retention
+    /// (about 63 days on mainnet), past which peers need not serve the block access lists BAL healing replays from the anchor.
+    /// </remarks>
+    private static readonly TimeSpan MaxResumedAnchorAge = TimeSpan.FromDays(1);
+
     private readonly ILogger _logger = logManager.GetClassLogger<StateSyncRunner>();
 
     public async Task Run(CancellationToken token)
@@ -100,7 +110,8 @@ public class StateSyncRunner(
     /// <remarks>
     /// Healing with block access lists replays from the first pivot, and a resumed sync keeps ranges downloaded at the
     /// pivots of the earlier run, so it has to replay from where those started. A checkpoint whose anchor is no longer
-    /// canonical, or is not a pivot the sync pivot allows any more, is deleted so that the snap sync starts over.
+    /// canonical, is not a pivot the sync pivot allows any more, or is older than <see cref="MaxResumedAnchorAge"/>, is
+    /// deleted so that the snap sync starts over.
     /// </remarks>
     internal BlockHeader? GetResumedAnchor()
     {
@@ -109,9 +120,18 @@ public class StateSyncRunner(
         BlockHeader? anchor = blockTree.FindHeader(checkpoint.AnchorHash, BlockTreeLookupOptions.None, checkpoint.AnchorNumber);
         ulong syncPivot = blockTree.SyncPivot.BlockNumber;
         bool allowedBySyncPivot = syncConfig.StaticSnapPivot ? anchor?.Number == syncPivot : anchor?.Number > syncPivot;
-        if (anchor is not null && allowedBySyncPivot && blockTree.IsMainChain(anchor)) return anchor;
+        if (anchor is not null && allowedBySyncPivot && blockTree.IsMainChain(anchor))
+        {
+            TimeSpan age = TimeSpan.FromSeconds(timestamper.UnixTime.Seconds.SaturatingSub(anchor.Timestamp));
+            if (age <= MaxResumedAnchorAge) return anchor;
 
-        if (_logger.IsWarn) _logger.Warn($"Not resuming the snap sync: its checkpoint starts from block {checkpoint.AnchorNumber} ({checkpoint.AnchorHash}), which is no longer a usable pivot.");
+            if (_logger.IsWarn) _logger.Warn($"Not resuming the snap sync: its checkpoint starts from block {anchor.Number} ({anchor.Hash}), {age.TotalHours:N0} hours ago, past the {MaxResumedAnchorAge.TotalHours:N0} hours a resumed sync may start from.");
+        }
+        else if (_logger.IsWarn)
+        {
+            _logger.Warn($"Not resuming the snap sync: its checkpoint starts from block {checkpoint.AnchorNumber} ({checkpoint.AnchorHash}), which is no longer a usable pivot.");
+        }
+
         snapTrieFactory.SaveCheckpoint(null);
         return null;
     }

@@ -176,16 +176,19 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
     }
 
     // Healing with block access lists replays from the first pivot, so a resumed sync has to keep the one its downloaded
-    // ranges started from - unless that block left the canonical chain, which leaves nothing to resume.
-    [TestCase(true, TestName = "Resumes_from_the_checkpoint_anchor")]
-    [TestCase(false, TestName = "Starts_over_when_the_checkpoint_anchor_is_not_canonical")]
-    public void Takes_the_first_pivot_from_the_checkpoint_anchor(bool canonical)
+    // ranges started from - unless that block left the canonical chain, which leaves nothing to resume, or the node was
+    // offline for so long that healing the kept ranges would cost more than downloading them again.
+    [TestCase(true, 24, true, TestName = "Resumes_from_the_checkpoint_anchor")]
+    [TestCase(false, 0, false, TestName = "Starts_over_when_the_checkpoint_anchor_is_not_canonical")]
+    [TestCase(true, 25, false, TestName = "Starts_over_when_the_checkpoint_anchor_is_too_old")]
+    public void Takes_the_first_pivot_from_the_checkpoint_anchor(bool canonical, int anchorAgeHours, bool resumes)
     {
         using IContainer container = BuildRunnerContainer();
         StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
         BlockHeader anchor = canonical
             ? container.Resolve<IBlockTree>().FindHeader(10)!
             : Build.A.BlockHeader.WithNumber(10).TestObject;
+        ((ManualTimestamper)container.Resolve<ITimestamper>()).Set(DateTimeOffset.FromUnixTimeSeconds((long)anchor.Timestamp).UtcDateTime.AddHours(anchorAgeHours));
         _snapTrieFactory.LoadCheckpoint().Returns(new SnapCheckpoint
         {
             AnchorNumber = anchor.Number,
@@ -198,8 +201,8 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
             UpdatedStorages = [],
         });
 
-        Assert.That(runner.GetResumedAnchor()?.Hash, Is.EqualTo(canonical ? anchor.Hash : null));
-        _snapTrieFactory.Received(canonical ? 0 : 1).SaveCheckpoint(null);
+        Assert.That(runner.GetResumedAnchor()?.Hash, Is.EqualTo(resumes ? anchor.Hash : null));
+        _snapTrieFactory.Received(resumes ? 0 : 1).SaveCheckpoint(null);
     }
 
     private IContainer BuildRunnerContainer()
