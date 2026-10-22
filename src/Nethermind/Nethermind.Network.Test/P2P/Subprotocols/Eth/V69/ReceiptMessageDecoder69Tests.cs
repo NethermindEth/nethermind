@@ -23,30 +23,35 @@ public class ReceiptMessageDecoder69Tests
     private static readonly LogEntry PaddedLog = ReceiptRlpBuilder.PaddedLog();
 
     [Test]
-    public void Can_roundtrip_receipt()
+    public void Can_roundtrip_receipt(
+        [Values] bool skipStateAndStatus,
+        [Values(2UL, 128UL, 256UL, 65536UL, 16777216UL)] ulong gasUsedTotal)
     {
         TxReceipt receipt = new()
         {
             TxType = TxType.EIP1559,
             StatusCode = 1,
-            GasUsedTotal = 21000,
+            GasUsedTotal = gasUsedTotal,
             Bloom = new Bloom(),
             Logs = []
         };
 
-        ReceiptMessageDecoder69 decoder = new();
-        int length = decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts);
-        byte[] encoded = new byte[length];
-        RlpWriter writer = new(encoded);
-        decoder.Encode(ref writer, receipt, RlpBehaviors.Eip658Receipts);
+        ReceiptMessageDecoder69 decoder = new(skipStateAndStatus);
+        byte[] encoded = Encode(decoder, receipt);
 
         RlpReader context = new(encoded);
         TxReceipt? decoded = decoder.Decode(ref context, RlpBehaviors.Eip658Receipts);
+        Array.Clear(encoded);
 
         Assert.That(decoded, Is.Not.Null);
-        Assert.That(decoded!.TxType, Is.EqualTo(receipt.TxType));
-        Assert.That(decoded.StatusCode, Is.EqualTo(receipt.StatusCode));
-        Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded!.TxType, Is.EqualTo(receipt.TxType));
+            Assert.That(decoded.StatusCode, Is.EqualTo(skipStateAndStatus ? 0 : receipt.StatusCode));
+            Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
+            Assert.That(decoded.Logs, Is.Empty);
+            Assert.That(context.Position, Is.EqualTo(encoded.Length));
+        }
     }
 
     [Test]
@@ -89,9 +94,18 @@ public class ReceiptMessageDecoder69Tests
     [Test]
     public void Decode_accepts_valid_post_state_length([Values(0, 32)] int length)
     {
-        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt69WithFirstItem(TxType.EIP1559, new byte[length]);
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt69WithFirstItem(TxType.Legacy, TestItem.KeccakA.Bytes[..length]);
+        TxReceipt? decoded = Decode(encoded);
+        Array.Clear(encoded);
 
-        Assert.That(Decode(encoded)!.PostTransactionState, Is.EqualTo(length == 0 ? null : Keccak.Zero));
+        Assert.That(decoded, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded!.PostTransactionState, Is.EqualTo(length == 0 ? null : TestItem.KeccakA),
+                "The decoded post-state must own its hash after the input buffer changes.");
+            Assert.That(decoded.TxType, Is.EqualTo(TxType.Legacy));
+            Assert.That(decoded.GasUsedTotal, Is.EqualTo(21000));
+        }
     }
 
     [Test]
