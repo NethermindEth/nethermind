@@ -256,6 +256,14 @@ namespace Nethermind.Facade.Find
                 return filter.Matches(ref bloomRef);
             };
 
+            // A block-hash filter can target a processed block that is not canonical, so a lookup by number misses it.
+            if (fromBlock.Hash == toBlock.Hash)
+            {
+                return bloomMatches(fromBlock.Bloom!.Bytes)
+                    ? FindLogsInBlock<TBlockLogs, TLog>(filter, fromBlock.Hash, fromBlock.Number, fromBlock.Timestamp, cancellationToken)
+                    : [];
+            }
+
             return RunParallel(BlockNumbers(fromBlock.Number, rangeSize),
                 number => FindHeaderIfBloomMatchesOrLogError(number, bloomMatches, cancellationToken) is { } header
                     ? FindLogsInBlock<TBlockLogs, TLog>(filter, header.Hash, header.Number, header.Timestamp, cancellationToken)

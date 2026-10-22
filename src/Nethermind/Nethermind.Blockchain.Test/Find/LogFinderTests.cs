@@ -314,6 +314,35 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void filter_by_block_hash_finds_logs_of_a_stored_block_that_is_not_canonical([Values] bool siblingOfCanonical)
+    {
+        Block parent = siblingOfCanonical ? _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)! : _headTestBlock;
+        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithTransactions(transaction)
+            .WithBloom(new Bloom([log]))
+            .WithExtraData([1])
+            .TestObject;
+        Assert.That(_rawBlockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
+        _receiptStorage.Insert(block, Build.A.Receipt
+            .WithLogs(log)
+            .WithTransactionHash(transaction.Hash)
+            .WithBlockHash(block.Hash)
+            .WithBlockNumber(block.Number)
+            .TestObject);
+        BlockParameter blockHash = new(block.Hash!);
+        LogFilter logFilter = new(0, blockHash, blockHash, AddressFilter.AnyAddress, new SequenceTopicsFilter());
+
+        FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
+
+        Assert.That(_rawBlockTree.IsMainChain(block.Header), Is.False);
+        Assert.That(logs.Select(static l => (l.BlockHash, l.Address)), Is.EqualTo(new[] { (block.Hash, TestItem.AddressE) }));
+        AssertSerializedAsFilterLogs(_logFinder.FindLogs(logFilter));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void filter_all_logs_should_throw_when_to_block_is_not_found()
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
