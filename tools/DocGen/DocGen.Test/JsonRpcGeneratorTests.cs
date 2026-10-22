@@ -55,6 +55,13 @@ public class JsonRpcGeneratorTests
     [TestCase("debug", "debug_traceTransaction", "- `structLogs`:", "- `customTracerResult`:")]
     [TestCase("eth", "eth_getHeaderByNumber", "- `hash`: _string_ (hash) or `null`", "- `baseFeePerGas`: _string_ (hex integer) or `null`")]
     [TestCase("debug", "debug_simulateV1", "- `traces`: array of _object_ (the tracer's own result instead when `tracer` is set)", "- `customTracerResult`:")]
+    [TestCase("eth", "eth_getTransactionByHash", "- `gas`: _string_ (hex integer)\n", "(transaction type) or `null`")]
+    [TestCase("eth", "eth_getStorageValues", "`result`: map of address to array of _string_ (32-byte hex data)", "- `slots`:")]
+    [TestCase("debug", "debug_getRawReceipts", "`result`: array of _string_ (hex data)", "- `receipts`:")]
+    [TestCase("txpool", "txpool_content", "each a map of sender address to a map of nonce (decimal, or hash for an EIP-8250 keyed transaction) to _object_ (transaction)", "- `info`:")]
+    [TestCase("txpool", "txpool_inspect", "to _string_ (`sender: value wei + gas × gasPrice gas`)", "- `info`:")]
+    [TestCase("trace", "trace_replayTransaction", "- `balance`: `\"=\"` (unchanged), or _object_ `{\"+\": value}` (added)", "- `after`:")]
+    [TestCase("trace", "trace_replayTransaction", "- `ops`: array of _object_", "- `operations`:")]
     public void Response_documents_wire_shape(string ns, string method, string documented, string notDocumented)
     {
         string response = ReadResponse(ns, method);
@@ -73,6 +80,8 @@ public class JsonRpcGeneratorTests
     [TestCase("eth", "eth_newFilter", "- `blockHash`: _string_ (hash, not allowed with `fromBlock` or `toBlock`)", "- `topics`: array of array")]
     [TestCase("eth", "eth_getStorageValues", "1. `requests`: map of address to array of _string_ (hex storage slot), 1 to 1024 slots in total", "- `entries`:")]
     [TestCase("trace", "trace_filter", "- `fromBlock`: _string_ (block number or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`), _object_ (EIP-1898 `{blockNumber}`)", "requireCanonical")]
+    [TestCase("eth", "eth_getProof", "2. `storageKeys`: array of _string_ (hex storage slot), or a _string_ holding that array as JSON", "- `count`:")]
+    [TestCase("eth", "eth_getStorageAt", "2. `positionIndex`: _string_ (hex storage slot)", "- `value`:")]
     public void Parameters_document_accepted_input(string ns, string method, string documented, string notDocumented)
     {
         string parameters = ReadParameters(ns, method);
@@ -175,6 +184,9 @@ public class JsonRpcGeneratorTests
         yield return new TestCaseData("parity", "parity_pendingTransactions",
             new ParityTransaction(new Transaction { SenderAddress = Address.Zero, Signature = new Signature(1, 1, 27) }, [], null!))
             .SetArgDisplayNames("pending contract creation");
+        yield return new TestCaseData("parity", "parity_pendingTransactions",
+            new ParityTransaction(new Transaction { SenderAddress = Address.Zero }, [], null!))
+            .SetArgDisplayNames("unsigned frame transaction");
         yield return new TestCaseData("eth", "eth_getBlockByNumber", new BlockForRpc())
             .SetArgDisplayNames("pending block");
         yield return new TestCaseData("eth", "eth_getTransactionReceipt", new ReceiptForRpc())
@@ -182,25 +194,92 @@ public class JsonRpcGeneratorTests
         yield return new TestCaseData("trace", "trace_get", ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace
         {
             BlockHash = Keccak.Zero,
-            Action = new ParityTraceAction { Type = "reward", RewardType = "block", Author = Address.Zero, TraceAddress = CappedArray<int>.Empty }
+            Action = new ParityTraceAction { Type = "reward", RewardType = "block", Author = Address.Zero, Result = null, TraceAddress = CappedArray<int>.Empty }
         }).Single()).SetArgDisplayNames("reward trace");
+        yield return new TestCaseData("trace", "trace_get", ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace
+        {
+            BlockHash = Keccak.Zero,
+            Action = new ParityTraceAction { Type = "reward", RewardType = "block", Author = Address.Zero, Result = null }
+        }).Single()).SetArgDisplayNames("reward trace without trace address");
+        yield return new TestCaseData("trace", "trace_replayTransaction", new ParityTxTraceFromReplay
+        {
+            Action = new ParityTraceAction
+            {
+                Type = "call",
+                CallType = "call",
+                From = Address.Zero,
+                To = Address.Zero,
+                Input = CappedArray<byte>.Empty,
+                Error = "Reverted",
+                Result = null,
+                TraceAddress = CappedArray<int>.Empty
+            }
+        }).SetArgDisplayNames("failed call without state diff or vm trace");
+        yield return new TestCaseData("trace", "trace_replayTransaction", new ParityTxTraceFromReplay
+        {
+            Output = [],
+            StateChanges = [],
+            Action = new ParityTraceAction
+            {
+                Type = "call",
+                CallType = "call",
+                From = Address.Zero,
+                To = Address.Zero,
+                Input = CappedArray<byte>.Empty,
+                Result = new ParityTraceResult { Output = [] },
+                TraceAddress = CappedArray<int>.Empty
+            },
+            VmTrace = new ParityVmTrace { Code = [], Operations = [new ParityVmOperationTrace { Halted = true }, new ParityVmOperationTrace()] }
+        }).SetArgDisplayNames("vm trace with halted and empty operations");
     }
 
     [TestCaseSource(nameof(ResultsWithNullMembers))]
     public void Response_documents_members_written_as_null(string ns, string method, object result)
     {
         using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(result));
-        string[] lines = ReadResponse(ns, method).Split('\n');
-        JsonProperty[] nullProperties = [.. wire.RootElement.EnumerateObject().Where(p => p.Value.ValueKind is JsonValueKind.Null)];
-        Assert.That(nullProperties, Is.Not.Empty);
+        int nullProperties;
 
         using (Assert.EnterMultipleScope())
+            nullProperties = AssertNullPropertiesDocumented(wire.RootElement, ReadResponse(ns, method), 2);
+
+        Assert.That(nullProperties, Is.Not.Zero);
+    }
+
+    /// <summary>Asserts each null property of <paramref name="value"/> and of its nested objects is documented as nullable.</summary>
+    /// <returns>The number of null properties found.</returns>
+    private static int AssertNullPropertiesDocumented(JsonElement value, string response, int indentation)
+    {
+        string[] lines = response.Split('\n');
+        int nullProperties = 0;
+
+        foreach (JsonProperty property in value.EnumerateObject())
         {
-            foreach (JsonProperty property in nullProperties)
+            if (property.Value.ValueKind is JsonValueKind.Null)
+            {
+                nullProperties++;
                 Assert.That(lines.Any(line =>
-                        line.StartsWith($"  - `{property.Name}`:", StringComparison.Ordinal) && line.EndsWith(" or `null`", StringComparison.Ordinal)), Is.True,
+                        line.StartsWith($"{new string(' ', indentation)}- `{property.Name}`:", StringComparison.Ordinal) &&
+                        line.EndsWith(" or `null`", StringComparison.Ordinal)), Is.True,
                     $"{property.Name} is written as null but not documented as nullable");
+                continue;
+            }
+
+            JsonElement[] children = property.Value.ValueKind switch
+            {
+                JsonValueKind.Object => [property.Value],
+                JsonValueKind.Array => [.. property.Value.EnumerateArray().Where(item => item.ValueKind is JsonValueKind.Object)],
+                _ => []
+            };
+
+            if (children.Length == 0)
+                continue;
+
+            string childResponse = ReadPropertyBlock(response, property.Name, indentation);
+            foreach (JsonElement child in children)
+                nullProperties += AssertNullPropertiesDocumented(child, childResponse, indentation + 2);
         }
+
+        return nullProperties;
     }
 
     private static void AssertDocumentedProperties(JsonElement value, string response, int indentation)
