@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 
@@ -63,7 +62,6 @@ public class StatusMessageSerializer69 :
         };
     }
 
-    [SkipLocalsInit]
     private static void EncodeForkId<TWriter>(ref TWriter writer, ForkId forkId)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {

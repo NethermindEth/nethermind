@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -14,7 +13,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         private const int ForkHashLength = 5;
 
-        [SkipLocalsInit]
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
         {
             Hash256 bestHash = GetRequiredHash(message.BestHash, nameof(message.BestHash));
