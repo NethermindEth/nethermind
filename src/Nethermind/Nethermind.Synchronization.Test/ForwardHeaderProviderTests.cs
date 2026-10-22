@@ -693,6 +693,10 @@ public partial class ForwardHeaderProviderTests
     // a CancelAfter timer could not fire on a pool whose threads all sleep in this validator.
     private class SlowSealValidator(CancellationTokenSource cancellation) : ISealValidator
     {
+        private int _sealsValidated;
+
+        public int SealsValidated => Volatile.Read(ref _sealsValidated);
+
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
             cancellation.Cancel();
@@ -702,6 +706,7 @@ public partial class ForwardHeaderProviderTests
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
+            Interlocked.Increment(ref _sealsValidated);
             cancellation.Cancel();
             Thread.Sleep(200);
             return true;
@@ -712,7 +717,8 @@ public partial class ForwardHeaderProviderTests
     public async Task Can_cancel_seal_validation()
     {
         using CancellationTokenSource cancellation = new();
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(new SlowSealValidator(cancellation)));
+        SlowSealValidator sealValidator = new(cancellation);
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(sealValidator));
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -731,6 +737,8 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, cancellation.Token);
         Assert.That(async () => await headerTask(), Throws.InstanceOf<OperationCanceledException>());
+        // The validation itself must stop early: only the seals already in flight when the token was cancelled run.
+        Assert.That(sealValidator.SealsValidated, Is.LessThan(128));
     }
 
     [Test]

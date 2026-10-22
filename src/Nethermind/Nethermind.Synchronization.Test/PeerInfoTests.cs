@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
@@ -322,6 +322,7 @@ namespace Nethermind.Synchronization.Test
             PeerInfo peer = NewPeer(allowances);
             int succeeded = 0;
             using Barrier barrier = new(threads);
+            ConcurrentQueue<Exception> failures = new();
 
             // Dedicated threads: thread-pool threads parked on the barrier would starve the rest of the process until
             // the pool has injected enough of them.
@@ -331,13 +332,22 @@ namespace Nethermind.Synchronization.Test
                 racers[t] = new Thread(() =>
                 {
                     barrier.SignalAndWait();
-                    if (peer.TryAllocate(AllocationContexts.Headers))
-                        Interlocked.Increment(ref succeeded);
+                    // An exception on a raw thread would end the test host, so collect it for the assert below.
+                    try
+                    {
+                        if (peer.TryAllocate(AllocationContexts.Headers))
+                            Interlocked.Increment(ref succeeded);
+                    }
+                    catch (Exception e)
+                    {
+                        failures.Enqueue(e);
+                    }
                 });
                 racers[t].Start();
             }
             foreach (Thread racer in racers) racer.Join();
 
+            Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures));
             Assert.That(succeeded, Is.EqualTo(slots));
             Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(0));
             Assert.That(peer.IsAllocationFull(AllocationContexts.Headers), Is.True);

@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -493,7 +494,7 @@ public class SyncServerTests
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer2.SyncPeer);
         // Notifications fire on a separate task, and one that starts after Close() is dropped, so wait for the delivery.
-        Assert.That(() => remoteServer2.ReceivedCalls().Any(static c => c.GetMethodInfo().Name == nameof(ISyncServer.AddNewBlock)), Is.True.After(10_000, 10));
+        await Wait.ForCondition(() => remoteServer2.ReceivedCalls().Any(static c => c.GetMethodInfo().Name == nameof(ISyncServer.AddNewBlock)), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(10));
         await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
         remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
         remoteServer2.Received().AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>());
