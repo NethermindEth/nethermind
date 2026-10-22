@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -88,6 +87,6 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        new ExecutionRequestsProcessor(postExecution.TxProcessor, executionRequestsOptions).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+        postExecution.GetExecutionRequests(executionRequestsOptions).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

@@ -189,6 +189,35 @@ public class RollupXExecutionTests
     }
 
     [Test]
+    public void ProcessExecutionRequests_BlockAccessListManager_ReusesRollupXRequestRulesAcrossBlocks()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new EezModule(new EezConfig(), Rules))
+            .Build();
+        using ILifetimeScope scope = container.BeginLifetimeScope(processing => processing.AddSingleton(_state));
+        IBlockAccessListManager manager = scope.Resolve<IBlockAccessListManager>();
+
+        for (ulong number = 1; number <= 2; number++)
+        {
+            Block block = Build.A.Block.WithNumber(number).TestObject;
+            manager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.ProducingBlock);
+            manager.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+            manager.Setup(block);
+            Assert.That(manager.Enabled, Is.True, "precondition: the block uses the BAL execution path");
+
+            manager.ProcessExecutionRequests(block, [], Amsterdam.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash),
+                    "RollupX does not dequeue consensus requests through the cached processor");
+                Assert.That(block.ExecutionRequests, Is.Empty, "the request policy survives processor reuse");
+            }
+        }
+    }
+
+    [Test]
     public void CreateStatelessEnvironment_RollupX_WiresRulesAndCapturesThePrefixAfterBurn()
     {
         using Witness witness = new()

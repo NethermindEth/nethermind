@@ -217,6 +217,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
 
+    /// <summary>A trie-less scope never rehashes storage, so an account it wrote storage to keeps its old root.</summary>
+    public bool StorageRootsAreAuthoritative => !_trieless;
+
     public void UpdateRootHash()
     {
         if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();

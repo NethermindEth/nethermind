@@ -115,8 +115,8 @@ public class OptimismEthRpcModule(
 
     private async Task<ResultWrapper<Hash256>> SignAndForwardTransaction(SignableTransactionForRpc rpcTx)
     {
-        if (CheckSendTransactionFees(rpcTx) is { } feeError)
-            return feeError;
+        if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
+            return sendError;
 
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))

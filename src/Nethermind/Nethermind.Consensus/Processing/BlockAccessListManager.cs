@@ -161,12 +161,7 @@ public partial class BlockAccessListManager(
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Header, suggestedBlock.Transactions.Length, addressIndex);
                 _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: VerifyOnly && _readPlan is null);
-                ulong suggestedReads = 0;
-                foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
-                {
-                    if (!IsSystemContract(ac.Address)) suggestedReads += (ulong)ac.StorageReads.Length;
-                }
-                _suggestedChargeableStorageReads = suggestedReads;
+                _suggestedChargeableStorageReads = (ulong)suggested.TotalStorageReads - SystemContractStorageReads(suggested);
             }
             _gasRemaining = suggestedBlock.GasUsed;
         }
