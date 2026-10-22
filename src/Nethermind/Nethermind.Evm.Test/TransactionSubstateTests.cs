@@ -211,6 +211,18 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Halted_substate_has_no_log_list()
+        {
+            TransactionSubstate substate = new(EvmExceptionType.OutOfGas, isTracerConnected: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(substate.Logs, Is.Null);
+                Assert.That(substate.LogsToArray(), Is.Empty);
+            }
+        }
+
+        [Test]
         public void Logs_with_journal_reflect_appended_entries()
         {
             JournalCollection<LogEntry> journal = [];
