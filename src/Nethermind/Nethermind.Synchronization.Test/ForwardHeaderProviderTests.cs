@@ -37,7 +37,6 @@ using Nethermind.Config;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Nethermind.Synchronization.Reporting;
 
 
 namespace Nethermind.Synchronization.Test;
