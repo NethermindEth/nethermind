@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Experimental.Abi;
@@ -12,7 +13,8 @@ public delegate T BinarySpanReaderFunc<out T, in TCtx>(TCtx ctx, ref BinarySpanR
 /// <summary>Forward cursor over an ABI encoding, passed to <see cref="Abi{T}.Read"/>.</summary>
 public ref struct BinarySpanReader
 {
-    private const int InitialDynamicCapacity = 4;
+    // Renting from the pool costs more than allocating a short array, which also bounds what a malformed input can make it allocate.
+    private const int MaxUnpooledDynamicLength = 4;
 
     private readonly ReadOnlySpan<byte> _span;
     private int _position;
@@ -89,14 +91,22 @@ public ref struct BinarySpanReader
 
             T[] values;
             int next = headSize;
-            if (element.IsDynamic)
+            if (element.IsDynamic && length > MaxUnpooledDynamicLength)
             {
                 // Only the offsets are known to fit the input, and an element can decode to far more memory than its offset word,
-                // so the result grows with the decoded elements rather than with the declared length.
-                values = new T[Math.Min(length, InitialDynamicCapacity)];
+                // so the elements go to a pooled buffer that grows as they decode, and only the complete result is allocated.
+                using ArrayPoolListRef<T> decoded = new(MaxUnpooledDynamicLength);
                 for (int i = 0; i < length; i++)
                 {
-                    if (i == values.Length) Array.Resize(ref values, (int)Math.Min(length, 2L * i));
+                    decoded.Add(r.ReadOffset(element.Read, ref next));
+                }
+                values = decoded.ToArray();
+            }
+            else if (element.IsDynamic)
+            {
+                values = new T[length];
+                for (int i = 0; i < length; i++)
+                {
                     values[i] = r.ReadOffset(element.Read, ref next);
                 }
             }
