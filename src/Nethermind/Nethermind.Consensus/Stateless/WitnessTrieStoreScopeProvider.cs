@@ -33,6 +33,12 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
 {
     private const int HashedKeyNibbles = 2 * Hash256.Size;
     private const int BranchChildren = 16;
+    private const int ShortStringOffset = 0x80;
+    private const int ShortStringMaxPrefix = 0xb7;
+    private const int ListOffset = 0xc0;
+    private const int ShortListMaxPrefix = 0xf7;
+    // RLP spells a length below this in its prefix; a long form for it is not canonical.
+    private const int LongLengthMin = 56;
 
     private readonly HashKeyedNodeStorage _witnessNodes;
     // Storage roots whose trees exist; pending until loaded, then walked once.
@@ -143,6 +149,8 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
             int heldCount = candidates < 0 ? probe.FindHeldOtherBranchChildren(rlp, held) : 0;
             if (heldCount < 0)
             {
+                if (TryValidateLeaf(rlp, remainingNibbles)) continue;
+
                 _pendingCount = (int)pendingCount;
                 _bytesBeforeMemo = bytesBeforeMemo;
                 ValidateOtherNode(rlp, 0, rlp.Length, (int)remainingNibbles);
@@ -178,6 +186,55 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
         // The budget spans every walk of the block, or each storage root would get a fresh one.
         _bytesBeforeMemo = bytesBeforeMemo;
         _pendingCount = 0;
+    }
+
+    /// <summary>Validates a leaf of the usual shape: a list of a hex-prefixed path of 2 to 33 bytes and a string value.</summary>
+    /// <returns>Whether the node has that shape; if not, <see cref="ValidateOtherNode"/> decodes it.</returns>
+    /// <remarks>Accepts only what <see cref="ValidateOtherNode"/> decodes as a leaf without throwing, canonical lengths
+    /// included, so either path rejects the same witnesses. Saves leaves, a fifth of the walk's nodes, the decoder's
+    /// frame.</remarks>
+    private static bool TryValidateLeaf(byte[] rlp, nint remainingNibbles)
+    {
+        int length = rlp.Length;
+        if (length < 4) return false;
+
+        int header = rlp[0];
+        int start;
+        if (header is >= ListOffset and <= ShortListMaxPrefix)
+        {
+            if (header - ListOffset != length - 1) return false;
+            start = 1;
+        }
+        else if (header == ShortListMaxPrefix + 1)
+        {
+            if (rlp[1] < LongLengthMin || rlp[1] != length - 2) return false;
+            start = 2;
+        }
+        else
+        {
+            return false;
+        }
+
+        int pathLength = rlp[start] - ShortStringOffset;
+        int valueStart = start + 1 + pathLength;
+        // A path of one byte can be its own RLP; the decoder handles that and checks its canonical form.
+        if (pathLength is < 2 or > Hash256.Size + 1 || valueStart >= length) return false;
+
+        int flags = rlp[start + 1];
+        if ((flags & 0x20) == 0) return false;
+
+        int value = rlp[valueStart];
+        int valueEnd = value switch
+        {
+            < ShortStringOffset => valueStart + 1,
+            <= ShortStringMaxPrefix => valueStart + 1 + value - ShortStringOffset,
+            ShortStringMaxPrefix + 1 when valueStart + 1 < length && rlp[valueStart + 1] >= LongLengthMin => valueStart + 2 + rlp[valueStart + 1],
+            _ => -1
+        };
+        if (valueEnd != length) return false;
+
+        if (2 * pathLength - ((flags & 0x10) != 0 ? 1 : 2) != remainingNibbles) ThrowPathExceedsKey();
+        return true;
     }
 
     /// <summary>Validates the node inlined at <paramref name="start"/> of <paramref name="array"/>.</summary>

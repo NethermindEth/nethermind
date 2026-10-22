@@ -40,6 +40,16 @@ public class WitnessTrieStoreScopeProviderTests
         AssertScopeOpens(valid, readLeaf, unreadLeaf, root);
     }
 
+    /// <remarks>Values of each RLP length form, so the leaf's list takes a short and a long prefix.</remarks>
+    [Test]
+    public void Scope_checks_leaves_whatever_their_value_length([Values(1, 20, 56, 200)] int valueLength, [Values] bool valid)
+    {
+        byte[] readLeaf = Leaf(KeyNibbles - 1);
+        byte[] unreadLeaf = Leaf(KeyNibbles - 1 + (valid ? 0 : 1), new byte[valueLength]);
+
+        AssertScopeOpens(valid, readLeaf, unreadLeaf, Branch(readLeaf, unreadLeaf));
+    }
+
     /// <remarks>A branch of sixteen hashed children, most of them absent from the witness, as nearly all are.</remarks>
     [Test]
     public void Scope_checks_the_leaves_below_full_branches([Values(1, 2)] int levels, [Values] bool valid)
