@@ -54,6 +54,24 @@ public class JsonRpcGeneratorTests
         }
     }
 
+    [TestCase("eth", "eth_getProof", "3. `blockParameter`: _string_ (block number or hash or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`), _object_ (EIP-1898 `{blockHash, requireCanonical}` or `{blockNumber}`), or _integer_ (block number, if `JsonRpc.StrictHexFormat` is `false`)", "`safe`)\n")]
+    [TestCase("eth", "eth_getLogs", "- `topics`: array of (_string_ (hash), array of _string_ (hash), or `null`)", "EIP-1898")]
+    [TestCase("eth", "eth_newFilter", "- `address`: _string_ (address), array of _string_ (address), or `null`", "EIP-1898")]
+    [TestCase("eth", "eth_newFilter", "- `fromBlock`: _string_ (block number or hash or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`) or _integer_ (block number)", "- `topics`: array of array")]
+    [TestCase("eth", "eth_newFilter", "- `blockHash`: _string_ (hash, not allowed with `fromBlock` or `toBlock`)", "- `topics`: array of array")]
+    [TestCase("eth", "eth_getStorageValues", "1. `requests`: map of address to array of _string_ (hex storage slot), 1 to 1024 slots in total", "- `entries`:")]
+    [TestCase("trace", "trace_filter", "- `fromBlock`: _string_ (block number or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`), _object_ (EIP-1898 `{blockNumber}`)", "requireCanonical")]
+    public void Parameters_document_accepted_input(string ns, string method, string documented, string notDocumented)
+    {
+        string parameters = ReadParameters(ns, method);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parameters, Does.Contain(documented));
+            Assert.That(parameters, Does.Not.Contain(notDocumented));
+        }
+    }
+
     [Test]
     public void Trace_callMany_documents_calls_as_wire_array_of_pairs()
     {
@@ -161,6 +179,20 @@ public class JsonRpcGeneratorTests
         while (end < lines.Length && (string.IsNullOrWhiteSpace(lines[end]) || lines[end].StartsWith(childIndentation, StringComparison.Ordinal)))
             end++;
         return string.Join('\n', lines[(start + 1)..end]);
+    }
+
+    private string ReadParameters(string ns, string method)
+    {
+        string doc = File.ReadAllText(Path.Combine(RpcDirectory, $"{ns}.md"));
+        int start = doc.IndexOf($"### {method}\n", StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{method} is not documented");
+
+        int end = doc.IndexOf("\n### ", start + 1, StringComparison.Ordinal);
+        string methodDoc = end < 0 ? doc[start..] : doc[start..end];
+        int parameters = methodDoc.IndexOf("<TabItem value=\"params\"", StringComparison.Ordinal);
+        Assert.That(parameters, Is.GreaterThanOrEqualTo(0), $"{method} has no parameters");
+
+        return methodDoc[parameters..methodDoc.IndexOf("</TabItem>", parameters, StringComparison.Ordinal)];
     }
 
     private string ReadResponse(string ns, string method)

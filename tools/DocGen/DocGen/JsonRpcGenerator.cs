@@ -13,6 +13,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -42,6 +43,8 @@ internal static class JsonRpcGenerator
         "Nethermind.JsonRpc"
     ];
     private const string _objectTypeName = "_object_";
+    private const string _blockTags = "`earliest`, `finalized`, `latest`, `pending`, or `safe`";
+    private const string _blockNumberIfNotStrict = "_integer_ (block number, if `JsonRpc.StrictHexFormat` is `false`)";
     private static readonly SortedSet<string> _guessedTypeNames = new(StringComparer.Ordinal);
     private static readonly NullabilityInfoContext _nullabilityContext = new();
     private static readonly Dictionary<Type, string> _knownTypeNames = new()
@@ -49,7 +52,7 @@ internal static class JsonRpcGenerator
         [typeof(Address)] = "_string_ (address)",
         [typeof(AddressAsKey)] = "_string_ (address)",
         [typeof(BigInteger)] = "_string_ (decimal integer)",
-        [typeof(BlockParameter)] = "_string_ (block number or hash or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`)",
+        [typeof(BlockParameter)] = $"_string_ (block number or hash or either of {_blockTags}), _object_ (EIP-1898 `{{blockHash, requireCanonical}}` or `{{blockNumber}}`), or {_blockNumberIfNotStrict}",
         [typeof(Bloom)] = "_string_ (hex data)",
         [typeof(bool)] = "_boolean_",
         [typeof(byte)] = "_integer_",
@@ -60,6 +63,10 @@ internal static class JsonRpcGenerator
         [typeof(DateTimeOffset)] = "_string_ (date-time)",
         [typeof(double)] = "_number_",
         [typeof(double[])] = "array of _number_",
+        [typeof(FilterAddress)] = "_string_ (address), array of _string_ (address), or `null`",
+        [typeof(FilterBlockBound)] = $"_string_ (block number or hash or either of {_blockTags}) or _integer_ (block number)",
+        [typeof(FilterBlockHash)] = "_string_ (hash, not allowed with `fromBlock` or `toBlock`)",
+        [typeof(FilterTopics)] = "array of (_string_ (hash), array of _string_ (hash), or `null`)",
         [typeof(Hash256)] = "_string_ (hash)",
         [typeof(Hash256[])] = "array of _string_ (hash)",
         [typeof(HexBytes)] = "_string_ (hex data)",
@@ -68,6 +75,7 @@ internal static class JsonRpcGenerator
         [typeof(long)] = "_string_ (hex integer)",
         [typeof(PublicKey)] = "_string_ (node id, no \"0x\" prefix)",
         [typeof(Signature)] = "_string_ (hex data)",
+        [typeof(StorageValuesRequest)] = "map of address to array of _string_ (hex storage slot), 1 to 1024 slots in total",
         [typeof(string)] = "_string_",
         [typeof(TimeSpan)] = "_string_ (duration)",
         [typeof(TraceCallManyRequest)] = "array of [_object_ (transaction, same as `call` in `trace_call`), array of _string_ (trace type)] pairs",
@@ -82,6 +90,9 @@ internal static class JsonRpcGenerator
     private static readonly Dictionary<Type, string> _knownConverterTypeNames = new()
     {
         [typeof(BlockNonceConverter)] = "_string_ (8-byte hex data)",
+        // Internal to Nethermind.JsonRpc, so reached through a member it converts
+        [typeof(TraceFilterForRpc).GetProperty(nameof(TraceFilterForRpc.FromBlock))!.GetCustomAttribute<JsonConverterAttribute>()!.ConverterType!] =
+            $"_string_ (block number or either of {_blockTags}), _object_ (EIP-1898 `{{blockNumber}}`), or {_blockNumberIfNotStrict}",
         [typeof(MemoryHexConverter)] = "array of _string_ (32-byte hex data)",
         [typeof(PublicKeyConverter)] = "_string_ (hex data)",
         [typeof(StackHexConverter)] = "array of _string_ (hex integer)",
@@ -114,7 +125,20 @@ internal static class JsonRpcGenerator
             ("trace", typeof(ParityTraceAction[]), typeof(ParityTraceActionFromReplayJsonConverter)),
             ("transactionHash", typeof(Hash256), null), ("vmTrace", typeof(ParityVmTrace), null),
         ],
+        // Read by Filter.ReadJson rather than a converter, so keyed by the type
+        [typeof(Filter)] =
+        [
+            ("address", typeof(FilterAddress), null), ("blockHash", typeof(FilterBlockHash), null),
+            ("fromBlock", typeof(FilterBlockBound), null), ("toBlock", typeof(FilterBlockBound), null),
+            ("topics", typeof(FilterTopics), null), ("useIndex", typeof(bool), null),
+        ],
     };
+
+    // Markers for the forms Filter.ReadJson accepts; its range bounds are parsed from their text, so they take no EIP-1898 object
+    private sealed class FilterAddress;
+    private sealed class FilterBlockBound;
+    private sealed class FilterBlockHash;
+    private sealed class FilterTopics;
 
     internal static void Generate(string path)
     {
@@ -563,8 +587,9 @@ internal static class JsonRpcGenerator
     {
         JsonTypeInfo? contract = GetContract(type);
 
-        if ((converterType ?? contract?.Converter.GetType()) is { } shapeConverter &&
-            _knownConverterMembers.TryGetValue(shapeConverter, out (string Name, Type Type, Type? Converter)[]? members))
+        if (((converterType ?? contract?.Converter.GetType()) is { } shapeConverter &&
+            _knownConverterMembers.TryGetValue(shapeConverter, out (string Name, Type Type, Type? Converter)[]? members)) ||
+            _knownConverterMembers.TryGetValue(type, out members))
             return members.Select(m => (m.Name, m.Type, m.Converter, CanBeNull: false));
 
         if (contract?.Kind is JsonTypeInfoKind.Object)
