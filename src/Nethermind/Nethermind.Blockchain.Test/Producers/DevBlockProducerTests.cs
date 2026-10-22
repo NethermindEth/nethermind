@@ -63,40 +63,55 @@ public class DevBlockProducerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Produces_empty_blocks_while_they_lower_the_base_fee_to_a_tx_fee()
+    {
+        using NethDevTestBlockchain chain = await NethDevTestBlockchain.Create(1.GWei);
+
+        // Below the next base fee, but above the base fee after one empty block.
+        Transaction lowFeeTx = SubmitTx(chain, 0, chain.NextBaseFee() - 1);
+        Block? includingBlock = null;
+        await chain.WaitForNewHeadWhere(b =>
+        {
+            if (b.Transactions.All(tx => tx.Hash != lowFeeTx.Hash)) return false;
+            includingBlock = b;
+            return true;
+        });
+
+        Assert.That(includingBlock!.Number, Is.EqualTo(2));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Does_not_produce_empty_blocks_for_a_tx_it_cannot_include([Values] bool nonceGap)
     {
-        using NethDevTestBlockchain chain = await NethDevTestBlockchain.Create();
-        BlockHeader genesis = chain.BlockTree.Head!.Header;
-        IReleaseSpec spec = chain.SpecProvider.GetSpec(genesis);
-        UInt256 nextBaseFee = spec.BaseFeeCalculator.Calculate(genesis, spec);
+        // An empty block cannot lower the base fee below this floor.
+        using NethDevTestBlockchain chain = await NethDevTestBlockchain.Create(7.Wei);
+        UInt256 nextBaseFee = chain.NextBaseFee();
 
-        // Without a nonce gap: below the next base fee, but above the base fee after one empty block.
-        Transaction stuckTx = Build.A.Transaction
-            .WithNonce(nonceGap ? 1UL : 0UL)
-            .WithGasPrice(nonceGap ? nextBaseFee * 2 : nextBaseFee - 1)
-            .To(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        Assert.That(chain.TxPool.SubmitTx(stuckTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        Transaction stuckTx = SubmitTx(chain, nonceGap ? 1UL : 0UL, nonceGap ? nextBaseFee * 2 : nextBaseFee - 1);
 
         await Task.Delay(1_000);
         Assert.That(chain.BlockTree.Head!.Number, Is.Zero, "empty blocks were produced for the stuck tx");
-
-        Task stuckTxIncluded = chain.WaitForNewHeadWhere(b => b.Transactions.Any(tx => tx.Hash == stuckTx.Hash));
 
         Block? requested = await chain.Container.Resolve<IManualBlockProductionTrigger>().BuildBlock();
         Assert.That(requested?.Transactions, Is.Empty, "a requested block can be empty");
 
         if (nonceGap)
         {
-            Transaction gapFiller = Build.A.Transaction
-                .WithNonce(0)
-                .WithGasPrice(nextBaseFee * 2)
-                .To(TestItem.AddressB)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Assert.That(chain.TxPool.SubmitTx(gapFiller, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Task stuckTxIncluded = chain.WaitForNewHeadWhere(b => b.Transactions.Any(tx => tx.Hash == stuckTx.Hash));
+            SubmitTx(chain, 0, nextBaseFee * 2);
+            await stuckTxIncluded;
         }
+    }
 
-        await stuckTxIncluded;
+    private static Transaction SubmitTx(NethDevTestBlockchain chain, ulong nonce, UInt256 gasPrice)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithNonce(nonce)
+            .WithGasPrice(gasPrice)
+            .To(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Assert.That(chain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        return tx;
     }
 
     private class EmptyTxSourceFactory : IBlockProducerTxSourceFactory
@@ -108,14 +123,21 @@ public class DevBlockProducerTests
     {
         private NethDevBlockProducerFactory Factory => Container.Resolve<NethDevBlockProducerFactory>();
 
-        public static async Task<NethDevTestBlockchain> Create()
+        public static async Task<NethDevTestBlockchain> Create(UInt256 genesisBaseFee)
         {
             NethDevTestBlockchain chain = new();
-            await chain.Build(static builder => builder
+            await chain.Build(builder => builder
                 .AddModule(new NethDevPlugin(new ChainSpec()).Module)
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
-                .AddSingleton<IGenesisPostProcessor>(new FunctionalGenesisPostProcessor(static genesis => genesis.Header.BaseFeePerGas = 1.GWei)));
+                .AddSingleton<IGenesisPostProcessor>(new FunctionalGenesisPostProcessor(genesis => genesis.Header.BaseFeePerGas = genesisBaseFee)));
             return chain;
+        }
+
+        public UInt256 NextBaseFee()
+        {
+            BlockHeader head = BlockTree.Head!.Header;
+            IReleaseSpec spec = SpecProvider.GetSpec(head);
+            return spec.BaseFeeCalculator.Calculate(head, spec);
         }
 
         protected override IBlockProducer CreateTestBlockProducer() => Factory.InitBlockProducer();

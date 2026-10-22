@@ -44,19 +44,21 @@ internal sealed class NethDevBlockProducerFactory(
     }
 
     /// <remarks>
-    /// The pool can hold transactions the producer never includes (fee below the base fee, nonce gap),
-    /// so blocks triggered by a non-empty pool are dropped when empty. Manually requested blocks are kept.
+    /// The pool can hold transactions the producer never includes (nonce gap, fee below the base-fee floor or
+    /// the min gas price), so a block triggered by a non-empty pool is dropped when it is empty and does not
+    /// lower the base fee. Empty blocks that lower the base fee are kept, so a tx priced below the base fee
+    /// is still included once the base fee drops to its fee. Manually requested blocks are kept.
     /// </remarks>
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
     {
         IBlockProductionTrigger poolTrigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
             .IfPoolIsNotEmpty(txPool);
         return new CompositeBlockProducerRunner(
-            new StandardBlockProducerRunner(poolTrigger, blockTree, new NonEmptyBlockProducer(blockProducer)),
+            new StandardBlockProducerRunner(poolTrigger, blockTree, new IdleBlockDroppingProducer(blockProducer)),
             new StandardBlockProducerRunner(manualBlockProductionTrigger, blockTree, blockProducer));
     }
 
-    private sealed class NonEmptyBlockProducer(IBlockProducer blockProducer) : IBlockProducer
+    private sealed class IdleBlockDroppingProducer(IBlockProducer blockProducer) : IBlockProducer
     {
         public async Task<Block?> BuildBlock(
             BlockHeader? parentHeader = null,
@@ -66,7 +68,7 @@ internal sealed class NethDevBlockProducerFactory(
             CancellationToken cancellationToken = default)
         {
             Block? block = await blockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, flags, cancellationToken);
-            return block is { Transactions.Length: > 0 } ? block : null;
+            return block is not null && (block.Transactions.Length > 0 || block.BaseFeePerGas < parentHeader?.BaseFeePerGas) ? block : null;
         }
     }
 
