@@ -248,15 +248,25 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
     {
         ulong read = 0;
         float walked = 0;
+        string phase = Phase;
         using ProgressReporter progress = PbtImageProgress.Start(Phase, "leaf", 0, logManager);
-        progress.Logger.SetFormat(p => PbtImageProgress.Format(Phase, walked, PbtImageProgress.Counted("leaf", p)));
+        progress.Logger.SetFormat(p => PbtImageProgress.Format(phase, walked, PbtImageProgress.Counted("leaf", p)));
         foreach (RebuildEntry entry in leaves)
         {
+            phase = ZonePhase(entry.Key.Bytes[0]);
             walked = PbtImageProgress.KeyspaceFraction(new ValueHash256(entry.Key.Bytes.Slice(1, ValueHash256.MemorySize)));
             progress.Update(++read);
             yield return entry;
         }
     }
+
+    private static string ZonePhase(byte zone) => zone switch
+    {
+        Eip8297KeyDerivation.AccountZone => "PBT import (Account)",
+        Eip8297KeyDerivation.CodeZone => "PBT import (Code)",
+        Eip8297KeyDerivation.StorageZone => "PBT import (Storage)",
+        _ => Phase
+    };
 
     /// <summary>Compiles staged writes into no-WAL batches on the caller's thread and writes them on parallel flushers.</summary>
     /// <remarks>Staged keys are unique, so the order the flushers write in does not matter. Nothing is durable until
