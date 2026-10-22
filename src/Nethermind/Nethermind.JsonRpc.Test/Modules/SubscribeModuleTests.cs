@@ -989,7 +989,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockReplacementEventArgs blockEventArgs = new(block);
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
-            Assert.That(manualResetEvent.WaitOne(DeliveryTimeout), Is.True);
+            AssertDelivery(manualResetEvent, shouldReceiveResult: true);
 
             Assert.That(jsonRpcResults.Count, Is.EqualTo(1));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
@@ -1470,7 +1470,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
-            Assert.That(manualResetEvent.WaitOne(DeliveryTimeout), Is.True);
+            AssertDelivery(manualResetEvent, shouldReceiveResult: true);
 
             Assert.That(jsonRpcResults.Count, Is.EqualTo(1));
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
