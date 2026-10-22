@@ -330,6 +330,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
             // The keccaks whose byte of the filter is set, or every keccak once a write has made the filter incomplete,
             // go to held first, and only those are then probed.
+            bool unwritten = _unwritten;
             ref byte filter = ref _filter;
             nuint mask = _filterMask;
             int candidates = 0;
@@ -348,8 +349,9 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
                 if (prefix != KeccakItem || position + KeccakItemLength > end) return -1;
 
-                nuint index = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref first, position + 1)) & mask;
-                if (!_unwritten || Unsafe.Add(ref filter, index) != 0) held[candidates++] = new HeldChild(position + 1, null!);
+                // Sign-extended: the mask is below 2^31, and a zero-extension would cost the guest an instruction.
+                nuint index = (nuint)Unsafe.ReadUnaligned<int>(ref Unsafe.Add(ref first, position + 1)) & mask;
+                if (!unwritten || Unsafe.Add(ref filter, index) != 0) held[candidates++] = new HeldChild(position + 1, null!);
                 position += KeccakItemLength;
             }
 
@@ -360,7 +362,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
             for (int i = 0; i < candidates; i++)
             {
                 int offset = held[i].Offset;
-                byte[]? node = _unwritten ? FindFiltered(ref Unsafe.Add(ref first, offset)) : _storage.Find(rlp.Slice(offset, Hash256.Size));
+                byte[]? node = unwritten ? FindFiltered(ref Unsafe.Add(ref first, offset)) : _storage.Find(rlp.Slice(offset, Hash256.Size));
                 if (node is not null) held[count++] = new HeldChild(offset, node);
             }
 
