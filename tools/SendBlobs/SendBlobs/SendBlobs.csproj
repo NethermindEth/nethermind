@@ -15,9 +15,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Crypto\Nethermind.Crypto.csproj" />
-    <ProjectReference Include="..\..\src\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
-    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Facade\Nethermind.Facade.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Facade\Nethermind.Facade.csproj" />
   </ItemGroup>
 
 </Project>

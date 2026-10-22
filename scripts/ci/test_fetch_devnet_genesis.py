@@ -32,15 +32,15 @@ import sys
 endpoint = sys.argv[2]
 if "/commits/" in endpoint:
     print("pinned-sha")
-elif "/first/" in endpoint:
-    print("devnet-1\\ndevnet-2")
 else:
-    print("devnet-1")
+    assert endpoint.endswith("?ref=pinned-sha"), endpoint
+    print("devnet-1\\ndevnet-2" if "/first/" in endpoint else "devnet-1")
 """)
                 self.tool(tools / "curl", """
 import json, os, pathlib, sys
 args = sys.argv[1:]
 url = args[-1]
+assert url.endswith("?ref=pinned-sha"), url
 repo = url.split("/ethpandaops/")[1].split("/")[0]
 devnet = url.split("/network-configs/")[1].split("/")[0]
 status = json.loads(os.environ["RESPONSES"])[repo + "/" + devnet]
