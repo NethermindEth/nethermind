@@ -124,7 +124,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
-            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.DebugModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16), jsonRpcConfig.Timeout)
+            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.GetDebugModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()
                 .AddScoped<IDebugRpcModule, DebugRpcModule>()

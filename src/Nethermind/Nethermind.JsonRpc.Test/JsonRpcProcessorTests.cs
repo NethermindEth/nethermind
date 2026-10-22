@@ -452,6 +452,74 @@ public class JsonRpcProcessorTests
     }
 
     [Test]
+    public async Task Batch_executes_trace_calls_concurrently_only_with_a_native_tracer()
+    {
+        List<string> events = [];
+        TaskCompletionSource bothNativeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int nativeStartedCount = 0;
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            string id = request.Id.ToString();
+            lock (events) events.Add($"start {id}");
+            if (id is "1" or "2")
+            {
+                if (Interlocked.Increment(ref nativeStartedCount) == 2) bothNativeStarted.SetResult();
+                await bothNativeStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            lock (events) events.Add($"end {id}");
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 4 }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("2", "debug_traceCall", """[{},"latest",{"tracer":"callTracer"}]"""),
+                CreateRequest("3", "debug_traceCall", """[{},"latest"]"""),
+                CreateRequest("4", "debug_traceCall", """[{},"latest",{"tracer":"{result:function(){return 1},fault:function(){}}"}]"""),
+                CreateRequest("5", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("6", "debug_traceCall", """[{},"latest",{"tracer":"\uD800"}]""")),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertBatchResponse(responses, 6).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2", "3", "4", "5", "6" }));
+            Assert.That(events.IndexOf("start 2"), Is.LessThan(events.IndexOf("end 1")), "native traced calls overlap");
+            Assert.That(events.IndexOf("start 3"), Is.GreaterThan(new[] { "end 1", "end 2" }.Max(events.IndexOf)), "a struct log trace may stream, so it runs alone");
+            Assert.That(events.IndexOf("start 4"), Is.GreaterThan(events.IndexOf("end 3")), "a JavaScript tracer runs alone");
+            Assert.That(events.IndexOf("start 5"), Is.GreaterThan(events.IndexOf("end 4")));
+            Assert.That(events.IndexOf("start 6"), Is.GreaterThan(events.IndexOf("end 5")), "a tracer name that cannot be read runs alone");
+        }
+    }
+
+    [Test]
+    public async Task Batch_keeps_trace_calls_sequential_when_the_debug_module_pool_is_narrower_than_the_window()
+    {
+        List<string> events = [];
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            string id = request.Id.ToString();
+            lock (events) events.Add($"start {id}");
+            await Task.Delay(50);
+            lock (events) events.Add($"end {id}");
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(
+            CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 1 }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("2", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]""")),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertBatchResponse(responses, 2).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2" }));
+            Assert.That(events, Is.EqualTo(new[] { "start 1", "end 1", "start 2", "end 2" }));
+        }
+    }
+
+    [Test]
     public async Task Batch_answers_concurrent_calls_after_stop_with_limit_error()
     {
         IJsonRpcService service = CreateEchoService();
