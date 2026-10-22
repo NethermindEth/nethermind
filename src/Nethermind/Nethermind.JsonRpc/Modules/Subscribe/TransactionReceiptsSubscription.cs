@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -74,8 +75,7 @@ public class TransactionReceiptsSubscription : Subscription
 
         BlockHeader header = e.BlockHeader;
         IReleaseSpec spec = _specProvider.GetSpec(header);
-        Block? block = null;
-        List<ReceiptForRpc> receipts = [];
+        using ArrayPoolList<ReceiptForRpc> receipts = new(_filterHashes is null ? e.TxReceipts.Length : Math.Min(_filterHashes.Count, e.TxReceipts.Length));
         int cumulativeLogIndex = 0;
 
         for (int i = 0; i < e.TxReceipts.Length; i++)
@@ -91,19 +91,11 @@ public class TransactionReceiptsSubscription : Subscription
                 continue;
             }
 
-            // Looked up on the first match, as a filtered subscription matches nothing in most blocks.
-            block ??= _blockTree.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
-            if (block is null)
-            {
-                if (_logger.IsDebug) _logger.Debug($"TransactionReceipts subscription {Id}: block {header.ToString(BlockHeader.Format.FullHashAndNumber)} not found, its receipts are not published.");
-                return;
-            }
-
             receipts.Add(new ReceiptForRpc(
                 receipt.TxHash!,
                 receipt,
                 header.Timestamp,
-                block.Transactions[i].GetGasInfo(spec, header),
+                e.Transactions?[i].GetGasInfo(spec, header) ?? default,
                 cumulativeLogIndex
             ));
 
