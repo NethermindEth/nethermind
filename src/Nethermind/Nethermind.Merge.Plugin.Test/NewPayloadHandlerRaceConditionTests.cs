@@ -708,7 +708,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: true,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 3_000);
+            timeoutMs: TimedOutRequestBudgetMs);
 
         ExecutionPayloadV3 heldPayload = ExecutionPayloadV3.Create(block);
         heldPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
