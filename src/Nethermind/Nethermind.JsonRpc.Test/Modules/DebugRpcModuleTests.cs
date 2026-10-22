@@ -435,10 +435,8 @@ public partial class DebugRpcModuleTests
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
 
-    [TestCase("prestateTracer")]
-    [TestCase("callTracer")]
-    [TestCase(null)]
-    public async Task Debug_traceCall_stops_after_the_call(string? tracer)
+    [Test]
+    public async Task Debug_traceCall_stops_after_the_call([Values("prestateTracer", "callTracer", null)] string? tracer)
     {
         int requestsProcessed = 0;
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
