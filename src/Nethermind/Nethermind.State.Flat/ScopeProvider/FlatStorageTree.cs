@@ -49,6 +49,8 @@ public sealed class FlatStorageTree(
     private Dictionary<UInt256, UInt256>? _earlyApplied;
     private int _earlyState;
     private int _earlyQueued;
+    // Bench-only: slots applied to the early tree by completed passes.
+    private int _earlyTreeSlots;
     private readonly int _earlyGeneration = scope.EarlyApplyGeneration;
 
     private sealed class Trees(StorageTree tree, StorageTree warmup)
@@ -189,6 +191,7 @@ public sealed class FlatStorageTree(
             tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
             tree.UpdateRootHash(canBeParallel: false);
             _scope.CountEarlyApplied(entries.Count);
+            Volatile.Write(ref _earlyTreeSlots, _earlyTreeSlots + entries.Count);
         }
         catch
         {
@@ -229,10 +232,12 @@ public sealed class FlatStorageTree(
         {
             // Mid-pass: waiting could take a scheduler tick, so the batch writes every slot instead.
             _scope.CountEarlyAbandoned();
+            _scope.CountEarlyAbandonedSlots(Volatile.Read(ref _earlyTreeSlots));
             return null;
         }
 
         if (previous != EarlyIdle || _earlyTree is not { } earlyTree || _earlyApplied is not { Count: > 0 } applied) return null;
+        _scope.CountEarlyAdoptedSlots(applied.Count);
 
         tree.RootRef = earlyTree.RootRef;
         return applied;

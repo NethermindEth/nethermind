@@ -63,6 +63,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private int _earlyReusedSlots;
     private int _earlyRestoredSlots;
     private int _earlyAbandonedTrees;
+    private int _earlyAdoptedSlots;
+    private int _earlyAbandonedSlots;
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
@@ -120,6 +122,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         (Volatile.Read(ref _earlyAppliedSlots), Volatile.Read(ref _earlyReusedSlots), Volatile.Read(ref _earlyRestoredSlots), Volatile.Read(ref _earlyAbandonedTrees));
 
     internal void CountEarlyAbandoned() => Interlocked.Increment(ref _earlyAbandonedTrees);
+
+    /// <summary>Bench-only: slots of early trees adopted by the block-end batch, and of trees abandoned mid-pass.</summary>
+    internal void CountEarlyAdoptedSlots(int slots) => Interlocked.Add(ref _earlyAdoptedSlots, slots);
+
+    internal void CountEarlyAbandonedSlots(int slots) => Interlocked.Add(ref _earlyAbandonedSlots, slots);
 
     internal void CountEarlyReconciled(int reused, int restored)
     {
@@ -671,8 +678,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int reused = Interlocked.Exchange(ref _earlyReusedSlots, 0);
         int restored = Interlocked.Exchange(ref _earlyRestoredSlots, 0);
         int abandoned = Interlocked.Exchange(ref _earlyAbandonedTrees, 0);
+        int adoptedSlots = Interlocked.Exchange(ref _earlyAdoptedSlots, 0);
+        int abandonedSlots = Interlocked.Exchange(ref _earlyAbandonedSlots, 0);
         if (BlockDiag.Current is { } diag)
         {
+            diag.Set(BlockDiag.C.EarlyAdoptedSlots, adoptedSlots);
+            diag.Set(BlockDiag.C.EarlyAbandonedSlots, abandonedSlots);
             diag.Set(BlockDiag.C.EarlyApplied, applied);
             diag.Set(BlockDiag.C.EarlyReused, reused);
             diag.Set(BlockDiag.C.EarlyRestored, restored);
@@ -803,7 +814,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 using (BlockDiag.Measure(diag, BlockDiag.F.WsAccountTrie))
                 {
-                    if (!_scope._trieless) _scope.StateTree.WriteAccounts(_dirtyAccounts);
+                    if (diag is not null) diag.CurrentPhase = BlockDiag.Phase.AccountTrie;
+                    try
+                    {
+                        if (!_scope._trieless) _scope.StateTree.WriteAccounts(_dirtyAccounts);
+                    }
+                    finally
+                    {
+                        if (diag is not null) diag.CurrentPhase = BlockDiag.Phase.None;
+                    }
                 }
             }
             finally

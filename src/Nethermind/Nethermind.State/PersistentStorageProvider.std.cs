@@ -197,14 +197,17 @@ internal sealed partial class PersistentStorageProvider
         // Schedule larger changes first to help balance the work
         storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
+        BlockDiag? diag = BlockDiag.InPhase(BlockDiag.Phase.StorageRoots);
+        diag?.Add(BlockDiag.C.ParStorageLoops, 1);
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         ParallelUnbalancedWork.For(
             0,
             storages.Count,
             RuntimeInformation.ParallelOptionsLogicalCores,
-            (storages, writes: 0, skips: 0),
+            (storages, writes: 0, skips: 0, diag),
             static (i, state) =>
             {
+                state.diag?.CountWorkItem(BlockDiag.C.ParStorageMain, BlockDiag.C.ParStorageHelper);
                 ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
                 (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
                 state.writes += writes;

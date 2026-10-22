@@ -214,8 +214,11 @@ public partial class BlockProcessor(
         BlockDiag? diag = BlockDiag.Current;
         diag?.Stamp(BlockDiag.P.TxsStart);
         diag?.Set(BlockDiag.C.TxCount, block.Transactions.Length);
+        if (diag is not null) diag.TxIndex = 0;
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
         diag?.Stamp(BlockDiag.P.TxsEnd);
+        // Changes after the last transaction (rewards, withdrawals, requests) count as at index tx_count.
+        if (diag is not null) diag.TxIndex = block.Transactions.Length;
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -324,7 +327,15 @@ public partial class BlockProcessor(
         if (TComputesCommitments.IsActive && ShouldComputeStateRoot(header))
         {
             using BlockDiag.Section stateRootSection = BlockDiag.Measure(diag, BlockDiag.F.FinStateRoot);
-            ComputeStateRoot(header);
+            if (diag is not null) diag.CurrentPhase = BlockDiag.Phase.StateRoot;
+            try
+            {
+                ComputeStateRoot(header);
+            }
+            finally
+            {
+                if (diag is not null) diag.CurrentPhase = BlockDiag.Phase.None;
+            }
         }
 
         if (receiptWork is not null)

@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -81,6 +82,7 @@ internal static class DirtyNodeHasher
         int maxCollectedNodes = MaxCollectedNodes)
     {
         if (!Avx2.IsSupported || !root.IsDirty || root.Keccak is not null) return false;
+        BlockDiag.InPhase(BlockDiag.Phase.StateRoot)?.Add(BlockDiag.C.ParHashCalls, 1);
 
         if (!canBeParallel || RuntimeInformation.IsSingleProcessor || !root.IsBranch
             || !TryHashSubtreesInParallel(root, resolver, pool, maxCollectedNodes))
@@ -118,11 +120,15 @@ internal static class DirtyNodeHasher
         int count = BitOperations.PopCount(dirtyChildren);
         if (count < MinimumSubtrees) return false;
 
+        // Bench-only: work items of the state root's hashing on the block-processing thread or on helpers.
+        BlockDiag? diag = BlockDiag.InPhase(BlockDiag.Phase.StateRoot);
+        diag?.Add(BlockDiag.C.ParHashLoops, 1);
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
-            (dirtyChildren, root, resolver, pool, maxCollectedNodes),
+            (dirtyChildren, root, resolver, pool, maxCollectedNodes, diag),
             static (i, state) =>
             {
+                state.diag?.CountWorkItem(BlockDiag.C.ParHashMain, BlockDiag.C.ParHashHelper);
                 // The i-th set bit of the mask.
                 uint remaining = state.dirtyChildren;
                 for (int skipped = 0; skipped < i; skipped++) remaining &= remaining - 1;

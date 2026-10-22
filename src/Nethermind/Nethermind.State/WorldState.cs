@@ -491,7 +491,15 @@ namespace Nethermind.State
                     long slotSkipped = diag is null ? 0 : Db.Metrics.StorageSkippedWrites;
                     using (BlockDiag.Measure(diag, BlockDiag.F.WsStorageFlush))
                     {
-                        _persistentStorageProvider.FlushToTree(writeBatch);
+                        if (diag is not null) diag.CurrentPhase = BlockDiag.Phase.StorageRoots;
+                        try
+                        {
+                            _persistentStorageProvider.FlushToTree(writeBatch);
+                        }
+                        finally
+                        {
+                            if (diag is not null) diag.CurrentPhase = BlockDiag.Phase.None;
+                        }
                     }
 
                     if (diag is not null)

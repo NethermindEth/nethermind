@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -141,6 +142,9 @@ public partial class PatriciaTree
         BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
         BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
         TrieNode.ChildIterator childIterator = node.CreateChildIterator();
+        // Bench-only: work items of the account trie's batch on the block-processing thread or on helpers.
+        BlockDiag? diag = BlockDiag.InPhase(BlockDiag.Phase.AccountTrie);
+        diag?.Add(BlockDiag.C.ParBulkSetLoops, 1);
 
         while (nibMask != 0)
         {
@@ -161,6 +165,7 @@ public partial class PatriciaTree
             GetTraverseStack,
             (i, workerTraverseStack) =>
             {
+                diag?.CountWorkItem(BlockDiag.C.ParBulkSetMain, BlockDiag.C.ParBulkSetHelper);
                 (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
 
                 Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);

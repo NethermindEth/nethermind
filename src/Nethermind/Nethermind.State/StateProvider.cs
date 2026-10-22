@@ -964,6 +964,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         int skipped = 0;
         int created = 0;
         int deleted = 0;
+        int late = 0;
+        int postTx = 0;
+        // The last 10% of the transactions (rounded up), and the changes after the last one.
+        int txCount = diag is null ? 0 : (int)diag.Get(BlockDiag.C.TxCount);
+        int lateFrom = txCount - (txCount + 9) / 10;
 
         foreach (AddressAsKey key in _blockChanges.Keys)
         {
@@ -974,6 +979,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 {
                     if (change.Before is null) created++;
                     else if (change.After is null) deleted++;
+                    if (change.LastTx >= lateFrom) late++;
+                    if (change.LastTx >= txCount) postTx++;
                 }
 
                 change.Before = change.After;
@@ -997,6 +1004,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             diag.Add(BlockDiag.C.StateSkipped, skipped);
             diag.Add(BlockDiag.C.StateCreated, created);
             diag.Add(BlockDiag.C.StateDeleted, deleted);
+            diag.Add(BlockDiag.C.LateAccounts, late);
+            diag.Add(BlockDiag.C.PostTxAccounts, postTx);
         }
     }
 
@@ -1063,6 +1072,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         accountChanges.After = account;
+        // Bench-only: the transaction of the block-processing thread that changed it last.
+        if (BlockDiag.Current is { } diag) accountChanges.LastTx = diag.TxIndex;
         _needsStateRootUpdate = true;
     }
 
@@ -1335,6 +1346,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         public Account? Before { get; set; } = before;
         public Account? After { get; set; } = after;
+        /// <summary>Bench-only: the block transaction index of the last change, set on the block-processing thread.</summary>
+        public int LastTx { get; set; }
     }
 }
 

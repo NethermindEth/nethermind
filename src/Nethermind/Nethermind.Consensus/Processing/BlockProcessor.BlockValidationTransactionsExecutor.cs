@@ -46,6 +46,7 @@ public partial class BlockProcessor
                 token.ThrowIfCancellationRequested();
                 Transaction currentTx = block.Transactions[i];
 
+                if (diag is not null) diag.TxIndex = i;
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 if (diag is not null && i == 0) diag.Stamp(BlockDiag.P.Tx0End);
 

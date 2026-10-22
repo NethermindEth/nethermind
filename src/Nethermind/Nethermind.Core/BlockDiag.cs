@@ -53,8 +53,14 @@ public sealed class BlockDiag
         StorageAccounts, SlotWrites, SlotSkipped,
         TrieAccounts, TrieStorageRoots, TrieStorageCleared,
         EarlyActive, EarlyAppliedAtBatch, EarlyApplied, EarlyReused, EarlyRestored, EarlyAbandoned,
+        EarlyAdoptedSlots, EarlyAbandonedSlots, LateAccounts, PostTxAccounts,
+        ParStorageLoops, ParStorageMain, ParStorageHelper, ParBulkSetLoops, ParBulkSetMain, ParBulkSetHelper,
+        ParHashCalls, ParHashLoops, ParHashMain, ParHashHelper,
         Count
     }
+
+    /// <summary>Which FinalizeBlock step the block-processing thread is in, so shared parallel loops count only there.</summary>
+    public enum Phase { None, StorageRoots, AccountTrie, StateRoot }
 
     private static readonly string[] PNames =
     [
@@ -83,6 +89,9 @@ public sealed class BlockDiag
         "storage_accounts", "slot_writes", "slot_skipped",
         "trie_accounts", "trie_storage_roots", "trie_storage_cleared",
         "early_active", "early_applied_at_batch", "early_applied", "early_reused", "early_restored", "early_abandoned",
+        "early_adopted_slots", "early_abandoned_slots", "late_accounts", "post_tx_accounts",
+        "par_storage_loops", "par_storage_main", "par_storage_helper", "par_bulkset_loops", "par_bulkset_main", "par_bulkset_helper",
+        "par_hash_calls", "par_hash_loops", "par_hash_main", "par_hash_helper",
     ];
 
     private readonly long[] _t = new long[(int)P.Count];
@@ -91,6 +100,21 @@ public sealed class BlockDiag
     private readonly long[] _c = new long[(int)C.Count];
 
     public Hash256? BlockHash { get; set; }
+
+    /// <summary>The index of the transaction the block-processing thread is executing; the count after the last one.</summary>
+    public int TxIndex;
+
+    /// <summary>The FinalizeBlock step in progress on the block-processing thread.</summary>
+    public Phase CurrentPhase;
+
+    /// <summary>
+    /// The diag of the block-processing thread when it is in <paramref name="phase"/>, else <see langword="null"/>: taken by
+    /// the caller of a parallel loop, so the loop counts its work items only in that step.
+    /// </summary>
+    public static BlockDiag? InPhase(Phase phase) => Current is { } diag && diag.CurrentPhase == phase ? diag : null;
+
+    /// <summary>Counts one work item of a parallel loop, as run by the block-processing thread or by a helper.</summary>
+    public void CountWorkItem(C main, C helper) => Interlocked.Increment(ref _c[ReferenceEquals(Current, this) ? (int)main : (int)helper]);
     public ulong BlockNumber { get; set; }
 
     /// <summary>The request of the block the current thread is processing, if any; set by the block-processing thread.</summary>

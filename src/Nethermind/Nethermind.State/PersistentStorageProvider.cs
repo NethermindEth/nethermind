@@ -471,6 +471,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
+        BlockDiag? diag = BlockDiag.InPhase(BlockDiag.Phase.StorageRoots);
         foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
         {
             if (!kvp.Value) continue;
@@ -483,6 +484,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             (int writes, int skipped) = contractState.ProcessStorageChanges(
                 writeBatch.CreateStorageWriteBatch(kvp.Key, contractState.EstimatedChanges));
+            diag?.Add(BlockDiag.C.ParStorageMain, 1);
 
             ReportMetrics(writes, skipped);
         }
