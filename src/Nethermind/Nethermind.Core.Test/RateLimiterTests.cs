@@ -41,7 +41,8 @@ public class RateLimiterTests
 
         await Task.WhenAll(tasks);
 
-        int effectivePerSec = (int)(counter / ((Environment.TickCount64 - startTime) / 1000.0));
+        long elapsedMs = Environment.TickCount64 - startTime;
+        int effectivePerSec = (int)(counter / (elapsedMs / 1000.0));
         // A stalled runner lowers the rate, so only the backlog shows that the limiter does not over-delay:
         // each caller holds at most one slot, and the backlog includes the slot the reader just took.
         // Task.Delay truncates to whole milliseconds, and timers run on a clock that moves in 4 ms steps on Linux with HZ=250,
@@ -51,6 +52,9 @@ public class RateLimiterTests
         {
             Assert.That(effectivePerSec, Is.LessThanOrEqualTo((int)(eventPerSec * 1.5)));
             Assert.That(maxBacklog.Max(), Is.LessThanOrEqualTo(backlogLimit));
+            // The backlog does not show how long Task.Delay sleeps. The last wait ends a few intervals after the deadline,
+            // so this loose bound catches a gross over-sleep but not a runner stall.
+            Assert.That(elapsedMs, Is.LessThan(durationMs + 1000));
         }
     }
 
