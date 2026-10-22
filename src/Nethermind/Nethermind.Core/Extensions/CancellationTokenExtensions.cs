@@ -10,6 +10,14 @@ namespace Nethermind.Core.Extensions
 {
     public static class CancellationTokenExtensions
     {
+        public static CancellationToken AlreadyCancelledToken { get; } = CreateAlreadyCancelledToken();
+        private static CancellationToken CreateAlreadyCancelledToken()
+        {
+            CancellationTokenSource cts = new();
+            cts.Cancel();
+            return cts.Token;
+        }
+
         /// <summary>
         /// Converts <see cref="CancellationToken"/> to a awaitable <see cref="Task"/> when token is cancelled.
         /// </summary>
@@ -17,7 +25,7 @@ namespace Nethermind.Core.Extensions
         /// <returns></returns>
         public static Task AsTask(this CancellationToken token)
         {
-            TaskCompletionSource taskCompletionSource = new();
+            TaskCompletionSource taskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             token.Register(() => taskCompletionSource.TrySetCanceled(), false);
             return taskCompletionSource.Task;
         }
@@ -63,5 +71,11 @@ namespace Nethermind.Core.Extensions
 
             return new AutoCancelTokenSource(cts);
         }
+
+        public static CancellationTokenRegistration RegisterToCompletionSource(this CancellationToken cancellationToken, TaskCompletionSource taskCompletionSource) =>
+            cancellationToken.Register(() => taskCompletionSource.TrySetCanceled(), false);
+
+        public static CancellationTokenRegistration RegisterToCompletionSource<T>(this CancellationToken cancellationToken, TaskCompletionSource<T> taskCompletionSource) =>
+            cancellationToken.Register(() => taskCompletionSource.TrySetCanceled(), false);
     }
 }

@@ -10,21 +10,14 @@ namespace Nethermind.Consensus.Comparers
 {
     /// <summary>Block producer knows what will be base fee of next block. We can extract it from blockPreparationContextService and
     /// use to order transactions</summary>
-    public class GasPriceTxComparerForProducer : IComparer<Transaction>
+    public class GasPriceTxComparerForProducer(
+        BlockPreparationContext blockPreparationContext,
+        ISpecProvider specProvider)
+        : IComparer<Transaction>
     {
-        private readonly BlockPreparationContext _blockPreparationContext;
-        private readonly ISpecProvider _specProvider;
+        private readonly bool _isEip1559Enabled = specProvider.GetSpecFor1559(blockPreparationContext.BlockNumber).IsEip1559Enabled;
 
-        public GasPriceTxComparerForProducer(BlockPreparationContext blockPreparationContext, ISpecProvider specProvider)
-        {
-            _blockPreparationContext = blockPreparationContext;
-            _specProvider = specProvider;
-        }
-
-        public int Compare(Transaction? x, Transaction? y)
-        {
-            bool isEip1559Enabled = _specProvider.GetSpecFor1559(_blockPreparationContext.BlockNumber).IsEip1559Enabled;
-            return GasPriceTxComparerHelper.Compare(x, y, _blockPreparationContext.BaseFee, isEip1559Enabled);
-        }
+        public int Compare(Transaction? x, Transaction? y) =>
+            GasPriceTxComparerHelper.Compare(x, y, blockPreparationContext.BaseFee, _isEip1559Enabled);
     }
 }

@@ -12,5 +12,5 @@ public static class DriveInfoExtensions
         driveInfo.AvailableFreeSpace * 100.0 / driveInfo.TotalSize;
 
     public static double GetFreeSpaceInGiB(this IDriveInfo driveInfo) =>
-        (double)driveInfo.AvailableFreeSpace / 1.GiB();
+        (double)driveInfo.AvailableFreeSpace / 1.GiB;
 }

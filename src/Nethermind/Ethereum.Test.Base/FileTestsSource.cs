@@ -4,67 +4,49 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Ethereum.Test.Base
 {
-    public class FileTestsSource
+    public class FileTestsSource(string fileName, string? wildcard = null)
     {
-        private readonly string _fileName;
-        private readonly string? _wildcard;
+        private readonly string _fileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
 
-        public FileTestsSource(string fileName, string? wildcard = null)
-        {
-            _fileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
-            _wildcard = wildcard;
-        }
-
-        public IEnumerable<GeneralStateTest> LoadGeneralStateTests()
+        public IEnumerable<EthereumTest> LoadTests(TestType testType)
         {
             try
             {
-                if (Path.GetFileName(_fileName).StartsWith("."))
+                if (Path.GetFileName(_fileName).StartsWith('.'))
                 {
-                    return Enumerable.Empty<GeneralStateTest>();
+                    return [];
                 }
 
-                if (_wildcard is not null && !_fileName.Contains(_wildcard))
+                if (wildcard is not null && !_fileName.Contains(wildcard))
                 {
-                    return Enumerable.Empty<GeneralStateTest>();
+                    return [];
                 }
 
-                string json = File.ReadAllText(_fileName);
-                return JsonToEthereumTest.Convert(json);
+                byte[] json = File.ReadAllBytes(_fileName);
+
+                return LoadTests(json, testType);
             }
             catch (Exception e)
             {
-                return Enumerable.Repeat(new GeneralStateTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }, 1);
+                return [new FailedToLoadTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }];
             }
         }
 
-        public IEnumerable<BlockchainTest> LoadBlockchainTests()
+        /// <summary>Converts a JSON fixture and applies the same exclusions as <see cref="LoadTests(TestType)"/>.</summary>
+        /// <remarks>The file-name filters of <see cref="LoadTests(TestType)"/>, hidden files and the constructor's wildcard, do not apply.</remarks>
+        public IEnumerable<EthereumTest> LoadTests(ReadOnlySpan<byte> json, TestType testType)
         {
-            try
+            IEnumerable<EthereumTest> tests = testType switch
             {
-                if (Path.GetFileName(_fileName).StartsWith("."))
-                {
-                    return Enumerable.Empty<BlockchainTest>();
-                }
+                TestType.State => JsonToEthereumTest.ConvertStateTest(json),
+                TestType.Transaction => JsonToEthereumTest.ConvertTransactionTests(json),
+                _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
+            };
 
-                if (_wildcard is not null && !_fileName.Contains(_wildcard))
-                {
-                    return Enumerable.Empty<BlockchainTest>();
-                }
-
-                string json = File.ReadAllText(_fileName, Encoding.Default);
-
-                return JsonToEthereumTest.ConvertToBlockchainTests(json);
-            }
-            catch (Exception e)
-            {
-                return Enumerable.Repeat(new BlockchainTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }, 1);
-            }
+            return FixtureExclusions.Filter(tests, _fileName);
         }
     }
 }

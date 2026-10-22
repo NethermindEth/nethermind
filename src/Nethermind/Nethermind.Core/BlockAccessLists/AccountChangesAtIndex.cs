@@ -1,0 +1,130 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
+using Nethermind.Int256;
+
+namespace Nethermind.Core.BlockAccessLists;
+
+/// <summary>
+/// Per-account changes recorded at a single BAL index (i.e. one transaction). Each scalar field
+/// (balance / nonce / code) collapses to a single optional value because at one index there can
+/// only be one final value. Storage changes carry one <see cref="StorageChange"/> per slot.
+/// </summary>
+public class AccountChangesAtIndex(Address address)
+{
+    public Address Address { get; private set; } = address;
+
+    public BalanceChange? BalanceChange { get; internal set; }
+    public NonceChange? NonceChange { get; internal set; }
+    public CodeChange? CodeChange { get; internal set; }
+
+    /// <summary>Physical existence after a mutation at this index, independently of EIP-161 emptiness.</summary>
+    public bool? AccountExists { get; internal set; }
+
+    public UInt256? PreTxBalance { get; internal set; }
+    /// <summary>The code before the transaction, or <see langword="default"/> until a code change records it.</summary>
+    public ReadOnlyMemory<byte> PreTxCode { get; internal set; }
+    private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
+
+    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
+    private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
+    private bool _storageReadsMayHoldChangedSlots;
+
+    public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
+    public int StorageChangeCount => _storageChanges.Count;
+
+    /// <summary>Slots read but not changed at this index.</summary>
+    /// <remarks>The first access after <see cref="AddStorageReadUnchecked"/> compacts the set, so it is not safe for concurrent readers.</remarks>
+    public HashSet<UInt256> StorageReads
+    {
+        get
+        {
+            if (_storageReadsMayHoldChangedSlots) RemoveChangedSlotsFromReads();
+            return _storageReads;
+        }
+    }
+
+    private void RemoveChangedSlotsFromReads()
+    {
+        _storageReadsMayHoldChangedSlots = false;
+        foreach (UInt256 key in _storageChanges.Keys) _storageReads.Remove(key);
+    }
+
+    public bool HasStorageChange(in UInt256 key) => _storageChanges.ContainsKey(key);
+
+    public void SetStorageChange(in UInt256 key, StorageChange storageChange)
+        => _storageChanges[key] = storageChange;
+
+    public bool RemoveStorageChange(in UInt256 key) => _storageChanges.Remove(key);
+
+    public void AddStorageRead(in UInt256 key) => _storageReads.Add(key);
+
+    /// <summary>Records a read of <paramref name="key"/>, which may also have a change at this index.</summary>
+    /// <remarks>
+    /// Saves the change lookup on every read: a changed slot recorded here leaves the reads when
+    /// <see cref="StorageReads"/> is next accessed, so EIP-7928 still lists it only as a change.
+    /// </remarks>
+    public void AddStorageReadUnchecked(in UInt256 key)
+    {
+        if (_storageReads.Add(key) && _storageChanges.Count != 0) _storageReadsMayHoldChangedSlots = true;
+    }
+
+    public bool RemoveStorageRead(in UInt256 key) => _storageReads.Remove(key);
+
+    /// <summary>Returns the transaction's original value and whether this snapshot epoch needs an undo record.</summary>
+    public bool GetOrCapturePreTxStorage(in UInt256 key, in UInt256 captureValue, ulong journalEpoch, out UInt256 value)
+    {
+        _preTxStorage ??= new Dictionary<UInt256, PreTxStorage>(8, UInt256Comparer.GetOptimized());
+        ref PreTxStorage slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
+        bool needsUndo = !exists || slot.JournalEpoch != journalEpoch;
+        if (!exists) slot = new(in captureValue, journalEpoch);
+        else if (needsUndo) slot.JournalEpoch = journalEpoch;
+        value = slot.Value;
+        return needsUndo;
+    }
+
+    /// <summary>Records a slot's transaction prestate known before its first write, such as one hidden by a storage clear.</summary>
+    public void SeedPreTxStorage(in UInt256 key, in UInt256 value)
+    {
+        _preTxStorage ??= new Dictionary<UInt256, PreTxStorage>(8, UInt256Comparer.GetOptimized());
+        _preTxStorage.TryAdd(key, new PreTxStorage(in value, ulong.MaxValue));
+    }
+
+    /// <summary>Reads the captured transaction-prestate value for a slot, if one was recorded this transaction.</summary>
+    public bool TryGetPreTxStorage(in UInt256 key, out UInt256 value)
+    {
+        if (_preTxStorage is not null && _preTxStorage.TryGetValue(key, out PreTxStorage slot))
+        {
+            value = slot.Value;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    private struct PreTxStorage(in UInt256 value, ulong journalEpoch)
+    {
+        public readonly UInt256 Value = value;
+        public ulong JournalEpoch = journalEpoch;
+    }
+
+    public void Reset(Address address)
+    {
+        Address = address;
+        BalanceChange = null;
+        NonceChange = null;
+        CodeChange = null;
+        AccountExists = null;
+        PreTxBalance = null;
+        PreTxCode = default;
+        _preTxStorage?.ClearAndTrim();
+        _storageChanges.ClearAndTrim();
+        _storageReads.ClearAndTrim();
+        _storageReadsMayHoldChangedSlots = false;
+    }
+}

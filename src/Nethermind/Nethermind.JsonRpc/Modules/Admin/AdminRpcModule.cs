@@ -4,22 +4,23 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Era1;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
-using Nethermind.Stats.Model;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using System.Text.Json;
+using Nethermind.State;
+using Nethermind.Network.Contract.P2P;
+
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
@@ -32,28 +33,28 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IStaticNodesManager _staticNodesManager;
     private readonly IEnode _enode;
     private readonly string _dataDir;
-    private readonly ManualPruningTrigger _pruningTrigger;
-    private readonly IVerifyTrieStarter _verifyTrieStarter;
     private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
-    private readonly IAdminEraService _eraService;
     private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly ISubscriptionManager _subscriptionManager;
+    private readonly IJsonRpcConfig _jsonRpcConfig;
+    private readonly IBlockProcessingPauseControl _blockProcessingPauseControl;
+    private readonly INodeRecordProvider? _nodeRecordProvider;
 
     public AdminRpcModule(
         IBlockTree blockTree,
         INetworkConfig networkConfig,
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
-        IVerifyTrieStarter verifyTrieStarter,
         IStateReader stateReader,
         IEnode enode,
-        IAdminEraService eraService,
         string dataDir,
-        ManualPruningTrigger pruningTrigger,
         ChainParameters parameters,
         ITrustedNodesManager trustedNodesManager,
-        ISubscriptionManager subscriptionManager)
+        ISubscriptionManager subscriptionManager,
+        IJsonRpcConfig jsonRpcConfig,
+        IBlockProcessingPauseControl blockProcessingPauseControl,
+        INodeRecordProvider? nodeRecordProvider = null)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -61,130 +62,103 @@ public class AdminRpcModule : IAdminRpcModule
         _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
-        _verifyTrieStarter = verifyTrieStarter ?? throw new ArgumentNullException(nameof(verifyTrieStarter));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-        _pruningTrigger = pruningTrigger;
-        _eraService = eraService;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
         _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
+        _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
+        _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+        _blockProcessingPauseControl = blockProcessingPauseControl ?? throw new ArgumentNullException(nameof(blockProcessingPauseControl));
+        _nodeRecordProvider = nodeRecordProvider;
 
         BuildNodeInfo();
-        _subscriptionManager = subscriptionManager;
     }
 
-    private void BuildNodeInfo()
+    public ResultWrapper<bool> admin_pauseBlockProcessing()
     {
-        _nodeInfo = new NodeInfo
-        {
-            Name = ProductInfo.ClientId,
-            Enode = _enode.Info,
-            Id = (_enode.PublicKey?.Hash ?? Keccak.Zero).ToString(false),
-            Ip = _enode.HostIp?.ToString(),
-            ListenAddress = $"{_enode.HostIp}:{_enode.Port}",
-            Ports =
-            {
-                Discovery = _networkConfig.DiscoveryPort,
-                Listener = _networkConfig.P2PPort
-            }
-        };
-
-        UpdateEthProtocolInfo();
+        _blockProcessingPauseControl.Pause();
+        return ResultWrapper<bool>.Success(_blockProcessingPauseControl.IsPaused);
     }
 
-    private void UpdateEthProtocolInfo()
+    public ResultWrapper<bool> admin_resumeBlockProcessing()
     {
-        _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
-        _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.NetworkId;
-        _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
-        _nodeInfo.Protocols["eth"].HeadHash = _blockTree.HeadHash;
-        _nodeInfo.Protocols["eth"].GenesisHash = _blockTree.GenesisHash;
-        _nodeInfo.Protocols["eth"].Config = _parameters;
+        _blockProcessingPauseControl.Resume();
+        return ResultWrapper<bool>.Success(!_blockProcessingPauseControl.IsPaused);
     }
 
-    public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)
-    {
-        bool added;
-        if (addToStaticNodes)
-        {
-            added = await _staticNodesManager.AddAsync(enode);
-        }
-        else
-        {
-            NetworkNode networkNode = new(enode);
-            _peerPool.GetOrAdd(new Node(networkNode));
-            added = true;
-        }
+    public ResultWrapper<bool> admin_isBlockProcessingPaused() =>
+        ResultWrapper<bool>.Success(_blockProcessingPauseControl.IsPaused);
 
-        return added
-            ? ResultWrapper<string>.Success(enode)
-            : ResultWrapper<string>.Fail("Failed to add peer.");
+    public async Task<ResultWrapper<bool>> admin_addPeer(string enode, bool persistent = false)
+    {
+        if (TryParseAsNetworkNode(enode, out NetworkNode? networkNode) is { } error) return error;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+
+        await _staticNodesManager.AddAsync(networkNode!, updateFile: persistent, timeout.Token);
+        return ResultWrapper<bool>.Success(true);
     }
 
-    public async Task<ResultWrapper<string>> admin_removePeer(string enode, bool removeFromStaticNodes = false)
+    public async Task<ResultWrapper<bool>> admin_removePeer(string enode, bool persistent = false)
     {
-        bool removed;
-        if (removeFromStaticNodes)
-        {
-            removed = await _staticNodesManager.RemoveAsync(enode);
-        }
-        else
-        {
-            removed = _peerPool.TryRemove(new NetworkNode(enode).NodeId, out Peer _);
-        }
+        if (TryParseAsNetworkNode(enode, out NetworkNode? networkNode) is { } error) return error;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
-        return removed
-            ? ResultWrapper<string>.Success(enode)
-            : ResultWrapper<string>.Fail("Failed to remove peer.");
+        try
+        {
+            await _staticNodesManager.RemoveAsync(networkNode!, updateFile: persistent, timeout.Token);
+        }
+        finally
+        {
+            _peerPool.TryRemove(networkNode!.NodeId, out _);
+        }
+        return ResultWrapper<bool>.Success(true);
     }
 
-    public async Task<ResultWrapper<bool>> admin_addTrustedPeer(string enode)
+    public async Task<ResultWrapper<bool>> admin_addTrustedPeer(string enode, bool persistent = false)
     {
-        Enode enodeObj = new(enode);
+        if (TryParseAsEnode(enode, out Enode? enodeObj) is { } error) return error;
 
-        if (_trustedNodesManager.IsTrusted(enodeObj) || await _trustedNodesManager.AddAsync(enodeObj, updateFile: true))
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+
+        try
         {
-            _peerPool.GetOrAdd(new NetworkNode(enodeObj));
-            return ResultWrapper<bool>.Success(true);
+            await _trustedNodesManager.AddAsync(enodeObj!, updateFile: persistent, timeout.Token);
         }
-        else
+        finally
         {
-            return ResultWrapper<bool>.Fail("Failed to add trusted peer.");
+            _peerPool.GetOrAdd(new NetworkNode(enodeObj!));
         }
+        return ResultWrapper<bool>.Success(true);
     }
 
-    public async Task<ResultWrapper<bool>> admin_removeTrustedPeer(string enode)
+    public async Task<ResultWrapper<bool>> admin_removeTrustedPeer(string enode, bool persistent = false)
     {
-        Enode enodeObj = new(enode);
+        if (TryParseAsEnode(enode, out Enode? enodeObj) is { } error) return error;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
-        if (await _trustedNodesManager.RemoveAsync(enodeObj, updateFile: true))
-        {
-            return ResultWrapper<bool>.Success(true);
-        }
-        else
-        {
-            return ResultWrapper<bool>.Fail("Failed to remove trusted peer.");
-        }
+        await _trustedNodesManager.RemoveAsync(enodeObj!, updateFile: persistent, timeout.Token);
+        return ResultWrapper<bool>.Success(true);
     }
 
     public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
-        => ResultWrapper<PeerInfo[]>.Success(
-            _peerPool.ActivePeers.Select(p => new PeerInfo(p.Value, includeDetails)).ToArray());
+    {
+        PeerInfo[] validatedPeers = _peerPool.ActivePeers
+            .Where(p => IsValidatedPeer(p.Value))
+            .Select(p => new PeerInfo(p.Value, includeDetails))
+            .ToArray();
 
-    public ResultWrapper<NodeInfo> admin_nodeInfo()
+        return ResultWrapper<PeerInfo[]>.Success(validatedPeers);
+    }
+
+    public async Task<ResultWrapper<NodeInfo>> admin_nodeInfo()
     {
         UpdateEthProtocolInfo();
+        await UpdateEnr();
         return ResultWrapper<NodeInfo>.Success(_nodeInfo);
     }
 
-    public ResultWrapper<string> admin_dataDir()
-    {
-        return ResultWrapper<string>.Success(_dataDir);
-    }
+    public ResultWrapper<string> admin_dataDir() => ResultWrapper<string>.Success(_dataDir);
 
-    public ResultWrapper<bool> admin_setSolc()
-    {
-        return ResultWrapper<bool>.Success(true);
-    }
+    public ResultWrapper<bool> admin_setSolc() => ResultWrapper<bool>.Success(true);
 
     public ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block)
     {
@@ -194,47 +168,13 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<bool>.Fail("Unable to find block. Unable to know state root to verify.");
         }
 
-        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header));
-    }
-
-    public ResultWrapper<PruningStatus> admin_prune()
-    {
-        return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
-    }
-
-    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int start = 0, int end = 0)
-    {
-        return ResultWrapper<string>.Success(_eraService.ExportHistory(destination, start, end));
-    }
-
-    public Task<ResultWrapper<string>> admin_importHistory(string source, int start = 0, int end = 0, string? accumulatorFile = null)
-    {
-        return ResultWrapper<string>.Success(_eraService.ImportHistory(source, start, end, accumulatorFile));
-    }
-
-    public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
-    {
-        BlockHeader? header = _blockTree.FindHeader(block);
-        if (header is null)
-        {
-            return ResultWrapper<string>.Fail("Unable to find block. Unable to know state root to verify.");
-        }
-
-        if (!_stateReader.HasStateForBlock(header))
-        {
-            return ResultWrapper<string>.Fail("Unable to start verify trie. State for block missing.");
-        }
-
-        if (!_verifyTrieStarter.TryStartVerifyTrie(header))
-        {
-            return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
-        }
-
-        return ResultWrapper<string>.Success("Starting.");
+        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header!));
     }
 
     public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)
     {
+        if (Subscription.ValidateArgs(args) is { } failure) return failure;
+
         try
         {
             ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
@@ -259,8 +199,87 @@ public class AdminRpcModule : IAdminRpcModule
         bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
         return unsubscribed
             ? ResultWrapper<bool>.Success(true)
-            : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
+            : ResultWrapper<bool>.Fail(ErrorMessages.SubscriptionNotFound, ErrorCodes.ResourceNotFound, isTemporary: true);
     }
 
     public JsonRpcContext Context { get; set; }
+
+    private CancellationTokenSource BuildTimeoutCancellationTokenSource() => _jsonRpcConfig.BuildTimeoutCancellationToken();
+
+    private static bool IsValidatedPeer(Peer peer) => peer.InSession?.IsNetworkIdMatched == true ||
+                                                      peer.OutSession?.IsNetworkIdMatched == true;
+
+    private static ResultWrapper<bool>? TryParseAsNetworkNode(string enode, out NetworkNode? node)
+    {
+        try
+        {
+            node = new NetworkNode(enode);
+            return null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException or SocketException)
+        {
+            node = null;
+            return ResultWrapper<bool>.Fail($"invalid enode: {ex.Message}", ErrorCodes.InvalidParams);
+        }
+    }
+
+    private static ResultWrapper<bool>? TryParseAsEnode(string enode, out Enode? parsed)
+    {
+        try
+        {
+            parsed = new Enode(enode);
+            return null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException or SocketException)
+        {
+            parsed = null;
+            return ResultWrapper<bool>.Fail($"invalid enode: {ex.Message}", ErrorCodes.InvalidParams);
+        }
+    }
+
+    private void BuildNodeInfo()
+    {
+        _nodeInfo = new NodeInfo
+        {
+            Name = ProductInfo.ClientId,
+            Enode = _enode.Info,
+            Id = (_enode.PublicKey?.Hash ?? Keccak.Zero).ToString(false),
+            Ip = _enode.HostIp?.ToString(),
+            ListenAddress = $"{_enode.HostIp}:{_enode.Port}",
+            Ports =
+            {
+                Discovery = _networkConfig.DiscoveryPort,
+                Listener = _networkConfig.P2PPort
+            }
+        };
+
+        UpdateEthProtocolInfo();
+    }
+
+    private async Task UpdateEnr()
+    {
+        if (_nodeRecordProvider is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _nodeInfo.Enr = (await _nodeRecordProvider.GetCurrentAsync()).ToString();
+        }
+        catch (Exception)
+        {
+            _nodeInfo.Enr = null;
+        }
+    }
+
+    private void UpdateEthProtocolInfo()
+    {
+        _nodeInfo.Protocols[Protocol.Eth].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
+        _nodeInfo.Protocols[Protocol.Eth].NetworkId = _blockTree.NetworkId;
+        _nodeInfo.Protocols[Protocol.Eth].ChainId = _blockTree.ChainId;
+        _nodeInfo.Protocols[Protocol.Eth].HeadHash = _blockTree.HeadHash;
+        _nodeInfo.Protocols[Protocol.Eth].GenesisHash = _blockTree.GenesisHash;
+        _nodeInfo.Protocols[Protocol.Eth].Config = _parameters;
+    }
 }

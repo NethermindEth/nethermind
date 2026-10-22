@@ -16,9 +16,9 @@ public class RExecutionPayloadV3
     public Hash256 receipts_root { get; set; }
     public Bloom logs_bloom { get; set; }
     public Hash256 prev_randao { get; set; }
-    public long block_number { get; set; }
-    public long gas_limit { get; set; }
-    public long gas_used { get; set; }
+    public ulong block_number { get; set; }
+    public ulong gas_limit { get; set; }
+    public ulong gas_used { get; set; }
     public ulong timestamp { get; set; }
     public byte[] extra_data { get; set; }
     public UInt256 base_fee_per_gas { get; set; }
@@ -48,29 +48,26 @@ public class RExecutionPayloadV3
         blob_gas_used = executionPayloadV3.BlobGasUsed;
         excess_blob_gas = executionPayloadV3.ExcessBlobGas;
     }
-    public ExecutionPayloadV3 ToExecutionPayloadV3()
+    public ExecutionPayloadV3 ToExecutionPayloadV3() => new()
     {
-        return new ExecutionPayloadV3
-        {
-            ParentHash = parent_hash,
-            FeeRecipient = fee_recipient,
-            StateRoot = state_root,
-            ReceiptsRoot = receipts_root,
-            LogsBloom = logs_bloom,
-            PrevRandao = prev_randao,
-            BlockNumber = block_number,
-            GasLimit = gas_limit,
-            GasUsed = gas_used,
-            Timestamp = timestamp,
-            ExtraData = extra_data,
-            BaseFeePerGas = base_fee_per_gas,
-            BlockHash = block_hash,
-            Transactions = transactions,
-            Withdrawals = withdrawals?.Select(w => w.ToWithdrawal()).ToArray(),
-            BlobGasUsed = blob_gas_used,
-            ExcessBlobGas = excess_blob_gas
-        };
-    }
+        ParentHash = parent_hash,
+        FeeRecipient = fee_recipient,
+        StateRoot = state_root,
+        ReceiptsRoot = receipts_root,
+        LogsBloom = logs_bloom,
+        PrevRandao = prev_randao,
+        BlockNumber = block_number,
+        GasLimit = gas_limit,
+        GasUsed = gas_used,
+        Timestamp = timestamp,
+        ExtraData = extra_data,
+        BaseFeePerGas = base_fee_per_gas,
+        BlockHash = block_hash,
+        Transactions = transactions,
+        Withdrawals = withdrawals?.Select(w => w.ToWithdrawal()).ToArray(),
+        BlobGasUsed = blob_gas_used,
+        ExcessBlobGas = excess_blob_gas
+    };
 
 
     [JsonConstructor]
@@ -81,9 +78,9 @@ public class RExecutionPayloadV3
         Hash256 receipts_root,
         Bloom logs_bloom,
         Hash256 prev_randao,
-        long block_number,
-        long gas_limit,
-        long gas_used,
+        ulong block_number,
+        ulong gas_limit,
+        ulong gas_used,
         ulong timestamp,
         byte[] extra_data,
         UInt256 base_fee_per_gas,

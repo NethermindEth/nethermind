@@ -1,0 +1,18 @@
+[
+  {
+    "run": "EveryBlocks(1)",
+    "ignore": "result.totalDifficulty",
+    "test": {
+      "description": "Recent block"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "eth_getBlockByNumber",
+      "params": [
+        "{{Hex(Recent.Number)}}",
+        false
+      ],
+      "id": "{{Request.Number}}"
+    }
+  }
+]

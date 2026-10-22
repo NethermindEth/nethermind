@@ -19,21 +19,20 @@ public class NullTxTracer : TxTracer
     private const string ErrorMessage = "Null tracer should never receive any calls.";
     private NullTxTracer() { }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException(ErrorMessage);
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
         => ThrowInvalidOperationException();
 
     public override void ReportOperationError(EvmExceptionType error)
         => ThrowInvalidOperationException();
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
         => ThrowInvalidOperationException();
 
     public override void SetOperationMemorySize(ulong newSize)
@@ -42,7 +41,7 @@ public class NullTxTracer : TxTracer
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         => ThrowInvalidOperationException();
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         => ThrowInvalidOperationException();
 
     public override void SetOperationStack(TraceStack stack)
@@ -66,7 +65,7 @@ public class NullTxTracer : TxTracer
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         => ThrowInvalidOperationException();
 
-    public override void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public override void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
         => ThrowInvalidOperationException();
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
@@ -81,32 +80,35 @@ public class NullTxTracer : TxTracer
     public override void ReportStorageRead(in StorageCell storageCell)
         => ThrowInvalidOperationException();
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         => ThrowInvalidOperationException();
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
         => ThrowInvalidOperationException();
 
     public override void ReportActionError(EvmExceptionType exceptionType)
         => ThrowInvalidOperationException();
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
+        => ThrowInvalidOperationException();
+
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => ThrowInvalidOperationException();
     public override void ReportBlockHash(Hash256 blockHash)
         => ThrowInvalidOperationException();
     public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
         => ThrowInvalidOperationException();
 
-    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
         => ThrowInvalidOperationException();
 
     public override void ReportRefund(long refund)
         => ThrowInvalidOperationException();
 
-    public override void ReportExtraGasPressure(long extraGasPressure)
+    public override void ReportExtraGasPressure(ulong extraGasPressure)
         => ThrowInvalidOperationException();
 
-    public override void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
         => ThrowInvalidOperationException();
 
     public override void ReportFees(UInt256 fees, UInt256 burntFees)

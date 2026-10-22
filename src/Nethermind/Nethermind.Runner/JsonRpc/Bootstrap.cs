@@ -19,7 +19,7 @@ namespace Nethermind.Runner.JsonRpc
 
         public IJsonRpcService? JsonRpcService { private get; set; }
         public ILogManager? LogManager { private get; set; }
-        public IJsonSerializer? JsonSerializer { private get; set; }
+        public EthereumJsonSerializer? JsonSerializer { private get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { private get; set; }
         public IRpcAuthentication? JsonRpcAuthentication { private get; set; }
 

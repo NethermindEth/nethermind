@@ -13,9 +13,6 @@ public static class EvmExceptionExtensions
             EvmExceptionType.StackOverflow => "max call depth exceeded",
             EvmExceptionType.StackUnderflow => "stack underflow",
             EvmExceptionType.OutOfGas => "out of gas",
-            EvmExceptionType.GasUInt64Overflow => "gas uint64 overflow",
-            EvmExceptionType.InvalidSubroutineEntry => "invalid jump destination",
-            EvmExceptionType.InvalidSubroutineReturn => "invalid jump destination",
             EvmExceptionType.InvalidJumpDestination => "invalid jump destination",
             EvmExceptionType.AccessViolation => "return data out of bounds",
             EvmExceptionType.StaticCallViolation => "write protection",
@@ -25,6 +22,9 @@ public static class EvmExceptionExtensions
             EvmExceptionType.Other => "error",
             EvmExceptionType.Revert => "execution reverted",
             EvmExceptionType.InvalidCode => "invalid code: must not begin with 0xef",
+            EvmExceptionType.CallDepthExceeded => "max call depth exceeded",
+            EvmExceptionType.ReturnStackOverflow => "return stack limit reached",
+            EvmExceptionType.ReturnStackUnderflow => "return stack underflow",
             _ => "error"
         };
 }

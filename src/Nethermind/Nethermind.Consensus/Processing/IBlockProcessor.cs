@@ -2,54 +2,63 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Threading;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing
 {
+    /// <summary>
+    /// Works much like a <see cref="ITransactionProcessor"/> but at a block level.
+    /// Also, like <see cref="ITransactionProcessor"/>, does not prepare the world state. The world state is assumed
+    /// to be prepared ahead of time.
+    /// </summary>
     public interface IBlockProcessor
     {
         /// <summary>
-        /// Processes a group of blocks starting with a state defined by the <paramref name="newBranchStateRoot"/>.
+        /// Raised with the executing block after all its transactions have completed,
+        /// before blooms, receipts root, and state root are computed.
+        /// Subscribers can use this to cancel background work (e.g. prewarmer)
+        /// so the thread pool is free for the parallel post-tx computations.
         /// </summary>
-        /// <param name="newBranchStateRoot">Initial state for the processed branch.</param>
-        /// <param name="suggestedBlocks">List of blocks to be processed.</param>
-        /// <param name="processingOptions">Options to use for processor and transaction processor.</param>
-        /// <param name="blockTracer">Block tracer to use. By default either <see cref="NullBlockTracer"/> or <see cref="BlockReceiptsTracer"/></param>
-        /// <returns>List of processed blocks.</returns>
-        Block[] Process(
-            Hash256 newBranchStateRoot,
-            IReadOnlyList<Block> suggestedBlocks,
-            ProcessingOptions processingOptions,
-            IBlockTracer blockTracer);
+        event Action<Block>? TransactionsExecuted;
 
-        /// <summary>
-        /// Fired when a branch is being processed.
-        /// </summary>
-        event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
-
-        /// <summary>
-        /// Fired when a block is being processed.
-        /// </summary>
-        event EventHandler<BlockEventArgs> BlockProcessing;
-
-        /// <summary>
-        /// Fired after a block has been processed.
-        /// </summary>
-        event EventHandler<BlockProcessedEventArgs> BlockProcessed;
-
-        /// <summary>
-        /// Fired after a transaction has been processed (even if inside the block).
-        /// </summary>
-        event EventHandler<TxProcessedEventArgs> TransactionProcessed;
+        /// <summary>Processes a block, or a transaction prefix in a compatible read-only tracing environment.</summary>
+        /// <remarks>
+        /// A transaction-only trace may return fewer receipts than transactions. Such receipts have no computed bloom,
+        /// and the returned block has unfinalized roots, bloom and prefix-only gas totals. Consumers must not persist
+        /// these results or assume full-block receipt indexing. Prefix replay does not update the suggested block's
+        /// execution artifacts. Ordinary block processing retains the complete, finalized result contract.
+        /// </remarks>
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+            Block suggestedBlock,
+            ProcessingOptions options,
+            IBlockTracer blockTracer,
+            IReleaseSpec spec,
+            CancellationToken token = default);
 
         public interface IBlockTransactionsExecutor
         {
-            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
-            event EventHandler<TxProcessedEventArgs> TransactionProcessed;
+            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
+            void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+
+            /// <summary>Publishes transaction events staged by the successful processing attempt.</summary>
+            /// <remarks>Decorators must forward this call. The block processor invokes it only after block execution, finalization, and processed-block validation complete.</remarks>
+            void PublishTransactionProcessedEvents() { }
+
+            /// <summary>Discards transaction events and references retained by the processing attempt.</summary>
+            /// <remarks>Decorators must forward this call. The block processor invokes it on every exit, including failures.</remarks>
+            void ClearTransactionProcessedEvents() { }
+
+            // Optional per-tx timing instrumentation. Default no-op implementations let executors that
+            // don't capture per-tx timing (block production, simulation, invalid-tx) ignore these.
+            void SetupTxTimingMetrics(Block block) { }
+            long StartTxTimer() => 0;
+            void StopTxTimer(int i, long txStart) { }
         }
     }
 }

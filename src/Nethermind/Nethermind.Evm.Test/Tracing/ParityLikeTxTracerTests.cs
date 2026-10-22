@@ -2,23 +2,143 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
+using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
+using Nethermind.Specs;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
 
 public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Output_only_receipts_do_not_allocate_actions(
+        [Values(ParityTraceTypes.None, ParityTraceTypes.StateDiff)] ParityTraceTypes types, [Values] bool failed)
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[1024]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        OutputOnlyTracer tracer = new(block, tx, types);
+        byte[] output = [42];
+        if (failed) tracer.MarkAsFailed(TestItem.AddressA, default, output, "Reverted");
+        else tracer.MarkAsSuccess(TestItem.AddressA, default, output, []);
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Output, Is.EqualTo(output));
+            Assert.That(trace.Action, Is.Null);
+        }
+    }
+
+    private sealed class OutputOnlyTracer(Block block, Transaction tx, ParityTraceTypes types)
+        : ParityLikeTxTracer(block, tx, types)
+    {
+        protected override ParityTraceAction RentAction() => throw new AssertionException("Output capture must not allocate an action");
+    }
+
+    [TestCase(ParityTraceTypes.VmTrace, 0)]
+    [TestCase(ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, 1)]
+    public void Streaming_trace_returns_each_copied_action_input_once(ParityTraceTypes types, int expectedCopies)
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[1024]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        InputReturningTracer tracer = new(block, tx, types, writer);
+        try
+        {
+            tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
+            tracer.BuildResult();
+            tracer.ResetForNextTx(block, tx);
+            // released again in finally: a double release must not return anything twice
+            tracer.ReleaseResources();
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.CopiedInputs, Is.EqualTo(expectedCopies));
+            Assert.That(tracer.ReturnedInputs, Is.EqualTo(expectedCopies));
+        }
+    }
+
+    private sealed class InputReturningTracer(Block block, Transaction tx, ParityTraceTypes types, Utf8JsonWriter writer)
+        : StreamingParityLikeTxTracer(block, tx, types, writer, null, CancellationToken.None, fillVmTraceSlot: false)
+    {
+        public int CopiedInputs { get; private set; }
+        public int ReturnedInputs { get; private set; }
+
+        protected override CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
+        {
+            if (!input.IsEmpty) CopiedInputs++;
+            return base.CopyInput(input);
+        }
+
+        protected override void ReturnInputBytes(in CappedArray<byte> input)
+        {
+            if (input.Length > 0) ReturnedInputs++;
+            base.ReturnInputBytes(input);
+        }
+    }
+
+    [Test]
+    public void Vm_trace_only_skips_action_input_copies()
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        byte[] code = Prepare.EvmCode.CallWithInput(TestItem.AddressC, 50000, "0xdeadbeef").Op(Instruction.STOP).Done;
+
+        (ParityLikeTxTrace vmOnly, int vmOnlyCopies) = TraceCountingInputCopies(ParityTraceTypes.VmTrace, code);
+        (ParityLikeTxTrace full, int fullCopies) = TraceCountingInputCopies(ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, code);
+
+        EthereumJsonSerializer serializer = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(vmOnlyCopies, Is.Zero);
+            Assert.That(fullCopies, Is.EqualTo(2));
+            Assert.That(full.Action!.Subtraces.Single().Input, Is.SequenceEqualTo(Bytes.FromHexString("0xdeadbeef")));
+            Assert.That(serializer.Serialize(vmOnly.VmTrace), Is.EqualTo(serializer.Serialize(full.VmTrace)));
+        }
+    }
+
+    private (ParityLikeTxTrace Trace, int CopiedInputs) TraceCountingInputCopies(ParityTraceTypes types, byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, [1, 2, 3], UInt256.Zero);
+        InputCountingTracer tracer = new(block, transaction, types);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        return (tracer.BuildResult(), tracer.CopiedInputs);
+    }
+
+    private sealed class InputCountingTracer(Block block, Transaction tx, ParityTraceTypes types) : ParityLikeTxTracer(block, tx, types)
+    {
+        public int CopiedInputs { get; private set; }
+
+        protected override CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
+        {
+            if (!input.IsEmpty) CopiedInputs++;
+            return base.CopyInput(input);
+        }
+    }
+
     [Test]
     public void On_failure_result_is_null()
     {
@@ -30,6 +150,115 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Action.Result, Is.Null);
     }
 
+    // PUSH4 PUSH1 MSTORE (with one word of memory) PUSH1 PUSH1 REVERT: 3 + 3 + 6 + 3 + 3 = 18 gas.
+    private static readonly byte[] RevertDeadbeefCode = Prepare.EvmCode
+        .PushData("0xdeadbeef")
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .Revert(4, 28)
+        .Done;
+
+    [Test]
+    public void Reverted_frame_keeps_gas_used_and_output([Values("call", "create", "nested call", "nested create")] string frame)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, RevertDeadbeefCode, Spec);
+        (ParityLikeTxTrace trace, _, _) = frame switch
+        {
+            "call" => ExecuteAndTraceParityCall(RevertDeadbeefCode),
+            "create" => ExecuteInitAndTraceParityCall(RevertDeadbeefCode),
+            "nested call" => ExecuteAndTraceParityCall(Prepare.EvmCode.Call(TestItem.AddressC, 50000).Op(Instruction.STOP).Done),
+            _ => ExecuteAndTraceParityCall(Prepare.EvmCode.Create(RevertDeadbeefCode, 0).Op(Instruction.STOP).Done),
+        };
+        ParityTraceAction action = frame.StartsWith("nested") ? trace.Action!.Subtraces.Single() : trace.Action!;
+        Assert.That(action.Result, Is.Not.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(action.Type, Is.EqualTo(frame.EndsWith("create") ? "create" : "call"));
+            Assert.That(action.Error, Is.EqualTo("Reverted"));
+            Assert.That(action.Result!.GasUsed, Is.EqualTo(18UL));
+            Assert.That(action.Result.Output, Is.EqualTo(Bytes.FromHexString("0xdeadbeef")));
+            Assert.That(action.Result.Address, Is.Null);
+            Assert.That(action.Result.Code, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Nested_results_are_not_overwritten_by_later_calls([Values("return", "revert", "identity", "create")] string target)
+    {
+        // If the tracing guard were dropped, a shorter ID output would be a slice of the precompile scratch, which is copied anyway.
+        int length = target == "identity" ? VirtualMachineStatics.MinPrecompileScratch : 32;
+        byte[] first = Enumerable.Repeat((byte)0xa1, length).ToArray();
+        byte[] second = Enumerable.Repeat((byte)0xb2, length).ToArray();
+        Address callee = target == "identity" ? Address.FromNumber(4) : TestItem.AddressC;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode
+            .Op(Instruction.CALLDATASIZE).PushData(0).PushData(0).Op(Instruction.CALLDATACOPY)
+            .Op(Instruction.CALLDATASIZE).PushData(0).Op(target == "revert" ? Instruction.REVERT : Instruction.RETURN)
+            .Done, Spec);
+
+        byte[] code = target == "create"
+            ? Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(first).Done, 0).Create(Prepare.EvmCode.ForInitOf(second).Done, 0).Op(Instruction.STOP).Done
+            : CallWithValue(CallWithValue(Prepare.EvmCode, first), second).Op(Instruction.STOP).Done;
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(ParityTraceTypes.Trace, code);
+
+        // Zero-value precompile calls are left out of a parity trace.
+        Prepare CallWithValue(Prepare prepare, byte[] input) => prepare
+            .StoreDataInMemory(0, input)
+            .PushData(0).PushData(0).PushData(input.Length).PushData(0).PushData(1).PushData(callee).PushData(50000)
+            .Op(Instruction.CALL);
+
+        List<ParityTraceAction> subtraces = trace.Action!.Subtraces;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(target == "create" ? subtraces[0].Result!.Code : subtraces[0].Result!.Output, Is.EqualTo(first));
+            Assert.That(target == "create" ? subtraces[1].Result!.Code : subtraces[1].Result!.Output, Is.EqualTo(second));
+        }
+    }
+
+    [Test]
+    public void Failed_frame_uses_parity_error_label(
+        [Values("Mutable Call In Static Context", "Out of stack", "Out of bounds", "Invalid code")] string expectedError)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done, Spec);
+        Prepare outOfStack = Prepare.EvmCode;
+        for (int i = 0; i <= 1024; i++) outOfStack.PushData(0);
+        (ParityLikeTxTrace trace, _, _) = expectedError switch
+        {
+            "Mutable Call In Static Context" => ExecuteAndTraceParityCall(Prepare.EvmCode.StaticCall(TestItem.AddressC, 50000).Op(Instruction.STOP).Done),
+            "Out of stack" => ExecuteAndTraceParityCall(outOfStack.Done),
+            "Out of bounds" => ExecuteAndTraceParityCall(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).Op(Instruction.RETURNDATACOPY).Done),
+            // EIP-3541: returned code must not begin with 0xEF.
+            _ => ExecuteAndTraceParityCall(MainnetSpecProvider.ShanghaiActivation,
+                Prepare.EvmCode.Create(Prepare.EvmCode.PushData(0xEF).PushData(0).Op(Instruction.MSTORE8).Return(1, 0).Done, 0).Op(Instruction.STOP).Done),
+        };
+        ParityTraceAction action = trace.Action!.Subtraces.Count == 1 ? trace.Action.Subtraces[0] : trace.Action;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(action.Error, Is.EqualTo(expectedError));
+            Assert.That(action.Result, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Failure_without_a_frame_uses_parity_error_label()
+    {
+        Transaction tx = Build.A.Transaction.WithTo(null).TestObject;
+        ParityLikeTxTracer tracer = new(Build.A.Block.WithTransactions(tx).TestObject, tx, ParityTraceTypes.Trace);
+        // A creation colliding with an existing account fails before its frame starts.
+        tracer.MarkAsFailed(TestItem.AddressA, default, [], nameof(EvmExceptionType.TransactionCollision));
+        ParityTraceAction action = tracer.BuildResult().Action!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(action.Error, Is.EqualTo("Contract address collision"));
+            Assert.That(action.Result, Is.Null);
+        }
+    }
+
     [Test]
     public void On_failure_block_and_tx_fields_are_set()
     {
@@ -38,16 +267,19 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-        Assert.That(trace.Action.From, Is.EqualTo(tx.SenderAddress), "from");
-        Assert.That(trace.Action.To, Is.EqualTo(tx.To), "to");
-        Assert.That(trace.BlockHash, Is.EqualTo(block.Hash), "hash");
-        Assert.That(trace.BlockNumber, Is.EqualTo(block.Number), "number");
-        Assert.That(trace.TransactionPosition, Is.EqualTo(0), "tx index");
-        Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
-        Assert.That(trace.Action.Gas, Is.EqualTo((long)tx.GasLimit - 21000), "gas");
-        Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
-        Assert.That(trace.Action.Input, Is.EqualTo(tx.Data.AsArray()), "input");
-        Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()), "trace address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.From, Is.EqualTo(tx.SenderAddress), "from");
+            Assert.That(trace.Action.To, Is.EqualTo(tx.To), "to");
+            Assert.That(trace.BlockHash, Is.EqualTo(block.Hash), "hash");
+            Assert.That(trace.BlockNumber, Is.EqualTo(block.Number), "number");
+            Assert.That(trace.TransactionPosition, Is.EqualTo(0), "tx index");
+            Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
+            Assert.That(trace.Action.Gas, Is.EqualTo(tx.GasLimit - 21000), "gas");
+            Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
+            Assert.That(trace.Action.Input, Is.SequenceEqualTo(tx.Data.AsArray()), "input");
+            Assert.That(trace.Action.TraceAddress, Is.SequenceEqualTo(Array.Empty<int>()), "trace address");
+        }
     }
 
     [Test]
@@ -78,7 +310,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .PushData(SampleHexData1)
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
-        Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()));
+        Assert.That(trace.Action.TraceAddress, Is.SequenceEqualTo(Array.Empty<int>()));
     }
 
     [Test]
@@ -161,9 +393,9 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         byte[] input = Bytes.FromHexString(SampleHexData2);
-        UInt256 value = 1.Ether();
+        UInt256 value = 1.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(input, value, code);
-        Assert.That(trace.Action.Input, Is.EqualTo(input));
+        Assert.That(trace.Action.Input, Is.SequenceEqualTo(input));
     }
 
     [Test]
@@ -174,7 +406,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         byte[] input = Bytes.FromHexString(SampleHexData2);
-        UInt256 value = 1.Ether();
+        UInt256 value = 1.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(input, value, code);
         Assert.That(trace.Action.Value, Is.EqualTo(value));
     }
@@ -216,7 +448,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -233,11 +465,14 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             1, // STOP
         };
 
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "root subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0 }), "[0] address");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "root subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
+            Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.SequenceEqualTo(new[] { 0 }), "[0] address");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.SequenceEqualTo(new[] { 0, 0 }), "[0, 0] address");
+        }
     }
 
     [Test]
@@ -254,7 +489,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -289,7 +524,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -323,7 +558,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -332,7 +567,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         ParityLikeTxTrace trace = ExecuteAndTraceParityCall(code).trace;
-        trace.Action!.Error.Should().BeNullOrEmpty();
+        Assert.That(trace.Action!.Error, Is.Null.Or.Empty);
 
     }
 
@@ -350,18 +585,621 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
-            .CallWithValue(TestItem.AddressC, 50000, 1000000.Ether())
+            .CallWithValue(TestItem.AddressC, 50000, 1000000.Ether)
             .Done;
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(0), "subtraces count");
-        Assert.That(trace.VmTrace.Operations.Last().Cost, Is.EqualTo(59700));
-        Assert.That(trace.VmTrace.Operations.Last().Used, Is.EqualTo(71579));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "subtraces count");
+            Assert.That(trace.Action.Subtraces[0].Error, Is.EqualTo("Insufficient balance for transfer"));
+            Assert.That(trace.VmTrace.Operations.Last().Cost, Is.EqualTo(59700));
+            Assert.That(trace.VmTrace.Operations.Last().Used, Is.EqualTo(71579));
+        }
+    }
+
+    [Test]
+    public void Call_or_create_failing_the_balance_precheck_has_a_failed_frame([Values] bool isCreate)
+    {
+        byte[] code = BalancePrecheckCode(isCreate);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(Activation, 1_000_000, code);
+
+        ParityTraceAction rejected = trace.Action!.Subtraces[0];
+        ParityTraceAction next = trace.Action.Subtraces[1];
+        ParityVmOperationTrace[] frameOperations = trace.VmTrace!.Operations
+            .Where(static operation => operation.Cost > GasCostOf.CallStipend).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces, Has.Count.EqualTo(2), "root subtraces");
+            Assert.That(rejected.Type, Is.EqualTo(isCreate ? "create" : "call"), "[0] type");
+            Assert.That(rejected.Error, Is.EqualTo("Insufficient balance for transfer"), "[0] error");
+            Assert.That(rejected.Result, Is.Null, "[0] result");
+            Assert.That(rejected.Subtraces, Is.Empty, "[0] subtraces");
+            Assert.That(rejected.TraceAddress, Is.SequenceEqualTo(new[] { 0 }), "[0] address");
+            Assert.That(rejected.Value, Is.EqualTo(1000.Ether), "[0] value");
+            Assert.That(rejected.From, Is.EqualTo(TestItem.AddressB), "[0] from");
+            // A creation would have received all but 1/64 of the gas left after its own cost, which returns at once.
+            Assert.That(rejected.Gas, Is.EqualTo(isCreate
+                ? frameOperations[0].Used - frameOperations[0].Used / 64
+                : 50000UL + GasCostOf.CallStipend), "[0] gas");
+            Assert.That(next.Error, Is.Null, "[1] error");
+            Assert.That(next.Result, Is.Not.Null, "[1] result");
+            Assert.That(next.TraceAddress, Is.SequenceEqualTo(new[] { 1 }), "[1] address");
+            Assert.That(frameOperations.Select(static operation => operation.Sub is not null), Is.EqualTo(new[] { false, true }), "vmTrace subs");
+        }
+    }
+
+    /// <summary>
+    /// Returns code that makes a call or creation with more value than it holds, then a zero-value one that succeeds.
+    /// </summary>
+    private byte[] BalancePrecheckCode(bool isCreate)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        return (isCreate
+                ? Prepare.EvmCode.Create(initCode, 1000.Ether).Op(Instruction.POP).Create(initCode, 0)
+                : Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50000, 1000.Ether).Op(Instruction.POP).Call(TestItem.AddressC, 50000))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+    }
+
+    [Test]
+    public void Create2_address_collision_has_a_failed_create_frame()
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        byte[] salt = [1];
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Create2(initCode, salt, 0).Op(Instruction.POP)
+            .Create2(initCode, salt, 0).Op(Instruction.POP)
+            .Call(TestItem.AddressC, 50000).Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.PragueActivation, 1_000_000, code);
+
+        List<ParityTraceAction> subtraces = trace.Action!.Subtraces;
+        ParityTraceAction collided = subtraces[1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(subtraces, Has.Count.EqualTo(3), "root subtraces");
+            Assert.That(subtraces[0].Error, Is.Null, "[0] error");
+            Assert.That(collided.Type, Is.EqualTo("create"), "[1] type");
+            Assert.That(collided.CreationMethod, Is.EqualTo("create2"), "[1] creation method");
+            Assert.That(collided.Error, Is.EqualTo("Contract address collision"), "[1] error");
+            Assert.That(collided.Result, Is.Null, "[1] result");
+            Assert.That(collided.Subtraces, Is.Empty, "[1] subtraces");
+            Assert.That(collided.Gas, Is.GreaterThan(0UL), "[1] gas");
+            Assert.That(collided.TraceAddress, Is.SequenceEqualTo(new[] { 1 }), "[1] address");
+            Assert.That(subtraces[2].Type, Is.EqualTo("call"), "[2] type");
+            Assert.That(subtraces[2].TraceAddress, Is.SequenceEqualTo(new[] { 2 }), "[2] address");
+        }
+    }
+
+    [Test]
+    public void Call_and_create_at_max_depth_have_failed_frames()
+    {
+        // Calls itself with all but 512 gas, then, once the call fails, calls the identity precompile with no value and
+        // with 1 wei, and creates. Before EIP-150 a call forwards what it asks for, so 2M gas reaches the depth limit.
+        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1603c576000600060006000600060046000f1506000600060006000600160046000f150600060006000f0505b00");
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall((ForkActivation)MainnetSpecProvider.HomesteadBlockNumber, 2_000_000, code);
+
+        ParityTraceAction deepest = trace.Action!;
+        while (deepest.Subtraces.Count == 1 && deepest.Subtraces[0].Error is null)
+        {
+            deepest = deepest.Subtraces[0];
+        }
+
+        ParityVmTrace deepestVmTrace = trace.VmTrace!;
+        while (deepestVmTrace.Operations.FirstOrDefault(static operation => operation.Sub is not null) is { } entered)
+        {
+            deepestVmTrace = entered.Sub!;
+        }
+
+        ParityVmOperationTrace create = deepestVmTrace.Operations.Single(static operation => operation.Pc == 58);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deepest.TraceAddress.Length, Is.EqualTo(VirtualMachineStatics.MaxCallDepth), "deepest frame depth");
+            // Like one that entered its frame, the zero-value precompile call is left out and takes no trace address.
+            Assert.That(deepest.Subtraces.Select(static action => action.Type), Is.EqualTo(new[] { "call", "call", "create" }), "attempts");
+            Assert.That(deepest.Subtraces.Select(static action => action.TraceAddress.ToArray()[^1]), Is.EqualTo(new[] { 0, 1, 2 }), "indices");
+            Assert.That(deepest.Subtraces.Select(static action => action.Error), Is.All.EqualTo("Max call depth exceeded"), "errors");
+            Assert.That(deepest.Subtraces.Select(static action => action.Result), Is.All.Null, "results");
+            Assert.That(deepest.Subtraces.Select(static action => action.Subtraces.Count), Is.All.Zero, "subtraces");
+            Assert.That(deepest.Subtraces[1].To, Is.EqualTo(IdentityPrecompile.Address), "precompile call to");
+            Assert.That(deepest.Subtraces[1].Value, Is.EqualTo(UInt256.One), "precompile call value");
+            // Before EIP-150 a creation would have received all the gas left after its own cost.
+            Assert.That(deepest.Subtraces[2].Gas, Is.EqualTo(create.Used), "create gas");
+            // A failed precheck pushes 0 and execution continues, so none of the attempts halts.
+            Assert.That(deepestVmTrace.Operations.Select(static operation => operation.Halted), Is.All.False, "halted operations");
+        }
+    }
+
+    [Test]
+    public void Only_a_call_failing_the_balance_precheck_has_a_failed_frame_from_eip_8037([Values] bool isCreate)
+    {
+        byte[] code = BalancePrecheckCode(isCreate);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.AmsterdamActivation, 5_000_000, code);
+
+        List<ParityTraceAction> subtraces = trace.Action!.Subtraces;
+        using (Assert.EnterMultipleScope())
+        {
+            // The creation's precheck runs in the creating operation, so only the CALL keeps its failed frame.
+            Assert.That(subtraces, Has.Count.EqualTo(isCreate ? 1 : 2), "root subtraces");
+            Assert.That(subtraces[0].Error, isCreate ? Is.Null : Is.EqualTo("Insufficient balance for transfer"), "[0] error");
+            Assert.That(subtraces[^1].Error, Is.Null, "last error");
+        }
+    }
+
+    /// <summary>
+    /// Leaving a call/create frame latches the parity-style gas flag for the resume-time update of the parent
+    /// operation. If the resume does not consume it, the flag suppresses the cost subtraction of the next
+    /// operation, which then reports the gas remaining at its start instead of what it spent.
+    /// </summary>
+    [Test]
+    public void Operation_after_frame_return_reports_its_own_cost([Values] bool isCreate, [Values] bool streaming)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .ForInitOf(new byte[3])
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        byte[] code = (isCreate
+                ? Prepare.EvmCode.Create(initCode, 0)
+                : Prepare.EvmCode.Call(TestItem.AddressC, 40000))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations = TraceVmOperations(code, streaming);
+
+        int frameIndex = 0;
+        while (frameIndex < operations.Count && !operations[frameIndex].HasSubtrace)
+        {
+            frameIndex++;
+        }
+
+        Assert.That(frameIndex, Is.InRange(0, operations.Count - 3), "index of the call/create operation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(operations[frameIndex].Pushes, Is.EqualTo(1), "call/create result push");
+            Assert.That(operations[frameIndex + 1].Cost, Is.EqualTo(GasCostOf.Base), "POP cost");
+            Assert.That(operations[frameIndex + 2].Cost, Is.EqualTo(GasCostOf.Free), "STOP cost");
+        }
+    }
+
+    public enum RejectedCreate { FailedPrecheck, FailedPrecheckBeforeEip150, Collision, FailedPrecheckFromEip8037 }
+
+    /// <summary>
+    /// A CREATE that enters no frame charges, like one that does, the gas it makes available to the creation: a failed
+    /// precheck returns it at once and a collision consumes it. From EIP-8037 the precheck runs before any gas is made
+    /// available, so nothing is added.
+    /// </summary>
+    [Test]
+    public void Create_entering_no_frame_includes_the_gas_made_available_in_its_cost([Values] RejectedCreate scenario, [Values] bool streaming)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        byte[] salt = [1];
+        byte[] code = (scenario == RejectedCreate.Collision
+                ? Prepare.EvmCode.Create2(initCode, salt, 0).Op(Instruction.POP).Create2(initCode, salt, 0)
+                : Prepare.EvmCode.Create(initCode, 1000.Ether))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        ForkActivation activation = scenario switch
+        {
+            RejectedCreate.FailedPrecheckBeforeEip150 => (ForkActivation)MainnetSpecProvider.HomesteadBlockNumber,
+            RejectedCreate.FailedPrecheckFromEip8037 => MainnetSpecProvider.AmsterdamActivation,
+            _ => MainnetSpecProvider.PragueActivation,
+        };
+
+        IReadOnlyList<(int Pc, ulong Cost, ulong Used, bool HasSubtrace, int Pushes)> operations = TraceVmOperations(activation, code, streaming);
+
+        int index = 0;
+        while ((Instruction)code[operations[index].Pc] is not (Instruction.CREATE or Instruction.CREATE2) || operations[index].HasSubtrace)
+        {
+            index++;
+        }
+
+        (_, ulong cost, ulong used, _, int pushes) = operations[index];
+        ulong gasBefore = operations[index - 1].Used;
+        // After a failed precheck the caller's remaining gas is what it had before the creation's gas was set aside:
+        // all but 1/64 of it from EIP-150, all of it before.
+        ulong returned = scenario switch
+        {
+            RejectedCreate.FailedPrecheck => used - used / 64,
+            RejectedCreate.FailedPrecheckBeforeEip150 => used,
+            _ => 0,
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cost, Is.EqualTo(gasBefore - used + returned), "cost");
+            Assert.That(operations[index + 1].Used + operations[index + 1].Cost, Is.EqualTo(used), "gas after the operation");
+            Assert.That(pushes, Is.EqualTo(1), "pushed 0");
+            if (scenario == RejectedCreate.Collision)
+            {
+                Assert.That(used, Is.LessThan(cost / 63), "the collision consumes all but 1/64");
+            }
+        }
+    }
+
+    private IReadOnlyList<(int Pc, ulong Cost, ulong Used, bool HasSubtrace, int Pushes)> TraceVmOperations(ForkActivation activation, byte[] code, bool streaming)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, 1_000_000, code);
+        BlockExecutionContext context = new(block.Header, SpecProvider.GetSpec(block.Header));
+        List<(int, ulong, ulong, bool, int)> operations = [];
+        if (!streaming)
+        {
+            ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);
+            _processor.Execute(transaction, context, tracer);
+            foreach (ParityVmOperationTrace operation in tracer.BuildResult().VmTrace!.Operations)
+            {
+                operations.Add((operation.Pc, operation.Cost, operation.Used, operation.Sub is not null, operation.Push?.Length ?? 0));
+            }
+
+            return operations;
+        }
+
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer streamingTracer = new(
+            block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace,
+            writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: true);
+        try
+        {
+            _processor.Execute(transaction, context, streamingTracer);
+            streamingTracer.BuildResult();
+        }
+        finally
+        {
+            streamingTracer.ReleaseResources();
+        }
+
+        writer.Flush();
+        using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+        foreach (JsonElement operation in document.RootElement.GetProperty("ops").EnumerateArray())
+        {
+            operations.Add((operation.GetProperty("pc").GetInt32(),
+                operation.GetProperty("cost").GetUInt64(),
+                operation.GetProperty("ex").GetProperty("used").GetUInt64(),
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
+                operation.GetProperty("ex").GetProperty("push").GetArrayLength()));
+        }
+
+        return operations;
+    }
+
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> CollectVmTraceOperations(byte[] code)
+    {
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+        List<(ulong, bool, int)> operations = [];
+        foreach (ParityVmOperationTrace operation in trace.VmTrace.Operations)
+        {
+            operations.Add((operation.Cost, operation.Sub is not null, operation.Push?.Length ?? 0));
+        }
+
+        return operations;
+    }
+
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> StreamVmTraceOperations(byte[] code)
+    {
+        List<(ulong, bool, int)> operations = [];
+        foreach (JsonElement operation in TraceVmTraceJson(code, streaming: true).GetProperty("ops").EnumerateArray())
+        {
+            JsonElement push = operation.GetProperty("ex").GetProperty("push");
+            operations.Add((operation.GetProperty("cost").GetUInt64(),
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
+                push.ValueKind is JsonValueKind.Array ? push.GetArrayLength() : 0));
+        }
+
+        return operations;
+    }
+
+    /// <summary>Serializes the buffered vmTrace, or streams it, so both tracers are checked on the wire shape.</summary>
+    private JsonElement TraceVmTraceJson(byte[] code, bool streaming)
+    {
+        if (!streaming)
+        {
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            using JsonDocument buffered = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace.VmTrace));
+            return buffered.RootElement.Clone();
+        }
+
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer tracer = new(
+            block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace,
+            writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: true);
+        try
+        {
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+            tracer.BuildResult();
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+
+        writer.Flush();
+        using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+        return document.RootElement.Clone();
+    }
+
+    [Test]
+    public void Vm_trace_does_not_rewrite_a_7400_cost([Values] bool streaming)
+    {
+        // CALLDATACOPY of 0x74e0 bytes to offset 0x180 costs exactly 7400: 3 + 3 * 935 words copied + 4592 for 947 words of memory.
+        byte[] code = Prepare.EvmCode
+            .PushData(0x74e0)
+            .PushData(0)
+            .PushData(0x180)
+            .Op(Instruction.CALLDATACOPY)
+            .Op(Instruction.STOP)
+            .Done;
+
+        JsonElement ops = TraceVmTraceJson(code, streaming).GetProperty("ops");
+        Assert.That(ops[3].GetProperty("cost").GetUInt64(), Is.EqualTo(7400));
+    }
+
+    public enum CallOutcome { Returns, Reverts, Halts, FailsPrecheck, Precompile, EmptyWindow, UntouchedWindow }
+
+    private const string Tail = "1111111111111111111111111111111111111111111111111111111111111111";
+
+    [Test]
+    public void Vm_trace_call_mem_is_the_output_window([Values] CallOutcome outcome, [Values] bool streaming)
+    {
+        // An untouched window lies beyond the memory written so far, and the empty-code callee returns nothing.
+        bool untouched = outcome == CallOutcome.UntouchedWindow;
+        int windowOffset = untouched ? 0x1000 : 0x100;
+
+        byte[] calleeCode = outcome switch
+        {
+            CallOutcome.Reverts => Prepare.EvmCode.StoreDataInMemory(0, "ffee").Revert(2, 0).Done,
+            CallOutcome.Halts => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            _ => Prepare.EvmCode.StoreDataInMemory(0, "ffee").Return(2, 0).Done,
+        };
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+
+        Address target = outcome switch
+        {
+            CallOutcome.Precompile => IdentityPrecompile.Address,
+            CallOutcome.UntouchedWindow => TestItem.AddressD,
+            _ => TestItem.AddressC,
+        };
+        UInt256 value = outcome == CallOutcome.FailsPrecheck ? 1000000.Ether : UInt256.Zero;
+        int windowSize = outcome == CallOutcome.EmptyWindow ? 0 : 32;
+        byte[] code = (untouched ? Prepare.EvmCode : Prepare.EvmCode.StoreDataInMemory(windowOffset, Tail))
+            .StoreDataInMemory(0, "ffee")
+            .PushData(windowSize)
+            .PushData(windowOffset)
+            .PushData(2)
+            .PushData(0)
+            .PushData(value)
+            .PushData(target)
+            .PushData(50000)
+            .Op(Instruction.CALL)
+            .Op(Instruction.STOP)
+            .Done;
+
+        JsonElement call = TraceVmTraceJson(code, streaming).GetProperty("ops").EnumerateArray()
+            .Single(op => op.GetProperty("pc").GetInt32() == code.Length - 2);
+        JsonElement mem = call.GetProperty("ex").GetProperty("mem");
+
+        string? expected = outcome switch
+        {
+            CallOutcome.EmptyWindow => null,
+            CallOutcome.UntouchedWindow => "0x" + new string('0', 64),
+            CallOutcome.Halts or CallOutcome.FailsPrecheck => "0x" + Tail,
+            _ => "0xffee" + Tail[4..],
+        };
+
+        if (expected is null)
+        {
+            Assert.That(mem.ValueKind, Is.EqualTo(JsonValueKind.Null));
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mem.GetProperty("off").GetInt64(), Is.EqualTo(windowOffset));
+            Assert.That(mem.GetProperty("data").GetString(), Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Vm_trace_call_family_mem_is_the_output_window(
+        [Values(Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction opcode, [Values] bool streaming)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.StoreDataInMemory(0, "ffee").Return(2, 0).Done, Spec);
+
+        Prepare prepare = Prepare.EvmCode
+            .StoreDataInMemory(0x100, Tail)
+            .PushData(0x20)
+            .PushData(0x100)
+            .PushData(0)
+            .PushData(0);
+        if (opcode == Instruction.CALLCODE) prepare.PushData(0);
+        byte[] code = prepare
+            .PushData(TestItem.AddressC)
+            .PushData(50000)
+            .Op(opcode)
+            .Op(Instruction.STOP)
+            .Done;
+
+        JsonElement mem = TraceVmTraceJson(code, streaming).GetProperty("ops").EnumerateArray()
+            .Single(op => op.GetProperty("pc").GetInt32() == code.Length - 2)
+            .GetProperty("ex").GetProperty("mem");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mem.GetProperty("off").GetInt64(), Is.EqualTo(0x100));
+            Assert.That(mem.GetProperty("data").GetString(), Is.EqualTo("0xffee" + Tail[4..]));
+        }
+    }
+
+    /// <summary>
+    /// Only a tracer that sets <see cref="ITxTracer.IsTracingCallOutputMemory"/>, as the Parity tracers do, makes the VM
+    /// read the output window; other instruction tracers never receive it.
+    /// </summary>
+    [Test]
+    public void Call_output_window_is_read_only_for_tracers_that_ask_for_it(
+        [Values] bool tracingCallOutputMemory, [Values] bool failsPrecheck, [Values] bool wrapped)
+    {
+        const int windowOffset = 0x1000;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.StoreDataInMemory(0, "ffee").Return(2, 0).Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .PushData(0x20)
+            .PushData(windowOffset)
+            .PushData(0)
+            .PushData(0)
+            .PushData(failsPrecheck ? 1000000.Ether : UInt256.Zero)
+            .PushData(TestItem.AddressC)
+            .PushData(50000)
+            .Op(Instruction.CALL)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+        MemoryChangeRecorder tracer = new(tracingCallOutputMemory);
+        // The composite and cancellation wrappers used by the RPC paths forward the capability.
+        ITxTracer executed = wrapped ? new CancellationTxTracer(new CompositeTxTracer(tracer, new RefundTracer())) : tracer;
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), executed);
+
+        Assert.That(tracer.Offsets.Contains(windowOffset), Is.EqualTo(tracingCallOutputMemory));
+    }
+
+    private sealed class MemoryChangeRecorder : TxTracer
+    {
+        public MemoryChangeRecorder(bool tracingCallOutputMemory)
+        {
+            IsTracingInstructions = true;
+            IsTracingCallOutputMemory = tracingCallOutputMemory;
+        }
+
+        public List<long> Offsets { get; } = [];
+
+        public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) => Offsets.Add(offset);
+    }
+
+    /// <summary>A tracer that asks only for refunds, next to the tracer under test.</summary>
+    private sealed class RefundTracer : TxTracer
+    {
+        public RefundTracer() => IsTracingRefunds = true;
+    }
+
+    /// <summary>A refund tracer next to the Parity tracer (as in a composite) once made a failed CALL report 32 input bytes.</summary>
+    [Test]
+    public void Vm_trace_failed_precheck_call_without_output_window_has_no_mem()
+    {
+        byte[] code = Prepare.EvmCode
+            .StoreDataInMemory(0, Tail)
+            .PushData(0)
+            .PushData(0)
+            .PushData(32)
+            .PushData(0)
+            .PushData(1000000.Ether)
+            .PushData(TestItem.AddressC)
+            .PushData(50000)
+            .Op(Instruction.CALL)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.VmTrace);
+        using CompositeTxTracer composite = new(tracer, new RefundTracer());
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), composite);
+
+        ParityVmOperationTrace call = tracer.BuildResult().VmTrace.Operations.Single(op => op.Pc == code.Length - 2);
+        Assert.That(call.Memory, Is.Null);
+    }
+
+    [Test]
+    public void Vm_trace_omits_an_invalid_opcode_that_runs_out_of_gas([Values] bool streaming)
+    {
+        // INVALID charges 10 gas before it reports a bad instruction; with no gas it fails out of gas instead.
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.INVALID).Done, Spec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 0).Op(Instruction.STOP).Done;
+
+        JsonElement call = TraceVmTraceJson(code, streaming).GetProperty("ops").EnumerateArray()
+            .Single(op => op.GetProperty("sub").ValueKind != JsonValueKind.Null);
+        Assert.That(call.GetProperty("sub").GetProperty("ops").GetArrayLength(), Is.Zero);
+    }
+
+    private static IEnumerable<TestCaseData> HaltedOperationCases()
+    {
+        (string Name, string Code, int Operations, bool LastIsHalted)[] cases =
+        [
+            // PUSH1 0, JUMP: 0 is not a JUMPDEST.
+            ("keeps_a_bad_jump_with_null_ex", "0x600056", 2, true),
+            // PUSH4 0xffffffff, MLOAD: the memory expansion runs out of gas.
+            ("keeps_an_out_of_gas_mload_with_null_ex", "0x63ffffffff51", 2, true),
+            // PUSH1 0, INVALID: the designated invalid opcode is rejected before it executes.
+            ("omits_the_invalid_opcode", "0x6000fe", 1, false),
+            // ADD with an empty stack underflows before it executes.
+            ("omits_a_stack_underflow", "0x01", 0, false),
+        ];
+
+        foreach ((string name, string code, int operations, bool lastIsHalted) in cases)
+        {
+            foreach (bool nested in new[] { false, true })
+            {
+                foreach (bool streaming in new[] { false, true })
+                {
+                    yield return new TestCaseData(code, operations, lastIsHalted, nested, streaming)
+                        .SetName($"Vm_trace_{name}{(nested ? "_in_a_child_frame" : "")}{(streaming ? "_streaming" : "")}");
+                }
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(HaltedOperationCases))]
+    public void Vm_trace_halted_operation(string haltingCode, int expectedOperations, bool lastIsHalted, bool nested, bool streaming)
+    {
+        byte[] code = Bytes.FromHexString(haltingCode);
+        if (nested)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, code, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, 50000).Op(Instruction.STOP).Done;
+        }
+
+        JsonElement vmTrace = TraceVmTraceJson(code, streaming);
+        if (nested)
+        {
+            JsonElement call = vmTrace.GetProperty("ops").EnumerateArray().Single(op => op.GetProperty("sub").ValueKind != JsonValueKind.Null);
+            Assert.That(call.GetProperty("ex").ValueKind, Is.EqualTo(JsonValueKind.Object), "the calling operation completed");
+            vmTrace = call.GetProperty("sub");
+        }
+
+        JsonElement[] ops = [.. vmTrace.GetProperty("ops").EnumerateArray()];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ops, Has.Length.EqualTo(expectedOperations));
+            for (int i = 0; i < ops.Length; i++)
+            {
+                bool halted = lastIsHalted && i == ops.Length - 1;
+                Assert.That(ops[i].GetProperty("ex").ValueKind, Is.EqualTo(halted ? JsonValueKind.Null : JsonValueKind.Object), $"ops[{i}].ex");
+                Assert.That(ops[i].GetProperty("sub").ValueKind, Is.EqualTo(JsonValueKind.Null), $"ops[{i}].sub");
+            }
+        }
     }
 
     [Test]
@@ -379,8 +1217,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         ParityMemoryChangeTrace memory = trace.VmTrace.Operations[2].Memory;
-        Assert.That(memory.Data.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(dataHex));
-        Assert.That(memory.Offset, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.Data.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(dataHex));
+            Assert.That(memory.Offset, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -408,26 +1249,154 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         byte[][] push1 = trace.VmTrace.Operations[0].Push;
         byte[][] push2 = trace.VmTrace.Operations[1].Push;
-        Assert.That(push1[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
-        Assert.That(push2[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(push1[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+            Assert.That(push2[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        }
     }
 
-    [Test]
-    public void Can_trace_dup_push_in_vm_trace()
+    // Run with DOTNET_EnableAVX=0 and DOTNET_EnableHWIntrinsic=0 to exercise the Vector128 and scalar handlers.
+    private static IEnumerable<TestCaseData> SuccessfulWordOperationCases()
     {
-        string push1Hex = "0x01";
-        string push2Hex = "0x0102";
+        const string zero = "0x0";
+        const string one = "0x1";
+        const string allA = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string allF = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
+        yield return WordOperationCase(Instruction.ISZERO, ["0x00"], one);
+        yield return WordOperationCase(Instruction.ISZERO, ["0x01"], zero);
+        yield return WordOperationCase(Instruction.NOT, ["0x00"], allF);
+        yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012345"], one);
+        yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012346"], zero);
+        yield return WordOperationCase(Instruction.AND, [allA, "0x0f"], "0xa");
+        yield return WordOperationCase(Instruction.OR, [allA, "0x0f"], $"{allA[..^2]}af");
+        yield return WordOperationCase(Instruction.XOR, [allA, "0x0f"], $"{allA[..^2]}a5");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x00"],
+            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff80");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x800000000000000000", "0x08"],
+            "0xffffffffffffffffffffffffffffffffffffffffffffff800000000000000000");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x8000000000000000000000000000000000", "0x10"],
+            "0xffffffffffffffffffffffffffffff8000000000000000000000000000000000");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x20"], "0x80");
+        yield return WordOperationCase(Instruction.CLZ, ["0x00"], "0x100");
+        yield return WordOperationCase(Instruction.CLZ, ["0x01"], "0xff");
+    }
+
+    private static TestCaseData WordOperationCase(Instruction opcode, string[] operands, string expected) =>
+        new TestCaseData(opcode, operands, expected).SetName($"Vm_trace_reports_{opcode}_{expected}");
+
+    [TestCaseSource(nameof(SuccessfulWordOperationCases))]
+    public void Vm_trace_reports_successful_word_operation_push(Instruction opcode, string[] operands, string expected)
+    {
+        byte[] code = BuildWordOperationCode(opcode, operands);
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.OsakaActivation, code);
+        using JsonDocument document = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        JsonElement pushes = document.RootElement.GetProperty("vmTrace").GetProperty("ops")[operands.Length]
+            .GetProperty("ex").GetProperty("push");
+
+        Assert.That(pushes.GetArrayLength(), Is.EqualTo(1), opcode.ToString());
+        Assert.That(pushes[0].GetString(), Is.EqualTo(expected), opcode.ToString());
+    }
+
+    private static IEnumerable<TestCaseData> FailedWordOperationCases()
+    {
+        (Instruction Opcode, int Inputs, ulong GasCost)[] operations =
+        [
+            (Instruction.ISZERO, 1, GasCostOf.VeryLow),
+            (Instruction.NOT, 1, GasCostOf.VeryLow),
+            (Instruction.EQ, 2, GasCostOf.VeryLow),
+            (Instruction.AND, 2, GasCostOf.VeryLow),
+            (Instruction.OR, 2, GasCostOf.VeryLow),
+            (Instruction.XOR, 2, GasCostOf.VeryLow),
+            (Instruction.SIGNEXTEND, 2, GasCostOf.Low),
+            (Instruction.CLZ, 1, GasCostOf.Low),
+        ];
+
+        foreach ((Instruction opcode, int inputs, ulong gasCost) in operations)
+        {
+            yield return new TestCaseData(opcode, 0, 100_000UL, "Stack underflow")
+                .SetName($"Vm_trace_does_not_push_for_{opcode}_empty_underflow");
+            if (inputs > 1)
+            {
+                yield return new TestCaseData(opcode, inputs - 1, 100_000UL, "Stack underflow")
+                    .SetName($"Vm_trace_does_not_push_for_{opcode}_partial_underflow");
+            }
+
+            ulong oneShortGas = GasCostOf.Transaction + (ulong)inputs * GasCostOf.VeryLow + gasCost - 1;
+            yield return new TestCaseData(opcode, inputs, oneShortGas, "Out of gas")
+                .SetName($"Vm_trace_does_not_push_for_{opcode}_one_short_out_of_gas");
+        }
+    }
+
+    [TestCaseSource(nameof(FailedWordOperationCases))]
+    public void Vm_trace_does_not_report_push_for_failed_word_operation(
+        Instruction opcode, int suppliedOperands, ulong gasLimit, string expectedError)
+    {
+        string[] operands = new string[suppliedOperands];
+        Array.Fill(operands, "0x01");
+        byte[] code = BuildWordOperationCode(opcode, operands);
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.OsakaActivation, gasLimit, code);
+        int reportedPushes = 0;
+        foreach (ParityVmOperationTrace operation in trace.VmTrace.Operations)
+            reportedPushes += operation.Push?.Length ?? 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Result, Is.Null, opcode.ToString());
+            Assert.That(trace.Action.Error, Is.EqualTo(expectedError), opcode.ToString());
+            // An underflow rejects the operation before it executes; running out of gas halts it, and it is kept.
+            bool halted = expectedError == "Out of gas";
+            Assert.That(trace.VmTrace.Operations, Has.Count.EqualTo(halted ? suppliedOperands + 1 : suppliedOperands), opcode.ToString());
+            Assert.That(trace.VmTrace.Operations.Count(operation => operation.Halted), Is.EqualTo(halted ? 1 : 0), opcode.ToString());
+            Assert.That(reportedPushes, Is.EqualTo(suppliedOperands), opcode.ToString());
+        }
+    }
+
+    private static byte[] BuildWordOperationCode(Instruction opcode, string[] operands)
+    {
+        Prepare code = Prepare.EvmCode;
+        foreach (string operand in operands)
+            code.PushData(operand);
+        return code.Op(opcode).Done;
+    }
+
+    [TestCase(Instruction.SHL, "0x01", 0)]
+    [TestCase(Instruction.SHR, "0x8000000000000000000000000000000000000000000000000000000000000000", 0)]
+    [TestCase(Instruction.SAR, "0x01", 0)]
+    [TestCase(Instruction.SAR, "0x8000000000000000000000000000000000000000000000000000000000000000", 255)]
+    public void Shift_above_255_traces_a_full_word(Instruction instruction, string value, byte expectedByte)
+    {
         byte[] code = Prepare.EvmCode
-            .PushData(push1Hex)
-            .PushData(push2Hex)
-            .Op(Instruction.DUP2)
+            .PushData(value)
+            .PushData("0x0100")
+            .Op(instruction)
+            .Done;
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(
+            (MainnetSpecProvider.ConstantinopleFixBlockNumber, Timestamp), code);
+        byte[] pushed = trace.VmTrace.Operations[2].Push.Single();
+
+        Assert.That(pushed, Is.EqualTo(Enumerable.Repeat(expectedByte, EvmStack.WordSize)));
+    }
+
+    [TestCase(Instruction.DUP1, new[] { "0x0102", "0x0102" })]
+    [TestCase(Instruction.DUP2, new[] { "0x01", "0x0102", "0x01" })]
+    public void Can_trace_dup_push_in_vm_trace(Instruction dup, string[] expected)
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData("0x01")
+            .PushData("0x0102")
+            .Op(dup)
             .Done;
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
-        byte[][] dup = trace.VmTrace.Operations[2].Push;
-        Assert.That(dup[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
-        Assert.That(dup[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        string[] pushed = trace.VmTrace.Operations[2].Push
+            .Select(static item => item.WithoutLeadingZeros().ToArray().ToHexString(true))
+            .ToArray();
+        Assert.That(pushed, Is.EqualTo(expected));
     }
 
     [Test]
@@ -444,8 +1413,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         byte[][] swap = trace.VmTrace.Operations[2].Push;
-        Assert.That(swap[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
-        Assert.That(swap[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(swap[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+            Assert.That(swap[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        }
     }
 
     [Test]
@@ -462,8 +1434,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         ParityStorageChangeTrace sstore = trace.VmTrace.Operations[2].Store;
-        Assert.That(sstore.Key.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
-        Assert.That(sstore.Value.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sstore.Key.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+            Assert.That(sstore.Value.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        }
     }
 
     [Test]
@@ -509,10 +1484,13 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .PushData(push2Hex)
             .Done;
 
-        UInt256 value = 2.Ether();
+        UInt256 value = 2.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code, value);
-        Assert.That(trace.VmTrace, Is.Null);
-        Assert.That(trace.Action.Value, Is.EqualTo(value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.VmTrace, Is.Null);
+            Assert.That(trace.Action.Value, Is.EqualTo(value));
+        }
     }
 
     [Test]
@@ -529,7 +1507,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -573,11 +1551,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         byte[] deployedCode = Prepare.EvmCode
             .Call(IdentityPrecompile.Address, 50000)
-            .CallWithValue(IdentityPrecompile.Address, 50000, 1.Ether())
+            .CallWithValue(IdentityPrecompile.Address, 50000, 1.Ether)
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, deployedCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -587,18 +1565,21 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        // call to AddressC and should ignore precompile
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
-        Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
+        using (Assert.EnterMultipleScope())
+        {
+            // call to AddressC and should ignore precompile
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
+            Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
-        // AddressC call - only one call
-        Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
-        Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[1] type");
+            // AddressC call - only one call
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[1] type");
 
-        // Check the 2nd subtrace - a precompile call with value - must be included
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 1] type");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
+            // Check the 2nd subtrace - a precompile call with value - must be included
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 1] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
+        }
     }
 
     [Test]
@@ -615,7 +1596,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -635,24 +1616,27 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             1, // STOP
         };
 
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(2), "[] subtraces");
-        Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(2), "[] subtraces");
+            Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
-        Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0 }), "[0] address");
-        Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
+            Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.SequenceEqualTo(new[] { 0 }), "[0] address");
+            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
 
-        Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
-        Assert.That(trace.Action.Subtraces[1].TraceAddress, Is.EqualTo(new[] { 1 }), "[1] address");
-        Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
+            Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
+            Assert.That(trace.Action.Subtraces[1].TraceAddress, Is.SequenceEqualTo(new[] { 1 }), "[1] address");
+            Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
 
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[0, 0] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.SequenceEqualTo(new[] { 0, 0 }), "[0, 0] address");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[0, 0] type");
 
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 1, 0 }), "[1, 0] address");
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[1, 0] type");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress, Is.SequenceEqualTo(new[] { 1, 0 }), "[1, 0] address");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[1, 0] type");
+        }
     }
 
     [Test]
@@ -670,7 +1654,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -682,15 +1666,18 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "address c");
-        Assert.That(trace.StateChanges[Recipient].Storage.Count, Is.EqualTo(2), "recipient storage count");
-        Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
-        Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
-        Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
-        Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "address c");
+            Assert.That(trace.StateChanges[Recipient].Storage.Count, Is.EqualTo(2), "recipient storage count");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
+        }
     }
 
     [Test]
@@ -708,7 +1695,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -720,13 +1707,16 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "call target");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Contract].Code.Before, Is.EqualTo(null), "code before");
-        Assert.That(trace.StateChanges[Contract].Code.After, Is.EqualTo(deployedCode), "code after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "call target");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
+            Assert.That(trace.StateChanges[Contract].Code.Before, Is.EqualTo(null), "code before");
+            Assert.That(trace.StateChanges[Contract].Code.After, Is.EqualTo(deployedCode), "code after");
+        }
     }
 
     [Test]
@@ -737,16 +1727,19 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Sender].Balance.Before, Is.EqualTo(100.Ether()), "sender before");
-        Assert.That(trace.StateChanges[Sender].Balance.After, Is.EqualTo(100.Ether() - 21001), "sender after");
-        Assert.That(trace.StateChanges[Recipient].Balance.Before, Is.EqualTo(100.Ether()), "recipient before");
-        Assert.That(trace.StateChanges[Recipient].Balance.After, Is.EqualTo(100.Ether() + 1), "recipient after");
-        Assert.That(trace.StateChanges[Miner].Balance.Before, Is.EqualTo(null), "miner before");
-        Assert.That(trace.StateChanges[Miner].Balance.After, Is.EqualTo((UInt256)21000), "miner after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
+            Assert.That(trace.StateChanges[Sender].Balance.Before, Is.EqualTo(100.Ether), "sender before");
+            Assert.That(trace.StateChanges[Sender].Balance.After, Is.EqualTo(100.Ether - 21001), "sender after");
+            Assert.That(trace.StateChanges[Recipient].Balance.Before, Is.EqualTo(100.Ether), "recipient before");
+            Assert.That(trace.StateChanges[Recipient].Balance.After, Is.EqualTo(100.Ether + 1), "recipient after");
+            Assert.That(trace.StateChanges[Miner].Balance.Before, Is.EqualTo(null), "miner before");
+            Assert.That(trace.StateChanges[Miner].Balance.After, Is.EqualTo((UInt256)21000), "miner after");
+        }
     }
 
     [Test]
@@ -758,12 +1751,15 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Sender].Nonce.Before, Is.EqualTo(UInt256.Zero), "sender before");
-        Assert.That(trace.StateChanges[Sender].Nonce.After, Is.EqualTo(UInt256.One), "sender after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
+            Assert.That(trace.StateChanges[Sender].Nonce.Before, Is.EqualTo(UInt256.Zero), "sender before");
+            Assert.That(trace.StateChanges[Sender].Nonce.After, Is.EqualTo(UInt256.One), "sender after");
+        }
     }
 
     [Test]
@@ -780,6 +1776,28 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
         tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
         Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, [], []));
+    }
+
+    [Test]
+    public void Mark_as_success_without_report_action_creates_synthetic_root_action()
+    {
+        Block block = Build.A.Block.TestObject;
+        Transaction tx = Build.A.Transaction.TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
+        byte[] output = [1, 2, 3];
+
+        Assert.DoesNotThrow(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, output, []));
+
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action, Is.Not.Null);
+            Assert.That(trace.Action!.From, Is.EqualTo(tx.SenderAddress));
+            Assert.That(trace.Action.To, Is.EqualTo(tx.To));
+            Assert.That(trace.Action.Value, Is.EqualTo(tx.Value));
+            Assert.That(trace.Action.Result!.Output, Is.EqualTo(output));
+            Assert.That(trace.Output, Is.EqualTo(output));
+        }
     }
 
     [Test]
@@ -805,6 +1823,17 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        return (tracer.BuildResult(), block, transaction);
+    }
+
+    private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ForkActivation activation, params byte[] code) =>
+        ExecuteAndTraceParityCall(activation, 100000, code);
+
+    private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ForkActivation activation, ulong gasLimit, params byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 

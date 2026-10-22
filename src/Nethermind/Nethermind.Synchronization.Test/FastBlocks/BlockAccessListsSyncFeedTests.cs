@@ -1,0 +1,778 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.History;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.Synchronization.Reporting;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.Synchronization.Test.FastBlocks;
+
+public class BlockAccessListsSyncFeedTests
+{
+    private IBlockTree _blockTree = null!;
+    private IBlockAccessListStore _blockAccessListStore = null!;
+    private ISyncPeerPool _syncPeerPool = null!;
+    private IDb _metadataDb = null!;
+    private MemorySyncPointers _syncPointers = null!;
+    private IHistoryPruner _historyPruner = null!;
+    private BlockAccessListsSyncFeed _feed = null!;
+
+    [SetUp]
+    public void Setup()
+    {
+        _blockTree = Substitute.For<IBlockTree>();
+        _blockAccessListStore = Substitute.For<IBlockAccessListStore>();
+        _blockAccessListStore.WriteLock.Returns(new Lock());
+        _syncPeerPool = Substitute.For<ISyncPeerPool>();
+        _metadataDb = new TestMemDb();
+        _syncPointers = new MemorySyncPointers();
+        _historyPruner = Substitute.For<IHistoryPruner>();
+
+        _blockTree.SyncPivot.Returns((1UL, TestItem.KeccakA));
+
+        _feed = CreateFeed(SpecProviderWithBlockAccessLists());
+        _feed.InitializeFeed();
+    }
+
+    private BlockAccessListsSyncFeed CreateFeed(ISpecProvider specProvider, ILogManager? logManager = null, ISyncReport? syncReport = null) =>
+        new(
+            specProvider,
+            _blockTree,
+            _blockAccessListStore,
+            _syncPointers,
+            _syncPeerPool,
+            new TestSyncConfig { FastSync = true, PivotNumber = 1 },
+            syncReport ?? new NullSyncReport(),
+            _historyPruner,
+            new BlockAccessListServingWindow(_blockTree, _historyPruner, specProvider, new ManualTimestamper(), new BlocksConfig()),
+            _metadataDb,
+            logManager ?? LimboLogs.Instance);
+
+    private static TestSpecProvider SpecProviderWithBlockAccessLists() =>
+        new(new ReleaseSpec())
+        {
+            ForkOnBlockNumber = 2,
+            NextForkSpec = new ReleaseSpec { IsEip7928Enabled = true }
+        };
+
+    [TearDown]
+    public void TearDown()
+    {
+        _feed.Dispose();
+        _syncPeerPool.DisposeAsync();
+        _metadataDb.Dispose();
+    }
+
+    [Test]
+    public void Rejects_block_access_list_with_wrong_header_hash()
+    {
+        byte[] wrongBal = [0xc1, 0x01];
+        BlockHeader header = Build.A.BlockHeader
+            .WithBlockAccessListHash(TestItem.KeccakB)
+            .TestObject;
+        BlockInfo blockInfo = new(TestItem.KeccakA, 1) { BlockNumber = 1 };
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+        _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber).Returns(header);
+
+        BlockAccessListsSyncBatch batch = new([blockInfo])
+        {
+            Response = BuildBlockAccessLists(wrongBal),
+            ResponseSourcePeer = peerInfo
+        };
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(batch);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _syncPeerPool.Received(1).ReportBreachOfProtocol(
+            peerInfo,
+            DisconnectReason.InvalidTxOrUncle,
+            Arg.Is<string>(static message => message.Contains("invalid block access list")));
+    }
+
+    [Test]
+    public async Task Treats_pivot_without_block_access_list_hash_as_temporarily_finished()
+    {
+        const ulong previousBarrier = 123;
+        _metadataDb.Set(MetadataDbKeys.BlockAccessListsBarrierWhenStarted, previousBarrier.ToBigEndianByteArrayWithoutLeadingZeros());
+
+        BlockHeader pivotHeader = Build.A.BlockHeader
+            .WithBlockAccessListHash(null)
+            .TestObject;
+        _blockTree.SyncPivot.Returns((2UL, TestItem.KeccakB));
+        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2).Returns(pivotHeader);
+
+        _feed.InitializeFeed();
+
+        ulong barrier = _metadataDb.Get(MetadataDbKeys.BlockAccessListsBarrierWhenStarted).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+        Assert.That(barrier, Is.EqualTo(previousBarrier));
+        _blockAccessListStore.DidNotReceive().Exists(Arg.Any<ulong>(), TestItem.KeccakB);
+        Assert.That(_feed.IsFinished, Is.True);
+        _feed.Activate();
+        Assert.That(await _feed.PrepareRequest(), Is.Null);
+        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+        Assert.That(_syncPointers.LowestInsertedBlockAccessListBlockNumber, Is.Null);
+
+        BlockHeader balPivotHeader = Build.A.BlockHeader
+            .WithBlockAccessListHash(TestItem.KeccakA)
+            .TestObject;
+        _blockTree.SyncPivot.Returns((3UL, TestItem.KeccakC));
+        _blockTree.FindHeader(TestItem.KeccakC, blockNumber: 3UL).Returns(balPivotHeader);
+
+        Assert.That(_feed.IsFinished, Is.False);
+        _feed.SyncModeSelectorOnChanged(SyncMode.FastBlockAccessLists);
+        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Active));
+    }
+
+    [Test]
+    public async Task Treats_unscheduled_block_access_lists_as_permanently_finished()
+    {
+        _feed.Dispose();
+        _feed = CreateFeed(new TestSpecProvider(new ReleaseSpec()));
+
+        BlockHeader balPivotHeader = Build.A.BlockHeader
+            .WithBlockAccessListHash(TestItem.KeccakA)
+            .TestObject;
+        _blockTree.SyncPivot.Returns((2UL, TestItem.KeccakB));
+        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2UL).Returns(balPivotHeader);
+
+        _feed.InitializeFeed();
+        _feed.Activate();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.True);
+            Assert.That(await _feed.PrepareRequest(), Is.Null);
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(_syncPointers.LowestInsertedBlockAccessListBlockNumber, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Wakes_and_requests_block_access_lists_when_pivot_changes_to_bal_enabled_before_full_sync_runs()
+    {
+        (ulong BlockNumber, Hash256 BlockHash) syncPivot = (2UL, TestItem.KeccakB);
+        BlockHeader preBalPivotHeader = Build.A.BlockHeader
+            .WithBlockAccessListHash(null)
+            .TestObject;
+        _blockTree.SyncPivot.Returns(_ => syncPivot);
+        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2UL).Returns(preBalPivotHeader);
+        _feed.InitializeFeed();
+
+        TestSyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = 2,
+        };
+        ISyncProgressResolver syncProgressResolver = CreateProgressResolver(syncConfig, () => syncPivot);
+        ISyncPeerPool syncPeerPool = CreatePeerPool(10UL);
+        using MultiSyncModeSelector selector = new(
+            syncProgressResolver,
+            syncPeerPool,
+            syncConfig,
+            No.BeaconSync,
+            new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
+            LimboLogs.Instance);
+        await selector.StopAsync();
+        selector.Changed += (_, args) => _feed.SyncModeSelectorOnChanged(args.Current);
+
+        selector.Update();
+
+        Assert.That(selector.Current, Is.EqualTo(SyncMode.Full));
+        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+
+        BlockInfo block3Info = new(TestItem.KeccakC, 3) { BlockNumber = 3 };
+        BlockInfo block2Info = new(TestItem.KeccakB, 2) { BlockNumber = 2 };
+        BlockInfo block1Info = new(TestItem.KeccakA, 1) { BlockNumber = 1 };
+        BlockHeader balPivotHeader = Build.A.BlockHeader
+            .WithBlockAccessListHash(TestItem.KeccakA)
+            .TestObject;
+        BlockHeader previousBalHeader = Build.A.BlockHeader
+            .WithBlockAccessListHash(TestItem.KeccakB)
+            .TestObject;
+        BlockHeader preBalHeader = Build.A.BlockHeader
+            .WithBlockAccessListHash(null)
+            .TestObject;
+
+        syncConfig.PivotNumber = 3;
+        syncPivot = (3UL, TestItem.KeccakC);
+        _blockTree.FindHeader(TestItem.KeccakC, blockNumber: 3UL).Returns(balPivotHeader);
+        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2UL).Returns(previousBalHeader);
+        _blockTree.FindHeader(TestItem.KeccakA, blockNumber: 1UL).Returns(preBalHeader);
+        _blockTree.FindCanonicalBlockInfo(3UL).Returns(block3Info);
+        _blockTree.FindCanonicalBlockInfo(2UL).Returns(block2Info);
+        _blockTree.FindCanonicalBlockInfo(1UL).Returns(block1Info);
+
+        selector.Update();
+
+        Assert.That(selector.Current, Is.EqualTo(SyncMode.Full | SyncMode.FastBlockAccessLists));
+        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Active));
+
+        using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+        Assert.That(batch, Is.Not.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.Prioritized, Is.True);
+            Assert.That(batch.Infos[0], Is.EqualTo(block3Info));
+            Assert.That(batch.Infos[1], Is.EqualTo(block2Info));
+            Assert.That(batch.Infos[2], Is.Null);
+        }
+    }
+
+    [Test]
+    public void Treats_absent_bal_as_unavailable_without_penalizing_peer()
+    {
+        BlockInfo blockInfo = new(TestItem.KeccakA, 1) { BlockNumber = 1 };
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+
+        BlockAccessListsSyncBatch batch = new([blockInfo])
+        {
+            Response = BuildBlockAccessLists((byte[]?)null),
+            ResponseSourcePeer = peerInfo
+        };
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(batch);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
+            Arg.Any<PeerInfo>(),
+            Arg.Any<DisconnectReason>(),
+            Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Stops_at_block_access_lists_activation_with_requests_in_flight_and_stays_finished_after_restart([Values] bool timestampActivation)
+    {
+        const ulong pivot = 40;
+        const ulong activation = 20;
+        ConcurrentBag<ulong> lookups = [];
+        ProgressLogger progress = new("Old Block Access Lists", LimboLogs.Instance);
+        ISyncReport syncReport = Substitute.For<ISyncReport>();
+        syncReport.FastBlockAccessLists.Returns(progress);
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot, activation, timestampActivation, headersAvailable: true, lookups);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider, syncReport: syncReport);
+        _feed.InitializeFeed();
+        _feed.Activate();
+        lookups.Clear();
+
+        List<BlockAccessListsSyncBatch> inFlight = [];
+        for (int i = 0; i < 10; i++)
+        {
+            if (await _feed.PrepareRequest() is { } batch) inFlight.Add(batch);
+        }
+
+        ulong[] requested = inFlight.SelectMany(static b => b.Infos).OfType<BlockInfo>().Select(static b => b.BlockNumber).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requested, Is.EquivalentTo(Enumerable.Range((int)activation, (int)(pivot - activation + 1)).Select(static n => (ulong)n)));
+            Assert.That(lookups.Min(), Is.EqualTo(activation - 1), "no block below the last pre-activation block is looked up");
+        }
+
+        foreach (BlockAccessListsSyncBatch batch in inFlight)
+        {
+            batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(static _ => EmptyBlockAccessList).ToArray());
+            Assert.That(_feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.OK));
+        }
+
+        BlockAccessListsSyncBatch? firstFinishedRequest = await _feed.PrepareRequest();
+        BlockAccessListsSyncBatch? secondFinishedRequest = await _feed.PrepareRequest();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstFinishedRequest, Is.Null);
+            Assert.That(secondFinishedRequest, Is.Null);
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(progress.TargetValue, Is.EqualTo(pivot - activation + 1));
+            Assert.That(progress.CurrentValue, Is.EqualTo(progress.TargetValue));
+        }
+
+        using BlockAccessListsSyncFeed restarted = CreateFeed(specProvider);
+        Assert.That(restarted.IsFinished, Is.True);
+    }
+
+    [Test]
+    public async Task Skips_block_access_lists_below_the_pruning_cutoff([Values] bool cutoffKnownAtStart, [Values] bool blockPruning)
+    {
+        const ulong pivot = 40;
+        const ulong activation = 20;
+        const ulong cutoff = 30;
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot, activation, timestampActivation: false, headersAvailable: true, []);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        if (cutoffKnownAtStart) SetCutoff();
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+        SetCutoff();
+
+        List<ulong> requested = [];
+        for (int i = 0; i < 10; i++)
+        {
+            using BlockAccessListsSyncBatch? batch = await _feed.PrepareRequest();
+            if (batch is not null) requested.AddRange(batch.Infos.OfType<BlockInfo>().Select(static b => b.BlockNumber));
+        }
+
+        Assert.That(requested, Is.EquivalentTo(Enumerable.Range((int)cutoff, (int)(pivot - cutoff + 1)).Select(static n => (ulong)n)));
+
+        void SetCutoff()
+        {
+            if (blockPruning) _historyPruner.CutoffBlockNumber.Returns(cutoff);
+            else _historyPruner.BalCutoffBlockNumber.Returns(cutoff);
+        }
+    }
+
+    [Test]
+    public async Task Skips_responses_pruned_after_the_request([Values] bool hasAccessList, [Values] bool blockPruning)
+    {
+        SetUpThreeBlockFeed();
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+
+        using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+        Assert.That(batch.Infos.OfType<BlockInfo>().Select(static info => info.BlockNumber), Is.EquivalentTo(new ulong[] { 1, 2, 3 }));
+        if (blockPruning) _historyPruner.CutoffBlockNumber.Returns(3UL);
+        else _historyPruner.BalCutoffBlockNumber.Returns(3UL);
+        batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(_ => hasAccessList ? EmptyBlockAccessList : null).ToArray());
+        batch.ResponseSourcePeer = CreateSession(TestItem.PublicKeyA);
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(batch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(hasAccessList ? SyncResponseHandlingResult.OK : SyncResponseHandlingResult.NoProgress));
+            _blockAccessListStore.DidNotReceive().Insert(Arg.Is<ulong>(static number => number < 3), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+            _blockAccessListStore.Received(hasAccessList ? 1 : 0).Insert(3UL, Arg.Any<Hash256>(), Arg.Any<byte[]>());
+            Assert.That(_feed.UnavailableHeightsCount, Is.EqualTo(hasAccessList ? 0 : 1));
+        }
+    }
+
+    [Test]
+    public async Task Rechecks_pruning_cutoff_after_validating_the_response()
+    {
+        SetUpThreeBlockFeed();
+        using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+        BlockInfo blockInfo = batch.Infos.OfType<BlockInfo>().Single(static info => info.BlockNumber == 2);
+        BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber)!;
+        _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber).Returns(_ =>
+        {
+            _historyPruner.BalCutoffBlockNumber.Returns(3UL);
+            return header;
+        });
+        batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(static _ => EmptyBlockAccessList).ToArray());
+
+        _feed.HandleResponse(batch);
+
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Is<ulong>(static number => number < 3), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _blockAccessListStore.Received(1).Insert(3UL, Arg.Any<Hash256>(), Arg.Any<byte[]>());
+    }
+
+    [Test]
+    public async Task Waits_for_concurrent_pruning_before_rechecking_the_response_cutoff()
+    {
+        SetUpThreeBlockFeed();
+        BlockInfo blockInfo = _blockTree.FindCanonicalBlockInfo(2)!;
+        BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: 2)!;
+        TaskCompletionSource validated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ulong cutoff = 0;
+        bool checkedUnderLock = false;
+        _historyPruner.BalCutoffBlockNumber.Returns(_ =>
+        {
+            if (validated.Task.IsCompleted) checkedUnderLock = _blockAccessListStore.WriteLock.IsHeldByCurrentThread;
+            return Volatile.Read(ref cutoff);
+        });
+        _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: 2).Returns(_ =>
+        {
+            validated.SetResult();
+            return header;
+        });
+        BlockAccessListsSyncBatch batch = new([blockInfo]) { Response = BuildBlockAccessLists(EmptyBlockAccessList) };
+        TaskCompletionSource pruningStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim finishPruning = new();
+        Task pruning = Task.Run(() =>
+        {
+            lock (_blockAccessListStore.WriteLock)
+            {
+                pruningStarted.SetResult();
+                if (!finishPruning.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+                Volatile.Write(ref cutoff, 3UL);
+                _blockAccessListStore.DeleteRange(0, 3);
+            }
+        });
+        await pruningStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<SyncResponseHandlingResult> response = Task.Run(() => _feed.HandleResponse(batch));
+        try
+        {
+            await validated.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await Assert.ThrowsAsync<TimeoutException>(async () => await response.WaitAsync(TimeSpan.FromMilliseconds(100)));
+        }
+        finally
+        {
+            finishPruning.Set();
+            await pruning.WaitAsync(TimeSpan.FromSeconds(10));
+            await response.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checkedUnderLock, Is.True);
+            _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        }
+    }
+
+    [Test]
+    public void Does_not_track_unavailable_heights_when_the_cutoff_advances_during_handling()
+    {
+        _blockTree.SyncPivot.Returns((3UL, TestItem.KeccakC));
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        _feed.InitializeFeed();
+        Block head = _blockTree.Head!;
+        _blockTree.Head.Returns(_ =>
+        {
+            _historyPruner.BalCutoffBlockNumber.Returns(3UL);
+            return head;
+        });
+        BlockAccessListsSyncBatch batch = new([new BlockInfo(TestItem.KeccakB, 0) { BlockNumber = 2 }])
+        {
+            Response = BuildBlockAccessLists((byte[]?)null),
+            ResponseSourcePeer = CreateSession(TestItem.PublicKeyA)
+        };
+
+        _feed.HandleResponse(batch);
+
+        Assert.That(_feed.UnavailableHeightsCount, Is.Zero);
+    }
+
+    [Test]
+    public async Task Does_not_track_unavailable_height_inserted_during_response_handling()
+    {
+        SetUpThreeBlockFeed();
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        using BlockAccessListsSyncBatch requested = (await _feed.PrepareRequest())!;
+        BlockInfo blockInfo = requested.Infos.OfType<BlockInfo>().Single(static info => info.BlockNumber == 2);
+        BlockAccessListsSyncBatch available = new([blockInfo]) { Response = BuildBlockAccessLists(EmptyBlockAccessList) };
+        Block head = _blockTree.Head!;
+        _blockTree.Head.Returns(_ =>
+        {
+            _feed.HandleResponse(available);
+            return head;
+        });
+        BlockAccessListsSyncBatch unavailable = new([blockInfo])
+        {
+            Response = BuildBlockAccessLists((byte[]?)null),
+            ResponseSourcePeer = CreateSession(TestItem.PublicKeyA)
+        };
+
+        _feed.HandleResponse(unavailable);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _blockAccessListStore.Received(1).Insert(2UL, blockInfo.BlockHash, EmptyBlockAccessList);
+            Assert.That(_feed.UnavailableHeightsCount, Is.Zero);
+        }
+    }
+
+    [TestCase(1, false, ExpectedResult = false)]
+    [TestCase(2, false, ExpectedResult = false)]
+    [TestCase(BlockAccessListsSyncFeed.MaxUnavailableResponses, false, ExpectedResult = true)]
+    [TestCase(BlockAccessListsSyncFeed.MaxUnavailableResponses, true, ExpectedResult = false)]
+    public async Task<bool> Leaves_out_block_access_lists_no_peer_has(int nodeCount, bool insideServingWindow)
+    {
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot: 2, activation: 1, timestampActivation: false, headersAvailable: true, []);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        _historyPruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(insideServingWindow ? 100UL : 10UL);
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+
+        for (int i = 0; i < BlockAccessListsSyncFeed.MaxUnavailableResponses; i++)
+        {
+            using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+            Assert.That(batch, Is.Not.Null);
+            batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(static _ => (byte[]?)null).ToArray());
+            batch.ResponseSourcePeer = CreateSession(TestItem.PublicKeys[i % nodeCount]);
+            Assert.That(_feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.NoProgress));
+        }
+
+        using BlockAccessListsSyncBatch? next = await _feed.PrepareRequest();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.EqualTo(next is null));
+            _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+            _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+
+        return _feed.IsFinished;
+    }
+
+    [Test]
+    public async Task Unavailable_heights_finish_after_the_cutoff_retreats([Values] bool advancesAgain)
+    {
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot: 4, activation: 1, timestampActivation: false, headersAvailable: true, []);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(1));
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        _historyPruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(10UL);
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+
+        _historyPruner.BalCutoffBlockNumber.Returns(3UL);
+        using (BlockAccessListsSyncBatch first = (await _feed.PrepareRequest())!)
+        {
+            Assert.That(first.Infos[0]!.BlockNumber, Is.EqualTo(4));
+            first.Response = BuildBlockAccessLists(EmptyBlockAccessList);
+            _feed.HandleResponse(first);
+        }
+        _historyPruner.BalCutoffBlockNumber.Returns(2UL);
+
+        BlockInfo? previous = null;
+        for (int i = 0; i < BlockAccessListsSyncFeed.MaxUnavailableResponses; i++)
+        {
+            using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+            previous = batch.Infos[0]!;
+            Assert.That(previous.BlockNumber, Is.EqualTo(3));
+            ReportUnavailable(batch, TestItem.PublicKeys[i]);
+        }
+        using (BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!)
+        {
+            Assert.That(batch.Infos[0]!.BlockNumber, Is.EqualTo(2));
+            ReportUnavailable(batch, TestItem.PublicKeyA);
+        }
+        Assert.That(_feed.UnavailableHeightsCount, Is.EqualTo(1), "the newly admitted height must accumulate peer responses");
+
+        if (advancesAgain)
+        {
+            _historyPruner.BalCutoffBlockNumber.Returns(3UL);
+            using BlockAccessListsSyncBatch stale = new([previous]);
+            ReportUnavailable(stale, TestItem.PublicKeyA);
+            Assert.That(_feed.UnavailableHeightsCount, Is.Zero, "advancing again must sweep heights admitted after the rewind");
+        }
+
+        for (int i = 0; i < 5 * BlockAccessListsSyncFeed.MaxUnavailableResponses; i++)
+        {
+            using BlockAccessListsSyncBatch? batch = await _feed.PrepareRequest();
+            if (batch is null) break;
+            ReportUnavailable(batch, TestItem.PublicKeys[i % BlockAccessListsSyncFeed.MaxUnavailableResponses]);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.True);
+            Assert.That(_syncPointers.LowestInsertedBlockAccessListBlockNumber, Is.Zero);
+            Assert.That(_feed.UnavailableHeightsCount, Is.Zero);
+        }
+
+        void ReportUnavailable(BlockAccessListsSyncBatch batch, PublicKey nodeId)
+        {
+            batch.Response = BuildBlockAccessLists((byte[]?)null);
+            batch.ResponseSourcePeer = CreateSession(nodeId);
+            _feed.HandleResponse(batch);
+        }
+    }
+
+    [Test]
+    public async Task Stops_tracking_unavailable_heights_once_the_pruning_cutoff_passes_them()
+    {
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot: 3, activation: 1, timestampActivation: false, headersAvailable: true, []);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+
+        await ReportUnavailable();
+        int trackedBeforeCutoff = _feed.UnavailableHeightsCount;
+        _historyPruner.BalCutoffBlockNumber.Returns(3UL);
+        await ReportUnavailable();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trackedBeforeCutoff, Is.EqualTo(3));
+            Assert.That(_feed.UnavailableHeightsCount, Is.EqualTo(1), "heights 1 and 2 are below the cutoff, only height 3 is tracked");
+        }
+
+        async Task ReportUnavailable()
+        {
+            using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+            batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(static _ => (byte[]?)null).ToArray());
+            batch.ResponseSourcePeer = CreateSession(TestItem.PublicKeyA);
+            _feed.HandleResponse(batch);
+        }
+    }
+
+    private static PeerInfo CreateSession(PublicKey nodeId)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.Node.Returns(new Node(nodeId, "127.0.0.1", 30303));
+        return new PeerInfo(syncPeer);
+    }
+
+    [Test]
+    public void Keeps_configured_barrier_when_headers_below_pivot_are_missing([Values] bool infoEnabled)
+    {
+        const ulong pivot = 40;
+        const ulong activation = 20;
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot, activation, timestampActivation: false, headersAvailable: false, []);
+        _syncPointers.LowestInsertedBlockAccessListBlockNumber = activation - 2;
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(infoEnabled);
+        ILogger classLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<BlockAccessListsSyncFeed>().Returns(classLogger);
+
+        using BlockAccessListsSyncFeed feed = CreateFeed(specProvider, logManager);
+        logger.DidNotReceive().Info(Arg.Is<string>(static m => m.Contains("cannot find the EIP-7928 activation")));
+        feed.InitializeFeed();
+        feed.InitializeFeed();
+        feed.InitializeFeed();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.IsFinished, Is.False);
+            logger.Received(infoEnabled ? 1 : 0).Info(Arg.Is<string>(static m => m.Contains("cannot find the EIP-7928 activation")));
+        }
+    }
+
+    private static readonly byte[] EmptyBlockAccessList = [0xc0];
+
+    private void SetUpThreeBlockFeed()
+    {
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot: 3, activation: 1, timestampActivation: false, headersAvailable: true, []);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+    }
+
+    private ISpecProvider SetUpChainWithActivation(ulong pivot, ulong activation, bool timestampActivation, bool headersAvailable, ConcurrentBag<ulong> lookups)
+    {
+        const ulong secondsPerBlock = 12;
+        Hash256 blockAccessListHash = Keccak.Compute(EmptyBlockAccessList);
+        for (ulong number = 1; number <= pivot; number++)
+        {
+            ulong blockNumber = number;
+            BlockHeader header = Build.A.BlockHeader
+                .WithNumber(blockNumber)
+                .WithTimestamp(blockNumber * secondsPerBlock)
+                .WithBlockAccessListHash(blockNumber >= activation ? blockAccessListHash : null)
+                .TestObject;
+            BlockInfo blockInfo = new(header.Hash!, 0) { BlockNumber = blockNumber };
+            if (headersAvailable || blockNumber == pivot)
+            {
+                _blockTree.FindCanonicalBlockInfo(blockNumber).Returns(_ =>
+                {
+                    lookups.Add(blockNumber);
+                    return blockInfo;
+                });
+            }
+            _blockTree.FindHeader(header.Hash!, blockNumber: blockNumber).Returns(_ =>
+            {
+                lookups.Add(blockNumber);
+                return header;
+            });
+            if (blockNumber == pivot) _blockTree.SyncPivot.Returns((pivot, header.Hash!));
+        }
+
+        if (!timestampActivation)
+        {
+            return new TestSpecProvider(new ReleaseSpec())
+            {
+                ForkOnBlockNumber = activation,
+                NextForkSpec = new ReleaseSpec { IsEip7928Enabled = true }
+            };
+        }
+
+        IReleaseSpec preActivation = new ReleaseSpec();
+        IReleaseSpec postActivation = new ReleaseSpec { IsEip7928Enabled = true };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>())
+            .Returns(ci => ci.Arg<ForkActivation>().Timestamp >= activation * secondsPerBlock ? postActivation : preActivation);
+        return specProvider;
+    }
+
+    private ISyncProgressResolver CreateProgressResolver(
+        ISyncConfig syncConfig,
+        Func<(ulong BlockNumber, Hash256 BlockHash)> getSyncPivot)
+    {
+        ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+        syncProgressResolver.FindBestHeader().Returns(_ => syncConfig.PivotNumber);
+        syncProgressResolver.FindBestFullBlock().Returns(0UL);
+        syncProgressResolver.FindBestFullState().Returns(_ => syncConfig.PivotNumber);
+        syncProgressResolver.FindBestProcessedBlock().Returns(0UL);
+        syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+        syncProgressResolver.GetTotalDifficulty(Arg.Any<Hash256>()).Returns((UInt256?)null);
+        syncProgressResolver.SyncPivot.Returns(_ => getSyncPivot());
+        syncProgressResolver.IsFastBlocksHeadersFinished().Returns(true);
+        syncProgressResolver.IsFastBlocksBodiesFinished().Returns(true);
+        syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(true);
+        syncProgressResolver.IsFastBlockAccessListsFinished().Returns(_ => _feed.IsFinished);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+
+        return syncProgressResolver;
+    }
+
+    private static ISyncPeerPool CreatePeerPool(ulong peerHeadNumber)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.HeadHash.Returns(TestItem.KeccakE);
+        syncPeer.HeadNumber.Returns(peerHeadNumber);
+        syncPeer.TotalDifficulty.Returns((UInt256)peerHeadNumber);
+        syncPeer.IsInitialized.Returns(true);
+        PeerInfo peerInfo = new(syncPeer);
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        syncPeerPool.InitializedPeers.Returns([peerInfo]);
+        syncPeerPool.AllPeers.Returns([peerInfo]);
+        return syncPeerPool;
+    }
+
+    private static IOwnedReadOnlyList<byte[]?> BuildBlockAccessLists(params byte[]?[] blockAccessLists) =>
+        new ArrayPoolList<byte[]?>(blockAccessLists);
+}

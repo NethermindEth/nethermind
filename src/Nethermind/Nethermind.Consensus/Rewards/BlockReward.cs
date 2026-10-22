@@ -6,19 +6,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Rewards
 {
-    public class BlockReward
+    public class BlockReward(Address address, in UInt256 value, BlockRewardType rewardType = BlockRewardType.Block)
     {
-        public BlockReward(Address address, in UInt256 value, BlockRewardType rewardType = BlockRewardType.Block)
-        {
-            Address = address;
-            Value = value;
-            RewardType = rewardType;
-        }
+        public Address Address { get; } = address;
 
-        public Address Address { get; }
+        public UInt256 Value { get; } = value;
 
-        public UInt256 Value { get; }
-
-        public BlockRewardType RewardType { get; }
+        public BlockRewardType RewardType { get; } = rewardType;
     }
 }

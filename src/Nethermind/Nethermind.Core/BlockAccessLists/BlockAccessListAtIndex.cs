@@ -1,0 +1,421 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
+using Nethermind.Int256;
+
+namespace Nethermind.Core.BlockAccessLists;
+
+/// <summary>
+/// BAL changes accumulated for a single index (one transaction). Used during execution to
+/// record every state mutation a tx performs. Many of these are produced as the block runs;
+/// they are then merged into a <see cref="GeneratedBlockAccessList"/>.
+/// Supports <see cref="IJournal{TSnapshot}"/> for tx-level revert and <see cref="IResettable"/>
+/// for pooling via <see cref="Caching.StaticPool{T}"/>.
+/// </summary>
+public class BlockAccessListAtIndex : IJournal<int>, IResettable
+{
+    private const int InitialChangeCapacity = 64;
+
+    // Caps pool retention so a one-off oversized block doesn't permanently inflate the slice.
+    private const int MaxPooledAccountChanges = 4096;
+
+    public uint Index { get; set; }
+
+    /// <summary>Distinct chargeable declared reads recorded by worker coverage for this slice.</summary>
+    public ulong CoveredStorageReads { get; set; }
+
+    private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
+    private readonly List<Change> _changes = new(InitialChangeCapacity);
+    private ulong _storageJournalEpoch;
+
+    private readonly List<CodeChange> _previousCodeChanges = [];
+
+    private readonly Stack<AccountChangesAtIndex> _accountChangesPool = new();
+
+    // Single-slot cache: repeated same-address reads skip the dict probe. Reset in Clear() (pooled);
+    // safe as entries are never individually removed.
+    private Address? _lastReadAddress;
+    private AccountChangesAtIndex? _lastReadChanges;
+
+    public Dictionary<AddressAsKey, AccountChangesAtIndex>.ValueCollection AccountChanges => _accountChanges.Values;
+    public int AccountCount => _accountChanges.Count;
+    public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
+    public AccountChangesAtIndex? GetAccountChanges(Address address)
+    {
+        // Read-only fast path reusing the single-slot cache (see RecordReadAndGet). Never creates an
+        // entry; only memoizes a dict hit, so it cannot change recorded BAL contents.
+        if (address.Equals(_lastReadAddress)) return _lastReadChanges;
+        if (_accountChanges.TryGetValue(address, out AccountChangesAtIndex? value))
+        {
+            _lastReadAddress = address;
+            _lastReadChanges = value;
+            return value;
+        }
+        return null;
+    }
+
+    public void Clear()
+    {
+        CoveredStorageReads = 0;
+        int spareCount = _accountChangesPool.Count;
+        foreach (AccountChangesAtIndex value in _accountChanges.Values)
+        {
+            if (spareCount >= MaxPooledAccountChanges) break;
+            value.Reset(value.Address);
+            _accountChangesPool.Push(value);
+            spareCount++;
+        }
+        _accountChanges.ClearAndTrim();
+        _changes.Clear();
+        _storageJournalEpoch = 0;
+        _previousCodeChanges.Clear();
+        _lastReadAddress = null;
+        _lastReadChanges = null;
+    }
+
+    public void Reset()
+    {
+        Clear();
+        Index = 0;
+    }
+
+    /// <summary>Records physical account existence for execution and snapshot restoration.</summary>
+    public void RecordAccountExistence(Address address, bool exists)
+    {
+        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+        bool? previous = accountChanges.AccountExists;
+        if (previous == exists) return;
+
+        _changes.Add(new Change(previousValue: previous == true ? UInt256.One : UInt256.Zero)
+        {
+            Account = accountChanges,
+            Type = ChangeType.AccountExistence,
+            HasPrevious = previous.HasValue,
+        });
+        accountChanges.AccountExists = exists;
+    }
+
+    public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
+    {
+        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+
+        // Don't add zero balance transfers, but DO add empty account changes: EIP-7928 includes
+        // touched-but-unchanged accounts in the suggested BAL, so dropping them diverges from the hash.
+        if (before == after)
+        {
+            return;
+        }
+
+        UInt256 preTxBalance = accountChanges.PreTxBalance ??= before;
+
+        BalanceChange? previous = accountChanges.BalanceChange;
+        _changes.Add(new Change(previousValue: previous?.Value ?? default)
+        {
+            Account = accountChanges,
+            Type = ChangeType.BalanceChange,
+            HasPrevious = previous.HasValue,
+            PreviousIndex = previous?.Index ?? 0,
+        });
+
+        accountChanges.BalanceChange = preTxBalance != after
+            ? new BalanceChange(Index, after)
+            : null;
+    }
+
+    public void AddCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
+        => AddCodeChange(address, before, after, adoptedCodeHash: null);
+
+    /// <summary>Records code adopted by EIP-8298 <c>SETCODEFROM</c>, which the change records by its hash.</summary>
+    public void AddAdoptedCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after, in ValueHash256 codeHash)
+        => AddCodeChange(address, before, after, codeHash);
+
+    private void AddCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after, ValueHash256? adoptedCodeHash)
+    {
+        if (before.Span.SequenceEqual(after.Span))
+        {
+            return;
+        }
+
+        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+
+        bool isFirstCall = accountChanges.PreTxCode.IsNull();
+        if (isFirstCall) accountChanges.PreTxCode = before.IsNull() ? Array.Empty<byte>() : before;
+        ReadOnlyMemory<byte> preTxCode = accountChanges.PreTxCode;
+
+        CodeChange? previous = accountChanges.CodeChange;
+        if (previous.HasValue) _previousCodeChanges.Add(previous.Value);
+        _changes.Add(new Change
+        {
+            Account = accountChanges,
+            Type = ChangeType.CodeChange,
+            HasPrevious = previous.HasValue,
+        });
+
+        // EIP-8298: the form follows whichever write left the code, so a later adoption makes the change hash-only.
+        accountChanges.CodeChange = isFirstCall || !preTxCode.Span.SequenceEqual(after.Span)
+            ? adoptedCodeHash is { } codeHash ? CodeChange.Adopted(Index, in codeHash, after.ToArray()) : new CodeChange(Index, after.ToArray())
+            : null;
+    }
+
+    public void AddNonceChange(Address address, ulong newNonce)
+    {
+        if (newNonce == 0)
+        {
+            return;
+        }
+
+        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+
+        NonceChange? previous = accountChanges.NonceChange;
+        _changes.Add(new Change(previousValue: previous?.Value ?? 0UL)
+        {
+            Account = accountChanges,
+            Type = ChangeType.NonceChange,
+            HasPrevious = previous.HasValue,
+            PreviousIndex = previous?.Index ?? 0,
+        });
+
+        accountChanges.NonceChange = new NonceChange(Index, newNonce);
+    }
+
+    public void AddAccountRead(Address address) => RecordReadAndGet(address);
+
+    /// <summary>Records an account read and returns its entry; one-slot cache skips repeat same-address probes.</summary>
+    public AccountChangesAtIndex RecordReadAndGet(Address address)
+    {
+        if (!address.Equals(_lastReadAddress))
+        {
+            _lastReadChanges = GetOrAddAccountChanges(address);
+            _lastReadAddress = address;
+        }
+        return _lastReadChanges!;
+    }
+
+    /// <summary>Records a storage-slot read and returns the account entry in a single account resolution.</summary>
+    public AccountChangesAtIndex RecordStorageReadAndGet(Address address, in UInt256 key)
+    {
+        AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
+        if (!accountChanges.HasStorageChange(key))
+            accountChanges.AddStorageRead(key);
+        return accountChanges;
+    }
+
+    public void AddStorageChange(Address address, in UInt256 key, in UInt256 before, in UInt256 after)
+    {
+        if (before == after) return;
+
+        AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
+
+        ref StorageChange slotChange = ref CollectionsMarshal.GetValueRefOrAddDefault(accountChanges.StorageChanges, key, out bool hasPrevious);
+        if (accountChanges.GetOrCapturePreTxStorage(in key, in before, _storageJournalEpoch, out UInt256 preTxStorage))
+        {
+            // One undo per slot between snapshot boundaries also covers interleaved writes to other slots.
+            _changes.Add(new Change(slot: key, previousValue: slotChange.Value)
+            {
+                Account = accountChanges,
+                Type = ChangeType.StorageChange,
+                HasPrevious = hasPrevious,
+                PreviousIndex = slotChange.Index,
+            });
+        }
+
+        if (preTxStorage != after)
+        {
+            slotChange = new StorageChange(Index, after);
+            // An existing change already excludes this slot from the read set, or the next StorageReads access will.
+            if (!hasPrevious) accountChanges.RemoveStorageRead(key);
+        }
+        else
+        {
+            accountChanges.RemoveStorageChange(key);
+            accountChanges.AddStorageRead(key);
+        }
+    }
+
+    public void AddStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after)
+        => AddStorageChange(storageCell.Address, in storageCell.Index, in before, in after);
+
+    public void AddStorageRead(in StorageCell storageCell) => AddStorageRead(storageCell.Address, storageCell.Index);
+
+    public void AddStorageRead(Address address, in UInt256 key) => RecordStorageReadAndGet(address, in key);
+
+    public void DeleteAccount(Address address, UInt256 oldBalance)
+    {
+        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+
+        foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
+        {
+            accountChanges.AddStorageRead(kv.Key);
+            _changes.Add(new Change(slot: kv.Key, previousValue: kv.Value.Value)
+            {
+                Account = accountChanges,
+                Type = ChangeType.StorageChange,
+                HasPrevious = true,
+                PreviousIndex = kv.Value.Index,
+            });
+        }
+
+        if (accountChanges.NonceChange is { } nonce)
+        {
+            _changes.Add(new Change(previousValue: nonce.Value)
+            {
+                Account = accountChanges,
+                Type = ChangeType.NonceChange,
+                HasPrevious = true,
+                PreviousIndex = nonce.Index,
+            });
+        }
+
+        if (accountChanges.CodeChange is { } code)
+        {
+            _previousCodeChanges.Add(code);
+            _changes.Add(new Change
+            {
+                Account = accountChanges,
+                Type = ChangeType.CodeChange,
+                HasPrevious = true,
+            });
+        }
+
+        // SELFDESTRUCT clears storage (changes become reads), nonce and code
+        accountChanges.StorageChanges.Clear();
+        accountChanges.NonceChange = null;
+        accountChanges.CodeChange = null;
+
+        AddBalanceChange(address, oldBalance, 0);
+    }
+
+    public int TakeSnapshot()
+    {
+        _storageJournalEpoch++;
+        return _changes.Count;
+    }
+
+    public void Restore(int snapshot)
+    {
+        _storageJournalEpoch++;
+        // Intentionally does not reset _lastReadAddress/_lastReadChanges: Restore reverts entry values
+        // in place and never evicts an entry, so the cached reference stays valid. See class invariant.
+        snapshot = int.Max(0, snapshot);
+        Span<Change> span = CollectionsMarshal.AsSpan(_changes);
+        int end = span.Length;
+        if (snapshot >= end) return;
+
+        Span<CodeChange> codeReverts = CollectionsMarshal.AsSpan(_previousCodeChanges);
+        int codeCursor = codeReverts.Length;
+
+        for (int i = end - 1; i >= snapshot; i--)
+        {
+            ref readonly Change change = ref span[i];
+            AccountChangesAtIndex accountChanges = change.Account;
+            switch (change.Type)
+            {
+                case ChangeType.AccountExistence:
+                    accountChanges.AccountExists = change.HasPrevious ? !change.PreviousValue.IsZero : null;
+                    break;
+                case ChangeType.BalanceChange:
+                    accountChanges.BalanceChange = change.HasPrevious
+                        ? new BalanceChange(change.PreviousIndex, change.PreviousValue)
+                        : null;
+                    break;
+                case ChangeType.CodeChange:
+                    if (change.HasPrevious)
+                    {
+                        Debug.Assert(codeCursor > 0, "Code revert cursor underflow: _previousCodeChanges count does not match _changes journal.");
+                        accountChanges.CodeChange = codeReverts[--codeCursor];
+                    }
+                    else
+                    {
+                        accountChanges.CodeChange = null;
+                    }
+                    break;
+                case ChangeType.NonceChange:
+                    accountChanges.NonceChange = change.HasPrevious
+                        ? new NonceChange(change.PreviousIndex, change.PreviousValue.u0)
+                        : null;
+                    break;
+                case ChangeType.StorageChange:
+                    UInt256 slot = change.Slot;
+                    if (change.HasPrevious)
+                    {
+                        accountChanges.SetStorageChange(slot, new StorageChange(change.PreviousIndex, change.PreviousValue));
+                        accountChanges.RemoveStorageRead(slot);
+                    }
+                    else
+                    {
+                        accountChanges.RemoveStorageChange(slot);
+                        // No prior change in this tx — the slot was accessed (SSTORE implies
+                        // SLOAD at the EVM level), so mark it as a read to preserve that the
+                        // slot was touched even though the change was reverted.
+                        accountChanges.AddStorageRead(slot);
+                    }
+                    break;
+            }
+        }
+        CollectionsMarshal.SetCount(_changes, snapshot);
+        CollectionsMarshal.SetCount(_previousCodeChanges, codeCursor);
+    }
+
+    public override string ToString()
+    {
+        StringBuilder sb = new();
+        sb.AppendLine($"BlockAccessListAtIndex (Index={Index}, Accounts={_accountChanges.Count})");
+        foreach (AccountChangesAtIndex ac in _accountChanges.Values)
+        {
+            sb.Append("  ").Append(ac.Address);
+            if (ac.BalanceChange is not null) sb.Append(" balance=").Append(ac.BalanceChange);
+            if (ac.NonceChange is not null) sb.Append(" nonce=").Append(ac.NonceChange);
+            if (ac.CodeChange is not null) sb.Append(" code=").Append(ac.CodeChange);
+            if (ac.StorageChangeCount > 0) sb.Append(" storage=").Append(ac.StorageChangeCount);
+            if (ac.StorageReads.Count > 0) sb.Append(" reads=").Append(ac.StorageReads.Count);
+            sb.AppendLine();
+        }
+        return sb.ToString();
+    }
+
+    private AccountChangesAtIndex GetOrAddAccountChanges(Address address)
+    {
+        ref AccountChangesAtIndex? existing = ref CollectionsMarshal.GetValueRefOrAddDefault(_accountChanges, address, out _);
+        // Renting touches only the pool and rented entry, never _accountChanges, so the ref stays valid.
+        return existing ??= RentAccountChanges(address);
+    }
+
+    private AccountChangesAtIndex RentAccountChanges(Address address)
+    {
+        if (_accountChangesPool.TryPop(out AccountChangesAtIndex? recycled))
+        {
+            recycled.Reset(address);
+            return recycled;
+        }
+        return new AccountChangesAtIndex(address);
+    }
+
+    private enum ChangeType
+    {
+        BalanceChange = 0,
+        CodeChange = 1,
+        NonceChange = 2,
+        StorageChange = 3,
+        AccountExistence = 4,
+    }
+
+    private readonly struct Change(in UInt256 previousValue = default, in UInt256 slot = default)
+    {
+        public required AccountChangesAtIndex Account { get; init; }
+        public ChangeType Type { get; init; }
+        public bool HasPrevious { get; init; }
+        public uint PreviousIndex { get; init; }
+        public readonly UInt256 Slot = slot;
+        // Balance or storage value as written; a nonce occupies the low limb.
+        public readonly UInt256 PreviousValue = previousValue;
+    }
+}

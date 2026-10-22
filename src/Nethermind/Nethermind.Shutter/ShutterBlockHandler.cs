@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Shutter.Contracts;
@@ -36,7 +35,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly IShutterConfig _cfg;
     private readonly TimeSpan _slotLength;
     private readonly TimeSpan _blockWaitCutoff;
-    private readonly ReadOnlyTxProcessingEnvFactory _envFactory;
+    private readonly IShareableTxProcessorSource _txProcessorSource;
     private bool _haveCheckedRegistered = false;
     private ulong _blockWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, BlockWaitTask>> _blockWaitTasks = [];
@@ -46,7 +45,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public ShutterBlockHandler(
         ulong chainId,
         IShutterConfig cfg,
-        ReadOnlyTxProcessingEnvFactory envFactory,
+        IShareableTxProcessorSource txProcessorSource,
         IBlockTree blockTree,
         IAbiEncoder abiEncoder,
         IReceiptFinder receiptFinder,
@@ -60,7 +59,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     {
         _chainId = chainId;
         _cfg = cfg;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ShutterBlockHandler>();
         _time = time;
         _validatorsInfo = validatorsInfo;
         _eon = eon;
@@ -70,7 +69,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         _readOnlyBlockTree = blockTree.AsReadOnly();
         _abiEncoder = abiEncoder;
         _logManager = logManager;
-        _envFactory = envFactory;
+        _txProcessorSource = txProcessorSource;
         _slotLength = slotLength;
         _blockWaitCutoff = blockWaitCutoff;
 
@@ -89,7 +88,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
 
             if (_logger.IsDebug) _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
 
-            tcs = new();
+            tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             long offset = _time.GetCurrentOffsetMs(slot);
             long waitTime = (long)_blockWaitCutoff.TotalMilliseconds - offset;
@@ -125,32 +124,47 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-        _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
+        List<BlockWaitTask> waitTasks = [];
+        lock (_syncObject)
         {
-            waitTask.Value.CancellationRegistration.Dispose();
-            waitTask.Value.TimeoutCancellationRegistration.Dispose();
-        }));
+            foreach (Dictionary<ulong, BlockWaitTask> slotWaitTasks in _blockWaitTasks.Values)
+            {
+                waitTasks.AddRange(slotWaitTasks.Values);
+            }
+
+            _blockWaitTasks.Clear();
+        }
+
+        foreach (BlockWaitTask waitTask in waitTasks)
+        {
+            waitTask.Dispose();
+        }
     }
 
+    // Registrations are disposed outside _syncObject: CancellationTokenRegistration.Dispose blocks until an
+    // in-flight callback returns, and that callback (CancelWaitForBlock) needs the same lock.
     private void CancelWaitForBlock(ulong slot, ulong taskId, bool timeout)
     {
-        if (_blockWaitTasks.TryGetValue(slot, out Dictionary<ulong, BlockWaitTask>? slotWaitTasks))
+        BlockWaitTask waitTask;
+        lock (_syncObject)
         {
-            if (slotWaitTasks.TryGetValue(taskId, out BlockWaitTask waitTask))
+            if (!_blockWaitTasks.TryGetValue(slot, out Dictionary<ulong, BlockWaitTask>? slotWaitTasks)
+                || !slotWaitTasks.Remove(taskId, out waitTask))
             {
-                if (timeout)
-                {
-                    waitTask.Tcs.TrySetResult(null);
-                }
-                else
-                {
-                    waitTask.Tcs.SetException(new OperationCanceledException());
-                }
-                waitTask.CancellationRegistration.Dispose();
-                waitTask.TimeoutCancellationRegistration.Dispose();
+                return;
             }
-            slotWaitTasks.Remove(taskId);
         }
+
+        if (timeout)
+        {
+            waitTask.Tcs.TrySetResult(null);
+        }
+        else
+        {
+            waitTask.Tcs.TrySetException(new OperationCanceledException());
+        }
+
+        waitTask.Dispose();
     }
 
     private void OnNewHeadBlock(object? _, BlockEventArgs e)
@@ -168,20 +182,19 @@ public class ShutterBlockHandler : IShutterBlockHandler
             _eon.Update(head.Header);
             _txLoader.LoadFromReceipts(head, _receiptFinder.Get(head), _eon.GetCurrentEonInfo()!.Value.Eon);
 
+            Dictionary<ulong, BlockWaitTask>? waitTasks;
             lock (_syncObject)
             {
                 ulong slot = _time.GetSlot(head.Timestamp * 1000);
                 _slotToBlockHash.Set(slot, head.Hash);
-
-                if (_blockWaitTasks.Remove(slot, out Dictionary<ulong, BlockWaitTask>? waitTasks))
-                {
-                    waitTasks.ForEach(waitTask =>
-                    {
-                        waitTask.Value.Tcs.TrySetResult(head);
-                        waitTask.Value.Dispose();
-                    });
-                }
+                _blockWaitTasks.Remove(slot, out waitTasks);
             }
+
+            waitTasks?.ForEach(waitTask =>
+            {
+                waitTask.Value.Tcs.TrySetResult(head);
+                waitTask.Value.Dispose();
+            });
         }
         else if (_logger.IsDebug)
         {
@@ -197,7 +210,13 @@ public class ShutterBlockHandler : IShutterBlockHandler
             return;
         }
 
-        IReadOnlyTxProcessingScope scope = _envFactory.Create().Build(parent.StateRoot!);
+        if (!_txProcessorSource.TryBuild(parent, out IReadOnlyTxProcessingScope? scope))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot check Shutter validator registration: no state available for block {parent.ToString(BlockHeader.Format.Short)}.");
+            return;
+        }
+
+        using IReadOnlyTxProcessingScope _ = scope;
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);

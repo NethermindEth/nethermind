@@ -4,15 +4,14 @@
     "ChainSpecPath": "chainspec/sseed-mainnet.json.zst",
     "GenesisHash": "0x0e5eb156fd2ea921d57ee4921191a2a46ebe3a11854ee7a63a5c6c580aa99219",
     "BaseDbPath": "nethermind_db/sseed-mainnet",
-    "LogFileName": "sseed-mainnet.logs.txt"
+    "LogFileName": "sseed-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
   "Sync": {
     "FastSync": true,
-    "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000"
+    "SnapSync": true
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -23,7 +22,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

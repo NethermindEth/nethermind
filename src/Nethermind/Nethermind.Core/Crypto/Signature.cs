@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -14,7 +15,14 @@ namespace Nethermind.Core.Crypto
     public class Signature : MemoryManager<byte>, IEquatable<Signature>
     {
         public const int VOffset = 27;
-        private Vector512<byte> _signature;
+        public const int Size = 65;
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+        private struct SignatureBytes
+        {
+            public Vector512<byte> Value;
+        }
+
+        private SignatureBytes _signature;
 
         public Signature(ReadOnlySpan<byte> bytes, int recoveryId)
         {
@@ -57,18 +65,23 @@ namespace Nethermind.Core.Crypto
             : this(Core.Extensions.Bytes.FromHexString(hexString))
         {
         }
-        public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _signature, 1));
+        [JsonIgnore]
+        public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _signature.Value, 1));
         public override Memory<byte> Memory => CreateMemory(64);
 
         public ulong V { get; set; }
 
         public ulong? ChainId => V < 35 ? null : (ulong?)(V + (V % 2) - 36) / 2;
 
-        public byte RecoveryId => V <= VOffset + 1 ? (byte)(V - VOffset) : (byte)(1 - V % 2);
+        public byte RecoveryId => GetRecoveryId(V);
+
+        public static byte GetRecoveryId(ulong v) => v <= VOffset + 1 ? (byte)(v - VOffset) : (byte)(1 - v % 2);
 
         public Memory<byte> R => Memory.Slice(0, 32);
+        [JsonIgnore]
         public ReadOnlySpan<byte> RAsSpan => Bytes.Slice(0, 32);
         public Memory<byte> S => Memory.Slice(32, 32);
+        [JsonIgnore]
         public ReadOnlySpan<byte> SAsSpan => Bytes.Slice(32, 32);
 
         [Todo("Change signature to store 65 bytes and just slice it for normal Bytes.")]
@@ -76,11 +89,18 @@ namespace Nethermind.Core.Crypto
         {
             get
             {
-                var result = new byte[65];
+                byte[] result = new byte[65];
                 Bytes.CopyTo(result);
                 result[64] = RecoveryId;
                 return result;
             }
+        }
+
+        public void WriteBytesWithRecoveryTo(Span<byte> destination)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(destination.Length, Size);
+            Bytes.CopyTo(destination);
+            destination[64] = RecoveryId;
         }
 
         public override string ToString()
@@ -93,7 +113,7 @@ namespace Nethermind.Core.Crypto
         {
             if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
-            return _signature == other._signature && V == other.V;
+            return _signature.Value == other._signature.Value && V == other.V;
         }
 
         public override bool Equals(object? obj)
@@ -104,10 +124,7 @@ namespace Nethermind.Core.Crypto
             return Equals((Signature)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return MemoryMarshal.Read<int>(Bytes);
-        }
+        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
         public void Dispose() { }
         protected override void Dispose(bool disposing) { }

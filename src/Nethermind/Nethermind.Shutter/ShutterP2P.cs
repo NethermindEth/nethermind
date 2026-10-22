@@ -7,7 +7,6 @@ using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
-using Nethermind.Network.Discovery;
 using System;
 using System.Threading.Tasks;
 using System.Threading;
@@ -17,13 +16,14 @@ using Nethermind.Shutter.Config;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
-using Google.Protobuf;
 using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
-using System.Net;
+using Nethermind.Network;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core;
+using Nethermind.Logging.Microsoft;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Shutter;
 
@@ -36,20 +36,19 @@ public class ShutterP2P : IShutterP2P
     private readonly PubsubPeerDiscoveryProtocol _disc;
     private readonly PeerStore _peerStore;
     private readonly ILocalPeer _peer;
-    private readonly string _address;
+    private readonly IIPResolver _ipResolver;
     private readonly ServiceProvider _serviceProvider;
     private readonly TimeSpan DisconnectionLogTimeout;
     private readonly TimeSpan DisconnectionLogInterval;
-    private CancellationTokenSource? _cts;
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
 
-    public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IPAddress ip)
+    public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IIPResolver ipResolver)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ShutterP2P>();
         _cfg = shutterConfig;
-        _address = $"/ip4/{ip}/tcp/{_cfg.P2PPort}";
+        _ipResolver = ipResolver;
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
         DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
 
@@ -99,20 +98,21 @@ public class ShutterP2P : IShutterP2P
         };
     }
 
-    public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
+    public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken)
     {
-        _cts = cts ?? new();
+        IIPResolver.NethermindIp ip = await _ipResolver.Resolve(cancellationToken);
+        string listenAddress = NetworkHelper.ToTcpMultiaddress(ip.ExternalIp, _cfg.P2PPort);
 
-        await _peer.StartListenAsync([_address], _cts.Token);
-        await _router.StartAsync(_peer, _cts.Token);
-        _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(_address)], _cts.Token);
+        await _peer.StartListenAsync([listenAddress], cancellationToken);
+        await _router.StartAsync(_peer, cancellationToken);
+        _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(listenAddress)], cancellationToken);
 
         foreach (Multiaddress address in bootnodeP2PAddresses)
         {
             _peerStore.Discover([address]);
         }
 
-        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_address}");
+        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {listenAddress}");
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
         bool hasTimedOut = false;
@@ -121,8 +121,8 @@ public class ShutterP2P : IShutterP2P
         {
             try
             {
-                using var timeoutSource = new CancellationTokenSource(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
-                using var source = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutSource.Token);
+                using CancellationTokenSource timeoutSource = new(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
+                using CancellationTokenSource source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
 
                 byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
                 lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
@@ -131,7 +131,7 @@ public class ShutterP2P : IShutterP2P
             }
             catch (OperationCanceledException)
             {
-                if (_cts.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
                     break;
@@ -155,7 +155,6 @@ public class ShutterP2P : IShutterP2P
     {
         _router?.UnsubscribeAll();
         await (_serviceProvider?.DisposeAsync() ?? default);
-        await (_cts?.CancelAsync() ?? Task.CompletedTask);
     }
 
     private Identity GetPeerIdentity(IFileSystem fileSystem, IShutterConfig shutterConfig, IKeyStoreConfig keyStoreConfig)
@@ -184,21 +183,35 @@ public class ShutterP2P : IShutterP2P
     {
         if (_logger.IsTrace) _logger.Trace("Processing Shutter P2P message.");
 
+        if (TryParseDecryptionKeys(msg, _logger, out Dto.DecryptionKeys? decryptionKeys))
+        {
+            onKeysReceived(decryptionKeys).ContinueWith(
+                t => { if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys handler failed: {t.Exception}"); },
+                TaskContinuationOptions.OnlyOnFaulted);
+        }
+    }
+
+    /// <summary>Parses a gossip message into decryption keys; any peer can publish, so no parse failure may escape.</summary>
+    internal static bool TryParseDecryptionKeys(byte[] msg, ILogger logger, [NotNullWhen(true)] out Dto.DecryptionKeys? decryptionKeys)
+    {
+        decryptionKeys = null;
         try
         {
             Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-            if (envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
+            // Message and the Gnosis oneof are null when absent, which is a peer error, not ours.
+            if (envelope.Message is not null && envelope.Message.TryUnpack(out Dto.DecryptionKeys keys) && keys.Gnosis is not null)
             {
-                _ = onKeysReceived(decryptionKeys);
+                decryptionKeys = keys;
+                return true;
             }
-            else if (_logger.IsDebug)
-            {
-                _logger.Debug($"Could not parse Shutter decryption keys: protobuf type names did not match.");
-            }
+
+            if (logger.IsDebug) logger.Debug("Could not parse Shutter decryption keys: envelope does not contain Gnosis decryption keys.");
         }
-        catch (InvalidProtocolBufferException e)
+        catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not parse Shutter decryption keys: {e}");
+            logger.DebugWarn($"Could not parse Shutter decryption keys: {e}");
         }
+
+        return false;
     }
 }

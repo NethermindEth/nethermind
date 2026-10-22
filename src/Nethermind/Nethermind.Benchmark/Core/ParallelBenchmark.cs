@@ -25,26 +25,18 @@ public class ParallelBenchmark
     }
 
     [Benchmark(Baseline = true)]
-    public void ParallelFor()
-    {
-        Parallel.For(
+    public void ParallelFor() => Parallel.For(
             0,
             _times.Length,
             (i) => Thread.Sleep(_times[i]));
-    }
 
     [Benchmark]
-    public void ParallelForEach()
-    {
-        Parallel.ForEach(
+    public void ParallelForEach() => Parallel.ForEach(
             _times,
             (time) => Thread.Sleep(time));
-    }
 
     [Benchmark]
-    public void UnbalancedParallel()
-    {
-        ParallelUnbalancedWork.For<int[]>(
+    public void UnbalancedParallel() => ParallelUnbalancedWork.For<int[]>(
             0,
             _times.Length,
             ParallelUnbalancedWork.DefaultOptions,
@@ -55,5 +47,4 @@ public class ParallelBenchmark
                 return value;
             },
             (value) => { });
-    }
 }

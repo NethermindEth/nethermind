@@ -15,16 +15,16 @@ public interface INodeData
     public NodeType NodeType { get; }
     public INodeData Clone();
     public int Length { get; }
-    public ref object this[int index] { get; }
+    public ref object? this[int index] { get; }
     public int MemorySize { get; }
 }
 
 interface INodeWithKey : INodeData
 {
-    public byte[] Key { get; set; }
+    public byte[]? Key { get; set; }
 }
 
-public class BranchData : INodeData
+public sealed class BranchData : INodeData
 {
     public NodeType NodeType => NodeType.Branch;
     public int Length => TrieNode.BranchesCount;
@@ -32,12 +32,19 @@ public class BranchData : INodeData
 
     private BranchArray _branches;
 
-    public BranchData() { }
+    public BranchData()
+    {
+    }
 
     private BranchData(in BranchArray branches) => _branches = branches;
 
     public ref readonly BranchArray Branches => ref _branches;
-    public ref object this[int index] => ref _branches[index];
+    public ref object? this[int index]
+    {
+        // Reached once per level of every trie walk; a walk as large as PatriciaTree.SetNew exhausts the inliner's budget before it.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => ref _branches[index];
+    }
 
     INodeData INodeData.Clone() => new BranchData(in _branches);
 
@@ -49,18 +56,31 @@ public class BranchData : INodeData
     }
 }
 
-public class ExtensionData : INodeWithKey
+public sealed class ExtensionData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Extension;
+
     public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize +
-        (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
+                             (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
+
     public int Length => 2;
 
     public byte[]? _key;
     public object? _value;
-    public byte[] Key { get => _key; set => _key = value; }
-    public object? Value { get => _value; set => _value = value; }
-    public ref object this[int index]
+
+    public byte[]? Key
+    {
+        get => _key;
+        set => _key = value;
+    }
+
+    public object? Value
+    {
+        get => _value;
+        set => _value = value;
+    }
+
+    public ref object? this[int index]
     {
         get
         {
@@ -71,21 +91,16 @@ public class ExtensionData : INodeWithKey
 
             return ref _value;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowArgumentOutOfRangeException(int index)
-            {
-                throw new ArgumentOutOfRangeException(nameof(index), index, $"{index} is not 0 or 1");
-            }
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowArgumentOutOfRangeException(int index) => throw new ArgumentOutOfRangeException(nameof(index), index, $"{index} is not 0 or 1");
         }
     }
 
-    public ExtensionData() { }
-
-    internal ExtensionData(byte[] key)
+    public ExtensionData()
     {
-        Key = key;
     }
+
+    internal ExtensionData(byte[] key) => Key = key;
 
     internal ExtensionData(byte[] key, TrieNode value)
     {
@@ -93,7 +108,7 @@ public class ExtensionData : INodeWithKey
         Value = value;
     }
 
-    private ExtensionData(byte[] key, object? value)
+    private ExtensionData(byte[]? key, object? value)
     {
         Key = key;
         Value = value;
@@ -102,36 +117,38 @@ public class ExtensionData : INodeWithKey
     INodeData INodeData.Clone() => new ExtensionData(Key, Value);
 }
 
-public class LeafData : INodeWithKey
+public sealed partial class LeafData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Leaf;
     public int Length => 0;
-    public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize + MemorySizes.RefSize +
-         (Key is not null ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
-         (_value.IsNotNull ? (int)MemorySizes.Align(_value.Length + MemorySizes.ArrayOverhead) : 0);
+
+    public int MemorySize => MemorySizes.RefSize + // StorageRoot
+                             MemorySizes.RefSize + // RefSize for Key, then the key itself
+                             (Key is not null ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
+                             MemorySizes.RefSize + // RefSize for _value._array
+                             (_value.IsNotNullOrEmpty ? (int)MemorySizes.Align(_value.UnderlyingLength + MemorySizes.ArrayOverhead) : 0); // value
 
     private readonly CappedArray<byte> _value;
 
-    public byte[] Key { get; set; }
-    public ref readonly CappedArray<byte> Value => ref _value;
+    public CappedArray<byte> Value => _value;
     public TrieNode? StorageRoot { get; set; }
 
-    public LeafData() { }
+    public LeafData() => _value = CappedArray<byte>.Empty;
 
-    internal LeafData(byte[] key, in CappedArray<byte> value)
+    internal LeafData(byte[]? key, CappedArray<byte> value)
     {
         Key = key;
         _value = value;
     }
 
-    private LeafData(byte[] key, in CappedArray<byte> value, TrieNode? storageRoot)
+    private LeafData(byte[]? key, CappedArray<byte> value, TrieNode? storageRoot)
     {
         Key = key;
         _value = value;
         StorageRoot = storageRoot;
     }
-    public ref object this[int index] => throw new IndexOutOfRangeException();
 
-    INodeData INodeData.Clone() => new LeafData(Key, in _value);
-    public LeafData CloneWithNewValue(in CappedArray<byte> value) => new LeafData(Key, in value, StorageRoot);
+    public ref object? this[int index] => throw new IndexOutOfRangeException();
+
+    INodeData INodeData.Clone() => new LeafData(Key, _value);
 }

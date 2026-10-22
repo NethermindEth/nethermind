@@ -18,7 +18,12 @@ namespace Nethermind.Serialization.Json
             Type typeToConvert,
             JsonSerializerOptions options)
         {
-            return (TxType)Convert.ToByte(reader.GetString(), 16);
+            if (reader.TokenType != JsonTokenType.String || reader.GetString() is not string txType)
+            {
+                throw new JsonException("Invalid transaction type.");
+            }
+
+            return (TxType)Convert.ToByte(txType, 16);
         }
 
         public override void Write(

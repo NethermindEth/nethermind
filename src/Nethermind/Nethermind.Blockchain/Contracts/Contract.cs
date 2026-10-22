@@ -5,12 +5,11 @@ using System;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Contracts
@@ -31,7 +30,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Default gas limit of transactions generated from contract.
         /// </summary>
-        public const long DefaultContractGasLimit = 1_600_000L;
+        public const ulong DefaultContractGasLimit = 1_600_000UL;
 
         protected IAbiEncoder AbiEncoder { get; }
         public AbiDefinition AbiDefinition { get; }
@@ -50,20 +49,20 @@ namespace Nethermind.Blockchain.Contracts
             AbiDefinition = abiDefinition ?? new AbiDefinitionParser().Parse(GetType());
         }
 
-        protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
+        protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, ulong gasLimit = DefaultContractGasLimit, BlockHeader header = null)
             where T : Transaction, new() =>
             GenerateTransaction<T>(contractAddress, transactionData, sender, gasLimit);
 
-        protected Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address? sender, long gasLimit = DefaultContractGasLimit) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address? sender, ulong gasLimit = DefaultContractGasLimit) where T : Transaction, new()
         {
-            var transaction = new T()
+            T transaction = new()
             {
-                Value = UInt256.Zero,
+                Value = 0,
                 Data = transactionData,
                 To = (contractAddress ?? ContractAddress) ?? throw new ArgumentNullException(nameof(contractAddress)),
                 SenderAddress = sender ?? Address.SystemUser,
                 GasLimit = gasLimit,
-                GasPrice = UInt256.Zero,
+                GasPrice = 0,
             };
 
             transaction.Hash = transaction.CalculateHash();
@@ -98,7 +97,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, long gasLimit, BlockHeader header, params object[] arguments) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, ulong gasLimit, BlockHeader header, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(contractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit, header);
 
         /// <summary>
@@ -113,7 +112,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, long gasLimit, params object[] arguments) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, ulong gasLimit, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(contractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);
 
         /// <summary>
@@ -141,7 +140,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(string functionName, Address sender, long gasLimit, BlockHeader header, params object[] arguments) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(string functionName, Address sender, ulong gasLimit, BlockHeader header, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(ContractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit, header);
 
         /// <summary>
@@ -155,7 +154,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(string functionName, Address sender, long gasLimit, params object[] arguments) where T : Transaction, new()
+        protected Transaction GenerateTransaction<T>(string functionName, Address sender, ulong gasLimit, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(ContractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);
 
         /// <summary>
@@ -167,7 +166,8 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="transaction">Transaction to be executed.</param>
         /// <param name="callAndRestore">Is it restore call.</param>
         /// <returns>Bytes with result.</returns>
-        /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="CallOutputTracer.StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
+        /// <exception cref="AbiException">Thrown when there is an exception during execution.</exception>
+        /// <exception cref="ContractCallFailedException">Thrown when <see cref="StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
         protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
@@ -178,11 +178,11 @@ namespace Nethermind.Blockchain.Contracts
             {
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(header, 0), tracer);
+                    transactionProcessor.CallAndRestore(transaction, header, tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, new BlockExecutionContext(header, 0), tracer);
+                    transactionProcessor.Execute(transaction, header, tracer);
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;
@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Contracts
 
             if (failure)
             {
-                throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned error '{tracer.Error}' at block {header.Number}.");
+                throw new ContractCallFailedException($"System call to {AbiDefinition.Name}.{functionName} returned error '{tracer.Error}' at block {header.Number}.");
             }
             else
             {

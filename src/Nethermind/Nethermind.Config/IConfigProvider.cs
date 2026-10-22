@@ -21,7 +21,10 @@ namespace Nethermind.Config
         /// </summary>
         /// <param name="category">Configuration category (e.g. Init).</param>
         /// <param name="name">Name of the configuration property.</param>
-        /// <returns></returns>
-        object GetRawValue(string category, string name);
+        /// <returns>
+        /// The raw value, or <c>null</c> when the item is not set, does not resolve to a property of a config interface,
+        /// or is flagged <see cref="ConfigItemAttribute.IsSensitive"/>.
+        /// </returns>
+        object? GetRawValue(string category, string name);
     }
 }

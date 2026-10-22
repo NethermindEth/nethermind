@@ -1,9 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -16,10 +15,7 @@ namespace Nethermind.Core.Test.Caching
     [TestFixture]
     public class ClockCacheTests
     {
-        private static Cache Create()
-        {
-            return new Cache(Capacity)!;
-        }
+        private static Cache Create() => new Cache(Capacity)!;
 
         private const int Capacity = 32;
 
@@ -42,7 +38,7 @@ namespace Nethermind.Core.Test.Caching
             Cache cache = Create();
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
+                Assert.That(cache.Set(_addresses[i], _accounts[i]), Is.True);
             }
 
             Account? account = cache.Get(_addresses[Capacity - 1]);
@@ -53,27 +49,27 @@ namespace Nethermind.Core.Test.Caching
         public void Can_reset()
         {
             Cache cache = Create();
-            cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
-            cache.Set(_addresses[0], _accounts[1]).Should().BeFalse();
-            cache.Get(_addresses[0]).Should().Be(_accounts[1]);
+            Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.True);
+            Assert.That(cache.Set(_addresses[0], _accounts[1]), Is.False);
+            Assert.That(cache.Get(_addresses[0]), Is.EqualTo(_accounts[1]));
         }
 
         [Test]
         public void Can_ask_before_first_set()
         {
             Cache cache = Create();
-            cache.Get(_addresses[0]).Should().BeNull();
+            Assert.That(cache.Get(_addresses[0]), Is.Null);
         }
 
         [Test]
         public void Can_clear()
         {
             Cache cache = Create();
-            cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
+            Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.True);
             cache.Clear();
-            cache.Get(_addresses[0]).Should().BeNull();
-            cache.Set(_addresses[0], _accounts[1]).Should().BeTrue();
-            cache.Get(_addresses[0]).Should().Be(_accounts[1]);
+            Assert.That(cache.Get(_addresses[0]), Is.Null);
+            Assert.That(cache.Set(_addresses[0], _accounts[1]), Is.True);
+            Assert.That(cache.Get(_addresses[0]), Is.EqualTo(_accounts[1]));
         }
 
         [Test]
@@ -82,17 +78,17 @@ namespace Nethermind.Core.Test.Caching
             Cache cache = Create();
             for (int i = 0; i < Capacity * 2; i++)
             {
-                cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
+                Assert.That(cache.Set(_addresses[i], _accounts[i]), Is.True);
             }
 
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Get(_addresses[i]).Should().BeNull();
+                Assert.That(cache.Get(_addresses[i]), Is.Null);
             }
             // Check in reverse order
             for (int i = Capacity * 2 - 1; i >= Capacity; i--)
             {
-                cache.Get(_addresses[i]).Should().Be(_accounts[i]);
+                Assert.That(cache.Get(_addresses[i]), Is.EqualTo(_accounts[i]));
             }
         }
 
@@ -115,11 +111,11 @@ namespace Nethermind.Core.Test.Caching
         {
             Random random = new();
             Cache cache = Create();
-            for (var iter = 0; iter < Capacity; iter++)
+            for (int iter = 0; iter < Capacity; iter++)
             {
                 for (int ii = 0; ii < Capacity; ii++)
                 {
-                    cache.Set(_addresses[ii], _accounts[ii]).Should().BeTrue();
+                    Assert.That(cache.Set(_addresses[ii], _accounts[ii]), Is.True);
                 }
 
                 for (int i = 1; i < Capacity; i++)
@@ -127,42 +123,42 @@ namespace Nethermind.Core.Test.Caching
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
-                        cache.Delete(_addresses[index]).Should().BeTrue();
-                        cache.Set(_addresses[index], _accounts[index]).Should().BeTrue();
+                        int index = random.Next(i - 1, i - 1 + Capacity);
+                        Assert.That(cache.Delete(_addresses[index]), Is.True);
+                        Assert.That(cache.Set(_addresses[index], _accounts[index]), Is.True);
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
-                        cache.Set(_addresses[index], _accounts[index]).Should().BeFalse();
+                        int index = random.Next(i - 1, i - 1 + Capacity);
+                        Assert.That(cache.Set(_addresses[index], _accounts[index]), Is.False);
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
-                        cache.Get(_addresses[index]).Should().BeEquivalentTo(_accounts[index]);
+                        int index = random.Next(i - 1, i - 1 + Capacity);
+                        Assert.That(cache.Get(_addresses[index]), Is.EqualTo(_accounts[index]));
                     }
                     for (int ii = i; ii < i + Capacity; ii++)
                     {
                         if (ii < i + Capacity - 1)
-                            cache.Set(_addresses[ii], _accounts[ii]).Should().BeFalse();
+                            Assert.That(cache.Set(_addresses[ii], _accounts[ii]), Is.False);
                         else
-                            cache.Set(_addresses[ii], _accounts[ii]).Should().BeTrue();
+                            Assert.That(cache.Set(_addresses[ii], _accounts[ii]), Is.True);
                     }
                     for (int ii = i; ii < i + Capacity; ii++)
                     {
-                        cache.Get(_addresses[ii]).Should().NotBeNull();
-                        cache.Get(_addresses[ii]).Should().BeEquivalentTo(_accounts[ii]);
+                        Assert.That(cache.Get(_addresses[ii]), Is.Not.Null);
+                        Assert.That(cache.Get(_addresses[ii]), Is.EqualTo(_accounts[ii]));
                     }
                     if (i > 0)
                     {
-                        cache.Get(_addresses[i - 1]).Should().BeNull();
+                        Assert.That(cache.Get(_addresses[i - 1]), Is.Null);
                     }
-                    cache.Get(_addresses[i + Capacity]).Should().BeNull();
+                    Assert.That(cache.Get(_addresses[i + Capacity]), Is.Null);
                 }
 
-                cache.Count.Should().Be(Capacity);
+                Assert.That(cache.Count, Is.EqualTo(Capacity));
                 if (iter % 2 == 0)
                 {
                     cache.Clear();
@@ -171,12 +167,12 @@ namespace Nethermind.Core.Test.Caching
                 {
                     for (int ii = Capacity - 1; ii < Capacity * 2 - 1; ii++)
                     {
-                        cache.Get(_addresses[ii]).Should().BeEquivalentTo(_accounts[ii]);
-                        cache.Delete(_addresses[ii]).Should().BeTrue();
+                        Assert.That(cache.Get(_addresses[ii]), Is.EqualTo(_accounts[ii]));
+                        Assert.That(cache.Delete(_addresses[ii]), Is.True);
                     }
                 }
 
-                cache.Count.Should().Be(0);
+                Assert.That(cache.Count, Is.EqualTo(0));
             }
         }
 
@@ -226,10 +222,10 @@ namespace Nethermind.Core.Test.Caching
         public void Can_set_and_then_set_null()
         {
             Cache cache = Create();
-            cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
-            cache.Set(_addresses[0], _accounts[0]).Should().BeFalse();
-            cache.Set(_addresses[0], null!).Should().BeTrue();
-            cache.Get(_addresses[0]).Should().Be(null);
+            Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.True);
+            Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.False);
+            Assert.That(cache.Set(_addresses[0], null!), Is.True);
+            Assert.That(cache.Get(_addresses[0]), Is.EqualTo(null));
         }
 
         [Test]
@@ -237,9 +233,22 @@ namespace Nethermind.Core.Test.Caching
         {
             Cache cache = Create();
             cache.Set(_addresses[0], _accounts[0]);
-            cache.Delete(_addresses[0]).Should().BeTrue();
-            cache.Get(_addresses[0]).Should().Be(null);
-            cache.Delete(_addresses[0]).Should().BeFalse();
+            Assert.That(cache.Delete(_addresses[0]), Is.True);
+            Assert.That(cache.Get(_addresses[0]), Is.EqualTo(null));
+            Assert.That(cache.Delete(_addresses[0]), Is.False);
+        }
+
+        [Test]
+        public void Delete_returns_value()
+        {
+            Cache cache = Create();
+            cache.Set(_addresses[0], _accounts[0]);
+
+            Assert.That(cache.Delete(_addresses[0], out Account? value), Is.True);
+            Assert.That(value, Is.EqualTo(_accounts[0]));
+
+            Assert.That(cache.Delete(_addresses[0], out Account? noValue), Is.False);
+            Assert.That(noValue, Is.Null);
         }
 
         [Test]
@@ -248,7 +257,7 @@ namespace Nethermind.Core.Test.Caching
             Cache cache = Create();
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
+                Assert.That(cache.Set(_addresses[i], _accounts[i]), Is.True);
             }
 
             cache.Clear();
@@ -258,13 +267,13 @@ namespace Nethermind.Core.Test.Caching
             // fill again
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i], _accounts[MapForRefill(i)]).Should().BeTrue();
+                Assert.That(cache.Set(_addresses[i], _accounts[MapForRefill(i)]), Is.True);
             }
 
             // validate
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Get(_addresses[i]).Should().Be(_accounts[MapForRefill(i)]);
+                Assert.That(cache.Get(_addresses[i]), Is.EqualTo(_accounts[MapForRefill(i)]));
             }
         }
 
@@ -279,10 +288,10 @@ namespace Nethermind.Core.Test.Caching
 
             for (int i = 0; i < iterations; i++)
             {
-                cache.Set(i, i).Should().BeTrue();
-                var remove = i - itemsToKeep;
+                Assert.That(cache.Set(i, i), Is.True);
+                int remove = i - itemsToKeep;
                 if (remove >= 0)
-                    cache.Delete(remove).Should().BeTrue();
+                    Assert.That(cache.Delete(remove), Is.True);
             }
 
             int count = 0;
@@ -292,11 +301,11 @@ namespace Nethermind.Core.Test.Caching
                 if (cache.TryGet(i, out int val))
                 {
                     count++;
-                    val.Should().Be(i);
+                    Assert.That(val, Is.EqualTo(i));
                 }
             }
 
-            count.Should().Be(itemsToKeep);
+            Assert.That(count, Is.EqualTo(itemsToKeep));
         }
 
         [Test]
@@ -305,17 +314,17 @@ namespace Nethermind.Core.Test.Caching
             ClockCache<AddressAsKey, int> cache = new(0);
             for (int i = 0; i < Capacity * 2; i++)
             {
-                cache.Set(_addresses[i], 0).Should().BeTrue();
+                Assert.That(cache.Set(_addresses[i], 0), Is.True);
             }
 
             for (int i = 0; i < Capacity; i++)
             {
-                cache.TryGet(_addresses[i], out _).Should().BeFalse();
+                Assert.That(cache.TryGet(_addresses[i], out _), Is.False);
             }
             // Check in reverse order
             for (int i = Capacity * 2 - 1; i >= Capacity; i--)
             {
-                cache.TryGet(_addresses[i], out _).Should().BeFalse();
+                Assert.That(cache.TryGet(_addresses[i], out _), Is.False);
             }
         }
     }

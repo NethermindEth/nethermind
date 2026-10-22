@@ -35,7 +35,7 @@ public class CachedBlockTreeBuilder
         else
         {
             BlockTreeBuilder builder = blockTreeBuilderFactory();
-            CachedDb cachedValue = new CachedDb(
+            CachedDb cachedValue = new(
                 MemDb.CopyFrom(builder.BlocksDb),
                 MemDb.CopyFrom(builder.MetadataDb),
                 MemDb.CopyFrom(builder.HeadersDb),
@@ -48,8 +48,5 @@ public class CachedBlockTreeBuilder
         }
     }
 
-    public static IBlockTree OfLength(int length)
-    {
-        return BuildCached($"{nameof(CachedBlockTreeBuilder)}-{length}", () => Build.A.BlockTree().OfChainLength(length));
-    }
+    public static IBlockTree OfLength(int length) => BuildCached($"{nameof(CachedBlockTreeBuilder)}-{length}", () => Build.A.BlockTree().OfChainLength(length));
 }

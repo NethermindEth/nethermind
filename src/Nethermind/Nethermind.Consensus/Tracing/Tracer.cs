@@ -4,61 +4,43 @@
 using System;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Tracing
 {
-    public class Tracer : ITracer
+    public class Tracer(
+        IStateReader stateReader,
+        BlockchainProcessorFacade traceProcessor,
+        BlockchainProcessorFacade executeProcessor,
+        ProcessingOptions executeOptions = TraceProcessingOptions.ReadOnlyReplay,
+        ProcessingOptions traceOptions = TraceProcessingOptions.ReadOnlyReplay,
+        ProcessingOptions executeSignedOptions = TraceProcessingOptions.ReadOnlySigned)
+        : ITracer
     {
-        private readonly IWorldState _stateProvider;
-        private readonly IBlockchainProcessor _traceProcessor;
-        private readonly IBlockchainProcessor _executeProcessor;
-        private readonly ProcessingOptions _executeOptions;
-        private readonly ProcessingOptions _traceOptions;
-
-        public Tracer(IWorldState stateProvider, IBlockchainProcessor traceProcessor, IBlockchainProcessor executeProcessor,
-            ProcessingOptions executeOptions = ProcessingOptions.Trace, ProcessingOptions traceOptions = ProcessingOptions.Trace)
-        {
-            _traceProcessor = traceProcessor;
-            _executeProcessor = executeProcessor;
-            _stateProvider = stateProvider;
-            _executeOptions = executeOptions;
-            _traceOptions = traceOptions;
-        }
-
-        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor, ProcessingOptions options)
+        private void Process(Block block, IBlockTracer blockTracer, BlockchainProcessorFacade processor, ProcessingOptions options)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);
-
-            try
-            {
-                processor.Process(block, options, blockTracer);
-            }
-            catch (Exception)
-            {
-                _stateProvider.Reset();
-                throw;
-            }
-
+            processor.Process(block, options, blockTracer);
             blockTracer.EndBlockTrace();
         }
 
-        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, _traceProcessor, _traceOptions);
+        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, traceProcessor, traceOptions);
 
-        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor, _executeOptions);
+        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeOptions);
 
-        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
+        public void ExecuteSigned(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeSignedOptions);
+
+        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>
         {
             ArgumentNullException.ThrowIfNull(visitor);
-            ArgumentNullException.ThrowIfNull(stateRoot);
+            ArgumentNullException.ThrowIfNull(baseBlock);
 
-            _stateProvider.Accept(visitor, stateRoot);
+            stateReader.RunTreeVisitor(visitor, baseBlock);
         }
     }
 }

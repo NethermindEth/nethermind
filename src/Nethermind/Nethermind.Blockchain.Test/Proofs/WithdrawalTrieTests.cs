@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -11,24 +12,44 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs;
 
+[Parallelizable(ParallelScope.All)]
 public class WithdrawalTrieTests
 {
+    private static readonly int[] RootCounts = [0, 1, 2, 4, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 64, 65, 127, 128, 129, 255, 256, 257];
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values(0, 1, 2)] int fieldMode)
+    {
+        Withdrawal[] withdrawals = new Withdrawal[count];
+        for (int i = 0; i < count; i++)
+        {
+            bool largeFields = fieldMode == 1 || (fieldMode == 2 && i % 2 == 0);
+            withdrawals[i] = new Withdrawal
+            {
+                Index = largeFields ? ulong.MaxValue - (ulong)i : (ulong)i + 1000,
+                ValidatorIndex = largeFields ? ulong.MaxValue : (ulong)i,
+                Address = i % 2 == 0 ? TestItem.AddressA : TestItem.AddressB,
+                AmountInGwei = largeFields ? ulong.MaxValue : (ulong)i
+            };
+        }
+
+        Assert.That(WithdrawalTrie.CalculateRoot(withdrawals), Is.EqualTo(new WithdrawalTrie(withdrawals).RootHash));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Should_compute_hash_root()
     {
-        var block = Build.A.Block.WithWithdrawals(10).TestObject;
-        var trie = new WithdrawalTrie(block.Withdrawals!);
-
+        Block block = Build.A.Block.WithWithdrawals(10).TestObject;
         Assert.That(
-            trie.RootHash.ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
+            WithdrawalTrie.CalculateRoot(block.Withdrawals!).ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Should_verify_proof()
     {
-        var count = 10;
-        var block = Build.A.Block.WithWithdrawals(count).TestObject;
-        var trie = new WithdrawalTrie(block.Withdrawals!, true);
+        int count = 10;
+        Block block = Build.A.Block.WithWithdrawals(count).TestObject;
+        WithdrawalTrie trie = new(block.Withdrawals!, true);
 
         for (int i = 0; i < count; i++)
         {
@@ -38,14 +59,14 @@ public class WithdrawalTrieTests
 
     private static bool VerifyProof(byte[][] proof, Hash256 root)
     {
-        for (var i = proof.Length - 1; i >= 0; i--)
+        for (int i = proof.Length - 1; i >= 0; i--)
         {
-            var p = proof[i];
-            var hash = Keccak.Compute(p);
+            byte[] p = proof[i];
+            Hash256 hash = Keccak.Compute(p);
 
             if (i > 0)
             {
-                var hex = p.Length < 32 ? p.ToHexString(false) : hash.ToString(false);
+                string hex = p.Length < 32 ? p.ToHexString(false) : hash.ToString(false);
 
                 if (!new Rlp(proof[i - 1]).ToString(false).Contains(hex, StringComparison.Ordinal))
                 {

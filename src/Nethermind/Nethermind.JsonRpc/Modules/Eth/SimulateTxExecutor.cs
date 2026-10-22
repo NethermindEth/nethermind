@@ -1,15 +1,15 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -17,141 +17,142 @@ using Nethermind.Facade.Simulate;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null)
-    : ExecutorBase<IReadOnlyList<SimulateBlockResult>, SimulatePayload<TransactionForRpc>,
-    SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
+public class SimulateTxExecutor<TTrace>(
+    IBlockchainBridge blockchainBridge,
+    IBlockFinder blockFinder,
+    IJsonRpcConfig rpcConfig,
+    ISpecProvider specProvider,
+    ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
+    ulong? secondsPerSlot = null,
+    bool readLoneBlobFeeCapAsAbsent = true,
+    bool callSemantics = false)
 {
+    private readonly IBlockchainBridge _blockchainBridge = blockchainBridge;
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
-    private long _gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
+    private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
-    protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<TransactionForRpc> call)
+    private Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
-        SimulatePayload<TransactionWithSourceDetails> result = new()
-        {
-            TraceTransfers = call.TraceTransfers,
-            Validation = call.Validation,
-            BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall =>
-            {
-                if (blockStateCall.BlockOverrides?.GasLimit is not null)
-                {
-                    blockStateCall.BlockOverrides.GasLimit = (ulong)Math.Min((long)blockStateCall.BlockOverrides.GasLimit!.Value, _gasCapBudget);
-                }
-
-                return new BlockStateCall<TransactionWithSourceDetails>
-                {
-                    BlockOverrides = blockStateCall.BlockOverrides,
-                    StateOverrides = blockStateCall.StateOverrides,
-                    Calls = blockStateCall.Calls?.Select(callTransactionModel =>
-                    {
-                        callTransactionModel = UpdateTxType(callTransactionModel);
-                        LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
-                        bool hadGasLimitInRequest = asLegacy?.Gas is not null;
-                        bool hadNonceInRequest = asLegacy?.Nonce is not null;
-                        asLegacy!.EnsureDefaults(_gasCapBudget);
-                        _gasCapBudget -= asLegacy.Gas!.Value;
-
-                        Transaction tx = callTransactionModel.ToTransaction();
-                        tx.ChainId = _blockchainBridge.GetChainId();
-
-                        TransactionWithSourceDetails? result = new()
-                        {
-                            HadGasLimitInRequest = hadGasLimitInRequest,
-                            HadNonceInRequest = hadNonceInRequest,
-                            Transaction = tx
-                        };
-
-                        return result;
-                    }).ToArray()
-                };
-            }).ToList()
-        };
-
-        return result;
-    }
-
-    private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
-    {
-        // TODO: This is a bit messy since we're changing the transaction type
-        if (rpcTransaction is LegacyTransactionForRpc legacy)
-        {
-            rpcTransaction = new EIP1559TransactionForRpc
-            {
-                Nonce = legacy.Nonce,
-                To = legacy.To,
-                From = legacy.From,
-                Gas = legacy.Gas,
-                Value = legacy.Value,
-                Input = legacy.Input,
-                GasPrice = legacy.GasPrice,
-                ChainId = legacy.ChainId,
-                V = legacy.V,
-                R = legacy.R,
-                S = legacy.S,
-            };
-        }
-
-        return rpcTransaction;
-    }
-
-    public override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(
-        SimulatePayload<TransactionForRpc> call,
-        BlockParameter? blockParameter,
-        Dictionary<Address, AccountOverride>? stateOverride = null)
-    {
-        if (call.BlockStateCalls is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
-
-        if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.InvalidInputTooManyBlocks);
-
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
-
-        if (searchResult.IsError || searchResult.Object is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(searchResult);
-
-        BlockHeader header = searchResult.Object.Header;
-
-        if (!_blockchainBridge.HasStateForBlock(header!))
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"No state available for block {header.Hash}",
-                ErrorCodes.ResourceUnavailable);
-
-        if (call.BlockStateCalls?.Count > _blocksLimit)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                $"Too many blocks provided, node is configured to simulate up to {_blocksLimit} while {call.BlockStateCalls?.Count} were given",
-                ErrorCodes.InvalidParams);
-
-        secondsPerSlot ??= new BlocksConfig().SecondsPerSlot;
+        List<BlockStateCall<TransactionWithSourceDetails>>? blockStateCalls = null;
 
         if (call.BlockStateCalls is not null)
         {
-            long lastBlockNumber = header.Number;
+            blockStateCalls = new List<BlockStateCall<TransactionWithSourceDetails>>(call.BlockStateCalls.Count);
+
+            foreach (BlockStateCall<TransactionForRpc> blockStateCall in call.BlockStateCalls)
+            {
+                TransactionWithSourceDetails[]? calls = null;
+
+                if (blockStateCall.Calls is not null)
+                {
+                    calls = new TransactionWithSourceDetails[blockStateCall.Calls.Length];
+                    // The calls convert against the fork of the block they are simulated in, which the
+                    // normalized block overrides number and time.
+                    BlockOverride overrides = blockStateCall.BlockOverrides!;
+                    IReleaseSpec spec = specProvider.GetSpec(overrides.Number!.Value, overrides.Time);
+
+                    for (int i = 0; i < blockStateCall.Calls.Length; i++)
+                    {
+                        TransactionForRpc callTransactionModel = readLoneBlobFeeCapAsAbsent
+                            ? BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(blockStateCall.Calls[i])
+                            : blockStateCall.Calls[i];
+                        LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
+                        bool hadGasLimitInRequest = asLegacy?.Gas is not null;
+                        bool hadNonceInRequest = asLegacy?.Nonce is not null;
+
+                        Result<Transaction> txResult = callTransactionModel.ToCallTransaction(spec, _rpcConfig.GasCap,
+                            validateUserInput: call.Validation, validateFeeCapOrder: call.Validation);
+                        if (!txResult.Success(out Transaction? tx, out string? error))
+                        {
+                            return error;
+                        }
+
+                        tx.ChainId = _blockchainBridge.GetChainId();
+
+                        calls[i] = new TransactionWithSourceDetails
+                        {
+                            HadGasLimitInRequest = hadGasLimitInRequest,
+                            // The block checks the gas as requested, before the conversion clamped it to the RPC gas cap.
+                            GasLimitToFitBlock = !callSemantics && hadGasLimitInRequest ? asLegacy!.Gas : null,
+                            HadNonceInRequest = hadNonceInRequest,
+                            Transaction = tx
+                        };
+                    }
+                }
+
+                blockStateCalls.Add(new BlockStateCall<TransactionWithSourceDetails>
+                {
+                    BlockOverrides = blockStateCall.BlockOverrides,
+                    StateOverrides = blockStateCall.StateOverrides,
+                    Calls = calls
+                });
+            }
+        }
+
+        return new SimulatePayload<TransactionWithSourceDetails>
+        {
+            TraceTransfers = call.TraceTransfers,
+            Validation = call.Validation,
+            ReturnFullTransactionObjects = call.ReturnFullTransactionObjects,
+            BlockStateCalls = blockStateCalls
+        };
+    }
+
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+        SimulatePayload<TransactionForRpc> call,
+        BlockParameter? blockParameter,
+        Dictionary<Address, AccountOverride>? stateOverride = null,
+        SearchResult<BlockHeader>? searchResult = null)
+    {
+        if (call.BlockStateCalls is null || call.BlockStateCalls.Count == 0)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);
+
+        if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
+                $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
+
+        searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+
+        if (searchResult.Value.IsError || searchResult.Value.Object is null)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(searchResult.Value);
+
+        BlockHeader header = searchResult.Value.Object;
+
+        if (!_blockchainBridge.HasStateForBlock(header!))
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceNotFound);
+
+        if (call.BlockStateCalls?.Count > _blocksLimit)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
+                $"Too many blocks provided, node is configured to simulate up to {_blocksLimit} while {call.BlockStateCalls?.Count} were given",
+                ErrorCodes.InvalidParams);
+
+        if (call.BlockStateCalls is not null)
+        {
+            ulong lastBlockNumber = header.Number;
             ulong lastBlockTime = header.Timestamp;
 
-            using ArrayPoolList<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);
+            using ArrayPoolListRef<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);
 
             foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls)
             {
                 blockToSimulate.BlockOverrides ??= new BlockOverride();
-                ulong givenNumber = blockToSimulate.BlockOverrides.Number ?? (ulong)lastBlockNumber + 1;
+                ulong givenNumber = blockToSimulate.BlockOverrides.GetBlockNumber(lastBlockNumber);
 
                 if (givenNumber > long.MaxValue)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
-                if (givenNumber <= (ulong)lastBlockNumber)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                if (givenNumber <= lastBlockNumber)
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.BlockNumberNotIncreasing, ErrorCodes.InvalidInputBlocksOutOfOrder);
 
-                // if the no. of filler blocks are greater than maximum simulate blocks cap
-                if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"too many blocks",
-                        ErrorCodes.ClientLimitExceededError);
+                if (givenNumber - header.Number > (ulong)_blocksLimit)
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"too many blocks", ErrorCodes.ClientLimitExceededError);
 
-                for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
+                for (ulong fillBlockNumber = lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
-                    ulong fillBlockTime = lastBlockTime + secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
+                    ulong fillBlockTime = lastBlockTime + _secondsPerSlot;
                     completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
                     {
                         BlockOverrides = new BlockOverride { Number = fillBlockNumber, Time = fillBlockTime },
@@ -163,64 +164,167 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
                 blockToSimulate.BlockOverrides.Number = givenNumber;
 
-                if (blockToSimulate.BlockOverrides.Time is not null)
+                if (blockToSimulate.BlockOverrides.Time is { } blockTime)
                 {
-                    if (blockToSimulate.BlockOverrides.Time <= lastBlockTime)
+                    if (blockTime <= lastBlockTime)
                     {
-                        return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                            $"Block timestamp out of order {blockToSimulate.BlockOverrides.Time} is <= than given base timestamp of {lastBlockTime}!", ErrorCodes.BlockTimestampNotIncreased);
+                        return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block timestamp out of order {blockToSimulate.BlockOverrides.Time} is <= than given base timestamp of {lastBlockTime}!", ErrorCodes.BlockTimestampNotIncreased);
                     }
-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                    lastBlockTime = blockTime;
                 }
                 else
                 {
-                    blockToSimulate.BlockOverrides.Time = lastBlockTime + secondsPerSlot;
-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                    lastBlockTime += _secondsPerSlot;
+                    blockToSimulate.BlockOverrides.Time = lastBlockTime;
                 }
-                lastBlockNumber = (long)givenNumber;
+                lastBlockNumber = givenNumber;
+
+                if (blockToSimulate.StateOverrides is not null)
+                {
+                    IReleaseSpec spec = specProvider.GetSpec(givenNumber, blockToSimulate.BlockOverrides.Time);
+                    foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
+                    {
+                        if (accountOverride.MovePrecompileToAddress is null) continue;
+
+                        if (spec.IsPrecompile(address) && accountOverride.MovePrecompileToAddress == address)
+                            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
+                                "MovePrecompileToAddress referenced itself in replacement",
+                                ErrorCodes.MovePrecompileSelfReference);
+                    }
+                }
 
                 completeBlockStateCalls.Add(blockToSimulate);
             }
             call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
-        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        SimulatePayload<TransactionWithSourceDetails> toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+        CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
+        try
+        {
+            Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
+            return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
+                : Execute(header.Clone(), data, stateOverride, timeout.Token);
+        }
+        finally
+        {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        }
     }
 
-    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(BlockHeader header,
-        SimulatePayload<TransactionWithSourceDetails> tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
+    private ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+        BlockHeader header,
+        SimulatePayload<TransactionWithSourceDetails> tx,
+        Dictionary<Address, AccountOverride>? stateOverride,
+        CancellationToken token)
     {
-        SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
+        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap.EffectiveGasCap(), token);
 
-        foreach (SimulateBlockResult result in results.Items)
+        foreach (SimulateBlockResult<TTrace> item in results.Items)
         {
-            foreach (SimulateCallResult? call in result.Calls)
+            if (item is SimulateBlockResult<SimulateCallResult> result)
             {
-                if (call?.Error is not null && call.Error.Message != "")
+                foreach (SimulateCallResult? call in result.Calls)
                 {
-                    call.Error.Code = ErrorCodes.ExecutionError;
+                    if (call is { Error: not null } && !string.IsNullOrEmpty(call.Error.Message))
+                    {
+                        EvmExceptionType exception = call.Error.EvmException;
+                        call.Error.Code = MapEvmExceptionType(exception);
+                        if (exception != EvmExceptionType.Revert)
+                        {
+                            call.Error.Message = call.Error.EvmException.GetEvmExceptionDescription();
+                            call.Error.Data = null;
+                        }
+                    }
                 }
             }
         }
 
-        if (results.Error is not null)
+        int? errorCode = results.TransactionResult.TransactionExecuted
+            ? null
+            : MapSimulateErrorCode(results.TransactionResult);
+        if (results.IsInvalidInput) errorCode = ErrorCodes.Default;
+
+        if (results.Error is null)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items]);
+
+        if (errorCode is not null)
         {
-            results.ErrorCode = results.Error switch
-            {
-                var x when x.Contains("invalid transaction") => ErrorCodes.InvalidTransaction,
-                var x when x.Contains("InsufficientBalanceException") => ErrorCodes.InvalidTransaction,
-                var x when x.Contains("InvalidBlockException") => ErrorCodes.InvalidParams,
-                var x when x.Contains("below intrinsic gas") => ErrorCodes.InsufficientIntrinsicGas,
-                _ => results.ErrorCode
-            };
+            string message = MapSimulateErrorMessage(results.TransactionResult) ?? results.Error!;
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(message, errorCode.Value);
         }
 
-        return results.Error is null
-            ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(results.Items)
-            : results.ErrorCode is not null
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(results.Error!, results.ErrorCode!.Value, results.Items)
-                : ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(results.Error, results.Items);
+        return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
     }
+
+    private static int MapSimulateErrorCode(TransactionResult txResult)
+    {
+        if (txResult.Error != TransactionResult.ErrorType.None)
+        {
+            return TransactionErrorCodes.Get(txResult.Error) ?? ErrorCodes.InternalError;
+        }
+
+        return MapEvmExceptionType(txResult.EvmExceptionType);
+    }
+
+    /// <summary>
+    /// Returns the spec-mandated error message for well-known eth_simulateV1 error types,
+    /// or <see langword="null"/> when no override is required.
+    /// </summary>
+    private static string? MapSimulateErrorMessage(TransactionResult txResult) =>
+        txResult.Error switch
+        {
+            TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
+                => SimulateErrorMessages.IntrinsicGas,
+            TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
+                or TransactionResult.ErrorType.MinerPremiumNegative
+                => SimulateErrorMessages.FeeCapBelowBaseFee,
+            TransactionResult.ErrorType.InsufficientSenderBalance
+                or TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
+                => SimulateErrorMessages.InsufficientFunds,
+            _ => null
+        };
+
+    private static int MapEvmExceptionType(EvmExceptionType type) => type switch
+    {
+        EvmExceptionType.Revert => ErrorCodes.ExecutionReverted,
+        _ => ErrorCodes.VMError
+    };
+}
+
+/// <summary>
+/// Canonical eth_simulateV1 error message strings shared between the executor and tests.
+/// </summary>
+internal static class SimulateErrorMessages
+{
+    /// <summary>
+    /// Returned when the transaction gas limit is below the intrinsic gas cost
+    /// (error code <see cref="ErrorCodes.IntrinsicGas"/>).
+    /// </summary>
+    public const string IntrinsicGas = "Not enough gas provided to pay for intrinsic gas for a transaction";
+
+    /// <summary>
+    /// Returned when <c>maxFeePerGas</c> is below the block <c>baseFeePerGas</c>
+    /// (error code <see cref="ErrorCodes.FeeCapBelowBaseFee"/>).
+    /// </summary>
+    public const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";
+
+    /// <summary>
+    /// Returned when the sender does not have enough balance to cover gas + value
+    /// (error code <see cref="ErrorCodes.InsufficientFunds"/>).
+    /// </summary>
+    public const string InsufficientFunds = "Insufficient funds to pay for gas fees and value for a transaction";
+
+    /// <summary>
+    /// Returned when a simulated block number is not strictly greater than the previous one
+    /// (error code <see cref="ErrorCodes.InvalidInputBlocksOutOfOrder"/>). Mandated verbatim by
+    /// the execution-apis spec.
+    /// </summary>
+    public const string BlockNumberNotIncreasing = "Block number in sequence did not increase";
+
+    /// <summary>
+    /// Returned when <c>blockStateCalls</c> is an empty array
+    /// (error code <see cref="ErrorCodes.InvalidParams"/>).
+    /// </summary>
+    public const string EmptyBlockStateCalls = "empty input";
 }

@@ -12,28 +12,15 @@ namespace Nethermind.Blockchain.Receipts;
 public class ReceiptsRootCalculator : IReceiptsRootCalculator
 {
     public static readonly ReceiptsRootCalculator Instance = new();
-
-    private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.Trie);
+    private static IRlpDecoder<TxReceipt> _decoder => field ??= Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
+    private static ReceiptMessageDecoder _skipStateDecoder => field ??= new(skipStateAndStatus: true);
 
     public Hash256 GetReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
     {
-        Hash256 SkipStateAndStatusReceiptsRoot()
-        {
-            receipts.SetSkipStateAndStatusInRlp(true);
-            try
-            {
-                return ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
-            }
-            finally
-            {
-                receipts.SetSkipStateAndStatusInRlp(false);
-            }
-        }
-
-        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
+        Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(spec, receipts, _decoder);
         if (!spec.ValidateReceipts && receiptsRoot != suggestedRoot)
         {
-            var skipStateAndStatusReceiptsRoot = SkipStateAndStatusReceiptsRoot();
+            Hash256 skipStateAndStatusReceiptsRoot = ReceiptTrie.CalculateRoot(spec, receipts, _skipStateDecoder);
             if (skipStateAndStatusReceiptsRoot == suggestedRoot)
             {
                 return skipStateAndStatusReceiptsRoot;

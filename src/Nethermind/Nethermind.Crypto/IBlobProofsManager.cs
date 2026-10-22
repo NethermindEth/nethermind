@@ -1,0 +1,75 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Nethermind.Core;
+
+namespace Nethermind.Crypto;
+
+public interface IBlobProofsManager : IBlobProofsBuilder, IBlobProofsVerifier
+{
+    static IBlobProofsManager For
+        (ProofVersion version) => version switch
+        {
+            ProofVersion.V0 => BlobProofsManagerV0.Instance,
+            ProofVersion.V1 => BlobProofsManagerV1.Instance,
+            _ => throw new NotSupportedException(),
+        };
+}
+
+public interface IBlobProofsBuilder
+{
+    ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs);
+
+    byte[][] ComputeHashes(ShardBlobNetworkWrapper wrapper)
+    {
+        byte[][] hashes = new byte[wrapper.Commitments.Length][];
+        for (int i = 0; i < wrapper.Commitments.Length; i++)
+        {
+            hashes[i] = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
+            KzgPolynomialCommitments.TryComputeCommitmentHashV1(wrapper.Commitments[i], hashes[i]);
+        }
+        return hashes;
+    }
+
+    void ComputeProofsAndCommitments(ShardBlobNetworkWrapper preallocatedWrappers);
+
+}
+
+public interface IBlobProofsVerifier
+{
+    bool ValidateLengths(ShardBlobNetworkWrapper blobs);
+
+    /// <remarks>
+    /// Expected to be called only if <see cref="ValidateLengths(ShardBlobNetworkWrapper)"/> returns <c>true</c>.
+    /// </remarks>
+    public bool ValidateHashes(ShardBlobNetworkWrapper blobs, ReadOnlySpan<byte[]> blobVersionedHashes)
+    {
+        if (blobs.Commitments.Length != blobVersionedHashes.Length)
+        {
+            return false;
+        }
+
+        Span<byte> hash = stackalloc byte[Eip4844Constants.BytesPerBlobVersionedHash];
+
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            if (blobVersionedHashes[i].Length != Eip4844Constants.BytesPerBlobVersionedHash || blobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < blobs.Commitments.Length; i++)
+        {
+            if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(blobs.Commitments[i], hash) || !hash.SequenceEqual(blobVersionedHashes[i].AsSpan()))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool ValidateProofs(ShardBlobNetworkWrapper blobs);
+}

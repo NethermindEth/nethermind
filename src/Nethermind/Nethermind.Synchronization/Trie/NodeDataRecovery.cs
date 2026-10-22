@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +18,7 @@ using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -39,7 +39,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
         Hash256 currentHash = startingNodeHash;
         TreePath currentPath = startingPath;
-        TreePath queryPath = new TreePath(fullPath, 64);
+        TreePath queryPath = new(fullPath, 64);
 
         // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
         // So we change the query to match the missing node path.
@@ -49,53 +49,77 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         }
 
         ArrayPoolList<(TreePath, byte[])> recoveredNodes = new(1);
-        do
+        try
         {
-            // In case of deeper node that already exist.
-            byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
-            if (nodeRlp is null)
+            do
             {
-                nodeRlp = await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
-            }
+                // In case of deeper node that already exist.
+                byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
+                nodeRlp ??= await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
 
-            if (nodeRlp is null)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Failed to fetch complete path when recovering {fullPath}. Fetched nodes: {recoveredNodes.Count}.");
-                return null;
-            }
+                if (nodeRlp is null)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Failed to fetch complete path when recovering {fullPath}. Fetched nodes: {recoveredNodes.Count}.");
+                    recoveredNodes.Dispose();
+                    return null;
+                }
 
-            recoveredNodes.Add((currentPath, nodeRlp));
+                recoveredNodes.Add((currentPath, nodeRlp));
 
-            TrieNode? node = new TrieNode(NodeType.Unknown, nodeRlp);
-            node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
+                TrieNode? node = new(NodeType.Unknown, nodeRlp);
+                node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
 
-            if (node.IsBranch)
-            {
-                int childIndex = queryPath[currentPath.Length];
-                currentHash = node.GetChildHash(childIndex);
-                currentPath.AppendMut(childIndex);
-            }
-            else if (node.IsExtension)
-            {
-                currentHash = node.GetChildHash(1);
-                currentPath = currentPath.Append(node.Key);
-            }
-            else if (node.IsLeaf)
-            {
-                break;
-            }
+                if (node.IsBranch)
+                {
+                    int childIndex = queryPath[currentPath.Length];
+                    currentHash = node.GetChildHash(childIndex);
+                    currentPath.AppendMut(childIndex);
+                }
+                else if (node.IsExtension)
+                {
+                    currentHash = node.GetChildHash(1);
+                    currentPath = currentPath.Append(node.Key);
+                }
+                else if (node.IsLeaf)
+                {
+                    break;
+                }
 
-        } while (currentHash is not null);
+            } while (currentHash is not null);
 
-        return recoveredNodes;
+            return recoveredNodes;
+        }
+        catch (OperationCanceledException)
+        {
+            recoveredNodes.Dispose();
+            return null;
+        }
+        catch (Exception ex)
+        {
+            recoveredNodes.Dispose();
+            // Never fault the sibling recovery racing this one in PathNodeRecovery.
+            if (_logger.IsWarn) _logger.Warn($"Error recovering path {address ?? Hash256.Zero}:{fullPath} {ex}");
+            return null;
+        }
     }
 
     private async Task<byte[]?> FetchRlp(Hash256 rootHash, Hash256? address, TreePath path, Hash256 hash, CancellationToken cancellationToken)
     {
         using ArrayPoolList<Task<byte[]?>> tasks = Enumerable.Range(0, ConcurrentAttempt)
-            .Select(_ =>
+            .Select(_ => Attempt())
+            .ToPooledList(ConcurrentAttempt);
+
+        return await Wait.AnyWhere(
+            result => result is not null,
+            tasks);
+
+        // Completes with null rather than faulting. Wait.AnyWhere rethrows the first faulted task and
+        // drops the rest, and Allocate/Free throw outside the reach of the inner handler.
+        async Task<byte[]?> Attempt()
+        {
+            try
             {
-                return peerPool.AllocateAndRun(async (peer) =>
+                return await peerPool.AllocateAndRun(async (peer) =>
                 {
                     if (peer == null) return null;
                     try
@@ -115,12 +139,17 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
                     return null;
                 }, NodePeerStrategy, AllocationContexts.State, cancellationToken);
-            })
-            .ToPooledList(ConcurrentAttempt);
-
-        return await Wait.AnyWhere(
-            result => result is not null,
-            tasks);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Error recovering node {hash} {ex}");
+                return null;
+            }
+        }
     }
 
     private async Task<byte[]?> RecoverNodeFromPeer(ISyncPeer syncPeer, Hash256 rootHash, Hash256? address, TreePath treePath, Hash256 hash, CancellationToken cancellationToken)
@@ -128,22 +157,13 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         if (syncPeer.ProtocolVersion < EthVersions.Eth67)
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via eth");
-            IOwnedReadOnlyList<byte[]>? data = await syncPeer.GetNodeData([hash], cancellationToken);
+            IByteArrayList? data = await syncPeer.GetNodeData([hash], cancellationToken);
             if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
-                return data[0];
+                return data[0].ToArray();
             }
         }
-        else if (syncPeer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataPeer))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via nodedata");
-            IOwnedReadOnlyList<byte[]>? data = await nodeDataPeer.GetNodeData([hash], cancellationToken);
-            if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
-            {
-                return data[0];
-            }
-        }
-        else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer))
+        else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer) && snapSyncPeer.CanGetTrieNodes())
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via snap");
             PathGroup group;
@@ -167,16 +187,15 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 };
             }
 
-            using IOwnedReadOnlyList<byte[]>? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
+            using IByteArrayList? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
             {
                 RootHash = rootHash,
-                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
-                { group },
+                AccountAndStoragePaths = PathGroup.EncodeToRlpPathGroupList([group]),
             }, cancellationToken);
 
-            if (item is not null && item.Count > 0)
+            if (item is not null && item.Count > 0 && ValueKeccak.Compute(item[0]) == hash)
             {
-                return item[0];
+                return item[0].ToArray();
             }
         }
 

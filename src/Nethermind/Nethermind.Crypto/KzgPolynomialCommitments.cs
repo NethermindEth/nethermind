@@ -1,148 +1,133 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.IO;
-using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
+using CkzgLib;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Crypto;
 
-public static class KzgPolynomialCommitments
+public static partial class KzgPolynomialCommitments
 {
-    // https://eips.ethereum.org/EIPS/eip-4844#parameters
-    public static readonly UInt256 BlsModulus =
-        UInt256.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513",
-            System.Globalization.NumberStyles.Integer);
+    /// <summary>
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters"/>
+    /// </summary>
+    public static readonly UInt256 BlsModulus = new(18446744069414584321ul, 6034159408538082302ul, 3691218898639771653ul, 8353516859464449352ul);
 
     public const byte KzgBlobHashVersionV1 = 1;
-    public const byte BytesPerBlobVersionedHash = 32;
 
-    private static IntPtr _ckzgSetup = IntPtr.Zero;
-
-    private static Task? _initializeTask;
-
-    public static bool IsInitialized => _ckzgSetup != IntPtr.Zero;
-
-    public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null) => _initializeTask ??= Task.Run(() =>
+    /// <summary>
+    /// The loaded trusted setup handle.
+    /// </summary>
+    /// <remarks>
+    /// Blocks until an in-flight <see cref="InitializeAsync"/> completes, so a caller racing node startup
+    /// never observes an unloaded setup.
+    /// </remarks>
+    /// <exception cref="KzgSetupUnavailableException">
+    /// <see cref="InitializeAsync"/> was never called, or the load failed.
+    /// </exception>
+    internal static nint CkzgSetup
     {
-        if (_ckzgSetup != IntPtr.Zero) return;
+        get
+        {
+            nint setup = Volatile.Read(ref _ckzgSetup);
+            return setup != nint.Zero ? setup : AwaitSetup();
+        }
+    }
+
+    private static nint AwaitSetup()
+    {
+        Task initialization = Volatile.Read(ref _initializeTask)
+            ?? throw new KzgSetupUnavailableException($"KZG trusted setup is not loaded; call {nameof(InitializeAsync)} first");
+
+        try
+        {
+            initialization.GetAwaiter().GetResult();
+        }
+        catch (Exception e) when (e is not KzgSetupUnavailableException)
+        {
+            throw new KzgSetupUnavailableException("KZG trusted setup failed to load", e);
+        }
+
+        return Volatile.Read(ref _ckzgSetup);
+    }
+
+    private static nint _ckzgSetup = nint.Zero;
+    private static Task? _initializeTask;
+    private static readonly Lock _initializeLock = new();
+
+    public static bool IsInitialized => Volatile.Read(ref _ckzgSetup) != nint.Zero;
+
+    public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null)
+    {
+        if (_initializeTask is not null)
+            return _initializeTask;
+
+        lock (_initializeLock)
+        {
+            _initializeTask ??= Task.Run(() => LoadTrustedSetup(logger, setupFilePath));
+            return _initializeTask;
+        }
+    }
+
+    private static void LoadTrustedSetup(ILogger logger, string? setupFilePath)
+    {
+        if (_ckzgSetup != nint.Zero)
+            return;
 
         string trustedSetupTextFileLocation = setupFilePath ??
-            Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
-                         string.Empty, "kzg_trusted_setup.txt");
+            Path.Combine(AppContext.BaseDirectory, "kzg_trusted_setup.txt");
 
         if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
-        _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
 
-        if (_ckzgSetup == IntPtr.Zero)
+        try
         {
-            throw new InvalidOperationException("Unable to load trusted setup");
-        }
-    });
+            Volatile.Write(ref _ckzgSetup, Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8));
 
-    /// <summary>
-    ///
-    /// </summary>
-    /// <param name="commitment">Hash256 to calculate hash from</param>
+            if (_ckzgSetup == nint.Zero)
+                throw new InvalidOperationException("Failed to load trusted setup");
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            throw new KzgSetupUnavailableException(
+                $"Unable to load KZG trusted setup from '{trustedSetupTextFileLocation}'. The file may be missing, unreadable, or invalid.", e);
+        }
+    }
+
+    /// <param name="commitment">Hash256 to calculate hash from.</param>
     /// <param name="hashBuffer">Holds the output, can safely contain any data before the call.</param>
-    /// <returns>Result of the attempt</returns>
-    /// <exception cref="ArgumentException"></exception>
-    public static bool TryComputeCommitmentHashV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
+    /// <returns><c>true</c> if succeeds; otherwise, <c>false</c>.</returns>
+    public static partial bool TryComputeCommitmentHashV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer);
+
+    public static partial bool VerifyProof(
+        ReadOnlySpan<byte> commitment,
+        ReadOnlySpan<byte> z,
+        ReadOnlySpan<byte> y,
+        ReadOnlySpan<byte> proof
+    );
+
+    public static void ComputeCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)
     {
-        if (commitment.Length != Ckzg.Ckzg.BytesPerCommitment)
-        {
-            return false;
-        }
-
-        if (hashBuffer.Length != BytesPerBlobVersionedHash)
-        {
-            throw new ArgumentException($"{nameof(hashBuffer)} should be {BytesPerBlobVersionedHash} bytes", nameof(hashBuffer));
-        }
-
-        if (SHA256.TryHashData(commitment, hashBuffer, out _))
-        {
-            hashBuffer[0] = KzgBlobHashVersionV1;
-            return true;
-        }
-
-        return false;
-    }
-
-    public static bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y,
-        ReadOnlySpan<byte> proof)
-    {
-        try
-        {
-            return Ckzg.Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
-        }
-        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
-        {
-            return false;
-        }
-    }
-
-    public static bool AreProofsValid(byte[][] blobs, byte[][] commitments, byte[][] proofs)
-    {
-        if (blobs.Length is 1 && commitments.Length is 1 && proofs.Length is 1)
-        {
-            try
-            {
-                return Ckzg.Ckzg.VerifyBlobKzgProof(blobs[0], commitments[0], proofs[0], _ckzgSetup);
-            }
-            catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
-            {
-                return false;
-            }
-        }
-
-        int length = blobs.Length * Ckzg.Ckzg.BytesPerBlob;
-        byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
-
-        length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment;
-        byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
-
-        length = blobs.Length * Ckzg.Ckzg.BytesPerProof;
-        byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatProofs = new(flatProofsArray, 0, length);
-
-        for (int i = 0; i < blobs.Length; i++)
-        {
-            blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
-            commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
-            proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
-        }
-
-        try
-        {
-            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, blobs.Length,
-                _ckzgSetup);
-        }
-        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
-        {
-            return false;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(flatBlobsArray);
-            ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
-            ArrayPool<byte>.Shared.Return(flatProofsArray);
-        }
+        using ArrayPoolSpan<byte> cells = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell);
+        Ckzg.ComputeCellsAndKzgProofs(cells, cellProofs, blob, CkzgSetup);
     }
 
     /// <summary>
-    /// Method to generate correct data for tests only, not safe
+    /// Computes a single blob KZG proof for a blob and its commitment.
     /// </summary>
-    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
-    {
-        Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
-        Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
-        TryComputeCommitmentHashV1(commitment, hashV1);
-    }
+    /// <param name="blob">The input blob data. The span must be exactly <c>BYTES_PER_BLOB</c> bytes.</param>
+    /// <param name="commitment">The KZG commitment for <paramref name="blob"/>. The span must be exactly <c>BYTES_PER_COMMITMENT</c> bytes.</param>
+    /// <param name="proof">The output span where the <c>BYTES_PER_PROOF</c> proof is written.</param>
+    public static void ComputeBlobProof(ReadOnlySpan<byte> blob, ReadOnlySpan<byte> commitment, Span<byte> proof) =>
+        Ckzg.ComputeBlobKzgProof(proof, blob, commitment, CkzgSetup);
+
+    /// <param name="blob">The input blob data.</param>
+    /// <param name="cells">The output span of size <c>CELLS_PER_EXT_BLOB * BYTES_PER_CELL</c> (262144 bytes) where cells will be written.</param>
+    public static void ComputeCells(ReadOnlySpan<byte> blob, Span<byte> cells) => Ckzg.ComputeCells(cells, blob, CkzgSetup);
 }

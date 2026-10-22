@@ -8,6 +8,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -15,8 +16,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
@@ -24,10 +24,8 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
-using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 
@@ -44,33 +42,36 @@ namespace Nethermind.Network.Benchmarks
         public void SetUp()
         {
             Console.WriteLine("AAA");
-            Session session = new Session(8545, Substitute.For<IChannel>(), Substitute.For<IDisconnectsAnalyzer>(), LimboLogs.Instance);
+            Session session = new(8545, Substitute.For<IChannel>(), Substitute.For<IDisconnectsAnalyzer>(), NullLogManager.Instance);
             session.RemoteNodeId = TestItem.PublicKeyA;
             session.RemoteHost = "127.0.0.1";
             session.RemotePort = 30303;
-            _ser = new MessageSerializationService();
-            _ser.Register(new TransactionsMessageSerializer());
-            _ser.Register(new StatusMessageSerializer());
-            NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
-            var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
-            var tree = Build.A.BlockTree().TestObject;
-            var stateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
-            var specProvider = MainnetSpecProvider.Instance;
-            TxPool.TxPool txPool = new TxPool.TxPool(
+            _ser = new MessageSerializationService(
+                SerializerInfo.Create(new TransactionsMessageSerializer()),
+                SerializerInfo.Create(new StatusMessageSerializer())
+                );
+            NodeStatsManager stats = new(TimerFactory.Default, NullLogManager.Instance);
+            EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
+            BlockTree tree = Build.A.BlockTree().TestObject;
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest(logManager: NullLogManager.Instance);
+            MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
+            TxPool.TxPool txPool = new(
                 ecdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider, new CodeInfoRepository()),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(TestBlockchainIds.ChainId),
-                LimboLogs.Instance,
-                new TransactionComparerProvider(specProvider, tree).GetDefaultComparer());
+                new SpecChangeTxValidator(TestBlockchainIds.ChainId),
+                NullLogManager.Instance,
+                new TransactionComparerProvider(specProvider, tree).GetDefaultComparer(),
+                TestFrameTxWidthLedger.For(new TxPoolConfig()));
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);
-            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, RunImmediatelyScheduler.Instance, txPool, Consensus.ShouldGossip.Instance, LimboLogs.Instance);
+            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, RunImmediatelyScheduler.Instance, txPool, Consensus.ShouldGossip.Instance, NullLogManager.Instance);
             _handler.DisableTxFiltering();
 
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
@@ -102,10 +103,7 @@ namespace Nethermind.Network.Benchmarks
         }
 
         [Benchmark]
-        public void JustSerialize()
-        {
-            _ser.ZeroSerialize(_txMsg);
-        }
+        public void JustSerialize() => _ser.ZeroSerialize(_txMsg);
 
         [Benchmark]
         public void SerializeAndCreatePacket()

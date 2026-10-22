@@ -1,0 +1,263 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.State;
+using Nethermind.Int256;
+
+namespace Nethermind.Evm.State;
+
+/// <summary>
+/// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
+/// <see cref="BeginScope"/> must be called before any other operation, or it will throw. The returned <see cref="IDisposable"/>
+/// must be disposed to close the <see cref="IWorldState"/>. Multiple block can be executed or saved within the same scope.
+/// </summary>
+public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
+{
+    // For scope to create genesis.
+    const BlockHeader? PreGenesis = null;
+
+    /// <summary>Attempts to open the state committed at <paramref name="baseBlock"/> (pre-genesis when <c>null</c>).</summary>
+    /// <param name="scopeCloser">The disposable scope closer when acquisition succeeds.</param>
+    /// <returns><c>true</c> when the state was acquired; <c>false</c> when it is unavailable.</returns>
+    bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser);
+
+    /// <summary>
+    /// Attempts to open the state required to execute <paramref name="targetBlock"/>.
+    /// </summary>
+    /// <param name="targetBlock">The target block; its parent state is opened.</param>
+    /// <param name="scopeCloser">The disposable scope closer when acquisition succeeds.</param>
+    /// <returns><c>true</c> when the parent state was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser);
+
+    Task HintBal(ReadOnlyBlockAccessList bal);
+
+    /// <summary>
+    /// Writes the final balance, nonce, code and storage values of every account the Block Access List changed.
+    /// </summary>
+    /// <remarks>
+    /// The values go straight to the scope, and the world state then drops what it cached, so any change not yet
+    /// committed is lost: commit before calling this. Its record of the block's other changes is kept for the cache
+    /// write-back; only the accounts the list changed leave it. The state root is not updated; call
+    /// <see cref="RecalculateStateRoot"/> afterwards.
+    /// </remarks>
+    /// <param name="bal">The Block Access List whose last change per field is applied.</param>
+    /// <param name="cancellationToken">Once cancelled, the apply returns early, leaving the world state partially written and fit only to be discarded.</param>
+    void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default);
+    bool IsInScope { get; }
+    IWorldStateScopeProvider ScopeProvider { get; }
+    new ref readonly UInt256 GetBalance(Address address);
+    new ref readonly ValueHash256 GetCodeHash(Address address);
+    bool HasStateForBlock(BlockHeader? baseBlock);
+
+    /// <summary>Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.</summary>
+    /// <remarks>This check is advisory and does not reserve or pin state.</remarks>
+    bool HasStateForTargetBlock(BlockHeader targetBlock);
+
+    /// <summary>
+    /// Return the original persistent storage value from the storage cell.
+    /// </summary>
+    /// <param name="storageCell">Storage location.</param>
+    /// <param name="value">Original value at the cell.</param>
+    void GetOriginal(in StorageCell storageCell, out UInt256 value);
+
+    /// <summary>
+    /// Returns the balance <paramref name="address"/> had at the start of the current transaction.
+    /// </summary>
+    /// <remarks>The transaction start is found as for <see cref="GetOriginal"/>.</remarks>
+    /// <param name="address">The account to read.</param>
+    UInt256 GetOriginalBalance(Address address);
+
+    /// <summary>
+    /// Set the provided value to persistent storage at the specified storage cell
+    /// </summary>
+    /// <param name="storageCell">Storage location</param>
+    /// <param name="newValue">Value to store</param>
+    void Set(in StorageCell storageCell, in UInt256 newValue);
+
+    /// <summary>Sets a storage value using the caller's current value for change recording.</summary>
+    /// <remarks>The cell must not have changed since the caller read <paramref name="currentValue"/>.</remarks>
+    void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => Set(in storageCell, in newValue);
+
+    /// <summary>
+    /// Get the transient storage value at the specified storage cell
+    /// </summary>
+    /// <param name="storageCell">Storage location</param>
+    /// <param name="value">Value at cell</param>
+    void GetTransientState(in StorageCell storageCell, out UInt256 value);
+
+    /// <summary>
+    /// Set the provided value to transient storage at the specified storage cell
+    /// </summary>
+    /// <param name="storageCell">Storage location</param>
+    /// <param name="newValue">Value to store</param>
+    void SetTransientState(in StorageCell storageCell, in UInt256 newValue);
+
+    /// <summary>
+    /// Reset all storage
+    /// </summary>
+    void Reset(bool resetBlockChanges = true);
+
+    /// <summary>
+    /// Creates a restartable snapshot.
+    /// </summary>
+    /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>
+    /// <returns>Snapshot index</returns>
+    /// <remarks>
+    /// If <see cref="newTransactionStart"/> is true and there are already changes then next call to <see cref="GetOriginal"/>
+    /// or <see cref="GetOriginalBalance"/> will use changes before this snapshot as original values for this new transaction.
+    /// </remarks>
+    Snapshot TakeSnapshot(bool newTransactionStart = false);
+
+    Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
+
+    void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default);
+
+    void WarmUp(Address address);
+
+    /// <inheritdoc cref="IWorldStateScopeProvider.IScope.Prefetch"/>
+    void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
+
+    /// <inheritdoc cref="IWorldStateScopeProvider.IScope.SupportsPrefetch"/>
+    bool SupportsPrefetch => false;
+
+    /// <summary>Applies prefix account changes to block-start caches. False leaves state unchanged and requires ordinary replay.</summary>
+    bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
+
+    /// <summary>
+    /// Clear all storage at specified address
+    /// </summary>
+    /// <param name="address">Contract address</param>
+    void ClearStorage(Address address);
+
+    /// <summary>Reads the value a slot held before its contract's storage was cleared in the current transaction (EIP-7906).</summary>
+    /// <returns><see langword="false"/> when the contract's storage was not cleared.</returns>
+    bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        value = default;
+        return false;
+    }
+
+    /// <summary>Only valid where no revert can follow AND the round is committed before any further
+    /// writes (validation mode); build-up/revertible clearing must use <see cref="ClearStorage"/>.</summary>
+    void MarkStorageDestroyed(Address address) => ClearStorage(address);
+
+    void RecalculateStateRoot();
+
+    void DeleteAccount(Address address);
+
+    void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default);
+    void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default);
+    // used by Arbitrum
+    void CreateEmptyAccountIfDeleted(Address address);
+
+    /// <summary>
+    /// Inserts the given smart contract code into the system at the specified address,
+    /// associating it with a unique code hash.
+    /// </summary>
+    /// <param name="address">The target address where the code is to be inserted.</param>
+    /// <param name="codeHash">The hash representing the code content, used for deduplication and reference.</param>
+    /// <param name="code">The bytecode to be inserted.</param>
+    /// <param name="spec">The current release specification which may affect validation or processing rules.</param>
+    /// <param name="isGenesis">Indicates whether the insertion is part of the genesis block setup.</param>
+    /// <returns>True if the code was inserted to the database at that hash; otherwise false if it was already there.
+    /// Note: This is different from whether the account has its hash updated</returns>
+    bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+
+    /// <summary>
+    /// Sets the code of an EIP-8360 <c>TCREATE</c> account, which is readable by its hash until the transaction ends
+    /// and is never written to the code database.
+    /// </summary>
+    /// <remarks>
+    /// The code is dropped by <see cref="DiscardTransientCode"/> when the transaction ends, by which time it has
+    /// finalized the accounts, and by <see cref="Commit(IReleaseSpec, IWorldStateTracer, bool, bool)"/> and <see cref="Reset"/>.
+    /// A persistent deployment of the same code still stages it for the code database through <see cref="InsertCode"/>.
+    /// </remarks>
+    void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec);
+
+    /// <summary>Drops the code installed by <see cref="InsertTransientCode"/>, at the end of a transaction.</summary>
+    /// <remarks>Not tied to <see cref="ResetTransient"/>, which also runs between EIP-8141 frames of one transaction.</remarks>
+    void DiscardTransientCode();
+
+    /// <summary>Sets the account's code to code adopted from another account by EIP-8298 <c>SETCODEFROM</c>.</summary>
+    /// <remarks>
+    /// Same state effect as <see cref="InsertCode"/>. Kept apart so a block access list records the change by its
+    /// code hash rather than its bytecode, as EIP-8298 requires. A forwarding implementation must override it, as
+    /// deriving from <c>WorldStateDecorator</c> does; the default sends it to its own <see cref="InsertCode"/>, so
+    /// a recording state it wraps records bytecode.
+    /// </remarks>
+    /// <returns>As <see cref="InsertCode"/>.</returns>
+    bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => InsertCode(address, in codeHash, code, spec);
+
+    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
+
+    /// <summary>Credits the account balance, creating the account if it does not physically exist.</summary>
+    /// <returns>True if this operation created the account; false if it already existed, even when empty.</returns>
+    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
+
+    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
+
+    void IncrementNonce(Address address, ulong delta, out ulong oldNonce);
+
+    void DecrementNonce(Address address, ulong delta);
+
+    void DecrementNonce(Address address) => DecrementNonce(address, 1);
+
+    void SetNonce(Address address, in ulong nonce);
+
+    /// <summary>Same state effect as <see cref="SubtractFromBalance"/> followed by <see cref="SetNonce"/>.</summary>
+    /// <remarks>
+    /// Lets an implementation write the account once. A forwarding implementation that records either call must keep
+    /// this default, as deriving from <c>WorldStateDecorator</c> does, or record both changes itself.
+    /// </remarks>
+    void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+    {
+        SubtractFromBalance(address, in balanceChange, spec, out _);
+        SetNonce(address, nonce);
+    }
+
+    /* snapshots */
+    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
+
+    /// <summary>
+    /// Persist the underlying changes to the storage at the specified block number. This also recalculate state root.
+    /// </summary>
+    /// <param name="blockNumber"></param>
+    void CommitTree(ulong blockNumber);
+
+    void CommitTree(int blockNumber) => CommitTree((ulong)blockNumber);
+
+    ArrayPoolList<AddressAsKey>? GetAccountChanges();
+
+    void ResetTransient();
+
+    public void AddAccountRead(Address address) { }
+
+    public void RecordAccountAccess(Address address) { }
+
+    public void RecordBytecodeAccess(Address address) { }
+
+    /// <summary>The balance just read for <paramref name="address"/> was only compared with <paramref name="minimum"/>.</summary>
+    public void NoteMinimumBalance(Address address, in UInt256 minimum) { }
+
+    public IDisposable? BeginSystemAccountReadSuppression() => null;
+
+    // EIP-684: a creation collision occurs when the destination has code or a non-zero nonce.
+    bool IsNonZeroAccount(Address address, out bool accountExists)
+    {
+        accountExists = AccountExists(address);
+        return accountExists
+            && (IsContract(address) || GetNonce(address) != 0);
+    }
+}

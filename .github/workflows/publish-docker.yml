@@ -1,8 +1,11 @@
 name: Publish Docker image
 
 on:
+  schedule:
+    - cron: '0 0 * * *'
+
   push:
-    branches: [master, release/*, paprika]
+    branches: [master, release/*, performance]
     paths: [src/Nethermind/**]
 
   workflow_dispatch:
@@ -25,37 +28,36 @@ on:
         type: choice
         options: [release, debug]
 
+permissions:
+  contents: read
+
 jobs:
   publish-docker:
     name: Publish to Docker Hub
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - name: Build and push image to Docker Hub (staging)
+      - name: Check whether the nightly is already built from this commit
+        id: nightly
+        if: github.event_name == 'schedule'
         run: |
-          branch=$(echo "${{ github.ref }}" | sed -e "s/refs\/heads\///g")
-          tag=$(echo "${{ github.event.inputs.tag || '$branch' }}" | sed 's/\//-/g') # replace '/' with '-'
-          image_name=nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}
-          build_timestamp=$(date '+%s')
-          
-          echo "Building image with tag $tag"
+          revision=$(docker buildx imagetools inspect nethermindeth/nethermind:nightly \
+            --format '{{ index (index .Image "linux/amd64").Config.Labels "org.opencontainers.image.revision" }}' || true)
+          if [ "$revision" = "$GITHUB_SHA" ]; then echo "unchanged=true" >> "$GITHUB_OUTPUT"; fi
 
-          docker buildx build --platform=linux/amd64,linux/arm64 \
-            -f ${{ github.event.inputs.dockerfile || 'Dockerfile' }} \
-            -t "$image_name:$tag" \
-            ${{ endsWith(github.ref, '/master') && github.event_name == 'push' && '-t $image_name:master-${GITHUB_SHA:0:7}' || '' }} \
-            --build-arg BUILD_CONFIG=${{ github.event.inputs.build-config || 'release' }} \
-            --build-arg BUILD_TIMESTAMP=$build_timestamp \
-            --build-arg CI=$CI \
-            --build-arg COMMIT_HASH=$GITHUB_SHA \
-            . --push
+      - name: Check out repository
+        if: steps.nightly.outputs.unchanged != 'true'
+        uses: actions/checkout@v6
+
+      - name: Publish Docker image
+        if: steps.nightly.outputs.unchanged != 'true'
+        uses: ./.github/actions/publish-docker
+        with:
+          image-name: ${{ github.event.inputs.image-name || 'nethermind' }}
+          tag: ${{ github.event.inputs.tag || (github.event_name == 'schedule' && 'nightly') || '' }}
+          dockerfile: ${{ github.event.inputs.dockerfile || 'Dockerfile' }}
+          build-config: ${{ github.event.inputs.build-config || 'release' }}
+          docker-hub-organization: ${{ vars.DOCKERHUB_ORGANIZATION }}
+          docker-hub-oidc-connection-id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}

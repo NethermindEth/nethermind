@@ -15,17 +15,15 @@ public class EraStoreFactory(
     IEraConfig eraConfig
 ) : IEraStoreFactory
 {
-    public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
-    {
-        return new EraStore(
+    public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators) => new EraStore(
             specProvider,
             blockValidator,
             fileSystem,
             eraConfig.NetworkName!,
             eraConfig.MaxEra1Size,
             trustedAccumulators,
-            src);
-    }
+            src,
+            eraConfig.Concurrency);
 }
 
 public interface IEraStoreFactory

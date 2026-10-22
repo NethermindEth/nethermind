@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip()
         {
-            var dictionary = new Dictionary<Address, string>
+            Dictionary<Address, string> dictionary = new()
             {
                 {TestItem.AddressA, "A"},
                 {TestItem.AddressB, "B"},
@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip_as_key()
         {
-            var dictionary = new Dictionary<AddressAsKey, string>
+            Dictionary<AddressAsKey, string> dictionary = new()
             {
                 {TestItem.AddressA, "A"},
                 {TestItem.AddressB, "B"},
@@ -37,5 +37,16 @@ namespace Nethermind.JsonRpc.Test.Data
 
             TestRoundtrip(dictionary);
         }
+
+        // One entry keeps the expectation free of dictionary ordering.
+        [Test]
+        public void Serializes_address_key_as_prefixed_hex() =>
+            TestToJson(new Dictionary<Address, string> { { TestItem.AddressA, "A" } },
+                "{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":\"A\"}");
+
+        [Test]
+        public void Serializes_address_as_key_type_as_prefixed_hex() =>
+            TestToJson(new Dictionary<AddressAsKey, string> { { TestItem.AddressA, "A" } },
+                "{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":\"A\"}");
     }
 }

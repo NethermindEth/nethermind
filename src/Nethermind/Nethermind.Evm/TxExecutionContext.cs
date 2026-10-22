@@ -2,21 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
     public readonly struct TxExecutionContext(
-        in BlockExecutionContext blockExecutionContext,
         Address origin,
+        ICodeInfoRepository codeInfoRepository,
+        byte[]?[]? blobVersionedHashes,
         in UInt256 gasPrice,
-        byte[][] blobVersionedHashes,
-        ICodeInfoRepository codeInfoRepository)
+        FrameTxContext? frameTxContext = null)
     {
-        public readonly BlockExecutionContext BlockExecutionContext = blockExecutionContext;
-        public Address Origin { get; } = origin;
-        public UInt256 GasPrice { get; } = gasPrice;
-        public byte[][]? BlobVersionedHashes { get; } = blobVersionedHashes;
-        public ICodeInfoRepository CodeInfoRepository { get; } = codeInfoRepository;
+        public readonly ValueHash256 Origin = origin.ToHash();
+        public readonly ICodeInfoRepository CodeInfoRepository = codeInfoRepository;
+        public readonly byte[]?[]? BlobVersionedHashes = blobVersionedHashes;
+        public readonly UInt256 GasPrice = gasPrice;
+
+        /// <summary>Non-null only while processing an EIP-8141 frame transaction.</summary>
+        public readonly FrameTxContext? FrameTxContext = frameTxContext;
+
+        /// <summary>EIP-8279 block access list byte meter; <see langword="null"/> when the transaction is not metered.</summary>
+        internal BalDataMeter? BalDataMeter { get; init; }
+
+        internal bool SuppressLogs { get; init; }
+        internal bool MaterializeLogMemory { get; init; }
     }
 }

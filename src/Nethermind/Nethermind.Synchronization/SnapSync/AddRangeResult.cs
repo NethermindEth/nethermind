@@ -8,6 +8,11 @@ namespace Nethermind.Synchronization.SnapSync
         OK,
         MissingRootHashInProofs,
         DifferentRootHash,
-        ExpiredRootHash
+        ExpiredRootHash,
+        InvalidProofNode,
+        InvalidOrder,
+        OutOfBounds,
+        EmptyRange,
+        InvalidProof
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
@@ -13,11 +14,14 @@ public class NoBlockImprovementContextFactory : IBlockImprovementContextFactory
     public static NoBlockImprovementContextFactory Instance { get; } = new();
 
     public IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock,
+        Block? currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime)
+        DateTimeOffset startDateTime,
+        UInt256 currentBlockFees,
+        SharedCancellationTokenSource cts)
     {
+        cts.CancelAndDispose();
         return new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime);
     }
 }

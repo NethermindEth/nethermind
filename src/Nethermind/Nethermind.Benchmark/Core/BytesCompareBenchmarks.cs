@@ -20,7 +20,7 @@ namespace Nethermind.Benchmarks.Core
             (Keccak.EmptyTreeHash.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
             (Keccak.OfAnEmptyString.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
             (Keccak.OfAnEmptyString.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
-            (TestItem.AddressA.Bytes, TestItem.AddressB.Bytes),
+            (TestItem.AddressA.Bytes.ToArray(), TestItem.AddressB.Bytes.ToArray()),
         };
 
         [Params(0, 1, 2, 3, 4, 5)]
@@ -34,15 +34,9 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark]
-        public bool Improved()
-        {
-            return Bytes.AreEqual(_a, _b);
-        }
+        public bool Improved() => Bytes.AreEqual(_a, _b);
 
         [Benchmark]
-        public bool Current()
-        {
-            return Bytes.AreEqual(_a, _b);
-        }
+        public bool Current() => Bytes.AreEqual(_a, _b);
     }
 }

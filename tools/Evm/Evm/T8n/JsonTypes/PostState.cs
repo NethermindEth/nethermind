@@ -16,7 +16,7 @@ public class PostState
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? LogsHash { get; set; }
     public Bloom? LogsBloom { get; set; }
-    public TxReceipt[]? Receipts { get; set; }
+    public T8nReceipt[]? Receipts { get; set; }
     public RejectedTx[]? Rejected { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? CurrentDifficulty { get; set; }
@@ -25,5 +25,6 @@ public class PostState
     public UInt256? CurrentExcessBlobGas { get; set; }
     public UInt256? BlobGasUsed { get; set; }
     public Hash256? RequestsHash { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[][]? Requests { get; set; }
 }

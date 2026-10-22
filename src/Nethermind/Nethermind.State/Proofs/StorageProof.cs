@@ -12,8 +12,10 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public class StorageProof
 {
+    /// <summary>The requested storage key, big-endian.</summary>
+    [JsonConverter(typeof(ProofStorageKeyConverter))]
     public byte[]? Key { get; set; }
-    public byte[][]? Proof { get; set; }
+    public byte[][] Proof { get; set; } = [];
 
     [JsonConverter(typeof(ProofStorageValueConverter))]
     public ReadOnlyMemory<byte>? Value { get; set; }

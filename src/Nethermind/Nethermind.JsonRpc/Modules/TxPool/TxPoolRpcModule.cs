@@ -2,41 +2,41 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
-namespace Nethermind.JsonRpc.Modules.TxPool
+namespace Nethermind.JsonRpc.Modules.TxPool;
+
+public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider)
+    : ITxPoolRpcModule
 {
-    public class TxPoolRpcModule : ITxPoolRpcModule
+    public ResultWrapper<TxPoolStatus> txpool_status()
     {
-        private readonly ITxPoolInfoProvider _txPoolInfoProvider;
-        private readonly ISpecProvider _specProvider;
+        TxPoolCounts counts = txPoolInfoProvider.GetCounts();
+        TxPoolStatus poolStatus = new(counts);
 
-        public TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider)
-        {
-            _txPoolInfoProvider = txPoolInfoProvider ?? throw new ArgumentNullException(nameof(txPoolInfoProvider));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        }
+        return ResultWrapper<TxPoolStatus>.Success(poolStatus);
+    }
 
-        public ResultWrapper<TxPoolStatus> txpool_status()
-        {
-            var poolInfo = _txPoolInfoProvider.GetInfo();
-            var poolStatus = new TxPoolStatus(poolInfo);
+    public ResultWrapper<TxPoolContent> txpool_content()
+    {
+        TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
+        ulong chainId = specProvider.ChainId;
+        return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo, chainId));
+    }
 
-            return ResultWrapper<TxPoolStatus>.Success(poolStatus);
-        }
+    public ResultWrapper<TxPoolContentFrom> txpool_contentFrom(Address address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        TxPoolSenderInfo senderInfo = txPoolInfoProvider.GetSenderInfo(address);
+        ulong chainId = specProvider.ChainId;
+        return ResultWrapper<TxPoolContentFrom>.Success(new TxPoolContentFrom(senderInfo, chainId));
+    }
 
-        public ResultWrapper<TxPoolContent> txpool_content()
-        {
-            var poolInfo = _txPoolInfoProvider.GetInfo();
-            var chainId = _specProvider.ChainId;
-            return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo, chainId));
-        }
-
-        public ResultWrapper<TxPoolInspection> txpool_inspect()
-        {
-            var poolInfo = _txPoolInfoProvider.GetInfo();
-            return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
-        }
+    public ResultWrapper<TxPoolInspection> txpool_inspect()
+    {
+        TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
+        return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
     }
 }

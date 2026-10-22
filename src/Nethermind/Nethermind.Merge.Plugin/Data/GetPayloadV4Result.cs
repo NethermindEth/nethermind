@@ -1,15 +1,22 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, byte[][] executionRequests) : GetPayloadV3Result<ExecutionPayloadV3>(block, blockFees, blobsBundle)
+public class GetPayloadV4Result<TVersionedExecutionPayload>(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder)
+    : GetPayloadV3Result<TVersionedExecutionPayload>(block, blockFees, blobsBundle, shouldOverrideBuilder)
+    where TVersionedExecutionPayload : ExecutionPayloadV3, IExecutionPayloadParams, IExecutionPayloadFactory<TVersionedExecutionPayload>
 {
+    [JsonConverter(typeof(ExecutionRequestsByteArrayArrayConverter))]
     public byte[][]? ExecutionRequests { get; } = executionRequests;
 
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";
 }
+
+public class GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder) : GetPayloadV4Result<ExecutionPayloadV3>(block, blockFees, blobsBundle, executionRequests, shouldOverrideBuilder);

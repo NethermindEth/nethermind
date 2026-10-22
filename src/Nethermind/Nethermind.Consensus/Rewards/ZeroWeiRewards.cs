@@ -14,9 +14,6 @@ namespace Nethermind.Consensus.Rewards
 
         public static ZeroWeiRewards Instance { get; } = new();
 
-        public BlockReward[] CalculateRewards(Block block)
-        {
-            return new[] { new BlockReward(block.Beneficiary, 0) };
-        }
+        public BlockReward[] CalculateRewards(Block block) => new[] { new BlockReward(block.Beneficiary, 0) };
     }
 }

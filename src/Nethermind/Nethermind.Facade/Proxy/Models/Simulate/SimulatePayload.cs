@@ -23,6 +23,12 @@ public class SimulatePayload<T>
     /// </summary>
     public bool Validation { get; set; } = false;
 
+    public bool ReturnFullTransactions
+    {
+        set => ReturnFullTransactionObjects = value;
+        get => ReturnFullTransactionObjects;
+    }
+
     /// <summary>
     /// When true, the simulate returns Full Tx Objects
     /// </summary>

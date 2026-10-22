@@ -1,9 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization
 {
@@ -15,11 +19,15 @@ namespace Nethermind.Synchronization
 
         [GaugeMetric]
         [Description("Bodies downloaded in fast blocks stage")]
-        public static long FastBodies;
+        public static ulong FastBodies;
 
         [GaugeMetric]
         [Description("Receipts downloaded in fast blocks stage")]
-        public static long FastReceipts;
+        public static ulong FastReceipts;
+
+        [GaugeMetric]
+        [Description("Access lists downloaded in fast blocks stage")]
+        public static ulong FastBlockAccessLists;
 
         [GaugeMetric]
         [Description("State synced in bytes")]
@@ -57,10 +65,30 @@ namespace Nethermind.Synchronization
         [Description("Synced bytecodes via SNAP Sync")]
         public static long SnapSyncedCodes;
 
+        [CounterMetric]
+        [Description("Storage ranges handed to an account refresh after a streak of empty responses during SNAP Sync")]
+        public static long SnapStorageRangesRefreshedAfterEmptyResponses;
+
+        [CounterMetric]
+        [Description("State sync pivot updates requested by a streak of unusable range responses and not rate-limited. The pivot can still decline (unchanged header hash, Sync.StaticSnapPivot, or a chain whose pivot ignores forced moves), so this counts requests that passed the rate limit rather than moves")]
+        public static long ForcedStatePivotUpdates;
+
+        [CounterMetric]
+        [Description("Forced state sync pivot updates skipped because the head had not moved far enough past the pivot for a new target to be worth re-issuing the outstanding ranges against")]
+        public static long ForcedStatePivotUpdatesSuppressed;
+
+        [CounterMetric]
+        [Description("SNAP Sync requests that produced no response at all. Distinguishes an unresponsive or non-serving peer set from one answering with unusable data, which SnapRangeResult covers.")]
+        public static long SnapRequestTimeouts;
+
+        [GaugeMetric]
+        [Description("Consecutive SNAP Sync requests that yielded no usable range, reset by the first one that does. A value that keeps climbing means snap sync is stalled; sustained non-zero is the alertable condition.")]
+        public static long SnapConsecutiveUnproductiveResponses;
+
         [GaugeMetric]
         [Description("Number of sync peers.")]
         [KeyIsLabel("client_type")]
-        public static NonBlocking.ConcurrentDictionary<NodeClientType, long> SyncPeers { get; set; } = new();
+        public static ConcurrentDictionary<NodeClientType, long> SyncPeers { get; set; } = new();
 
         [GaugeMetric]
         [Description("Number of priority peers.")]
@@ -71,7 +99,37 @@ namespace Nethermind.Synchronization
         public static long StateBranchProgress;
 
         [GaugeMetric]
-        [Description("Sync time in seconds")]
-        public static long SyncTime;
+        [Description("Total wall-clock time the node has spent syncing, in seconds. Retained after sync completes; resumes accumulating if the node falls behind and re-syncs.")]
+        public static long SyncTimeSeconds;
+
+        [GaugeMetric]
+        [Description("Cumulative wall-clock seconds spent with each sync mode active. Modes can overlap, so the sum across modes may exceed the total sync time; retained after sync completes.")]
+        [KeyIsLabel("sync_mode")]
+        public static ConcurrentDictionary<SyncMode, long> SyncTimeInModeSeconds { get; } = new();
+
+        [DetailedMetric]
+        [Description("Snap range result")]
+        [KeyIsLabel("is_storage", "result")]
+        public static ConcurrentDictionary<SnapRangeResult, long> SnapRangeResult { get; set; } = new();
+
+        [ExponentialPowerHistogramMetric(LabelNames = ["sync_type"], Start = 10, Factor = 10, Count = 5)]
+        [Description("Sync dispatcher time in prepare request. High value indicate slow processing in preparing request.")]
+        [DetailedMetric]
+        public static IMetricObserver SyncDispatcherPrepareRequestTimeMicros = NoopMetricObserver.Instance;
+
+        [ExponentialPowerHistogramMetric(LabelNames = ["sync_type"], Start = 10, Factor = 10, Count = 5)]
+        [Description("Sync dispatcher time in dispatch. High value indicates a slow peer or internet.")]
+        [DetailedMetric]
+        public static IMetricObserver SyncDispatcherDispatchTimeMicros = NoopMetricObserver.Instance;
+
+        [ExponentialPowerHistogramMetric(LabelNames = ["sync_type"], Start = 10, Factor = 10, Count = 5)]
+        [Description("Sync dispatcher time in handle. High value indicate slow processing.")]
+        [DetailedMetric]
+        public static IMetricObserver SyncDispatcherHandleTimeMicros = NoopMetricObserver.Instance;
+    }
+
+    public struct SnapRangeResult(bool isStorage, AddRangeResult result) : IMetricLabels
+    {
+        public string[] Labels => [isStorage ? "true" : "false", result.ToString()];
     }
 }

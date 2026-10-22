@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Logging;
 
 namespace Nethermind.Optimism.ProtocolVersion;
@@ -32,16 +31,10 @@ public sealed class LoggingOptimismSignalSuperchainV1Handler(
     ILogManager logManager
 ) : IOptimismSignalSuperchainV1Handler
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<LoggingOptimismSignalSuperchainV1Handler>();
     public OptimismProtocolVersion CurrentVersion { get; init; } = currentVersion;
 
-    public void OnBehindRecommended(OptimismProtocolVersion recommended)
-    {
-        _logger.Warn($"Current version {CurrentVersion} is behind recommended version {recommended}");
-    }
+    public void OnBehindRecommended(OptimismProtocolVersion recommended) => _logger.Warn($"Current version {CurrentVersion} is behind recommended version {recommended}");
 
-    public void OnBehindRequired(OptimismProtocolVersion required)
-    {
-        _logger.Error($"Current version {CurrentVersion} is behind required version {required}");
-    }
+    public void OnBehindRequired(OptimismProtocolVersion required) => _logger.Error($"Current version {CurrentVersion} is behind required version {required}");
 }

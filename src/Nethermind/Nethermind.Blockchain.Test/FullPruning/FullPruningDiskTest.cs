@@ -3,24 +3,24 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Int256;
+using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -30,6 +30,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning;
 
+[Parallelizable(ParallelScope.All)]
 public class FullPruningDiskTest
 {
     public class PruningTestBlockchain : TestBlockchain
@@ -44,23 +45,21 @@ public class FullPruningDiskTest
         public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
         public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
+        // Full pruning operates on the patricia trie state DB (FullPruningDb); it has no flat equivalent.
         public PruningTestBlockchain()
         {
             TempDirectory = TempPath.GetTempDirectory();
+            UseFlatDb = false;
         }
 
-        protected override async Task<TestBlockchain> Build(
-            ISpecProvider? specProvider = null,
-            UInt256? initialValues = null,
-            bool addBlockOnStart = true
-        )
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {
-            TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
+            TestBlockchain chain = await base.Build(containerBuilder);
             PruningDb = (FullPruningDb)DbProvider.StateDb;
             DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
             _chainEstimations.StateSize.Returns((long?)null);
 
-            NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
+            NodeStorageFactory nodeStorageFactory = new(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
             MainNodeStorage = nodeStorageFactory.WrapKeyValueStore(PruningDb);
 
             FullPruner = new FullTestPruner(
@@ -70,23 +69,31 @@ public class FullPruningDiskTest
                 PruningTrigger,
                 PruningConfig,
                 BlockTree,
+                Container.Resolve<IStateBoundaryWriter>(),
+                Container.Resolve<IStateBoundary>(),
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
-                chain.TrieStore,
+                Container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore,
                 _chainEstimations,
                 LogManager);
             return chain;
         }
 
-        protected override async Task<IDbProvider> CreateDbProvider()
-        {
-            IDbProvider dbProvider = new DbProvider();
-            RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-            StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
-            await standardDbInitializer.InitStandardDbsAsync(true);
-            return dbProvider;
-        }
+        protected override ContainerBuilder
+            ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            // Reenable rocksdb
+            base.ConfigureContainer(builder, configProvider)
+                .AddSingleton<IDbFactory, RocksDbFactory>()
+                .Intercept<IInitConfig>((initConfig) =>
+                {
+                    initConfig.BaseDbPath = TempDirectory.Path;
+                })
+                .Intercept<IPruningConfig>((pruningConfig) =>
+                {
+                    // Make test faster otherwise it may potentially buffer 128 block.
+                    pruningConfig.MaxBufferedCommitCount = 1;
+                });
 
         public override void Dispose()
         {
@@ -96,33 +103,36 @@ public class FullPruningDiskTest
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        public static async Task<PruningTestBlockchain> Create(IPruningConfig? pruningConfig = null)
+        public static async Task<PruningTestBlockchain> Create(IPruningConfig? pruningConfig = null, long testTimeoutMs = 10000)
         {
-            PruningTestBlockchain chain = new() { PruningConfig = pruningConfig ?? new PruningConfig() };
+            PruningTestBlockchain chain = new()
+            {
+                PruningConfig = pruningConfig ?? new PruningConfig(),
+                TestTimeout = testTimeoutMs,
+            };
             await chain.Build();
             return chain;
         }
 
-        public class FullTestPruner : FullPruner
+        public class FullTestPruner(
+            IFullPruningDb pruningDb,
+            INodeStorageFactory nodeStorageFactory,
+            INodeStorage mainNodeStorage,
+            IPruningTrigger pruningTrigger,
+            IPruningConfig pruningConfig,
+            IBlockTree blockTree,
+            IStateBoundaryWriter stateBoundary,
+            IStateBoundary stateBoundaryReader,
+            IStateReader stateReader,
+            IProcessExitSource processExitSource,
+            IDriveInfo driveInfo,
+            IPruningTrieStore trieStore,
+            IChainEstimations chainEstimations,
+            ILogManager logManager)
+            : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
+                stateBoundary, stateBoundaryReader, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
-
-            public FullTestPruner(
-                IFullPruningDb pruningDb,
-                INodeStorageFactory nodeStorageFactory,
-                INodeStorage mainNodeStorage,
-                IPruningTrigger pruningTrigger,
-                IPruningConfig pruningConfig,
-                IBlockTree blockTree,
-                IStateReader stateReader,
-                IProcessExitSource processExitSource,
-                IDriveInfo driveInfo,
-                IPruningTrieStore trieStore,
-                IChainEstimations chainEstimations,
-                ILogManager logManager)
-                : base(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
-            {
-            }
 
             protected override async Task RunFullPruning(CancellationToken cancellationToken)
             {
@@ -135,7 +145,7 @@ public class FullPruningDiskTest
     [Test, MaxTime(Timeout.LongTestTime)]
     public async Task prune_on_disk_multiple_times()
     {
-        using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 });
+        using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 }, testTimeoutMs: Timeout.LongTestTime);
         for (int i = 0; i < 3; i++)
         {
             await RunPruning(chain, i, false);
@@ -163,8 +173,10 @@ public class FullPruningDiskTest
         chain.DriveInfo.AvailableFreeSpace.Returns(availableSpace);
         PruningTriggerEventArgs args = new();
         chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
-        args.Status.Should().Be(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace);
+        Assert.That(args.Status, Is.EqualTo(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace));
     }
+
+    private static readonly TimeSpan PruningWaitBudget = TimeSpan.FromMilliseconds(Timeout.LongTestTime / 4);
 
     private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
     {
@@ -172,22 +184,23 @@ public class FullPruningDiskTest
         PruningTriggerEventArgs args = new();
         chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
         if (args.Status != PruningStatus.Starting) return;
-        for (int i = 0; i < Reorganization.MaxDepth + 2; i++)
+        for (ulong i = 0ul; i < Reorganization.MaxDepth + 2ul; i++)
         {
-            await chain.AddBlock(true);
+            await chain.AddBlock();
         }
 
         HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
         bool pruningFinished = false;
-        for (int i = 0; i < 100 && !pruningFinished; i++)
+        long waitStart = Stopwatch.GetTimestamp();
+        while (!pruningFinished && Stopwatch.GetElapsedTime(waitStart) < PruningWaitBudget)
         {
             pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(100));
-            await chain.AddBlock(true);
+            await chain.AddBlockDoNotWaitForHead();
         }
 
         if (!onlyFirstRuns || time == 0)
         {
-            pruningFinished.Should().BeTrue();
+            Assert.That(pruningFinished, Is.True);
 
             await WriteFileStructure(chain);
 
@@ -197,8 +210,14 @@ public class FullPruningDiskTest
                 );
 
             HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-            currentItems.IsSubsetOf(allItems).Should().BeTrue();
-            currentItems.Count.Should().BeGreaterThan(0);
+            // Exclude the OldestStateBlock floor FullPruner records in the state DB on a successful
+            // prune — it's absent from the pre-prune snapshot. (BestPersistedState lives in the
+            // BlockInfos DB, so it never shows up here.)
+            byte[]? boundaryValue = chain.DbProvider.StateDb[StateBoundaryStore.OldestStateBlockKey];
+            Assert.That(boundaryValue, Is.Not.Null, "FullPruner should record the OldestStateBlock floor on a successful prune");
+            currentItems.Remove(boundaryValue!);
+            Assert.That(currentItems.IsSubsetOf(allItems), Is.True);
+            Assert.That(currentItems.Count, Is.GreaterThan(0));
         }
     }
 

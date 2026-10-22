@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -19,7 +20,7 @@ public class BlobsBundleV1
         int blobsCount = 0;
         foreach (Transaction? tx in block.Transactions)
         {
-            blobsCount += tx?.BlobVersionedHashes?.Length ?? 0;
+            blobsCount += tx?.GetBlobCount() ?? 0;
         }
 
         Commitments = new byte[blobsCount][];
@@ -29,7 +30,8 @@ public class BlobsBundleV1
 
         foreach (Transaction? tx in block.Transactions)
         {
-            if (!tx.SupportsBlobs)
+            // Match the type-agnostic GetBlobCount sizing above, or a type-6 leaves null bundle entries.
+            if (!tx.CarriesBlobs)
             {
                 continue;
             }
@@ -58,7 +60,7 @@ public class BlobsBundleV1
         Proofs = proofs;
     }
 
-    public byte[][] Commitments { get; }
-    public byte[][] Blobs { get; }
-    public byte[][] Proofs { get; }
+    [JsonConverter(typeof(BlobsBundleByteArrayArrayConverter))] public byte[][] Commitments { get; }
+    [JsonConverter(typeof(BlobsBundleByteArrayArrayConverter))] public byte[][] Blobs { get; }
+    [JsonConverter(typeof(BlobsBundleByteArrayArrayConverter))] public byte[][] Proofs { get; }
 }

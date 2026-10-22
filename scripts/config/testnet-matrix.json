@@ -1,0 +1,112 @@
+[
+  {
+    "network": "hoodi",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "https://checkpoint-sync.hoodi.ethpandaops.io",
+    "timeout": 180,
+    "machine_type": "c3d-standard-8-lssd",
+    "local_ssd_count": 1,
+    "spot": true
+  },
+  {
+    "network": "chiado",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "http://139.144.26.89:4000/",
+    "timeout": 180,
+    "machine_type": "c3d-standard-8-lssd",
+    "local_ssd_count": 1,
+    "spot": true
+  },
+  {
+    "network": "sepolia",
+    "cl": "prysm",
+    "cl_image": "prysmaticlabs/prysm-beacon-chain:stable",
+    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "timeout": 180,
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
+  },
+  {
+    "network": "gnosis",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "https://checkpoint.gnosischain.com",
+    "timeout": 180,
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
+  },
+  {
+    "network": "mainnet",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
+    "timeout": 360,
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 2,
+    "spot": true
+  },
+  {
+    "network": "op-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
+  },
+  {
+    "network": "world-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
+  },
+  {
+    "network": "op-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 2,
+    "spot": true
+  },
+  {
+    "network": "world-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
+  },
+  {
+    "network": "taiko-alethia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
+  },
+  {
+    "network": "taiko-hoodi",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
+  }
+]

@@ -1,0 +1,36 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Blockchain.Tracing.GethStyle;
+
+[JsonConverter(typeof(GethLikeTxTraceConverter))]
+public class GethLikeTxTrace : IDisposable
+{
+    public GethLikeTxTrace(IDisposable? disposable = null) => Disposable = disposable;
+
+    public GethLikeTxTrace() { }
+
+    public ulong Gas { get; set; }
+
+    public bool Failed { get; set; }
+
+    public byte[] ReturnValue { get; set; } = [];
+
+    public Hash256? TxHash { get; set; }
+
+    internal string? TraceError { get; set; }
+
+    public List<GethTxTraceEntry> Entries { get; set; } = [];
+
+    public GethLikeCustomTrace? CustomTracerResult { get; set; }
+
+    internal IDisposable? Disposable { get; set; }
+
+    public void Dispose() => Disposable?.Dispose();
+}

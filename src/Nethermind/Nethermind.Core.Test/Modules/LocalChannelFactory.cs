@@ -3,17 +3,15 @@
 
 using System;
 using System.Net;
-using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
-using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Local;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using NonBlocking;
-using TaskCompletionSource = DotNetty.Common.Concurrency.TaskCompletionSource;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -25,24 +23,15 @@ namespace Nethermind.Core.Test.Modules;
 /// </summary>
 /// <param name="networkGroup">Something unique for each test. Unless they need to connect to each other.</param>
 /// <param name="networkConfig">Network config for LocalEndpoint.</param>
-internal class LocalChannelFactory(string networkGroup, INetworkConfig networkConfig) : IChannelFactory
+public class LocalChannelFactory(string networkGroup, INetworkConfig networkConfig) : IChannelFactory
 {
-    private IPEndPoint LocalEndpoint = new IPEndPoint(IPAddress.Parse(networkConfig.LocalIp ?? "127.0.0.1"), networkConfig.P2PPort);
+    private IPEndPoint LocalEndpoint = new(IPAddress.Parse(networkConfig.LocalIp ?? "127.0.0.1"), networkConfig.P2PPort);
 
-    public IServerChannel CreateServer()
-    {
-        return new LocalServerChannelInterceptor(networkGroup);
-    }
+    public IServerChannel CreateServer() => new LocalServerChannelInterceptor(networkGroup);
 
-    public IChannel CreateClient()
-    {
-        return new LocalClientChannel(networkGroup, LocalEndpoint);
-    }
+    public IChannel CreateClient() => new LocalClientChannel(networkGroup, LocalEndpoint);
 
-    public IChannel CreateDatagramChannel()
-    {
-        return new LocalDatagramChannel(networkGroup);
-    }
+    public IDatagramSocket CreateDatagramSocket() => new LocalDatagramSocket(networkGroup);
 
     private class LocalClientChannel(string networkGroup, IPEndPoint localIPEndpoint) : LocalChannel
     {
@@ -90,7 +79,7 @@ internal class LocalChannelFactory(string networkGroup, INetworkConfig networkCo
         }
     }
 
-    // Needed because the default local address did not compare the id and because it need to be convertiable to
+    // Needed because the default local address did not compare the ID and because it needs to be convertible to
     // IPEndpoint
     private class NethermindLocalAddress(string id, IPEndPoint ipEndPoint) : LocalAddress(id), IIPEndpointSource
     {
@@ -104,130 +93,91 @@ internal class LocalChannelFactory(string networkGroup, INetworkConfig networkCo
             return false;
         }
 
-        public override int GetHashCode()
-        {
-            return Id.GetHashCode();
-        }
+        public override int GetHashCode() => Id.GetHashCode();
     }
 
-    private class LocalDatagramChannel(string networkGroup) : EmbeddedChannel(EmbeddedChannelId.Instance, false, false, []), IDatagramChannel
+    /// <summary>
+    /// In-memory datagram socket that delivers to the socket of the same network group bound to the destination endpoint.
+    /// </summary>
+    private sealed class LocalDatagramSocket(string networkGroup) : IDatagramSocket
     {
-        private static ConcurrentDictionary<(string, EndPoint), WeakReference<LocalDatagramChannel>> channelRegistry = new();
+        private static readonly ConcurrentDictionary<(string, IPEndPoint), LocalDatagramSocket> SocketRegistry = new();
 
-        private EndPoint? _bondedEndpoint;
+        private readonly Channel<(byte[] Datagram, IPEndPoint Sender)> _inbound = Channel.CreateUnbounded<(byte[], IPEndPoint)>();
 
-        protected override bool IsCompatible(IEventLoop eventLoop)
+        public IPEndPoint? LocalEndpoint { get; private set; }
+
+        public void Bind(IPEndPoint localEndpoint)
         {
-            // Not sure why its only compatible with EmbeddedEventLoop originally..
-            return true;
-        }
-
-        protected override void DoBind(EndPoint localAddress)
-        {
-            channelRegistry.TryAdd((networkGroup, localAddress), new WeakReference<LocalDatagramChannel>(this));
-            _bondedEndpoint = localAddress;
-            base.DoBind(localAddress);
-        }
-
-        public override async Task CloseAsync()
-        {
-            channelRegistry.TryRemove((networkGroup, _bondedEndpoint!), out _);
-            await base.CloseAsync();
-        }
-
-        protected override void DoWrite(ChannelOutboundBuffer input)
-        {
-            for (; ; )
+            if (!SocketRegistry.TryAdd((networkGroup, localEndpoint), this))
             {
-                object msg = input.Current;
-                if (msg == null)
-                {
-                    break;
-                }
+                throw new SocketException((int)SocketError.AddressAlreadyInUse);
+            }
 
-                if (msg is DatagramPacket addressedEnvelope)
-                {
-                    if (channelRegistry.TryGetValue((networkGroup, addressedEnvelope.Recipient), out WeakReference<LocalDatagramChannel>? reference) && reference.TryGetTarget(out LocalDatagramChannel? recipient))
-                    {
-                        DatagramPacket newEnvelop = new DatagramPacket(addressedEnvelope.Content, _bondedEndpoint, addressedEnvelope.Recipient);
-                        ReferenceCountUtil.Retain(newEnvelop);
-                        recipient!.WriteInbound(newEnvelop);
-                    }
-                }
-                else
-                {
-                    throw new InvalidOperationException($"Unsupported message type {msg.GetType()}");
-                }
+            LocalEndpoint = localEndpoint;
+        }
 
-                input.Remove();
+        public ValueTask SendToAsync(ReadOnlyMemory<byte> datagram, IPEndPoint remoteEndpoint, CancellationToken cancellationToken = default)
+        {
+            if (LocalEndpoint is not null && SocketRegistry.TryGetValue((networkGroup, remoteEndpoint), out LocalDatagramSocket? recipient))
+            {
+                recipient._inbound.Writer.TryWrite((datagram.ToArray(), LocalEndpoint));
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
+        public async ValueTask<int> ReceiveFromAsync(Memory<byte> buffer, SocketAddress receivedAddress, CancellationToken cancellationToken = default)
+        {
+            (byte[] datagram, IPEndPoint sender) = await ReadAsync(cancellationToken);
+            if (datagram.Length > buffer.Length)
+            {
+                throw new SocketException((int)SocketError.MessageSize);
+            }
+
+            SocketAddress senderAddress = ToReceiverFamily(sender).Serialize();
+            receivedAddress.Size = senderAddress.Size;
+            senderAddress.Buffer.Span[..senderAddress.Size].CopyTo(receivedAddress.Buffer.Span);
+            datagram.CopyTo(buffer);
+            return datagram.Length;
+        }
+
+        /// <summary>
+        /// Reports <paramref name="sender"/> as a socket bound to <see cref="LocalEndpoint"/> would see it.
+        /// </summary>
+        /// <remarks>
+        /// An IPv6 socket is treated as dual-stack, so it sees IPv4 senders as IPv4-mapped addresses. An IPv4 socket
+        /// cannot receive from an IPv6 sender, so such a test topology is rejected.
+        /// </remarks>
+        private IPEndPoint ToReceiverFamily(IPEndPoint sender) =>
+            (LocalEndpoint?.AddressFamily, sender.AddressFamily) switch
+            {
+                (AddressFamily.InterNetworkV6, AddressFamily.InterNetwork) => new IPEndPoint(sender.Address.MapToIPv6(), sender.Port),
+                (AddressFamily.InterNetwork, AddressFamily.InterNetworkV6) => throw new InvalidOperationException(
+                    $"An IPv4 socket bound to {LocalEndpoint} cannot receive from IPv6 sender {sender}."),
+                _ => sender
+            };
+
+        private async ValueTask<(byte[], IPEndPoint)> ReadAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _inbound.Reader.ReadAsync(cancellationToken);
+            }
+            catch (ChannelClosedException)
+            {
+                throw new ObjectDisposedException(nameof(LocalDatagramSocket));
             }
         }
 
-        public bool IsConnected()
+        public void Dispose()
         {
-            return true;
-        }
+            if (LocalEndpoint is not null)
+            {
+                SocketRegistry.TryRemove((networkGroup, LocalEndpoint), out _);
+            }
 
-        public Task JoinGroup(IPEndPoint multicastAddress)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task JoinGroup(IPEndPoint multicastAddress, TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source,
-            TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task LeaveGroup(IPEndPoint multicastAddress)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task LeaveGroup(IPEndPoint multicastAddress, TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source,
-            TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
+            _inbound.Writer.TryComplete();
         }
     }
 }

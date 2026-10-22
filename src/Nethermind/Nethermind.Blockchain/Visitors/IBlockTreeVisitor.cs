@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -8,8 +9,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Visitors
 {
-    public interface IBlockTreeVisitor
+    public interface IBlockTreeVisitor : IDisposable
     {
+        void IDisposable.Dispose() { }
+
         /// <summary>
         /// Gives a hint to block tree that accepting new blocks should be halted for the length of the visit.
         /// </summary>
@@ -23,12 +26,12 @@ namespace Nethermind.Blockchain.Visitors
         /// <summary>
         /// First block tree level to visit
         /// </summary>
-        long StartLevelInclusive { get; }
+        ulong StartLevelInclusive { get; }
 
         /// <summary>
         /// Last block tree level to visit
         /// </summary>
-        long EndLevelExclusive { get; }
+        ulong EndLevelExclusive { get; }
 
         /// <summary>
         /// When new chain level is visited (and before its blocks are enumerated)
@@ -37,7 +40,7 @@ namespace Nethermind.Blockchain.Visitors
         /// <param name="levelNumber">Level (block) number</param>
         /// <param name="cancellationToken"></param>
         /// <returns><value>false</value> if the visitor wants to stop visiting remaining levels, otherwise <value>true</value></returns>
-        Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken);
+        Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken);
 
         /// <summary>
         /// If the block hash is defined on the chain level but is missing from the database.
@@ -70,6 +73,6 @@ namespace Nethermind.Blockchain.Visitors
         /// <param name="levelNumber">Level (block) number</param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken);
+        Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken);
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
@@ -16,19 +15,12 @@ namespace Nethermind.Db
         public IDb BlockNumbersDb => GetDb<IDb>(DbNames.BlockNumbers);
         public IDb BlockInfosDb => GetDb<IDb>(DbNames.BlockInfos);
         public IDb BadBlocksDb => GetDb<IDb>(DbNames.BadBlocks);
-
-        // BloomDB progress / config (does not contain blooms - they are kept in bloom storage)
-        public IDb BloomDb => GetDb<IDb>(DbNames.Bloom);
-
+        public IDb BlockAccessListDb => GetDb<IDb>(DbNames.BlockAccessLists);
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 
         public IColumnsDb<BlobTxsColumns> BlobTransactionsDb => GetColumnDb<BlobTxsColumns>(DbNames.BlobTransactions);
 
         T GetDb<T>(string dbName) where T : class, IDb;
-        IColumnsDb<T> GetColumnDb<T>(string dbName);
-
-        void RegisterDb<T>(string dbName, T db) where T : class, IDb;
-        void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db);
-        IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta();
+        IColumnsDb<T> GetColumnDb<T>(string dbName) where T : notnull;
     }
 }

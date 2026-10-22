@@ -8,24 +8,16 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcDbFactory : IDbFactory
+    public class RpcDbFactory(
+        IDbFactory wrappedRocksDbFactory,
+        IJsonSerializer jsonSerializer,
+        IJsonRpcClient jsonRpcClient,
+        ILogManager logManager) : IDbFactory
     {
-        private readonly IDbFactory _wrappedRocksDbFactory;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly IJsonRpcClient _jsonRpcClient;
-        private readonly ILogManager _logManager;
-
-        public RpcDbFactory(
-            IDbFactory wrappedRocksDbFactory,
-            IJsonSerializer jsonSerializer,
-            IJsonRpcClient jsonRpcClient,
-            ILogManager logManager)
-        {
-            _wrappedRocksDbFactory = wrappedRocksDbFactory;
-            _jsonSerializer = jsonSerializer;
-            _jsonRpcClient = jsonRpcClient;
-            _logManager = logManager;
-        }
+        private readonly IDbFactory _wrappedRocksDbFactory = wrappedRocksDbFactory;
+        private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
+        private readonly IJsonRpcClient _jsonRpcClient = jsonRpcClient;
+        private readonly ILogManager _logManager = logManager;
 
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
         {
@@ -37,7 +29,7 @@ namespace Nethermind.Db.Rpc
 
         public IDb CreateDb(DbSettings dbSettings)
         {
-            var rocksDb = _wrappedRocksDbFactory.CreateDb(dbSettings);
+            IDb rocksDb = _wrappedRocksDbFactory.CreateDb(dbSettings);
             return WrapWithRpc(rocksDb);
         }
 

@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.Api.Steps;
+using Autofac.Core;
 
 namespace Nethermind.Api.Extensions;
 
-public interface INethermindPlugin : IAsyncDisposable
+public interface INethermindPlugin
 {
     string Name { get; }
 
@@ -18,12 +15,7 @@ public interface INethermindPlugin : IAsyncDisposable
 
     void InitTxTypesAndRlpDecoders(INethermindApi api) { }
 
-    Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
-
-    Task InitNetworkProtocol() => Task.CompletedTask;
-
-    Task InitRpcModules() => Task.CompletedTask;
-    IEnumerable<StepInfo> GetSteps() => [];
     bool MustInitialize => false;
     bool Enabled { get; }
+    IModule? Module => null;
 }

@@ -15,6 +15,9 @@ public static class ThreadExtensions
 
         internal Disposable(Thread thread, ThreadPriority priority = ThreadPriority.AboveNormal)
         {
+            // Assume the default Linux policy (SCHED_OTHER), where priority changes only add native calls.
+            if (OperatingSystem.IsLinux()) return;
+
             _thread = thread;
             _previousPriority = thread.Priority;
             thread.Priority = priority;
@@ -30,12 +33,11 @@ public static class ThreadExtensions
     }
 
     public static Disposable BoostPriority(this Thread thread)
-    {
-        return new Disposable(thread);
-    }
+        => new(thread);
 
-    public static Disposable BoostPriorityHighest(this Thread thread)
-    {
-        return new Disposable(thread, ThreadPriority.Highest);
-    }
+    public static Disposable SetHighestPriority(this Thread thread)
+        => new(thread, ThreadPriority.Highest);
+
+    public static Disposable SetNormalPriority(this Thread thread)
+        => new(thread, ThreadPriority.Normal);
 }

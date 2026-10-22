@@ -13,9 +13,11 @@ namespace Nethermind.Stats
 {
     public class NodeStatsManager : INodeStatsManager, IDisposable
     {
+        private static readonly Func<Node, INodeStats> CreateNodeStats = static node => new NodeStatsLight(node);
+
         private class NodeComparer : IEqualityComparer<Node>
         {
-            public bool Equals(Node x, Node y) => ReferenceEquals(x, y) || x.Id == y.Id;
+            public bool Equals(Node? x, Node? y) => ReferenceEquals(x, y) || (x is not null && y is not null && x.Id == y.Id);
             public int GetHashCode(Node obj) => obj.GetHashCode();
         }
 
@@ -27,14 +29,14 @@ namespace Nethermind.Stats
         public NodeStatsManager(ITimerFactory timerFactory, ILogManager logManager, int maxCount = 10000)
         {
             _maxCount = maxCount;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<NodeStatsManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _cleanupTimer = timerFactory.CreateTimer(TimeSpan.FromMinutes(10));
             _cleanupTimer.Elapsed += CleanupTimerOnElapsed;
             _cleanupTimer.Start();
         }
 
-        private void CleanupTimerOnElapsed(object sender, EventArgs e)
+        private void CleanupTimerOnElapsed(object? sender, EventArgs e)
         {
             _cleanupTimer.Stop();
 
@@ -61,25 +63,17 @@ namespace Nethermind.Stats
             _cleanupTimer.Start();
         }
 
-        private INodeStats AddStats(Node node)
-        {
-            return new NodeStatsLight(node);
-        }
-
         public INodeStats GetOrAdd(Node node)
         {
-            if (node is null)
-            {
-                return null;
-            }
+            ArgumentNullException.ThrowIfNull(node);
 
             // to avoid allocations
-            if (_nodeStats.TryGetValue(node, out INodeStats stats))
+            if (_nodeStats.TryGetValue(node, out INodeStats? stats))
             {
                 return stats;
             }
 
-            return _nodeStats.GetOrAdd(node, AddStats);
+            return _nodeStats.GetOrAdd(node, CreateNodeStats);
         }
 
         public void ReportHandshakeEvent(Node node, ConnectionDirection direction)
@@ -171,9 +165,6 @@ namespace Nethermind.Stats
             stats.AddTransferSpeedCaptureEvent(type, value);
         }
 
-        public void Dispose()
-        {
-            _cleanupTimer.Dispose();
-        }
+        public void Dispose() => _cleanupTimer.Dispose();
     }
 }

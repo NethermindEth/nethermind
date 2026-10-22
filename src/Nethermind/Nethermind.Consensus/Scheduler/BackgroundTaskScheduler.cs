@@ -2,177 +2,493 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Scheduler;
 
 /// <summary>
-/// Provide a way to orchestrate task to run in background.
-/// - Task will be run in a separate thread.. well it depends on the threadpool, but there is a concurrency limit.
-/// - Task closure will have CancellationToken which will be cancelled if block processing happens while the task is running.
-/// - Task have a default timeout, which is counted from the time it is queued. If timedout because too many other background
-///    task before it for example, the cancellation token passed to it will be cancelled.
-/// - Task will still run when block processing is happening and its timedout this is so that it can handle its cancellation.
-/// - Task will not run if block processing is happening and it still have some time left.
-///   It is up to the task to determine what happen if cancelled, maybe it will reschedule for later, or resume later, but
-///   preferably, stop execution immediately. Don't hang BTW. Other background task need to cancel too.
-/// - A failure at this level is considered unexpected and loud. Exception should be handled at handler level.
-///
-/// Note: Yes, I know there is a built in TaskScheduler that can do some magical stuff that stop execution on async
-/// and stuff, but that is complicated and I don't wanna explain why you need `async Task.Yield()` in the middle of a loop,
-/// or explicitly specify it to run on this task scheduler and such. Maybe some other time ok?
+/// Orchestrates background tasks at BelowNormal thread priority with a concurrency limit.
+/// Each task receives a CancellationToken that is cancelled during block processing or on deadline expiry.
+/// During block processing, task execution is paused — no tasks run until block processing finishes.
+/// Tasks that expire while waiting are executed with a cancelled token so handlers can clean up.
+/// Handlers must check the token and stop promptly. Exceptions should be handled at handler level.
 /// </summary>
 public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposable
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(2);
 
     private readonly CancellationTokenSource _mainCancellationTokenSource;
-    private CancellationTokenSource _blockProcessorCancellationTokenSource;
     private readonly Channel<IActivity> _taskQueue;
+    private readonly BelowNormalPriorityTaskScheduler _scheduler;
+    private readonly Task[] _tasksExecutors;
     private readonly ILogger _logger;
-    private readonly IBlockProcessor _blockProcessor;
-    private readonly ManualResetEvent _restartQueueSignal;
-    private readonly Task<Task>[] _tasksExecutors;
+    private readonly IBranchProcessor _branchProcessor;
+    private readonly IChainHeadInfoProvider _headInfo;
+    private readonly int _capacity;
+    private readonly Lock _blockProcessingLock = new();
+    private int _activeBlockProcessingBranches;
+    private long _queueCount;
+    private readonly int[] _stats = new int[BackgroundTaskTypeRegistry.MaxTaskTypes];
 
-    public BackgroundTaskScheduler(IBlockProcessor blockProcessor, int concurrency, int capacity, ILogManager logManager)
+    private CancellationTokenSource _blockProcessorCancellationTokenSource;
+    private volatile TaskCompletionSource? _blockProcessingDoneSignal;
+    private long _lastDropLogTicks;
+    private bool _disposed = false;
+
+    public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
     {
-        if (concurrency < 1) throw new ArgumentException("concurrency must be at least 1");
-        if (capacity < 1) throw new ArgumentException("capacity must be at least 1");
+        ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
 
         _mainCancellationTokenSource = new CancellationTokenSource();
         _blockProcessorCancellationTokenSource = new CancellationTokenSource();
-        _taskQueue = Channel.CreateBounded<IActivity>(capacity);
-        _logger = logManager.GetClassLogger();
-        _blockProcessor = blockProcessor;
-        _restartQueueSignal = new ManualResetEvent(true);
 
-        _blockProcessor.BlocksProcessing += BlockProcessorOnBlocksProcessing;
-        _blockProcessor.BlockProcessed += BlockProcessorOnBlockProcessed;
+        // In priority order, so if we reach an activity with time left,
+        // we know the rest still have time left
+        _taskQueue = Channel.CreateUnboundedPrioritized(
+            new UnboundedPrioritizedChannelOptions<IActivity>
+            {
+                SingleReader = concurrency == 1,
+                SingleWriter = false,
+                AllowSynchronousContinuations = false
+            });
+        _logger = logManager.GetClassLogger<BackgroundTaskScheduler>();
+        _branchProcessor = branchProcessor;
+        _headInfo = headInfo;
+        _capacity = capacity;
 
-        _tasksExecutors = Enumerable.Range(0, concurrency).Select(_ => Task.Factory.StartNew(StartChannel)).ToArray();
+        _branchProcessor.BlocksProcessing += BranchProcessorOnBranchesProcessing;
+        _branchProcessor.BranchProcessingCompleted += BranchProcessorOnBranchProcessingCompleted;
+
+        // TaskScheduler to run tasks at BelowNormal priority
+        _scheduler = new BelowNormalPriorityTaskScheduler(
+            concurrency,
+            logManager);
+
+        TaskFactory factory = new(_scheduler);
+        _tasksExecutors = [.. Enumerable.Range(0, concurrency).Select(_ => factory.StartNew(StartChannel).Unwrap())];
     }
 
-    private void BlockProcessorOnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
+    private void BranchProcessorOnBranchesProcessing(object? sender, BlocksProcessingEventArgs e)
     {
-        // On block processing, we cancel the block process cts, causing current task to get cancelled.
-        _blockProcessorCancellationTokenSource.Cancel();
-        // We also reset queue signal, causing it to wait
-        _restartQueueSignal.Reset();
+        // If we are syncing, we don't block background task processing
+        // as there are potentially no gaps between blocks
+        if (_headInfo.IsSyncing)
+        {
+            return;
+        }
+
+        long depth;
+        lock (_blockProcessingLock)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (_activeBlockProcessingBranches++ != 0)
+            {
+                return;
+            }
+
+            depth = Volatile.Read(ref _queueCount);
+            // Signal that block processing is in progress so StartChannel can async-wait
+            _blockProcessingDoneSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // On block processing, cancel the block process CTS so running tasks can exit quickly
+            _blockProcessorCancellationTokenSource.Cancel();
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Block processing starting, background queue depth: {depth} [{FormatStats()}]");
     }
 
-    private void BlockProcessorOnBlockProcessed(object? sender, BlockProcessedEventArgs e)
+    private void BranchProcessorOnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
     {
-        // Once block is processed, we replace it with the
-        CancellationTokenSource oldTokenSource = Interlocked.Exchange(ref _blockProcessorCancellationTokenSource, new CancellationTokenSource());
+        CancellationTokenSource? oldTokenSource = null;
+        TaskCompletionSource? signal = null;
+
+        lock (_blockProcessingLock)
+        {
+            if (_disposed || _activeBlockProcessingBranches == 0)
+            {
+                return;
+            }
+
+            if (--_activeBlockProcessingBranches != 0)
+            {
+                return;
+            }
+
+            oldTokenSource = _blockProcessorCancellationTokenSource;
+            _blockProcessorCancellationTokenSource = new CancellationTokenSource();
+            signal = _blockProcessingDoneSignal;
+            _blockProcessingDoneSignal = null;
+        }
+
         oldTokenSource.Dispose();
-        // We also set queue signal causing it to continue queue.
-        _restartQueueSignal.Set();
+        signal?.TrySetResult();
     }
 
+    private CancellationTokenSource CreateTaskCancellationTokenSource()
+    {
+        lock (_blockProcessingLock)
+        {
+            return CancellationTokenSource.CreateLinkedTokenSource(
+                _blockProcessorCancellationTokenSource.Token,
+                _mainCancellationTokenSource.Token);
+        }
+    }
 
     private async Task StartChannel()
     {
-        await foreach (IActivity activity in _taskQueue.Reader.ReadAllAsync(_mainCancellationTokenSource.Token))
+        CancellationTokenSource? cts = null;
+        try
         {
-            try
+            while (await _taskQueue.Reader.WaitToReadAsync(_mainCancellationTokenSource.Token))
             {
-                if (_blockProcessorCancellationTokenSource.IsCancellationRequested)
+                if (cts is null || cts.IsCancellationRequested)
                 {
-                    // In case of task that is suppose to run when a block is being processed, if there is some time left
-                    // from its deadline, we re-queue it. We do this in case there are some task in the queue that already
-                    // reached deadline during block processing in which case, it will need to execute in order to handle
-                    // its cancellation.
-                    if (DateTimeOffset.UtcNow < activity.Deadline)
+                    cts?.Dispose();
+                    cts = CreateTaskCancellationTokenSource();
+                }
+                try
+                {
+                    CancellationToken token = cts.Token;
+                    while (_taskQueue.Reader.TryRead(out IActivity activity))
                     {
-                        await _taskQueue.Writer.WriteAsync(activity, _mainCancellationTokenSource.Token);
-                        // Throttle deque to prevent infinite loop.
-                        await _restartQueueSignal.WaitOneAsync(TimeSpan.FromMilliseconds(1), _mainCancellationTokenSource.Token);
-                        continue;
+                        Interlocked.Decrement(ref _queueCount);
+                        UpdateQueueCount();
+
+                        if (token.IsCancellationRequested)
+                        {
+                            // Block processing is active. If the task still has time left, put it back
+                            // and wait for block processing to finish before resuming.
+                            if (DateTimeOffset.UtcNow < activity.Deadline)
+                            {
+                                if (_taskQueue.Writer.TryWrite(activity))
+                                {
+                                    Interlocked.Increment(ref _queueCount);
+                                    UpdateQueueCount();
+                                    // Wait for block processing to complete before draining more tasks
+                                    goto WaitForBlockProcessing;
+                                }
+                                // Re-queue failed (channel completed during dispose) - fall through
+                                // and run with cancelled token so handler can clean up
+                            }
+
+                            // Task already expired or re-queue failed — run with cancelled token
+                        }
+
+                        AddToStats(activity.TaskId, -1);
+                        await activity.Do(token);
+                        Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
                     }
                 }
+                catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                {
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
+                }
+                continue;
 
-                using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
-                    _blockProcessorCancellationTokenSource.Token,
-                    _mainCancellationTokenSource.Token
-                );
-                await activity.Do(cts.Token);
+            WaitForBlockProcessing:
+                // Wait for block processing to finish, but wake up periodically to drain expired tasks
+                TaskCompletionSource? signal = _blockProcessingDoneSignal;
+                if (signal is not null && !signal.Task.IsCompleted)
+                {
+                    await Task.WhenAny(signal.Task, Task.Delay(100, _mainCancellationTokenSource.Token));
+                }
             }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
-            }
+        }
+        catch (OperationCanceledException) when (_mainCancellationTokenSource.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            cts?.Dispose();
         }
     }
 
-    public void ScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+        where TReq : notnull, IBackgroundTaskRequest<TReq>
     {
-        timeout ??= DefaultTimeout;
-        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout.Value;
+        Activity<TReq> activity = Activity<TReq>.Rent(
+            DateTimeOffset.UtcNow + (timeout ?? DefaultTimeout),
+            request,
+            fulfillFunc);
 
-        IActivity activity = new Activity<TReq>
-        {
-            Deadline = deadline,
-            Request = request,
-            FulfillFunc = fulfillFunc,
-        };
+        Evm.Metrics.IncrementTotalBackgroundTasksQueued();
 
-        if (!_taskQueue.Writer.TryWrite(activity))
+        if (Interlocked.Increment(ref _queueCount) <= _capacity)
         {
-            request.TryDispose();
-            // This should never happen unless something goes very wrong.
-            throw new InvalidOperationException("Unable to write to background task queue.");
+            // Counted before the write so a consumer can never decrement ahead of the increment
+            AddToStats(TReq.TaskId, 1);
+            if (_taskQueue.Writer.TryWrite(activity))
+            {
+                UpdateQueueCount();
+                return true;
+            }
+
+            AddToStats(TReq.TaskId, -1);
         }
 
-        Evm.Metrics.NumberOfBackgroundTasksScheduled = _taskQueue.Reader.Count;
+        Evm.Metrics.IncrementTotalBackgroundTasksDropped();
+        long now = Environment.TickCount64;
+        long lastLog = Volatile.Read(ref _lastDropLogTicks);
+        if (!Volatile.Read(ref _disposed)
+            && _logger.IsWarn
+            && now - lastLog > 10_000
+            && Interlocked.CompareExchange(ref _lastDropLogTicks, now, lastLog) == lastLog)
+        {
+            _logger.Warn(
+                $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{BackgroundTaskTypeRegistry.GetName(TReq.TaskId) ?? "unknown"}]. " +
+                $"Totals: queued={Evm.Metrics.TotalBackgroundTasksQueued}, executed={Evm.Metrics.TotalBackgroundTasksExecuted}, " +
+                $"dropped={Evm.Metrics.TotalBackgroundTasksDropped}. " +
+                $"Stats: {FormatStats()}");
+        }
+        Interlocked.Decrement(ref _queueCount);
+        request.TryDispose();
+        activity.Return();
+        return false;
     }
+
+    /// <remarks>
+    /// Task ids are dense from 0, so counters live in a flat array and the scheduling path pays a single
+    /// interlocked add. Ids past <see cref="BackgroundTaskTypeRegistry.MaxTaskTypes"/> go untracked.
+    /// </remarks>
+    private void AddToStats(int taskId, int delta)
+    {
+        int[] stats = _stats;
+        if ((uint)taskId < (uint)stats.Length)
+        {
+            Interlocked.Add(ref stats[taskId], delta);
+        }
+    }
+
+    private string FormatStats()
+    {
+        StringBuilder builder = new();
+        for (int id = 0; id < _stats.Length; id++)
+        {
+            int count = Volatile.Read(ref _stats[id]);
+            if (count > 0 && BackgroundTaskTypeRegistry.GetName(id) is string name)
+            {
+                if (builder.Length > 0) builder.Append(", ");
+                builder.Append('(').Append(name).Append(": ").Append(count).Append(')');
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private void UpdateQueueCount() => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);
 
     public async ValueTask DisposeAsync()
     {
-        _blockProcessor.BlocksProcessing -= BlockProcessorOnBlocksProcessing;
-        _blockProcessor.BlockProcessed -= BlockProcessorOnBlockProcessed;
+        if (Interlocked.CompareExchange(ref _disposed, true, false)) return;
+
+        _branchProcessor.BlocksProcessing -= BranchProcessorOnBranchesProcessing;
+        _branchProcessor.BranchProcessingCompleted -= BranchProcessorOnBranchProcessingCompleted;
 
         _taskQueue.Writer.Complete();
         await _mainCancellationTokenSource.CancelAsync();
+        // StartChannel continuations run on the custom scheduler, so its workers must stay alive
+        // until they observe cancellation and complete.
         await Task.WhenAll(_tasksExecutors);
+        _mainCancellationTokenSource.Dispose();
+        lock (_blockProcessingLock)
+        {
+            _activeBlockProcessingBranches = 0;
+            _blockProcessingDoneSignal = null;
+            _blockProcessorCancellationTokenSource.Dispose();
+        }
+        _scheduler.Dispose();
     }
 
-    private readonly struct Activity<TReq> : IActivity
+    /// <summary>
+    /// Snapshot of currently queued task counts, keyed by the request type's reported name.
+    /// </summary>
+    internal IReadOnlyDictionary<string, int> GetStats()
     {
-        public DateTimeOffset Deadline { get; init; }
-        public TReq Request { get; init; }
-        public Func<TReq, CancellationToken, Task> FulfillFunc { get; init; }
-
-        public async Task Do(CancellationToken cancellationToken)
+        Dictionary<string, int> stats = [];
+        for (int id = 0; id < _stats.Length; id++)
         {
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            TimeSpan timeToComplete = Deadline - now;
-            if (timeToComplete <= TimeSpan.Zero)
+            if (BackgroundTaskTypeRegistry.GetName(id) is string name)
             {
-                // Cancel immediately. Got no time left.
-                await cts.CancelAsync();
+                // Accumulate: two ids resolving to one name must merge, never replace one another
+                stats[name] = (stats.TryGetValue(name, out int existing) ? existing : 0) + Volatile.Read(ref _stats[id]);
+            }
+        }
+
+        return stats;
+    }
+
+    private sealed class Activity<TReq> : IActivity where TReq : IBackgroundTaskRequest<TReq>
+    {
+        private const int MaxPooled = 1024;
+        private static readonly ConcurrentQueue<Activity<TReq>> Pool = new();
+        private static int _poolCount;
+
+        private TReq _request = default!;
+        private Func<TReq, CancellationToken, Task>? _fulfillFunc;
+
+        public DateTimeOffset Deadline { get; private set; }
+        public int TaskId => TReq.TaskId;
+
+        public static Activity<TReq> Rent(DateTimeOffset deadline, TReq request, Func<TReq, CancellationToken, Task> fulfillFunc)
+        {
+            if (Pool.TryDequeue(out Activity<TReq>? activity))
+            {
+                Interlocked.Decrement(ref _poolCount);
             }
             else
             {
-                cts.CancelAfter(timeToComplete);
+                activity = new Activity<TReq>();
             }
 
-            await FulfillFunc.Invoke(Request, cts.Token);
+            activity.Deadline = deadline;
+            activity._request = request;
+            activity._fulfillFunc = fulfillFunc;
+            return activity;
+        }
+
+        public void Return()
+        {
+            Deadline = default;
+            _request = default!;
+            _fulfillFunc = null;
+
+            if (Interlocked.Increment(ref _poolCount) <= MaxPooled)
+            {
+                Pool.Enqueue(this);
+            }
+            else
+            {
+                Interlocked.Decrement(ref _poolCount);
+            }
+        }
+
+        public int CompareTo(IActivity? other) => Deadline.CompareTo(other?.Deadline ?? DateTimeOffset.MaxValue);
+
+        public async Task Do(CancellationToken cancellationToken)
+        {
+            CancellationTokenSource? cts = null;
+            try
+            {
+                TimeSpan timeToComplete = Deadline - DateTimeOffset.UtcNow;
+                CancellationToken token;
+                if (timeToComplete <= TimeSpan.Zero || cancellationToken.IsCancellationRequested)
+                {
+                    token = CancellationTokenExtensions.AlreadyCancelledToken;
+                }
+                else
+                {
+                    cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    cts.CancelAfter(timeToComplete);
+                    token = cts.Token;
+                }
+
+                await _fulfillFunc!.Invoke(_request, token);
+            }
+            finally
+            {
+                cts?.Dispose();
+                Return();
+            }
         }
     }
 
-    private interface IActivity
+    private interface IActivity : IComparable<IActivity>
     {
         DateTimeOffset Deadline { get; }
+        int TaskId { get; }
         Task Do(CancellationToken cancellationToken);
+    }
+
+    private sealed class BelowNormalPriorityTaskScheduler : TaskScheduler, IDisposable
+    {
+        private readonly BlockingCollection<Task> _tasks = [];
+        private readonly Thread[] workerThreads;
+        private readonly int _maxDegreeOfParallelism;
+        private readonly ILogger _logger;
+
+        public BelowNormalPriorityTaskScheduler(int maxDegreeOfParallelism, ILogManager logManager)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
+
+            _logger = logManager.GetClassLogger<BelowNormalPriorityTaskScheduler>();
+            _maxDegreeOfParallelism = maxDegreeOfParallelism;
+            workerThreads = [.. Enumerable.Range(0, maxDegreeOfParallelism)
+                            .Select(i =>
+                            {
+                                Thread thread = new (ProcessBackgroundTasks)
+                                {
+                                    IsBackground = true,
+                                    Name = $"Nethermind Background {i + 1}",
+                                };
+                                // Assume the default Linux policy (SCHED_OTHER), where priority changes only add native calls.
+                                if (!OperatingSystem.IsLinux()) thread.Priority = ThreadPriority.BelowNormal;
+                                thread.Start();
+                                return thread;
+                            })];
+        }
+
+        private void ProcessBackgroundTasks(object _)
+        {
+            try
+            {
+                foreach (Task task in _tasks.GetConsumingEnumerable())
+                {
+                    try
+                    {
+                        TryExecuteTask(task);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error in background task processing {e}.");
+            }
+        }
+
+        public override int MaximumConcurrencyLevel => _maxDegreeOfParallelism;
+        protected override void QueueTask(Task task) => _tasks.Add(task);
+
+        // Attempts to execute the task synchronously on the current thread.
+        // We disallow inline execution to ensure our bound holds.
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
+            => false;
+        // For debugger support only
+        protected override IEnumerable<Task> GetScheduledTasks() => _tasks.ToArray();
+
+        public void Dispose()
+        {
+            if (_logger.IsInfo) _logger.Info("Disposing Background Scheduler");
+
+            _tasks.CompleteAdding();
+            foreach (Thread thread in workerThreads)
+            {
+                thread.Join();
+            }
+            _tasks.Dispose();
+        }
     }
 }

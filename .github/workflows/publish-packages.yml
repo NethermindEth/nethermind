@@ -4,16 +4,20 @@ on:
   release:
     types: [published]
 
+env:
+  TAG_NAME: ${{ github.event.release.tag_name }}
+  ASSETS_URL: ${{ github.event.release.assets_url }}
+
 jobs:
   publish-ppa:
     name: Publish on PPA
     runs-on: ubuntu-latest
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
     steps:
-      - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.TAG_NAME }}
       - name: Set up GPG
         env:
           GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
@@ -30,20 +34,20 @@ jobs:
       - name: Submit package
         env:
           PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
-        working-directory: scripts/deployment/ppa
+        working-directory: scripts/build/ppa
         run: |
-          version=${{ github.event.release.tag_name }}
-          json=$(curl -sL ${{ github.event.release.assets_url }})
-          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("linux-arm64"))')
+          version="$TAG_NAME"
+          json=$(curl -sL "$ASSETS_URL")
+          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | sha256sum | awk '{print $1}')
-          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("linux-x64"))')
+          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-x64.zip"))')
           x64_hash=$(curl -sL $x64_url | sha256sum | awk '{print $1}')
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url='$arm64_url'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url='$x64_url'"); } 1' debian/postinst
           awk -i inplace -v n=1 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$arm64_hash'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$x64_hash'"); } 1' debian/postinst
 
-          changelog="nethermind ($version) focal; urgency=high\n"
+          changelog="nethermind ($version) jammy; urgency=high\n"
           changelog+="  * Nethermind v$version\n"
           changelog+=" -- Nethermind <devops@nethermind.io>  $(date -R)"
           echo -e "$changelog" > debian/changelog
@@ -60,13 +64,14 @@ jobs:
     needs: publish-ppa
     steps:
       - name: Wait for PPA package to be published
+        if: github.run_attempt == 1
         run: sleep 2h
       - name: Install PPA dependencies
         run: |
           sudo apt-get update
           sudo apt-get install debhelper devscripts ubuntu-dev-tools -y
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
       - name: Install launchpadlib
         run: pip install launchpadlib --upgrade
       - name: Copy to other series
@@ -76,66 +81,133 @@ jobs:
           echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
           git clone https://git.launchpad.net/ubuntu-archive-tools
           cd ubuntu-archive-tools
-          for release in "jammy" "noble"; do
-            python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s focal --to-suite=$release nethermind
+          for release in "noble" "resolute"; do
+            python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s jammy --to-suite=$release nethermind
           done
           rm -f /tmp/lp_credentials
 
   publish-winget:
     name: Publish on Windows Package Manager
     runs-on: windows-latest
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
     steps:
       - name: Submit package
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
-          $releaseInfo = curl -sL ${{ github.event.release.assets_url }} | ConvertFrom-Json
-          $releaseUrl = $releaseInfo | Where-Object -Property name -match 'windows' | Select -ExpandProperty browser_download_url
+          $releaseInfo = curl -sL $env:ASSETS_URL | ConvertFrom-Json
+          $arm64Url = $releaseInfo | Where-Object -Property name -like '*windows-arm64.zip' | Select-Object -ExpandProperty browser_download_url
+          $x64Url = $releaseInfo | Where-Object -Property name -like '*windows-x64.zip' | Select-Object -ExpandProperty browser_download_url
           curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
-          ./wingetcreate update Nethermind.Nethermind -s -v ${{ github.event.release.tag_name }} -u $releaseUrl -t ${{ secrets.WINGET_TOKEN }}
+          ./wingetcreate update Nethermind.Nethermind -s -v $env:TAG_NAME -u "$arm64Url|arm64" "$x64Url|x64"
 
   publish-homebrew:
     name: Publish on Homebrew
     runs-on: ubuntu-latest
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
     env:
       FORMULA: nethermind.rb
     steps:
-      - name: Authenticate App
+      - name: Create GitHub app token
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.APP_ID }}
+          client-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "homebrew-nethermind"
+          repositories: homebrew-nethermind
 
       - name: Check out homebrew-nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: NethermindEth/homebrew-nethermind
           token: ${{ steps.gh-app.outputs.token }}
 
       - name: Update formula file
         run: |
-          json=$(curl -sL ${{ github.event.release.assets_url }})
-          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("macos-x64"))')
-          x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
-          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("macos-arm64"))')
+          json=$(curl -sL "$ASSETS_URL")
+          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | shasum -a 256 | awk '{print $1}')
-          sed -i "s/version .*/version \"${{ github.event.release.tag_name }}\"/" $FORMULA
+          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-x64.zip"))')
+          x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
+          sed -i "s/version .*/version \"$TAG_NAME\"/" $FORMULA
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url \"'$x64_url'\""); } 1' $FORMULA
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url \"'$arm64_url'\""); } 1' $FORMULA
           awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$x64_hash'\""); } 1' $FORMULA
           awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$arm64_hash'\""); } 1' $FORMULA
+
       - name: Submit package
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          APP_USER: ${{ steps.gh-app.outputs.app-slug }}[bot]
         run: |
-          head_branch=feature/v${{ github.event.release.tag_name }}-${{ github.run_number }}-${{ github.run_attempt }}
-          message="Update for v${{ github.event.release.tag_name }}"
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          head_branch=feature/v$TAG_NAME-${{ github.run_number }}-${{ github.run_attempt }}
+          message="Update for v$TAG_NAME"
+          app_user_id=$(gh api "/users/$APP_USER" --jq .id)
+          git config user.name "$APP_USER"
+          git config user.email "$app_user_id+$APP_USER@users.noreply.github.com"
           git checkout -b $head_branch
           git add $FORMULA
           git commit -am "$message"
           git push origin $head_branch
-          gh pr create -B main -H $head_branch -t "$message" -b "Auto-updated Homebrew formula for Nethermind v${{ github.event.release.tag_name }}"
+          gh pr create -B main -H $head_branch -t "$message" -b "Auto-updated Homebrew formula for Nethermind v$TAG_NAME"
+
+  publish-nuget:
+    name: Publish NuGet packages
+    if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG_NAME }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Download Nethermind reference assemblies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(git rev-parse HEAD)
+          name=nethermind-$TAG_NAME-${sha:0:8}-ref-assemblies-package
+          # Only release workflow runs are trusted, as any run, e.g., from a fork PR, can upload an artifact of the same name
+          run_ids=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?head_sha=$sha&event=workflow_dispatch" \
+            --jq '.workflow_runs[].id')
+          for id in $run_ids; do
+            artifact_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?name=$name" --jq '.artifacts[] | select(.expired | not) | .id')
+            if [[ -n "$artifact_id" ]]; then
+              run_id=$id
+              break
+            fi
+          done
+          if [[ -z "$run_id" ]]; then
+            echo "::error::Artifact $name not found"
+            exit 1
+          fi
+          refasm_dir="$(mktemp -d)"
+          gh run download "$run_id" -n "$name" -D "$refasm_dir"
+          unzip "$refasm_dir"/*.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
+
+      - name: NuGet login
+        uses: nuget/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Submit package
+        working-directory: src/Nethermind
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          package_output="$(mktemp -d)"
+          dotnet pack Nethermind.ReferenceAssemblies/Nethermind.ReferenceAssemblies.csproj -c release -p:SaveDiskSpace=true --output "$package_output"
+          dotnet pack Nethermind.Kademlia/Nethermind.Kademlia.csproj -c release -p:SaveDiskSpace=true --output "$package_output"
+          test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.ReferenceAssemblies.*.nupkg' -print -quit)"
+          test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.Kademlia.*.nupkg' -print -quit)"
+          test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.Kademlia.*.snupkg' -print -quit)"
+          dotnet nuget push "$package_output/*.nupkg" --skip-duplicate \
+            -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json

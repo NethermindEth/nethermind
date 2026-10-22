@@ -1,34 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
+  <Import Project="../../../src/Nethermind/tests.props" />
 
-        <IsPackable>false</IsPackable>
-        <IsTestProject>true</IsTestProject>
-    </PropertyGroup>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Evm.Test</RootNamespace>
+    <AssemblyName>Evm.Test</AssemblyName>
+  </PropertyGroup>
 
-    <ItemGroup>
-        <PackageReference Include="coverlet.collector" Version="6.0.0"/>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0"/>
-        <PackageReference Include="NUnit" Version="4.3.2"/>
-        <PackageReference Include="NUnit.Analyzers" Version="3.9.0"/>
-        <PackageReference Include="NUnit3TestAdapter" Version="4.6.0"/>
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Evm/Evm.csproj" />
+    <ProjectReference Include="../../../src/Nethermind/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-        <Using Include="NUnit.Framework"/>
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Evm\Evm.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <None Update="testdata\**">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-    </ItemGroup>
+  <ItemGroup>
+    <None Include="testdata/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
 </Project>

@@ -2,58 +2,172 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
-
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Evm.CodeAnalysis
+namespace Nethermind.Evm.CodeAnalysis;
+
+public sealed partial class CodeInfo : IEquatable<CodeInfo>
 {
-    public class CodeInfo : IThreadPoolWorkItem
+    // Empty
+    private CodeInfo() { }
+    private CodeInfo(JumpDestinationAnalyzer analyzer) => _analyzer = analyzer;
+
+    // Regular contract
+    public CodeInfo(ReadOnlyMemory<byte> code)
     {
-        public ReadOnlyMemory<byte> MachineCode { get; }
-        public IPrecompile? Precompile { get; set; }
-        private readonly JumpDestinationAnalyzer _analyzer;
-        private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-        public static CodeInfo Empty { get; } = new CodeInfo([]);
-
-        public CodeInfo(byte[] code)
+        InitializeCode(code);
+        if (code.Length == 0)
         {
-            MachineCode = code;
-            _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
-        }
-
-        public CodeInfo(ReadOnlyMemory<byte> code)
-        {
-            MachineCode = code;
-            _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
-        }
-
-        public bool IsPrecompile => Precompile is not null;
-        public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer) && !IsPrecompile;
-
-        public CodeInfo(IPrecompile precompile)
-        {
-            Precompile = precompile;
-            MachineCode = Array.Empty<byte>();
             _analyzer = _emptyAnalyzer;
         }
-
-        public bool ValidateJump(int destination)
+        else
         {
-            return _analyzer.ValidateJump(destination);
+            _analyzer = new JumpDestinationAnalyzer(this);
         }
+    }
 
-        void IThreadPoolWorkItem.Execute()
-        {
-            _analyzer.Execute();
-        }
+    // Precompile
+    public CodeInfo(IPrecompile? precompile)
+    {
+        Precompile = precompile;
+        _analyzer = null;
+    }
 
-        public void AnalyseInBackgroundIfRequired()
+    public partial ReadOnlyMemory<byte> Code { get; }
+    public partial ReadOnlySpan<byte> CodeSpan { get; }
+
+    /// <summary>The length of <see cref="Code"/>.</summary>
+    internal partial int CodeLength { get; }
+
+    partial void InitializeCode(ReadOnlyMemory<byte> code);
+
+    /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
+    /// <remarks>
+    /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the
+    /// next-to-last padding byte, which is STOP; the guest reads that opcode together with the byte after it.
+    /// </remarks>
+    internal const int ExecutionPadding = 34;
+
+    /// <summary>The code that dispatch runs, followed in memory by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    /// <remarks>
+    /// Untraced dispatch reads into the padding instead of checking the program counter against the code
+    /// length. The padding is never JUMPDEST, and jump destinations are bounded by the code length anyway.
+    /// </remarks>
+    internal partial ReadOnlySpan<byte> ExecutionCodeSpan { get; }
+
+    private static byte[] CreatePaddedCode(ReadOnlySpan<byte> code)
+    {
+        byte[] padded = CreateExecutionBuffer(code.Length);
+        code.CopyTo(padded);
+        return padded;
+    }
+
+    /// <summary>Allocates a buffer for <paramref name="codeLength"/> code bytes followed by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    internal static byte[] CreateExecutionBuffer(int codeLength)
+    {
+        byte[] buffer = GC.AllocateUninitializedArray<byte>(codeLength + ExecutionPadding);
+        buffer.AsSpan(codeLength).Clear();
+        return buffer;
+    }
+    private Address? _delegatedAddress;
+    internal Address? DelegatedAddress
+    {
+        get
         {
-            if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
+            if (CodeLength != Eip7702Constants.DelegationHeaderLength + Address.Size)
             {
-                ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+                return null;
             }
+
+            Address? delegatedAddress = Volatile.Read(ref _delegatedAddress);
+            if (delegatedAddress is not null)
+            {
+                return delegatedAddress;
+            }
+
+            if (!ICodeInfoRepository.TryGetDelegatedAddress(CodeSpan, out Address? parsedAddress))
+            {
+                return null;
+            }
+
+            return Interlocked.CompareExchange(ref _delegatedAddress, parsedAddress, null) ?? parsedAddress;
         }
+    }
+
+    public IPrecompile? Precompile { get; }
+
+    private readonly JumpDestinationAnalyzer? _analyzer;
+    /// <summary>The keccak of the code, stamped when a cache stores this instance.</summary>
+    /// <remarks>An instance that never passed through <c>ICodeCache.Set</c> — a precompile,
+    /// <see cref="Empty"/>, or anything resolved under <c>NoopCodeCache</c> — reports <c>default</c>
+    /// rather than its own hash. See <see cref="StampCodeHash"/> for why it cannot be re-pointed.</remarks>
+    public ValueHash256 CodeHash { get; private set; }
+
+    /// <summary>Stamps the keccak of this instance's code, as an <c>ICodeCache</c> does on insert.</summary>
+    /// <remarks><c>CacheCodeInfoRepository</c>'s last-resolved memo decides which bytecode executes from
+    /// this value alone, so a stamp that is not the keccak of <see cref="CodeSpan"/> would silently serve
+    /// the wrong contract. Re-stamping the same hash is allowed — two threads may race to cache the same
+    /// code — but re-pointing an instance at a different one is not.</remarks>
+    /// <exception cref="InvalidOperationException">The instance already carries a different hash.</exception>
+    internal void StampCodeHash(in ValueHash256 codeHash)
+    {
+        if (CodeHash != default && CodeHash != codeHash) ThrowRestamped(in codeHash);
+        CodeHash = codeHash;
+
+        [DoesNotReturn, StackTraceHidden]
+        void ThrowRestamped(in ValueHash256 attempted)
+            => throw new InvalidOperationException($"{nameof(CodeInfo)} carrying {CodeHash} cannot be re-stamped as {attempted}");
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
+    /// </summary>
+    /// <remarks>
+    /// Empty code is represented by the shared analyzer sentinel so fast paths can test this without inspecting bytecode.
+    /// Constructors that create zero-length executable bytecode must assign the sentinel to preserve that invariant.
+    /// </remarks>
+    public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
+    public bool IsPrecompile => Precompile is not null;
+
+    public bool ValidateJump(int destination)
+        => _analyzer?.ValidateJump(destination) ?? false;
+
+    /// <summary>The jump-destination bitmap of this code, built on first use.</summary>
+    internal long[] JumpDestinationBitmap
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+    }
+
+    /// <summary>The EIP-7979 bitmap of <c>JUMPDEST</c> and <c>CALLDEST</c> positions in this code, built on first use.</summary>
+    internal long[] JumpAndCallDestinationBitmap
+        => _analyzer?.JumpAndCallDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+
+    public override bool Equals(object? obj)
+        => Equals(obj as CodeInfo);
+
+    public override int GetHashCode()
+    {
+        if (IsPrecompile)
+            return Precompile?.GetType().GetHashCode() ?? 0;
+        return CodeSpan.FastHash();
+    }
+
+    public bool Equals(CodeInfo? other)
+    {
+        if (other is null)
+            return false;
+        if (ReferenceEquals(this, other))
+            return true;
+        if (IsPrecompile || other.IsPrecompile)
+            return Precompile?.GetType() == other.Precompile?.GetType();
+        return CodeSpan.SequenceEqual(other.CodeSpan);
     }
 }

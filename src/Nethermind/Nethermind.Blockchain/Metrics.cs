@@ -6,105 +6,184 @@ using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Int256;
+
 // ReSharper disable InconsistentNaming
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain;
+
+public static class Metrics
 {
-    public static class Metrics
-    {
-        [CounterMetric]
-        [Description("Total MGas processed")]
-        public static double Mgas { get; set; }
+    [CounterMetric]
+    [Description("Total MGas processed")]
+    public static double Mgas { get; set; }
 
-        [GaugeMetric]
-        [Description("MGas processed per second")]
-        public static double MgasPerSec { get; set; }
+    [GaugeMetric]
+    [Description("MGas processed per second")]
+    public static double MgasPerSec { get; set; }
 
-        [CounterMetric]
-        [Description("Total number of transactions processed")]
-        public static long Transactions { get; set; }
+    [CounterMetric]
+    [Description("Total number of transactions processed")]
+    public static long Transactions { get; set; }
 
-        [GaugeMetric]
-        [Description("Total number of blocks processed")]
-        public static long Blocks { get; set; }
+    [GaugeMetric]
+    [Description("Total number of blocks processed")]
+    public static ulong Blocks;
 
-        [CounterMetric]
-        [Description("Total number of chain reorganizations")]
-        public static long Reorganizations { get; set; }
+    [CounterMetric]
+    [Description("Total number of chain reorganizations")]
+    public static long Reorganizations { get; set; }
 
-        [GaugeMetric]
-        [Description("Number of blocks awaiting for recovery of public keys from signatures.")]
-        public static long RecoveryQueueSize { get; set; }
+    [GaugeMetric]
+    [Description("Number of receipt bodies retained in memory while awaiting durable state-history capture (receipt derivation only).")]
+    public static long RetainedReceiptBodies { get; set; }
 
-        [GaugeMetric]
-        [Description("Number of blocks awaiting for processing.")]
-        public static long ProcessingQueueSize { get; set; }
+    [GaugeMetric]
+    [Description("Estimated bytes held by the receipt bodies retained while awaiting durable state-history capture (receipt derivation only).")]
+    public static long RetainedReceiptBodyBytes { get; set; }
 
-        [CounterMetric]
-        [Description("Total number of sealed blocks")]
-        public static long BlocksSealed { get; set; }
+    [GaugeMetric]
+    [Description("Number of blocks awaiting for recovery of public keys from signatures.")]
+    public static long RecoveryQueueSize { get; set; }
 
-        [CounterMetric]
-        [Description("Total number of failed block seals")]
-        public static long FailedBlockSeals { get; set; }
+    [GaugeMetric]
+    [Description("Number of blocks awaiting for processing.")]
+    public static long ProcessingQueueSize { get; set; }
 
-        [GaugeMetric]
-        [Description("Gas Used in processed blocks")]
-        public static long GasUsed { get; set; }
+    [CounterMetric]
+    [Description("Total number of sealed blocks")]
+    public static long BlocksSealed { get; set; }
 
-        [GaugeMetric]
-        [Description("Gas Limit for processed blocks")]
-        public static long GasLimit { get; set; }
+    [CounterMetric]
+    [Description("Total number of failed block seals")]
+    public static long FailedBlockSeals { get; set; }
 
-        [GaugeMetric]
-        [Description("Total difficulty on the chain")]
-        public static UInt256 TotalDifficulty { get; set; }
+    [CounterMetric]
+    [Description("Transactions block processing took over from their pre-warm run")]
+    public static long PrewarmHandoffs { get; set; }
 
-        [GaugeMetric]
-        [Description("Difficulty of the last block")]
-        public static UInt256 LastDifficulty { get; set; }
+    [CounterMetric]
+    [Description("Mempool pre-warm sessions a block stopped between passes, without waiting for them to end")]
+    public static long PrewarmSpeculativeStopsWithoutWaiting { get; set; }
 
-        [GaugeMetric]
-        [Description("Indicator if blocks can be produced")]
-        public static long CanProduceBlocks;
+    [CounterMetric]
+    [Description("Transactions executed because state their pre-warm run read had changed")]
+    public static long PrewarmHandoffsRejected { get; set; }
 
-        [GaugeMetric]
-        [Description("Number of ms to process the last processed block.")]
-        public static long LastBlockProcessingTimeInMs;
+    [CounterMetric]
+    [Description("Transactions executed for lack of a usable pre-warm run")]
+    public static long PrewarmHandoffsMissing { get; set; }
 
-        //EIP-2159: Common Prometheus Metrics Names for Clients
-        [GaugeMetric]
-        [Description("The current height of the canonical chain.")]
-        [DataMember(Name = "ethereum_blockchain_height")]
-        public static long BlockchainHeight { get; set; }
+    [CounterMetric]
+    [Description("Transactions executed after their pre-warm run failed to apply")]
+    public static long PrewarmHandoffFailures { get; set; }
 
-        //EIP-2159: Common Prometheus Metrics Names for Clients
-        [GaugeMetric]
-        [Description("The estimated highest block available.")]
-        [DataMember(Name = "ethereum_best_known_block_number")]
-        public static long BestKnownBlockNumber { get; set; }
+    [CounterMetric]
+    [Description("Pre-warm runs taken to be refreshed because an earlier transaction leaves a slot they read at another value")]
+    public static long PrewarmRefreshes { get; set; }
 
-        [GaugeMetric]
-        [Description("Number of invalid blocks.")]
-        public static long BadBlocks;
+    [CounterMetric]
+    [Description("Refreshes not run: a slot the run read is not tracked, or none of them moved")]
+    public static long PrewarmRefreshesSkipped { get; set; }
 
-        [GaugeMetric]
-        [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
-        public static long BadBlocksByNethermindNodes;
+    [CounterMetric]
+    [Description("Refreshes stopped because block processing reached their transaction")]
+    public static long PrewarmRefreshesCancelled { get; set; }
 
-        [GaugeMetric]
-        [Description("State root calculation time")]
-        public static double StateMerkleizationTime { get; set; }
+    [CounterMetric]
+    [Description("Refreshes whose run left no footprint")]
+    public static long PrewarmRefreshesFailed { get; set; }
 
-        [DetailedMetric]
-        [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.2, Count = 30)]
-        [Description("Histogram of block MGas per second")]
-        public static IMetricObserver BlockMGasPerSec { get; set; } = new NoopMetricObserver();
+    [CounterMetric]
+    [Description("Refreshed pre-warm runs stored for block processing to take over")]
+    public static long PrewarmRefreshesStored { get; set; }
 
-        [DetailedMetric]
-        [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
-        [Description("Histogram of block prorcessing time")]
-        public static IMetricObserver BlockProcessingTimeMicros { get; set; } = new NoopMetricObserver();
+    [CounterMetric]
+    [Description("Transactions block processing took over from a refreshed pre-warm run")]
+    public static long PrewarmRefreshesTakenOver { get; set; }
 
-    }
+    [CounterMetric]
+    [Description("Pre-warm runs of the mempool pass stored for block processing to take over")]
+    public static long PrewarmMempoolRunsStored { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions block processing took over from a pre-warm run of the mempool pass")]
+    public static long PrewarmMempoolRunsTakenOver { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions whose reads past the pre-block caches started a storage discovery while block processing executed them")]
+    public static long PrewarmInFlightStarted { get; set; }
+
+    [CounterMetric]
+    [Description("Discovery rounds run for transactions block processing was executing")]
+    public static long PrewarmInFlightRounds;
+
+    [CounterMetric]
+    [Description("Storage cells discovered and read for transactions block processing was executing")]
+    public static long PrewarmInFlightCells;
+
+    [CounterMetric]
+    [Description("Reads past the pre-block caches block processing made in a transaction after its in-flight discovery started")]
+    public static long PrewarmInFlightLateMisses { get; set; }
+
+    [GaugeMetric]
+    [Description("Gas Used in processed blocks")]
+    public static ulong GasUsed { get; set; }
+
+    [GaugeMetric]
+    [Description("Gas Limit for processed blocks")]
+    public static ulong GasLimit { get; set; }
+
+    [GaugeMetric]
+    [Description("Total difficulty on the chain")]
+    public static UInt256 TotalDifficulty { get; set; }
+
+    [GaugeMetric]
+    [Description("Difficulty of the last block")]
+    public static UInt256 LastDifficulty { get; set; }
+
+    [GaugeMetric]
+    [Description("Indicator if blocks can be produced")]
+    public static long CanProduceBlocks;
+
+    [GaugeMetric]
+    [Description("Number of ms to process the last processed block.")]
+    public static long LastBlockProcessingTimeInMs;
+
+    //EIP-2159: Common Prometheus Metrics Names for Clients
+    [GaugeMetric]
+    [Description("The current height of the canonical chain.")]
+    [DataMember(Name = "ethereum_blockchain_height")]
+    public static ulong BlockchainHeight;
+
+    //EIP-2159: Common Prometheus Metrics Names for Clients
+    [GaugeMetric]
+    [Description("The estimated highest block available.")]
+    [DataMember(Name = "ethereum_best_known_block_number")]
+    public static ulong BestKnownBlockNumber;
+
+    [GaugeMetric]
+    [Description("Number of invalid blocks.")]
+    public static long BadBlocks;
+
+    [GaugeMetric]
+    [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
+    public static long BadBlocksByNethermindNodes;
+
+    [CounterMetric]
+    [Description("Number of blocks rejected for their block access list by parallel validation.")]
+    public static long ParallelBlockAccessListRejections;
+
+    [GaugeMetric]
+    [Description("State root calculation time")]
+    public static double StateMerkleizationTime { get; set; }
+
+    [DetailedMetric]
+    [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.2, Count = 35)]
+    [Description("Histogram of block MGas per second")]
+    public static IMetricObserver BlockMGasPerSec { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
+    [Description("Histogram of block processing time")]
+    public static IMetricObserver BlockProcessingTimeMicros { get; set; } = new NoopMetricObserver();
 }

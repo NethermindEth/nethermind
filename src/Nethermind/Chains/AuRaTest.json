@@ -40,7 +40,7 @@
     "gasLimitBoundDivisor": "0x400",
     "maximumExtraDataSize": "0x20",
     "minGasLimit": "0x1388",
-    "networkID": "0x4D00",
+    "networkID": "0x4d00",
     "eip140Transition": "0x0",
     "eip145Transition": "0x0",
     "eip150Transition": "0x0",
@@ -55,12 +55,12 @@
     "eip1052Transition": "0x0",
     "eip1283Transition": "0x0",
     "eip1283DisableTransition": "0x0",
-    "eip152Transition": "0xFFFFFFFF",
-    "eip1108Transition": "0xFFFFFFFF",
-    "eip1344Transition": "0xFFFFFFFF",
-    "eip1884Transition": "0xFFFFFFFF",
-    "eip2028Transition": "0xFFFFFFFF",
-    "eip2200Transition": "0xFFFFFFFF"
+    "eip152Transition": "0xffffffff",
+    "eip1108Transition": "0xffffffff",
+    "eip1344Transition": "0xffffffff",
+    "eip1884Transition": "0xffffffff",
+    "eip2028Transition": "0xffffffff",
+    "eip2200Transition": "0xffffffff"
   },
   "genesis": {
     "seal": {
@@ -70,7 +70,7 @@
       }
     },
     "difficulty": "0x20000",
-    "gasLimit": "0x863BE0"
+    "gasLimit": "0x863be0"
   },
   "nodes": [
     "enode://c72927e9c767b7d5786a4cc1452a98d50a1e9a42fee8b92fda7bbf752b71b168f064275cec15fb09b11fec12dba08ed25571f388835ab8ed7747422d20b56962@127.0.0.1:30303",

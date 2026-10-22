@@ -4,8 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -20,8 +20,8 @@ namespace Nethermind.Core.Test
         {
             const int spins = 10;
 
-            var random = new Random(13);
-            var bytes = new byte[31]; // misaligned length
+            Random random = new(13);
+            byte[] bytes = new byte[31]; // misaligned length
             random.NextBytes(bytes);
 
             ValueHash256 expected = ValueKeccak.Compute(bytes);
@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < spins; i++)
             {
                 ValueHash256 actual = KeccakCache.Compute(bytes);
-                actual.Equals(expected).Should().BeTrue();
+                Assert.That(actual.Equals(expected), Is.True);
             }
         }
 
@@ -37,29 +37,65 @@ namespace Nethermind.Core.Test
         public void Empty()
         {
             ReadOnlySpan<byte> span = [];
-            KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+            Assert.That(KeccakCache.Compute(span), Is.EqualTo(ValueKeccak.Compute(span)));
         }
 
         [Test]
         public void Very_long()
         {
             ReadOnlySpan<byte> span = new byte[192];
-            KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+            Assert.That(KeccakCache.Compute(span), Is.EqualTo(ValueKeccak.Compute(span)));
+        }
+
+        [Test]
+        public void Unsupported_lengths_are_not_cached([Values(0, 93, 128, 192)] int length)
+        {
+            byte[] input = new byte[length];
+            new Random(513).NextBytes(input);
+            ValueHash256 expected = ValueKeccak.Compute(input);
+            Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+            KeccakCache.Store(input, in expected);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+                Assert.That(KeccakCache.Compute(input), Is.EqualTo(expected));
+            }
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Output_aliasing_the_input_caches_the_input([Values(20, 32, 64)] int length)
+        {
+            byte[] input = new byte[length];
+            new Random(7919 + length).NextBytes(input);
+            ValueHash256 expected = ValueKeccak.Compute(input);
+            byte[] buffer = new byte[Math.Max(length, ValueHash256.MemorySize)];
+            input.CopyTo(buffer, 0);
+            ref ValueHash256 output = ref Unsafe.As<byte, ValueHash256>(ref buffer[0]);
+
+            KeccakCache.ComputeTo(buffer.AsSpan(0, length), out output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(output, Is.EqualTo(expected));
+                Assert.That(KeccakCache.TryGet(input, out ValueHash256 cached), Is.True);
+                Assert.That(cached, Is.EqualTo(expected));
+            }
         }
 
         private string[] GetBucketCollisions()
         {
-            var random = new Random(13);
+            Random random = new(13);
             Span<byte> span = stackalloc byte[32];
             string[] collisions = new string[4];
 
             random.NextBytes(span);
-            var bucket = KeccakCache.GetBucket(span);
+            uint bucket = KeccakCache.GetBucket(span);
 
             Console.WriteLine(span.ToHexString());
 
             collisions[0] = span.ToHexString();
-            var found = 1;
+            int found = 1;
 
             ulong iterations = 0;
             while (found < 4)
@@ -81,19 +117,22 @@ namespace Nethermind.Core.Test
         [Test]
         public void Collision()
         {
-            var colliding = GetBucketCollisions();
+            string[] colliding = GetBucketCollisions();
 
-            var collisions = colliding.Length;
-            var array = colliding.Select(c => Bytes.FromHexString(c)).ToArray();
-            var values = array.Select(a => ValueKeccak.Compute(a)).ToArray();
+            int collisions = colliding.Length;
+            byte[][] array = colliding.Select(c => Bytes.FromHexString(c)).ToArray();
+            ValueHash256[] values = array.Select(a => ValueKeccak.Compute(a)).ToArray();
 
-            var bucket = KeccakCache.GetBucket(array[0]);
+            uint bucket = KeccakCache.GetBucket(array[0]);
 
             for (int i = 1; i < collisions; i++)
             {
-                var input = array[i];
-                bucket.Should().Be(KeccakCache.GetBucket(input));
-                KeccakCache.Compute(input).Should().Be(values[i]);
+                byte[] input = array[i];
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(bucket, Is.EqualTo(KeccakCache.GetBucket(input)));
+                    Assert.That(KeccakCache.Compute(input), Is.EqualTo(values[i]));
+                }
             }
 
             Parallel.ForEach(array, (a, state, index) =>
@@ -102,7 +141,7 @@ namespace Nethermind.Core.Test
 
                 for (int i = 0; i < 100_000; i++)
                 {
-                    KeccakCache.Compute(a).Should().Be(v);
+                    Assert.That(KeccakCache.Compute(a), Is.EqualTo(v));
                 }
             });
         }
@@ -111,11 +150,82 @@ namespace Nethermind.Core.Test
         public void Spin_through_all()
         {
             Span<byte> span = stackalloc byte[4];
-            for (int i = 0; i < KeccakCache.Count; i++)
+            for (int i = 0; i < (int)KeccakCache.Count; i++)
             {
                 BinaryPrimitives.WriteInt32LittleEndian(span, i);
-                KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+                Assert.That(KeccakCache.Compute(span), Is.EqualTo(ValueKeccak.Compute(span)));
             }
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Compute_WithUnalignedInput_MatchesUncachedHash(
+            [Values(20, 32, 63, 64, 65, 92)] int length,
+            [Values(0, 1, 7, 15)] int offset,
+            [Values] bool storeComputedHash)
+        {
+            Random random = new(42);
+            for (int i = 0; i < 1000; i++)
+            {
+                byte[] buffer = new byte[length + offset];
+                random.NextBytes(buffer);
+                ReadOnlySpan<byte> bytes = buffer.AsSpan(offset, length);
+
+                ValueHash256 expected = ValueKeccak.Compute(bytes);
+                if (storeComputedHash) KeccakCache.Store(bytes, in expected);
+                ValueHash256 actual = KeccakCache.Compute(bytes);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual, Is.EqualTo(expected));
+
+                    // Second call should hit cache
+                    Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
+                    Assert.That(KeccakCache.TryGet(bytes, out ValueHash256 cached), Is.True);
+                    Assert.That(cached, Is.EqualTo(expected));
+                }
+            }
+        }
+
+        [Test]
+        public void Concurrent_read_write_stress([Values(20, 32, 64)] int length, [Values] bool storeComputedHash)
+        {
+            // Stress test the seqlock pattern with concurrent readers and writers
+            const int iterations = 100_000;
+            byte[] bytes = new byte[length];
+            new Random(123).NextBytes(bytes);
+
+            // Prime the cache
+            KeccakCache.Compute(bytes);
+
+            // Create different keys that hash to the same bucket (will cause cache eviction)
+            byte[][] collisions = new byte[4][];
+            collisions[0] = bytes;
+            Random random = new(456);
+            uint bucket = KeccakCache.GetBucket(bytes);
+            int found = 1;
+            while (found < 4)
+            {
+                byte[] candidate = new byte[length];
+                random.NextBytes(candidate);
+                if (KeccakCache.GetBucket(candidate) == bucket)
+                {
+                    collisions[found++] = candidate;
+                }
+            }
+
+            ValueHash256[] expectedValues = collisions.Select(c => ValueKeccak.Compute(c)).ToArray();
+
+            // Parallel readers and writers hammering the same bucket
+            Parallel.For(0, iterations, i =>
+            {
+                int idx = i % 4;
+                byte[] input = collisions[idx];
+                if (storeComputedHash) KeccakCache.Store(input, in expectedValues[idx]);
+                ValueHash256 result = KeccakCache.Compute(input);
+                Assert.That(result, Is.EqualTo(expectedValues[idx]), $"iteration {i}, index {idx}");
+                if (KeccakCache.TryGet(input, out ValueHash256 cached))
+                    Assert.That(cached, Is.EqualTo(expectedValues[idx]), $"cached iteration {i}, index {idx}");
+            });
         }
     }
 }

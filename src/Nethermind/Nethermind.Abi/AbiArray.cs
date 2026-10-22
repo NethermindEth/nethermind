@@ -31,8 +31,33 @@ public class AbiArray : AbiType
 
     public override (object, int) Decode(byte[] data, int position, bool packed)
     {
+        using DecodeBudgetScope decodeBudget = EnterDecodeBudget(data.Length);
         (UInt256 length, position) = UInt256.DecodeUInt(data, position, packed);
-        return DecodeSequence(ElementType.CSharpType, (int)length, ElementTypes, data, packed, position);
+        if (length > (UInt256)int.MaxValue)
+        {
+            throw new AbiException($"ABI array length {length} exceeds the supported maximum");
+        }
+
+        int sequenceLength = (int)length;
+        int elementHeadSize = ElementType.GetHeadSize(packed);
+        if (elementHeadSize is 0)
+        {
+            ConsumeZeroWidthElementBudget(sequenceLength, ElementType);
+        }
+        else
+        {
+            int remainingDataLength = data.Length - position;
+            ulong allocationSize = (ulong)(uint)sequenceLength * (uint)elementHeadSize;
+            if (allocationSize > (uint)remainingDataLength)
+            {
+                throw new AbiException(
+                    $"ABI array of {sequenceLength} {ElementType} elements requires an allocation bound of {allocationSize} bytes, but only {remainingDataLength} bytes are available");
+            }
+
+            ConsumeDecodeBudget(allocationSize, ElementType);
+        }
+
+        return DecodeSequence(ElementType.CSharpType, sequenceLength, ElementTypes, data, packed, position);
     }
 
     public override byte[] Encode(object? arg, bool packed)

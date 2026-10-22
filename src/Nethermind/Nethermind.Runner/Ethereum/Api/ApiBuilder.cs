@@ -3,15 +3,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -20,26 +20,34 @@ namespace Nethermind.Runner.Ethereum.Api;
 public class ApiBuilder
 {
     private readonly IConfigProvider _configProvider;
-    private readonly IJsonSerializer _jsonSerializer;
+    private readonly EthereumJsonSerializer _jsonSerializer;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly IInitConfig _initConfig;
+    private readonly IProcessExitSource _processExitSource;
     public ChainSpec ChainSpec { get; }
 
-    public ApiBuilder(IConfigProvider configProvider, ILogManager logManager)
+    private int _apiCreated;
+
+    public ApiBuilder(IProcessExitSource processExitSource, IConfigProvider configProvider, ILogManager logManager)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = _logManager.GetClassLogger();
+        _logger = _logManager.GetClassLogger<ApiBuilder>();
+        _processExitSource = processExitSource;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _initConfig = configProvider.GetConfig<IInitConfig>();
-        _jsonSerializer = new EthereumJsonSerializer(configProvider.GetConfig<IJsonRpcConfig>().JsonSerializationMaxDepth);
+        IJsonRpcConfig? jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+        EthereumJsonSerializer.StrictHexFormat = jsonRpcConfig.StrictHexFormat;
+        _jsonSerializer = new EthereumJsonSerializer(jsonRpcConfig.JsonSerializationMaxDepth);
         ChainSpec = LoadChainSpec(_jsonSerializer);
     }
 
-    public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) =>
-        Create((IEnumerable<IConsensusPlugin>)consensusPlugins);
-
-    public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
+    /// <summary>Builds the container and resolves the runner.</summary>
+    /// <param name="plugins">The enabled plugins, whose modules join the container.</param>
+    /// <param name="command">
+    /// The standalone command to run instead of the node, or <c>null</c> to start a node.
+    /// </param>
+    public EthereumRunner CreateEthereumRunner(IEnumerable<INethermindPlugin> plugins, string? command)
     {
         bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
         if (wasCreated)
@@ -47,34 +55,36 @@ public class ApiBuilder
             throw new NotSupportedException("Creation of multiple APIs not supported.");
         }
 
-        if (consensusPlugins.Count() > 1)
-        {
-            throw new NotSupportedException($"More than one consensus plugins are enabled. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
-        }
+        ContainerBuilder containerBuilder = new ContainerBuilder()
+            .AddModule(new NethermindRunnerModule(
+                _jsonSerializer,
+                ChainSpec,
+                _configProvider,
+                _processExitSource,
+                plugins,
+                command,
+                _logManager));
 
-        IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault();
-        INethermindApi nethermindApi =
-            enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec) ??
-            new NethermindApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
-        nethermindApi.SealEngineType = ChainSpec.SealEngineType;
-        nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
-        nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
-
+        IContainer container = containerBuilder.Build();
         SetLoggerVariables(ChainSpec);
-
-        return nethermindApi;
+        return container.Resolve<EthereumRunner>();
     }
 
-    private int _apiCreated;
-
-    private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
+    private ChainSpec LoadChainSpec(EthereumJsonSerializer ethereumJsonSerializer)
     {
         if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
         ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 
-        var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logger);
+        ChainSpecFileLoader loader = new(ethereumJsonSerializer, _logManager);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
+
+        //overwriting NetworkId which is useful for some devnets (like bloatnet)
+        if (_initConfig.NetworkId is not null)
+        {
+            chainSpec.NetworkId = (ulong)_initConfig.NetworkId;
+        }
+
         return chainSpec;
     }
 

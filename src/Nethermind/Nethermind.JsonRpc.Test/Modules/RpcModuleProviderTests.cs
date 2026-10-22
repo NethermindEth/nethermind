@@ -1,125 +1,698 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.IO.Abstractions;
-using FluentAssertions;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core;
+using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.Modules
+namespace Nethermind.JsonRpc.Test.Modules;
+
+[Parallelizable(ParallelScope.Self)]
+[TestFixture]
+public class RpcModuleProviderTests
 {
-    [Parallelizable(ParallelScope.Self)]
-    [TestFixture]
-    public class RpcModuleProviderTests
+    private IRpcModuleProvider _moduleProvider = null!;
+    private IFileSystem _fileSystem = null!;
+    private JsonRpcContext _context = null!;
+
+    [SetUp]
+    public void Initialize()
     {
-        private IRpcModuleProvider _moduleProvider = null!;
-        private IFileSystem _fileSystem = null!;
-        private JsonRpcContext _context = null!;
+        _fileSystem = Substitute.For<IFileSystem>();
+        _moduleProvider = CreateProvider(fileSystem: _fileSystem);
+        _context = new JsonRpcContext(RpcEndpoint.Http);
+    }
 
-        [SetUp]
-        public void Initialize()
+    private static RpcModuleProvider CreateProvider(IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IReadOnlyList<RpcModuleInfo>? rpcModules = null) =>
+        new(fileSystem ?? Substitute.For<IFileSystem>(), config ?? new JsonRpcConfig(), new EthereumJsonSerializer(), rpcModules ?? [], LimboLogs.Instance);
+
+    [Test]
+    public void Module_provider_will_recognize_disabled_modules()
+    {
+        JsonRpcConfig jsonRpcConfig = new() { EnabledModules = [] };
+        _moduleProvider = CreateProvider(jsonRpcConfig);
+        _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
+        Assert.That(_moduleProvider.Check("proof_call", _context), Is.EqualTo(ModuleResolution.Disabled));
+    }
+
+    [Test]
+    public void Method_resolution_is_case_sensitive()
+    {
+        SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
+        _moduleProvider.Register(pool);
+
+        using (Assert.EnterMultipleScope())
         {
-            _fileSystem = Substitute.For<IFileSystem>();
-            _moduleProvider = new RpcModuleProvider(_fileSystem, new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
-            _context = new JsonRpcContext(RpcEndpoint.Http);
+            Assert.That(_moduleProvider.Check("net_VeRsIoN", _context), Is.EqualTo(ModuleResolution.Unknown));
+            Assert.That(_moduleProvider.Check("net_Version", _context), Is.EqualTo(ModuleResolution.Unknown));
+            Assert.That(_moduleProvider.Check("Net_Version", _context), Is.EqualTo(ModuleResolution.Unknown));
+            Assert.That(_moduleProvider.Check("net_version", _context), Is.EqualTo(ModuleResolution.Enabled));
+        }
+    }
+
+    [TestCase("eth_.*", ModuleResolution.Unknown)]
+    [TestCase("net_.*", ModuleResolution.Enabled)]
+    public void With_filter_can_reject(string regex, ModuleResolution expectedResult)
+    {
+        JsonRpcConfig config = new();
+        _fileSystem.File.Exists(Arg.Any<string>()).Returns(true);
+        _fileSystem.File.ReadLines(Arg.Any<string>()).Returns([regex]);
+        _moduleProvider = CreateProvider(config, _fileSystem);
+
+        SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
+        _moduleProvider.Register(pool);
+
+        ModuleResolution resolution = _moduleProvider.Check("net_version", _context);
+        Assert.That(resolution, Is.EqualTo(expectedResult));
+    }
+
+    [Test]
+    public void Returns_politely_when_no_method_found()
+    {
+        SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>(), true);
+        _moduleProvider.Register(pool);
+
+        Assert.That(_moduleProvider.Check("unknown_method", _context), Is.EqualTo(ModuleResolution.Unknown));
+    }
+
+    [Test]
+    public void Method_resolution_is_scoped_to_url_enabled_modules()
+    {
+        _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>(), true));
+        _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), true));
+
+        JsonRpcUrl url = new("http", "127.0.0.1", 8888, RpcEndpoint.Http, false, new[] { "net" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_moduleProvider.Check("net_version", JsonRpcContext.Http(url)), Is.EqualTo(ModuleResolution.Enabled));
+            Assert.That(_moduleProvider.Check("proof_call", JsonRpcContext.Http(url)), Is.EqualTo(ModuleResolution.Disabled));
+            Assert.That(_moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http)), Is.EqualTo(ModuleResolution.Enabled));
+        }
+    }
+
+    [Test]
+    public async Task Allows_to_replace_modules()
+    {
+        INetRpcModule first = Substitute.For<INetRpcModule>();
+        _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(first));
+        Assert.That(await _moduleProvider.Rent(nameof(INetRpcModule.net_listening), true), Is.SameAs(first));
+
+        INetRpcModule second = Substitute.For<INetRpcModule>();
+        _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(second));
+
+        Assert.That(await _moduleProvider.Rent(nameof(INetRpcModule.net_listening), true), Is.SameAs(second));
+    }
+
+    [TestCase("engine_newPayloadV4", ModuleType.Engine)]
+    [TestCase("engine_getBlobsV2", ModuleType.Engine)]
+    [TestCase("engine_forkchoiceUpdatedV3", ModuleType.Engine)]
+    [TestCase("eth_call", ModuleType.Eth)]
+    [TestCase("eth_getBlockByNumber", ModuleType.Eth)]
+    [TestCase("eth_chainId", ModuleType.Eth)]
+    public void Hot_method_resolution_matches_dictionary_resolution(string methodName, string moduleType)
+    {
+        RegisterHotModules();
+
+        string internedMethodName = string.Intern(methodName);
+        string nonInternedMethodName = new(methodName.ToCharArray());
+        Assert.That(ReferenceEquals(nonInternedMethodName, internedMethodName), Is.False);
+
+        ModuleResolution internedResolution = _moduleProvider.Check(internedMethodName, _context, out string? internedModule, out RpcModuleProvider.ResolvedMethodInfo? internedMethod);
+        ModuleResolution nonInternedResolution = _moduleProvider.Check(nonInternedMethodName, _context, out string? nonInternedModule, out RpcModuleProvider.ResolvedMethodInfo? nonInternedMethod);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(internedResolution, Is.EqualTo(ModuleResolution.Enabled));
+            Assert.That(nonInternedResolution, Is.EqualTo(ModuleResolution.Enabled));
+            Assert.That(internedModule, Is.EqualTo(moduleType));
+            Assert.That(nonInternedModule, Is.EqualTo(moduleType));
+            Assert.That(internedMethod, Is.SameAs(nonInternedMethod));
+            Assert.That(internedMethod!.ToString(), Is.EqualTo(methodName));
+        }
+    }
+
+    [Test]
+    public async Task Hot_method_cache_updates_after_module_replacement()
+    {
+        HotEngineRpcModule first = new();
+        _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(first));
+        Assert.That(await _moduleProvider.Rent("engine_newPayloadV4", true), Is.SameAs(first));
+
+        HotEngineRpcModule second = new();
+        _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(second));
+
+        Assert.That(await _moduleProvider.Rent("engine_newPayloadV4", true), Is.SameAs(second));
+    }
+
+    [Test]
+    public async Task Caches_direct_invokers_for_result_wrapper_methods()
+    {
+        DirectInvokerRpcModule module = new();
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(module));
+
+        RpcModuleProvider.ResolvedMethodInfo syncMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_sync))!;
+        RpcModuleProvider.ResolvedMethodInfo asyncMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_async))!;
+        RpcModuleProvider.ResolvedMethodInfo parameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_param))!;
+        RpcModuleProvider.ResolvedMethodInfo fourParameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_four_params))!;
+        RpcModuleProvider.ResolvedMethodInfo requiredValueParameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_required_value_param))!;
+        RpcModuleProvider.ResolvedMethodInfo typedErrorDataMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_typed_error_data))!;
+        RpcModuleProvider.ResolvedMethodInfo asyncTypedErrorDataMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_async_typed_error_data))!;
+        RpcModuleProvider.ResolvedMethodInfo polymorphicMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_polymorphic))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(syncMethod.DirectNoParameterInvoker, Is.Not.Null);
+            Assert.That(asyncMethod.DirectNoParameterInvoker, Is.Not.Null);
+            Assert.That(parameterMethod.DirectNoParameterInvoker, Is.Null);
+            Assert.That(parameterMethod.DirectParameterInvoker, Is.Not.Null);
+            Assert.That(fourParameterMethod.DirectParameterInvoker, Is.Not.Null);
+            Assert.That(requiredValueParameterMethod.DirectParameterInvoker, Is.Null);
+            Assert.That(requiredValueParameterMethod.ExpectedParameters[0].TypeInfo, Is.Not.Null);
+            Assert.That(RpcParameterTypeInfo.Get(typeof(int)), Is.Not.Null);
         }
 
-        [TearDown]
-        public void TearDown()
+        AssertResultMetadata(syncMethod, typeof(ResultWrapper<string>), typeof(string));
+        AssertResultMetadata(asyncMethod, typeof(ResultWrapper<long>), typeof(long), isTaskWrapped: true);
+        AssertResultMetadata(typedErrorDataMethod, typeof(ResultWrapper<string, bool>), typeof(string), typeof(bool));
+        AssertResultMetadata(asyncTypedErrorDataMethod, typeof(ResultWrapper<string, string>), typeof(string), typeof(string), isTaskWrapped: true);
+        AssertResultMetadata(polymorphicMethod, typeof(ResultWrapper<PolymorphicPayload>), typeof(PolymorphicPayload), successPayloadCanHaveDerivedRuntimeType: true);
+
+        object? syncResultObject = syncMethod.DirectNoParameterInvoker!(module);
+        Assert.That(syncResultObject, Is.AssignableTo<IResultWrapper>());
+        IResultWrapper syncResult = (IResultWrapper)syncResultObject!;
+        Assert.That(syncResult.Data, Is.EqualTo("sync"));
+
+        object? asyncResultObject = asyncMethod.DirectNoParameterInvoker!(module);
+        Assert.That(asyncResultObject, Is.AssignableTo<Task<ResultWrapper<long>>>());
+        Task<ResultWrapper<long>> asyncResult = (Task<ResultWrapper<long>>)asyncResultObject!;
+        Assert.That((await asyncResult).Data, Is.EqualTo(5));
+        Assert.That(asyncMethod.ReadTaskResult(asyncResult)!.Data, Is.EqualTo(5));
+
+        object? parameterResultObject = parameterMethod.DirectParameterInvoker!(module, ["param"]);
+        Assert.That(parameterResultObject, Is.AssignableTo<IResultWrapper>());
+        IResultWrapper parameterResult = (IResultWrapper)parameterResultObject!;
+        Assert.That(parameterResult.Data, Is.EqualTo("param"));
+
+        object? fourParameterResultObject = fourParameterMethod.DirectParameterInvoker!(module, ["a", "b", "c", "d"]);
+        Assert.That(fourParameterResultObject, Is.AssignableTo<IResultWrapper>());
+        IResultWrapper fourParameterResult = (IResultWrapper)fourParameterResultObject!;
+        Assert.That(fourParameterResult.Data, Is.EqualTo("abcd"));
+
+        object? asyncTypedErrorResultObject = asyncTypedErrorDataMethod.DirectNoParameterInvoker!(module);
+        Assert.That(asyncTypedErrorResultObject, Is.AssignableTo<Task<ResultWrapper<string, string>>>());
+        Task<ResultWrapper<string, string>> asyncTypedErrorResult = (Task<ResultWrapper<string, string>>)asyncTypedErrorResultObject!;
+        Assert.That(asyncTypedErrorDataMethod.ReadTaskResult(asyncTypedErrorResult)!.Data, Is.EqualTo("error-data"));
+
+        using (Assert.EnterMultipleScope())
         {
-            _context?.Dispose();
+            Assert.That(module.SyncCalls, Is.EqualTo(1));
+            Assert.That(module.AsyncCalls, Is.EqualTo(1));
+            Assert.That(module.ParameterCalls, Is.EqualTo(1));
+            Assert.That(module.FourParameterCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Parameter_specific_converter_is_used_for_reparsed_strings()
+    {
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(new DirectInvokerRpcModule()));
+        RpcModuleProvider.ResolvedMethodInfo method = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_converter))!;
+        RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter = method.ExpectedParameters[0];
+
+        int[]? value = (int[]?)JsonSerializer.Deserialize("[1,2]"u8, parameter.TypeInfo!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo(new[] { 42 }));
+            Assert.That(parameter.ReparseString, Is.True);
+        }
+    }
+
+    [TestCase(nameof(DirectInvokerRpcModule.direct_with_converter), "[[1,2],3]", new[] { 42 })]
+    [TestCase(nameof(DirectInvokerRpcModule.direct_with_base_type_converter), "[[1,2],3]", new[] { 42 })]
+    [TestCase(nameof(DirectInvokerRpcModule.direct_required_value_param), "[5,3]", 5)]
+    public void Parameter_value_reader_stops_on_the_last_token_of_its_value(string methodName, string json, object expected)
+    {
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(new DirectInvokerRpcModule()));
+        RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter = _moduleProvider.Resolve(methodName)!.ExpectedParameters[0];
+
+        Utf8JsonReader reader = new(Encoding.UTF8.GetBytes(json));
+        reader.Read();
+        reader.Read();
+        object? value = parameter.ValueReader!(ref reader);
+        reader.Read();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo(expected));
+            Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.Number), "the next parameter must start where this one ended");
+            Assert.That(reader.GetInt32(), Is.EqualTo(3));
+        }
+    }
+
+    [TestCase(nameof(DirectInvokerRpcModule.direct_with_underreading_converter))]
+    [TestCase(nameof(DirectInvokerRpcModule.direct_with_overreading_converter))]
+    public void Parameter_value_reader_rejects_a_converter_that_does_not_read_exactly_one_value(string methodName)
+    {
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(new DirectInvokerRpcModule()));
+        RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter = _moduleProvider.Resolve(methodName)!.ExpectedParameters[0];
+
+        Assert.That(() => ReadFirstElement(parameter, "[[1,2],3]"u8.ToArray()), Throws.TypeOf<JsonException>());
+
+        static object? ReadFirstElement(RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter, byte[] json)
+        {
+            Utf8JsonReader reader = new(json);
+            reader.Read();
+            reader.Read();
+            return parameter.ValueReader!(ref reader);
+        }
+    }
+
+    /// <remarks>
+    /// At node startup the modules resolve parameter metadata from options no serializer call has used, so they are
+    /// still mutable. STJ's object converters re-resolve metadata on <c>Read</c>, which fails on mutable options.
+    /// </remarks>
+    [Test]
+    public void Parameter_value_reader_reads_an_object_whose_options_no_serializer_has_used()
+    {
+        JsonSerializerOptions unusedOptions = new(EthereumJsonSerializer.JsonRpcRequestOptions);
+        JsonTypeInfo typeInfo = unusedOptions.GetTypeInfo(typeof(ObjectParameter));
+        ParameterInfo info = typeof(DirectInvokerRpcModule).GetMethod(nameof(DirectInvokerRpcModule.direct_with_object_param))!.GetParameters()[0];
+        RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter = new(
+            info, typeof(ObjectParameter), typeInfo, null,
+            RpcModuleProvider.ResolvedMethodInfo.ParameterKind.Typed, null, false,
+            RpcModuleProvider.ResolvedMethodInfo.ParameterDetails.None);
+
+        Assert.That(ReadObject(parameter, """{"value":7}"""u8.ToArray()), Has.Property(nameof(ObjectParameter.Value)).EqualTo(7));
+
+        static object? ReadObject(RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter, byte[] json)
+        {
+            Utf8JsonReader reader = new(json);
+            reader.Read();
+            return parameter.ValueReader!(ref reader);
+        }
+    }
+
+    [Test]
+    public void Rpc_payload_type_info_caches_generated_metadata_and_resolves_fallbacks()
+    {
+        JsonTypeInfo<StorageValuesResult> firstGeneratedLookup = RpcPayloadTypeInfo<StorageValuesResult>.Get(EthereumJsonSerializer.JsonOptions);
+        JsonTypeInfo<StorageValuesResult> secondGeneratedLookup = RpcPayloadTypeInfo<StorageValuesResult>.Get(EthereumJsonSerializer.JsonOptions);
+        Assert.That(RpcPayloadTypeInfo<FallbackPayload>.Get(EthereumJsonSerializer.JsonOptions), Is.Not.Null);
+
+        Assert.That(firstGeneratedLookup, Is.SameAs(secondGeneratedLookup));
+    }
+
+    [Test]
+    public void Runtime_collection_payload_serializes_through_covered_interface([Values] bool canonicalOptions)
+    {
+        ParityLikeTxTrace[] traces = [new() { Output = [1] }];
+        IEnumerable<ParityTxTraceFromReplay> payload = traces.Select(static trace => new ParityTxTraceFromReplay(trace));
+        JsonSerializerOptions options = canonicalOptions
+            ? EthereumJsonSerializer.JsonOptions
+            : new(EthereumJsonSerializer.JsonOptions);
+        using ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> response = ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(payload);
+        response.Id = 67;
+        ArrayBufferWriter<byte> buffer = new();
+
+        JsonRpcResponseWriter.Write(buffer, response, options);
+
+        Assert.That(Encoding.UTF8.GetString(buffer.WrittenSpan), Is.EqualTo(
+            """{"jsonrpc":"2.0","result":[{"output":"0x01","stateDiff":null,"trace":[],"vmTrace":null}],"id":67}"""));
+    }
+
+    [Test]
+    public void Generated_rpc_type_info_covers_json_rpc_assembly_modules()
+    {
+        List<string> missing = [];
+        AddMissingAssemblyPayloadTypes(typeof(IEthRpcModule).Assembly, missing);
+
+        Assert.That(missing, Is.Empty);
+    }
+
+    private static void AddMissingAssemblyPayloadTypes(Assembly assembly, List<string> missing)
+    {
+        Type[] assemblyTypes = assembly.GetTypes();
+        for (int i = 0; i < assemblyTypes.Length; i++)
+        {
+            Type moduleType = assemblyTypes[i];
+            if (!typeof(IRpcModule).IsAssignableFrom(moduleType))
+            {
+                continue;
+            }
+
+            AddMissingModulePayloadTypes(moduleType, missing);
+        }
+    }
+
+    [Test]
+    public void Can_register_via_constructor()
+    {
+        IRpcModuleProvider moduleProvider = CreateEraAdminModuleProvider();
+        Assert.That(moduleProvider.Check("admin_exportHistory", _context), Is.EqualTo(ModuleResolution.Enabled));
+    }
+
+    [Test]
+    public async Task Can_register_multiple_module_interface_of_same_rpc_module()
+    {
+        IRpcModuleProvider moduleProvider = CreateEraAdminModuleProvider();
+
+        moduleProvider.RegisterBounded<IAdminRpcModule>(new SingletonFactory<IAdminRpcModule>(Substitute.For<IAdminRpcModule>()), 1, Int32.MaxValue);
+
+        Assert.That(moduleProvider.Check("admin_exportHistory", _context), Is.EqualTo(ModuleResolution.Enabled));
+        Assert.That(moduleProvider.Check("admin_addPeer", _context), Is.EqualTo(ModuleResolution.Enabled));
+
+        IRpcModule adminClass = await moduleProvider.Rent("admin_addPeer", true);
+        Assert.That((adminClass is IAdminRpcModule), Is.True);
+        IRpcModule historyClass = await moduleProvider.Rent("admin_exportHistory", true);
+        Assert.That((historyClass is ITestAdminRpcModule), Is.True);
+    }
+
+    [Test]
+    public void ModuleFactory_FromDI_IsLazy([Values] bool preload)
+    {
+        IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig { PreloadRpcModules = preload }))
+            .AddSingleton<TestRpcModuleDependencies>()
+            .RegisterSingletonJsonRpcModule<ITestRpcModule, TestRpcModule>()
+            .Build();
+
+        _ = container.Resolve<IRpcModuleProvider>();
+
+        Assert.That(container.Resolve<TestRpcModuleDependencies>().WasRequested, Is.EqualTo(preload));
+    }
+
+    private static IRpcModuleProvider CreateEraAdminModuleProvider() =>
+        CreateProvider(
+            new JsonRpcConfig { EnabledModules = [ModuleType.Admin] },
+            rpcModules:
+            [
+                new RpcModuleInfo(typeof(ITestAdminRpcModule), new SingletonModulePool<ITestAdminRpcModule>(Substitute.For<ITestAdminRpcModule>()))
+            ]);
+
+    private void RegisterHotModules()
+    {
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Engine, ModuleType.Eth] };
+        _moduleProvider = CreateProvider(config, _fileSystem);
+        _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(new HotEngineRpcModule()));
+        _moduleProvider.Register(new TestModulePool<HotEthRpcModule>(new HotEthRpcModule()));
+    }
+
+    private static void AssertResultMetadata(
+        RpcModuleProvider.ResolvedMethodInfo method,
+        Type resultWrapperType,
+        Type successPayloadType,
+        Type? errorDataPayloadType = null,
+        bool isTaskWrapped = false,
+        bool successPayloadCanHaveDerivedRuntimeType = false)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(method.IsTaskWrapped, Is.EqualTo(isTaskWrapped));
+            Assert.That(method.ResultWrapperType, Is.EqualTo(resultWrapperType));
+            Assert.That(method.SuccessPayloadType, Is.EqualTo(successPayloadType));
+            Assert.That(method.SuccessPayloadTypeInfo, Is.Not.Null);
+            Assert.That(method.SuccessPayloadCanHaveDerivedRuntimeType, Is.EqualTo(successPayloadCanHaveDerivedRuntimeType));
+            Assert.That(method.ErrorDataPayloadType, Is.EqualTo(errorDataPayloadType));
+            Assert.That(method.ErrorDataPayloadCanHaveDerivedRuntimeType, Is.False);
+            Assert.That((method.TaskResultAccessor is not null), Is.EqualTo(isTaskWrapped));
+
+            if (errorDataPayloadType is not null)
+            {
+                Assert.That(method.ErrorDataPayloadTypeInfo, Is.Not.Null);
+            }
+        }
+    }
+
+    private static void AddMissingModulePayloadTypes(Type moduleType, List<string> missing)
+    {
+        AddMissingMethodPayloadTypes(moduleType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly), missing);
+
+        Type[] interfaceTypes = moduleType.GetInterfaces();
+        for (int i = 0; i < interfaceTypes.Length; i++)
+        {
+            Type interfaceType = interfaceTypes[i];
+            if (typeof(IRpcModule).IsAssignableFrom(interfaceType))
+            {
+                AddMissingMethodPayloadTypes(interfaceType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly), missing);
+            }
+        }
+    }
+
+    private static void AddMissingMethodPayloadTypes(MethodInfo[] methods, List<string> missing)
+    {
+        for (int i = 0; i < methods.Length; i++)
+        {
+            MethodInfo method = methods[i];
+            if (method.IsStatic || method.IsSpecialName || method.ContainsGenericParameters)
+            {
+                continue;
+            }
+
+            AddMissingResultPayloadTypes(method, missing);
+            ParameterInfo[] parameters = method.GetParameters();
+            for (int j = 0; j < parameters.Length; j++)
+            {
+                AddMissingPayloadType(method, $"parameter {parameters[j].Name}", parameters[j].ParameterType, missing);
+            }
+        }
+    }
+
+    private static void AddMissingResultPayloadTypes(MethodInfo method, List<string> missing)
+    {
+        Type resultType = UnwrapTaskLike(method.ReturnType);
+        if (!resultType.IsGenericType)
+        {
+            return;
         }
 
-        [Test]
-        public void Module_provider_will_recognize_disabled_modules()
+        Type genericTypeDefinition = resultType.GetGenericTypeDefinition();
+        if (genericTypeDefinition != typeof(ResultWrapper<>) && genericTypeDefinition != typeof(ResultWrapper<,>))
         {
-            JsonRpcConfig jsonRpcConfig = new();
-            jsonRpcConfig.EnabledModules = [];
-            _moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
-            _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
-            ModuleResolution resolution = _moduleProvider.Check("proof_call", _context);
-            Assert.That(resolution, Is.EqualTo(ModuleResolution.Disabled));
+            return;
         }
 
-        [Test]
-        public void Method_resolution_is_case_sensitive()
+        Type[] genericArguments = resultType.GetGenericArguments();
+        AddMissingPayloadType(method, "result", genericArguments[0], missing);
+        if (genericTypeDefinition == typeof(ResultWrapper<,>))
         {
-            SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
-            _moduleProvider.Register(pool);
+            AddMissingPayloadType(method, "error data", genericArguments[1], missing);
+        }
+    }
 
-            _moduleProvider.Check("net_VeRsIoN", _context).Should().Be(ModuleResolution.Unknown);
-            _moduleProvider.Check("net_Version", _context).Should().Be(ModuleResolution.Unknown);
-            _moduleProvider.Check("Net_Version", _context).Should().Be(ModuleResolution.Unknown);
-            _moduleProvider.Check("net_version", _context).Should().Be(ModuleResolution.Enabled);
+    private static Type UnwrapTaskLike(Type type)
+    {
+        if (!type.IsGenericType)
+        {
+            return type;
         }
 
-        [TestCase("eth_.*", ModuleResolution.Unknown)]
-        [TestCase("net_.*", ModuleResolution.Enabled)]
-        public void With_filter_can_reject(string regex, ModuleResolution expectedResult)
+        Type genericTypeDefinition = type.GetGenericTypeDefinition();
+        return genericTypeDefinition == typeof(Task<>) || genericTypeDefinition == typeof(ValueTask<>)
+            ? type.GetGenericArguments()[0]
+            : type;
+    }
+
+    private static void AddMissingPayloadType(MethodInfo method, string role, Type type, List<string> missing)
+    {
+        if (type.IsByRef)
         {
-            JsonRpcConfig config = new();
-            _fileSystem.File.Exists(Arg.Any<string>()).Returns(true);
-            _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] { regex });
-            _moduleProvider = new RpcModuleProvider(_fileSystem, config, new EthereumJsonSerializer(), LimboLogs.Instance);
-
-            SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
-            _moduleProvider.Register(pool);
-
-            ModuleResolution resolution = _moduleProvider.Check("net_version", _context);
-            resolution.Should().Be(expectedResult);
+            type = type.GetElementType()!;
         }
 
-        [Test]
-        public void Returns_politely_when_no_method_found()
+        if (type.ContainsGenericParameters || type == typeof(void))
         {
-            SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>(), true);
-            _moduleProvider.Register(pool);
-
-            ModuleResolution resolution = _moduleProvider.Check("unknown_method", _context);
-            Assert.That(resolution, Is.EqualTo(ModuleResolution.Unknown));
+            return;
         }
 
-        [Test]
-        public void Method_resolution_is_scoped_to_url_enabled_modules()
+        if (!RpcGeneratedTypeInfoRegistry.TryGet(type, out _))
         {
-            _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>(), true));
-            _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), true));
+            missing.Add($"{method.DeclaringType?.FullName}.{method.Name} {role}: {type.FullName ?? type.Name}");
+        }
+    }
 
-            JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http, false, new[] { "net" });
+    [RpcModule(ModuleType.Engine)]
+    private sealed class HotEngineRpcModule : IRpcModule
+    {
+        public ResultWrapper<string> engine_newPayloadV4() => ResultWrapper<string>.Success(string.Empty);
 
-            ModuleResolution inScopeResolution = _moduleProvider.Check("net_version", JsonRpcContext.Http(url));
-            Assert.That(inScopeResolution, Is.EqualTo(ModuleResolution.Enabled));
+        public ResultWrapper<string> engine_getBlobsV2() => ResultWrapper<string>.Success(string.Empty);
 
-            ModuleResolution outOfScopeResolution = _moduleProvider.Check("proof_call", JsonRpcContext.Http(url));
-            Assert.That(outOfScopeResolution, Is.EqualTo(ModuleResolution.Disabled));
+        public ResultWrapper<string> engine_forkchoiceUpdatedV3() => ResultWrapper<string>.Success(string.Empty);
+    }
 
-            ModuleResolution fallbackResolution = _moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http));
-            Assert.That(fallbackResolution, Is.EqualTo(ModuleResolution.Enabled));
+    [RpcModule(ModuleType.Eth)]
+    private sealed class HotEthRpcModule : IRpcModule
+    {
+        public ResultWrapper<HexBytes> eth_call() => ResultWrapper<HexBytes>.Success(default);
+
+        public ResultWrapper<string> eth_getBlockByNumber() => ResultWrapper<string>.Success(string.Empty);
+
+        public ResultWrapper<string> eth_chainId() => ResultWrapper<string>.Success(string.Empty);
+    }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class DirectInvokerRpcModule : IRpcModule
+    {
+        public int SyncCalls { get; private set; }
+        public int AsyncCalls { get; private set; }
+        public int ParameterCalls { get; private set; }
+        public int FourParameterCalls { get; private set; }
+
+        public ResultWrapper<string> direct_sync()
+        {
+            SyncCalls++;
+            return ResultWrapper<string>.Success("sync");
         }
 
-        [Test]
-        public void Allows_to_get_modules()
+        public Task<ResultWrapper<long>> direct_async()
         {
-            SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
-            _moduleProvider.Register(pool);
-            _moduleProvider.GetPool(ModuleType.Net).Should().Be(pool);
+            AsyncCalls++;
+            return Task.FromResult(ResultWrapper<long>.Success(5));
         }
 
-        [Test]
-        public void Allows_to_replace_modules()
+        public ResultWrapper<string> direct_with_param(string value)
         {
-            SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
-            _moduleProvider.Register(pool);
-
-            SingletonModulePool<INetRpcModule> pool2 = new(Substitute.For<INetRpcModule>());
-            _moduleProvider.Register(pool2);
-
-            _moduleProvider.GetPool(ModuleType.Net).Should().Be(pool2);
+            ParameterCalls++;
+            return ResultWrapper<string>.Success(value);
         }
+
+        public ResultWrapper<string> direct_with_four_params(string first, string second, string third, string fourth)
+        {
+            FourParameterCalls++;
+            return ResultWrapper<string>.Success(first + second + third + fourth);
+        }
+
+        public ResultWrapper<int> direct_required_value_param(int value) => ResultWrapper<int>.Success(value);
+
+        public ResultWrapper<int> direct_with_converter(
+            [JsonRpcParameter(ConverterType = typeof(SingleIntArrayConverter))] int[] values) =>
+            ResultWrapper<int>.Success(values[0]);
+
+        public ResultWrapper<int> direct_with_base_type_converter(
+            [JsonRpcParameter(ConverterType = typeof(IntListConverter))] int[] values) =>
+            ResultWrapper<int>.Success(values[0]);
+
+        public ResultWrapper<int> direct_with_object_param(ObjectParameter parameter) => ResultWrapper<int>.Success(parameter.Value);
+
+        public ResultWrapper<int> direct_with_underreading_converter(
+            [JsonRpcParameter(ConverterType = typeof(UnderReadingIntArrayConverter))] int[] values) =>
+            ResultWrapper<int>.Success(values.Length);
+
+        public ResultWrapper<int> direct_with_overreading_converter(
+            [JsonRpcParameter(ConverterType = typeof(OverReadingIntArrayConverter))] int[] values) =>
+            ResultWrapper<int>.Success(values.Length);
+
+        public ResultWrapper<string, bool> direct_typed_error_data() =>
+            ResultWrapper<string, bool>.Fail("typed", ErrorCodes.InvalidParams, false);
+
+        public Task<ResultWrapper<string, string>> direct_async_typed_error_data() =>
+            Task.FromResult(ResultWrapper<string, string>.Fail("typed", ErrorCodes.InvalidParams, "error-data"));
+
+        public ResultWrapper<PolymorphicPayload> direct_polymorphic() => ResultWrapper<PolymorphicPayload>.Success(new());
+    }
+
+    [RpcModule(ModuleType.Eth)]
+    private interface ITestRpcModule : IRpcModule { }
+
+    [RpcModule(ModuleType.Admin)]
+    public interface ITestAdminRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(Description = "Test admin history export method.")]
+        ResultWrapper<string> admin_exportHistory();
+    }
+
+    private class TestRpcModuleDependencies { internal bool WasRequested; }
+
+    private class TestRpcModule : ITestRpcModule { public TestRpcModule(TestRpcModuleDependencies dependencies) => dependencies.WasRequested = true; }
+
+    private sealed class FallbackPayload { public string? Value { get; set; } }
+
+    public sealed class SingleIntArrayConverter : JsonConverter<int[]>
+    {
+        public override int[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            reader.Skip();
+            return [42];
+        }
+
+        public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+    }
+
+    public sealed class IntListConverter : JsonConverter<IReadOnlyList<int>>
+    {
+        public override bool CanConvert(Type typeToConvert) => typeof(IReadOnlyList<int>).IsAssignableFrom(typeToConvert);
+
+        public override IReadOnlyList<int> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            reader.Skip();
+            return new[] { 42 };
+        }
+
+        public override void Write(Utf8JsonWriter writer, IReadOnlyList<int> value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+    }
+
+    public sealed class ObjectParameter
+    {
+        public int Value { get; set; }
+    }
+
+    public sealed class UnderReadingIntArrayConverter : JsonConverter<int[]>
+    {
+        public override int[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => [];
+
+        public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+    }
+
+    public sealed class OverReadingIntArrayConverter : JsonConverter<int[]>
+    {
+        public override int[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            reader.Skip();
+            reader.Read();
+            return [];
+        }
+
+        public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+    }
+
+    private class PolymorphicPayload { }
+
+    private sealed class TestModulePool<T>(T module) : IRpcModulePool<T> where T : IRpcModule
+    {
+        public IRpcModuleFactory<T> Factory { get; } = new TestModuleFactory(module);
+
+        public Task<T> GetModule(bool canBeShared) => Task.FromResult(module);
+
+        public void ReturnModule(T module) { }
+
+        private sealed class TestModuleFactory(T module) : IRpcModuleFactory<T> { public T Create() => module; }
     }
 }

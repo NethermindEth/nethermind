@@ -2,18 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class ActivatedSyncFeed<T> : SyncFeed<T>, IDisposable
     {
-        private readonly bool _disposed = false;
+        private bool _disposed;
 
-        protected ActivatedSyncFeed()
-        {
-            StateChanged += OnStateChanged;
-        }
+        protected ActivatedSyncFeed() => StateChanged += OnStateChanged;
 
         private void OnStateChanged(object? sender, SyncFeedStateEventArgs e)
         {
@@ -48,6 +44,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public virtual void Dispose()
         {
+            _disposed = true;
             StateChanged -= OnStateChanged;
         }
 

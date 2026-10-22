@@ -1,64 +1,124 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Exceptions;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
-using Nethermind.State;
-using Metrics = Nethermind.Evm.Metrics;
 
-namespace Nethermind.Consensus.Processing
+namespace Nethermind.Consensus.Processing;
+
+public partial class BlockProcessor
 {
-    public partial class BlockProcessor
+    public class BlockValidationTransactionsExecutor(
+        ITransactionProcessorAdapter transactionProcessor,
+        IWorldState stateProvider,
+        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
+        : IBlockProcessor.IBlockTransactionsExecutor
     {
-        public class BlockValidationTransactionsExecutor(
-            ITransactionProcessorAdapter transactionProcessor,
-            IWorldState stateProvider)
-            : IBlockProcessor.IBlockTransactionsExecutor
+        protected IWorldState _stateProvider = stateProvider;
+        protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
+
+        // Set once per block in SetupTxTimingMetrics on the block-processing thread, then read by
+        // parallel workers in StartTxTimer/StopTxTimer. Not volatile: visibility relies on the same
+        // ParallelUnbalancedWork.For join barrier that PerTxTimingCollector depends on. See
+        // PerTxTimingCollector's <remarks> for the full threading contract.
+        private bool _enableTxTimingMetrics;
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+
+        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
-            {
-            }
+            SetupTxTimingMetrics(block);
 
-            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+            bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                Metrics.ResetBlockStats();
-                BlockExecutionContext blkCtx = CreateBlockExecutionContext(block, spec);
-                for (int i = 0; i < block.Transactions.Length; i++)
+                token.ThrowIfCancellationRequested();
+                Transaction currentTx = block.Transactions[i];
+
+                ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+
+                if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {
-                    block.TransactionProcessed = i;
-                    Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
+                    ThrowInvalidBlockForGasLimit(block);
                 }
-                return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected virtual BlockExecutionContext CreateBlockExecutionContext(Block block, IReleaseSpec spec) => new(block.Header, spec);
+            return [.. receiptsTracer.TxReceipts];
 
-            protected virtual void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
-            {
-                TransactionResult result = transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, stateProvider);
-                if (!result) ThrowInvalidBlockException(result, blkCtx.Header, currentTx, index);
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
-            }
-
+            [DebuggerHidden]
             [DoesNotReturn]
-            [StackTraceHidden]
-            private void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
+            static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
+        }
+
+        protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+        {
+            long txStart = StartTxTimer();
+            TransactionResult result;
+            try
             {
-                throw new InvalidBlockException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}");
+                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
             }
+            finally
+            {
+                // Stop the timer even on failure so a slow-block log captures the failing tx's time
+                StopTxTimer(index, txStart);
+            }
+            if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+            if (_transactionProcessedEventHandler is { HasSubscribers: true } handler)
+                handler.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+        }
+
+        public void SetupTxTimingMetrics(Block block)
+        {
+            // Compile-time switch: when ExecutionMetricsFlag.IsActive folds to false the JIT
+            // elides the entire setup path (and the StartTxTimer/StopTxTimer bodies below).
+            if (!ExecutionMetricsFlag.IsActive) return;
+            _enableTxTimingMetrics = PerTxTimingCollector.IsEnabled;
+            if (_enableTxTimingMetrics)
+            {
+                PerTxTimingCollector.Prepare(block.Transactions.Length);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long StartTxTimer()
+        {
+            if (!ExecutionMetricsFlag.IsActive) return 0;
+            return _enableTxTimingMetrics ? Stopwatch.GetTimestamp() : 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void StopTxTimer(int i, long txStart)
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            if (_enableTxTimingMetrics)
+            {
+                PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
+            }
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        internal static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
+
+        /// <summary>
+        /// Receives each transaction processed on the main chain, raised as <see cref="IMainProcessingContext.TransactionProcessed"/>.
+        /// </summary>
+        public interface ITransactionProcessedEventHandler
+        {
+            void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
+
+            /// <summary>Whether anything observes processed transactions; when not, callers skip building the event.</summary>
+            bool HasSubscribers => true;
         }
     }
 }

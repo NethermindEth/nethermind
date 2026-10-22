@@ -1,130 +1,97 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO.Abstractions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
+using System.Diagnostics.CodeAnalysis;
+using Autofac;
 using Nethermind.Consensus.Tracing;
-using Nethermind.Consensus.Validators;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Facade;
+using Nethermind.Int256;
+using Nethermind.State.OverridableEnv;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
+/// <param name="readOnlyQueryModules">The <see cref="ReadOnlyQueryKind.Trace"/> modules among them configure the
+/// environments of every module instance and of the parallel block tracer, loaded after everything else those
+/// environments register.</param>
+[method: Experimental("NMEVM0001")]
+public class DebugModuleFactory(
+    ITraceEnvFactory envFactory,
+    ILifetimeScope rootLifetimeScope,
+    IBlockValidationModule[] validationBlockProcessingModules,
+    IPrefixStateSeedSource prefixSeeds,
+    ParallelTraceBudgets parallelBudgets,
+    ILogManager logManager,
+    IReadOnlyQueryModule[] readOnlyQueryModules
+) : IRpcModuleFactory<IDebugRpcModule>
 {
-    private readonly IJsonRpcConfig _jsonRpcConfig;
-    protected readonly IBlockValidator _blockValidator;
-    protected readonly IRewardCalculatorSource _rewardCalculatorSource;
-    protected readonly IReceiptStorage _receiptStorage;
-    private readonly IReceiptsMigration _receiptsMigration;
-    private readonly IConfigProvider _configProvider;
-    protected readonly ISpecProvider _specProvider;
-    protected readonly ILogManager _logManager;
-    protected readonly IBlockPreprocessorStep _recoveryStep;
-    private readonly IReadOnlyDbProvider _dbProvider;
-    protected readonly IReadOnlyBlockTree _blockTree;
-    private readonly ISyncModeSelector _syncModeSelector;
-    private readonly IBadBlockStore _badBlockStore;
-    private readonly IFileSystem _fileSystem;
-    private readonly IWorldStateManager _worldStateManager;
-
+    /// <summary>A factory whose environments load no read-only query modules.</summary>
     public DebugModuleFactory(
-        IWorldStateManager worldStateManager,
-        IDbProvider dbProvider,
-        IBlockTree blockTree,
-        IJsonRpcConfig jsonRpcConfig,
-        IBlockValidator blockValidator,
-        IBlockPreprocessorStep recoveryStep,
-        IRewardCalculatorSource rewardCalculator,
-        IReceiptStorage receiptStorage,
-        IReceiptsMigration receiptsMigration,
-        IConfigProvider configProvider,
-        ISpecProvider specProvider,
-        ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore,
-        IFileSystem fileSystem,
+        ITraceEnvFactory envFactory,
+        ILifetimeScope rootLifetimeScope,
+        IBlockValidationModule[] validationBlockProcessingModules,
+        IPrefixStateSeedSource prefixSeeds,
+        ParallelTraceBudgets parallelBudgets,
         ILogManager logManager)
+        : this(envFactory, rootLifetimeScope, validationBlockProcessingModules, prefixSeeds, parallelBudgets, logManager, [])
     {
-        _worldStateManager = worldStateManager;
-        _dbProvider = dbProvider.AsReadOnly(false);
-        _blockTree = blockTree.AsReadOnly();
-        _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-        _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-        _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-        _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
-        _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
-        _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-        _badBlockStore = badBlockStore;
-        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     }
 
-    public override IDebugRpcModule Create()
+    private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
+        builder => ConfigureTracerContainer(builder, validationBlockProcessingModules),
+        builder => builder.AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace));
+
+    private static ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder, IBlockValidationModule[] validationBlockProcessingModules) =>
+        builder
+            // Standard configuration
+            // Note: Not overriding `IReceiptStorage` to null.
+            .AddModule(validationBlockProcessingModules)
+            .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
+            .AddScoped<GethStyleTracer.TraceCallRequestState>()
+            .AddScoped<IBlobBaseFeeOverrideProvider, TraceCallBlobBaseFeeOverrideProvider>()
+            .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+
+            // So the debug rpc change the adapter sometime.
+            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
+
+            // The EIP-7928 BAL pool builds its per-worker adapters from this factory; route them through the
+            // same ChangeableTransactionProcessorAdapter so they honour the tracer's runtime Execute↔Trace swap.
+            .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(
+                static changeable => changeable.ForProcessor);
+
+    private sealed class TraceCallBlobBaseFeeOverrideProvider(GethStyleTracer.TraceCallRequestState state) : IBlobBaseFeeOverrideProvider
     {
-        IOverridableWorldScope worldStateManager = _worldStateManager.CreateOverridableWorldScope();
-        OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
-
-        IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
-
-        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
-        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = CreateBlockTransactionsExecutor(transactionProcessorAdapter, scope.WorldState);
-        ReadOnlyChainProcessingEnv chainProcessingEnv = CreateReadOnlyChainProcessingEnv(scope, worldStateManager, transactionsExecutor);
-
-        GethStyleTracer tracer = new(
-            chainProcessingEnv.ChainProcessor,
-            scope.WorldState,
-            _receiptStorage,
-            _blockTree,
-            _badBlockStore,
-            _specProvider,
-            transactionProcessorAdapter,
-            _fileSystem,
-            txEnv);
-
-        DebugBridge debugBridge = new(
-            _configProvider,
-            _dbProvider,
-            tracer,
-            _blockTree,
-            _receiptStorage,
-            _receiptsMigration,
-            _specProvider,
-            _syncModeSelector,
-            _badBlockStore);
-
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
+        /// <inheritdoc/>
+        public UInt256? BlobBaseFeeOverride => state.BlobBaseFee;
     }
 
-    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ChangeableTransactionProcessorAdapter transactionProcessor, IWorldState worldState)
-        => new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState);
-
-    protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-        IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
+    public IDebugRpcModule Create()
     {
-        return new ReadOnlyChainProcessingEnv(
-            scope,
-            _blockValidator,
-            _recoveryStep,
-            _rewardCalculatorSource.Get(scope.TransactionProcessor),
-            _receiptStorage,
-            _specProvider,
-            _blockTree,
-            worldStateManager.GlobalStateReader,
-            _logManager,
-            transactionsExecutor);
+        IOverridableEnv env = envFactory.CreateForTracing();
+        IParallelBlockTracer? parallelTracer = _parallelTracer.Get();
+
+        ILifetimeScope tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
+        {
+            ConfigureTracerContainer(builder, validationBlockProcessingModules).AddModule(env);
+            if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
+            // The debug_* replays and traced calls run here. Last, as in every query environment, so what a module
+            // registers takes precedence.
+            builder.AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace);
+        });
+
+        // Share the override environment's exact repository, including its decorators, for stateless preflight.
+        ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+            .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>())
+            .AddScoped<ICodeInfoRepository>(tracerLifecycle.Resolve<IOverridableCodeInfoRepository>()));
+
+        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecycle);
+        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
+
+        return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
     }
 }

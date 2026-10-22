@@ -3,13 +3,8 @@
 
 namespace Nethermind.EthStats.Messages.Models
 {
-    public class PendingStats
+    public class PendingStats(int pending)
     {
-        public int Pending { get; }
-
-        public PendingStats(int pending)
-        {
-            Pending = pending;
-        }
+        public int Pending { get; } = pending;
     }
 }

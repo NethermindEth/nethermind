@@ -1,0 +1,109 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Autofac.Features.AttributeFilters;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie;
+
+namespace Nethermind.State.Flat;
+
+public class FlatStateReader(
+    [KeyFilter(DbNames.Code)] IDb codeDb,
+    IFlatDbManager flatDbManager,
+    ITrieNodeCache trieNodeCache,
+    IHistoricalTrieVisitor historicalTrieVisitor,
+    ILogManager logManager
+) : IStateReader
+{
+    public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
+    {
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        if (reader.GetAccount(address) is { } accountCls)
+        {
+            account = accountCls.ToStruct();
+            return true;
+        }
+
+        account = default;
+        return false;
+    }
+
+    public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
+    {
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out UInt256? slot);
+        value = slot.GetValueOrDefault();
+    }
+
+    public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
+
+    public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
+
+    public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
+    {
+        StateId stateId = new(baseBlock);
+
+        if (flatDbManager.IsHistoricalState(stateId))
+        {
+            RunHistoricalTreeVisitor(treeVisitor, baseBlock, stateId, visitingOptions, diagnostics);
+            return;
+        }
+
+        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        if (reader.IsHistorical)
+        {
+            // Persistence moved past the block between the routing check and the gather.
+            reader.Dispose();
+            RunHistoricalTreeVisitor(treeVisitor, baseBlock, stateId, visitingOptions, diagnostics);
+            return;
+        }
+
+        using (reader)
+        {
+            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : trieNodeCache);
+            PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
+            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+        }
+    }
+
+    private void RunHistoricalTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, in StateId stateId, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx>
+    {
+        try
+        {
+            if (historicalTrieVisitor.TryRunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics)) return;
+        }
+        catch (StateUnavailableException e)
+        {
+            throw StateUnavailable(baseBlock, $"State proof at historical block {stateId.BlockNumber} is unavailable", e);
+        }
+
+        throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
+    }
+
+    public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
+
+    /// <summary>
+    /// Translates "state unavailable" into <see cref="MissingTrieNodeException"/> — the hash-based reader's
+    /// contract — keeping the cause as inner, so JSON-RPC answers resource-unavailable (-32002) for a
+    /// <see cref="StateNotRetainedException"/> and resource-not-found otherwise.
+    /// </summary>
+    private ReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)
+    {
+        try
+        {
+            return flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
+        }
+        catch (StateUnavailableException e)
+        {
+            throw StateUnavailable(baseBlock, $"State for block {baseBlock?.Number} is unavailable", e);
+        }
+    }
+
+    private static MissingTrieNodeException StateUnavailable(BlockHeader? baseBlock, string message, Exception? innerException = null) =>
+        new(message, null, TreePath.Empty, baseBlock?.StateRoot ?? Keccak.EmptyTreeHash, innerException);
+}

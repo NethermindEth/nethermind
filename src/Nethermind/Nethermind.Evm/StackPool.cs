@@ -1,48 +1,27 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
-
 namespace Nethermind.Evm;
 
-internal class StackPool
+// Stacks carry no gas-policy state, so one pool serves every VmState{TGasPolicy} instantiation rather
+// than one per closed type. Static rather than a singleton instance: EvmObjectPool's local tier is
+// static per pooled type, so a second StackPool would hand out this one's stacks - `static` makes that
+// inexpressible instead of merely discouraged.
+internal static partial class StackPool
 {
     // Also have parallel prewarming and Rpc calls
-    private const int MaxStacksPooled = VirtualMachine.MaxCallDepth * 2;
-    private readonly struct StackItem(byte[] dataStack, int[] returnStack)
+    private const int MaxStacksPooled = VirtualMachineStatics.MaxCallDepth * 2;
+    public const int StackLength = (EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32;
+
+    private readonly struct StackItem(byte[] dataStack)
     {
         public readonly byte[] DataStack = dataStack;
-        public readonly int[] ReturnStack = returnStack;
     }
 
-    private readonly ConcurrentQueue<StackItem> _stackPool = new();
+    public static partial void ReturnStacks(byte[] dataStack);
 
-    /// <summary>
-    /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
-    /// compound noun 'return stack' which is a stack of subroutine return values.
-    /// </summary>
-    /// <param name="dataStack"></param>
-    /// <param name="returnStack"></param>
-    public void ReturnStacks(byte[] dataStack, int[] returnStack)
-    {
-        if (_stackPool.Count <= MaxStacksPooled)
-        {
-            _stackPool.Enqueue(new(dataStack, returnStack));
-        }
-    }
+    /// <summary>Returns <paramref name="dataStack"/> to the tier every thread rents from, not the calling thread's own.</summary>
+    public static partial void ReturnStacksShared(byte[] dataStack);
 
-    public (byte[], int[]) RentStacks()
-    {
-        if (_stackPool.TryDequeue(out StackItem result))
-        {
-            return (result.DataStack, result.ReturnStack);
-        }
-
-        return
-        (
-            new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32],
-            new int[EvmStack.ReturnStackSize]
-        );
-    }
+    public static partial byte[] RentStacks();
 }
-

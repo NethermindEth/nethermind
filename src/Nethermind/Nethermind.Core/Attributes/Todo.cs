@@ -12,10 +12,7 @@ namespace Nethermind.Core.Attributes
         private readonly string _comment;
         private readonly Improve _improve;
 
-        public TodoAttribute(string comment)
-        {
-            _comment = comment;
-        }
+        public TodoAttribute(string comment) => _comment = comment;
 
         public TodoAttribute(Improve improve, string comment, string issueLink = MissingIssueLinkMessage)
         {

@@ -44,7 +44,7 @@ public static class BlsSigner
     public static bool Verify(G1Affine publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
         int len = 2 * GT.Sz;
-        using ArrayPoolList<long> buf = new(len, len);
+        using ArrayPoolListRef<long> buf = new(len, len);
 
         GT p1 = new(buf.AsSpan()[..GT.Sz]);
         p1.MillerLoop(signature.Point, G1Affine.Generator(stackalloc long[G1Affine.Sz]));
@@ -81,15 +81,9 @@ public static class BlsSigner
         public readonly G2Affine Point { get => _point.ToAffine(); }
         private readonly G2 _point;
 
-        public Signature()
-        {
-            _point = new();
-        }
+        public Signature() => _point = new();
 
-        public Signature(G2 point)
-        {
-            _point = point;
-        }
+        public Signature(G2 point) => _point = point;
 
         public void Decode(ReadOnlySpan<byte> bytes)
             => _point.Decode(bytes);
@@ -109,10 +103,7 @@ public static class BlsSigner
         public G1Affine PublicKey { get => _point.ToAffine(); }
         private readonly G1 _point;
 
-        public AggregatedPublicKey()
-        {
-            _point = new();
-        }
+        public AggregatedPublicKey() => _point = new();
 
         public AggregatedPublicKey(Span<long> buf)
         {

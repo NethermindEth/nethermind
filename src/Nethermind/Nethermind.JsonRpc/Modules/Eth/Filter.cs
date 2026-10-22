@@ -1,63 +1,89 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text.Json;
-
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class Filter : IJsonRpcParam
 {
-    public object? Address { get; set; }
+    public HashSet<AddressAsKey>? Address { get; set; }
 
-    public BlockParameter? FromBlock { get; set; }
+    public BlockParameter FromBlock { get; set; } = BlockParameter.Latest;
 
-    public BlockParameter? ToBlock { get; set; }
+    public BlockParameter ToBlock { get; set; } = BlockParameter.Latest;
 
-    public IEnumerable<object?>? Topics { get; set; }
+    public IEnumerable<Hash256[]?>? Topics { get; set; }
+
+    public bool UseIndex { get; set; } = true;
 
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
         JsonDocument doc = null;
-        string blockHash = null;
         try
         {
             if (filter.ValueKind == JsonValueKind.String)
             {
-                doc = JsonDocument.Parse(filter.GetString());
+                string filterString = filter.GetString()!;
+                if (filterString.Length > JsonRpcLimits.MaxJsonStringArgLength)
+                {
+                    throw new ArgumentException($"filter string length {filterString.Length} exceeds maximum allowed length of {JsonRpcLimits.MaxJsonStringArgLength}");
+                }
+
+                doc = JsonDocument.Parse(filterString);
                 filter = doc.RootElement;
             }
 
-            if (filter.TryGetProperty("blockHash"u8, out JsonElement blockHashElement))
-            {
-                blockHash = blockHashElement.GetString();
-            }
+            bool hasBlockHash = filter.TryGetProperty("blockHash"u8, out JsonElement blockHashElement);
+            bool hasFromBlock = filter.TryGetProperty("fromBlock"u8, out JsonElement fromBlockElement);
+            bool hasToBlock = filter.TryGetProperty("toBlock"u8, out JsonElement toBlockElement);
 
-            if (blockHash is null)
+            if (hasBlockHash && blockHashElement.ValueKind != JsonValueKind.Null)
             {
-                filter.TryGetProperty("fromBlock"u8, out JsonElement fromBlockElement);
-                FromBlock = BlockParameterConverter.GetBlockParameter(fromBlockElement.ToString());
-                filter.TryGetProperty("toBlock"u8, out JsonElement toBlockElement);
-                ToBlock = BlockParameterConverter.GetBlockParameter(toBlockElement.ToString());
+                if (hasFromBlock || hasToBlock)
+                {
+                    throw new ArgumentException(ErrorMessages.BlockHashAndRange);
+                }
+
+                FromBlock = new(new Hash256(blockHashElement.ToString()));
+                ToBlock = FromBlock;
             }
             else
             {
-                FromBlock = ToBlock = BlockParameterConverter.GetBlockParameter(blockHash);
+                FromBlock = hasFromBlock && fromBlockElement.ValueKind != JsonValueKind.Null
+                    ? BlockParameterConverter.GetBlockParameter(fromBlockElement.ToString())
+                    : BlockParameter.Latest;
+                ToBlock = hasToBlock && toBlockElement.ValueKind != JsonValueKind.Null
+                    ? BlockParameterConverter.GetBlockParameter(toBlockElement.ToString())
+                    : BlockParameter.Latest;
             }
 
-            filter.TryGetProperty("address"u8, out JsonElement addressElement);
-            Address = GetAddress(addressElement, options);
+            if (filter.TryGetProperty("address"u8, out JsonElement addressElement))
+            {
+                Address = GetAddress(addressElement, options);
+            }
 
             if (filter.TryGetProperty("topics"u8, out JsonElement topicsElement) && topicsElement.ValueKind == JsonValueKind.Array)
             {
                 Topics = GetTopics(topicsElement, options);
             }
-            else
+
+            if (filter.TryGetProperty("useIndex"u8, out JsonElement useIndex))
             {
-                Topics = null;
+                UseIndex = useIndex.ValueKind switch
+                {
+                    JsonValueKind.False => false,
+                    JsonValueKind.True => true,
+                    _ => UseIndex
+                };
             }
         }
         finally
@@ -66,27 +92,119 @@ public class Filter : IJsonRpcParam
         }
     }
 
-    private static object? GetAddress(JsonElement? token, JsonSerializerOptions options) => GetSingleOrMany(token, options);
+    private const int MaxAddressCount = 1000;
+    private const int MaxTopicValuesPerSlot = 1000;
+    // LOG4 is the widest log, so a 5th slot can never match; the log index also has one db per slot.
+    private const int MaxTopicSlots = 4;
 
-    private static IEnumerable<object?> GetTopics(JsonElement? array, JsonSerializerOptions options)
+    private static HashSet<AddressAsKey>? GetAddress(JsonElement token, JsonSerializerOptions options)
     {
-        if (array is null)
+        switch (token.ValueKind)
         {
-            yield break;
-        }
+            case JsonValueKind.Undefined or JsonValueKind.Null:
+                return null;
+            case JsonValueKind.String:
+                return [new AddressAsKey(ParseAddress(token))];
+            case JsonValueKind.Array:
+                int addressCount = token.GetArrayLength();
+                if (addressCount > MaxAddressCount)
+                {
+                    throw new JsonException($"Too many addresses ({addressCount}). Max is {MaxAddressCount}.");
+                }
 
-        foreach (var token in array.GetValueOrDefault().EnumerateArray())
-        {
-            yield return GetSingleOrMany(token, options);
+                HashSet<AddressAsKey> result = new(addressCount);
+                foreach (JsonElement element in token.EnumerateArray())
+                {
+                    result.Add(new(ParseAddress(element)));
+                }
+
+                return result;
+            default:
+                throw new ArgumentException("invalid address field");
         }
     }
 
-    private static object? GetSingleOrMany(JsonElement? token, JsonSerializerOptions options) => token switch
+    private static Hash256[]?[]? GetTopics(JsonElement? array, JsonSerializerOptions options)
     {
-        null => null,
-        { ValueKind: JsonValueKind.Undefined } _ => null,
-        { ValueKind: JsonValueKind.Null } _ => null,
-        { ValueKind: JsonValueKind.Array } _ => token.GetValueOrDefault().Deserialize<string[]>(options),
-        _ => token.GetValueOrDefault().GetString(),
-    };
+        if (array is null)
+        {
+            return null;
+        }
+
+        int topicSlotCount = array.Value.GetArrayLength();
+        if (topicSlotCount > MaxTopicSlots)
+        {
+            throw new JsonException($"Too many topics ({topicSlotCount}). Max is {MaxTopicSlots}.");
+        }
+
+        Hash256[]?[] topics = new Hash256[]?[topicSlotCount];
+        int slotIndex = 0;
+        foreach (JsonElement token in array.Value.EnumerateArray())
+        {
+            switch (token.ValueKind)
+            {
+                case JsonValueKind.Undefined or JsonValueKind.Null:
+                    topics[slotIndex++] = null;
+                    break;
+                case JsonValueKind.String:
+                    topics[slotIndex++] = [ParseHash(token)];
+                    break;
+                case JsonValueKind.Array:
+                    int topicCount = token.GetArrayLength();
+                    if (topicCount > MaxTopicValuesPerSlot)
+                    {
+                        throw new JsonException($"Too many topic values ({topicCount}). Max is {MaxTopicValuesPerSlot}.");
+                    }
+
+                    Hash256[] result = new Hash256[topicCount];
+                    int i = 0;
+                    foreach (JsonElement element in token.EnumerateArray())
+                    {
+                        result[i++] = ParseHash(element);
+                    }
+
+                    topics[slotIndex++] = result;
+                    break;
+                default:
+                    throw new ArgumentException("invalid topics field");
+            }
+        }
+
+        return topics;
+    }
+
+    private static Address ParseAddress(JsonElement element)
+    {
+        Span<byte> bytes = stackalloc byte[Core.Address.Size];
+        return TryDecodeHex(element, bytes) ? new Address(bytes) : new Address(element.ToString());
+    }
+
+    private static Hash256 ParseHash(JsonElement element)
+    {
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        return TryDecodeHex(element, bytes) ? new Hash256(bytes) : new Hash256(element.ToString());
+    }
+
+    /// <summary>
+    /// Decodes a JSON string of exactly <paramref name="destination"/>'s length in even-length hex straight from its UTF-8 bytes.
+    /// </summary>
+    /// <remarks>
+    /// Anything else (escapes, odd length, wrong size, non-strings) returns <see langword="false"/> so callers fall back to the
+    /// string parse, which keeps the accepted inputs and the errors unchanged.
+    /// </remarks>
+    private static bool TryDecodeHex(JsonElement element, Span<byte> destination)
+    {
+        if (element.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<byte> hex = JsonMarshal.GetRawUtf8Value(element)[1..^1];
+        if (hex is [(byte)'0', (byte)'x', ..])
+        {
+            hex = hex[2..];
+        }
+
+        return hex.Length == destination.Length * 2 && HexConverter.TryDecodeFromUtf8(hex, destination);
+    }
 }

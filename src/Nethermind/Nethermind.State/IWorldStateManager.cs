@@ -4,7 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.State.Healing;
+using Nethermind.Evm.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
@@ -12,31 +12,31 @@ namespace Nethermind.State;
 
 public interface IWorldStateManager
 {
-    IWorldState GlobalWorldState { get; }
+    IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    ISnapServer? SnapServer { get; }
+    ISnapStateServer SnapStateServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
     /// <returns></returns>
-    IWorldState CreateResettableWorldState();
+    IWorldStateScopeProvider CreateResettableWorldState();
 
     /// <summary>
-    /// Create a read only world state to warm up another world state
+    /// Like <see cref="CreateResettableWorldState"/>, for read-only queries whose results never feed block processing.
+    /// A backend may tune its reads for them.
     /// </summary>
-    /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
-    /// <returns></returns>
-    IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup);
+    IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => CreateResettableWorldState();
 
-    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
-    // TODO: These two method can be combined
     IOverridableWorldScope CreateOverridableWorldScope();
-    IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode);
 
-    void InitializeNetwork(IPathRecovery pathRecovery);
+    /// <summary>
+    /// Creates a read-only <see cref="IReadOnlyTrieStore"/> for trie-based operations (e.g. witness generation).
+    /// For trie mode, returns the existing read-only trie store.
+    /// For flat mode, returns an adapter over the flat DB's trie node data.
+    /// </summary>
+    IReadOnlyTrieStore CreateReadOnlyTrieStore();
 
     /// <summary>
     /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.
@@ -46,15 +46,23 @@ public interface IWorldStateManager
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Persist and clear cache. Used by some tests.
+    /// </summary>
+    void FlushCache(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Drop cached state that is not on the ancestry of <paramref name="head"/>: every other branch, and
+    /// everything above the head on its own branch, is removed and can no longer be processed from.
+    /// Called when the head is force-reset (<c>debug_resetHead</c>).
+    /// </summary>
+    void DropStateNotReachableFrom(BlockHeader head);
 }
 
-public interface IOverridableWorldScope
+public interface IOverridableWorldScope : IDisposable
 {
-    IOverridableWorldState WorldState { get; }
+    IWorldStateScopeProvider WorldState { get; }
     IStateReader GlobalStateReader { get; }
-}
-
-public interface IOverridableWorldState : IWorldState
-{
     void ResetOverrides();
 }

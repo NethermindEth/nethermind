@@ -1,0 +1,44 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Autofac;
+using Nethermind.Api;
+using Nethermind.Api.Steps;
+using Nethermind.Core;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.State;
+
+namespace Nethermind.Init.Modules;
+
+public class WorldStateModule(IInitConfig initConfig) : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder
+            // Stub: overridden by WorldStateDbDeciderModule which selects patricia or flat at runtime.
+            .AddSingleton<IWorldStateManager>(_ => throw new InvalidOperationException(
+                $"No world state backend registered. Load {nameof(WorldStateDbDeciderModule)} together with {nameof(PruningTrieStoreModule)} and {nameof(FlatWorldStateModule)}."))
+
+            .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
+
+            // Prevent multiple concurrent verify trie.
+            .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
+
+            // Admin RPC surface is common to all backends; each backend registers its implementation.
+            .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
+
+            // Verify-trie admin RPC is backend-agnostic; a single implementation serves both backends.
+            .RegisterSingletonJsonRpcModule<IVerifyTrieAdminRpcModule, VerifyTrieAdminRpcModule>()
+
+            // Registered unconditionally so `nethermind verify-trie` can always find it. Carrying
+            // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
+            // Backend-agnostic: VerifyTrie resolves to whichever backend is active.
+            .AddStep(typeof(RunVerifyTrie))
+        ;
+
+        if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
+            builder.SelectStepTarget(typeof(RunVerifyTrie));
+    }
+}

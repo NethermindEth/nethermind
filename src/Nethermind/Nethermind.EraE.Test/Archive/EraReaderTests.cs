@@ -1,0 +1,187 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.EraE.Archive;
+using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
+using EraException = Nethermind.Era1.Exceptions.EraException;
+using Nethermind.Core.Specs;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using NUnit.Framework;
+
+namespace Nethermind.EraE.Test.Archive;
+
+internal class EraReaderTests
+{
+    [Test, NonParallelizable]
+    public async Task Imported_transactions_do_not_consume_the_network_pool([Values] bool postMerge)
+    {
+        Transaction source = Build.A.Transaction.Signed().TestObject;
+        using TestEraFile file = await TestEraFile.Create(postMerge ? 0U : 1U, postMerge ? 1U : 0U, transaction: source);
+        HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
+
+        using EraReader reader = new(file.FilePath);
+        (Block block, _) = await reader.GetBlockByNumber(0);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions[0].Hash, Is.EqualTo(source.Hash));
+            Assert.That(pooled.Contains(block.Transactions[0]), Is.False);
+        }
+    }
+
+    [TestCase(3U, 0U)]
+    [TestCase(0U, 3U)]
+    public async Task GetBlockByNumber_ReturnsCorrectBlockNumbers(uint preMergeCount, uint postMergeCount)
+    {
+        ulong totalCount = preMergeCount + postMergeCount;
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: preMergeCount, postMergeCount: postMergeCount);
+        using EraReader sut = new(file.FilePath);
+
+        for (ulong i = 0; i < totalCount; i++)
+        {
+            (Block block, _) = await sut.GetBlockByNumber(i);
+            Assert.That(block.Number, Is.EqualTo(i));
+        }
+    }
+
+    [Test]
+    public async Task GetBlockByNumber_InPreMergeEpoch_TotalDifficultyIsRestored()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
+        using EraReader sut = new(file.FilePath);
+
+        (Block block, _) = await sut.GetBlockByNumber(2UL);
+        Assert.That(block.TotalDifficulty, Is.EqualTo(file.Contents[2].Block.TotalDifficulty));
+    }
+
+    [Test]
+    public async Task ReadAccumulatorRoot_InPreMergeEpoch_ReturnsRootOfContents()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
+        using EraReader sut = new(file.FilePath);
+
+        Assert.That(sut.ReadAccumulatorRoot(), Is.EqualTo(ComputeAccumulatorRoot(file.Contents)));
+    }
+
+    [Test]
+    public async Task VerifyContent_PreMergeEpoch_AccumulatorMatchesComputed()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
+
+        ValueHash256 expectedRoot = ComputeAccumulatorRoot(file.Contents);
+
+        using EraReader sut = new(file.FilePath);
+        ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
+
+        Assert.That(verifiedRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public async Task GetAsyncEnumerator_InPreMergeEpoch_YieldsAllBlocks()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
+        using EraReader sut = new(file.FilePath);
+
+        List<(Block, TxReceipt[])> result = await sut.ToListAsync();
+        Assert.That(result, Has.Count.EqualTo(3));
+        Assert.That(result.Select(r => r.Item1.Number), Is.EqualTo([0L, 1L, 2L]));
+    }
+
+    [Test]
+    public async Task ReadAccumulatorRoot_InPostMergeEpoch_ThrowsEraException()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 3);
+        using EraReader sut = new(file.FilePath);
+
+        Assert.That(() => sut.ReadAccumulatorRoot(), Throws.TypeOf<EraException>());
+    }
+
+    /// <remarks>EIP-7668 activates by timestamp, so a number-only spec lookup would expect 256-byte receipt blooms.</remarks>
+    [Test]
+    public async Task VerifyContent_resolves_timestamp_activated_receipt_rules([Values] bool eip7668)
+    {
+        IReleaseSpec postFork = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        CustomSpecProvider specProvider = new(((ForkActivation)0, Bogota.Instance), (new ForkActivation(0, 1), postFork));
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 2, specProvider);
+        using EraReader sut = new(file.FilePath);
+
+        Assert.That(async () => await sut.VerifyContent(specProvider, Always.Valid), Throws.Nothing);
+    }
+
+    [Test]
+    public async Task VerifyContent_InPostMergeEpoch_ReturnsDefaultHash()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 3);
+        using EraReader sut = new(file.FilePath);
+
+        ValueHash256 result = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
+        Assert.That(result, Is.EqualTo(default(ValueHash256)), "post-merge epochs have no accumulator");
+    }
+
+    [Test]
+    public async Task VerifyContent_InTransitionEpoch_AccumulatorCoversOnlyPreMergeBlocks()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 2);
+
+        ValueHash256 expectedRoot = ComputeAccumulatorRoot(file.Contents.Where(c => !c.Block.Header.IsPostMerge));
+
+        using EraReader sut = new(file.FilePath);
+        ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
+
+        Assert.That(verifiedRoot, Is.EqualTo(expectedRoot), "transition epoch accumulator must only cover pre-merge blocks");
+    }
+
+    [Test]
+    public async Task GetBlockByNumber_InTransitionEpoch_FirstPostMergeBlockHasIsPostMergeTrue()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 2);
+        using EraReader sut = new(file.FilePath);
+
+        (Block postMergeBlock, _) = await sut.GetBlockByNumber(2UL);
+        Assert.That(postMergeBlock.Header.IsPostMerge, Is.True);
+    }
+
+    [Test]
+    public async Task GetBlockByNumber_WithBelowRangeNumber_ThrowsArgumentOutOfRangeException()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
+        using EraReader sut = new(file.FilePath);
+
+        Assert.That(async () => await sut.GetBlockByNumber(ulong.MaxValue), Throws.TypeOf<ArgumentOutOfRangeException>());
+    }
+
+    [Test]
+    public async Task GetBlockByNumber_WithAboveRangeNumber_ThrowsArgumentOutOfRangeException()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
+        using EraReader sut = new(file.FilePath);
+
+        Assert.That(async () => await sut.GetBlockByNumber(999UL), Throws.TypeOf<ArgumentOutOfRangeException>());
+    }
+
+    [Test]
+    public async Task GetBlockByNumber_WithSlimEncodedReceipts_BloomIsReconstructedFromLogs()
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 1, postMergeCount: 0);
+        using EraReader sut = new(file.FilePath);
+
+        (_, TxReceipt[] receipts) = await sut.GetBlockByNumber(0UL);
+
+        Assert.That(receipts, Is.Not.Empty);
+        Assert.That(receipts[0].Bloom, Is.Not.Null, "bloom must be auto-computed from logs");
+    }
+
+    private static ValueHash256 ComputeAccumulatorRoot(IEnumerable<(Block Block, TxReceipt[] Receipts)> contents)
+    {
+        using AccumulatorCalculator calculator = new();
+        foreach ((Block block, _) in contents)
+            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
+        return calculator.ComputeRoot();
+    }
+}

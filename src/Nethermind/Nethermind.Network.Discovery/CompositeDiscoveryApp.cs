@@ -1,26 +1,16 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
-using Autofac.Features.AttributeFilters;
-using DotNetty.Transport.Bootstrapping;
-using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
-using Nethermind.Api;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-using Nethermind.Db;
+using Nethermind.Core.Collections;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
-using Nethermind.Network.Discovery.Lifecycle;
-using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Enr;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -28,215 +18,244 @@ namespace Nethermind.Network.Discovery;
 /// <summary>
 /// Combines several protocol versions under a single <see cref="IDiscoveryApp"/> implementation.
 /// </summary>
-public class CompositeDiscoveryApp : IDiscoveryApp
+public sealed class CompositeDiscoveryApp : IDiscoveryApp
 {
-    private const string DiscoveryNodesDbPath = "discoveryNodes";
-
-    private readonly IProtectedPrivateKey _nodeKey;
     private readonly INetworkConfig _networkConfig;
-    private readonly IDiscoveryConfig _discoveryConfig;
-    private readonly IInitConfig _initConfig;
-    private readonly IEthereumEcdsa _ethereumEcdsa;
-    private readonly IMessageSerializationService _serializationService;
-    private readonly ILogManager _logManager;
-    private readonly ITimestamper _timestamper;
-    private readonly ICryptoRandom? _cryptoRandom;
-    private readonly INodeStatsManager _nodeStatsManager;
-    private readonly IIPResolver _ipResolver;
-    private readonly IConnectionsPool _connections;
+    private readonly DiscoveryConnectionsPool _connections;
     private readonly IChannelFactory? _channelFactory;
-
-    private IDiscoveryApp? _v4;
-    private IDiscoveryApp? _v5;
-    private INodeSource _compositeNodeSource = null!;
+    private readonly KademliaDiscoveryApp[] _discoveryApps;
+    private readonly CompositeNodeSource _compositeNodeSource;
+    private readonly ILogger _logger;
+    private Action<PooledUdpReceiveResult>? _receiver;
 
     public CompositeDiscoveryApp(
-        [KeyFilter(IProtectedPrivateKey.NodeKey)]
-        IProtectedPrivateKey? nodeKey,
-        INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
-        IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
-        ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
-        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IChannelFactory? channelFactory = null
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        ILogManager logManager,
+        Func<DiscoveryV5App> discoveryV5Factory, // These two are factory because they are optional.
+        Func<DiscoveryApp> discoveryV4Factory,
+        NetworkListenerState listenerState,
+        IChannelFactory? channelFactory = null
     )
+        : this(
+            networkConfig,
+            discoveryConfig,
+            logManager,
+            listenerState,
+            CreateDiscoveryApps(discoveryConfig, discoveryV4Factory, discoveryV5Factory),
+            channelFactory)
     {
-        _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
+    }
+
+    internal CompositeDiscoveryApp(
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        ILogManager logManager,
+        NetworkListenerState listenerState,
+        KademliaDiscoveryApp[] discoveryApps,
+        IChannelFactory? channelFactory = null)
+    {
         _networkConfig = networkConfig;
-        _discoveryConfig = discoveryConfig;
-        _initConfig = initConfig;
-        _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
-        _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
-        _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-        _cryptoRandom = cryptoRandom;
-        _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-        _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
-        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
+        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), discoveryConfig, listenerState);
         _channelFactory = channelFactory;
-
-        Initialize(nodeKey.PublicKey);
+        _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
+        _discoveryApps = discoveryApps;
+        _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
     }
 
-    public void Initialize(PublicKey masterPublicKey)
+    private static KademliaDiscoveryApp[] CreateDiscoveryApps(
+        IDiscoveryConfig discoveryConfig,
+        Func<DiscoveryApp> discoveryV4Factory,
+        Func<DiscoveryV5App> discoveryV5Factory)
     {
-        var nodeKeyProvider = new SameKeyGenerator(_nodeKey.Unprotect());
-        List<INodeSource> allNodeSources = new();
-
-        if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
+        List<KademliaDiscoveryApp> discoveryApps = new(2);
+        if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
         {
-            InitDiscoveryV4(_discoveryConfig, nodeKeyProvider);
-            allNodeSources.Add(_v4!);
+            discoveryApps.Add(discoveryV4Factory());
         }
 
-        if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0)
+        if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0)
         {
-            InitDiscoveryV5(nodeKeyProvider);
-            allNodeSources.Add(_v5!);
+            discoveryApps.Add(discoveryV5Factory());
         }
 
-        _compositeNodeSource = new CompositeNodeSource(allNodeSources.ToArray());
+        return [.. discoveryApps];
     }
 
-    public void InitializeChannel(IChannel channel)
+    /// <summary>
+    /// Attaches the protocols to <paramref name="socket"/>, each forwarding the datagrams it does not handle to the next.
+    /// </summary>
+    private void InitializeChannel(IDatagramSocket socket)
     {
-        _v4?.InitializeChannel(channel);
-        _v5?.InitializeChannel(channel);
+        Action<PooledUdpReceiveResult> next = static datagram => datagram.Dispose();
+        for (int i = _discoveryApps.Length - 1; i >= 0; i--)
+        {
+            KademliaDiscoveryApp discoveryApp = _discoveryApps[i];
+            discoveryApp.InitializeChannel(socket, next);
+            next = discoveryApp.Receive;
+        }
+
+        Volatile.Write(ref _receiver, next);
+    }
+
+    private void Receive(PooledUdpReceiveResult datagram)
+    {
+        Action<PooledUdpReceiveResult>? receiver = Volatile.Read(ref _receiver);
+        if (receiver is null)
+        {
+            datagram.Dispose();
+            return;
+        }
+
+        receiver(datagram);
     }
 
     public async Task StartAsync()
     {
-        if (_v4 == null && _v5 == null) return;
+        if (_discoveryApps.Length == 0) return;
 
-        Bootstrap bootstrap = new();
-        bootstrap.Group(new MultithreadEventLoopGroup(1));
-
-        if (_channelFactory is not null)
-            bootstrap.ChannelFactory(() => _channelFactory!.CreateDatagramChannel());
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            bootstrap.ChannelFactory(static () => new SocketDatagramChannel(AddressFamily.InterNetwork));
-        else
-            bootstrap.Channel<SocketDatagramChannel>();
-
-        bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
-
-        await _connections.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
-
-        await Task.WhenAll(
-            _v4?.StartAsync() ?? Task.CompletedTask,
-            _v5?.StartAsync() ?? Task.CompletedTask
-        );
-    }
-
-    public Task StopAsync() => Task.WhenAll(
-            _connections.StopAsync(),
-            _v4?.StopAsync() ?? Task.CompletedTask,
-            _v5?.StopAsync() ?? Task.CompletedTask
-        );
-
-    public void AddNodeToDiscovery(Node node)
-    {
-        _v4?.AddNodeToDiscovery(node);
-        _v5?.AddNodeToDiscovery(node);
-    }
-
-    private void InitDiscoveryV4(IDiscoveryConfig discoveryConfig, SameKeyGenerator privateKeyProvider)
-    {
-        NodeIdResolver nodeIdResolver = new(_ethereumEcdsa);
-        NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
-        IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
-            _serializationService,
-            _ethereumEcdsa,
-            privateKeyProvider,
-            nodeIdResolver);
-
-        msgSerializersProvider.RegisterDiscoverySerializers();
-
-        NodeDistanceCalculator nodeDistanceCalculator = new(discoveryConfig);
-
-        NodeTable nodeTable = new(nodeDistanceCalculator, discoveryConfig, _networkConfig, _logManager);
-        EvictionManager evictionManager = new(nodeTable, _logManager);
-
-        NodeLifecycleManagerFactory nodeLifeCycleFactory = new(
-            nodeTable,
-            evictionManager,
-            _nodeStatsManager,
-            selfNodeRecord,
-            discoveryConfig,
-            _timestamper,
-            _logManager);
-
-        // ToDo: DiscoveryDB is registered outside dbProvider - bad
-        SimpleFilePublicKeyDb discoveryDb = new(
-            "DiscoveryDB",
-            DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath),
-            _logManager);
-
-        NetworkStorage discoveryStorage = new(
-            discoveryDb,
-            _logManager);
-
-        DiscoveryManager discoveryManager = new(
-            nodeLifeCycleFactory,
-            nodeTable,
-            discoveryStorage,
-            discoveryConfig,
-            _logManager
-        );
-
-        NodesLocator nodesLocator = new(
-            nodeTable,
-            discoveryManager,
-            discoveryConfig,
-            _logManager);
-
-        _v4 = new DiscoveryApp(
-            nodesLocator,
-            discoveryManager,
-            nodeTable,
-            _serializationService,
-            _cryptoRandom,
-            discoveryStorage,
-            _networkConfig,
-            discoveryConfig,
-            _timestamper,
-            _logManager);
-
-        _v4.Initialize(_nodeKey.PublicKey);
-    }
-
-    private void InitDiscoveryV5(SameKeyGenerator privateKeyProvider)
-    {
-        SimpleFilePublicKeyDb discv5DiscoveryDb = new(
-            "EnrDiscoveryDB",
-            DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath),
-            _logManager);
-
-        _v5 = new DiscoveryV5App(privateKeyProvider, _ipResolver, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager);
-        _v5.Initialize(_nodeKey.PublicKey);
-    }
-
-    private NodeRecord PrepareNodeRecord(SameKeyGenerator privateKeyProvider)
-    {
-        NodeRecord selfNodeRecord = new();
-        selfNodeRecord.SetEntry(IdEntry.Instance);
-        selfNodeRecord.SetEntry(new IpEntry(_ipResolver.ExternalIp));
-        selfNodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
-        selfNodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
-        selfNodeRecord.SetEntry(new Secp256K1Entry(_nodeKey.CompressedPublicKey));
-        selfNodeRecord.EnrSequence = 1;
-        NodeRecordSigner enrSigner = new(_ethereumEcdsa, privateKeyProvider.Generate());
-        enrSigner.Sign(selfNodeRecord);
-        if (!enrSigner.Verify(selfNodeRecord))
+        try
         {
-            throw new NetworkingException("Self ENR initialization failed", NetworkExceptionType.Discovery);
+            IDatagramSocket socket = _connections.Bind(CreateSocket, _networkConfig.DiscoveryPort, Receive);
+            // A failed bind leaves the protocols detached, so attach them only to the successful socket.
+            // Datagrams received until then are discarded, before the protocol apps start.
+            InitializeChannel(socket);
+
+            await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
+        }
+        catch
+        {
+            try
+            {
+                await StopAsync();
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Error stopping discovery after startup failed. {e}");
+            }
+
+            throw;
+        }
+    }
+
+    private IDatagramSocket CreateSocket(IPAddress address)
+        => _channelFactory?.CreateDatagramSocket() ?? new UdpDatagramSocket(CreateDatagramSocket(address));
+
+    /// <summary>
+    /// Creates the UDP socket whose address family and dual-mode behavior match a configured listener address.
+    /// </summary>
+    /// <remarks>
+    /// IPv4-mapped listener addresses require an IPv6 dual-mode socket even though endpoint selection treats them as IPv4-only.
+    /// </remarks>
+    internal static Socket CreateDatagramSocket(IPAddress localIp)
+    {
+        Socket socket = new(localIp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+        try
+        {
+            // UDP has no TIME_WAIT state; exclusive ownership keeps collision and fallback behavior deterministic.
+            socket.ExclusiveAddressUse = true;
+            if (localIp.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                socket.DualMode = DiscoveryAddressSupport.SupportsFamily(localIp, AddressFamily.InterNetwork);
+            }
+
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Creates a discovery node from an ENR using an address family reachable through the local listener.
+    /// </summary>
+    internal static bool TryCreateReachableDiscoveryNode(
+        NodeRecord record,
+        IPAddress localIp,
+        IPEndPoint? preferredEndpoint,
+        [NotNullWhen(true)] out Node? node)
+    {
+        Span<AddressFamily> addressFamilies = stackalloc AddressFamily[2];
+        int count = DiscoveryAddressSupport.GetSupportedFamilies(localIp, preferredEndpoint, addressFamilies);
+        for (int i = 0; i < count; i++)
+        {
+            if (Node.TryFromDiscoveryEnr(record, addressFamilies[i], out node))
+            {
+                return true;
+            }
         }
 
-        return selfNodeRecord;
+        node = null;
+        return false;
     }
 
-    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
+    public async Task StopAsync()
     {
-        return _compositeNodeSource.DiscoverNodes(cancellationToken);
+        try
+        {
+            await Task.WhenAll(_connections.StopAsync(), WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StopAsync()));
+        }
+        finally
+        {
+            _compositeNodeSource.Dispose();
+            await DisposeDiscoveryApps();
+        }
     }
+
+    string IStoppableService.Description => "discovery connection";
+
+    public void AddNodeToDiscovery(Node node) => ForEachDiscoveryApp(static (discoveryApp, discoveredNode) => discoveryApp.AddNodeToDiscovery(discoveredNode), node);
+
+    private void ForEachDiscoveryApp<TState>(Action<IDiscoveryApp, TState> action, TState state)
+    {
+        IDiscoveryApp[] discoveryApps = _discoveryApps;
+        for (int i = 0; i < discoveryApps.Length; i++)
+        {
+            action(discoveryApps[i], state);
+        }
+    }
+
+    private Task WhenAllDiscoveryApps(Func<IDiscoveryApp, Task> action)
+    {
+        IDiscoveryApp[] discoveryApps = _discoveryApps;
+        if (discoveryApps.Length == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        ArrayPoolListRef<Task> tasks = new(discoveryApps.Length);
+        for (int i = 0; i < discoveryApps.Length; i++)
+        {
+            tasks.Add(action(discoveryApps[i]));
+        }
+
+        Task result = Task.WhenAll(tasks.AsSpan());
+        tasks.Dispose();
+        return result;
+    }
+
+    private async Task DisposeDiscoveryApps()
+    {
+        IDiscoveryApp[] discoveryApps = _discoveryApps;
+        for (int i = 0; i < discoveryApps.Length; i++)
+        {
+            if (discoveryApps[i] is IAsyncDisposable asyncDisposable)
+            {
+                try
+                {
+                    await asyncDisposable.DisposeAsync();
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Error disposing discovery app {discoveryApps[i]}: {e}");
+                }
+            }
+        }
+    }
+
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken) => _compositeNodeSource.DiscoverNodes(cancellationToken);
 
     public event EventHandler<NodeEventArgs>? NodeRemoved
     {

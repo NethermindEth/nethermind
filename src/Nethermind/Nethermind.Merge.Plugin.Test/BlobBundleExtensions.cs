@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 
@@ -12,9 +13,9 @@ internal static class BlobBundleExtensions
     {
         byte[][] hashes = new byte[blobsBundle.Commitments.Length][];
 
-        for (var i = 0; i < blobsBundle.Commitments.Length; i++)
+        for (int i = 0; i < blobsBundle.Commitments.Length; i++)
         {
-            hashes[i] = new byte[KzgPolynomialCommitments.BytesPerBlobVersionedHash];
+            hashes[i] = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
             KzgPolynomialCommitments.TryComputeCommitmentHashV1(blobsBundle.Commitments[i], hashes[i]);
         }
 

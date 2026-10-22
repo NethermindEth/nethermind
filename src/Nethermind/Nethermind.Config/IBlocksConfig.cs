@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Int256;
@@ -16,7 +16,15 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(
         Description = "The block gas limit that the block producer should try to reach in the fastest possible way based on the protocol rules. If not specified, then the block producer should follow others.",
         DefaultValue = "null")]
-    long? TargetBlockGasLimit { get; set; }
+    ulong? TargetBlockGasLimit { get; set; }
+
+    /// <summary>Gets or sets the diagnostic formats dumped for every block build. Defaults to <see cref="ProducedBlockDumpOptions.None"/>.</summary>
+    /// <remarks>Includes payload rebuilds. Keeps the newest 256 files in the system temp directory's <c>nethermind-produced-blocks</c> subdirectory. Geth traces include EVM memory and can consume gigabytes per block.</remarks>
+    [ConfigItem(
+        Description = "Dumps diagnostic traces of every block this node builds, including each payload rebuild, to the `nethermind-produced-blocks` subdirectory of the system temp directory, keeping the newest 256 files. Accepts `None`, `Receipts`, `Parity`, `Geth`, `Rlp`, `RlpLog`, `Default` (receipts and RLP), or `All` (all traces and RLP); flags can be combined. For debugging only: Geth-style traces include EVM memory and can take gigabytes per block.",
+        HiddenFromDocs = true,
+        DefaultValue = "None")]
+    ProducedBlockDumpOptions DumpProducedBlocks { get; set; }
 
     [ConfigItem(
         Description = "The minimum gas premium (or the gas price before the London hard fork) for transactions accepted by the block producer.",
@@ -34,11 +42,58 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The block time slot, in seconds.", DefaultValue = "12")]
     ulong SecondsPerSlot { get; set; }
 
-    [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
-    bool PreWarmStateOnBlockProcessing { get; set; }
+    [ConfigItem(Description = "The fraction of slot time that can be used for a single block improvement.", DefaultValue = "0.25", HiddenFromDocs = true)]
+    double SingleBlockImprovementOfSlot { get; set; }
+
+    [ConfigItem(Description = "State pre-warming level while processing blocks: `None`, `Block` (warm the block's own transactions), or `BlockAndMempool` (also speculatively warm from the mempool between blocks).", DefaultValue = "BlockAndMempool")]
+    PreWarmMode PreWarming { get; set; }
+
+    [ConfigItem(
+        Description =
+            "Budget for the per-block tier of the precompile results cache, in kilobytes, split between the cacheable precompiles. Requires PreWarming. " +
+            "Not recommended to set below 1MB when enabled. `0` or negative values disable precompile caching entirely.",
+        DefaultValue = "32768", HiddenFromDocs = true
+    )]
+    int PrecompileCacheMaxKilobytes { get; set; }
 
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
+
+    [ConfigItem(Description = "On an Intel hybrid CPU, pin block processing to: `All` logical processors, both hyperthreads of every `Performance` core, one hyperthread of every performance core (`PerformancePhysical`), or one performance core to itself, the first without CPU 0, kept clear of prewarm (`Dedicated`). No effect on other CPUs.", DefaultValue = "Performance", HiddenFromDocs = true)]
+    ProcessingCores ProcessingCores { get; set; }
+
+    [ConfigItem(Description = "On an Intel hybrid CPU, keep the pre-warm workers for the transactions block processing reaches next on the performance cores and the rest on the efficiency cores. No effect on other CPUs, nor with `ProcessingCores` set to `All`.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmCoreSplit { get; set; }
+
+    [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
+    int MempoolPreWarmConcurrency { get; set; }
+
+    [ConfigItem(Description = "Read the code of the contracts a block access list names on background threads ahead of execution. Requires PreWarming.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PrefetchBlockAccessListCode { get; set; }
+
+    /// <summary>Whether block processing takes over a transaction's pre-warm run instead of executing it again.</summary>
+    /// <remarks>
+    /// On by default. Requires <see cref="PreWarming"/>, and applies only on the Ethereum transaction processor, to blocks
+    /// without a block access list (EIP-7928) and before EIP-8037.
+    /// </remarks>
+    [ConfigItem(Description = "Hand pre-warm runs over to block processing. Requires PreWarming. Not applied with a block access list (EIP-7928), from EIP-8037, nor on chains with their own transaction processor.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmHandoff { get; set; }
+
+    /// <summary>
+    /// Whether the transaction block processing is executing gets a storage discovery of its own once it has read
+    /// <see cref="PreWarmInFlightReadAheadColdReads"/> values past the pre-block caches.
+    /// </summary>
+    /// <remarks>
+    /// The discovery reads, side by side and on the parent state, the slots block processing is about to read one after
+    /// another; it puts only parent-state values into the caches and records nothing block processing takes over. Off, or
+    /// in a block it does not apply to, storage discovery leaves every transaction block processing has started. Requires
+    /// <see cref="PreWarming"/>; not applied to blocks with a block access list, nor to blocks being produced.
+    /// </remarks>
+    [ConfigItem(Description = "Discover and read ahead the storage of the transaction block processing is executing once it has read PreWarmInFlightReadAheadColdReads values past the pre-block caches. Requires PreWarming.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmInFlightReadAhead { get; set; }
+
+    [ConfigItem(Description = "The reads past the pre-block caches within one transaction after which PreWarmInFlightReadAhead starts. `0` starts it at the first.", DefaultValue = "32", HiddenFromDocs = true)]
+    int PreWarmInFlightReadAheadColdReads { get; set; }
 
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
@@ -46,8 +101,51 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
     int GenesisTimeoutMs { get; set; }
 
+    [ConfigItem(Description = "The longest a single block may take to process, in milliseconds. It is checked between transactions and as the next block starts, so a single long transaction or the final commit can run past it. A block that runs out of time is abandoned without being marked invalid, and each retry of it gets twice the time, up to 16 times this value. `0` or a negative value disables it.", DefaultValue = "180000")]
+    int BlockProcessingTimeoutMs { get; set; }
+
+    [ConfigItem(Description = "The max transaction bytes to add in block production, in kilobytes.", DefaultValue = "7936")]
+    long BlockProductionMaxTxKilobytes { get; set; }
+
     [ConfigItem(Description = "The ticker that gas rewards are denominated in for processing logs", DefaultValue = "ETH", HiddenFromDocs = true)]
     string GasToken { get; set; }
 
+    [ConfigItem(Description = "Builds blocks on main (non-readonly) state", DefaultValue = "false", HiddenFromDocs = true)]
+    bool BuildBlocksOnMainState { get; set; }
+
+    [ConfigItem(
+        Description = "Parallelize transaction execution when Block Level Access Lists are available. Experimental Amsterdam/BAL path; disabling falls back to sequential execution and the option is ignored for blocks without BAL bodies.",
+        DefaultValue = "true")]
+    bool ParallelExecution { get; set; }
+
+    [ConfigItem(
+        Description = "Use parallel state reads when Block Level Access Lists are available. Experimental Amsterdam/BAL path; disabling falls back to sequential reads and the option is ignored for blocks without BAL bodies.",
+        DefaultValue = "true")]
+    bool ParallelExecutionBatchRead { get; set; }
+
     byte[] GetExtraDataBytes();
+
+    [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]
+    int? BlockProductionBlobLimit { get; set; }
+
+    [ConfigItem(
+        Description = "The threshold in milliseconds for logging slow block diagnostics. " +
+                      "Blocks processed slower than this value are logged with detailed JSON metrics. " +
+                      "Set to `0` to log all blocks. Set to `-1` to disable slow block logging entirely.",
+        DefaultValue = "-1")]
+    long SlowBlockThresholdMs { get; set; }
+
+    [ConfigItem(
+        Description = "The per-transaction threshold in milliseconds for detailed transaction-level logging within slow blocks. " +
+                      "Transactions slower than this value are included individually in the slow block JSON log. " +
+                      "Set to `0` to log all transactions. Set to `-1` to disable per-transaction logging.",
+        DefaultValue = "-1")]
+    long SlowBlockPerTxThresholdMs { get; set; }
+
+    [ConfigItem(
+        Description = "The maximum block gas assumed to be supported. " +
+                      "Used to inherit some RLP limits. ",
+        DefaultValue = "1000000000",
+        HiddenFromDocs = true)]
+    ulong MaxGasLimit { get; set; }
 }

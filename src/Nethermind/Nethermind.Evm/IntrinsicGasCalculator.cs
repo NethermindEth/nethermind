@@ -1,118 +1,168 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
 
-
-public readonly record struct IntrinsicGas(long Standard, long FloorGas)
+/// <summary>
+/// Non-generic intrinsic gas result for backward compatibility.
+/// </summary>
+public readonly record struct EthereumIntrinsicGas(ulong Standard, ulong FloorGas)
 {
-    public long MinimalGas { get; } = Math.Max(Standard, FloorGas);
-    public static explicit operator long(IntrinsicGas gas) => gas.MinimalGas;
+    public ulong MinimalGas { get; } = Math.Max(Standard, FloorGas);
+    public static explicit operator ulong(EthereumIntrinsicGas gas) => gas.MinimalGas;
+    public static implicit operator EthereumIntrinsicGas(IntrinsicGas<EthereumGasPolicy> gas) =>
+        new(gas.Standard.Value + (ulong)gas.Standard.StateReservoir, gas.FloorGas.Value);
 }
 
 public static class IntrinsicGasCalculator
 {
-    public static IntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
+    /// <summary>
+    /// Calculates intrinsic gas with TGasPolicy type, allowing MultiGas breakdown for Arbitrum.
+    /// </summary>
+    private static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit = 0)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
+        TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
+
+    /// <summary>
+    /// Non-generic backward-compatible Calculate method.
+    /// </summary>
+    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit = 0) =>
+        Calculate<EthereumGasPolicy>(transaction, releaseSpec, blockGasLimit);
+
+    public static ulong AccessListCost(Transaction transaction, IReleaseSpec releaseSpec) =>
+        AccessListCost(transaction, releaseSpec, CalculateFloorTokensInAccessList(transaction, releaseSpec));
+
+    internal static ulong CalculateTokensInCallData(Transaction transaction, IReleaseSpec spec)
     {
-        var intrinsicGas = GasCostOf.Transaction
-               + DataCost(transaction, releaseSpec)
-               + CreateCost(transaction, releaseSpec)
-               + AccessListCost(transaction, releaseSpec)
-               + AuthorizationListCost(transaction, releaseSpec);
-        var floorGas = CalculateFloorCost(transaction, releaseSpec);
-        return new IntrinsicGas(intrinsicGas, floorGas);
+        ReadOnlySpan<byte> data = transaction.Data.Span;
+        int totalZeros = data.CountZeros();
+        return (ulong)totalZeros + (ulong)(data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-    private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.IsContractCreation && releaseSpec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
-
-    private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long baseDataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
-            ? EvmPooledMemory.Div32Ceiling((UInt256)transaction.Data.GetValueOrDefault().Length) *
-              GasCostOf.InitCodeWord
+    // 0 when floor pricing is not active, or when EIP-8131 replaces it with the content floor.
+    internal static ulong CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec) =>
+        spec.IsEip7981Enabled && !spec.IsEip8131Enabled && transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) }
+            ? (ulong)(addressesCount * Address.Size + storageKeysCount * AccessList.StorageKeySize) * spec.GasCosts.TxDataNonZeroMultiplier
             : 0;
 
-        long tokensInCallData = CalculateTokensInCallData(transaction, releaseSpec);
-
-        return baseDataCost + tokensInCallData * GasCostOf.TxDataZero;
-    }
-
-    public static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
+    internal static ulong AccessListCost(Transaction transaction, IReleaseSpec spec, ulong floorTokensInAccessList)
     {
         AccessList? accessList = transaction.AccessList;
-        if (accessList is not null)
-        {
-            if (!releaseSpec.UseTxAccessLists)
-            {
-                ThrowInvalidDataException(releaseSpec);
-            }
+        if (accessList is null) return 0;
 
-            (int addressesCount, int storageKeysCount) = accessList.Count;
-            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
+        if (!spec.UseTxAccessLists)
+        {
+            ThrowInvalidDataException(spec);
         }
 
-        return 0;
+        (int addressesCount, int storageKeysCount) = accessList.Count;
+        // EIP-8038 derives access-list entry costs from cold access minus the warm charge paid on use.
+        (ulong addressCost, ulong storageKeyCost) = Eip8038Constants.AccessListEntryCosts(spec);
+        return (ulong)addressesCount * addressCost
+            + (ulong)storageKeysCount * storageKeyCost
+            + spec.GasCosts.TotalCostFloorPerToken * floorTokensInAccessList;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
-        {
-            throw new InvalidDataException($"Transaction with an access list received within the context of {releaseSpec.Name}. EIP-2930 is not enabled.");
-        }
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowInvalidDataException(IReleaseSpec spec) =>
+            throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
     }
 
-    private static long AuthorizationListCost(Transaction transaction, IReleaseSpec releaseSpec)
+    internal static (ulong ExecutionCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
     {
-        AuthorizationTuple[]? transactionAuthorizationList = transaction.AuthorizationList;
-
-        if (transactionAuthorizationList is not null)
+        AuthorizationTuple[]? authList = transaction.AuthorizationList;
+        if (authList is null)
         {
-            if (!releaseSpec.IsAuthorizationListEnabled)
-            {
-                ThrowInvalidDataException(releaseSpec);
-            }
-
-            return transactionAuthorizationList.Length * GasCostOf.NewAccount;
+            return (0, 0);
         }
 
-        return 0;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
+        if (!spec.IsAuthorizationListEnabled)
         {
+            ThrowAuthorizationListNotEnabled(spec);
+        }
+
+        ulong authCount = (ulong)authList.Length;
+        ulong perAuthExecution = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseExecution : GasCostOf.PerAuthBaseExecution;
+        return spec.IsEip8037Enabled
+            ? (authCount * perAuthExecution, 0)
+            : (authCount * GasCostOf.NewAccount, 0);
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowAuthorizationListNotEnabled(IReleaseSpec releaseSpec) =>
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");
+    }
+
+    private static ulong CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
+        (ulong)transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
+
+    private static ulong CalculateEip7623FloorTokensInCallData(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData)
+    {
+        if (spec.IsEip2028Enabled) return tokensInCallData;
+
+        ReadOnlySpan<byte> data = transaction.Data.Span;
+        ulong totalZeros = (ulong)data.CountZeros();
+        return totalZeros + ((ulong)data.Length - totalZeros) * GasCostOf.TxDataNonZeroMultiplierEip2028;
+    }
+
+    /// <summary>
+    /// Counts the user-controlled content bytes of a transaction per EIP-8131.
+    /// </summary>
+    /// <remarks>
+    /// Calldata, access-list entries, EIP-7702 authorizations (at their worst-case RLP size) and blob versioned
+    /// hashes each contribute their size; a field the transaction type does not carry contributes nothing.
+    /// </remarks>
+    internal static ulong CalculateContentBytes(Transaction transaction)
+    {
+        ulong contentBytes = (ulong)transaction.Data.Length;
+
+        if (transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) })
+        {
+            contentBytes += (ulong)addressesCount * Address.Size + (ulong)storageKeysCount * AccessList.StorageKeySize;
         }
+
+        if (transaction.AuthorizationList is { Length: int authorizationsCount })
+        {
+            contentBytes += (ulong)authorizationsCount * Eip8131Constants.AuthorizationTupleBytes;
+        }
+
+        if (transaction.BlobVersionedHashes is { Length: int blobHashesCount })
+        {
+            contentBytes += (ulong)blobHashesCount * Eip4844Constants.BytesPerBlobVersionedHash;
+        }
+
+        return contentBytes;
     }
 
-    private static long CalculateTokensInCallData(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
-            ? GasCostOf.TxDataNonZeroMultiplierEip2028
-            : GasCostOf.TxDataNonZeroMultiplier;
-        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
+    /// <summary>
+    /// Counts the block access list bytes a transaction's authorizations can contribute, per EIP-8279.
+    /// </summary>
+    /// <remarks>
+    /// Priced up front at the worst case (authority address, delegation designator and nonce) so that applying the
+    /// authorizations, which runs outside the EVM's out-of-gas handling, never meters at runtime.
+    /// </remarks>
+    internal static ulong CalculateAuthorizationBalBytes(Transaction transaction, IReleaseSpec spec) =>
+        SpecFlags.Eip8279(spec) && transaction.AuthorizationList is { Length: int authorizationsCount }
+            ? (ulong)authorizationsCount * Eip8279Constants.AuthorizationBytes
+            : 0;
 
-        int totalZeros = data.CountZeros();
-
-        return totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
-    }
-
-    private static long CalculateFloorCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        if (!releaseSpec.IsEip7623Enabled) return 0;
-        long tokensInCallData = CalculateTokensInCallData(transaction, releaseSpec);
-
-        return GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623;
-    }
+    // One caller; the zkEVM guest stopped inlining it once EIP-8279 grew it.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong floorBase, ulong tokensInCallData, ulong floorTokensInAccessList) =>
+        spec switch
+        {
+            { IsEip8131Enabled: true } => floorBase + (CalculateContentBytes(transaction) + CalculateAuthorizationBalBytes(transaction, spec)) * Eip8131Constants.FloorGasPerByte,
+            { IsEip7976Enabled: true } => floorBase + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
+            { IsEip7623Enabled: true } => floorBase + CalculateEip7623FloorTokensInCallData(transaction, spec, tokensInCallData) * spec.GasCosts.TotalCostFloorPerToken,
+            _ => 0
+        };
 }

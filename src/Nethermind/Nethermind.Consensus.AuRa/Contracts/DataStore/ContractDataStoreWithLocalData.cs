@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private void OnChanged(object sender, EventArgs e)
         {
             LoadLocalData();
-            Thread.MemoryBarrier();
+            Interlocked.MemoryBarrier();
             Loaded?.Invoke(this, EventArgs.Empty);
         }
 

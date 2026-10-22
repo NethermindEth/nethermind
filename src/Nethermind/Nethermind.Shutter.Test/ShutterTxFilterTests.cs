@@ -11,6 +11,7 @@ using Nethermind.Int256;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 class ShutterTxFilterTests
 {
     [Test]

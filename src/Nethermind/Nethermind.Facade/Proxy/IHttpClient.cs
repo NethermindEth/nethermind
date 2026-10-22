@@ -8,7 +8,7 @@ namespace Nethermind.Facade.Proxy
 {
     public interface IHttpClient
     {
-        Task<T> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default);
-        Task<T> PostJsonAsync<T>(string endpoint, object? payload = null, CancellationToken cancellationToken = default);
+        Task<T?> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default);
+        Task<T?> PostJsonAsync<T>(string endpoint, object? payload = null, CancellationToken cancellationToken = default);
     }
 }

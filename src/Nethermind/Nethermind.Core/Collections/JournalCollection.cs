@@ -4,6 +4,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections
 {
@@ -12,31 +15,40 @@ namespace Nethermind.Core.Collections
     /// </summary>
     /// <typeparam name="T">Item type.</typeparam>
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
-    public class JournalCollection<T> : ICollection<T>, IReadOnlyCollection<T>, IJournal<int>
+    public sealed partial class JournalCollection<T> : IToArrayCollection<T>, ICollection<T>, IJournal<int>
     {
-        private readonly List<T> _list = new();
+        private readonly List<T> _list = [];
         public int TakeSnapshot() => Count - 1;
 
         public void Restore(int snapshot)
         {
             if (snapshot >= Count)
             {
-                throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
+                ThrowInvalidRestore(snapshot);
             }
 
             // Just remove excessive items after snapshot
-            int index = snapshot + 1;
-            _list.RemoveRange(index, Count - index);
+            Truncate(snapshot + 1);
         }
 
+        [DoesNotReturn, StackTraceHidden]
+        private void ThrowInvalidRestore(int snapshot)
+            => throw new InvalidOperationException($"{nameof(JournalCollection<>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
         public IEnumerator<T> GetEnumerator() => _list.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)_list).GetEnumerator();
         public void Add(T item) => _list.Add(item);
-        public void Clear() => _list.Clear();
+        public partial void Clear();
+        private partial void Truncate(int count);
         public bool Contains(T item) => _list.Contains(item);
         public void CopyTo(T[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
+        public T[] ToArray() => _list.ToArray();
+
+        /// <summary>The items in insertion order.</summary>
+        /// <remarks>Lets a caller holding an index range slice it instead of enumerating from the start.
+        /// Invalidated by any <see cref="Add"/>, <see cref="Restore"/> or <see cref="Clear"/>.</remarks>
+        public ReadOnlySpan<T> AsSpan() => CollectionsMarshal.AsSpan(_list);
         public int Count => _list.Count;
         public bool IsReadOnly => false;
     }

@@ -1,0 +1,79 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+
+namespace Nethermind.Blockchain.Tracing.ParityStyle;
+
+public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLikeTxTracer>
+{
+    private readonly IDictionary<Hash256, ParityTraceTypes>? _typesByTransaction;
+    private Block? _block;
+    private readonly ParityTraceTypes _types;
+    private readonly ISpecProvider? _specProvider;
+
+    /// <param name="specProvider">Prices an EIP-8141 frame transaction's gas budget for its root; see <see cref="ParityLikeTxTracer"/>.</param>
+    public ParityLikeBlockTracer(Hash256 txHash, ParityTraceTypes types, ISpecProvider? specProvider = null)
+        : base(txHash)
+    {
+        _types = types;
+        _specProvider = specProvider;
+        IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
+    }
+
+    /// <param name="specProvider">Prices an EIP-8141 frame transaction's gas budget for its root; see <see cref="ParityLikeTxTracer"/>.</param>
+    public ParityLikeBlockTracer(ParityTraceTypes types, ISpecProvider? specProvider = null)
+    {
+        _types = types;
+        _specProvider = specProvider;
+        IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
+    }
+
+    /// <param name="specProvider">Prices an EIP-8141 frame transaction's gas budget for its root; see <see cref="ParityLikeTxTracer"/>.</param>
+    public ParityLikeBlockTracer(IDictionary<Hash256, ParityTraceTypes> typesByTransaction, ISpecProvider? specProvider = null)
+    {
+        _typesByTransaction = typesByTransaction;
+        _specProvider = specProvider;
+        IsTracingRewards = false;
+    }
+
+    protected override ParityLikeTxTracer OnStart(Transaction? tx) => new(_block, tx,
+        tx is not null && _typesByTransaction?.TryGetValue(tx.Hash!, out ParityTraceTypes types) == true
+            ? types
+            : _types,
+        _block is null ? null : _specProvider?.GetSpec(_block.Header));
+
+    protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
+
+    public override bool IsTracingRewards { get; }
+
+    public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+    {
+        ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
+        if (rewardTrace is not null)
+        {
+            rewardTrace.Action = new ParityTraceAction
+            {
+                RewardType = rewardType,
+                Value = rewardValue,
+                Author = author,
+                CallType = "reward",
+                TraceAddress = CappedArray<int>.Empty,
+                Type = "reward",
+                Result = null
+            };
+        }
+    }
+
+    public override void StartNewBlockTrace(Block block)
+    {
+        _block = block;
+        base.StartNewBlockTrace(block);
+    }
+}

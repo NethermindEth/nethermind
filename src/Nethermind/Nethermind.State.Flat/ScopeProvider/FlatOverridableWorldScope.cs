@@ -1,0 +1,226 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Diagnostics.CodeAnalysis;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Trie;
+using NonBlocking;
+
+namespace Nethermind.State.Flat.ScopeProvider;
+
+/// <summary>
+/// Create a scope with additional layers of snapshots independent of the main worldstate. This allow committing
+/// worldstate without modifying the global snapshots.
+/// </summary>
+public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarget
+{
+    private readonly IReadOnlyDb _codeDbOverlay;
+    private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
+    private readonly IResourcePool _resourcePool;
+    private readonly IFlatDbManager _flatDbManager;
+    private readonly KnownHeadersScopeProvider _worldState;
+    private readonly ITrieNodeCache _trieNodeCache;
+    private bool _isDisposed = false;
+
+    public FlatOverridableWorldScope(
+        [KeyFilter(DbNames.Code)] IDb codeDb,
+        IFlatDbManager flatDbManager,
+        IFlatDbConfig configuration,
+        ITrieNodeCache trieNodeCache,
+        IResourcePool resourcePool,
+        IStateHeaderProvider stateHeaderProvider,
+        ILogManager logManager)
+    {
+        GlobalStateReader = new OverridableStateReader(this);
+        _codeDbOverlay = new ReadOnlyDb(codeDb, true);
+        _resourcePool = resourcePool;
+        _flatDbManager = flatDbManager;
+        _trieNodeCache = trieNodeCache;
+        _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
+            this,
+            configuration,
+            new NoopTrieWarmer(),
+            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
+            headerProvider,
+            logManager));
+    }
+
+    public IWorldStateScopeProvider WorldState => _worldState;
+    public IStateReader GlobalStateReader { get; }
+
+    public void ResetOverrides()
+    {
+        _codeDbOverlay.ClearTempChanges();
+        _worldState.Clear();
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
+        {
+            kvp.Value.Dispose();
+        }
+
+        _snapshots.Clear();
+    }
+
+    private bool HasStateForBlock(BlockHeader? baseBlock)
+    {
+        StateId stateId = new(baseBlock);
+        return _snapshots.ContainsKey(stateId) || _flatDbManager.HasStateForBlock(stateId);
+    }
+
+    public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)
+    {
+        if (!_snapshots.TryAdd(snapshot.To, snapshot))
+        {
+            snapshot.Dispose();
+        }
+
+        transientResource.ReleaseLease();
+    }
+
+    private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock)
+    {
+        StateId currentState = new(baseBlock);
+
+        SnapshotPooledList snapshots = new(0);
+        while (_snapshots.TryGetValue(currentState, out Snapshot? snapshot) && snapshot.TryAcquire())
+        {
+            snapshots.Add(snapshot);
+            if (snapshot.From == currentState) break;
+            currentState = snapshot.From;
+        }
+        snapshots.Reverse();
+
+        ReadOnlySnapshotBundle readOnlySnapshotBundle;
+        try
+        {
+            readOnlySnapshotBundle = _flatDbManager.GatherReadOnlySnapshotBundle(currentState);
+        }
+        catch (Exception)
+        {
+            snapshots.Dispose();
+            throw;
+        }
+
+        // Everything this scope executes is read-only (calls, simulations, traces, proofs, Flashbots block validation,
+        // receipt regeneration and the transaction changeset index), so its slot reads may use the in-memory
+        // snapshots' negative filter.
+        return new SnapshotBundle(
+            readOnlySnapshotBundle,
+            _trieNodeCache,
+            _resourcePool,
+            ResourcePool.Usage.ReadOnlyProcessingEnv,
+            snapshots,
+            filterInMemorySlotReads: true
+        );
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
+        {
+            kvp.Value.Dispose();
+        }
+        _snapshots.Clear();
+    }
+
+    private class OverridableFlatScopeProvider(
+        FlatOverridableWorldScope flatOverrideScope,
+        IFlatDbConfig configuration,
+        ITrieWarmer trieWarmer,
+        IWorldStateScopeProvider.ICodeDb codeDb,
+        IStateHeaderProvider stateHeaderProvider,
+        ILogManager logManager)
+        : IWorldStateScopeProvider
+    {
+        private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
+
+        public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
+
+        public bool HasStateForTargetBlock(BlockHeader targetBlock) => this.HasRootForTarget(_stateHeaderProvider, targetBlock);
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+            this.TryBeginScopeAtBase(_stateHeaderProvider, targetBlock, metrics, out scope);
+
+        public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            StateId currentState = new(baseBlock);
+            SnapshotBundle snapshotBundle;
+            try
+            {
+                snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
+            }
+            catch (StateUnavailableException)
+            {
+                scope = null;
+                return false;
+            }
+
+            scope = new FlatWorldStateScope(
+                currentState,
+                snapshotBundle,
+                codeDb,
+                flatOverrideScope,
+                configuration,
+                trieWarmer,
+                logManager);
+            return true;
+        }
+    }
+
+    private class OverridableStateReader(FlatOverridableWorldScope overridableWorldScope) : IStateReader
+    {
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
+        {
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            if (snapshotBundle.GetAccount(address) is { } acc)
+            {
+                account = acc.ToStruct();
+                return true;
+            }
+            account = default;
+            return false;
+        }
+
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
+        {
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+            snapshotBundle.GetSlot(address, index, selfDestructIdx, out UInt256? slot);
+            value = slot.GetValueOrDefault();
+        }
+
+        public byte[]? GetCode(Hash256 codeHash)
+            => codeHash == Keccak.OfAnEmptyString ? [] : overridableWorldScope._codeDbOverlay[codeHash.Bytes];
+
+        public byte[]? GetCode(in ValueHash256 codeHash)
+            => codeHash == ValueKeccak.OfAnEmptyString ? [] : overridableWorldScope._codeDbOverlay[codeHash.Bytes];
+
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
+        {
+            StateId stateId = new(baseBlock);
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+
+            // Mirrors FlatStateReader.RunTreeVisitor: a historical bundle is trie-less, so fail as state-unavailable
+            // instead of throwing NotSupportedException mid-walk.
+            if (snapshotBundle.IsHistorical)
+            {
+                throw new MissingTrieNodeException(
+                    $"State proofs at historical block {stateId.BlockNumber} are not supported", null, TreePath.Empty,
+                    baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
+            }
+
+            StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle);
+
+            PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
+            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+        }
+
+        public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);
+    }
+}

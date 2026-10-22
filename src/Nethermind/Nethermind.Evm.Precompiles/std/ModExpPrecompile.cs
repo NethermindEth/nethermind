@@ -1,0 +1,96 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Runtime.InteropServices;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.GmpBindings;
+
+namespace Nethermind.Evm.Precompiles;
+
+public unsafe partial class ModExpPrecompile
+{
+    public static Address Address { get; } = Address.FromNumber(5);
+
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    {
+        Metrics.ModExpPrecompile++;
+
+        if (!TryPrepareInput(
+            inputData,
+            releaseSpec,
+            out ReadOnlySpan<byte> inputSpan,
+            out uint baseLength,
+            out uint expLength,
+            out uint modulusLength,
+            out Result<byte[]> errorOrEmpty))
+        {
+            return errorOrEmpty;
+        }
+
+        ulong expOffset = 96UL + baseLength;
+        ulong modulusOffset = expOffset + expLength;
+        uint expStart = expOffset > uint.MaxValue ? uint.MaxValue : (uint)expOffset;
+        uint modulusStart = modulusOffset > uint.MaxValue ? uint.MaxValue : (uint)modulusOffset;
+
+        using mpz_t modulusInt = mpz_t.Create();
+
+        ReadOnlySpan<byte> modulusDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(modulusStart, modulusLength);
+
+        if (modulusDataSpan.Length > 0)
+        {
+            fixed (byte* modulusData = &MemoryMarshal.GetReference(modulusDataSpan))
+                Gmp.mpz_import(modulusInt, modulusLength, 1, 1, 1, nuint.Zero, modulusData);
+        }
+
+        if (Gmp.mpz_sgn(modulusInt) == 0)
+            return new byte[modulusLength];
+
+        using mpz_t baseInt = mpz_t.Create();
+        using mpz_t expInt = mpz_t.Create();
+        using mpz_t powmResult = mpz_t.Create();
+
+        ReadOnlySpan<byte> baseDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
+
+        if (baseDataSpan.Length > 0)
+        {
+            fixed (byte* baseData = &MemoryMarshal.GetReference(baseDataSpan))
+                Gmp.mpz_import(baseInt, baseLength, 1, 1, 1, nuint.Zero, baseData);
+        }
+
+        ReadOnlySpan<byte> expDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
+
+        if (expDataSpan.Length > 0)
+        {
+            fixed (byte* expData = &MemoryMarshal.GetReference(expDataSpan))
+                Gmp.mpz_import(expInt, expLength, 1, 1, 1, nuint.Zero, expData);
+        }
+
+        // Reduce the base before exponentiating. EIP-198 leaves the result unchanged, but a base that
+        // falls to 0 or 1 makes the whole ladder constant, and the adversarial vectors in the execution-spec
+        // benchmark suite are exactly that shape: the base is either equal to the modulus or one above it.
+        Gmp.mpz_mod(baseInt, baseInt, modulusInt);
+
+        if (Gmp.mpz_cmp_ui(baseInt, 1) <= 0 && Gmp.mpz_sgn(expInt) != 0)
+        {
+            byte[] trivial = new byte[modulusLength];
+            // A reduced base of 1 raises to 1, which the modulus cannot be here since it would have reduced to 0.
+            if (Gmp.mpz_sgn(baseInt) != 0)
+                trivial[modulusLength - 1] = 1;
+            return trivial;
+        }
+
+        Gmp.mpz_powm(powmResult, baseInt, expInt, modulusInt);
+
+        nint powmResultLen = (nint)(Gmp.mpz_sizeinbase(powmResult, 2) + 7) / 8;
+        nint offset = (int)modulusLength - powmResultLen;
+
+        byte[] result = new byte[modulusLength];
+        fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(result))
+            Gmp.mpz_export(ptr + offset, out _, 1, 1, 1, nuint.Zero, powmResult);
+
+        return result;
+    }
+}

@@ -5,6 +5,6 @@ namespace Nethermind.Era1;
 
 public interface IAdminEraService
 {
-    string ExportHistory(string destination, long from, long to);
-    string ImportHistory(string source, long from, long to, string? accumulatorFile);
+    string ExportHistory(string destination, ulong from, ulong to);
+    string ImportHistory(string source, ulong from, ulong to, string? accumulatorFile);
 }

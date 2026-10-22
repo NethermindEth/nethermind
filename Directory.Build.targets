@@ -1,0 +1,11 @@
+<Project>
+
+  <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
+    <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PublishReadyToRun)' == 'true' and Exists('$(NethermindPgoProfile)')">
+    <PublishReadyToRunPgoFiles Include="$(NethermindPgoProfile)" />
+  </ItemGroup>
+
+</Project>

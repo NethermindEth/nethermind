@@ -1,78 +1,91 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), (typeof(InitializeNetwork)))]
-    public class ReviewBlockTree : IStep
+    [RunnerStepDependencies(typeof(LoadGenesisBlock))]
+    public class ReviewBlockTree(
+        IWorldStateManager worldStateManager,
+        IInitConfig initConfig,
+        ISyncConfig syncConfig,
+        IBlockProcessingQueue blockProcessingQueue,
+        IBlockTree blockTree,
+        IBlockTreeHealer blockTreeHealer,
+        ILogManager logManager
+    ) : IStep
     {
-        private readonly IApiWithBlockchain _api;
-        private readonly ILogger _logger;
-
-        public ReviewBlockTree(INethermindApi api)
-        {
-            _api = api;
-            _logger = _api.LogManager.GetClassLogger();
-        }
+        private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            HealCanonicalChainIfEnabled();
+            return initConfig.ProcessingEnabled
+                ? RunBlockTreeInitTasks(cancellationToken)
+                : Task.CompletedTask;
+        }
 
-            if (_api.Config<IInitConfig>().ProcessingEnabled)
+        private void HealCanonicalChainIfEnabled()
+        {
+            if (!initConfig.HealCanonicalChain) return;
+
+            Hash256? startHash = blockTree.Head?.Hash;
+            if (startHash is not null)
             {
-                return RunBlockTreeInitTasks(cancellationToken);
+                if (_logger.IsInfo) _logger.Info($"Healing canonical chain from head {startHash} (depth {initConfig.HealCanonicalChainDepth})...");
+                blockTreeHealer.HealCanonicalChain(startHash, initConfig.HealCanonicalChainDepth);
             }
             else
             {
-                return Task.CompletedTask;
+                if (_logger.IsWarn) _logger.Warn("HealCanonicalChain requested but no head block found — skipping.");
             }
         }
 
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
-            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
-            if (!syncConfig.FastSync)
+            KeptStateResumer.Resume(blockTree, worldStateManager.GlobalStateReader, logManager);
+            using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager.GlobalStateReader, logManager);
+            await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
             {
-                using DbBlocksLoader loader = new(_api.BlockTree, _logger);
-                await _api.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
+                if (t.IsFaulted)
                 {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error("Loading blocks from the DB failed.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (_logger.IsWarn) _logger.Warn("Loading blocks from the DB canceled.");
-                    }
-                });
+                    if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
+                }
+                else if (t.IsCanceled)
+                {
+                    if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
+                }
+            });
+
+            blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
+            try
+            {
+                if (!blockProcessingQueue.IsEmpty) // Just in case the queue got empty before we subscribed
+                {
+                    await _blocksProcessedTaskSource.Task.WaitAsync(cancellationToken);
+                }
             }
-            else
+            finally
             {
-                using StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.WorldStateManager!.GlobalStateReader, _logger!);
-                await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
-                    }
-                });
+                blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
             }
         }
+
+        private readonly TaskCompletionSource _blocksProcessedTaskSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Raised after every dequeued block and batch, possibly again before the continuation above unsubscribes.
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.TrySetResult();
     }
 }

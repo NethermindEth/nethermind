@@ -13,19 +13,20 @@ public class MemoryMessageStream : MemoryStream, IMessageBorderPreservingStream
 {
     private static readonly byte Delimiter = Convert.ToByte('\n');
 
-    public Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
+    public ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
     {
         int read = Read(buffer.AsSpan());
-        return Task.FromResult<ReceiveResult?>(new ReceiveResult
+        return ValueTask.FromResult(new ReceiveResult
         {
             Read = read,
             EndOfMessage = read > 0 && buffer[read - 1] == Delimiter
         });
     }
 
-    public Task<int> WriteEndOfMessageAsync()
+    public async ValueTask<int> WriteEndOfMessageAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
+        await WriteAsync(data, cancellationToken);
         WriteByte(Delimiter);
-        return Task.FromResult(1);
+        return 1;
     }
 }

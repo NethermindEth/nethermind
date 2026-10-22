@@ -17,8 +17,5 @@ public class LowerCaseJsonNamingPolicy : JsonNamingPolicy
 {
     public static LowerCaseJsonNamingPolicy Default { get; } = new();
 
-    public override string ConvertName(string name)
-    {
-        return name.ToLowerInvariant();
-    }
+    public override string ConvertName(string name) => name.ToLowerInvariant();
 }

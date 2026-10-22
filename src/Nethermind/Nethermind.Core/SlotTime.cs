@@ -7,7 +7,7 @@ namespace Nethermind.Core;
 
 public class SlotTime(ulong genesisTimestampMs, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff)
 {
-    public class SlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
+    public class SlotCalculationException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public readonly ulong GenesisTimestampMs = genesisTimestampMs;
 
@@ -25,7 +25,7 @@ public class SlotTime(ulong genesisTimestampMs, ITimestamper timestamper, TimeSp
         long slotTimeSinceGenesis = (long)slotTimestampMs - (long)GenesisTimestampMs;
         if (slotTimeSinceGenesis < 0)
         {
-            throw new SlotCalulationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {GenesisTimestampMs}ms.");
+            throw new SlotCalculationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {GenesisTimestampMs}ms.");
         }
 
         return (ulong)slotTimeSinceGenesis / (ulong)slotLength.TotalMilliseconds;

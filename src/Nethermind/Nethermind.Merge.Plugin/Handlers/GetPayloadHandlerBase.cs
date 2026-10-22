@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
@@ -16,11 +16,15 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     int apiVersion,
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
-    ILogManager logManager)
+    ILogManager logManager,
+    IBuilderOverridePolicy? builderOverridePolicy = null)
     : IAsyncHandler<byte[], TGetPayloadResult?>
-    where TGetPayloadResult : IForkValidator
+    where TGetPayloadResult : class
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadHandlerBase<>));
+
+    /// <summary>The spec provider passed to this handler.</summary>
+    protected ISpecProvider SpecProvider => specProvider;
 
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[] payloadId)
     {
@@ -35,13 +39,13 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
             return ResultWrapper<TGetPayloadResult?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
         }
 
-        TGetPayloadResult getPayloadResult = GetPayloadResultFromBlock(blockContext);
-
-        if (!getPayloadResult.ValidateFork(specProvider))
+        if (!ValidateFork(specProvider.GetSpec(block.Header)))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-            return ResultWrapper<TGetPayloadResult?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
+            return ResultWrapper<TGetPayloadResult?>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
         }
+
+        TGetPayloadResult getPayloadResult = GetPayloadResultFromBlock(blockContext);
 
         if (_logger.IsInfo) _logger.Info($"GetPayloadV{apiVersion} result: {block.Header.ToString(BlockHeader.Format.Short)}.");
 
@@ -49,6 +53,14 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
         return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
+
+    /// <summary>
+    /// Evaluates policies used by Engine API getPayload V3 and later to populate the <c>shouldOverrideBuilder</c> field.
+    /// </summary>
+    protected bool ShouldOverrideBuilder(Block block) => builderOverridePolicy?.ShouldOverrideBuilder(block) ?? false;
+
+    /// <summary>Whether this getPayload version supports the built block's release spec.</summary>
+    protected abstract bool ValidateFork(IReleaseSpec spec);
 
     protected abstract TGetPayloadResult GetPayloadResultFromBlock(IBlockProductionContext blockProductionContext);
 }

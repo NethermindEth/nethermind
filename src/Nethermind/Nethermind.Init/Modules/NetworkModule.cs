@@ -1,0 +1,221 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Threading;
+using Autofac;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.Core.Timers;
+using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Stats;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
+using Handshake = Nethermind.Network.Rlpx.Handshake;
+using P2P = Nethermind.Network.P2P.Messages;
+using V62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using V63 = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using V65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
+using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
+using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
+using V72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
+using SnapV1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using SnapV2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
+using Subprotocols = Nethermind.Network.P2P.Subprotocols;
+
+namespace Nethermind.Init.Modules;
+
+public class NetworkModule(IConfigProvider configProvider) : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+        builder
+            .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
+            .AddSingleton<SyncedTxGossipPolicy>()
+            .AddLast<ITxGossipPolicy>(ctx => ctx.Resolve<SyncedTxGossipPolicy>())
+            .AddSingleton<ITxGossipPolicySource, TxGossipPolicySource>()
+            .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>(singleInstance: true)
+
+            // Default block-gossip policy. Merge decorates it (MergeGossipPolicy); Optimism/Taiko replace it.
+            .AddSingleton<IGossipPolicy>(Policy.FullGossip)
+            .AddSingleton<IIPResolver, IPResolver>()
+            .AddSingleton<NetworkListenerState>()
+
+            .AddSingleton<EnodeProvider>()
+            .Map<IEnode, EnodeProvider>(provider => provider.Enode)
+
+            .AddSingleton<IForkInfo, ForkInfo>()
+
+            // Rlpxhost
+            .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
+            .AddSingleton<ISessionMonitor, SessionMonitor>()
+            .AddSingleton<IPrivilegedIpProvider, PrivilegedIpProvider>()
+            .AddSingleton<IRlpxHost, RlpxHost>()
+            .AddSingleton<Handshake.IHandshakeService, Handshake.HandshakeService>()
+
+            .AddSingleton<INodeStatsManager>(ctx => new NodeStatsManager(
+                ctx.Resolve<ITimerFactory>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<INetworkConfig>()
+                    .MaxCandidatePeerCount)) // The INetworkConfig is not referable in NodeStatsManager.
+
+            .AddSingleton<IMessageSerializationService, MessageSerializationService>()
+            .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
+            .AddSingleton<IProtocolValidator, ProtocolValidator>()
+            .AddSingleton<Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry, Subprotocols.Eth.V72.SparseBlobPoolPeerRegistry>()
+            .AddSingleton<IProtocolsManager, ProtocolsManager>()
+            .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
+            .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
+
+            // Handshake
+            .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()
+            .AddMessageSerializer<Handshake.AckEip8Message, Handshake.AckEip8MessageSerializer>()
+            .AddMessageSerializer<Handshake.AckMessage, Handshake.AckMessageSerializer>()
+            .AddMessageSerializer<Handshake.AuthMessage, Handshake.AuthMessageSerializer>()
+
+            // P2P
+            .AddMessageSerializer<P2P.AddCapabilityMessage, P2P.AddCapabilityMessageSerializer>()
+            .AddMessageSerializer<P2P.DisconnectMessage, P2P.DisconnectMessageSerializer>()
+            .AddMessageSerializer<P2P.HelloMessage, P2P.HelloMessageSerializer>()
+            .AddMessageSerializer<P2P.PingMessage, P2P.PingMessageSerializer>()
+            .AddMessageSerializer<P2P.PongMessage, P2P.PongMessageSerializer>()
+
+            // Snap V1
+            .AddMessageSerializer<SnapV1.AccountRangeMessage, SnapV1.AccountRangeMessageSerializer>()
+            .AddMessageSerializer<SnapV1.ByteCodesMessage, SnapV1.ByteCodesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetAccountRangeMessage, SnapV1.GetAccountRangeMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetByteCodesMessage, SnapV1.GetByteCodesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetStorageRangeMessage, SnapV1.GetStorageRangesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetTrieNodesMessage, SnapV1.GetTrieNodesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.StorageRangeMessage, SnapV1.StorageRangesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.TrieNodesMessage, SnapV1.TrieNodesMessageSerializer>()
+
+            // Snap V2
+            .AddMessageSerializer<SnapV2.GetBlockAccessListsMessage, SnapV2.GetBlockAccessListsMessageSerializer>()
+            .AddMessageSerializer<SnapV2.BlockAccessListsMessage, SnapV2.BlockAccessListsMessageSerializer>()
+
+            // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
+            // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
+            .AddSingleton<IHeaderDecoder, HeaderDecoder>()
+            .AddSingleton<BlockDecoder, IHeaderDecoder>(static headerDecoder => new BlockDecoder(headerDecoder))
+            .AddSingleton<BlockBodyDecoder, IHeaderDecoder>(static headerDecoder => new BlockBodyDecoder(headerDecoder))
+
+            // V62
+            .AddMessageSerializer<V62.BlockBodiesMessage, V62.BlockBodiesMessageSerializer>()
+            .AddMessageSerializer<V62.BlockHeadersMessage, V62.BlockHeadersMessageSerializer>()
+            .AddMessageSerializer<V62.GetBlockBodiesMessage, V62.GetBlockBodiesMessageSerializer>()
+            .AddMessageSerializer<V62.GetBlockHeadersMessage, V62.GetBlockHeadersMessageSerializer>()
+            .AddMessageSerializer<V62.NewBlockHashesMessage, V62.NewBlockHashesMessageSerializer>()
+            .AddMessageSerializer<V62.NewBlockMessage, V62.NewBlockMessageSerializer>()
+            .AddMessageSerializer<V62.StatusMessage, V62.StatusMessageSerializer>()
+            .AddMessageSerializer<V62.TransactionsMessage, V62.TransactionsMessageSerializer>()
+
+            // V63
+            .AddMessageSerializer<V63.GetNodeDataMessage, V63.GetNodeDataMessageSerializer>()
+            .AddMessageSerializer<V63.GetReceiptsMessage, V63.GetReceiptsMessageSerializer>()
+            .AddMessageSerializer<V63.NodeDataMessage, V63.NodeDataMessageSerializer>()
+            .AddMessageSerializer<V63.ReceiptsMessage, V63.ReceiptsMessageSerializer>()
+            .AddSingleton<IZeroInnerMessageSerializer<V63.ReceiptsMessage>, V63.ReceiptsMessageSerializer>() // For v66 receipt
+            .AddSingleton<IZeroInnerMessageSerializer<V63.GetReceiptsMessage>, V63.GetReceiptsMessageSerializer>() // For v70
+
+            // V65
+            .AddMessageSerializer<V65.GetPooledTransactionsMessage, V65.GetPooledTransactionsMessageSerializer>()
+            .AddMessageSerializer<V65.NewPooledTransactionHashesMessage, V65.NewPooledTransactionHashesMessageSerializer>()
+            .AddMessageSerializer<V65.PooledTransactionsMessage, V65.PooledTransactionsMessageSerializer>()
+
+            // V66
+            .AddMessageSerializer<V66.BlockBodiesMessage, V66.BlockBodiesMessageSerializer>()
+            .AddMessageSerializer<V66.BlockHeadersMessage, V66.BlockHeadersMessageSerializer>()
+            .AddMessageSerializer<V66.GetBlockBodiesMessage, V66.GetBlockBodiesMessageSerializer>()
+            .AddMessageSerializer<V66.GetBlockHeadersMessage, V66.GetBlockHeadersMessageSerializer>()
+            .AddMessageSerializer<V66.GetNodeDataMessage, V66.GetNodeDataMessageSerializer>()
+            .AddMessageSerializer<V66.GetPooledTransactionsMessage, V66.GetPooledTransactionsMessageSerializer>()
+            .AddMessageSerializer<V66.GetReceiptsMessage, V66.GetReceiptsMessageSerializer>()
+            .AddMessageSerializer<V66.NodeDataMessage, V66.NodeDataMessageSerializer>()
+            .AddMessageSerializer<V66.PooledTransactionsMessage, V66.PooledTransactionsMessageSerializer>()
+            .AddMessageSerializer<V66.ReceiptsMessage, V66.ReceiptsMessageSerializer>()
+
+            // V68
+            .AddMessageSerializer<V68.NewPooledTransactionHashesMessage68, V68.NewPooledTransactionHashesMessageSerializer>()
+
+            // V69
+            .AddMessageSerializer<V69.BlockRangeUpdateMessage, V69.BlockRangeUpdateMessageSerializer>()
+            .AddMessageSerializer<V69.ReceiptsMessage69, V69.ReceiptsMessageSerializer69>()
+            .AddMessageSerializer<V69.StatusMessage69, V69.StatusMessageSerializer69>()
+
+            // V70
+            .AddMessageSerializer<V70.GetReceiptsMessage70, V70.GetReceiptsMessageSerializer70>()
+            .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
+
+            // V71
+            .AddMessageSerializer<V71.GetBlockAccessListsMessage, V71.GetBlockAccessListsMessageSerializer>()
+            .AddMessageSerializer<V71.BlockAccessListsMessage, V71.BlockAccessListsMessageSerializer>()
+
+            // V72
+            .AddMessageSerializer<V72.NewPooledTransactionHashesMessage72, V72.NewPooledTransactionHashesMessageSerializer72>()
+            .AddMessageSerializer<V72.GetCellsMessage72, V72.GetCellsMessageSerializer72>()
+            .AddMessageSerializer<V72.CellsMessage72, V72.CellsMessageSerializer72>()
+
+            // P2P protocol handler factory (accepts any version; validation happens after Hello)
+            .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
+
+            .AddSingleton<State.SnapServer.ISnapStateServer, State.IWorldStateManager>(static wsm => wsm.SnapStateServer)
+            .AddSingleton<State.SnapServer.ISnapServer, Synchronization.SnapSync.SnapServer>()
+
+            // Protocol handler factories
+            .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Snap.V2.Snap2ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V69.Eth69ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V71.Eth71ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
+
+            ;
+    }
+
+    private sealed class TxGossipPolicySource(ILifetimeScope lifetimeScope) : ITxGossipPolicySource
+    {
+        private readonly Lock _lock = new();
+        private ITxGossipPolicy[]? _policies;
+
+        public ITxGossipPolicy[] Policies
+        {
+            get
+            {
+                ITxGossipPolicy[]? policies = Volatile.Read(ref _policies);
+                if (policies is not null)
+                {
+                    return policies;
+                }
+
+                lock (_lock)
+                {
+                    policies = _policies;
+                    if (policies is null)
+                    {
+                        policies = lifetimeScope.Resolve<ITxGossipPolicy[]>();
+                        Volatile.Write(ref _policies, policies);
+                    }
+
+                    return policies;
+                }
+            }
+        }
+    }
+}

@@ -2,12 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Config;
+using Nethermind.Core;
 
 namespace Nethermind.Network.Config
 {
     public class NetworkConfig : INetworkConfig
     {
         public string? ExternalIp { get; set; }
+
+        /// <inheritdoc/>
+        public string? ExternalIpV4 { get; set; }
+
+        /// <inheritdoc/>
+        public string? ExternalIpV6 { get; set; }
+
+        /// <inheritdoc/>
+        public bool EnableExternalIpResolution { get; set; } = true;
+
         public string? LocalIp { get; set; }
         public string? StaticPeers { get; set; }
         public string? DiscoveryDns { get; set; }
@@ -29,7 +41,7 @@ namespace Nethermind.Network.Config
         public bool DiagTracerEnabled { get; set; } = false;
         public int NettyArenaOrder { get; set; } = INetworkConfig.DefaultNettyArenaOrder;
         public uint MaxNettyArenaCount { get; set; } = INetworkConfig.DefaultMaxNettyArenaCount;
-        public string Bootnodes { get; set; } = string.Empty;
+        public NetworkNode[] Bootnodes { get; set; } = [];
         public bool EnableUPnP { get; set; } = false;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
@@ -41,5 +53,11 @@ namespace Nethermind.Network.Config
         public string? ClientIdMatcher { get; set; } = null;
         public bool DisableDiscV4DnsFeeder { get; set; } = false;
         public long RlpxHostShutdownCloseTimeoutMs { get; set; } = 1000;
+        public string PublicClientIdFormat { get; set; } = ProductInfo.DefaultPublicClientIdFormat;
+        public bool EnableEnrDiscovery { get; set; } = true;
+        public bool FilterPeersByRecentIp { get; set; } = true;
+        public bool FilterPeersBySameSubnet { get; set; } = true;
+        public bool FilterDiscoveryNodesByRecentIp { get; set; } = true;
+        public bool FilterDiscoveryNodesBySameSubnet { get; set; } = true;
     }
 }

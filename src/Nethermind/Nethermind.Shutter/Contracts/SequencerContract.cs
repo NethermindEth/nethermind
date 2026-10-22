@@ -13,8 +13,5 @@ public class SequencerContract : Contract, ISequencerContract
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
 
     public SequencerContract(Address address)
-        : base(null, address)
-    {
-        _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
-    }
+        : base(null, address) => _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
 }

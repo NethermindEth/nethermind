@@ -2,75 +2,65 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder<Withdrawal>
+[method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
+public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
-    public Withdrawal? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Withdrawal? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.IsNextItemNull())
-        {
-            rlpStream.ReadByte();
+        if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
-            return null;
+        rlp.ReadSequenceLength(ref position, out int sequenceLength);
+        int checkPosition = position + sequenceLength;
+
+        rlp.DecodeULong(ref position, out ulong index);
+        rlp.DecodeULong(ref position, out ulong validatorIndex);
+        rlp.DecodeAddress(ref position, out Address address);
+        rlp.DecodeULong(ref position, out ulong amountInGwei);
+        decoderContext.Position = position;
+
+        Withdrawal withdrawal = new()
+        {
+            Index = index,
+            ValidatorIndex = validatorIndex,
+            Address = address,
+            AmountInGwei = amountInGwei
+        };
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        {
+            RlpHelpers.Check(position, checkPosition);
         }
 
-        rlpStream.ReadSequenceLength();
-
-        return new()
-        {
-            Index = rlpStream.DecodeULong(),
-            ValidatorIndex = rlpStream.DecodeULong(),
-            Address = rlpStream.DecodeAddress(),
-            AmountInGwei = rlpStream.DecodeULong()
-        };
+        return withdrawal;
     }
 
-    public Withdrawal? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (decoderContext.IsNextItemNull())
-        {
-            decoderContext.ReadByte();
-
-            return null;
-        }
-
-        decoderContext.ReadSequenceLength();
-
-        return new()
-        {
-            Index = decoderContext.DecodeULong(),
-            ValidatorIndex = decoderContext.DecodeULong(),
-            Address = decoderContext.DecodeAddress(),
-            AmountInGwei = decoderContext.DecodeULong()
-        };
-    }
-
-    public void Encode(RlpStream stream, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
-        var contentLength = GetContentLength(item);
+        int contentLength = GetContentLength(item);
 
-        stream.StartSequence(contentLength);
-        stream.Encode(item.Index);
-        stream.Encode(item.ValidatorIndex);
-        stream.Encode(item.Address);
-        stream.Encode(item.AmountInGwei);
+        writer.StartSequence(contentLength);
+        writer.Encode(item.Index);
+        writer.Encode(item.ValidatorIndex);
+        writer.Encode(item.Address);
+        writer.Encode(item.AmountInGwei);
     }
 
-    public Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        var stream = new RlpStream(GetLength(item, rlpBehaviors));
-
-        Encode(stream, item, rlpBehaviors);
-
-        return new(stream.Data.ToArray());
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
+        return new(bytes);
     }
 
     private static int GetContentLength(Withdrawal item) =>
@@ -79,5 +69,6 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         Rlp.LengthOfAddressRlp +
         Rlp.LengthOf(item.AmountInGwei);
 
-    public int GetLength(Withdrawal item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
+    public override int GetLength(Withdrawal? item, RlpBehaviors _)
+        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
 }

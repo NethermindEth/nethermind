@@ -11,10 +11,12 @@ public class CallOutput
 
     public byte[] OutputData { get; set; } = [];
 
-    public long GasSpent { get; set; }
-    public long OperationGas { get; set; }
+    public ulong GasSpent { get; set; }
+    public ulong OperationGas { get; set; }
 
     public bool InputError { get; set; }
+
+    public bool ExecutionReverted { get; set; }
 
     public AccessList? AccessList { get; set; }
 }

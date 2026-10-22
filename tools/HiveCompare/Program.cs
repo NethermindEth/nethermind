@@ -5,27 +5,21 @@ using System.Text.Json;
 
 internal class Program
 {
-    public static readonly JsonSerializerOptions SERIALIZER_OPTIONS = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
-    };
-
     private static void Main(string[] args)
     {
-        CliOption<string> firstFileOption = new("--first-file", "-f")
+        Option<string> firstFileOption = new("--first-file", "-f")
         {
             Description = "The first file to be used for comparison",
             Required = true,
             HelpName = "path"
         };
-        CliOption<string> secondFileOption = new("--second-file", "-s")
+        Option<string> secondFileOption = new("--second-file", "-s")
         {
             Description = "The second file to be used for comparison",
             Required = true,
             HelpName = "path"
         };
-        CliRootCommand rootCommand = [firstFileOption, secondFileOption];
+        RootCommand rootCommand = [firstFileOption, secondFileOption];
 
         rootCommand.SetAction(parseResult =>
         {
@@ -45,15 +39,14 @@ internal class Program
                 : 2;
         });
 
-        CliConfiguration cli = new(rootCommand);
-        cli.Invoke(args);
+        rootCommand.Parse(args).Invoke();
     }
 
     private static bool ParseTests(string firstFile, string secondFile)
     {
         static bool TryLoadTestCases(string file, [NotNullWhen(true)] out Dictionary<string, TestCase>? testCases)
         {
-            bool Fail(out Dictionary<string, TestCase>? testCases)
+            static bool Fail(out Dictionary<string, TestCase>? testCases)
             {
                 Console.WriteLine("Could not parse one of the files!");
                 testCases = null;
@@ -63,7 +56,7 @@ internal class Program
             try
             {
                 using Stream fileStream = File.OpenRead(file);
-                HiveTestResult? hiveTest = JsonSerializer.Deserialize<HiveTestResult>(fileStream, SERIALIZER_OPTIONS);
+                HiveTestResult? hiveTest = JsonSerializer.Deserialize(fileStream, HiveCompareJsonContext.Default.HiveTestResult);
 
                 if (hiveTest is null)
                 {
@@ -87,7 +80,7 @@ internal class Program
 
     private static bool PrintOutDifferences(Dictionary<string, TestCase> testCases1, Dictionary<string, TestCase> testCases2)
     {
-        void PrintOutUniqueCases(ICollection<TestCase> testCases, int caseSet)
+        static void PrintOutUniqueCases(ICollection<TestCase> testCases, int caseSet)
         {
             if (testCases.Count > 0)
             {
@@ -99,7 +92,7 @@ internal class Program
             }
         }
 
-        List<TestCase> newInTest1 = new();
+        List<TestCase> newInTest1 = [];
 
         foreach (string key in testCases1.Keys)
         {

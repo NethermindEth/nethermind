@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,19 +9,21 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
+[assembly: InternalsVisibleTo("Nethermind.State")]
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
-    public class Transaction
+    public partial class Transaction
     {
         public const byte MaxTxType = 0x7F;
-        public const int BaseTxGasCost = 21000;
+        public const uint BaseTxGasCost = 21000;
 
         public ulong? ChainId { get; set; }
 
@@ -41,25 +43,50 @@ namespace Nethermind.Core
         // Field indicating if this transaction is exempt from the L2 gas limit.
         public bool IsOPSystemTransaction { get; set; }
 
-        public UInt256 Nonce { get; set; }
-        public UInt256 GasPrice { get; set; }
+        public ulong Nonce { get; set; }
+        public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
-        public UInt256 MaxPriorityFeePerGas => GasPrice;
+        public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
+        public UInt256 CalculateFeeCap() => !MaxFeePerGas.IsZero ? MaxFeePerGas : GasPrice;
         public bool SupportsAccessList => Type.SupportsAccessList();
         public bool Supports1559 => Type.Supports1559();
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
-        public long GasLimit { get; set; }
+        public bool SupportsFrames => Type.SupportsFrames();
+
+        /// <summary>Whether this instance actually carries blobs, unlike <see cref="SupportsBlobs"/>, which is a
+        /// capability of the transaction type: an EIP-8141 frame transaction may carry blobs too.</summary>
+        public bool CarriesBlobs => BlobVersionedHashes is { Length: > 0 };
+        public ulong GasLimit { get; set; }
+        private ulong _spentGas;
+        private ulong _blockGasUsed;
+        [JsonIgnore]
+        public ulong SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
+        /// <summary>
+        /// Gas used for block accounting (pre-refund when EIP-7778 is enabled).
+        /// Defaults to <see cref="GasLimit"/> when unknown.
+        /// </summary>
+        [JsonIgnore]
+        public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
         public Address? To { get; set; }
-        public UInt256 Value { get; set; }
-        public Memory<byte>? Data { get; set; }
+        private UInt256 _gasPrice;
+        private UInt256 _value;
+        public UInt256 Value { get => _value; set => _value = value; }
+        [JsonIgnore]
+        public ref readonly UInt256 ValueRef { get => ref _value; }
+        public ReadOnlyMemory<byte> Data { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
+
+        /// <summary>Whether the transaction creates a contract at the top level, so a receipt names a <c>contractAddress</c>.</summary>
+        /// <remarks>An EIP-8141 frame transaction has no <c>to</c> field, making <see cref="IsContractCreation"/> true
+        /// for it, yet it creates nothing at the top level — any creation happens inside a deploy frame.</remarks>
+        public bool CreatesTopLevelContract => IsContractCreation && !SupportsFrames;
 
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
         public bool HasAuthorizationList =>
@@ -67,25 +94,35 @@ namespace Nethermind.Core
             AuthorizationList is not null &&
             AuthorizationList.Length > 0;
 
+        [JsonIgnore]
+        public IIntrinsicGasMemo? IntrinsicGasMemo;
+
         private Hash256? _hash;
 
         [JsonIgnore]
         internal bool IsHashCalculated => _hash is not null;
-        internal Hash256 CalculateHashInternal()
+        private Hash256 CalculateHashInternal()
         {
             Hash256? hash = _hash;
             if (hash is not null) return hash;
 
-            lock (this)
-            {
-                hash = _hash;
-                if (hash is not null) return hash;
+            return CalculateHashSynchronized();
+        }
 
-                if (_preHash.Length > 0)
-                {
-                    _hash = hash = Keccak.Compute(_preHash.Span);
-                    ClearPreHashInternal();
-                }
+        /// <summary>Computes and memoizes the hash, holding whatever exclusion the target needs.</summary>
+        /// <remarks>Split per target: see <c>Transaction.std.cs</c> and <c>Transaction.zkevm.cs</c>.</remarks>
+        private partial Hash256 CalculateHashSynchronized();
+
+        /// <summary>The memoizing computation itself, with no exclusion of its own.</summary>
+        private Hash256 ComputeAndMemoizeHash()
+        {
+            Hash256? hash = _hash;
+            if (hash is not null) return hash;
+
+            if (_preHash.Length > 0)
+            {
+                _hash = hash = Keccak.Compute(_preHash.Span);
+                ClearPreHashInternal();
             }
 
             return hash!;
@@ -105,12 +142,14 @@ namespace Nethermind.Core
                 lock (this)
                 {
                     ClearPreHash();
+                    IntrinsicGasMemo = null;
                     _hash = value;
                 }
             }
         }
 
         private Memory<byte> _preHash;
+        internal ref readonly Memory<byte> PreHash => ref _preHash;
         private IMemoryOwner<byte>? _preHashMemoryOwner;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
@@ -124,6 +163,7 @@ namespace Nethermind.Core
         {
             // Used to delay hash generation, as may be filtered as having too low gas etc
             _hash = null;
+            IntrinsicGasMemo = null;
 
             int size = transactionSequence.Length;
             _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(size);
@@ -135,6 +175,7 @@ namespace Nethermind.Core
         {
             // Used to delay hash generation, as may be filtered as having too low gas etc
             _hash = null;
+            IntrinsicGasMemo = null;
             _preHash = transactionSequence;
             _preHashMemoryOwner = preHashMemoryOwner;
         }
@@ -162,7 +203,7 @@ namespace Nethermind.Core
 
         public UInt256 Timestamp { get; set; }
 
-        public int DataLength => Data?.Length ?? 0;
+        public int DataLength => Data.Length;
 
         public AccessList? AccessList { get; set; } // eip2930
 
@@ -170,13 +211,73 @@ namespace Nethermind.Core
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
-        public object? NetworkWrapper { get; set; }
+        private object? _networkWrapper;
+
+        /// <remarks>Replacing the sidecar changes the mempool-form length, so the memoized size is dropped.</remarks>
+        public object? NetworkWrapper
+        {
+            get => _networkWrapper;
+            set
+            {
+                _networkWrapper = value;
+                _size = null;
+            }
+        }
 
         /// <summary>
         /// List of EOA code authorizations.
         /// https://eips.ethereum.org/EIPS/eip-7702
         /// </summary>
         public AuthorizationTuple[]? AuthorizationList { get; set; }
+
+        /// <summary>
+        /// List of frames of a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8141
+        /// </summary>
+        public TxFrame[]? Frames { get; set; }
+
+        /// <summary>
+        /// List of protocol-validated signatures available to a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8141
+        /// </summary>
+        public TxFrameSignature[]? FrameSignatures { get; set; }
+
+        /// <summary>
+        /// Fee-payer resolved at mempool admission for an EIP-8141 frame transaction; <c>null</c> until
+        /// resolved or when it cannot be resolved natively. In-memory only (not encoded).
+        /// </summary>
+        public Address? PayerAddress { get; set; }
+
+        /// <summary>
+        /// The maximum cost mempool admission priced this transaction at, released unchanged from
+        /// <see cref="PayerAddress"/>'s exposure when the transaction leaves the pool. Recorded with no payer too,
+        /// where it reserves nothing and only prices the sender's pending total. In-memory only (not encoded).
+        /// </summary>
+        /// <remarks>
+        /// Held rather than re-derived on release: the pool keeps a blob-carrying frame transaction as a light
+        /// record with no frames, which cannot be priced, and the pricing spec moves with the head besides.
+        /// </remarks>
+        public UInt256? PayerExposure { get; set; }
+
+        /// <summary>The EIP-8141 expiry deadline recovered from storage, for a transaction reloaded without
+        /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
+        public virtual ulong? PersistedExpiryDeadline => null;
+
+        /// <summary>The EIP-8141 prefix paymaster frozen onto a pool record held without its frames. Null for an
+        /// in-memory transaction, which derives it from the frames, and after a reload: it is not encoded.</summary>
+        public virtual Address? PersistedPaymaster => null;
+
+        /// <summary>
+        /// Nonce keys selected by a frame transaction, sharing the sequence number held by <see cref="Nonce"/>.
+        /// https://eips.ethereum.org/EIPS/eip-8250
+        /// </summary>
+        /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
+        /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
+        public UInt256[]? NonceKeys { get; set; }
+
+        /// <summary>Zero and non-zero byte counts of EIP-8250's <c>nonce_calldata</c>, priced in addition to frame and
+        /// signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
+        public (int ZeroBytes, int NonZeroBytes) FrameCalldataStats { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
@@ -195,18 +296,20 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
-        {
-            return shouldCountBlobs
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
-        }
+
+        /// <summary>
+        /// Clears the cached encoded length after mutating fields that affect network serialization.
+        /// </summary>
+        public void ClearLengthCache() => _size = null;
 
         public string ToShortString()
         {
             string gasPriceString =
                 Supports1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
-            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data.AsArray()?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
+            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data.AsArray().ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
         public string ToString(string indent)
@@ -232,11 +335,16 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
-            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? []).ToHexString()}");
+            builder.AppendLine($"{indent}Data:      {Data.AsArray().ToHexString()}");
             builder.AppendLine($"{indent}Signature: {Signature?.Bytes.ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
+
+            if (AccessList is not null)
+            {
+                builder.AppendLine($"{indent}{nameof(AccessList)}: {AccessList?.Count}");
+            }
 
             if (SupportsBlobs)
             {
@@ -249,26 +357,36 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public bool MayHaveNetworkForm => Type is TxType.Blob;
+        public bool MayHaveNetworkForm => Type is TxType.Blob or TxType.FrameTx;
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
-            public Transaction Create()
-            {
-                return new Transaction();
-            }
+            public Transaction Create() => new();
 
             public bool Return(Transaction obj)
             {
+
+                // Only pool pure Transaction objects, not subclasses
+                // This prevents other subclasses from contaminating the pool
+                if (obj.GetType() != typeof(Transaction))
+                    return false;
+
                 obj.ClearPreHash();
+                obj.IntrinsicGasMemo = null;
                 obj.Hash = default;
                 obj.ChainId = default;
                 obj.Type = default;
+                obj.IsAnchorTx = default;
+                obj.SourceHash = default;
+                obj.Mint = default;
+                obj.IsOPSystemTransaction = default;
                 obj.Nonce = default;
                 obj.GasPrice = default;
                 obj.GasBottleneck = default;
                 obj.DecodedMaxFeePerGas = default;
                 obj.GasLimit = default;
+                obj._spentGas = default;
+                obj._blockGasUsed = default;
                 obj.To = default;
                 obj.Value = default;
                 obj.Data = default;
@@ -278,20 +396,46 @@ namespace Nethermind.Core
                 obj.AccessList = default;
                 obj.MaxFeePerBlobGas = default;
                 obj.BlobVersionedHashes = default;
+                PooledBlobBuffers.Return(obj);
                 obj.NetworkWrapper = default;
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
                 obj.AuthorizationList = default;
+                obj.Frames = default;
+                obj.FrameSignatures = default;
+                obj.PayerAddress = default;
+                obj.PayerExposure = default;
+                obj.NonceKeys = default;
+                obj.FrameCalldataStats = default;
 
                 return true;
             }
         }
 
-        public void CopyTo(Transaction tx)
+        /// <summary>
+        /// Copies this transaction to <paramref name="tx"/> without its cached hash.
+        /// </summary>
+        /// <param name="tx">The destination transaction.</param>
+        public void CopyTo(Transaction tx) => CopyTo(tx, copyHash: false);
+
+        /// <summary>
+        /// Copies this transaction to <paramref name="tx"/> and optionally copies its cached hash.
+        /// </summary>
+        /// <param name="tx">The destination transaction.</param>
+        /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
+        public void CopyTo(Transaction tx, bool copyHash)
         {
+            // Copies share the network payload and can outlive the original transaction.
+            PooledBlobBuffers.Disown(this);
+            if (copyHash)
+            {
+                tx.Hash = Hash;
+            }
+
             tx.ChainId = ChainId;
             tx.Type = Type;
+            tx.IsAnchorTx = IsAnchorTx;
             tx.SourceHash = SourceHash;
             tx.Mint = Mint;
             tx.IsOPSystemTransaction = IsOPSystemTransaction;
@@ -314,21 +458,37 @@ namespace Nethermind.Core
             tx.PoolIndex = PoolIndex;
             tx._size = _size;
             tx.AuthorizationList = AuthorizationList;
+            tx.Frames = Frames;
+            tx.FrameSignatures = FrameSignatures;
+            tx.PayerAddress = PayerAddress;
+            tx.PayerExposure = PayerExposure;
+            tx.NonceKeys = NonceKeys;
+            tx.FrameCalldataStats = FrameCalldataStats;
         }
+
+        public virtual ProofVersion? GetProofVersion() =>
+            NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
+                ? version
+                : null;
     }
 
     /// <summary>
     /// Transaction that is generated by the node to be included in future block. After included in the block can be handled as regular <see cref="Transaction"/>.
     /// </summary>
-    public class GeneratedTransaction : Transaction { }
+    public sealed class GeneratedTransaction : Transaction;
 
     /// <summary>
     /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
-    public class SystemTransaction : Transaction
+    public sealed class SystemTransaction : Transaction
     {
-        private new const long GasLimit = 30_000_000L;
+        private new const ulong GasLimit = 30_000_000UL;
     }
+
+    /// <summary>
+    /// System call like transaction that is to be executed by the node without including in the block.
+    /// </summary>
+    public sealed class SystemCall : Transaction;
 
     /// <summary>
     /// Used inside Transaction::GetSize to calculate encoded transaction size
@@ -340,19 +500,96 @@ namespace Nethermind.Core
     }
 
     /// <summary>
-    /// Holds network form fields for <see cref="TxType.Blob" /> transactions
+    /// Holds network form fields for <see cref="TxType.Blob" /> transactions.
     /// </summary>
-    public class ShardBlobNetworkWrapper
+    /// <param name="Blobs">Complete blob payloads, or empty entries when only cells are available.</param>
+    /// <param name="Commitments">One KZG commitment per blob.</param>
+    /// <param name="Proofs">Blob proofs for V0 or all cell proofs in blob-major order for V1.</param>
+    /// <param name="Version">The proof representation used by this wrapper.</param>
+    /// <param name="CellMask">The cell indices available for every blob when full blobs are absent.</param>
+    /// <param name="Cells">Sparse cells in blob-major order and ascending cell-index order.</param>
+    public record ShardBlobNetworkWrapper(
+        byte[][] Blobs,
+        byte[][] Commitments,
+        byte[][] Proofs,
+        ProofVersion Version,
+        BlobCellMask CellMask = default,
+        byte[][]? Cells = null)
     {
-        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs)
+        /// <remarks>
+        /// Record copies share this token. Disown the transaction before publishing any additional
+        /// reference to its wrapper or blob arrays; idempotent returns alone do not prevent use after return.
+        /// </remarks>
+        internal PooledBlobBuffers? PooledBuffers { get; init; }
+
+        /// <inheritdoc/>
+        /// <remarks>Pool ownership is excluded so equality depends only on the payload and record type.</remarks>
+        public virtual bool Equals(ShardBlobNetworkWrapper? other) =>
+            ReferenceEquals(this, other)
+            || (other is not null
+                && EqualityContract == other.EqualityContract
+                && Blobs == other.Blobs
+                && Commitments == other.Commitments
+                && Proofs == other.Proofs
+                && Version == other.Version
+                && CellMask.Equals(other.CellMask)
+                && Cells == other.Cells);
+
+        /// <inheritdoc/>
+        public override int GetHashCode() => HashCode.Combine(EqualityContract, Blobs, Commitments, Proofs, Version, CellMask, Cells);
+
+        /// <summary>
+        /// Creates a blob network wrapper without sparse-cell data.
+        /// </summary>
+        /// <param name="blobs">Complete blob payloads.</param>
+        /// <param name="commitments">One KZG commitment per blob.</param>
+        /// <param name="proofs">Proofs corresponding to <paramref name="version"/>.</param>
+        /// <param name="version">The proof representation used by this wrapper.</param>
+        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs, ProofVersion version)
+            : this(blobs, commitments, proofs, version, default, null)
         {
-            Blobs = blobs;
-            Commitments = commitments;
-            Proofs = proofs;
         }
 
-        public byte[][] Commitments { get; set; }
-        public byte[][] Blobs { get; set; }
-        public byte[][] Proofs { get; set; }
+        /// <summary>
+        /// Deconstructs the wrapper into the fields exposed before sparse-cell support.
+        /// </summary>
+        /// <param name="blobs">Complete blob payloads.</param>
+        /// <param name="commitments">KZG commitments.</param>
+        /// <param name="proofs">Blob or cell proofs.</param>
+        /// <param name="version">The proof representation.</param>
+        public void Deconstruct(out byte[][] blobs, out byte[][] commitments, out byte[][] proofs, out ProofVersion version)
+        {
+            blobs = Blobs;
+            commitments = Commitments;
+            proofs = Proofs;
+            version = Version;
+        }
+
+        /// <summary>
+        /// Returns whether every blob payload is available locally.
+        /// </summary>
+        public bool HasFullBlobs()
+        {
+            for (int i = 0; i < Blobs.Length; i++)
+            {
+                if (Blobs[i].Length == 0)
+                {
+                    return false;
+                }
+            }
+
+            return Blobs.Length != 0;
+        }
+
+        /// <summary>
+        /// Returns the complete mask for full blobs, or the stored sparse-cell mask otherwise.
+        /// </summary>
+        public BlobCellMask GetAvailableCellMask() => HasFullBlobs() ? BlobCellMask.Full : CellMask;
+    }
+
+    public enum ProofVersion : byte
+    {
+        V0 = 0x00,
+        V1 = 0x01,
     }
 }

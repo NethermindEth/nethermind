@@ -24,11 +24,8 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Whether to download/process new blocks.", DefaultValue = "true")]
     bool ProcessingEnabled { get; set; }
 
-    [ConfigItem(Description = "Whether to connect to newly discovered peers.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to start the peer manager. If disabled, Nethermind doesn't initiate connections to any peers, including static and trusted nodes, `Network.StaticPeers`, and peers added via `admin_addPeer`, and doesn't persist peers to the peer database.", DefaultValue = "true")]
     bool PeerManagerEnabled { get; set; }
-
-    [ConfigItem(Description = "Whether to seal/mine new blocks.", DefaultValue = "false")]
-    bool IsMining { get; set; }
 
     [ConfigItem(Description = "The path to the chain spec file.", DefaultValue = "chainspec/foundation.json")]
     string ChainSpecPath { get; set; }
@@ -42,10 +39,13 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The hash of the genesis block. If not specified, the genesis block validity is not checked which is useful in the case of ad hoc test/private networks.", DefaultValue = "null")]
     string? GenesisHash { get; set; }
 
-    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "Data/static-nodes.json")]
+    [ConfigItem(Description = "The network id. If not specified, taken from the chain spec file.", DefaultValue = "null", HiddenFromDocs = true)]
+    ulong? NetworkId { get; set; }
+
+    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "static-nodes.json")]
     string StaticNodesPath { get; set; }
 
-    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "Data/trusted-nodes.json")]
+    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "trusted-nodes.json")]
     string TrustedNodesPath { get; set; }
 
     [ConfigItem(Description = "The name of the log file.", DefaultValue = "log.txt")]
@@ -57,26 +57,23 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null")]
     string? LogRules { get; set; }
 
-    [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool StoreReceipts { get; set; }
-
-    [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool ReceiptsMigration { get; set; }
-
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]
     DiagnosticMode DiagnosticMode { get; set; }
 
     [ConfigItem(Description = "Auto-dump on bad blocks for diagnostics.", DefaultValue = nameof(DumpOptions.Default))]
     DumpOptions AutoDump { get; set; }
 
-    [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "")]
+    [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "", IsSensitive = true)]
     string RpcDbUrl { get; set; }
 
     [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]
-    long? MemoryHint { get; set; }
+    ulong? MemoryHint { get; set; }
 
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
+
+    [ConfigItem(Description = "The path to the Nethermind data directory. Defaults to Nethermind's current directory.", DefaultValue = "null", HiddenFromDocs = true)]
+    string? DataDir { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]
     bool DisableGcOnNewPayload { get; set; }
@@ -88,13 +85,37 @@ public interface IInitConfig : IConfig
     INodeStorage.KeyScheme StateDbKeyScheme { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
-    long? ExitOnBlockNumber { get; set; }
+    ulong? ExitOnBlockNumber { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool ExitOnInvalidBlock { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "65536", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "2048", HiddenFromDocs = true)]
     int BackgroundTaskMaxNumber { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] True when in runner test. Disable some wait.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool InRunnerTest { get; set; }
+
+    [ConfigItem(
+        Description = "[TECHNICAL] Whether to exercise the EVM instruction handlers on startup so the JIT promotes them before the first block. Costs about a second of CPU that only pays back over many blocks.",
+        DefaultValue = "true",
+        HiddenFromDocs = true)]
+    bool EvmWarmupEnabled { get; set; }
+
+    [ConfigItem(Description = "Whether to warm the block processing pipeline before RPC and Engine API startup. Cancellation is requested after 30 seconds, then startup waits for cleanup. Skipped when JSON-RPC is disabled, without the standard Merge plugin, or with custom spec providers, custom processing pipelines, or database diagnostic modes.", DefaultValue = "true")]
+    bool PipelineWarmupEnabled { get; set; }
+
+    [ConfigItem(Description = "Whether to repair canonical-chain markers on startup after a canonical mismatch.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool HealCanonicalChain { get; set; }
+
+    [ConfigItem(
+        Description = $"The number of blocks to walk back from the head when the `{nameof(HealCanonicalChain)}` is set to `true`.",
+        DefaultValue = "8192",
+        HiddenFromDocs = true)]
+    long HealCanonicalChainDepth { get; set; }
 }
 
 public enum DiagnosticMode
@@ -117,6 +138,6 @@ public enum DiagnosticMode
     [Description("Scans and sums supply on all accounts.")]
     VerifySupply,
 
-    [Description("Verifies if full state trie is stored.")]
+    [Description("Verifies if full state trie is stored, then exits. Equivalent to the `verify-trie` command.")]
     VerifyTrie
 }

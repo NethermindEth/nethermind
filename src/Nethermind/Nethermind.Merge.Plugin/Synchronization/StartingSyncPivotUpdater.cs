@@ -1,0 +1,254 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.State.Snap;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+
+namespace Nethermind.Merge.Plugin.Synchronization;
+
+public class StartingSyncPivotUpdater(
+    IBlockTree blockTree,
+    ISyncPeerPool syncPeerPool,
+    ISyncConfig syncConfig,
+    ISyncProgressResolver syncProgressResolver,
+    IBlockCacheService blockCacheService,
+    IBeaconSyncStrategy beaconSyncStrategy,
+    ILogManager logManager) : ISyncPivotResolver, IDisposable
+{
+    private const string Pivot = "pivot";
+
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
+    private readonly ISyncConfig _syncConfig = syncConfig;
+    private readonly ISyncProgressResolver _syncProgressResolver = syncProgressResolver;
+    protected readonly IBlockCacheService _blockCacheService = blockCacheService;
+    protected readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy;
+    protected readonly ILogger _logger = logManager.GetClassLogger<StartingSyncPivotUpdater>();
+
+    private CancellationTokenSource? _cancellation = new();
+
+    // Note: Blocktree would have set MaxAttemptsToUpdatePivot to 0 if sync pivot is in DB
+    private int _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
+    private int _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
+    private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
+
+    public async Task EnsureSyncPivot(CancellationToken cancellationToken)
+    {
+        CancellationTokenSource? cancellation = _cancellation;
+        if (cancellation is null) return;
+
+        using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cancellation.Token);
+        CancellationToken token = linkedCts.Token;
+        TimeSpan retryDelay = TimeSpan.FromMilliseconds(_syncConfig.MultiSyncModeSelectorLoopTimerMs);
+
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                if (!ShouldUpdatePivot())
+                {
+                    if (_logger.IsInfo) _logger.Info("Skipping pivot update");
+                    return;
+                }
+
+                if (await TrySetFreshPivot(token))
+                {
+                    return;
+                }
+
+                // Mirrors the previous per-tick fallback: keep retrying while attempts remain (or forever
+                // when infinite), otherwise give up and fall back to the pivot from the config file.
+                if (!(_attemptsLeft-- > 0 || _maxAttempts == ISyncConfig.InfiniteAttempts))
+                {
+                    _syncConfig.MaxAttemptsToUpdatePivot = 0;
+                    if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
+                    return;
+                }
+
+                await Task.Delay(retryDelay, token);
+            }
+        }
+        catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException)
+        {
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Unexpected error while updating the starting sync pivot.", e);
+        }
+    }
+
+    // The negation of the former MultiSyncModeSelector.ShouldBeInUpdatingPivot check.
+    private bool ShouldUpdatePivot() =>
+        !_syncConfig.StaticSnapPivot &&
+        _syncConfig.MaxAttemptsToUpdatePivot != 0 &&
+        _syncConfig.FastSync &&
+        _beaconSyncStrategy.MergeTransitionFinished &&
+        _syncProgressResolver.FindBestFullState() == 0; // only resolve a fresh pivot when no state has been downloaded yet
+
+    private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
+    {
+        (Hash256 Hash, ulong Number)? potentialPivotData = await TryGetPivotData(cancellationToken);
+
+        if (potentialPivotData is null)
+        {
+            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0)
+            {
+                Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
+                if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
+                {
+                    _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
+                }
+                else
+                {
+                    _logger.Info($"Known finalized block hash {finalizedBlockHash}, but cannot resolve its block number yet ({_syncPeerPool.InitializedPeersCount} peers available) [{_maxAttempts - _attemptsLeft}s]");
+                }
+            }
+            return false;
+        }
+
+        return TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
+    }
+
+    protected virtual async Task<(Hash256 Hash, ulong Number)?> TryGetPivotData(CancellationToken cancellationToken)
+    {
+        // getting finalized block hash as it is safe, because can't be reorganized
+        Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
+
+        if (finalizedBlockHash is not null && finalizedBlockHash != Keccak.Zero)
+        {
+            UpdateAndPrintPotentialNewPivot(finalizedBlockHash);
+
+            ulong? finalizedBlockNumber = TryGetBlockNumberFromBlockCache(finalizedBlockHash)
+                                         ?? TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash)
+                                         ?? await TryGetFromPeers(finalizedBlockHash, cancellationToken);
+
+            return finalizedBlockNumber is null ? null : (finalizedBlockHash, finalizedBlockNumber.Value);
+        }
+
+        return null;
+    }
+
+    protected ulong? TryGetBlockNumberFromBlockCache(Hash256 finalizedBlockHash, string type = Pivot)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Looking for {type} block in block cache");
+        if (_blockCacheService.BlockCache.TryGetValue(finalizedBlockHash, out Block? finalizedBlock))
+        {
+            if (HeaderValidator.ValidateHash(finalizedBlock.Header))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Found {type} block in block cache");
+                return finalizedBlock.Header.Number;
+            }
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {finalizedBlock.Header.Hash} when expecting {finalizedBlockHash}");
+        }
+
+        return null;
+    }
+
+    private ulong? TryGetFinalizedBlockNumberFromBlockTree(Hash256 finalizedBlockHash)
+    {
+        if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in blockTree");
+        BlockHeader? finalizedHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (finalizedHeader is not null)
+        {
+            if (HeaderValidator.ValidateHash(finalizedHeader))
+            {
+                if (_logger.IsDebug) _logger.Debug("Found header of pivot block in block tree");
+                return finalizedHeader.Number;
+            }
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block tree is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
+        }
+
+        return null;
+    }
+
+    protected async Task<ulong?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
+        (await TryGetFromPeers(hash, cancellationToken,
+            static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token), type))?.Number;
+
+    protected async Task<BlockHeader?> TryGetFromPeers<T>(T id, CancellationToken cancellationToken,
+        Func<ISyncPeer, T, CancellationToken, Task<BlockHeader?>> getHeader, string? type = Pivot)
+    {
+        foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+            try
+            {
+                if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of {type} block {id}");
+                BlockHeader? finalizedHeader = await getHeader(peer.SyncPeer, id, cancellationToken);
+                if (finalizedHeader is not null)
+                {
+                    if (HeaderValidator.ValidateHash(finalizedHeader))
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Received header of {type} block from peer {peer.SyncPeer.Node.ClientId}");
+                        return finalizedHeader;
+                    }
+                    if (_logger.IsInfo) _logger.Info($"Header of {type} block {id} from peer {peer.SyncPeer.Node.ClientId} failed hash validation");
+                }
+            }
+            catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
+            {
+                if (_logger.IsInfo) _logger.Info($"Peer {peer.SyncPeer.Node.ClientId} didn't respond to request for header of pivot block {id}");
+                if (_logger.IsDebug) _logger.Debug($"Exception in GetHeadBlockHeader request to peer {peer.SyncPeer.Node.ClientId}. {exception}");
+            }
+        }
+
+        if (type == Pivot && _logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0)
+        {
+            _logger.Info($"Potential new pivot block: {id}. Waiting for pivot block header [{_maxAttempts - _attemptsLeft}s]");
+        }
+
+        return null;
+    }
+
+    private bool TryOverwritePivot(Hash256 potentialPivotBlockHash, ulong potentialPivotBlockNumber)
+    {
+        ulong targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0UL;
+        bool isCloseToHead = targetBlock <= potentialPivotBlockNumber || (targetBlock - potentialPivotBlockNumber) < Constants.MaxDistanceFromHead;
+        bool newPivotHigherThanOld = potentialPivotBlockNumber > _blockTree.SyncPivot.BlockNumber;
+
+        if (isCloseToHead && newPivotHigherThanOld)
+        {
+            UpdateConfigValues(potentialPivotBlockHash, potentialPivotBlockNumber);
+
+            if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {potentialPivotBlockNumber}, hash: {potentialPivotBlockHash}");
+            return true;
+        }
+
+        if (!isCloseToHead && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {potentialPivotBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {targetBlock - potentialPivotBlockNumber} blocks. Max difference allowed: {Constants.MaxDistanceFromHead}");
+        if (!newPivotHigherThanOld && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer isn't higher than pivot from initial config. New PivotBlockNumber: {potentialPivotBlockNumber}, old: {_syncConfig.PivotNumber}");
+        return false;
+    }
+
+    private void UpdateConfigValues(Hash256 finalizedBlockHash, ulong finalizedBlockNumber)
+    {
+        _blockTree.SyncPivot = (finalizedBlockNumber, finalizedBlockHash);
+        _syncConfig.MaxAttemptsToUpdatePivot = 0;
+    }
+
+    protected void UpdateAndPrintPotentialNewPivot(Hash256 finalizedBlockHash)
+    {
+        if (_alreadyAnnouncedNewPivotHash != finalizedBlockHash)
+        {
+            if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}");
+            _alreadyAnnouncedNewPivotHash = finalizedBlockHash;
+        }
+    }
+
+    public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellation);
+}

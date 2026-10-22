@@ -9,10 +9,7 @@ namespace Nethermind.Network.P2P
 {
     public class Request<TMsg, TResult>(TMsg message)
     {
-        public void StartMeasuringTime()
-        {
-            Stopwatch = Stopwatch.StartNew();
-        }
+        public void StartMeasuringTime() => Stopwatch = Stopwatch.StartNew();
 
         public long FinishMeasuringTime()
         {

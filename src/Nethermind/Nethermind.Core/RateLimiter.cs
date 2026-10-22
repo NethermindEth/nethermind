@@ -28,40 +28,46 @@ public class RateLimiter
         _nextSlot = GetCurrentTick();
     }
 
-    public static long GetCurrentTick()
-    {
-        return Stopwatch.GetTimestamp();
-    }
+    public static long GetCurrentTick() => Stopwatch.GetTimestamp();
 
-    private static double TickToMs(long tick)
-    {
-        return tick * 1000.0 / Stopwatch.Frequency;
-    }
+    private static double TickToMs(long tick) => tick * 1000.0 / Stopwatch.Frequency;
 
     /// <summary>
     /// Return true if its definitely will be throttled when calling WaitAsync. May still get throttled even if this
     /// return false.
     /// </summary>
     /// <returns></returns>
-    public bool IsThrottled()
+    public bool IsThrottled() => GetCurrentTick() < _nextSlot;
+
+    /// <summary>
+    /// How long a caller of <see cref="WaitAsync"/> would be delayed right now.
+    /// </summary>
+    public TimeSpan Backlog
     {
-        return GetCurrentTick() < _nextSlot;
+        get
+        {
+            long toWait = _nextSlot - GetCurrentTick();
+            return toWait <= 0 ? TimeSpan.Zero : TimeSpan.FromMilliseconds(TickToMs(toWait));
+        }
     }
 
     public Task WaitAsync(CancellationToken ctx)
     {
+        long now = GetCurrentTick();
         long currentNextSlot = _nextSlot;
         while (true)
         {
-            long nextSlot = Interlocked.CompareExchange(ref _nextSlot, currentNextSlot + _delay, currentNextSlot);
+            // Slots are never taken from the past: an idle period must not bank a burst.
+            long mySlot = Math.Max(currentNextSlot, now);
+            long nextSlot = Interlocked.CompareExchange(ref _nextSlot, mySlot + _delay, currentNextSlot);
             if (nextSlot == currentNextSlot)
             {
+                currentNextSlot = mySlot;
                 break;
             }
             currentNextSlot = nextSlot;
         }
 
-        long now = GetCurrentTick();
         long toWait = currentNextSlot - now;
 
         if (toWait <= 0) return Task.CompletedTask;

@@ -3,16 +3,19 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
@@ -20,47 +23,51 @@ using Nethermind.Int256;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
-using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NSubstitute;
-using NSubstitute.ClearExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test;
 
 public partial class BlockDownloaderTests
 {
-    [TestCase(16L, 32L, DownloaderOptions.Process, 32, 32)]
-    [TestCase(16L, 32L, DownloaderOptions.Process, 32, 29)]
-    [TestCase(16L, 32L, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 0, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 32, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, SyncBatchSize.Max * 8 - 16L)]
-    public async Task Merge_Happy_path(long pivot, long headNumber, int options, int threshold, long insertedBeaconBlocks)
+    [TestCase(16UL, 32UL, false, 32UL, 32UL)]
+    [TestCase(16UL, 32UL, false, 32UL, 29UL)]
+    [TestCase(16UL, 32UL, true, 0UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8, true, 32UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8, true, 32UL, SyncBatchSizeMax * 8)]
+    [TestCase(16UL, SyncBatchSizeMax * 8, false, 32UL, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8, false, 32UL, SyncBatchSizeMax * 8 - 16UL)]
+    public async Task Merge_Happy_path(ulong beaconPivot, ulong headNumber, bool enableFastSync, ulong fastSyncLag, ulong insertedBeaconBlocks)
     {
+        bool withReceipts = enableFastSync;
+        ulong notSyncedTreeStartingBlockNumber = 3;
+
+        InMemoryReceiptStorage? receiptStorage = withReceipts ? new InMemoryReceiptStorage() : null;
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(4, (int)headNumber + 1)
-            .InsertBeaconPivot(pivot)
-            .InsertBeaconHeaders(4, pivot - 1)
-            .InsertBeaconBlocks(pivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+            .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, headNumber + 1, receiptStorage: receiptStorage)
+            .InsertBeaconPivot(beaconPivot)
+            .InsertBeaconHeaders(notSyncedTreeStartingBlockNumber + 1, beaconPivot - 1)
+            .InsertBeaconBlocks(beaconPivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree syncedTree = blockTrees.SyncedTree;
 
-        await using IContainer container = CreateMergeNode(blockTrees, new MergeConfig()
-        {
-            TerminalTotalDifficulty = "0"
-        });
+        await using IContainer container = CreateMergeNode(blockTrees,
+            new SyncConfig()
+            {
+                FastSync = enableFastSync,
+                SnapSync = enableFastSync,
+                StateMinDistanceFromHead = fastSyncLag
+            },
+            new MergeConfig()
+            {
+                TerminalTotalDifficulty = "0"
+            });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
-        DownloaderOptions downloaderOptions = (DownloaderOptions)options;
-        bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
-        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
-        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
-
-        BlockDownloader downloader = ctx.BlockDownloader;
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None));
+        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None);
 
         Response responseOptions = Response.AllCorrect;
         if (withReceipts)
@@ -68,36 +75,66 @@ public partial class BlockDownloaderTests
             responseOptions |= Response.WithTransactions;
         }
 
-        SyncPeerMock syncPeer = new(syncedTree, withReceipts, responseOptions, 16000000);
+        SyncPeerMock syncPeer = new(syncedTree, withReceipts, responseOptions, 16000000, receiptStorage: receiptStorage);
         PeerInfo peerInfo = new(syncPeer);
-        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
-        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, insertedBeaconBlocks));
-
-        int receiptCount = 0;
-        for (int i = (int)Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)
+        ctx.ConfigureBestPeer(peerInfo);
+        if (enableFastSync)
         {
-            if (i % 3 == 0)
+            await ctx.FastSyncUntilNoRequest(peerInfo);
+            ulong expectedDownloadStart = notSyncedTreeStartingBlockNumber;
+            ulong expectedDownloadEnd = ulong.Min(headNumber, insertedBeaconBlocks - fastSyncLag);
+
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(ulong.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
+            Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(ulong.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
+
+            ulong receiptCount = 0;
+            for (ulong i = expectedDownloadStart; i < expectedDownloadEnd; i++)
             {
-                receiptCount += 2;
+                if (i % 3 == 0)
+                {
+                    receiptCount += 2;
+                }
             }
+
+            Assert.That(ctx.ReceiptStorage.Count, Is.EqualTo(withReceipts ? (int)receiptCount : 0));
+            Assert.That(ctx.BeaconPivot.ProcessDestination?.Number, Is.EqualTo(ulong.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot)));
         }
 
-        ctx.ReceiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
-        ctx.BeaconPivot.ProcessDestination?.Number.Should().Be(insertedBeaconBlocks);
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(insertedBeaconBlocks));
+
+        SuggestedStateRoots suggestedStateRoots = container.Resolve<SuggestedStateRoots>();
+        ulong expectedFastSyncEnd = ulong.Max(notSyncedTreeStartingBlockNumber, insertedBeaconBlocks.SaturatingSub(fastSyncLag));
+        if (insertedBeaconBlocks > expectedFastSyncEnd)
+        {
+            BlockTreeSuggestOptions[] processingOptions = suggestedStateRoots.SuggestedOptions
+                .Where(options => options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess))
+                .ToArray();
+            Assert.That(processingOptions, Is.Not.Empty, "the test must observe at least one merge processing suggestion");
+            Assert.That(processingOptions.All(options => options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)), Is.True,
+                "merge processing suggestions must opt into asynchronous processing");
+        }
+        if (enableFastSync && expectedFastSyncEnd > notSyncedTreeStartingBlockNumber)
+        {
+            Assert.That(suggestedStateRoots.SuggestedOptions.Any(options =>
+                !options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess) &&
+                !options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)), Is.True,
+                "merge fast-sync suggestions must not opt into asynchronous processing");
+        }
     }
 
-    [TestCase(32L, DownloaderOptions.MoveToMain, 32, false)]
-    [TestCase(32L, DownloaderOptions.MoveToMain, 32, true)]
-    public async Task Can_reach_terminal_block(long headNumber, int options, int threshold, bool withBeaconPivot)
+    [TestCase(32UL, DownloaderOptions.Insert, 32, false)]
+    [TestCase(32UL, DownloaderOptions.Insert, 32, true)]
+    public async Task Can_reach_terminal_block(ulong headNumber, int options, int threshold, bool withBeaconPivot)
     {
         UInt256 ttd = 10000000;
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(4, (int)headNumber + 1, true, ttd)
+            .WithBlockTrees(4, headNumber + 1, true, ttd)
             .InsertBeaconPivot(16)
             .InsertBeaconHeaders(4, 15)
             .InsertBeaconBlocks(17, headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+
         BlockTree syncedTree = blockTrees.SyncedTree;
         await using IContainer container = CreateMergeNode(blockTrees, new MergeConfig()
         {
@@ -105,21 +142,19 @@ public partial class BlockDownloaderTests
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
-        DownloaderOptions downloaderOptions = (DownloaderOptions)options;
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
-
-        BlockDownloader downloader = ctx.BlockDownloader;
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16UL, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
-        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-        Assert.That(ctx.PosSwitcher.HasEverReachedTerminalBlock(), Is.True);
+        ctx.ConfigureBestPeer(peerInfo);
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+        Assert.That(ctx.PoSSwitcher.HasEverReachedTerminalBlock(), Is.True);
     }
 
-    [TestCase(32L, DownloaderOptions.MoveToMain, 16, false, 16)]
-    [TestCase(32L, DownloaderOptions.MoveToMain, 16, true, 3)] // No beacon header, so it does not sync
-    public async Task IfNoBeaconPivot_thenStopAtPoS(long headNumber, int options, int ttdBlock, bool withBeaconPivot, int expectedBestKnownNumber)
+    [TestCase(32UL, 16, false, 16)]
+    [TestCase(32UL, 16, true, 3)] // No beacon header, so it does not sync
+    public async Task IfNoBeaconPivot_thenStopAtPoS(ulong headNumber, int ttdBlock, bool withBeaconPivot, int expectedBestKnownNumber)
     {
         UInt256 ttd = 10_000_000;
         int negativeTd = BlockHeaderBuilder.DefaultDifficulty.ToInt32(null);
@@ -127,7 +162,7 @@ public partial class BlockDownloaderTests
             .GoesLikeThis()
             .WithBlockTrees(
                 4,
-                (int)headNumber + 1,
+                headNumber + 1,
                 true,
                 ttd,
                 syncedSplitFrom: ttdBlock,
@@ -142,45 +177,45 @@ public partial class BlockDownloaderTests
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
-        DownloaderOptions downloaderOptions = (DownloaderOptions)options;
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
-
-        BlockDownloader downloader = ctx.BlockDownloader;
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16UL, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
-        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-        notSyncedTree.BestKnownNumber.Should().Be(expectedBestKnownNumber);
+        ctx.ConfigureBestPeer(peerInfo);
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+        Assert.That(notSyncedTree.BestKnownNumber, Is.EqualTo(expectedBestKnownNumber));
     }
 
-    [TestCase(32L, 32L, 0, 32)]
-    [TestCase(32L, 32L, 10, 22)]
-    public async Task WillSkipBlocksToIgnore(long pivot, long headNumber, int blocksToIgnore, long expectedBestKnownNumber)
+    [TestCase(32UL, 32UL, 0UL, 32UL)]
+    [TestCase(32UL, 32UL, 10UL, 22UL)]
+    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, ulong blocksToIgnore, ulong expectedBestKnownNumber)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(4, (int)headNumber + 1)
+            .WithBlockTrees(4, headNumber + 1)
             .InsertBeaconPivot(pivot)
             .InsertBeaconHeaders(4, pivot - 1);
 
         BlockTree syncedTree = blockTrees.SyncedTree;
-        await using IContainer container = CreateMergeNode(blockTrees);
+        await using IContainer container = CreateMergeNode(blockTrees, new SyncConfig()
+        {
+            FastSync = true,
+            SnapSync = true,
+            StateMinDistanceFromHead = blocksToIgnore
+        });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
         ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
 
-        BlockDownloader downloader = ctx.BlockDownloader;
-
         Response responseOptions = Response.AllCorrect;
 
         SyncPeerMock syncPeer = new(syncedTree, false, responseOptions, 16000000);
         PeerInfo peerInfo = new(syncPeer);
-        BlocksRequest blocksRequest = new BlocksRequest(DownloaderOptions.Process, blocksToIgnore);
-        await downloader.DownloadBlocks(peerInfo, blocksRequest, CancellationToken.None);
-
-        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, expectedBestKnownNumber));
+        ctx.ConfigureBestPeer(peerInfo);
+        await ctx.FastSyncUntilNoRequest(peerInfo);
+        Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(expectedBestKnownNumber));
     }
 
     [Test]
@@ -225,10 +260,9 @@ public partial class BlockDownloaderTests
 
         ctx.BeaconPivot.EnsurePivot(lastHeader);
 
-        BlockDownloader downloader = ctx.BlockDownloader;
-
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
 
         Block? lastBestSuggestedBlock = null;
 
@@ -237,185 +271,43 @@ public partial class BlockDownloaderTests
             lastBestSuggestedBlock = args.Block;
         };
 
-        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.Process | DownloaderOptions.WithBodies | DownloaderOptions.WithReceipts), CancellationToken.None);
+        await ctx.FullSyncUntilNoRequest(peerInfo);
 
-        lastBestSuggestedBlock!.Hash.Should().Be(lastHeader.Hash!);
-        lastBestSuggestedBlock.TotalDifficulty.Should().NotBeEquivalentTo(UInt256.Zero);
+        Assert.That(lastBestSuggestedBlock!.Hash, Is.EqualTo(lastHeader.Hash!));
+        Assert.That(lastBestSuggestedBlock.TotalDifficulty, Is.Not.EqualTo(UInt256.Zero));
     }
 
     [Test]
-    public async Task Does_not_deadlock_on_replace_peer()
+    public async Task BlockDownloader_works_correctly_with_withdrawals()
     {
-        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
-            .GoesLikeThis()
-            .WithBlockTrees(0, 4)
-            .InsertBeaconPivot(3);
-
-        ManualResetEventSlim chainLevelHelperBlocker = new ManualResetEventSlim(false);
-        IChainLevelHelper chainLevelHelper = Substitute.For<IChainLevelHelper>();
-        chainLevelHelper
-            .When(clh => clh.GetNextHeaders(Arg.Any<int>(), Arg.Any<int>()))
-            .Do(_ =>
-            {
-                chainLevelHelperBlocker.Wait();
-            });
-
-        await using IContainer container = CreateMergeNode((builder) =>
+        ulong fastSyncLag = 2;
+        await using IContainer container = CreateMergeNode((_) =>
         {
-            builder
-                .AddSingleton<IChainLevelHelper>(chainLevelHelper)
-
-                .AddSingleton<IBlockTree>(blockTrees.NotSyncedTree)
-                .AddKeyedSingleton<IDb>(DbNames.Metadata, blockTrees.NotSyncedTreeBuilder.MetadataDb);
-        }, new MergeConfig()
-        {
-            TerminalTotalDifficulty = $"{0}"
-        });
-        PostMergeContext ctx = container.Resolve<PostMergeContext>();
-
-        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(3, BlockTreeLookupOptions.None));
-
-        IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
-
-        // Setup a peer of any kind
-        ISyncPeer syncPeer1 = Substitute.For<ISyncPeer>();
-        syncPeer1.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 9999));
-
-        // Setup so that first allocation goes to sync peer 1
-        peerAllocationStrategy
-            .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
-            .Returns(new PeerInfo(syncPeer1));
-        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
-        peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
-        ctx.PeerPool
-            .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
-            .Returns(Task.FromResult(peerAllocation));
-
-        // Need to be asleep at this time
-        ctx.Feed.FallAsleep();
-
-        CancellationTokenSource cts = new CancellationTokenSource();
-
-        Task _ = ctx.Dispatcher.Start(cts.Token);
-        await Task.Delay(TimeSpan.FromMilliseconds(100));
-
-        // Feed should activate and allocate the first peer
-        Task accidentalDeadlockTask = Task.Factory.StartNew(() => ctx.Feed.Activate(), TaskCreationOptions.LongRunning);
-        await Task.Delay(TimeSpan.FromMilliseconds(100));
-
-        // At this point, chain level helper is block, we then trigger replaced.
-        ISyncPeer syncPeer2 = Substitute.For<ISyncPeer>();
-        syncPeer2.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.2", 9999));
-        syncPeer2.HeadNumber.Returns(4);
-
-        // It will now get replaced with syncPeer2
-        peerAllocationStrategy.ClearSubstitute();
-        peerAllocationStrategy
-            .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
-            .Returns(new PeerInfo(syncPeer2));
-        peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
-        await Task.Delay(TimeSpan.FromMilliseconds(100));
-
-        // Release it
-        chainLevelHelperBlocker.Set();
-
-        // Just making sure...
-        await Task.Delay(TimeSpan.FromMilliseconds(100));
-
-        Assert.That(() => accidentalDeadlockTask.IsCompleted, Is.True.After(1000, 100));
-        cts.Cancel();
-        cts.Dispose();
-    }
-
-    [Test]
-    public void No_old_bodies_and_receipts()
-    {
-        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
-            .GoesLikeThis()
-            .WithBlockTrees(4, 129)
-            .InsertBeaconPivot(64)
-            .InsertBeaconHeaders(4, 128);
-        BlockTree syncedTree = blockTrees.SyncedTree;
-
-        using IContainer container = CreateMergeNode((builder) =>
-        {
-            builder
-                .AddSingleton<IBlockTree>(blockTrees.NotSyncedTree)
-                .AddKeyedSingleton<IDb>(DbNames.Metadata, blockTrees.NotSyncedTreeBuilder.MetadataDb);
         }, new SyncConfig()
         {
             FastSync = true,
-            NonValidatorNode = true,
-            DownloadBodiesInFastSync = false,
-            DownloadReceiptsInFastSync = false
+            SnapSync = true,
+            StateMinDistanceFromHead = fastSyncLag,
         });
-
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
-        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(64, BlockTreeLookupOptions.None));
+        Response responseOptions = Response.AllCorrect | Response.WithTransactions;
 
-        SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 34000000);
-        PeerInfo peerInfo = new(syncPeer);
-
-        IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
-
-        peerAllocationStrategy
-            .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
-            .Returns(peerInfo);
-        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
-        peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
-
-        ctx.PeerPool
-            .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(peerAllocation));
-
-        SyncFeedComponent<BlocksRequest> fastSyncFeedComponent = ctx.FastSyncFeedComponent;
-        fastSyncFeedComponent.Feed.Activate();
-
-        CancellationTokenSource cts = new();
-        Task _ = fastSyncFeedComponent.Dispatcher.Start(cts.Token);
-
-        Assert.That(
-            () => ctx.BlockTree.BestKnownNumber,
-            Is.EqualTo(96).After(3000, 100)
-        );
-
-        cts.Cancel();
-    }
-
-    [TestCase(DownloaderOptions.WithReceipts)]
-    [TestCase(DownloaderOptions.None)]
-    [TestCase(DownloaderOptions.Process)]
-    public async Task BlockDownloader_works_correctly_with_withdrawals(int options)
-    {
-        await using IContainer container = CreateMergeNode();
-        PostMergeContext ctx = container.Resolve<PostMergeContext>();
-
-        DownloaderOptions downloaderOptions = (DownloaderOptions)options;
-        bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
-        BlockDownloader downloader = ctx.BlockDownloader;
-
-        Response responseOptions = Response.AllCorrect;
-        if (withReceipts)
-        {
-            responseOptions |= Response.WithTransactions;
-        }
-
-        int headNumber = 5;
+        ulong headNumber = 5;
 
         // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
         // will only be fixed slightly later
-        long chainLength = headNumber + 1;
-        SyncPeerMock syncPeerInternal = new(chainLength, withReceipts, responseOptions, true);
+        ulong chainLength = headNumber + 1;
+        SyncPeerMock syncPeerInternal = new(chainLength, true, responseOptions, true);
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)));
 
-        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-            .Returns(async ci => await syncPeerInternal.GetReceipts(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)));
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>())
+            .Returns(async ci => await syncPeerInternal.GetReceipts(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(2)));
 
 
         syncPeer.TotalDifficulty.Returns(_ => syncPeerInternal.TotalDifficulty);
@@ -423,25 +315,17 @@ public partial class BlockDownloaderTests
         syncPeer.HeadNumber.Returns(_ => syncPeerInternal.HeadNumber);
 
         PeerInfo peerInfo = new(syncPeer);
-
-        int threshold = 2;
-        await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
+        ctx.ConfigureBestPeer(peerInfo);
+        await ctx.FastSyncUntilNoRequest(peerInfo);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(ulong.Min(headNumber, headNumber.SaturatingSub(fastSyncLag))));
 
         syncPeerInternal.ExtendTree(chainLength * 2);
-        Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-
-        await action.Should().NotThrowAsync();
+        await ctx.FullSyncUntilNoRequest(peerInfo);
     }
 
-    [TestCase(2)]
-    [TestCase(6)]
-    [TestCase(34)]
-    [TestCase(129)]
-    [TestCase(1024)]
-    public void BlockDownloader_does_not_stop_processing_when_main_chain_is_unknown(long pivot)
+    [Test]
+    public void BlockDownloader_does_not_stop_processing_when_main_chain_is_unknown([Values(2UL, 6UL, 34UL, 129UL, 1024UL)] ulong pivot)
     {
-        DownloaderOptions downloaderOptions = DownloaderOptions.Process;
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
              .GoesLikeThis()
              .WithBlockTrees(1, (int)(pivot + 1), false, 0)
@@ -459,7 +343,7 @@ public partial class BlockDownloaderTests
         ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
 
         SyncPeerMock syncPeer = new(blockTrees.SyncedTree, true, Response.AllCorrect | Response.WithTransactions, 0);
-        Assert.DoesNotThrowAsync(() => ctx.BlockDownloader.DownloadBlocks(new(syncPeer), new BlocksRequest(downloaderOptions), CancellationToken.None));
+        ctx.FullSyncUntilNoRequest(new PeerInfo(syncPeer));
     }
 
     private IContainer CreateMergeNode(Action<ContainerBuilder>? configurer = null, params IConfig[] configs)
@@ -468,26 +352,58 @@ public partial class BlockDownloaderTests
         return CreateNode((builder) =>
         {
             builder
-                .AddModule(new MergeModule(configProvider))
+                .AddModule(new TestMergeModule())
                 .AddSingleton<PostMergeContext>();
             configurer?.Invoke(builder);
         }, configProvider);
     }
 
-    private IContainer CreateMergeNode(BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder treeBuilder, params IConfig[] configs)
-    {
-        return CreateMergeNode((builder) =>
+    private IContainer CreateMergeNode(BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder treeBuilder, params IConfig[] configs) =>
+        CreateMergeNode((builder) =>
         {
             builder
                 .AddSingleton<IBlockTree>(treeBuilder.NotSyncedTree)
-                .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb);
+                .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb)
+                .AddDecorator<IBlockTree, StateTrackingBlockTree>();
         }, configs);
-    }
 
-    private class PostMergeContext(IComponentContext scope) : Context(scope)
+    private record PostMergeContext(
+        IBeaconPivot BeaconPivot,
+        IPoSSwitcher PoSSwitcher,
+        ResponseBuilder ResponseBuilder,
+        [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
+        [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
+        IForwardSyncController ForwardSyncController,
+        IBlockTree BlockTree,
+        InMemoryReceiptStorage ReceiptStorage,
+        ISyncPeerPool PeerPool
+    ) : Context(
+        ResponseBuilder,
+        FastSyncFeedComponent,
+        FullSyncFeedComponent,
+        ForwardSyncController,
+        BlockTree,
+        ReceiptStorage,
+        PeerPool
+    )
     {
-        private readonly IComponentContext _scope = scope;
-        public IBeaconPivot BeaconPivot => _scope.Resolve<IBeaconPivot>();
-        public IPoSSwitcher PosSwitcher => _scope.Resolve<IPoSSwitcher>();
+        public void InsertBeaconHeaderFrom(SyncPeerMock syncPeer, ulong high, ulong low)
+        {
+            BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
+            for (ulong i = high; i >= low; --i)
+            {
+                BlockHeader? beaconHeader = syncPeer.BlockTree.FindHeader(i, BlockTreeLookupOptions.None)!;
+
+                AddBlockResult insertResult = BlockTree!.Insert(beaconHeader!, headerOptions);
+                Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
+                if (i == low) break;
+            }
+        }
+
+        public override void ShouldFastSyncedUntil(ulong blockNumber) =>
+            // With post merge, best suggested header always follow beacon pivot but not necessarily synced.
+            // But BestSuggestedBody is updated, unlike PreMerge.
+            // I don't make the rules
+            Assert.That(BlockTree.BestSuggestedBody!.Number, Is.EqualTo(blockNumber));
     }
 }

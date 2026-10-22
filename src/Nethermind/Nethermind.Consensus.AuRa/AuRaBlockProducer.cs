@@ -13,59 +13,58 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaBlockProducer : BlockProducerBase
+    public class AuRaBlockProducer(ITxSource txSource,
+        IBlockchainProcessor processor,
+        IWorldState stateProvider,
+        ISealer sealer,
+        IBlockTree blockTree,
+        ITimestamper timestamper,
+        IAuRaStepCalculator auRaStepCalculator,
+        IReportingValidator reportingValidator,
+        IAuraConfig config,
+        IGasLimitCalculator gasLimitCalculator,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig) : BlockProducerBase(
+            txSource,
+            processor,
+            sealer,
+            blockTree,
+            stateProvider,
+            gasLimitCalculator,
+            timestamper,
+            specProvider,
+            logManager,
+            new AuraDifficultyCalculator(auRaStepCalculator),
+            blocksConfig)
     {
-        private readonly IAuRaStepCalculator _auRaStepCalculator;
-        private readonly IReportingValidator _reportingValidator;
-        private readonly IAuraConfig _config;
+        private readonly IAuRaStepCalculator _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
+        private readonly IReportingValidator _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
+        private readonly IAuraConfig _config = config ?? throw new ArgumentNullException(nameof(config));
 
-        public AuRaBlockProducer(ITxSource txSource,
-            IBlockchainProcessor processor,
-            IWorldState stateProvider,
-            ISealer sealer,
-            IBlockTree blockTree,
-            ITimestamper timestamper,
-            IAuRaStepCalculator auRaStepCalculator,
-            IReportingValidator reportingValidator,
-            IAuraConfig config,
-            IGasLimitCalculator gasLimitCalculator,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            IBlocksConfig blocksConfig)
-            : base(
-                txSource,
-                processor,
-                sealer,
-                blockTree,
-                stateProvider,
-                gasLimitCalculator,
-                timestamper,
-                specProvider,
-                logManager,
-                new AuraDifficultyCalculator(auRaStepCalculator),
-                blocksConfig)
+        protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
-            _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
-            _config = config ?? throw new ArgumentNullException(nameof(config));
+            BlockToProduce block = base.PrepareBlock(parent, payloadAttributes, flags);
+            if (block.Header is AuRaBlockHeader aura)
+            {
+                aura.AuRaStep = _auRaStepCalculator.CurrentStep;
+                return block;
+            }
+
+            AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(block.Header);
+            upgraded.AuRaStep = _auRaStepCalculator.CurrentStep;
+            return (BlockToProduce)block.WithReplacedHeader(upgraded);
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
         {
-            Block block = base.PrepareBlock(parent, payloadAttributes);
-            block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
-            return block;
-        }
-
-        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer)
-        {
-            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer);
+            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer, token);
 
             if (processedBlock is not null)
             {
@@ -93,5 +92,6 @@ namespace Nethermind.Consensus.AuRa
             _reportingValidator.TryReportSkipped(block.Header, parent);
             return base.SealBlock(block, parent, token);
         }
+
     }
 }

@@ -6,7 +6,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -15,6 +14,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -260,7 +260,7 @@ namespace Nethermind.AuRa.Test.Transactions
             Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            var spec = new ReleaseSpec() { IsEip1559Enabled = false };
+            ReleaseSpec spec = new() { IsEip1559Enabled = false };
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
@@ -275,9 +275,10 @@ namespace Nethermind.AuRa.Test.Transactions
                         // to simulate order coming from TxPool
                         comparer.GetPoolUniqueTxComparerByNonce()).ToArray());
 
+            const int DefaultGasLimit = 36_000_000;
 
-            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
-            orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
+            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, _ => true, DefaultGasLimit, spec).ToArray();
+            Assert.That(orderedTransactions, Is.EqualTo(expectation).UsingTransactionComparer());
         }
 
         private static void SetPriority(
@@ -285,8 +286,7 @@ namespace Nethermind.AuRa.Test.Transactions
             BlockHeader blockHeader,
             Address target,
             byte[] prioritizedFnSignature,
-            UInt256 value)
-        {
+            UInt256 value) =>
             priorities.TryGetValue(blockHeader,
                     Arg.Is<TxPriorityContract.Destination>(d => d.Target == target && Bytes.AreEqual(d.FnSignature, prioritizedFnSignature)),
                     out Arg.Any<TxPriorityContract.Destination>())
@@ -295,6 +295,5 @@ namespace Nethermind.AuRa.Test.Transactions
                     x[2] = new TxPriorityContract.Destination(target, prioritizedFnSignature, value);
                     return true;
                 });
-        }
     }
 }

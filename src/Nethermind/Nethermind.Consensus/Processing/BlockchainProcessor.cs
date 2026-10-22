@@ -2,116 +2,355 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
+using static Nethermind.Core.Threading.ProcessingThread;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
+/// <summary>
+/// The main block processing pipeline: queues suggested blocks, recovers their data and processes them on the
+/// main world state.
+/// </summary>
+/// <remarks>
+/// This is for main block processing only and is registered solely in the main processing context. It carries
+/// a lot of main-specific logic (processing queue and thread, head updates, invalid block handling, stats,
+/// diagnostic dumps), so other environments should use another implementation such as
+/// <see cref="OneTimeChainProcessor"/> or <see cref="MainStateBlockBuildingChainProcessor"/>, or call
+/// <see cref="IBranchProcessor"/> directly.
+/// </remarks>
+public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue, IBlockProcessingPauseControl
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
 
-    private static readonly AsyncLocal<bool> _isMainProcessingThread = new();
-    public static bool IsMainProcessingThread => _isMainProcessingThread.Value;
-    public bool IsMainProcessor { get; init; }
+    public static bool IsMainProcessingThread => IsBlockProcessingThread;
 
-    public ITracerBag Tracers => _compositeBlockTracer;
-
-    private readonly IBlockProcessor _blockProcessor;
-    private readonly IBlockPreprocessorStep _recoveryStep;
-    private readonly IStateReader _stateReader;
+    private readonly IBranchProcessor _branchProcessor;
     private readonly Options _options;
+    private readonly ProcessingBranchBuilder _branchBuilder;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
 
-    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>(
+    private readonly Channel<ProcessingWork> _recoveryQueue = Channel.CreateUnbounded<ProcessingWork>(
         new UnboundedChannelOptions()
         {
             // Optimize for single reader concurrency
             SingleReader = true,
         });
 
-    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(
+    private readonly Channel<ProcessingWork> _blockQueue = Channel.CreateBounded<ProcessingWork>(
         new BoundedChannelOptions(MaxProcessingQueueSize)
         {
             // Optimize for single reader concurrency
             SingleReader = true,
-            // Optimize for single writer concurrency (recovery queue)
-            SingleWriter = true,
+            // Default and direct enqueue keep inline processing on the producer; NonBlockingProcessing yields first.
+            AllowSynchronousContinuations = true,
         });
+
+    private readonly record struct ProcessingWork(BlockRef Reference, ParallelUnbalancedWork.WorkerGroup? Workers, bool AllowSynchronousProcessing = true);
 
     private bool _recoveryComplete = false;
     private int _queueCount;
+    private bool _disposed;
+    // Every block between Enqueue and its BlockRemoved, counted per copy: the engine API and sync can queue the
+    // same hash twice. One wait is released once the last copy is gone, the other once the copy that had its verdict is.
+    private readonly ConcurrentDictionary<Hash256, InFlightBlock> _inFlight = new();
 
-    private readonly ProcessingStats _stats;
+    private readonly IProcessingStats _stats;
 
     private CancellationTokenSource? _loopCancellationSource;
+    // Set only while the processing loop works on a queue entry; armed as each block of its branch starts, so loading
+    // and preparing the branch is not charged to its first block.
+    private CancellationTokenSource? _blockDeadline;
+    private Hash256? _deadlineBlockHash;
+    // The block that last ran out of time, and how many times in a row: each retry of it gets twice the time, so a
+    // valid block that is just slow on this node is still reached instead of being abandoned at the same point forever.
+    private Hash256? _timedOutBlockHash;
+    private int _timedOutCount;
+    private const int MaxTimeoutDoublings = 4;
     private Task? _recoveryTask;
     private Task? _processorTask;
     private DateTime _lastProcessedBlock;
 
     private int _currentRecoveryQueueSize;
     private bool _isProcessingBlock;
-    private const int MaxBlocksDuringFastSyncTransition = 8192;
+    private const int MaxBranchSize = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
-
-    public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
+    private readonly BlockProcessingPauseGate _pauseGate = new();
+    private readonly BlockTreeMutationLock _mutationLock;
 
     /// <summary>
     ///
     /// </summary>
     /// <param name="blockTree"></param>
-    /// <param name="blockProcessor"></param>
-    /// <param name="recoveryStep"></param>
+    /// <param name="branchProcessor"></param>
+    /// <param name="preprocessorSteps"></param>
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
+    /// <param name="processingStats"></param>
+    /// <param name="blockTracers">Tracers seeded into the processor's composite tracer at construction.</param>
+    /// <param name="mutationLock">The node's shared chain-maintenance lock.</param>
     public BlockchainProcessor(
-        IBlockTree? blockTree,
-        IBlockProcessor? blockProcessor,
-        IBlockPreprocessorStep? recoveryStep,
+        IBlockTree blockTree,
+        IBranchProcessor branchProcessor,
+        IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
         IStateReader stateReader,
-        ILogManager? logManager,
-        Options options)
+        ILogManager logManager,
+        Options options,
+        IProcessingStats processingStats,
+        BlockTreeMutationLock mutationLock,
+        IEnumerable<IBlockTracer>? blockTracers = null)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-        _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _logger = logManager.GetClassLogger<BlockchainProcessor>();
+        _blockTree = blockTree;
+        _mutationLock = mutationLock;
+        _branchProcessor = branchProcessor;
         _options = options;
+        _branchBuilder = new ProcessingBranchBuilder(blockTree, stateReader, preprocessorSteps, logManager.GetClassLogger<ProcessingBranchBuilder>());
 
-        _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
-        _blockTree.NewHeadBlock += OnNewHeadBlock;
-
-        _stats = new ProcessingStats(stateReader, _logger);
+        _stats = processingStats;
+        _loopCancellationSource = new CancellationTokenSource();
+        _stats.NewProcessingStatistics += OnNewProcessingStatistics;
+        _branchProcessor.BlockExecuted += OnBlockExecuted;
+        _branchProcessor.BlockProcessing += RearmBlockDeadline;
+        if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
     }
 
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    // The limit is per block, so a long branch, as in a reorg or catching up, is not judged by its total time.
+    private void RearmBlockDeadline(object? sender, BlockEventArgs e)
     {
-        _lastProcessedBlock = DateTime.UtcNow;
+        if (_blockDeadline is null) return;
+        // Finalization or commit may have exhausted the preceding block's budget after its last cancellation check.
+        _blockDeadline.Token.ThrowIfCancellationRequested();
+        _deadlineBlockHash = e.Block.Hash;
+        _blockDeadline.CancelAfter(BlockProcessingTimeout(e.Block.Hash));
     }
+
+    private int BlockProcessingTimeout(Hash256? blockHash)
+    {
+        int doublings = blockHash is not null && blockHash == _timedOutBlockHash ? Math.Min(_timedOutCount, MaxTimeoutDoublings) : 0;
+        return (int)Math.Min((long)_options.BlockProcessingTimeoutMs << doublings, int.MaxValue);
+    }
+
+    private void OnBlockExecuted(object? sender, BlockExecutedEventArgs e)
+    {
+        Block block = e.Block;
+        Hash256 hash = block.Hash!;
+        if (_inFlight.TryGetValue(hash, out InFlightBlock? inFlight)) inFlight.MarkExecuted();
+
+        BlockVerdictEventArgs verdict = new(hash, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied);
+        try
+        {
+            BlockExecuted?.Invoke(this, verdict);
+        }
+        catch (Exception exception)
+        {
+            // The block is judged and the commit is next; a subscriber must not be able to turn that into a failure
+            // after the verdict has gone out, which is what an exception here would unwind into.
+            if (_logger.IsError) _logger.Error($"Block executed handler failed for {hash}.", exception);
+        }
+        finally
+        {
+            // A subscriber that answered before another one threw has still answered.
+            e.Answered |= verdict.Answered;
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false)
+        => _inFlight.TryGetValue(blockHash, out InFlightBlock? inFlight) && (!executedOnly || inFlight.Executed)
+            ? new ValueTask(inFlight.Removed)
+            : ValueTask.CompletedTask;
+
+    /// <inheritdoc/>
+    public ValueTask WaitUntilExecutedCopyRemovedAsync(Hash256 blockHash)
+        => _inFlight.TryGetValue(blockHash, out InFlightBlock? inFlight)
+            ? new ValueTask(inFlight.ExecutedCopyRemoved)
+            : ValueTask.CompletedTask;
+
+    private void TrackInFlight(Hash256 blockHash)
+    {
+        // An entry whose last copy has just left refuses the copy while its removal is still under way, a matter of
+        // a few instructions on another thread; the next lookup creates a fresh one.
+        SpinWait spinner = default;
+        while (!_inFlight.GetOrAdd(blockHash, static _ => new InFlightBlock()).TryAddCopy()) spinner.SpinOnce();
+    }
+
+    /// <remarks>
+    /// The removal is published before the waiters are released: a waiter that resumes must never find an event of
+    /// the copy it waited out still pending, or it could take that event for its own. The release does not depend on
+    /// the handlers, so a throwing one cannot leave a waiter parked.
+    /// </remarks>
+    /// <param name="e">The removal.</param>
+    /// <param name="processed">
+    /// Raised by the processing loop for the copy it took, which is the only copy that can have had its verdict. The
+    /// enqueue and recovery paths remove copies that never got that far and leave a committing copy's waiters alone.
+    /// </param>
+    private void OnBlockRemoved(BlockRemovedEventArgs e, bool processed = false)
+    {
+        try
+        {
+            BlockRemoved?.Invoke(this, e);
+        }
+        catch (Exception exception)
+        {
+            // Not rethrown: the processing loop would report this removal a second time through its own catch, and
+            // a second report takes a copy off whatever entry the hash names by then - after a re-enqueue, a live one.
+            if (_logger.IsError) _logger.Error($"Block removed handler failed for {e.BlockHash}.", exception);
+        }
+        finally
+        {
+            if (_inFlight.TryGetValue(e.BlockHash, out InFlightBlock? inFlight) && inFlight.RemoveCopy(processed))
+            {
+                _inFlight.TryRemove(new KeyValuePair<Hash256, InFlightBlock>(e.BlockHash, inFlight));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The copies of one block hash between enqueue and removal, with two kinds of waiter: for the last copy to go,
+    /// and for the copy that had its verdict to go. A waiter's source is created only when someone waits; once the
+    /// last copy is removed both slots hold a completed sentinel, so a waiter arriving later finds it done.
+    /// </summary>
+    /// <remarks>
+    /// The executed flag is read and written without a lock because every write happens on the processing loop's
+    /// thread: <see cref="MarkExecuted"/> from <see cref="IBranchProcessor.BlockExecuted"/>, which the branch
+    /// processor raises synchronously on that thread, and the clear in <see cref="RemoveCopy"/> from the loop's own
+    /// removals. Moving either write off that thread would need the check-and-clear in RemoveCopy to become atomic,
+    /// or a store landing in the middle would leave the flag false while a copy commits and release every
+    /// executed-copy wait early.
+    /// </remarks>
+    private sealed class InFlightBlock
+    {
+        private static readonly TaskCompletionSource Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _copies;
+        private TaskCompletionSource? _removed;
+        private TaskCompletionSource? _executedCopyRemoved;
+        private volatile bool _executed;
+
+        static InFlightBlock() => Done.SetResult();
+
+        /// <summary>Whether a copy has had its verdict: from here to removal the block is committing.</summary>
+        public bool Executed => _executed;
+
+        public void MarkExecuted() => _executed = true;
+
+        public Task Removed
+        {
+            get
+            {
+                TaskCompletionSource? removed = Volatile.Read(ref _removed);
+                if (removed is null)
+                {
+                    TaskCompletionSource created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    removed = Interlocked.CompareExchange(ref _removed, created, null) ?? created;
+                }
+
+                return removed.Task;
+            }
+        }
+
+        /// <summary>Completes when the copy that has had its verdict is removed; done at once when no copy has had one.</summary>
+        public Task ExecutedCopyRemoved
+        {
+            get
+            {
+                if (!_executed) return Task.CompletedTask;
+
+                TaskCompletionSource? removed = Volatile.Read(ref _executedCopyRemoved);
+                if (removed is null)
+                {
+                    TaskCompletionSource created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    removed = Interlocked.CompareExchange(ref _executedCopyRemoved, created, null) ?? created;
+                }
+
+                // Read after the source is published: a removal that cleared the flag before then took no source to
+                // release, so this one would never complete.
+                return _executed ? removed.Task : Task.CompletedTask;
+            }
+        }
+
+        /// <summary><c>false</c> once the last copy has been removed; the entry is then being taken out.</summary>
+        public bool TryAddCopy()
+        {
+            int copies = Volatile.Read(ref _copies);
+            while (copies >= 0)
+            {
+                int seen = Interlocked.CompareExchange(ref _copies, copies + 1, copies);
+                if (seen == copies) return true;
+                copies = seen;
+            }
+
+            return false;
+        }
+
+        /// <summary><c>true</c> when this was the last copy, so the entry is to be removed and its waiters are released.</summary>
+        /// <remarks>
+        /// Removals are raised once per copy and in sequence today; the clamps keep a second removal of the last copy,
+        /// should one ever overlap, from stranding the entry at a count nothing can bring back to zero - which would
+        /// leave every waiter on the hash to its full bound and spin the next enqueue of it forever.
+        /// </remarks>
+        /// <param name="processed">Whether the processing loop took this copy, so it is the one that can have had its verdict.</param>
+        public bool RemoveCopy(bool processed)
+        {
+            // Copies are processed in order, so once the processed copy is gone none of the ones left has had its
+            // verdict. The next one sets the flag again when its own lands; until then an executed-only wait must not
+            // take the entry for a block that is committing. The flag is cleared before the source is taken, which is
+            // the order ExecutedCopyRemoved relies on.
+            if (processed && _executed)
+            {
+                _executed = false;
+                Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
+            }
+
+            int copies = Interlocked.Decrement(ref _copies);
+            if (copies > 0) return false;
+            // Taken below zero by a removal that overlapped the last one: that one owns the release either way.
+            if (copies < 0) return false;
+            // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
+            if (Interlocked.CompareExchange(ref _copies, -1, 0) != 0) return false;
+            Release();
+            return true;
+        }
+
+        public void Release()
+        {
+            Interlocked.Exchange(ref _executedCopyRemoved, Done)?.TrySetResult();
+            Interlocked.Exchange(ref _removed, Done)?.TrySetResult();
+        }
+    }
+
+    private void Preprocess(Block block) => _branchBuilder.PreprocessQueued(block);
+
+    private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
+        => NewProcessingStatistics?.Invoke(sender, stats);
+
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e) => _lastProcessedBlock = DateTime.UtcNow;
 
     private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
     {
@@ -123,32 +362,68 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (blockEventArgs.Block is not null)
         {
-            Enqueue(blockEventArgs.Block, options);
+            _ = Enqueue(blockEventArgs.Block, options, allowSynchronousProcessing: !blockEventArgs.NonBlockingProcessing);
         }
     }
 
-    public void Enqueue(Block block, ProcessingOptions processingOptions)
+    public ValueTask Enqueue(Block block, ProcessingOptions processingOptions)
+        => Enqueue(block, processingOptions, allowSynchronousProcessing: true);
+
+    private async ValueTask Enqueue(Block block, ProcessingOptions processingOptions, bool allowSynchronousProcessing)
     {
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
-        int currentRecoveryQueueSize = Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
         Hash256? blockHash = block.Hash!;
-        BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
+        // InclusionListTransactions aren't in RLP, so a hash-only ref re-resolved from the DB would drop
+        // them and pass a censoring payload.
+        BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx && block.InclusionListTransactions is null
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
+        ProcessingWork work = new(blockRef, ParallelUnbalancedWork.GetCurrentGroup(), allowSynchronousProcessing);
 
         if (!_recoveryComplete)
         {
             Interlocked.Increment(ref _queueCount);
+            TrackInFlight(blockHash);
+            BlockAdded?.Invoke(this, new BlockEventArgs(block));
+
+            _lastProcessedBlock = DateTime.UtcNow;
             try
             {
-                _recoveryQueue.Writer.TryWrite(blockRef);
-                if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
+                if (blockRef.Resolve(_blockTree))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
+                    if (_queueCount > 1)
+                    {
+                        Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
+                        if (!_recoveryQueue.Writer.TryWrite(work))
+                        {
+                            // Refused only once the queue is completed, at shutdown. Dropped silently it would leave
+                            // the in-flight entry a copy nothing takes off, and every later wait on that hash hanging.
+                            Interlocked.Add(ref _currentRecoveryQueueSize, -block.Transactions.Length);
+                            DecrementQueue(blockRef.BlockHash, ProcessingResult.QueueException);
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // Skip recovery queue if nothing in queue
+                        if (!_blockQueue.Writer.TryWrite(work))
+                        {
+                            await _blockQueue.Writer.WriteAsync(work);
+                        }
+                    }
+                }
+                else
+                {
+                    DecrementQueue(blockRef.BlockHash, ProcessingResult.MissingBlock);
+                    if (_logger.IsTrace) _logger.Trace("Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
+                }
             }
             catch (Exception e)
             {
                 Interlocked.Decrement(ref _queueCount);
-                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
+                OnBlockRemoved(new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
                 if (e is not InvalidOperationException || !_recoveryComplete)
                 {
                     throw;
@@ -159,29 +434,92 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void Start()
     {
-        _loopCancellationSource = new CancellationTokenSource();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_processorTask is not null) ThrowAlreadyStarted();
+
+        _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
+        _blockTree.NewHeadBlock += OnNewHeadBlock;
+
+        ReadOnlySpan<int> processingCpus = PerformanceCores.Cpus(_options.ProcessingCores);
+        if (processingCpus.Length > 0)
+        {
+            if (_logger.IsInfo) _logger.Info($"Block processing runs on {_options.ProcessingCores} cores only: CPUs {string.Join(',', processingCpus.ToArray())}");
+        }
+        else if (_options.ProcessingCores != ProcessingCores.All && _logger.IsDebug)
+        {
+            // The default on every host, and most have one kind of core, so this is no warning.
+            _logger.Debug($"Blocks.ProcessingCores is {_options.ProcessingCores}, but this host gives it nothing to narrow, so block processing runs on every core.");
+        }
+
+        _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
+
+        if (_logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} started.");
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowAlreadyStarted() => throw new InvalidOperationException($"{nameof(BlockchainProcessor)} already started");
+    }
+
+    public bool IsPaused => _pauseGate.IsPaused;
+
+    public void Pause()
+    {
+        if (_pauseGate.Pause() && _logger.IsInfo) _logger.Info("Block processing paused.");
+    }
+
+    public void Resume()
+    {
+        using BlockTreeMutationLock.Scope mutation = _mutationLock.Enter();
+        if (_pauseGate.Resume() && _logger.IsInfo) _logger.Info("Block processing resumed.");
     }
 
     public async Task StopAsync(bool processRemainingBlocks = false)
     {
+        if (_disposed) return;
+        _disposed = true;
+
+        bool isStarted = _processorTask is not null;
+        if (isStarted)
+        {
+            _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
+            _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        }
+
         _recoveryComplete = true;
         if (processRemainingBlocks)
         {
+            _pauseGate.Resume();
             _recoveryQueue.Writer.TryComplete();
             await (_recoveryTask ?? Task.CompletedTask);
             _blockQueue.Writer.TryComplete();
         }
         else
         {
-            _loopCancellationSource?.Cancel();
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _loopCancellationSource);
             _recoveryQueue.Writer.TryComplete();
             _blockQueue.Writer.TryComplete();
         }
 
-        await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
-        if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
+        try
+        {
+            await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
+        }
+        finally
+        {
+            _branchProcessor.BlockExecuted -= OnBlockExecuted;
+            _branchProcessor.BlockProcessing -= RearmBlockDeadline;
+            // Blocks still queued when the loops ended get no BlockRemoved; whoever waits for them is let go here,
+            // whether or not a loop faulted, since a waiter may be holding the engine API's lock.
+            foreach (KeyValuePair<Hash256, InFlightBlock> inFlight in _inFlight)
+            {
+                inFlight.Value.Release();
+            }
+
+            _inFlight.Clear();
+        }
+
+        if (isStarted && _logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} shutdown complete.");
     }
 
     private async Task RunRecovery()
@@ -201,62 +539,61 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    private void DecrementQueue(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
+    {
+        Interlocked.Decrement(ref _queueCount);
+        OnBlockRemoved(new BlockRemovedEventArgs(blockHash, processingResult, exception));
+        FireProcessingQueueEmpty();
+    }
+
     private async Task RunRecoveryLoop()
     {
-        void DecrementQueue(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
-        {
-            Interlocked.Decrement(ref _queueCount);
-            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, processingResult, exception));
-            FireProcessingQueueEmpty();
-        }
-
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
-        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
+        await foreach (ProcessingWork work in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
         {
+            BlockRef blockRef = work.Reference;
+            bool notified = false;
             try
             {
-                if (blockRef.Resolve(_blockTree))
+                Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
+                if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
+                using (work.Workers?.Enter()) Preprocess(blockRef.Block);
+
+                try
                 {
-                    Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
-                    if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
-                    _recoveryStep.RecoverData(blockRef.Block);
-
-                    try
-                    {
-                        await _blockQueue.Writer.WriteAsync(blockRef);
-                    }
-                    catch (Exception e) when (e is not OperationCanceledException)
-                    {
-                        DecrementQueue(blockRef.BlockHash, ProcessingResult.QueueException, e);
-
-                        if (e is InvalidOperationException)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
-                            return;
-                        }
-
-                        throw;
-                    }
+                    await _blockQueue.Writer.WriteAsync(work);
                 }
-                else
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
-                    DecrementQueue(blockRef.BlockHash, ProcessingResult.MissingBlock);
-                    if (_logger.IsTrace) _logger.Trace("Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
+                    DecrementQueue(blockRef.BlockHash, ProcessingResult.QueueException, e);
+                    notified = true;
+
+                    if (e is InvalidOperationException)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
+                        return;
+                    }
+
+                    throw;
                 }
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException || !CancellationToken.IsCancellationRequested)
             {
-                DecrementQueue(blockRef.BlockHash, ProcessingResult.Exception, e);
-                throw;
+                // One block failing to recover must not end the loop and strand every block queued behind it.
+                if (_logger.IsWarn) _logger.Warn($"Recovering block failed. Block: {blockRef}, Exception: {e}");
+                // Once per queued copy. A second removal for the same block takes a copy off whatever entry the
+                // hash names by then, which after a re-enqueue is a live one, and releases its waiters early.
+                if (!notified) DecrementQueue(blockRef.BlockHash, ProcessingResult.Exception, e);
             }
         }
     }
 
+    private CancellationToken CancellationToken
+        => _loopCancellationSource?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
+
     private async Task RunProcessing()
     {
-        _isMainProcessingThread.Value = IsMainProcessor;
-
         try
         {
             await RunProcessingLoop();
@@ -272,6 +609,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
+
     private async Task RunProcessingLoop()
     {
         if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
@@ -279,77 +618,180 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
+        while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
-            using var handle = Thread.CurrentThread.BoostPriorityHighest();
-            // Have block, switch off background GC timer
-            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
-            _isProcessingBlock = true;
+            if (_blockQueue.Reader.TryPeek(out ProcessingWork firstWork) && !firstWork.AllowSynchronousProcessing)
+            {
+                // Let event-driven suggestions return before execution starts on their producer thread.
+                await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            }
+
+            await _pauseGate.WaitWhilePausedAsync(CancellationToken);
+
+            using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
+            // Released within the iteration, before the loop awaits and the thread can go back to the pool.
+            using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores, _logger);
+            using (BlockTreeMutationLock.Scope mutation = _mutationLock.Enter())
+            {
+                if (_pauseGate.IsPaused) continue;
+                IsProcessingBlock = true;
+            }
+            bool previousMainThread = IsBlockProcessingThread;
+            IsBlockProcessingThread = true;
+            try
+            {
+                GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
+                ProcessBlocks();
+            }
+            finally
+            {
+                IsBlockProcessingThread = previousMainThread;
+                IsProcessingBlock = false;
+                GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
+            }
+
+            if (_logger.IsTrace) Trace();
+            FireProcessingQueueEmpty();
+        }
+
+        if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void Trace() => _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
+    }
+
+    private void ProcessBlocks()
+    {
+        bool isTrace = _logger.IsTrace;
+        while (!_pauseGate.IsPaused && _blockQueue.Reader.TryRead(out ProcessingWork work))
+        {
+            using ParallelUnbalancedWork.WorkerScope workers = (work.Workers ?? new(Environment.ProcessorCount)).Enter();
+            BlockRef blockRef = work.Reference;
+            using CancellationTokenSource? deadline = _options.BlockProcessingTimeoutMs > 0
+                ? new CancellationTokenSource(Timeout.InfiniteTimeSpan, _options.TimeProvider)
+                : null;
+            using CancellationTokenRegistration shutdownRegistration = deadline is null
+                ? default
+                : CancellationToken.UnsafeRegister(static state => ((CancellationTokenSource)state!).Cancel(), deadline);
+            _blockDeadline = deadline;
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
                 {
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
-                    throw new InvalidOperationException("Block processing expects only resolved blocks");
+                    ThrowIncorrectBlockReference(blockRef);
                 }
 
                 Block block = blockRef.Block;
+                if (isTrace) TraceProcessing(block);
 
-                if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out string? error);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), deadline?.Token ?? CancellationToken, out string? error);
 
                 if (processedBlock is null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+                    NotifyFailedOrSkipped(blockRef, block, error);
+                }
+                else if (!processedBlock.IsInclusionListSatisfied)
+                {
+                    // The block was committed normally; signal the CL via newPayload status only.
+                    NotifyInclusionListUnsatisfied(blockRef, processedBlock);
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
+                    if (isTrace) TraceProcessed(block);
+                    OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success), processed: true);
                 }
+            }
+            catch (OperationCanceledException exception) when (deadline?.IsCancellationRequested == true && !CancellationToken.IsCancellationRequested)
+            {
+                NotifyTimedOut(blockRef, exception);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
-                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
+                NotifyException(blockRef, exception);
             }
             finally
             {
-                _isProcessingBlock = false;
+                _blockDeadline = null;
+                _deadlineBlockHash = null;
                 Interlocked.Decrement(ref _queueCount);
             }
-
-            if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
-            FireProcessingQueueEmpty();
-
-            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
         }
 
-        if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+        // No verdict: a block this slow means the node is struggling or validation missed a reason to reject it, and
+        // neither makes the block invalid. It leaves the queue so the chain can move on, and can be processed again.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyTimedOut(BlockRef blockRef, OperationCanceledException exception)
+        {
+            // The block that ran out of time can be an ancestor the queued block's branch had to process first.
+            Hash256? slowBlockHash = _deadlineBlockHash ?? blockRef.BlockHash;
+            int timeoutMs = BlockProcessingTimeout(slowBlockHash);
+            _timedOutCount = slowBlockHash == _timedOutBlockHash ? _timedOutCount + 1 : 1;
+            _timedOutBlockHash = slowBlockHash;
+
+            string retry = _timedOutCount <= MaxTimeoutDoublings ? "a retry of it gets twice the time" : "a retry of it gets no more time";
+            if (_logger.IsError) _logger.Error($"Processing block {slowBlockHash} took longer than {timeoutMs} ms; abandoned without a verdict, and {retry}. If this node is just slow, raise Blocks.BlockProcessingTimeoutMs or set it to 0 to disable.");
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception), processed: true);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyException(BlockRef blockRef, Exception exception)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception), processed: true);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyFailedOrSkipped(BlockRef blockRef, Block block, string error)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error), processed: true);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyInclusionListUnsatisfied(BlockRef blockRef, Block block)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Inclusion list unsatisfied for block {block.ToString(Block.Format.Full)}");
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied), processed: true);
+        }
+
+        // Reported by the catch below, which every other failure here goes through too: reporting twice would take a
+        // second copy off whatever entry the hash names by then, and after a re-enqueue that is a live one.
+        [DoesNotReturn]
+        static void ThrowIncorrectBlockReference(BlockRef blockRef) =>
+            throw new InvalidOperationException("Block processing expects only resolved blocks");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceProcessing(Block block) => _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceProcessed(Block block) => _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
     }
 
     private void FireProcessingQueueEmpty()
     {
-        if (((IBlockProcessingQueue)this).IsEmpty)
+        if (IsEmpty)
         {
             ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
         }
     }
 
     public event EventHandler? ProcessingQueueEmpty;
+    public event EventHandler<BlockVerdictEventArgs>? BlockExecuted;
     public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
+    public event EventHandler<BlockEventArgs>? BlockAdded;
+    public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? InvalidBlock;
+    public event EventHandler<BlockStatistics>? NewProcessingStatistics;
+    public bool IsEmpty => Volatile.Read(ref _queueCount) == 0;
+    public int Count => Volatile.Read(ref _queueCount);
 
-    int IBlockProcessingQueue.Count => _queueCount;
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default) =>
+        Process(suggestedBlock, options, tracer, token, out _);
 
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer) =>
-        Process(suggestedBlock, options, tracer, out _);
-
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, out string? error)
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
     {
         error = null;
-        if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
+        if (!_branchBuilder.RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
             return null;
         }
@@ -368,14 +810,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             return null;
         }
 
-        bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-        if (!readonlyChain) _stats.CaptureStartStats();
+        _stats.CaptureStartStats();
 
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
-        PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
+        _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error);
+        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
         _stopwatch.Stop();
         if (processedBlocks is null)
         {
@@ -394,21 +835,23 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
         }
 
-        if (!readonlyChain)
-        {
-            long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
-            Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            int blockQueueCount = _blockQueue.Reader.Count;
-            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (_isProcessingBlock ? 1 : 0), 0);
-            Metrics.ProcessingQueueSize = blockQueueCount;
-            _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
-        }
+        long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
+        Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
+        int blockQueueCount = _blockQueue.Reader.Count;
+        Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
+        Metrics.ProcessingQueueSize = blockQueueCount;
+        _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
         if (updateHead)
         {
             if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
-            _blockTree.UpdateMainChain(processingBranch.Blocks, true);
+            // Pass the just-processed blocks as a cache; TryUpdateMainChain walks the rest of the branch
+            // (any deeper blocks that already had state) on its own, loading them one at a time.
+            if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks.AsSpan()))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to update main chain to {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing or chain maintenance overlapped.");
+            }
         }
 
         if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
@@ -417,48 +860,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
         }
 
-        if (!readonlyChain)
-        {
-            Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
-        }
+        Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
 
         return lastProcessed;
     }
 
     public bool IsProcessingBlocks(ulong? maxProcessingInterval) =>
         _processorTask?.IsCompleted == false && _recoveryTask?.IsCompleted == false &&
-        // user does not setup interval and we cannot set interval time based on chainspec
-        (maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow);
+        (_pauseGate.IsPaused || maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow);
 
-    private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
-    {
-        if ((_options.DumpOptions & dumpType) != 0)
-        {
-            try
-            {
-                _blockProcessor.Process(
-                    processingBranch.Root,
-                    processingBranch.BlocksToProcess,
-                    options,
-                    blockTracer);
-            }
-            catch (InvalidBlockException ex)
-            {
-                BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
-                Metrics.BadBlocks++;
-                if (ex.InvalidBlock.IsByNethermindNode())
-                {
-                    Metrics.BadBlocksByNethermindNodes++;
-                }
-            }
-            catch (Exception ex)
-            {
-                BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
-            }
-        }
-    }
-
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, out string? error)
+    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -476,11 +887,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Block[]? processedBlocks;
         try
         {
-            processedBlocks = _blockProcessor.Process(
-                processingBranch.Root,
+            processedBlocks = _branchProcessor.Process(
+                processingBranch.BaseBlock,
                 processingBranch.BlocksToProcess,
                 options,
-                tracer);
+                tracer,
+                token);
             error = null;
         }
         catch (InvalidBlockException ex)
@@ -491,36 +903,19 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
             if (invalidBlock is not null)
             {
-                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
-
-                BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
-                    (_options.DumpOptions & DumpOptions.Rlp) != 0,
-                    (_options.DumpOptions & DumpOptions.RlpLog) != 0);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new BlockReceiptsTracer(),
-                    DumpOptions.Receipts);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
-                    DumpOptions.Parity);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }),
-                    DumpOptions.Geth);
+                Metrics.BadBlocks++;
+                if (ex.InvalidBlock.IsByNethermindNode())
+                {
+                    Metrics.BadBlocksByNethermindNodes++;
+                }
+                InvalidBlock?.Invoke(this, new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
             }
 
             processedBlocks = null;
         }
         finally
         {
-            if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
+            if (invalidBlockHash is not null)
             {
                 DeleteInvalidBlocks(in processingBranch, invalidBlockHash);
             }
@@ -529,217 +924,40 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         return processedBlocks;
     }
 
-    private void PrepareBlocksToProcess(Block suggestedBlock, ProcessingOptions options, ProcessingBranch processingBranch)
-    {
-        ArrayPoolList<Block> blocksToProcess = processingBranch.BlocksToProcess;
-        if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
-        {
-            processingBranch.Blocks.Clear(); // TODO: investigate why if we clear it all we need to collect and iterate on all the blocks in PrepareProcessingBranch?
-            blocksToProcess.Add(suggestedBlock);
-        }
-        else
-        {
-            foreach (Block block in processingBranch.Blocks)
-            {
-                _loopCancellationSource?.Token.ThrowIfCancellationRequested();
-
-                if (block.Hash is not null && _blockTree.WasProcessed(block.Number, block.Hash))
-                {
-                    if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg or pruning: {block.ToString(Block.Format.Short)}");
-                }
-
-                blocksToProcess.Add(block);
-            }
-
-            Block firstBlock = blocksToProcess[0];
-            if (!firstBlock.IsGenesis)
-            {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
-                if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
-                {
-                    throw new InvalidBlockException(firstBlock, $"Rejected a block that is orphaned: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
-                }
-            }
-        }
-
-        if (_logger.IsTrace) _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
-        for (int i = 0; i < blocksToProcess.Count; i++)
-        {
-            /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
-            _recoveryStep.RecoverData(blocksToProcess[i]);
-        }
-    }
-
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
-        BlockHeader branchingPoint = null;
-        ArrayPoolList<Block> blocksToBeAddedToMain = new((int)Reorganization.PersistenceInterval);
-
-        bool branchingCondition;
-        bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
-
-        Block toBeProcessed = suggestedBlock;
-        long iterations = 0;
-        do
+        if (!options.ContainsFlag(ProcessingOptions.IgnoreParentNotOnMainChain))
         {
-            iterations++;
-            if (!options.ContainsFlag(ProcessingOptions.Trace))
-            {
-                blocksToBeAddedToMain.Add(toBeProcessed);
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
-            if (toBeProcessed.IsGenesis)
-            {
-                break;
-            }
-
-            branchingPoint = options.ContainsFlag(ProcessingOptions.ForceSameBlock)
-                ? toBeProcessed.Header
-                : _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-
-            if (branchingPoint is null)
-            {
-                // genesis block
-                break;
-            }
-
-            if (options.ContainsFlag(ProcessingOptions.IgnoreParentNotOnMainChain))
-            {
-                break;
-            }
-
-            bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-            bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
-            if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
-            toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
-            if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
-            bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
-            if (toBeProcessed is null)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
-                break;
-            }
-
-            if (isFastSyncTransition)
-            {
-                // If we hit this condition, it means that something is wrong in MultiSyncModeSelector.
-                // MultiSyncModeSelector switched to full sync when it shouldn't
-                // In this case, it is better to stop searching for more blocks and failed during the processing than trying to build a branch up to the genesis point
-                if (iterations > MaxBlocksDuringFastSyncTransition)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Too long branch to be processed during fast sync transition. Current block to be processed {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
-                    break;
-                }
-
-                // if we have parent state it means that we don't need to go deeper
-                if (toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header))
-                {
-                    if (_logger.IsInfo) _logger.Info($"Found state for parent: {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
-                    break;
-                }
-
-                if (_logger.IsDebug) _logger.Debug($"A new block {toBeProcessed} in fast sync transition branch - state not found");
-            }
-
-            // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
-            // then on restart we would find 14 as the branch head (since 14 is on the main chain)
-            // we need to dig deeper to go all the way to the false (reorg boundary) head
-            // otherwise some nodes would be missing
-            // we also need to go deeper if we already pruned state for that block
-            bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-            bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-            bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
-            branchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && notInForceProcessing;
-            if (_logger.IsTrace) _logger.Trace($" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
-
-        } while (branchingCondition);
-
-        if (_logger.IsTrace)
-        {
-            if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
-            {
-                _logger.Trace($"Head block was: {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
-                _logger.Trace($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
-            }
-            else
-            {
-                _logger.Trace(branchingPoint is null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
-            }
+            return _branchBuilder.PrepareProcessingBranch(suggestedBlock, options);
         }
 
-        Hash256 stateRoot = branchingPoint?.StateRoot;
-        if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
-        blocksToBeAddedToMain.Reverse();
-        return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
+        // Engine API newPayload processes the block directly on its parent without collecting a branch.
+        BlockHeader? parent = suggestedBlock.IsGenesis ? null : _blockTree.FindParentHeader(suggestedBlock.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        ArrayPoolList<Block> blocks = new(1);
+        if (!options.ContainsFlag(ProcessingOptions.ForceProcessing)) blocks.Add(suggestedBlock);
+        return new ProcessingBranch(parent, blocks);
     }
 
-    [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
-    private bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
+    public async ValueTask DisposeAsync()
     {
-        /* a bit hacky way to get the invalid branch out of the processing loop */
-        if (suggestedBlock.Number != 0 &&
-            !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
-        {
-            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
-            return false;
-        }
-
-        if (suggestedBlock.Header.TotalDifficulty is null)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
-            throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
-        }
-
-        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && suggestedBlock.Hash is null)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
-            throw new InvalidOperationException("Block hash should be known at this stage if running in a validating mode");
-        }
-
-        for (int i = 0; i < suggestedBlock.Uncles.Length; i++)
-        {
-            if (suggestedBlock.Uncles[i].Hash is null)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
-                throw new InvalidOperationException($"Uncle's {i} hash is null when processing block");
-            }
-        }
-
-        return true;
-    }
-
-    public void Dispose()
-    {
-        _recoveryComplete = true;
-        _recoveryQueue.Writer.TryComplete();
-        _blockQueue.Writer.TryComplete();
-        _loopCancellationSource?.Dispose();
+        _stats.NewProcessingStatistics -= OnNewProcessingStatistics;
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-    }
-
-    [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]
-    private readonly ref struct ProcessingBranch(Hash256 root, ArrayPoolList<Block> blocks)
-    {
-        public Hash256 Root { get; } = root;
-        public ArrayPoolList<Block> Blocks { get; } = blocks;
-        public ArrayPoolList<Block> BlocksToProcess { get; } = new(blocks.Count);
-
-        public void Dispose()
-        {
-            Blocks.Dispose();
-            BlocksToProcess.Dispose();
-        }
+        await StopAsync(processRemainingBlocks: false);
     }
 
     public class Options
     {
-        public static Options NoReceipts = new() { StoreReceiptsByDefault = true };
         public static Options Default = new();
 
         public bool StoreReceiptsByDefault { get; set; } = true;
 
-        public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
+        /// <summary>The logical processors block processing runs on, on an Intel hybrid CPU; see <see cref="PerformanceCores"/>.</summary>
+        public ProcessingCores ProcessingCores { get; set; }
+
+        /// <summary>The longest a single block may take to process, in milliseconds; <c>0</c> disables the limit.</summary>
+        public int BlockProcessingTimeoutMs { get; set; }
+
+        internal TimeProvider TimeProvider { get; set; } = TimeProvider.System;
     }
 }

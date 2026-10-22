@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,6 +10,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class LogFilterTests
 {
     private int _filterCounter;
@@ -22,7 +23,7 @@ public class LogFilterTests
             .WithAnyAddress()
             .Build();
 
-        filter.Matches(Core.Bloom.Empty).Should().BeTrue();
+        Assert.That(filter.Matches(Core.Bloom.Empty), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -34,7 +35,7 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA));
 
-        filter.Matches(bloom).Should().BeTrue();
+        Assert.That(filter.Matches(bloom), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -46,7 +47,7 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB));
 
-        filter.Matches(bloom).Should().BeTrue();
+        Assert.That(filter.Matches(bloom), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -56,19 +57,20 @@ public class LogFilterTests
             .WithTopicExpressions(TestTopicExpressions.Any)
             .Build();
 
-        filter.Matches(Core.Bloom.Empty).Should().BeTrue();
+        Assert.That(filter.Matches(Core.Bloom.Empty), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void specific_topics_filter_matches_bloom()
+    public void specific_topics_filter_matches_bloom([Values] bool useStructRef)
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA))
             .Build();
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakA, TestItem.KeccakB));
+        BloomStructRef bloomRef = bloom.ToStructRef();
 
-        filter.Matches(bloom).Should().BeTrue();
+        Assert.That(useStructRef ? filter.Matches(ref bloomRef) : filter.Matches(bloom), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -80,7 +82,7 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA, TestItem.KeccakB));
 
-        filter.Matches(bloom).Should().BeTrue();
+        Assert.That(filter.Matches(bloom), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -92,7 +94,7 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakB));
 
-        filter.Matches(bloom).Should().BeTrue();
+        Assert.That(filter.Matches(bloom), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -104,7 +106,7 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA));
 
-        filter.Matches(bloom).Should().BeTrue();
+        Assert.That(filter.Matches(bloom), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -117,11 +119,11 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressD, TestItem.KeccakA, TestItem.KeccakC));
 
-        filter.Matches(bloom).Should().BeTrue();
+        Assert.That(filter.Matches(bloom), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void address_filter_doesnt_match_bloom()
+    public void address_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithAddress(TestItem.AddressA)
@@ -129,11 +131,11 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressD), GetLogEntry(TestItem.AddressC));
 
-        filter.Matches(bloom).Should().BeFalse();
+        Assert.That(filter.Matches(bloom), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void addresses_filter_doesnt_match_bloom()
+    public void addresses_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithAddresses(TestItem.AddressA, TestItem.AddressB, TestItem.AddressC)
@@ -141,23 +143,24 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressD));
 
-        filter.Matches(bloom).Should().BeFalse();
+        Assert.That(filter.Matches(bloom), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void specific_topics_filter_doesnt_match_bloom()
+    public void specific_topics_filter_does_not_match_bloom([Values] bool useStructRef)
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakC))
             .Build();
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakA, TestItem.KeccakB));
+        BloomStructRef bloomRef = bloom.ToStructRef();
 
-        filter.Matches(bloom).Should().BeFalse();
+        Assert.That(useStructRef ? filter.Matches(ref bloomRef) : filter.Matches(bloom), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void multiple_specific_topics_filter_doesnt_match_bloom()
+    public void multiple_specific_topics_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakB))
@@ -165,11 +168,11 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakC));
 
-        filter.Matches(bloom).Should().BeFalse();
+        Assert.That(filter.Matches(bloom), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void or_topics_filter_doesnt_match_bloom()
+    public void or_topics_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
@@ -177,11 +180,11 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakC));
 
-        filter.Matches(bloom).Should().BeFalse();
+        Assert.That(filter.Matches(bloom), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void complex_topics_filter_doesnt_match_bloom()
+    public void complex_topics_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
@@ -189,11 +192,11 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakC));
 
-        filter.Matches(bloom).Should().BeFalse();
+        Assert.That(filter.Matches(bloom), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void complex_filter_doesnt_match_bloom()
+    public void complex_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakC)))
@@ -202,12 +205,12 @@ public class LogFilterTests
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA, TestItem.KeccakD));
 
-        filter.Matches(bloom).Should().BeFalse();
+        Assert.That(filter.Matches(bloom), Is.False);
     }
 
     private Core.Bloom GetBloom(params LogEntry[] logEntries)
     {
-        Core.Bloom bloom = new Core.Bloom();
+        Core.Bloom bloom = new();
         bloom.Add(logEntries);
         return bloom;
     }

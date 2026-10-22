@@ -39,19 +39,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
         Transaction ReportBenign(Address maliciousMinerAddress, in UInt256 blockNumber);
     }
 
-    public sealed class ReportingValidatorContract : Contract, IReportingValidatorContract
+    public sealed class ReportingValidatorContract(
+        IAbiEncoder abiEncoder,
+        Address contractAddress,
+        ISigner signer) : Contract(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IReportingValidatorContract
     {
-        private readonly ISigner _signer;
+        private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         public Address NodeAddress => _signer.Address;
-
-        public ReportingValidatorContract(
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            ISigner signer)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
-        {
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-        }
 
         /// <summary>
         /// Reports that the malicious validator misbehaved at the specified block.

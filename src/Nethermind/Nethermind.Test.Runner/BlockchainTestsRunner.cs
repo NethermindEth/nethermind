@@ -3,71 +3,193 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
+using Nethermind.Core.Specs;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Test.Runner;
 
-public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
-{
-    private readonly ConsoleColor _defaultColour;
-    private readonly ITestSourceLoader _testsSource;
-    private readonly string? _filter;
-    private readonly ulong _chainId;
+public readonly record struct BlockchainTestsRunnerOptions(
+    Regex? Filter = null,
+    ulong ChainId = 0,
+    bool Trace = false,
+    bool TraceMemory = false,
+    bool ExcludeStack = false,
+    bool JsonOutput = false,
+    bool SuppressOutput = false,
+    bool? ParallelExecution = null,
+    bool? ParallelExecutionBatchRead = null,
+    Func<bool, string?>? ProgressUpdateFactory = null);
 
-    public BlockchainTestsRunner(ITestSourceLoader testsSource, string? filter, ulong chainId)
+public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITestSourceLoader? testsSource = null) : BlockchainTestBase, IBlockchainTestRunner
+{
+    // Component logs write to stderr, which a traced run reserves for the JSONL trace.
+    protected override ILogManager? ComponentLogManagerOverride =>
+        _trace ? LimboLogs.Instance : _suppressOutput ? new TestLogManager(LogLevel.Error) : null;
+    protected override bool? ParallelExecutionOverride => _parallelExecution;
+    protected override bool? ParallelExecutionBatchReadOverride => _parallelExecutionBatchRead;
+    private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
+    private readonly ITestSourceLoader? _testsSource = testsSource;
+    private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
+    // Compiled once by the caller and shared across the per-file runner instances.
+    private readonly Regex? _filterRegex = options.Filter;
+    private readonly ulong _chainId = options.ChainId;
+    private readonly bool _trace = options.Trace;
+    private readonly bool _traceMemory = options.TraceMemory;
+    private readonly bool _excludeStack = options.ExcludeStack;
+    private readonly bool _jsonOutput = options.JsonOutput;
+    private readonly bool _suppressOutput = options.SuppressOutput;
+    private readonly bool? _parallelExecution = options.ParallelExecution;
+    private readonly bool? _parallelExecutionBatchRead = options.ParallelExecutionBatchRead;
+    private readonly Func<bool, string?>? _progressUpdateFactory = options.ProgressUpdateFactory;
+
+    public BlockchainTestsRunner(ITestSourceLoader testsSource, in BlockchainTestsRunnerOptions options)
+        : this(options, testsSource ?? throw new ArgumentNullException(nameof(testsSource)))
     {
-        _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-        _defaultColour = Console.ForegroundColor;
-        _filter = filter;
-        _chainId = chainId;
     }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
-        List<EthereumTestResult> testResults = new();
-        IEnumerable<BlockchainTest> tests = (IEnumerable<BlockchainTest>)_testsSource.LoadTests();
-        foreach (BlockchainTest test in tests)
-        {
-            if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)
-                continue;
-            Setup();
+        if (_testsSource is null)
+            throw new InvalidOperationException("RunTestsAsync requires a test source; use the constructor that accepts ITestSourceLoader.");
 
-            Console.Write($"{test,-120} ");
-            if (test.LoadFailure is not null)
-            {
-                WriteRed(test.LoadFailure);
-                testResults.Add(new EthereumTestResult(test.Name, test.LoadFailure));
-            }
-            else
-            {
-                test.ChainId = _chainId;
-                EthereumTestResult result = await RunTest(test);
-                testResults.Add(result);
-                if (result.Pass)
-                    WriteGreen("PASS");
-                else
-                    WriteRed("FAIL");
-            }
+        List<EthereumTestResult> testResults = [];
+        IEnumerable<EthereumTest> tests = _testsSource.LoadTests<EthereumTest>();
+        foreach (EthereumTest loadedTest in tests)
+        {
+            EthereumTestResult? result = await ExecuteTestAsync(loadedTest);
+            if (result is null)
+                continue;
+
+            testResults.Add(result);
+            ReportResult(result);
+        }
+
+        if (_jsonOutput && !_suppressOutput)
+        {
+            Console.Out.Write(_serializer.Serialize(testResults, true));
         }
 
         return testResults;
+    }
+
+    public async Task<EthereumTestResult> RunSingleTestAsync(BlockchainTest test)
+    {
+        test.ChainId = _chainId;
+        return await RunTest(test);
+    }
+
+    private async Task<EthereumTestResult?> ExecuteTestAsync(EthereumTest loadedTest)
+    {
+        if (loadedTest is FailedToLoadTest)
+            return new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure);
+
+        if (loadedTest is not BlockchainTest test)
+            return null;
+
+        if (_filterRegex is not null && test.Name is not null && !_filterRegex.IsMatch(test.Name))
+            return null;
+
+        if (test.LoadFailure is not null)
+            return new EthereumTestResult(test.Name, test.LoadFailure);
+
+        test.ChainId = _chainId;
+
+        try
+        {
+            if (!_trace)
+                return await RunTest(test);
+
+            ISpecProvider specProvider = CreateSpecProvider(test);
+            // Intentionally created per test: each test emits an independent JSONL trace,
+            // so the tracer's block counter resetting between tests is by design.
+            using BlockchainTestStreamingTracer tracer = new(
+                new() { EnableMemory = _traceMemory, DisableStack = _excludeStack },
+                specProvider);
+
+            return await RunTest(test, tracer: tracer, specProvider: specProvider);
+        }
+        catch (Exception ex)
+        {
+            return new EthereumTestResult(test.Name, test.ForkName, ex.ToString());
+        }
+    }
+
+    private void ReportResult(EthereumTestResult result)
+    {
+        // A traced run reserves stderr for the JSONL trace that consumers parse line by line;
+        // the result itself still lands in the results document.
+        if (_trace)
+            return;
+
+        if (_suppressOutput)
+        {
+            ReportSuppressedResult(result);
+            return;
+        }
+
+        if (_jsonOutput)
+            return;
+
+        Console.Write($"{result.Name,-120} ");
+        if (result.Pass)
+            WriteGreen("PASS");
+        else if (result.LoadFailure is not null)
+            WriteRed(result.LoadFailure);
+        else if (result.Error is not null)
+            WriteRed($"EXCEPTION: {result.Error}");
+        else
+            WriteRed("FAIL");
+    }
+
+    private void ReportSuppressedResult(EthereumTestResult result)
+    {
+        string? progress = _progressUpdateFactory?.Invoke(!result.Pass);
+        if (result.Pass)
+        {
+            WriteProgress(progress);
+            return;
+        }
+
+        // Always lead with the failing test's name, then the reason, so a failure line
+        // identifies *which* test failed instead of only printing the exception/error.
+        string status = result.LoadFailure is not null ? "EXCEPTION" : "FAIL";
+        string? reason = result.LoadFailure ?? result.Error;
+        string message = reason is null ? result.Name : $"{result.Name} - {reason}";
+        WriteStatus(status, progress, message, false);
     }
 
     private void WriteRed(string text)
     {
         Console.ForegroundColor = ConsoleColor.Red;
         Console.WriteLine(text);
-        Console.ForegroundColor = _defaultColour;
+        Console.ForegroundColor = _defaultColor;
     }
 
     private void WriteGreen(string text)
     {
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine(text);
-        Console.ForegroundColor = _defaultColour;
+        Console.ForegroundColor = _defaultColor;
+    }
+
+    private static void WriteProgress(string? progress)
+    {
+        if (progress is null)
+            return;
+
+        Console.Error.WriteLine($"PROGRESS {progress}");
+        Console.Error.Flush();
+    }
+
+    private static void WriteStatus(string prefix, string? progress, string message, bool pass)
+    {
+        string color = pass ? "\x1b[32m" : "\x1b[31m";
+        string progressPart = string.IsNullOrEmpty(progress) ? "" : $"{progress} ";
+        Console.Error.WriteLine($"{color}{prefix}\x1b[0m {progressPart}{message}");
+        Console.Error.Flush();
     }
 }

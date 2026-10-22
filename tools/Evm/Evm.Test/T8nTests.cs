@@ -1,260 +1,196 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.CommandLine;
+using System.Diagnostics;
+using System.Text.Json.Nodes;
 using Evm.T8n;
-using Evm.T8n.JsonTypes;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
-using Newtonsoft.Json.Linq;
+using Evm.T8n.Errors;
+using NUnit.Framework;
 
 namespace Evm.Test;
 
-public class InputParams(string basedir, string alloc, string env, string txs, string stateFork, string? stateReward = null)
-{
-    public readonly string Alloc = Path.Combine(basedir, alloc);
-    public readonly string Env = Path.Combine(basedir, env);
-    public readonly string Txs = Path.Combine(basedir, txs);
-    public readonly string StateFork = stateFork;
-    public readonly string? StateReward = stateReward;
-}
-
-public class OutputParams(string? alloc = null, string? result = null, string? body = null)
-{
-    public readonly string? Alloc = alloc;
-    public readonly string? Result = result;
-    public readonly string? Body = body;
-}
-
+/// <summary>
+/// Runs the <c>t8n</c> command against the go-ethereum <c>cmd/evm</c> fixtures and expects the same output and exit code as geth.
+/// </summary>
+/// <remarks>
+/// Mirrors <c>TestT8n</c> in go-ethereum's <c>cmd/evm/t8n_test.go</c>; the fixtures under <c>testdata</c> are copied verbatim.
+/// </remarks>
+[TestFixture]
 public class T8nTests
 {
-    private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
-
-    [Test]
-    public void Test1()
+    private static IEnumerable<TestCaseData> GethCases()
     {
-        Execute(
-            new InputParams("testdata/1/", "alloc.json", "env.json", "txs.json", "Frontier+1346"),
-            new OutputParams(alloc: "stdout", result: "stdout"),
-            expectedExitCode: 3);
+        yield return Case("1", "Frontier+1346", T8nErrorCodes.ErrorConfig, name: "unsupported fork");
+        yield return Case("1", "Byzantium", expected: "exp.json", name: "nonce too low rejection");
+        yield return Case("3", "Berlin", expected: "exp.json", name: "blockhash");
+        yield return Case("4", "Berlin", T8nErrorCodes.ErrorMissingBlockhash, name: "missing blockhash");
+        yield return Case("5", "Byzantium", expected: "exp.json", reward: "0x80", name: "ommer rewards");
+        yield return Case("13", "London", expected: "exp.json", output: Output.Body, name: "sign json transactions");
+        yield return Case("13", "London", expected: "exp2.json", txs: "signed_txs.rlp", output: Output.Result, name: "already signed rlp transactions");
+        yield return Case("14", "London", expected: "exp.json", output: Output.Result, name: "difficulty without uncles");
+        yield return Case("14", "London", expected: "exp2.json", env: "env.uncles.json", output: Output.Result, name: "difficulty with uncles");
+        yield return Case("14", "Berlin", expected: "exp_berlin.json", env: "env.uncles.json", output: Output.Result, name: "difficulty with uncles on Berlin");
+        yield return Case("19", "London", expected: "exp_london.json", output: Output.Result, name: "difficulty on London");
+        yield return Case("19", "ArrowGlacier", expected: "exp_arrowglacier.json", output: Output.Result, name: "difficulty on ArrowGlacier");
+        yield return Case("19", "GrayGlacier", expected: "exp_grayglacier.json", output: Output.Result, name: "difficulty on GrayGlacier");
+        yield return Case("23", "Berlin", expected: "exp.json", output: Output.Result, name: "sign unprotected transaction");
+        yield return Case("24", "Paris", expected: "exp.json", name: "post-merge transition");
+        yield return Case("24", "Paris", T8nErrorCodes.ErrorConfig, env: "env-missingrandom.json", output: Output.None, name: "post-merge without random");
+        yield return Case("25", "Paris", expected: "exp.json", name: "base fee calculation");
+        yield return Case("26", "Shanghai", expected: "exp.json", name: "withdrawals");
+        yield return Case("28", "Cancun", expected: "exp.json", txs: "txs.rlp", name: "blob transactions");
+        yield return Case("29", "Cancun", expected: "exp.json", name: "beacon root");
+        yield return Case("30", "Cancun", expected: "exp.json", txs: "txs_more.rlp", name: "undecodable rlp transaction");
+        yield return Case("33", "Prague", expected: "exp.json", name: "set code transaction");
+        yield return Case("34", "Osaka", expected: "exp.json", name: "blob base fee reserve price");
+        yield return Case("35", "Osaka", T8nErrorCodes.ErrorConfig, output: Output.None, name: "missing base fee");
     }
 
-    [Test]
-    public void Test2()
+    [TestCaseSource(nameof(GethCases))]
+    public void Matches_geth_output(string[] args, int expectedExitCode, string? expectedOutputFile)
     {
-        Execute(
-            new InputParams("testdata/1/", "alloc.json", "env.json", "txs.json", "Byzantium"),
-            new OutputParams(alloc: "stdout", result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/1/exp.json");
-    }
+        (int exitCode, string output, string error) = Run(args);
 
-    [Test]
-    public void Test3()
-    {
-        Execute(
-            new InputParams("testdata/3/", "alloc.json", "env.json", "txs.json", "Berlin"),
-            new OutputParams(alloc: "stdout", result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/3/exp.json");
-    }
+        Assert.That(exitCode, Is.EqualTo(expectedExitCode), error);
 
-    [Test]
-    public void Test4()
-    {
-        Execute(
-            new InputParams("testdata/4/", "alloc.json", "env.json", "txs.json", "Berlin"),
-            new OutputParams(alloc: "stdout", result: "stdout"),
-            expectedExitCode: 4);
-    }
-
-    [Test]
-    public void Test5()
-    {
-        Execute(
-            new("testdata/5/", "alloc.json", "env.json", "txs.json", "Byzantium", "0x80"),
-            new OutputParams(alloc: "stdout", result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/5/exp.json");
-    }
-
-    [Test]
-    public void Test6()
-    {
-        Execute(
-            new InputParams("testdata/13/", "alloc.json", "env.json", "txs.json", "London"),
-            new OutputParams(body: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/13/exp.json");
-    }
-
-    [Test]
-    public void Test7()
-    {
-        Execute(
-            new InputParams("testdata/13/", "alloc.json", "env.json", "signed_txs.rlp", "London"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/13/exp2.json");
-    }
-
-    [Test]
-    public void Test8()
-    {
-        Execute(
-            new InputParams("testdata/14/", "alloc.json", "env.json", "txs.json", "London"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/14/exp.json");
-    }
-
-    [Test]
-    public void Test9()
-    {
-        Execute(
-            new InputParams("testdata/14/", "alloc.json", "env.uncles.json", "txs.json", "London"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/14/exp2.json");
-    }
-
-    [Test]
-    public void Test10()
-    {
-        Execute(
-            new InputParams("testdata/14/", "alloc.json", "env.uncles.json", "txs.json", "Berlin"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/14/exp_berlin.json");
-    }
-
-    [Test]
-    public void Test11()
-    {
-        Execute(
-            new InputParams("testdata/19/", "alloc.json", "env.json", "txs.json", "London"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/19/exp_london.json");
-    }
-
-    [Test]
-    public void Test12()
-    {
-        Execute(
-            new InputParams("testdata/19/", "alloc.json", "env.json", "txs.json", "ArrowGlacier"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/19/exp_arrowglacier.json");
-    }
-
-    [Test]
-    public void Test13()
-    {
-        Execute(
-            new InputParams("testdata/19/", "alloc.json", "env.json", "txs.json", "GrayGlacier"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/19/exp_grayglacier.json");
-    }
-
-    [Test]
-    public void Test14()
-    {
-        Execute(
-            new InputParams("testdata/23/", "alloc.json", "env.json", "txs.json", "Berlin"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/23/exp.json");
-    }
-
-    [Test]
-    public void Test15()
-    {
-        Execute(
-            new InputParams("testdata/24/", "alloc.json", "env.json", "txs.json", "Merge"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/24/exp.json");
-    }
-
-    [Test]
-    public void Test16()
-    {
-        Execute(
-            new InputParams("testdata/24/", "alloc.json", "env-missingrandom.json", "txs.json", "Merge"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 3);
-    }
-
-    [Test]
-    public void Test17()
-    {
-        Execute(
-            new InputParams("testdata/26/", "alloc.json", "env.json", "txs.json", "Shanghai"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/26/exp.json");
-    }
-
-    [Test]
-    public void Test18()
-    {
-        Execute(
-            new InputParams("testdata/28/", "alloc.json", "env.json", "txs.rlp", "Cancun"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/28/exp.json");
-    }
-
-    [Test]
-    public void Test19()
-    {
-        Execute(
-            new InputParams("testdata/29/", "alloc.json", "env.json", "txs.json", "Cancun"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/29/exp.json");
-    }
-
-    [Test]
-    public void Test20()
-    {
-        Execute(
-            new InputParams("testdata/30/", "alloc.json", "env.json", "txs_more.rlp", "Cancun"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/30/exp.json");
-    }
-
-    private void Execute(InputParams inputParams, OutputParams outputParams, int expectedExitCode, string? expectedOutputFile = null)
-    {
-        var arguments = new T8nCommandArguments
+        if (expectedOutputFile is not null)
         {
-            InputAlloc = inputParams.Alloc,
-            InputEnv = inputParams.Env,
-            InputTxs = inputParams.Txs,
-            OutputBody = outputParams.Body,
-            StateFork = inputParams.StateFork,
-        };
-        if (outputParams.Alloc is not null) arguments.OutputAlloc = outputParams.Alloc;
-        if (outputParams.Result is not null) arguments.OutputResult = outputParams.Result;
-        if (inputParams.StateReward is not null) arguments.StateReward = inputParams.StateReward;
-
-        T8nOutput output = T8nTool.Run(arguments, NullLogManager.Instance);
-
-        Assert.That(output.ExitCode, Is.EqualTo(expectedExitCode));
-
-        if (expectedOutputFile == null) return;
-
-        var outputString = _ethereumJsonSerializer.Serialize(output, true);
-        var fileContent = File.ReadAllText(expectedOutputFile);
-        Assert.That(AreEqual(fileContent, outputString));
+            AssertJsonEqual(output, expectedOutputFile);
+        }
     }
 
-    private static bool AreEqual(string json1, string json2)
+    /// <remarks>Mirrors the <c>--trace</c> case of <c>TestEVMTracing</c> in go-ethereum's <c>cmd/evm/t8n_test.go</c>.</remarks>
+    [Test]
+    public void Writes_geth_traces_to_base_directory()
     {
-        var expected = JToken.Parse(json1);
-        var actual = JToken.Parse(json2);
-        return JToken.DeepEquals(actual, expected);
+        string baseDir = Path.Combine(AppContext.BaseDirectory, "testdata", "31");
+        string outputDir = Path.Combine(Path.GetTempPath(), $"t8n-{Guid.NewGuid():N}");
+        try
+        {
+            (int exitCode, _, string error) = Run(
+            [
+                "t8n",
+                $"--input.alloc={Path.Combine(baseDir, "alloc.json")}",
+                $"--input.txs={Path.Combine(baseDir, "txs.json")}",
+                $"--input.env={Path.Combine(baseDir, "env.json")}",
+                "--state.fork=Cancun",
+                "--trace",
+                "--output.basedir", outputDir,
+            ]);
+
+            Assert.That(exitCode, Is.Zero, error);
+            foreach (string expectedTrace in Directory.GetFiles(baseDir, "trace-*.jsonl"))
+            {
+                Assert.That(File.ReadAllLines(Path.Combine(outputDir, Path.GetFileName(expectedTrace))), Is.EqualTo(File.ReadAllLines(expectedTrace)));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(outputDir)) Directory.Delete(outputDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public void Accepts_dash_separated_option_names()
+    {
+        TestCaseData withdrawals = Case("26", "Shanghai", expected: "exp.json");
+        string[] args = [.. ((string[])withdrawals.Arguments[0]!).Select(arg => arg.StartsWith("--") ? arg.Replace('.', '-') : arg)];
+
+        (int exitCode, string output, string error) = Run(args);
+
+        Assert.That(exitCode, Is.Zero, error);
+        AssertJsonEqual(output, (string)withdrawals.Arguments[2]!);
+    }
+
+    [Test]
+    public void Reads_inputs_from_stdin()
+    {
+        string baseDir = Path.Combine(AppContext.BaseDirectory, "testdata", "13");
+        JsonObject input = new()
+        {
+            ["alloc"] = JsonNode.Parse(File.ReadAllText(Path.Combine(baseDir, "alloc.json"))),
+            ["env"] = JsonNode.Parse(File.ReadAllText(Path.Combine(baseDir, "env.json"))),
+            ["txs"] = JsonNode.Parse(File.ReadAllText(Path.Combine(baseDir, "txs.json"))),
+        };
+        ProcessStartInfo startInfo = new("dotnet")
+        {
+            ArgumentList =
+            {
+                Path.Combine(AppContext.BaseDirectory, "Evm.dll"), "t8n",
+                "--input.alloc=stdin", "--input.env=stdin", "--input.txs=stdin", "--state.fork=London",
+                "--output.alloc", "", "--output.result", "", "--output.body=stdout",
+            },
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        using Process process = Process.Start(startInfo)!;
+        process.StandardInput.Write(input.ToJsonString());
+        process.StandardInput.Close();
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        string output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+
+        Assert.That(process.ExitCode, Is.Zero, error.Result);
+        AssertJsonEqual(output, Path.Combine(baseDir, "exp.json"));
+    }
+
+    private static void AssertJsonEqual(string actualJson, string expectedFile)
+    {
+        JsonNode? expected = JsonNode.Parse(File.ReadAllText(expectedFile));
+        JsonNode? actual = JsonNode.Parse(actualJson);
+        Assert.That(JsonNode.DeepEquals(actual, expected), Is.True, $"have:{Environment.NewLine}{actualJson}{Environment.NewLine}want:{Environment.NewLine}{expected}");
+    }
+
+    private static (int ExitCode, string Output, string Error) Run(string[] args)
+    {
+        RootCommand rootCommand = [];
+        T8nCommand.Configure(ref rootCommand);
+
+        using StringWriter output = new();
+        using StringWriter error = new();
+        int exitCode = rootCommand.Parse(args).Invoke(new InvocationConfiguration { Output = output, Error = error });
+        return (exitCode, output.ToString(), error.ToString());
+    }
+
+    [Flags]
+    private enum Output
+    {
+        None = 0,
+        Alloc = 1,
+        Result = 2,
+        Body = 4,
+    }
+
+    private static TestCaseData Case(
+        string directory,
+        string fork,
+        int expectedExitCode = 0,
+        string? expected = null,
+        string alloc = "alloc.json",
+        string txs = "txs.json",
+        string env = "env.json",
+        string? reward = null,
+        Output output = Output.Alloc | Output.Result,
+        string name = "")
+    {
+        string baseDir = Path.Combine(AppContext.BaseDirectory, "testdata", directory);
+        List<string> args =
+        [
+            "t8n",
+            "--input.alloc", Path.Combine(baseDir, alloc),
+            "--input.txs", Path.Combine(baseDir, txs),
+            "--input.env", Path.Combine(baseDir, env),
+            "--state.fork", fork,
+            "--output.alloc", output.HasFlag(Output.Alloc) ? "stdout" : "",
+            "--output.result", output.HasFlag(Output.Result) ? "stdout" : "",
+            "--output.body", output.HasFlag(Output.Body) ? "stdout" : "",
+        ];
+        if (reward is not null) args.AddRange(["--state.reward", reward]);
+
+        return new TestCaseData(args.ToArray(), expectedExitCode, expected is null ? null : Path.Combine(baseDir, expected))
+            .SetName($"{nameof(Matches_geth_output)}({directory}, {fork}, {name})");
     }
 }

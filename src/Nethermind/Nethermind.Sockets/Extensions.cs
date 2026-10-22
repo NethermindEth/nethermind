@@ -17,10 +17,10 @@ public static class Extensions
     {
         IWebSocketsManager? webSocketsManager;
         ILogger logger;
-        using (var scope = app.ApplicationServices.CreateScope())
+        using (IServiceScope scope = app.ApplicationServices.CreateScope())
         {
             webSocketsManager = scope.ServiceProvider.GetService<IWebSocketsManager>();
-            logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger() ?? default;
+            logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger(typeof(Extensions)) ?? default;
         }
 
         app.Run(async (context) =>
@@ -33,7 +33,7 @@ public static class Extensions
                 string moduleName = string.Empty;
                 if (context.Request.Path.HasValue)
                 {
-                    var path = context.Request.Path.Value;
+                    string path = context.Request.Path.Value;
                     moduleName = path.Split("/", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
                 }
 
@@ -57,7 +57,15 @@ public static class Extensions
             }
             catch (WebSocketException ex)
             {
-                logger.Error($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex.Message}", ex);
+                if (ex.WebSocketErrorCode == WebSocketError.InvalidState)
+                {
+                    // Websocket closed
+                    if (logger.IsDebug) logger.Debug($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex}");
+                }
+                else
+                {
+                    if (logger.IsError) logger.Error($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex.Message}", ex);
+                }
             }
             catch (Exception ex)
             {

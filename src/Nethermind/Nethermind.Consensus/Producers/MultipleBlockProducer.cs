@@ -27,11 +27,11 @@ namespace Nethermind.Consensus.Producers
             if (blockProducers.Length == 0) throw new ArgumentException("Collection cannot be empty.", nameof(blockProducers));
             _bestBlockPicker = bestBlockPicker;
             _blockProducers = blockProducers;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger(typeof(MultipleBlockProducer<>));
         }
 
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
+            PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default)
         {
             using ArrayPoolList<Task<Block>> produceTasks = new(_blockProducers.Length);
             for (int i = 0; i < _blockProducers.Length; i++)
@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Producers
                 T blockProducerInfo = _blockProducers[i];
                 produceTasks.Add(!blockProducerInfo.Condition.CanProduce(parentHeader!)
                     ? Task.FromResult<Block?>(null)
-                    : blockProducerInfo.BlockProducer.BuildBlock(parentHeader, blockProducerInfo.BlockTracer, cancellationToken: token));
+                    : blockProducerInfo.BlockProducer.BuildBlock(parentHeader, blockProducerInfo.BlockTracer, payloadAttributes, flags, cancellationToken: token));
             }
 
             IEnumerable<(Block? Block, T BlockProducer)> blocksWithProducers;

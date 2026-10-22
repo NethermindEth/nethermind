@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,6 +17,7 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismPayloadAttributes : PayloadAttributes
 {
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     private byte[][]? _encodedTransactions;
 
     public byte[][]? Transactions
@@ -28,13 +30,18 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
     }
     public bool NoTxPool { get; set; }
-    public long GasLimit { get; set; }
-    public override long? GetGasLimit() => GasLimit;
+    public ulong GasLimit { get; set; }
+    public override ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator) => GasLimit;
 
     /// <remarks>
     /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>
     /// </remarks>
     public byte[]? EIP1559Params { get; set; }
+
+    /// <remarks>
+    /// See <see href="https://specs.optimism.io/protocol/jovian/exec-engine.html#minimum-base-fee-in-payloadattributesv3"/>
+    /// </remarks>
+    public ulong? MinBaseFee { get; set; }
 
     private int TransactionsLength => Transactions?.Length ?? 0;
 
@@ -49,7 +56,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             try
             {
-                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+                return TxRlpDecoder.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
             catch (RlpException e)
             {
@@ -73,12 +80,13 @@ public class OptimismPayloadAttributes : PayloadAttributes
         base.ComputePayloadIdMembersSize()
         + sizeof(bool) // noTxPool
         + (Keccak.Size * TransactionsLength) // Txs
-        + sizeof(long) // gasLimit
-        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
+        + sizeof(ulong) // gasLimit
+        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0) // eip1559Params
+        + (MinBaseFee is null ? 0 : sizeof(ulong)); // minBaseFee
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
-        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
+        int offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
 
         inputSpan[offset] = NoTxPool ? (byte)1 : (byte)0;
         offset += 1;
@@ -93,8 +101,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
             }
         }
 
-        BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), GasLimit);
-        offset += sizeof(long);
+        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(offset, sizeof(ulong)), GasLimit);
+        offset += sizeof(ulong);
 
         if (EIP1559Params is not null)
         {
@@ -102,10 +110,16 @@ public class OptimismPayloadAttributes : PayloadAttributes
             offset += EIP1559Params.Length;
         }
 
+        if (MinBaseFee is { } minBaseFee)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(offset, sizeof(ulong)), minBaseFee);
+            offset += sizeof(ulong);
+        }
+
         return offset;
     }
 
-    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int apiVersion,
+    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,
         [NotNullWhen(false)] out string? error)
     {
         if (GasLimit == 0)
@@ -114,13 +128,20 @@ public class OptimismPayloadAttributes : PayloadAttributes
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        IReleaseSpec releaseSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
+        IOptimismReleaseSpec releaseSpec = (IOptimismReleaseSpec)specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
         if (!releaseSpec.IsOpHoloceneEnabled && EIP1559Params is not null)
         {
             error = $"{nameof(EIP1559Params)} should be null before Holocene";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(out _, out var decodeError))
+        if (releaseSpec.IsOpJovianEnabled != MinBaseFee.HasValue)
+        {
+            error = releaseSpec.IsOpJovianEnabled
+                ? $"{nameof(MinBaseFee)} should be set since Jovian"
+                : $"{nameof(MinBaseFee)} should be null before Jovian";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(out _, out string? decodeError))
         {
             error = decodeError;
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
@@ -135,7 +156,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"Error decoding transactions: {e}";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        return base.Validate(specProvider, apiVersion, out error);
+        return base.Validate(specProvider, fcuVersion, out error);
     }
 
     public override string ToString()
@@ -146,7 +167,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
             .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}, ")
             .Append($"{nameof(GasLimit)}: {GasLimit}, ")
             .Append($"{nameof(NoTxPool)}: {NoTxPool}, ")
-            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}")
+            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}, ")
+            .Append($"{nameof(MinBaseFee)}: {MinBaseFee}, ")
             .Append($"{nameof(Transactions)}: {Transactions?.Length ?? 0}");
 
         if (Withdrawals is not null)

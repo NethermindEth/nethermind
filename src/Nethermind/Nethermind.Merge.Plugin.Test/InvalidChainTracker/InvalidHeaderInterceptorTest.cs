@@ -40,9 +40,10 @@ public class InvalidHeaderInterceptorTest
     [TestCase(false, true)]
     public void TestValidateHeader(bool baseReturnValue, bool isInvalidBlockReported)
     {
-        BlockHeader header = Build.A.BlockHeader.TestObject;
-        _baseValidator.Validate(header, false, out _).Returns(baseReturnValue);
-        _invalidHeaderInterceptor.Validate(header, false);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _baseValidator.Validate(header, parent, false, out _).Returns(baseReturnValue);
+        _invalidHeaderInterceptor.Validate(header, parent, false);
 
         _tracker.Received().SetChildParent(header.GetOrCalculateHash(), header.ParentHash!);
         if (isInvalidBlockReported)
@@ -75,6 +76,18 @@ public class InvalidHeaderInterceptorTest
         {
             _tracker.DidNotReceive().OnInvalidBlock(header.GetOrCalculateHash(), header.ParentHash);
         }
+    }
+
+    [Test]
+    public void TestValidateHeaderForwardsValidateHash([Values] bool validateHash)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _baseValidator.Validate(header, parent, false, out Arg.Any<string?>(), validateHash).Returns(true);
+
+        Assert.That(_invalidHeaderInterceptor.Validate(header, parent, false, out _, validateHash), Is.True);
+
+        _baseValidator.Received().Validate(header, parent, false, out Arg.Any<string?>(), validateHash);
     }
 
     [Test]

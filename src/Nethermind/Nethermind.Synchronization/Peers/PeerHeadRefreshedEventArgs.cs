@@ -7,14 +7,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.Peers;
 
-public class PeerHeadRefreshedEventArgs : EventArgs
+public class PeerHeadRefreshedEventArgs(ISyncPeer syncPeer, BlockHeader blockHeader) : EventArgs
 {
-    public ISyncPeer SyncPeer { get; }
-    public BlockHeader Header { get; }
-
-    public PeerHeadRefreshedEventArgs(ISyncPeer syncPeer, BlockHeader blockHeader)
-    {
-        SyncPeer = syncPeer;
-        Header = blockHeader;
-    }
+    public ISyncPeer SyncPeer { get; } = syncPeer;
+    public BlockHeader Header { get; } = blockHeader;
 }

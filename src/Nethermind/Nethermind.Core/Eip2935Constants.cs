@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Core;
 
 /// <summary>
@@ -8,13 +10,39 @@ namespace Nethermind.Core;
 /// </summary>
 public static class Eip2935Constants
 {
+    public const string ContractAddressKey = "HISTORY_STORAGE_ADDRESS";
+
     /// <summary>
     /// The <c>HISTORY_STORAGE_ADDRESS</c> parameter.
     /// </summary>
-    public static readonly Address BlockHashHistoryAddress = new("0x0000F90827F1C53a10cb7A02335B175320002935");
+    // 0x0000F90827F1C53a10cb7A02335B175320002935
+    public static readonly Address BlockHashHistoryAddress = new((ReadOnlySpan<byte>)[0x00, 0x00, 0xf9, 0x08, 0x27, 0xf1, 0xc5, 0x3a, 0x10, 0xcb, 0x7a, 0x02, 0x33, 0x5b, 0x17, 0x53, 0x20, 0x00, 0x29, 0x35]);
 
     /// <summary>
     /// The <c>HISTORY_SERVE_WINDOW</c> parameter.
     /// </summary>
-    public static readonly long RingBufferSize = 8191;
+    public static readonly ulong RingBufferSize = 8191;
+
+    /// <summary>
+    /// The <c>BLOCKHASH_SERVE_WINDOW</c> parameter of
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7709#specification">EIP-7709</see>.
+    /// </summary>
+    /// <remarks>
+    /// <c>BLOCKHASH</c> serves a narrower window than the ring buffer it reads from: the slot for a block older than
+    /// this window may still hold a hash, but the opcode must return zero for it.
+    /// </remarks>
+    public const ulong BlockHashServeWindow = 256;
+
+    /// <summary>
+    /// The deployed bytecode of the EIP-2935 history-storage contract.
+    /// </summary>
+    public static readonly byte[] Code =
+    [
+        0x33, 0x73, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0x14, 0x60, 0x46, 0x57, 0x60, 0x20, 0x36, 0x03, 0x60, 0x42,
+        0x57, 0x5f, 0x35, 0x60, 0x01, 0x43, 0x03, 0x81, 0x11, 0x60, 0x42, 0x57, 0x61, 0x1f, 0xff, 0x81,
+        0x43, 0x03, 0x11, 0x60, 0x42, 0x57, 0x61, 0x1f, 0xff, 0x90, 0x06, 0x54, 0x5f, 0x52, 0x60, 0x20,
+        0x5f, 0xf3, 0x5b, 0x5f, 0x5f, 0xfd, 0x5b, 0x5f, 0x35, 0x61, 0x1f, 0xff, 0x60, 0x01, 0x43, 0x03,
+        0x06, 0x55, 0x00
+    ];
 }

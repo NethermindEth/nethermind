@@ -1,111 +1,165 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Hive;
+using Nethermind.Init;
+using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
-using Nethermind.Logging;
-using Nethermind.Runner.JsonRpc;
-using Nethermind.Serialization.Json;
 using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network;
+using Nethermind.Runner.JsonRpc;
+using Nethermind.Sockets;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Runner.Ethereum.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules))]
-public class StartRpc(INethermindApi api) : IStep
+[RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(HiveStep))]
+public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, Lazy<IJsonRpcService> lazyJsonRpcService,
+    Lazy<FlatStateActivationPolicy> flatStateActivationPolicy, IRpcAuthentication? authentication = null) : IStep
 {
-    private readonly INethermindApi _api = api;
-
     public async Task Execute(CancellationToken cancellationToken)
     {
-        IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
-        IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
-        ILogger logger = _api.LogManager.GetClassLogger();
+        IJsonRpcConfig jsonRpcConfig = api.Config<IJsonRpcConfig>();
+        IKeyStoreConfig keyStoreConfig = api.Config<IKeyStoreConfig>();
+        ILogger logger = api.LogManager.GetClassLogger<StartRpc>();
 
         if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
             ConfigureJwtSecret(keyStoreConfig, jsonRpcConfig, logger);
 
-        if (jsonRpcConfig.Enabled)
+        if (!jsonRpcConfig.Enabled)
         {
-            IInitConfig initConfig = _api.Config<IInitConfig>();
-            IJsonRpcUrlCollection jsonRpcUrlCollection = new JsonRpcUrlCollection(_api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
+            if (logger.IsInfo) logger.Info("Json RPC is disabled");
+            return;
+        }
 
-            IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
-            JsonRpcService jsonRpcService = new(rpcModuleProvider, _api.LogManager, jsonRpcConfig);
+        IInitConfig initConfig = api.Config<IInitConfig>();
+        IJsonRpcUrlCollection jsonRpcUrlCollection =
+            new JsonRpcUrlCollection(api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
 
-            IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
+        IJsonRpcService jsonRpcService = lazyJsonRpcService.Value;
+        IRpcAuthentication auth = authentication ??
+            (jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                 ? NoAuthentication.Instance
-                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger);
+                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger));
 
-            JsonRpcProcessor jsonRpcProcessor = new(
-                jsonRpcService,
-                jsonRpcConfig,
-                _api.FileSystem,
-                _api.LogManager,
-                _api.ProcessExit);
-
-            if (initConfig.WebSocketsEnabled)
-            {
-                JsonRpcWebSocketsModule webSocketsModule = new(
-                    jsonRpcProcessor,
-                    jsonRpcService,
-                    _api.JsonRpcLocalStats!,
-                    _api.LogManager,
-                    _api.EthereumJsonSerializer,
-                    jsonRpcUrlCollection,
-                    auth,
-                    jsonRpcConfig.MaxBatchResponseBodySize,
-                    jsonRpcConfig.WebSocketsProcessingConcurrency);
-
-                _api.WebSocketsManager!.AddModule(webSocketsModule, true);
-            }
-
-            Bootstrap.Instance.JsonRpcService = jsonRpcService;
-            Bootstrap.Instance.LogManager = _api.LogManager;
-            Bootstrap.Instance.JsonSerializer = _api.EthereumJsonSerializer;
-            Bootstrap.Instance.JsonRpcLocalStats = _api.JsonRpcLocalStats!;
-            Bootstrap.Instance.JsonRpcAuthentication = auth;
-
-            JsonRpcRunner? jsonRpcRunner = new(
-                jsonRpcProcessor,
-                jsonRpcUrlCollection,
-                _api.WebSocketsManager!,
-                _api.ConfigProvider,
-                auth,
-                _api.LogManager,
-                _api);
-
-            await jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
-            {
-                if (x.IsFaulted && logger.IsError)
-                    logger.Error("Error during jsonRpc runner start", x.Exception);
-            }, cancellationToken);
-
-            JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, _api.ConfigProvider,
-                _api.LogManager, _api.JsonRpcLocalStats!, _api.EthereumJsonSerializer, _api.FileSystem);
-            jsonIpcRunner.Start(cancellationToken);
-
-#pragma warning disable 4014
-            _api.DisposeStack.Push(
-                new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
-            _api.DisposeStack.Push(jsonIpcRunner); // do not await
-#pragma warning restore 4014
+        // Added before the warmup, whose own RPC host would otherwise claim this entry.
+        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls));
+        if (GetPipelineWarmupSkipReason(api) is { } skipReason)
+        {
+            if (logger.IsDebug) logger.Debug($"Skipping startup payload pipeline warmup: {skipReason}");
         }
         else
         {
-            if (logger.IsInfo) logger.Info("Json RPC is disabled");
+            bool flatState = flatStateActivationPolicy.Value.ShouldTurnOnFlatDb();
+            await StartupWarmupTask.RunAsync(token =>
+                StartupPipelineWarmer.WarmupAsync(api.ChainSpec, api.ConfigProvider, flatState, token, auth, logger, liveBlockTree: api.BlockTree),
+                logger, StartupWarmupTask.SafetyTimeout, cancellationToken);
         }
+
+        JsonRpcProcessor jsonRpcProcessor = new(
+            jsonRpcService,
+            jsonRpcConfig,
+            api.FileSystem,
+            api.LogManager,
+            api.ProcessExit);
+
+        if (initConfig.WebSocketsEnabled)
+        {
+            JsonRpcWebSocketsModule webSocketsModule = new(
+                jsonRpcProcessor,
+                jsonRpcService,
+                jsonRpcLocalStats,
+                api.LogManager,
+                api.EthereumJsonSerializer,
+                jsonRpcUrlCollection,
+                auth,
+                jsonRpcConfig.MaxBatchResponseBodySize,
+                jsonRpcConfig.WebSocketsProcessingConcurrency,
+                jsonRpcConfig.MaxRequestBodySize);
+
+            webSocketsManager!.AddModule(webSocketsModule, true);
+        }
+
+        Bootstrap.Instance.JsonRpcService = jsonRpcService;
+        Bootstrap.Instance.LogManager = api.LogManager;
+        Bootstrap.Instance.JsonSerializer = api.EthereumJsonSerializer;
+        Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
+        Bootstrap.Instance.JsonRpcAuthentication = auth;
+
+        JsonRpcRunner jsonRpcRunner = new(
+            jsonRpcProcessor,
+            jsonRpcUrlCollection,
+            webSocketsManager!,
+            api.ConfigProvider,
+            auth,
+            api.LogManager,
+            serviceConfigurers.Value,
+            api.TxPool,
+            api.SpecProvider,
+            api.ReceiptFinder,
+            api.BlockTree,
+            api.SyncPeerPool,
+            api.MainProcessingContext);
+
+        api.DisposeStack.Push(jsonRpcRunner);
+        try
+        {
+            await jsonRpcRunner.Start(cancellationToken);
+        }
+        catch (Exception e) when (e is not ListenerBindException && authentication is null && logger.IsError)
+        {
+            if (logger.IsError) logger.Error("Error during jsonRpc runner start", e);
+        }
+
+        JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, api.ConfigProvider,
+            api.LogManager, jsonRpcLocalStats, api.EthereumJsonSerializer, api.FileSystem);
+        jsonIpcRunner.Start(cancellationToken);
+
+        api.DisposeStack.Push(jsonIpcRunner);
     }
+
+    internal static string? GetPipelineWarmupSkipReason(INethermindApi api)
+    {
+        IInitConfig initConfig = api.Config<IInitConfig>();
+        if (!initConfig.PipelineWarmupEnabled) return "disabled by configuration.";
+        if (initConfig.DiagnosticMode != DiagnosticMode.None) return "a database diagnostic mode is enabled.";
+        if (api.SpecProvider?.GetType() != typeof(ChainSpecBasedSpecProvider)) return "the chain uses a custom spec provider.";
+        bool mergeEnabled = false;
+        foreach (INethermindPlugin plugin in api.Plugins)
+        {
+            if (plugin.GetType() == typeof(MergePlugin) && plugin.Enabled)
+            {
+                mergeEnabled = true;
+                break;
+            }
+        }
+        if (!mergeEnabled) return "the standard Merge plugin is not enabled.";
+        IBlockProcessor? blockProcessor = api.MainProcessingContext?.BlockProcessor;
+        if (blockProcessor is FinalizedBlockAccessListProcessor finalizedCatchUp) blockProcessor = finalizedCatchUp.Inner;
+        if (blockProcessor is not (StandardBlockProcessor or WitnessCapturingBlockProcessor or InlineCaptureBlockProcessor)
+            || api.MainProcessingContext!.TransactionProcessor is not EthereumTransactionProcessor)
+            return "the chain uses a custom processing pipeline.";
+        return null;
+    }
+
     private static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
     {
         string newPath = Path.GetFullPath(Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret"));

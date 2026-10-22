@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -10,37 +11,38 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
 
-public class PerTableDbConfig
+public class PerTableDbConfig : IRocksDbConfig
 {
     private readonly string _tableName;
     private readonly string? _columnName;
     private readonly IDbConfig _dbConfig;
-    private readonly DbSettings _settings;
     private readonly string[] _prefixes;
     private readonly string[] _reversedPrefixes;
 
-    public PerTableDbConfig(IDbConfig dbConfig, DbSettings dbSettings, string? columnName = null)
+    public PerTableDbConfig(IDbConfig dbConfig, string dbName, string? columnName = null, bool validate = true)
     {
         _dbConfig = dbConfig;
-        _settings = dbSettings;
-        _tableName = _settings.DbName;
+        _tableName = dbName;
         _columnName = columnName;
         _prefixes = GetPrefixes();
         _reversedPrefixes = _prefixes.Reverse().ToArray();
 
 #if DEBUG
-        EnsureConfigIsAvailable(nameof(RocksDbOptions));
-        EnsureConfigIsAvailable(nameof(AdditionalRocksDbOptions));
+        if (validate)
+        {
+            EnsureConfigIsAvailable(nameof(RocksDbOptions));
+            EnsureConfigIsAvailable(nameof(AdditionalRocksDbOptions));
+        }
 #endif
     }
 
     private void EnsureConfigIsAvailable(string propertyName)
     {
         Type type = typeof(IDbConfig);
-        foreach (var prefix in _prefixes)
+        foreach (string prefix in _prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
-            if (type.GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance) is null)
+            if (GetProperty(type, prefixed) is null)
             {
                 throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
             }
@@ -62,12 +64,10 @@ public class PerTableDbConfig
     public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
     public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
     public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));
-    public bool FlushOnExit => ReadConfig<bool?>(nameof(FlushOnExit)) ?? true;
+    public FlushOnExitMode FlushOnExit => ReadConfig<FlushOnExitMode?>(nameof(FlushOnExit)) ?? FlushOnExitMode.WalOnly;
+    public nint? BlockCache => null;
 
-    private T? ReadConfig<T>(string propertyName)
-    {
-        return ReadConfig<T>(_dbConfig, propertyName, _reversedPrefixes);
-    }
+    private T? ReadConfig<T>(string propertyName) => ReadConfig<T>(_dbConfig, propertyName, _reversedPrefixes);
 
     private string[] GetPrefixes()
     {
@@ -92,19 +92,19 @@ public class PerTableDbConfig
         Type type = dbConfig.GetType();
         PropertyInfo? propertyInfo;
 
-        string val = (string)type.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)!.GetValue(dbConfig)!;
+        string val = (string)GetProperty(type, propertyName)!.GetValue(dbConfig)!;
 
-        foreach (var prefix in prefixes)
+        foreach (string prefix in prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
 
-            propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            propertyInfo = GetProperty(type, prefixed);
             if (propertyInfo is not null)
             {
                 string? valObj = (string?)propertyInfo.GetValue(dbConfig);
                 if (!string.IsNullOrEmpty(valObj))
                 {
-                    if (!valObj.EndsWith(";")) throw new InvalidConfigurationException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.", -1);
+                    if (!valObj.EndsWith(';')) throw new InvalidConfigurationException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.", -1);
                     val += valObj;
                 }
             }
@@ -120,11 +120,11 @@ public class PerTableDbConfig
             Type type = dbConfig.GetType();
             PropertyInfo? propertyInfo;
 
-            foreach (var prefix in prefixes)
+            foreach (string prefix in prefixes)
             {
                 string prefixed = string.Concat(prefix, propertyName);
 
-                propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+                propertyInfo = GetProperty(type, prefixed);
                 if (propertyInfo is not null)
                 {
                     if (propertyInfo.PropertyType.CanBeAssignedNull())
@@ -149,7 +149,7 @@ public class PerTableDbConfig
             }
 
             // Use generic one even if its available
-            propertyInfo = type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            propertyInfo = GetProperty(type, propertyName);
             return (T?)propertyInfo?.GetValue(dbConfig);
         }
         catch (Exception e)
@@ -158,4 +158,6 @@ public class PerTableDbConfig
         }
     }
 
+    private static PropertyInfo? GetProperty([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] Type type, string name) =>
+        type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
 }

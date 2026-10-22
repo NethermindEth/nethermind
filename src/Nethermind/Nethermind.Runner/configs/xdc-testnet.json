@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/xdc-testnet.json",
+    "BaseDbPath": "nethermind_db/xdc-testnet",
+    "LogFileName": "xdc-testnet.log",
+    "StateDbKeyScheme": "Hash"
+  },
+  "Network": {
+    "FilterDiscoveryNodesByRecentIp": false,
+    "EnableEnrDiscovery": false,
+    "DisableDiscV4DnsFeeder": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
+  "Pruning": {
+    "PruningBoundary": 4096
+  },
+  "FlatDb": {
+    "Enabled": false
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 420000000,
+    "MinGasPrice": 0
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": false,
+    "PivotNumber": 84210000,
+    "PivotHash": "0x90be6b34ee85d7fb4aaa15506de85078b0293a29015f255079e8455e8e833746",
+    "PivotTotalDifficulty": "340547235",
+    "AncientReceiptsBarrier": 56828700,
+    "AncientBodiesBarrier": 56828700
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

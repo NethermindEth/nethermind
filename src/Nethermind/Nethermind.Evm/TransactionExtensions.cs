@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -10,16 +11,18 @@ namespace Nethermind.Evm
 {
     public static class TransactionExtensions
     {
-        public static Address? GetRecipient(this Transaction tx, in UInt256 nonce) =>
+        [SkipLocalsInit]
+        public static Address GetRecipient(this Transaction tx, in UInt256 nonce) =>
             tx.To ?? (tx.IsSystem()
-                ? tx.SenderAddress
+                ? tx.SenderAddress!
                 : ContractAddress.From(tx.SenderAddress, nonce > 0 ? nonce - 1 : nonce));
 
         public static TxGasInfo GetGasInfo(this Transaction tx, IReleaseSpec spec, BlockHeader header)
         {
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
-            if (tx.SupportsBlobs)
+            // EIP-8141: gate on blob presence, not the type-3-only SupportsBlobs, so frame-blob txs report blob gas.
+            if (tx.CarriesBlobs)
             {
                 if (header.ExcessBlobGas is null)
                 {
@@ -39,7 +42,7 @@ namespace Nethermind.Evm
         }
     }
 
-    public struct TxGasInfo
+    public readonly struct TxGasInfo
     {
         public TxGasInfo() { }
 
@@ -50,13 +53,10 @@ namespace Nethermind.Evm
             BlobGasUsed = blobGasUsed;
         }
 
-        public TxGasInfo(UInt256? effectiveGasPrice)
-        {
-            EffectiveGasPrice = effectiveGasPrice;
-        }
+        public TxGasInfo(UInt256? effectiveGasPrice) => EffectiveGasPrice = effectiveGasPrice;
 
-        public UInt256? EffectiveGasPrice { get; private set; }
-        public UInt256? BlobGasPrice { get; private set; }
-        public ulong? BlobGasUsed { get; private set; }
+        public UInt256? EffectiveGasPrice { get; }
+        public UInt256? BlobGasPrice { get; }
+        public ulong? BlobGasUsed { get; }
     }
 }

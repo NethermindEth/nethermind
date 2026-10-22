@@ -1,61 +1,150 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-
 using System;
-using System.Globalization;
-using System.Net;
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
+using Nethermind.Core.Crypto;
 using Nethermind.Network;
+using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.JsonRpc.Modules.Admin.Utils;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
     public class PeerInfo
     {
-        public string Name { get; set; }
-        public string Id { get; }
-        public string Host { get; set; }
-        public int Port { get; set; }
-        public string Address { get; set; }
-        public bool IsBootnode { get; set; }
-        public bool IsTrusted { get; set; }
-        public bool IsStatic { get; set; }
-        public string Enode { get; set; }
+        private static readonly IReadOnlyList<Capability> EmptyCapabilities = [];
 
-        public string ClientType { get; set; }
-        public string EthDetails { get; set; }
-        public string LastSignal { get; set; }
+        public string Enode { get; set; } = string.Empty;
 
-        public bool Inbound { get; set; }
+        public PublicKey Id { get; set; } = null!;
+
+        public string? Name { get; set; }
+
+        public IReadOnlyList<Capability> Caps { get; set; } = EmptyCapabilities;
+
+        public string? Enr { get; set; }
+
+        public NetworkInfo Network { get; set; } = new();
+
+        public Dictionary<string, object> Protocols { get; set; } = [];
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public NodeClientType? ClientType { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? EthDetails { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateTime? LastSignal { get; set; }
 
         public PeerInfo()
         {
         }
 
-        public PeerInfo(Peer peer, bool includeDetails)
+        public PeerInfo(Peer peer, bool includeDetails = false)
         {
-            if (peer.Node is null)
-            {
-                throw new ArgumentException(
-                    $"{nameof(PeerInfo)} cannot be created for a {nameof(Peer)} with an unknown {peer.Node}");
-            }
+            ValidatePeer(peer);
 
-            Name = peer.Node.ClientId;
-            Id = peer.Node.Id.Hash.ToString(false);
-            Host = peer.Node.Host is null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
-            Port = peer.Node.Port;
-            Address = peer.Node.Address.ToString();
-            IsBootnode = peer.Node.IsBootnode;
-            IsStatic = peer.Node.IsStatic;
-            Enode = peer.Node.ToString(Node.Format.ENode);
-            Inbound = peer.InSession is not null;
+            IReadOnlyList<Capability> capabilities = ExtractCapabilities(peer);
+
+            SetBasicInfo(peer, capabilities);
+            SetNetworkInfo(peer);
+            SetProtocols(peer, capabilities);
 
             if (includeDetails)
             {
-                ClientType = peer.Node.ClientType.ToString();
-                EthDetails = peer.Node.EthDetails;
-                LastSignal = (peer.InSession ?? peer.OutSession!).LastPingUtc.ToString(CultureInfo.InvariantCulture);
-
+                SetDetailedFields(peer);
             }
         }
+
+        private void SetBasicInfo(Peer peer, IReadOnlyList<Capability> capabilities)
+        {
+            Id = peer.Node.Id;
+            Name = peer.Node.ClientId;
+            Enode = peer.Node.ToString(Node.Format.ENode);
+            Caps = capabilities;
+            Enr = peer.Node.Enr?.ToString();
+        }
+
+        private void SetNetworkInfo(Peer peer)
+        {
+            bool isInbound = peer.InSession is not null;
+            Network = NetworkInfoBuilder.Build(peer, isInbound);
+        }
+
+        private void SetProtocols(Peer peer, IReadOnlyList<Capability> capabilities)
+        {
+            Dictionary<string, object> protocols = [];
+
+            ISession? session = peer.InSession ?? peer.OutSession;
+            bool hasEthHandler = TryGetHandlerVersion(session, Protocol.Eth, out int ethVersion);
+            bool hasSnapHandler = TryGetHandlerVersion(session, Protocol.Snap, out int snapVersion);
+
+            foreach (Capability capability in capabilities)
+            {
+                if (capability.ProtocolCode == Protocol.Eth && !hasEthHandler)
+                {
+                    ethVersion = Math.Max(ethVersion, capability.Version);
+                }
+                else if (capability.ProtocolCode == Protocol.Snap && !hasSnapHandler)
+                {
+                    snapVersion = Math.Max(snapVersion, capability.Version);
+                }
+            }
+
+            // ETH protocol (always present)
+            protocols[Protocol.Eth] = new ProtocolVersion(ethVersion);
+
+            // SNAP protocol (if supported)
+            if (snapVersion > 0)
+            {
+                protocols[Protocol.Snap] = new ProtocolVersion(snapVersion);
+            }
+
+            Protocols = protocols;
+        }
+
+        /// <summary>The version a peer runs for one protocol.</summary>
+        public sealed class ProtocolVersion(int version)
+        {
+            public int Version { get; } = version;
+        }
+
+        private static bool TryGetHandlerVersion(ISession? session, string protocol, out int version)
+        {
+            if (session?.TryGetProtocolHandler(protocol, out IProtocolHandler? handler) == true)
+            {
+                version = handler.ProtocolVersion;
+                return true;
+            }
+
+            version = 0;
+            return false;
+        }
+
+        private void SetDetailedFields(Peer peer)
+        {
+            ClientType = peer.Node.ClientType;
+            EthDetails = peer.Node.EthDetails;
+            ISession? session = peer.InSession ?? peer.OutSession;
+            LastSignal = session?.LastPingUtc;
+        }
+
+        private void ValidatePeer(Peer peer)
+        {
+            ArgumentNullException.ThrowIfNull(peer);
+
+            if (peer.Node is null)
+            {
+                throw new ArgumentException("Peer must have a valid node", nameof(peer));
+            }
+        }
+
+        private static IReadOnlyList<Capability> ExtractCapabilities(Peer peer) =>
+            (peer.InSession ?? peer.OutSession)?.TryGetProtocolHandler(Protocol.P2P, out IProtocolHandler? handler) == true && handler is IP2PProtocolHandler p2pHandler
+                ? p2pHandler.GetCapabilities()
+                : EmptyCapabilities;
     }
 }

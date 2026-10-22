@@ -21,14 +21,15 @@ public class BlockHeader
         Hash256 unclesHash,
         Address beneficiary,
         in UInt256 difficulty,
-        long number,
-        long gasLimit,
+        ulong number,
+        ulong gasLimit,
         ulong timestamp,
         byte[] extraData,
         ulong? blobGasUsed = null,
         ulong? excessBlobGas = null,
         Hash256? parentBeaconBlockRoot = null,
-        Hash256? requestsHash = null)
+        Hash256? requestsHash = null,
+        ulong? slotNumber = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -42,10 +43,11 @@ public class BlockHeader
         RequestsHash = requestsHash;
         BlobGasUsed = blobGasUsed;
         ExcessBlobGas = excessBlobGas;
+        SlotNumber = slotNumber;
     }
 
-    public WeakReference<BlockHeader>? MaybeParent { get; set; }
-    public bool IsGenesis => Number == 0L;
+    public virtual ulong GenesisBlockNumber => 0;
+    public bool IsGenesis => Number == GenesisBlockNumber;
     public Hash256? ParentHash { get; set; }
     public Hash256? UnclesHash { get; set; }
     public Address? Author { get; set; }
@@ -55,10 +57,29 @@ public class BlockHeader
     public Hash256? TxRoot { get; set; }
     public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
-    public UInt256 Difficulty { get; set; }
-    public long Number { get; set; }
-    public long GasUsed { get; set; }
-    public long GasLimit { get; set; }
+    public UInt256 Difficulty;
+    public ulong Number { get; set; }
+    private ulong _gasUsed;
+
+    /// <summary>Total block gas, which under EIP-8037 is the maximum of <see cref="GasUsedPerDimension"/>.</summary>
+    /// <remarks>Assigning drops the dimensions it summarises, so a header cloned and reset for a call cannot
+    /// carry dimensions that contradict it; record the dimensions after this, never before.</remarks>
+    public ulong GasUsed
+    {
+        get => _gasUsed;
+        set
+        {
+            _gasUsed = value;
+            GasUsedPerDimension = null;
+        }
+    }
+
+    public ulong GasLimit { get; set; }
+
+    /// <summary>EIP-8037 per-dimension block gas totals, which <see cref="GasUsed"/> reduces to their maximum.</summary>
+    /// <remarks>Recorded as the block executes, so <c>null</c> for a header decoded or loaded rather than executed —
+    /// the maximum is not invertible, so neither dimension is recoverable afterwards.</remarks>
+    public (ulong Execution, ulong State)? GasUsedPerDimension { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
     public byte[] ExtraData { get; set; } = [];
@@ -67,21 +88,21 @@ public class BlockHeader
     public ulong Nonce { get; set; }
     public Hash256? Hash { get; set; }
     public UInt256? TotalDifficulty { get; set; }
-    public byte[]? AuRaSignature { get; set; }
-    public long? AuRaStep { get; set; }
-    public UInt256 BaseFeePerGas { get; set; }
+    public UInt256 BaseFeePerGas;
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public Hash256? RequestsHash { get; set; }
+    public Hash256? BlockAccessListHash { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
+    public ulong? SlotNumber { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
-                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
+                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
+                           || (BlockAccessListHash is not null && BlockAccessListHash != Keccak.OfAnEmptySequenceRlp);
 
-    public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
+    public bool HasTransactions => TxRoot is not null && TxRoot != Keccak.EmptyTreeHash;
 
-    public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }
 
     public string ToString(string indent)
@@ -122,6 +143,14 @@ public class BlockHeader
         {
             builder.AppendLine($"{indent}RequestsHash: {RequestsHash}");
         }
+        if (BlockAccessListHash is not null)
+        {
+            builder.AppendLine($"{indent}BlockAccessListHash: {BlockAccessListHash}");
+        }
+        if (SlotNumber is not null)
+        {
+            builder.AppendLine($"{indent}SlotNumber: {SlotNumber}");
+        }
 
         return builder.ToString();
     }
@@ -135,6 +164,33 @@ public class BlockHeader
         _ => Hash is null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})",
     };
 
+    /// <summary>
+    /// Creates the child header used for simulated execution.
+    /// </summary>
+    /// <param name="timestamp">Timestamp assigned to the simulated child header.</param>
+    /// <returns>A simulated child header with explicit default execution fields.</returns>
+    public virtual BlockHeader CreateSimulatedChild(ulong timestamp)
+    {
+        Hash256? requestsHash = RequestsHash;
+        // EIP-7843: the EL cannot know the CL-assigned slot of a block that does not exist yet, so the
+        // simulated child takes the earliest one it could occupy. Stays unset for a pre-fork parent.
+        ulong? slotNumber = SlotNumber + 1;
+        return new BlockHeader(
+            Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Beneficiary!,
+            UInt256.Zero,
+            Number + 1,
+            GasLimit,
+            timestamp,
+            [],
+            requestsHash: requestsHash,
+            slotNumber: slotNumber)
+        {
+            MixHash = Hash256.Zero,
+        };
+    }
+
     [Todo(Improve.Refactor, "Use IFormattable here")]
     public enum Format
     {
@@ -146,7 +202,41 @@ public class BlockHeader
     public BlockHeader Clone()
     {
         BlockHeader header = (BlockHeader)MemberwiseClone();
-        header.Bloom = Bloom?.Clone() ?? new Bloom();
+        // Header blooms are never mutated in place, so the clone shares the instance.
+        header.Bloom ??= new Bloom();
         return header;
+    }
+
+    /// <summary>
+    /// Copy carrying the consensus inputs needed to re-execute the block; execution outputs
+    /// (state root, gas used, logs bloom) are reset so processing recomputes them. Subclasses
+    /// override to also preserve subclass-specific seal fields (e.g. AuRa step + signature).
+    /// </summary>
+    public virtual BlockHeader CloneForProcessing()
+    {
+        BlockHeader clone = new(ParentHash!, UnclesHash!, Beneficiary!, Difficulty, Number, GasLimit, Timestamp, ExtraData);
+        CopyProcessingFields(clone);
+        return clone;
+    }
+
+    protected void CopyProcessingFields(BlockHeader dst)
+    {
+        dst.Bloom = Core.Bloom.Empty;
+        dst.Author = Author;
+        dst.Hash = Hash;
+        dst.MixHash = MixHash;
+        dst.Nonce = Nonce;
+        dst.TxRoot = TxRoot;
+        dst.TotalDifficulty = TotalDifficulty;
+        dst.ReceiptsRoot = ReceiptsRoot;
+        dst.BaseFeePerGas = BaseFeePerGas;
+        dst.WithdrawalsRoot = WithdrawalsRoot;
+        dst.RequestsHash = RequestsHash;
+        dst.IsPostMerge = IsPostMerge;
+        dst.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        dst.SlotNumber = SlotNumber;
+        dst.BlockAccessListHash = BlockAccessListHash;
+        dst.BlobGasUsed = BlobGasUsed;
+        dst.ExcessBlobGas = ExcessBlobGas;
     }
 }

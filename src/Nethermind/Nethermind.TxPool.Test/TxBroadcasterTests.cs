@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -22,7 +21,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
@@ -40,6 +38,8 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class TxBroadcasterTests
 {
     private ILogManager _logManager;
@@ -49,7 +49,7 @@ public class TxBroadcasterTests
     private TxBroadcaster _broadcaster;
     private EthereumEcdsa _ethereumEcdsa;
     private TxPoolConfig _txPoolConfig;
-    private IChainHeadInfoProvider _headInfo;
+    private TestChainHeadInfoProvider _headInfo;
 
     [SetUp]
     public void Setup()
@@ -60,40 +60,40 @@ public class TxBroadcasterTests
         _blockTree = Substitute.For<IBlockTree>();
         _comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
         _txPoolConfig = new TxPoolConfig();
-        _headInfo = Substitute.For<IChainHeadInfoProvider>();
+        _headInfo = new TestChainHeadInfoProvider();
     }
 
     [TearDown]
     public void TearDown() => _broadcaster?.Dispose();
 
     [Test]
-    public async Task should_not_broadcast_persisted_tx_to_peer_too_quickly()
+    public void should_not_broadcast_persisted_tx_to_peer_too_quickly()
     {
+        ManualTimestamper timestamper = new(DateTime.UtcNow);
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 100 };
-        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager, timestamper: timestamper);
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithGasPrice(i.GWei())
+                .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
-        ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
-        peer.Id.Returns(TestItem.PublicKeyA);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
 
         _broadcaster.AddPeer(peer);
 
-        peer.Received(0).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+        Assert.That(peer.BatchCount(sendFullTx: true), Is.EqualTo(0));
 
         _broadcaster.BroadcastPersistentTxs();
         _broadcaster.BroadcastPersistentTxs();
@@ -101,11 +101,12 @@ public class TxBroadcasterTests
         _broadcaster.BroadcastPersistentTxs();
         _broadcaster.BroadcastPersistentTxs();
 
-        peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+        Assert.That(peer.BatchCount(sendFullTx: true), Is.EqualTo(1));
 
-        await Task.Delay(TimeSpan.FromMilliseconds(1001));
+        // Advance time by 2 seconds (throttle is 1 second)
+        timestamper.Add(TimeSpan.FromSeconds(2));
 
-        peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+        Assert.That(peer.BatchCount(sendFullTx: true), Is.EqualTo(1));
 
         _broadcaster.BroadcastPersistentTxs();
         _broadcaster.BroadcastPersistentTxs();
@@ -113,7 +114,7 @@ public class TxBroadcasterTests
         _broadcaster.BroadcastPersistentTxs();
         _broadcaster.BroadcastPersistentTxs();
 
-        peer.Received(2).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+        Assert.That(peer.BatchCount(sendFullTx: true), Is.EqualTo(2));
     }
 
     [Test]
@@ -121,36 +122,36 @@ public class TxBroadcasterTests
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithGasPrice(i.GWei())
+                .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
-        pickedTxs.Count.Should().Be(expectedCount);
+        Assert.That(pickedTxs.Count, Is.EqualTo(expectedCount));
 
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
 
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        expectedTxs.Should().BeEquivalentTo(pickedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [Test]
@@ -164,11 +165,11 @@ public class TxBroadcasterTests
             .SignedAndResolved().TestObject;
 
         _broadcaster.Broadcast(tx, true);
-        _broadcaster.GetSnapshot().Length.Should().Be(1);
-        _broadcaster.GetSnapshot().FirstOrDefault().Should().BeEquivalentTo(isBlob ? new LightTransaction(tx) : tx);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
+        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(isBlob ? new LightTransaction(tx) : tx).UsingTransactionComparer());
 
-        _broadcaster.TryGetPersistentTx(tx.Hash, out Transaction returnedTx).Should().Be(!isBlob);
-        returnedTx.Should().BeEquivalentTo(isBlob ? null : tx);
+        Assert.That(_broadcaster.TryGetPersistentTx(tx.Hash, out Transaction returnedTx), Is.EqualTo(!isBlob));
+        Assert.That(returnedTx, Is.EqualTo(isBlob ? null : tx).UsingTransactionComparer());
     }
 
     [Test]
@@ -183,47 +184,114 @@ public class TxBroadcasterTests
         Transaction lightTx = new LightTransaction(tx);
 
         int size = tx.GetLength();
-        size.Should().Be(131320);
-        lightTx.GetLength().Should().Be(size);
+        Assert.That(size, Is.EqualTo(131320));
+        Assert.That(lightTx.GetLength(), Is.EqualTo(size));
 
         _broadcaster.Broadcast(tx, true);
-        _broadcaster.GetSnapshot().Length.Should().Be(1);
-        _broadcaster.GetSnapshot().FirstOrDefault().Should().BeEquivalentTo(lightTx);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
+        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(lightTx).UsingTransactionComparer());
 
-        ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
-        peer.Id.Returns(TestItem.PublicKeyA);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
 
         _broadcaster.AddPeer(peer);
         _broadcaster.BroadcastPersistentTxs();
 
-        peer.Received(1).SendNewTransactions(Arg.Is<IEnumerable<Transaction>>(t => t.FirstOrDefault().GetLength(true) == size), false);
+        Assert.That(peer.Batches.Count(batch => !batch.SendFullTx && batch.Txs[0].GetLength(true) == size), Is.EqualTo(1));
     }
 
     [Test]
-    public void should_skip_large_txs_when_picking_best_persistent_txs_to_broadcast([Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold)
+    public void should_reuse_precomputed_blob_announcement_across_peers([Values] bool isPrecomputed)
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee = 0.GWei;
+        RecordingTxPoolPeer firstPeer = new(TestItem.PublicKeyA);
+        RecordingTxPoolPeer secondPeer = new(TestItem.PublicKeyB);
+        _broadcaster.AddPeer(firstPeer);
+        _broadcaster.AddPeer(secondPeer);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .SignedAndResolved()
+            .TestObject;
+        Transaction input = isPrecomputed ? new LightTransaction(tx) : tx;
+
+        _broadcaster.Broadcast(input, isPersistent: true);
+
+        Transaction firstAnnouncement = firstPeer.Sent.Single();
+        Transaction secondAnnouncement = secondPeer.Sent.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstAnnouncement, Is.TypeOf<LightTransaction>());
+            Assert.That(secondAnnouncement, Is.SameAs(firstAnnouncement));
+            Assert.That(firstAnnouncement, isPrecomputed ? Is.SameAs(input) : Is.Not.SameAs(input));
+        }
+    }
+
+    // The announcement predicate must be CarriesBlobs, not SupportsBlobs: an EIP-8141 frame transaction carries
+    // blobs as a type-6, so the type-only SupportsBlobs check misses it and the full sidecar-bearing tx would be
+    // handed to every peer instead of the light record. A master merge has silently reverted this once already.
+    [Test]
+    public void should_announce_a_blob_carrying_frame_tx_as_a_light_transaction()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+
+        Transaction tx = Build.A.Transaction
+            .WithNonce(0UL)
+            .WithShardBlobTxTypeAndFields()
+            .SignedAndResolved()
+            .TestObject;
+        tx.Type = TxType.FrameTx;
+        tx.Frames = [];
+        tx.FrameSignatures = [];
+        tx.Hash = tx.CalculateHash();
+
+        // Guards the discrimination this test exists for: the two predicates must disagree on this fixture,
+        // or it cannot tell them apart and the regression it covers would pass unnoticed.
+        Assert.That(tx.CarriesBlobs, Is.True);
+        Assert.That(tx.SupportsBlobs, Is.False);
+
+        _broadcaster.Broadcast(tx, isPersistent: true);
+
+        Assert.That(peer.Sent.Single(), Is.TypeOf<LightTransaction>());
+    }
+
+    [Test]
+    public void should_skip_large_or_blob_txs_when_picking_best_persistent_txs_to_broadcast(
+        [Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold,
+        [Values(true, false)] bool useBlobTxs)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei;
 
-        // add 256 transactions, 10% of them is large
+        // add 256 transactions, 10% of them are not broadcast (large or blob)
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
-            bool isLarge = i % 10 == 0;
-            transactions[i] = Build.A.Transaction
-                .WithType(TxType.EIP1559)
-                .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithData(isLarge ? new byte[4 * 1024] : []) //some part of txs (10%) is large (>4KB)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
-                .TestObject;
+            bool isSpecial = i % 10 == 0;
+            TransactionBuilder<Transaction> builder = Build.A.Transaction
+                .WithGasPrice((addedTxsCount - i - 1).GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]);
 
+            if (useBlobTxs)
+            {
+                builder.WithType(isSpecial ? TxType.Blob : TxType.Legacy)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx();
+            }
+            else
+            {
+                builder.WithType(TxType.EIP1559)
+                    .WithData(isSpecial ? new byte[4 * 1024] : []);
+            }
+
+            transactions[i] = builder.TestObject;
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         // count numbers of expected hashes and full transactions
         int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
@@ -241,54 +309,8 @@ public class TxBroadcasterTests
         CheckCorrectness(pickedHashes, expectedCountOfHashes);
 
         // check if full transactions and hashes returned by broadcaster are as expected
-        expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray());
-    }
-
-    [Test]
-    public void should_skip_blob_txs_when_picking_best_persistent_txs_to_broadcast([Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold)
-    {
-        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
-        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
-
-        // add 256 transactions, 10% of them is blob type
-        int addedTxsCount = TestItem.PrivateKeys.Length;
-        Transaction[] transactions = new Transaction[addedTxsCount];
-
-        for (int i = 0; i < addedTxsCount; i++)
-        {
-            bool isBlob = i % 10 == 0;
-            transactions[i] = Build.A.Transaction
-                .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithType(isBlob ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
-                .WithShardBlobTxTypeAndFieldsIfBlobTx()
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
-                .TestObject;
-
-            _broadcaster.Broadcast(transactions[i], true);
-        }
-
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
-
-        // count numbers of expected hashes and full transactions
-        int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
-        int expectedCountOfBlobHashes = expectedCountTotal / 10 + 1;
-        int expectedCountOfNonBlobTxs = expectedCountTotal - expectedCountOfBlobHashes;
-
-        // prepare list of expected full transactions and hashes
-        (IList<Transaction> expectedFullTxs, IList<Hash256> expectedHashes) = GetTxsAndHashesExpectedToBroadcast(transactions, expectedCountTotal);
-
-        // get hashes and full transactions to broadcast
-        (IList<Transaction> pickedFullTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
-
-        // check if numbers of full transactions and hashes are correct
-        CheckCorrectness(pickedFullTxs, expectedCountOfNonBlobTxs);
-        CheckCorrectness(pickedHashes, expectedCountOfBlobHashes);
-
-        // check if full transactions and hashes returned by broadcaster are as expected
-        expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray());
+        Assert.That(pickedFullTxs, Is.EquivalentTo(expectedFullTxs).UsingTransactionComparer());
+        Assert.That(expectedHashes, Is.EquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray()));
     }
 
     [Test]
@@ -298,41 +320,41 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         const int currentBaseFeeInGwei = 250;
-        _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
+        _headInfo.CurrentBaseFee = currentBaseFeeInGwei.GWei;
         Block headBlock = Build.A.Block
             .WithNumber(MainnetSpecProvider.LondonBlockNumber)
-            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
+            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei)
             .TestObject;
         _blockTree.Head.Returns(headBlock);
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithGasPrice(i.GWei())
+                .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
-        pickedTxs.Count.Should().Be(expectedCount);
+        Assert.That(pickedTxs.Count, Is.EqualTo(expectedCount));
 
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
 
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        expectedTxs.Should().BeEquivalentTo(pickedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [TestCase(0, false)]
@@ -342,7 +364,7 @@ public class TxBroadcasterTests
     [TestCase(150, true)]
     public void should_not_broadcast_tx_with_MaxFeePerGas_lower_than_70_percent_of_CurrentBaseFee(int maxFeePerGas, bool shouldBroadcast)
     {
-        _headInfo.CurrentBaseFee.Returns((UInt256)100);
+        _headInfo.CurrentBaseFee = (UInt256)100;
 
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
@@ -362,7 +384,7 @@ public class TxBroadcasterTests
         peer.Received(shouldBroadcast ? 1 : 0).SendNewTransaction(Arg.Any<Transaction>());
 
         // tx should only be added to persistent collection, if it is above the fee restriction
-        _broadcaster.GetSnapshot().Length.Should().Be(shouldBroadcast ? 1 : 0);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(shouldBroadcast ? 1 : 0));
     }
 
     [Test]
@@ -372,42 +394,42 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         const int currentBaseFeeInGwei = 250;
-        _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
+        _headInfo.CurrentBaseFee = currentBaseFeeInGwei.GWei;
         Block headBlock = Build.A.Block
             .WithNumber(MainnetSpecProvider.LondonBlockNumber)
-            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
+            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei)
             .TestObject;
         _blockTree.Head.Returns(headBlock);
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(i.GWei())
+                .WithMaxFeePerGas(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
-        pickedTxs.Count.Should().Be(expectedCount);
+        Assert.That(pickedTxs.Count, Is.EqualTo(expectedCount));
 
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
 
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        expectedTxs.Should().BeEquivalentTo(pickedTxs, static o => o.Excluding(static transaction => transaction.MaxFeePerGas));
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer(nameof(Transaction.MaxFeePerGas)));
     }
 
     [Test]
@@ -417,30 +439,33 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         const int currentFeePerBlobGas = 250;
-        _headInfo.CurrentFeePerBlobGas.Returns(currentFeePerBlobGas.GWei());
+        _headInfo.CurrentFeePerBlobGas = currentFeePerBlobGas.GWei;
 
         // add 256 transactions with MaxFeePerBlobGas 0-255
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerBlobGas(i.GWei())
+                .WithMaxFeePerBlobGas(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
+        });
 
+        for (int i = 0; i < addedTxsCount; i++)
+        {
             _broadcaster.Broadcast(transactions[i], true);
         }
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         // count number of expected hashes to broadcast
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentFeePerBlobGas);
 
         // prepare list of expected hashes to broadcast
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
@@ -450,10 +475,10 @@ public class TxBroadcasterTests
         IList<Transaction> pickedHashes = _broadcaster.GetPersistentTxsToSend().HashesToSend;
 
         // check if number of hashes to broadcast is correct
-        pickedHashes.Count.Should().Be(expectedCount);
+        Assert.That(pickedHashes.Count, Is.EqualTo(expectedCount));
 
         // check if number of hashes to broadcast (with MaxFeePerBlobGas >= current) is correct
-        expectedTxs.Count(static t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas).Should().Be(expectedCount);
+        Assert.That(expectedTxs.Count(static t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas), Is.EqualTo(expectedCount));
     }
 
     [Test]
@@ -461,29 +486,97 @@ public class TxBroadcasterTests
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 5 };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         const int addedTxsCount = 5;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithNonce((UInt256)i)
-                .WithGasPrice(i.GWei())
+                .WithNonce((ulong)i)
+                .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        });
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
-        pickedTxs.Count.Should().Be(1);
+        Assert.That(pickedTxs.Count, Is.EqualTo(1));
 
-        List<Transaction> expectedTxs = new() { transactions[0] };
-        expectedTxs.Should().BeEquivalentTo(pickedTxs);
+        List<Transaction> expectedTxs = [transactions[0]];
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
+
+    /// <remarks>EIP-8250 sequences advance per domain, so a persistent transaction whose sequence is numerically
+    /// at or below the included one is superseded only when the two share a domain.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_supersedes_only_the_included_transactions_nonce_domain([Values] bool includeKeyed)
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction keyOne = PersistentTx(TestItem.KeccakA, 0, [(UInt256)1]);
+        Transaction keyTwo = PersistentTx(TestItem.KeccakB, 0, [(UInt256)2]);
+        Transaction accountDomain = PersistentTx(TestItem.KeccakC, 0, null);
+        foreach (Transaction tx in new[] { keyOne, keyTwo, accountDomain })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(includeKeyed ? keyOne : accountDomain);
+
+        Assert.That(_broadcaster.GetSnapshot(),
+            Is.EquivalentTo(includeKeyed ? new[] { keyTwo, accountDomain } : new[] { keyOne, keyTwo }));
+    }
+
+    /// <remarks>The control for the case above: inside one domain every sequence at or below the included one
+    /// is still superseded.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_stops_the_account_domain_up_to_the_included_nonce()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction first = PersistentTx(TestItem.KeccakA, 0, null);
+        Transaction included = PersistentTx(TestItem.KeccakB, 1, null);
+        Transaction later = PersistentTx(TestItem.KeccakC, 2, null);
+        foreach (Transaction tx in new[] { first, included, later })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(included);
+
+        Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { later }));
+    }
+
+    /// <remarks>Inclusion consumes every key the transaction names, so a persistent entry that shares one is
+    /// permanently unmineable however the two key sets differ; a disjoint one is untouched.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_supersedes_a_persistent_transaction_sharing_a_nonce_key()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction overlapping = PersistentTx(TestItem.KeccakA, 5, [(UInt256)1]);
+        Transaction disjoint = PersistentTx(TestItem.KeccakB, 5, [(UInt256)3]);
+        foreach (Transaction tx in new[] { overlapping, disjoint })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(PersistentTx(TestItem.KeccakC, 5, [(UInt256)1, (UInt256)2]));
+
+        Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { disjoint }));
+    }
+
+    /// <summary>A locally submitted transaction of one sender, distinguished from its siblings by hash and by
+    /// which nonce domain <paramref name="nonceKeys"/> selects.</summary>
+    private static Transaction PersistentTx(Hash256 hash, ulong nonce, UInt256[] nonceKeys) =>
+        Build.A.Transaction
+            .WithType(nonceKeys is null ? TxType.EIP1559 : TxType.FrameTx)
+            .WithNonce(nonce)
+            .WithNonceKeys(nonceKeys)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithHash(hash)
+            .TestObject;
 
     [Test]
     public void should_broadcast_local_tx_immediately_after_receiving_it()
@@ -506,7 +599,7 @@ public class TxBroadcasterTests
     public void should_broadcast_full_local_tx_immediately_after_receiving_it()
     {
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
@@ -516,10 +609,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
-            Substitute.For<ILogManager>());
+            Substitute.For<IForkInfo>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<IChainHeadSpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -544,9 +638,8 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>());
 
         ISession session68 = Substitute.For<ISession>();
@@ -557,10 +650,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
-            Substitute.For<ILogManager>());
+            Substitute.For<IForkInfo>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<IChainHeadSpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
@@ -598,10 +692,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
-            Substitute.For<ILogManager>());
+            Substitute.For<IForkInfo>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<IChainHeadSpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithData(new byte[txSize])
@@ -616,7 +711,7 @@ public class TxBroadcasterTests
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
         }
-        localTx.GetLength().Should().Be(txSize);
+        Assert.That(localTx.GetLength(), Is.EqualTo(txSize));
 
         _broadcaster.AddPeer(eth68Handler);
         _broadcaster.Broadcast(localTx, true);
@@ -642,7 +737,7 @@ public class TxBroadcasterTests
     {
         ITxGossipPolicy txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager, txGossipPolicy);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
@@ -652,10 +747,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
-            Substitute.For<ILogManager>());
+            Substitute.For<IForkInfo>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<IChainHeadSpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -676,20 +772,20 @@ public class TxBroadcasterTests
         _txPoolConfig = new TxPoolConfig() { Size = 100, PeerNotificationThreshold = shouldBroadcastAll ? 100 : 5 };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
-        for (int i = 0; i < _txPoolConfig.Size; i++)
+        Parallel.For(0, _txPoolConfig.Size, i =>
         {
             Transaction tx = Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             _broadcaster.Broadcast(tx, true);
-        }
+        });
 
         Transaction[] pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend.ToArray();
-        pickedTxs.Length.Should().Be(shouldBroadcastAll ? 100 : 1);
+        Assert.That(pickedTxs.Length, Is.EqualTo(shouldBroadcastAll ? 100 : 1));
 
         for (int i = 0; i < pickedTxs.Length; i++)
         {
-            pickedTxs[i].Nonce.Should().Be((UInt256)i);
+            Assert.That(pickedTxs[i].Nonce, Is.EqualTo((ulong)i));
         }
     }
 
@@ -703,16 +799,16 @@ public class TxBroadcasterTests
     [TestCase(10000, 7000)]
     public void should_calculate_baseFeeThreshold_correctly(int baseFee, int expectedThreshold)
     {
-        _headInfo.CurrentBaseFee.Returns((UInt256)baseFee);
+        _headInfo.CurrentBaseFee = (UInt256)baseFee;
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _broadcaster.CalculateBaseFeeThreshold().Should().Be((UInt256)expectedThreshold);
+        Assert.That(_broadcaster.CalculateBaseFeeThreshold(), Is.EqualTo((UInt256)expectedThreshold));
     }
 
     [Test]
     public void calculation_of_baseFeeThreshold_should_handle_overflow_correctly([Values(0, 70, 100, 101, 500)] int threshold, [Values(2, 3, 4, 5, 6, 7, 8, 9, 10, 11)] int divisor)
     {
         UInt256.Divide(UInt256.MaxValue, (UInt256)divisor, out UInt256 baseFee);
-        _headInfo.CurrentBaseFee.Returns(baseFee);
+        _headInfo.CurrentBaseFee = baseFee;
 
         _txPoolConfig = new TxPoolConfig() { MinBaseFeeThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
@@ -720,16 +816,200 @@ public class TxBroadcasterTests
         UInt256.Divide(baseFee, 100, out UInt256 onePercentOfBaseFee);
         bool overflow = UInt256.MultiplyOverflow(onePercentOfBaseFee, (UInt256)threshold, out UInt256 lessAccurateBaseFeeThreshold);
 
-        _broadcaster.CalculateBaseFeeThreshold().Should().Be(
-            UInt256.MultiplyOverflow(baseFee, (UInt256)threshold, out UInt256 baseFeeThreshold)
+        Assert.That(_broadcaster.CalculateBaseFeeThreshold(), Is.EqualTo(UInt256.MultiplyOverflow(baseFee, (UInt256)threshold, out UInt256 baseFeeThreshold)
                 ? overflow ? UInt256.MaxValue : lessAccurateBaseFeeThreshold
-                : baseFeeThreshold);
+                : baseFeeThreshold));
+    }
+
+    [Test]
+    public void can_correctly_broadcast_light_transactions_without_wrappers([Values] ProofVersion proofVersion, [Values] bool versionMatches)
+    {
+        // Arrange
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7594Enabled.Returns(versionMatches ? proofVersion == ProofVersion.V1 : proofVersion == ProofVersion.V0);
+
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        Transaction blobTransaction = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: spec)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        LightTransaction lightTransaction = new(blobTransaction);
+
+        // Act
+        bool result = gossipPolicy.ShouldGossipTransaction(lightTransaction);
+
+        // Assert
+        Assert.That(result, Is.EqualTo(versionMatches), "LightTransaction from blob transaction should be gossiped when proof version matches.");
+    }
+
+    [Test]
+    public void Gossips_frame_blob_tx_only_with_current_proof_version_sidecar([Values] ProofVersion proofVersion, [Values] bool versionMatches)
+    {
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        ProofVersion wrapperVersion = versionMatches
+            ? proofVersion
+            : proofVersion == ProofVersion.V1 ? ProofVersion.V0 : ProofVersion.V1;
+
+        Transaction frameBlobTx = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+            NetworkWrapper = new ShardBlobNetworkWrapper([], [], [], wrapperVersion),
+        };
+
+        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTx), Is.EqualTo(versionMatches));
+    }
+
+    [Test]
+    public void Withholds_frame_blob_tx_lacking_a_sidecar()
+    {
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(ProofVersion.V1);
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        Transaction frameBlobTxNoWrapper = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+        };
+        Transaction bloblessFrameTx = new() { Type = TxType.FrameTx };
+
+        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTxNoWrapper), Is.False);
+        Assert.That(gossipPolicy.ShouldGossipTransaction(bloblessFrameTx), Is.True);
+    }
+
+    [Test]
+    public void Timer_announces_each_gossipable_tx_once_to_every_peer()
+    {
+        Transaction[] transactions = new Transaction[6];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((ulong)i).TestObject;
+        }
+        ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
+        gossipPolicy.CanGossipTransactions.Returns(true);
+        gossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(static call => call.Arg<Transaction>().Nonce % 2 == 0);
+        ITimer timer = CreateManuallyTimedBroadcaster(gossipPolicy);
+        RecordingTxPoolPeer[] peers = [new(TestItem.PublicKeyA), new(TestItem.PublicKeyB)];
+        foreach (RecordingTxPoolPeer peer in peers) _broadcaster.AddPeer(peer);
+
+        foreach (Transaction tx in transactions) _broadcaster.Broadcast(tx, isPersistent: false);
+        timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+
+        Transaction[] gossipable = transactions.Where(static tx => tx.Nonce % 2 == 0).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            gossipPolicy.Received(transactions.Length).ShouldGossipTransaction(Arg.Any<Transaction>());
+            foreach (RecordingTxPoolPeer peer in peers)
+            {
+                Assert.That(peer.Batches.Select(static batch => batch.SendFullTx), Is.All.False);
+                Assert.That(peer.Sent, Is.EquivalentTo(gossipable));
+            }
+        }
+    }
+
+    [Test]
+    public void Timer_skips_the_gossip_policy_when_nothing_can_be_sent([Values] bool canGossipTransactions)
+    {
+        ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
+        gossipPolicy.CanGossipTransactions.Returns(canGossipTransactions);
+        gossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
+        ITimer timer = CreateManuallyTimedBroadcaster(gossipPolicy);
+        if (!canGossipTransactions) _broadcaster.AddPeer(new RecordingTxPoolPeer(TestItem.PublicKeyA));
+        _broadcaster.Broadcast(Build.A.Transaction.TestObject, isPersistent: false);
+
+        timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+
+        gossipPolicy.DidNotReceive().ShouldGossipTransaction(Arg.Any<Transaction>());
+    }
+
+    [Test]
+    public void Timer_keeps_running_when_the_gossip_policy_throws()
+    {
+        ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
+        gossipPolicy.CanGossipTransactions.Returns(true);
+        gossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(static _ => throw new InvalidOperationException());
+        ITimer timer = CreateManuallyTimedBroadcaster(gossipPolicy);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+        _broadcaster.Broadcast(Build.A.Transaction.TestObject, isPersistent: false);
+
+        Assert.That(() => timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty), Throws.Nothing);
+        timer.Received(1).Enabled = true;
+        Assert.That(peer.Sent, Is.Empty);
+    }
+
+    private ITimer CreateManuallyTimedBroadcaster(ITxGossipPolicy gossipPolicy)
+    {
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, _headInfo, _logManager, gossipPolicy);
+        return timer;
+    }
+
+    [Test]
+    public async Task Should_not_send_null_tx_when_adding_concurrently_with_timer_swap()
+    {
+        // Regression for the gossip NRE seen on gnosis+Flat: BroadcastOnce used to lock on the
+        // _accumulatedTemporaryTxs instance while the timer swapped that field by reference without taking the same
+        // lock. A concurrent Add could then mutate the swapped-out List<T> and leave a null hole, later dereferenced
+        // while gossiping (NullReferenceException in CompositeTxGossipPolicy.ShouldGossipTransaction).
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+
+        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, _headInfo, _logManager);
+
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+
+        const int txCount = 30_000;
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((ulong)i).TestObject;
+        }
+
+        using System.Threading.CancellationTokenSource cts = new();
+
+        // Keep firing the timer so NotifyPeers repeatedly swaps and flushes the accumulator while transactions are
+        // still being added from other threads - this is the window the old lock failed to guard.
+        Task ticker = Task.Run(() =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+                System.Threading.Thread.Yield();
+            }
+        });
+
+        Parallel.For(0, txCount, i => _broadcaster.Broadcast(transactions[i], isPersistent: false));
+
+        cts.Cancel();
+        await ticker;
+        // Final flush of whatever was still accumulated after the adders finished.
+        timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+
+        Transaction[] sent = peer.Sent.ToArray();
+        Assert.That(sent, Has.None.Null, "A null transaction reached the peer - the accumulated tx list was corrupted by a data race.");
+        Assert.That(sent.Length, Is.EqualTo(txCount), "Every broadcast transaction should be sent exactly once.");
+        Assert.That(sent.Distinct().Count(), Is.EqualTo(txCount), "No transaction should be sent more than once.");
     }
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
     {
-        List<Transaction> expectedTxs = new();
-        List<Hash256> expectedHashes = new();
+        List<Transaction> expectedTxs = [];
+        List<Hash256> expectedHashes = [];
 
         for (int i = 0; i < expectedCountTotal; i++)
         {
@@ -752,11 +1032,60 @@ public class TxBroadcasterTests
     {
         if (expectedCount > 0)
         {
-            pickedTxs.Count.Should().Be(expectedCount);
+            Assert.That(pickedTxs.Count, Is.EqualTo(expectedCount));
         }
         else
         {
-            pickedTxs.Should().BeNull();
+            Assert.That(pickedTxs, Is.Null);
         }
+    }
+
+    // EIP-8141: the pool's expiry pass reaches only the pending pools, so without a sweep here a locally
+    // submitted frame tx evicted from them would be re-announced forever. The boundary case pins the strict
+    // comparison: at deadline == timestamp the expiry-verifier predeploy still accepts, so the tx must stay.
+    [TestCase(999UL, true, false, TestName = "expired frame tx stops being broadcast")]
+    [TestCase(1_000UL, false, false, TestName = "frame tx at its deadline keeps being broadcast")]
+    [TestCase(1_001UL, false, false, TestName = "unexpired frame tx keeps being broadcast")]
+    // A blob-carrying frame tx is held as a LightTransaction, which has no frames: its deadline has to survive
+    // as PersistedExpiryDeadline for the sweep to reach it at all.
+    [TestCase(999UL, true, true, TestName = "expired blob-carrying frame tx stops being broadcast")]
+    public void should_stop_broadcasting_expired_frame_txs_on_new_head(ulong deadline, bool shouldBeDropped, bool carriesBlobs)
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        Transaction frameTx = FrameTxWithDeadline(deadline, carriesBlobs);
+        Transaction regularTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+        _broadcaster.Broadcast(frameTx, true);
+        _broadcaster.Broadcast(regularTx, true);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(2));
+
+        _broadcaster.OnNewHead(this, Build.A.Block.WithTimestamp(1_000).TestObject);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_broadcaster.ContainsTx(frameTx.Hash!), Is.EqualTo(!shouldBeDropped));
+            Assert.That(_broadcaster.ContainsTx(regularTx.Hash!), Is.True,
+                "a transaction without a frame expiry deadline must never be swept");
+        }
+    }
+
+    private Transaction FrameTxWithDeadline(ulong deadline, bool carriesBlobs = false)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = _specProvider.ChainId,
+            SenderAddress = TestItem.AddressA,
+            // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
+            Frames = [FrameTxTestFrames.ExpiryAt(deadline, gasLimit: 50_000), FrameTxTestFrames.SelfVerify(gasLimit: 50_000)],
+            FrameSignatures = [],
+            BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
+            MaxFeePerBlobGas = carriesBlobs ? 1 : null,
+            GasLimit = 100_000,
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 1.GWei,
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
     }
 }

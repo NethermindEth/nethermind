@@ -10,6 +10,4 @@ namespace Nethermind.Synchronization.ParallelSync;
 public interface ISyncDownloader<in T>
 {
     public Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
-    public void BeforeFree(SyncPeerAllocation allocation) { }
-    public void OnAllocate(SyncPeerAllocation allocation) { }
 }

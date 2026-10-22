@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Caching;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -13,29 +14,69 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class LogEntryDecoderTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_do_roundtrip(bool valueDecode)
-    {
-        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-        Rlp rlp = Rlp.Encode(logEntry);
-        LogEntry decoded = valueDecode ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan()) : Rlp.Decode<LogEntry>(rlp);
+    private static LogEntry CreateSampleLogEntry() =>
+        new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
 
-        Assert.That(decoded.Data, Is.EqualTo(logEntry.Data), "data");
-        Assert.That(decoded.Address, Is.EqualTo(logEntry.Address), "address");
-        Assert.That(decoded.Topics, Is.EqualTo(logEntry.Topics), "topics");
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    public void Can_do_roundtrip(bool valueDecode, bool useDecoderInstance)
+    {
+        LogEntry logEntry = CreateSampleLogEntry();
+        LogEntryDecoder decoder = LogEntryDecoder.Instance;
+
+        Rlp rlp = useDecoderInstance
+            ? decoder.Encode(logEntry)
+            : Rlp.Encode(logEntry);
+
+        LogEntry? decoded;
+        if (useDecoderInstance)
+        {
+            RlpReader ctx = new(rlp.Bytes);
+            decoded = decoder.Decode(ref ctx);
+        }
+        else
+        {
+            decoded = valueDecode
+                ? Rlp.Decode<LogEntry?>(rlp.Bytes.AsSpan())
+                : Rlp.Decode<LogEntry?>(rlp);
+        }
+
+        Assert.That(decoded, Is.EqualTo(logEntry).UsingPropertiesComparer());
+    }
+
+    [Test]
+    public void Length_matches_the_encoding([Values(0, 1, 4)] int topicCount)
+    {
+        Hash256[] topics = new Hash256[topicCount];
+        for (int i = 0; i < topics.Length; i++) topics[i] = Keccak.Compute([(byte)i]);
+        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, topics);
+
+        Rlp rlp = LogEntryDecoder.Instance.Encode(logEntry);
+        RlpReader ctx = new(rlp.Bytes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LogEntryDecoder.Instance.GetLength(logEntry), Is.EqualTo(rlp.Bytes.Length));
+            Assert.That(LogEntryDecoder.Instance.Decode(ref ctx), Is.EqualTo(logEntry).UsingPropertiesComparer());
+        }
     }
 
     [Test]
     public void Can_do_roundtrip_ref_struct()
     {
-        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
+        LogEntry logEntry = CreateSampleLogEntry();
         Rlp rlp = Rlp.Encode(logEntry);
-        Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
-        LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
+        RlpReader reader = new(rlp.Bytes);
+        LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+        Span<byte> destination = stackalloc byte[logEntry.Data.Length];
+        decoded.CopyDataTo(destination);
 
-        Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
-        Assert.That(logEntry.Address == decoded.Address, "address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bytes.AreEqual(logEntry.Data, destination), "full log data must copy unchanged");
+            Assert.That(logEntry.Address == decoded.Address, "address");
+        }
 
         Span<byte> buffer = stackalloc byte[32];
         KeccaksIterator iterator = new(decoded.TopicsRlp, buffer);
@@ -47,36 +88,311 @@ public class LogEntryDecoderTests
     }
 
     [Test]
+    public void Compact_struct_ref_WhenDataHasLeadingZeros_ReturnsCompleteData([Values(0, 1, 31, 64)] int zeroPrefix)
+    {
+        byte[] data = new byte[64];
+        data.AsSpan(zeroPrefix).Fill(0x42);
+        LogEntry logEntry = new(TestItem.AddressA, data, [TestItem.KeccakA]);
+        byte[] encoded = CompactLogEntryDecoder.Instance.Encode(logEntry).Bytes;
+        RlpReader reader = new(encoded);
+
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+        Span<byte> destination = stackalloc byte[80];
+        destination.Fill(0xcc);
+        decoded.CopyDataTo(destination);
+        destination.Fill(0xcc);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        decoded.CopyDataTo(destination);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.DataLength, Is.EqualTo(data.Length));
+            Assert.That(Bytes.AreEqual(data, destination[..data.Length]), "the caller's buffer must contain the complete data");
+            Assert.That(destination[data.Length..].IndexOfAnyExcept((byte)0xcc), Is.EqualTo(-1), "copying must leave excess destination bytes untouched");
+            Assert.That(allocated, Is.Zero, "copying compact data must not allocate an intermediate array");
+            Assert.That(reader.Position, Is.EqualTo(encoded.Length), "the iterator must advance past the complete entry");
+            Assert.That(CompactLogEntryDecoder.DecodeTopics(new RlpReader(decoded.TopicsRlp)), Is.EqualTo(logEntry.Topics));
+        }
+    }
+
+    [Test]
+    public void Compact_struct_ref_WhenDataIsEmpty_ReturnsEmptyData()
+    {
+        LogEntry logEntry = new(TestItem.AddressA, [], []);
+        byte[] encoded = CompactLogEntryDecoder.Instance.Encode(logEntry).Bytes;
+        RlpReader reader = new(encoded);
+
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+        Span<byte> destination = stackalloc byte[1];
+        destination[0] = 0xcc;
+        decoded.CopyDataTo(destination);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.DataLength, Is.Zero);
+            Assert.That(destination[0], Is.EqualTo(0xcc), "empty data must not modify the destination");
+            Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+        }
+    }
+
+    [Test]
+    public void Compact_struct_ref_WhenDataIsNotRead_DoesNotAllocate()
+    {
+        LogEntry logEntry = new(TestItem.AddressA, new byte[1024], [TestItem.KeccakA]);
+        byte[] encoded = CompactLogEntryDecoder.Instance.Encode(logEntry).Bytes;
+        RlpReader warmup = new(encoded);
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref warmup, RlpBehaviors.None, out _);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        RlpReader reader = new(encoded);
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.Zero, "address/topic filtering must not allocate rejected data");
+            Assert.That(decoded.Address == logEntry.Address, "metadata must remain available before data access");
+        }
+    }
+
+    [Test]
+    public void CopyDataTo_WhenDestinationIsTooShort_DoesNotModifyDestination([Values(0, 31, 64)] int zeroPrefix)
+    {
+        byte[] data = new byte[64];
+        data.AsSpan(zeroPrefix).Fill(0x42);
+        byte[] encoded = CompactLogEntryDecoder.Instance.Encode(new LogEntry(TestItem.AddressA, data, [])).Bytes;
+        byte[] destination = new byte[data.Length - 1];
+        destination.AsSpan().Fill(0xcc);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            RlpReader reader = new(encoded);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+            decoded.CopyDataTo(destination);
+        });
+        Assert.That(destination, Is.All.EqualTo((byte)0xcc), "an undersized destination must be rejected before any writes");
+    }
+
+    [Test]
+    public void CopyDataTo_WhenDestinationOverlapsSuffix_PreservesExpandedData()
+    {
+        byte[] destination = new byte[64];
+        destination.AsSpan().Fill(0x42);
+        byte[] expected = new byte[64];
+        expected.AsSpan(31).Fill(0x42);
+        LogEntryStructRef log = new(TestItem.AddressA.ToStructRef(), destination.AsSpan(0, 33), default, 31);
+
+        log.CopyDataTo(destination);
+
+        Assert.That(destination, Is.EqualTo(expected), "the suffix must be copied before clearing an overlapping prefix");
+    }
+
+    public enum TopicDecodePath
+    {
+        Full,
+        Compact,
+        CompactTopicsOnly,
+    }
+
+    [Test, NonParallelizable]
+    public void Decoded_logs_share_the_topic_0_instance_only([Values] TopicDecodePath path)
+    {
+        LogEntry logEntry = new(TestItem.AddressA, [1, 2, 3], [Keccak.Compute(nameof(Decoded_logs_share_the_topic_0_instance_only)), TestItem.KeccakB]);
+
+        Hash256[] first = DecodeTopics(logEntry, path);
+        Hash256[] second = DecodeTopics(logEntry, path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(logEntry.Topics));
+            Assert.That(second, Is.EqualTo(logEntry.Topics));
+            Assert.That(second[0], Is.SameAs(first[0]));
+            Assert.That(second[1], Is.Not.SameAs(first[1]));
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Topic_0_values_sharing_a_cache_slot_decode_to_their_own_value([Values] TopicDecodePath path)
+    {
+        (byte[] a, byte[] b) = LogTopicCacheTests.CollidingPair();
+        LogEntry logA = new(TestItem.AddressA, [], [new Hash256(a), TestItem.KeccakB]);
+        LogEntry logB = new(TestItem.AddressA, [], [new Hash256(b), TestItem.KeccakB]);
+
+        Hash256[] fromA = DecodeTopics(logA, path);
+        Hash256[] fromB = DecodeTopics(logB, path);
+        Hash256[] fromAAgain = DecodeTopics(logA, path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fromA, Is.EqualTo(logA.Topics));
+            Assert.That(fromB, Is.EqualTo(logB.Topics));
+            Assert.That(fromAAgain, Is.EqualTo(logA.Topics));
+        }
+    }
+
+    private static Hash256[] DecodeTopics(LogEntry logEntry, TopicDecodePath path)
+    {
+        if (path == TopicDecodePath.Full)
+        {
+            RlpReader ctx = new(LogEntryDecoder.Instance.Encode(logEntry).Bytes);
+            return LogEntryDecoder.Instance.Decode(ref ctx)!.Topics;
+        }
+
+        RlpReader reader = new(CompactLogEntryDecoder.Instance.Encode(logEntry).Bytes);
+        if (path == TopicDecodePath.Compact)
+        {
+            return CompactLogEntryDecoder.Instance.Decode(ref reader)!.Topics;
+        }
+
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef structRef);
+        return CompactLogEntryDecoder.DecodeTopics(new RlpReader(structRef.TopicsRlp));
+    }
+
+    [Test]
     public void Can_handle_nulls()
     {
         Rlp rlp = Rlp.Encode((LogEntry)null!);
-        LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
+        LogEntry? decoded = Rlp.Decode<LogEntry?>(rlp);
         Assert.That(decoded, Is.Null);
     }
 
     [Test]
-    public void Can_do_roundtrip_rlp_stream()
+    public void Interface_decoders_return_null_for_empty_log_entry([Values] bool compact)
     {
-        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-        LogEntryDecoder decoder = LogEntryDecoder.Instance;
+        RlpDecoder<LogEntry?> decoder = compact ? CompactLogEntryDecoder.Instance : LogEntryDecoder.Instance;
+        RlpReader ctx = new(Rlp.OfEmptyList.Bytes);
 
-        Rlp encoded = decoder.Encode(logEntry);
-        LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes))!;
-
-        Assert.That(deserialized.Data, Is.EqualTo(logEntry.Data), "data");
-        Assert.That(deserialized.Address, Is.EqualTo(logEntry.Address), "address");
-        Assert.That(deserialized.Topics, Is.EqualTo(logEntry.Topics), "topics");
+        Assert.That(decoder.Decode(ref ctx), Is.Null);
     }
 
     [Test]
-    public void Rlp_stream_and_standard_have_same_results()
+    public void Storage_struct_ref_decoders_return_default_for_empty_log_entry([Values] bool compact)
     {
-        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-        LogEntryDecoder decoder = LogEntryDecoder.Instance;
+        RlpReader reader = new(Rlp.OfEmptyList.Bytes);
 
-        Rlp rlpStreamResult = decoder.Encode(logEntry);
+        if (compact)
+        {
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef logEntry);
+            AssertDefault(logEntry);
+        }
+        else
+        {
+            LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef logEntry);
+            AssertDefault(logEntry);
+        }
 
-        Rlp rlp = decoder.Encode(logEntry);
-        Assert.That(rlpStreamResult.Bytes.ToHexString(), Is.EqualTo(rlp.Bytes.ToHexString()));
+        static void AssertDefault(LogEntryStructRef logEntry)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(logEntry.Address.Bytes.Length, Is.Zero);
+                Assert.That(logEntry.DataLength, Is.Zero);
+                Assert.That(logEntry.TopicsRlp.Length, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void Struct_ref_decoders_reject_null_address([Values] bool compact)
+    {
+        Rlp malformed = compact
+            ? Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.Encode(0), Rlp.OfEmptyByteArray)
+            : Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.OfEmptyByteArray);
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(malformed.Bytes);
+            if (compact)
+            {
+                CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out _);
+            }
+            else
+            {
+                LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out _);
+            }
+        }
+    }
+
+    [Test]
+    public void Rejects_extra_topic_items_inside_topics_sequence()
+    {
+        Rlp malformed = Rlp.Encode(
+            Rlp.Encode(TestItem.AddressA.Bytes),
+            Rlp.Encode(Rlp.Encode(TestItem.KeccakA.Bytes), Rlp.OfEmptyByteArray),
+            Rlp.OfEmptyByteArray);
+
+        Assert.Throws<RlpException>(() =>
+        {
+            RlpReader ctx = new(malformed.Bytes);
+            LogEntryDecoder.Instance.Decode(ref ctx);
+        });
+    }
+
+    private const string AddressRlp = "94" + "1111111111111111111111111111111111111111";
+
+    [TestCase("d6" + AddressRlp + "e1", "a0" + "2222222222222222222222222222222222222222222222222222222222222222" + "80", TestName = "Topics past the entry end")]
+    [TestCase("d7" + AddressRlp + "c0" + "82", "abcd", TestName = "Data past the entry end")]
+    public void Rejects_items_running_into_the_next_entry(string entry, string sibling)
+    {
+        byte[] malformed = Bytes.FromHexString(entry + sibling);
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            RlpReader ctx = new(malformed);
+            LogEntryDecoder.Instance.Decode(ref ctx, RlpBehaviors.AllowExtraBytes);
+        });
+    }
+
+    [Test]
+    public void Compact_decoder_rejects_zero_prefix_that_expands_data_beyond_limit([Values] bool useStructRef)
+    {
+        Rlp malformed = CreateCompactLogEntryWithTooLargeZeroPrefix();
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            RlpReader ctx = new(malformed.Bytes);
+            if (useStructRef)
+            {
+                CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
+            }
+            else
+            {
+                CompactLogEntryDecoder.Instance.Decode(ref ctx);
+            }
+        });
+    }
+
+    [Test]
+    public void Compact_struct_ref_decoder_rejects_log_entry_length_beyond_limit()
+    {
+        byte[] malformed = CreateCompactLogEntryWithTooLargeDeclaredLength();
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            RlpReader ctx = new(malformed);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
+        });
+    }
+
+    // This simulates a malformed compact log entry wire payload: [address, topics, zeroPrefix, rlpData].
+    private static Rlp CreateCompactLogEntryWithTooLargeZeroPrefix() => Rlp.Encode(
+        Rlp.Encode(TestItem.AddressA.Bytes),
+        Rlp.OfEmptyList,
+        Rlp.Encode((int)16.MB),
+        Rlp.Encode(new byte[] { 1 }));
+
+    private static byte[] CreateCompactLogEntryWithTooLargeDeclaredLength()
+    {
+        int declaredLength = (int)16.MB + 1;
+        return
+        [
+            0xfa,
+            (byte)(declaredLength >> 16),
+            (byte)(declaredLength >> 8),
+            (byte)declaredLength,
+        ];
     }
 }

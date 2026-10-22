@@ -9,22 +9,15 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
-    public sealed class LruKeyCache<TKey> where TKey : notnull
+    public sealed class LruKeyCache<TKey>(int maxCapacity, int startCapacity, string name) where TKey : notnull
     {
-        private readonly int _maxCapacity;
-        private readonly string _name;
-        private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
+        private readonly int _maxCapacity = maxCapacity;
+        private readonly string _name = name ?? throw new ArgumentNullException(nameof(name));
+        private readonly Dictionary<TKey, int> _cacheMap = typeof(TKey) == typeof(byte[])
+                ? new Dictionary<TKey, int>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                : new Dictionary<TKey, int>(startCapacity);
         private readonly McsLock _lock = new();
-        private LinkedListNode<TKey>? _leastRecentlyUsed;
-
-        public LruKeyCache(int maxCapacity, int startCapacity, string name)
-        {
-            _maxCapacity = maxCapacity;
-            _name = name ?? throw new ArgumentNullException(nameof(name));
-            _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<TKey>>(startCapacity); // do not initialize it at the full capacity
-        }
+        private readonly LruSlots<TKey> _slots = new(maxCapacity, Math.Min(startCapacity, maxCapacity));
 
         public LruKeyCache(int maxCapacity, string name)
             : this(maxCapacity, 0, name)
@@ -33,19 +26,19 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
-            _leastRecentlyUsed = null;
+            _slots.Clear();
             _cacheMap.Clear();
         }
 
         public bool Get(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                _slots.MoveToMostRecent(node);
                 return true;
             }
 
@@ -54,11 +47,11 @@ namespace Nethermind.Core.Caching
 
         public bool Set(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                _slots.MoveToMostRecent(node);
                 return false;
             }
             else
@@ -69,8 +62,7 @@ namespace Nethermind.Core.Caching
                 }
                 else
                 {
-                    LinkedListNode<TKey> newNode = new(key);
-                    LinkedListNode<TKey>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    int newNode = _slots.AddMostRecent(key);
                     _cacheMap.Add(key, newNode);
                 }
 
@@ -80,11 +72,11 @@ namespace Nethermind.Core.Caching
 
         public bool Delete(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                LinkedListNode<TKey>.Remove(ref _leastRecentlyUsed, node);
+                _slots.Remove(node);
                 return _cacheMap.Remove(key);
             }
 
@@ -95,23 +87,20 @@ namespace Nethermind.Core.Caching
 
         private void Replace(TKey key)
         {
-            LinkedListNode<TKey>? node = _leastRecentlyUsed;
-            if (node is null)
+            int node = _slots.LeastRecentlyUsed;
+            if (node < 0)
             {
                 ThrowInvalidOperation();
             }
 
-            _cacheMap.Remove(node.Value);
-            node.Value = key;
-            LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+            _cacheMap.Remove(_slots.Value(node));
+            _slots.Value(node) = key;
+            _slots.MoveToMostRecent(node);
             _cacheMap.Add(key, node);
 
             [DoesNotReturn]
-            static void ThrowInvalidOperation()
-            {
-                throw new InvalidOperationException(
-                                    $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
-            }
+            static void ThrowInvalidOperation() => throw new InvalidOperationException(
+                                    $"{nameof(LruKeyCache<>)} called {nameof(Replace)} when empty.");
         }
     }
 }

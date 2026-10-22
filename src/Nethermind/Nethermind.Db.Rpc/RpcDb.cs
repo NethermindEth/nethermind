@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -13,22 +14,19 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcDb : IDb
+    public class RpcDb(
+        string dbName,
+        IJsonSerializer jsonSerializer,
+        IJsonRpcClient rpcClient,
+        ILogManager logManager,
+        IDb recordDb)
+        : IDb
     {
-        private readonly string _dbName;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly ILogger _logger;
-        private readonly IJsonRpcClient _rpcClient;
-        private readonly IDb _recordDb;
-
-        public RpcDb(string dbName, IJsonSerializer jsonSerializer, IJsonRpcClient rpcClient, ILogManager logManager, IDb recordDb)
-        {
-            _dbName = dbName;
-            _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));
-            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _recordDb = recordDb;
-        }
+        private readonly string _dbName = dbName ?? throw new ArgumentNullException(nameof(dbName));
+        private readonly IJsonSerializer _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+        private readonly ILogger _logger = logManager?.GetClassLogger<RpcDb>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IJsonRpcClient _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));
+        private readonly IDb _recordDb = recordDb ?? throw new ArgumentNullException(nameof(recordDb));
 
         public void Dispose()
         {
@@ -36,88 +34,45 @@ namespace Nethermind.Db.Rpc
             _recordDb.Dispose();
         }
 
-        public long GetSize() => 0;
-        public long GetCacheSize() => 0;
-        public long GetIndexSize() => 0;
-        public long GetMemtableSize() => 0;
+        public string Name => "RpcDb";
 
-        public string Name { get; } = "RpcDb";
-
-        public byte[] this[ReadOnlySpan<byte> key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => Get(key);
             set => Set(key, value);
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
-        {
-            throw new InvalidOperationException("RPC DB does not support writes");
-        }
-
-        public byte[] Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return GetThroughRpc(key);
-        }
-
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
-
-        public void Remove(ReadOnlySpan<byte> key)
-        {
-            throw new InvalidOperationException("RPC DB does not support writes");
-        }
-
-        public bool KeyExists(ReadOnlySpan<byte> key)
-        {
-            return GetThroughRpc(key) is not null;
-        }
-
-        public IDb Innermost => this; // record db is just a helper DB here
-        public void Flush() { }
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => ThrowWritesNotSupported();
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => GetThroughRpc(key);
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, GetThroughRpc(k))).ToArray();
+        public void Remove(ReadOnlySpan<byte> key) => ThrowWritesNotSupported();
+        public bool KeyExists(ReadOnlySpan<byte> key) => GetThroughRpc(key) is not null;
         public void Flush(bool onlyWal = false) { }
-
         public void Clear() { }
-
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _recordDb.GetAll();
-
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _recordDb.GetAllKeys();
-
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _recordDb.GetAllValues();
+        public IWriteBatch StartWriteBatch() => throw new InvalidOperationException("RPC DB does not support writes");
 
-        public IWriteBatch StartWriteBatch()
+        private byte[]? GetThroughRpc(ReadOnlySpan<byte> key)
         {
-            throw new InvalidOperationException("RPC DB does not support writes");
-        }
+            string responseJson = _rpcClient.Post("debug_getFromDb", _dbName, key.ToHexString()).Result
+                ?? throw new JsonException("Database RPC returned no response.");
+            JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson)
+                ?? throw new JsonException("Database RPC response decoded as null.");
 
-        private byte[] GetThroughRpc(ReadOnlySpan<byte> key)
-        {
-            string responseJson = _rpcClient.Post("debug_getFromDb", _dbName, key.ToHexString()).Result;
-            JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson);
-
-            byte[] value = null;
+            byte[]? value = null;
             if (response.Result is not null)
             {
                 value = Bytes.FromHexString((string)response.Result);
-                if (_recordDb is not null)
-                {
-                    _recordDb[key] = value;
-                }
+                _recordDb[key] = value;
             }
 
             return value;
         }
 
-        public Span<byte> GetSpan(ReadOnlySpan<byte> key)
-        {
-            return Get(key);
-        }
-
-        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags)
-        {
-            Set(key, value.ToArray(), writeFlags);
-        }
-
-        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
-        {
-        }
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags) => ThrowWritesNotSupported();
+        private static void ThrowWritesNotSupported() => throw new InvalidOperationException("RPC DB does not support writes");
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
     }
 }

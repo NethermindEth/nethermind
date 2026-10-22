@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
+using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 
@@ -53,6 +54,24 @@ namespace Nethermind.Network
         [Description("Number of bytes received through Discovery (UDP).")]
         public static long DiscoveryBytesReceived;
 
+        [CounterMetric]
+        [Description("Number of sent discovery message")]
+        [DetailedMetric]
+        [KeyIsLabel("message_type")]
+        public static NonBlocking.ConcurrentDictionary<MsgType, long> DiscoveryMessagesSent { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of sent discovery messages by protocol")]
+        [DetailedMetric]
+        [KeyIsLabel("protocol", "message_type")]
+        public static NonBlocking.ConcurrentDictionary<DiscoveryMessageKey, long> DiscoveryMessagesSentByProtocol { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of sent discovery message")]
+        [DetailedMetric]
+        [KeyIsLabel("message_type")]
+        public static NonBlocking.ConcurrentDictionary<MsgType, long> DiscoveryMessagesReceived { get; } = new();
+
         [GaugeMetric]
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The current number of peers connected.")]
@@ -89,5 +108,20 @@ namespace Nethermind.Network
         [Description("Bytes of incoming p2p packets.")]
         [KeyIsLabel("protocol", "message")]
         public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> IncomingP2PMessageBytes { get; } = new();
+
+        [GaugeMetric]
+        [Description("Number of candidate peers in peer manager")]
+        [DetailedMetric]
+        public static int PeerCandidateCount { get; set; }
+
+        [CounterMetric]
+        [Description("Number of filter reason per peer candidate")]
+        [DetailedMetric]
+        [KeyIsLabel("filter")]
+        public static NonBlocking.ConcurrentDictionary<string, long> PeerCandidateFilter { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of incoming transactions skipped before RLP decoding for exceeding the configured size limit.")]
+        public static long OversizedTransactionsSkipped;
     }
 }

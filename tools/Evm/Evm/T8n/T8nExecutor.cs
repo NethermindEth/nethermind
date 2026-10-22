@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
 using Ethereum.Test.Base;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
@@ -12,167 +11,195 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.Proofs;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Blockchain;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Testably.Abstractions;
 
 namespace Evm.T8n;
 
 public static class T8nExecutor
 {
-    private static ILogManager _logManager = LimboLogs.Instance;
+    private static readonly ILogManager _logManager = LimboLogs.Instance;
 
+    /// <remarks>
+    /// Follows the order of geth's <c>t8n</c>: system calls, transactions, rewards, withdrawals and execution requests.
+    /// Invalid transactions are rejected instead of failing the block.
+    /// </remarks>
     public static T8nExecutionResult Execute(T8nCommandArguments arguments)
     {
         T8nTest test = T8nInputProcessor.ProcessInputAndConvertToT8nTest(arguments);
 
-        KzgPolynomialCommitments.InitializeAsync();
+        KzgPolynomialCommitments.InitializeAsync().Wait();
 
-        IDb stateDb = new MemDb();
-        IDb codeDb = new MemDb();
+        StateWriteRecorder stateWrites = CreateStateWriteRecorder();
+        IWorldState stateProvider = new WorldState(stateWrites, _logManager);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
+        IBlockhashProvider blockhashProvider = new T8nBlockHashProvider(test.BlockHashes ?? []);
 
-        TrieStore trieStore = new(stateDb, _logManager);
-        WorldState stateProvider = new(trieStore, codeDb, _logManager);
-        CodeInfoRepository codeInfoRepository = new();
-        IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
-
-        IVirtualMachine virtualMachine = new VirtualMachine(
+        IVirtualMachine virtualMachine = new EthereumVirtualMachine(
             blockhashProvider,
             test.SpecProvider,
-            codeInfoRepository,
             _logManager);
-        TransactionProcessor transactionProcessor = new(
+        EthereumTransactionProcessor transactionProcessor = new(
+            BlobBaseFeeCalculator.Instance,
             test.SpecProvider,
             stateProvider,
             virtualMachine,
             codeInfoRepository,
             _logManager);
 
-        stateProvider.CreateAccount(test.CurrentCoinbase, 0);
         GeneralStateTestBase.InitializeTestState(test.Alloc, stateProvider, test.SpecProvider);
 
         Block block = test.ConstructBlock();
-        ApplyRewards(block, stateProvider, test.OverridableReleaseSpec, test.SpecProvider);
 
         CompositeBlockTracer compositeBlockTracer = new();
-
-        StorageTxTracer storageTxTracer = new();
-        ProofBlockTracer proofBlockTracer = new(null, false);
-        compositeBlockTracer.Add(storageTxTracer);
-        compositeBlockTracer.Add(proofBlockTracer);
-        if (test.IsTraceEnabled)
+        using GethLikeBlockFileTracer? fileTracer = test.IsTraceEnabled
+            ? new GethLikeBlockFileTracer(block, test.GethTraceOptions, new RealFileSystem(), test.Spec)
+            : null;
+        if (fileTracer is not null)
         {
-            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new FileSystem()));
+            compositeBlockTracer.Add(fileTracer);
+            if (arguments.OutputBaseDir.Length > 0) Directory.CreateDirectory(arguments.OutputBaseDir);
         }
 
         BlockReceiptsTracer blockReceiptsTracer = new();
         blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         blockReceiptsTracer.StartNewBlockTrace(block);
 
-        new BlockhashStore(test.SpecProvider, stateProvider).ApplyBlockhashStateChanges(block.Header, storageTxTracer);
-        BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
+        virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(block.Header, test.Spec));
         if (block.ParentBeaconBlockRoot is not null)
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, test.Spec, storageTxTracer);
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider).StoreBeaconRoot(block, test.Spec, NullTxTracer.Instance);
         }
 
-        int txIndex = 0;
-        TransactionExecutionReport transactionExecutionReport = new();
-        var txValidator = new TxValidator(test.StateChainId);
-
-        foreach (Transaction transaction in test.Transactions)
+        // As in geth, the parent hash is recorded only when the env carries block hashes.
+        if (test.BlockHashes is not null)
         {
+            new BlockhashStore(stateProvider).ApplyBlockhashStateChanges(block.Header, test.Spec);
+        }
+
+        TransactionExecutionReport transactionExecutionReport = new();
+        TxValidator txValidator = new(test.StateChainId);
+        ulong blobGasUsed = 0;
+
+        for (int txIndex = 0; txIndex < test.Transactions.Length; txIndex++)
+        {
+            Transaction transaction = test.Transactions[txIndex];
             ValidationResult txIsValid = txValidator.IsWellFormed(transaction, test.Spec);
 
             if (!txIsValid)
             {
                 if (txIsValid.Error is not null)
                 {
-                    var error = GethErrorMappings.GetErrorMapping(txIsValid.Error);
+                    string error = GethErrorMappings.GetErrorMapping(txIsValid.Error);
                     transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, error));
                 }
                 continue;
             }
 
+            if (transaction.SupportsBlobs && block.ExcessBlobGas is null)
+            {
+                transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, "blob tx used but field env.ExcessBlobGas missing"));
+                continue;
+            }
+
+            ulong txBlobGas = BlobGasCalculator.CalculateBlobGas(transaction);
+            ulong maxBlobGas = test.Spec.GasCosts.MaxBlobGasPerBlock;
+            if (blobGasUsed + txBlobGas > maxBlobGas)
+            {
+                transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex,
+                    $"blob gas ({blobGasUsed + txBlobGas}) would exceed maximum allowance {maxBlobGas}"));
+                continue;
+            }
+
             blockReceiptsTracer.StartNewTxTrace(transaction);
             TransactionResult transactionResult = transactionProcessor
-                .Execute(transaction, new BlockExecutionContext(block.Header, test.Spec), blockReceiptsTracer);
+                .Execute(transaction, blockReceiptsTracer);
             blockReceiptsTracer.EndTxTrace();
-
-            transactionExecutionReport.ValidTransactions.Add(transaction);
-
-            if (transactionResult.Success)
+            if (fileTracer is not null)
             {
+                File.Move(fileTracer.FileNames.Last(), Path.Combine(arguments.OutputBaseDir, $"trace-{txIndex}-{transaction.Hash}.jsonl"), overwrite: true);
+            }
+
+            if (transactionResult.TransactionExecuted)
+            {
+                blobGasUsed += txBlobGas;
                 transactionExecutionReport.SuccessfulTransactions.Add(transaction);
-                blockReceiptsTracer.LastReceipt.PostTransactionState = null;
-                blockReceiptsTracer.LastReceipt.BlockHash = null;
-                blockReceiptsTracer.LastReceipt.BlockNumber = 0;
                 transactionExecutionReport.SuccessfulTransactionReceipts.Add(blockReceiptsTracer.LastReceipt);
             }
-            else if (transactionResult.Error is not null && transaction.SenderAddress is not null)
+            else
             {
-                var error = GethErrorMappings.GetErrorMapping(transactionResult.Error,
-                    transaction.SenderAddress.ToString(true),
-                    transaction.Nonce, stateProvider.GetNonce(transaction.SenderAddress));
+                string error = transaction.SenderAddress is null
+                    ? transactionResult.ErrorDescription
+                    : GethErrorMappings.GetErrorMapping(transactionResult.ErrorDescription,
+                        transaction.SenderAddress.ToString(true),
+                        transaction.Nonce, stateProvider.GetNonce(transaction.SenderAddress));
 
                 transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, error));
-                stateProvider.Reset();
+                stateProvider.Reset(resetBlockChanges: false);
             }
-
-            txIndex++;
         }
 
         blockReceiptsTracer.EndBlockTrace();
 
-        var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
-        withdrawalProcessor.ProcessWithdrawals(block, test.Spec);
-
-        ExecutionRequestsProcessor _executionRequestsProcessor = new ExecutionRequestsProcessor(transactionProcessor);
-        _executionRequestsProcessor.ProcessExecutionRequests(block, stateProvider, transactionExecutionReport.SuccessfulTransactionReceipts.ToArray(), test.Spec);
-
-        stateProvider.Commit(test.SpecProvider.GetSpec((ForkActivation)1));
-        stateProvider.CommitTree(test.CurrentNumber);
-
-        return T8nExecutionResult.ConstructT8nExecutionResult(stateProvider, block, test, storageTxTracer, proofBlockTracer.BuildResult().ToList(),
-            blockReceiptsTracer, test.SpecProvider, transactionExecutionReport);
-    }
-
-    private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test)
-    {
-        var t8NBlockHashProvider = new T8nBlockHashProvider();
-
-        foreach (KeyValuePair<string, Hash256> blockHash in test.BlockHashes)
+        if (test.AreRewardsEnabled)
         {
-            t8NBlockHashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
+            ApplyRewards(block, stateProvider, test.Spec, test.SpecProvider);
         }
 
-        return t8NBlockHashProvider;
+        new WithdrawalProcessor(stateProvider, _logManager).ProcessWithdrawals(block, test.Spec);
+
+        // System calls run with EIP-158 off, so empty accounts touched so far must be pruned before them, as BlockProcessor does.
+        stateProvider.Commit(test.Spec, commitRoots: false);
+
+        new ExecutionRequestsProcessor(transactionProcessor).ProcessExecutionRequests(block, stateProvider,
+            [.. transactionExecutionReport.SuccessfulTransactionReceipts], test.Spec);
+
+        stateProvider.Commit(test.Spec);
+        stateProvider.CommitTree(test.CurrentNumber);
+
+        return T8nExecutionResult.ConstructT8nExecutionResult(stateProvider, stateWrites, block, test, transactionExecutionReport);
     }
 
-    private static void ApplyRewards(Block block, WorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
+    private static StateWriteRecorder CreateStateWriteRecorder()
     {
-        var rewardCalculator = new RewardCalculator(specProvider);
+        PruningConfig pruningConfig = new();
+        TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        TrieStore trieStore = new(
+            new NodeStorage(dbProvider.StateDb),
+            No.Pruning,
+            Persist.EveryBlock,
+            finalizedStateProvider,
+            pruningConfig,
+            _logManager);
+        finalizedStateProvider.TrieStore = trieStore;
+        return new StateWriteRecorder(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, UnavailableStateHeaderProvider.Instance, _logManager));
+    }
+
+    private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
+    {
+        RewardCalculator rewardCalculator = new(specProvider);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
 
         foreach (BlockReward reward in rewards)
         {
-            if (!stateProvider.AccountExists(reward.Address))
-            {
-                stateProvider.CreateAccount(reward.Address, reward.Value);
-            }
-            else
-            {
-                stateProvider.AddToBalance(reward.Address, reward.Value, spec);
-            }
+            stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
         }
     }
 }

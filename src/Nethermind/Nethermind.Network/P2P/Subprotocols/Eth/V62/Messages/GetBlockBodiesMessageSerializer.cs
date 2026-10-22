@@ -9,24 +9,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class GetBlockBodiesMessageSerializer : IZeroInnerMessageSerializer<GetBlockBodiesMessage>
     {
+        private const int MaxBodyHashesPerRequest = 1024;
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetBlockBodiesMessage>(MaxBodyHashesPerRequest, nameof(GetBlockBodiesMessage.BlockHashes));
+
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
-            nettyRlpStream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
             for (int i = 0; i < message.BlockHashes.Count; i++)
             {
-                nettyRlpStream.Encode(message.BlockHashes[i]);
+                writer.Encode(message.BlockHashes[i]);
             }
         }
 
-        public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
+        public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
         public int GetLength(GetBlockBodiesMessage message, out int contentLength)
         {
@@ -39,9 +39,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
+        public static GetBlockBodiesMessage Deserialize(ref RlpReader ctx)
         {
-            Hash256[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak(), false);
+            Hash256[] hashes = ctx.DecodeNonNullArray(static (ref RlpReader c) => c.DecodeKeccak(), false, limit: RlpLimit);
             return new GetBlockBodiesMessage(hashes);
         }
     }

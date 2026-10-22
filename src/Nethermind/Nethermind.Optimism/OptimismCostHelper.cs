@@ -1,0 +1,299 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using static System.Buffers.Binary.BinaryPrimitives;
+
+namespace Nethermind.Optimism;
+
+public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAddr) : ICostHelper
+{
+    public OptimismCostHelper(IOptimismSpecHelper opSpecHelper, OptimismChainSpecEngineParameters chainSpecEngineParameters) : this(opSpecHelper, chainSpecEngineParameters.L1BlockAddress!)
+    {
+    }
+
+    private readonly StorageCell _l1BaseFeeSlot = new(l1BlockAddr, new UInt256(1));
+    private readonly StorageCell _overheadSlot = new(l1BlockAddr, new UInt256(5));
+    private readonly StorageCell _scalarSlot = new(l1BlockAddr, new UInt256(6));
+
+    private static readonly UInt256 BasicDivisor = 1_000_000;
+
+    // Ecotone
+    private readonly StorageCell _blobBaseFeeSlot = new(l1BlockAddr, new UInt256(7));
+    private readonly StorageCell _baseFeeScalarSlot = new(l1BlockAddr, new UInt256(3));
+
+    private static readonly UInt256 PrecisionMultiplier = 16;
+    private static readonly UInt256 PrecisionDivisor = PrecisionMultiplier * BasicDivisor;
+
+    // Fjord
+    private static readonly UInt256 L1CostInterceptNeg = 42_585_600;
+    private static readonly UInt256 L1CostFastlzCoef = 836_500;
+
+    private static readonly UInt256 MinTransactionSizeScaled = 100 * 1_000_000;
+    private static readonly UInt256 FjordDivisor = 1_000_000_000_000;
+
+    // Isthmus
+    private readonly StorageCell _operatorFeeParamsSlot = new(l1BlockAddr, new UInt256(8));
+
+    // Jovian
+    private static readonly UInt256 DaFootprintScalarDefault = 400;
+    private static readonly UInt256 DaFootprintScale = 1_000_000;
+
+    [SkipLocalsInit]
+    public UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState)
+    {
+        if (tx.IsDeposit())
+            return UInt256.Zero;
+
+        worldState.Get(_l1BaseFeeSlot, out UInt256 l1BaseFee);
+
+        if (opSpecHelper.IsFjord(header))
+        {
+            ReadEcotoneScalars(worldState, out UInt256 blobBaseFee, out UInt256 l1BaseFeeScalar, out UInt256 l1BlobBaseFeeScalar);
+
+            uint fastLzSize = ComputeFlzCompressLen(tx);
+
+            return ComputeL1CostFjord(fastLzSize, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar, out _);
+        }
+
+        UInt256 dataGas = ComputeDataGas(tx, opSpecHelper.IsRegolith(header));
+
+        if (dataGas.IsZero)
+            return UInt256.Zero;
+
+        if (opSpecHelper.IsEcotone(header))
+        {
+            ReadEcotoneScalars(worldState, out UInt256 blobBaseFee, out UInt256 l1BaseFeeScalar, out UInt256 l1BlobBaseFeeScalar);
+
+            return ComputeL1CostEcotone(dataGas, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar);
+        }
+        else
+        {
+            worldState.Get(_overheadSlot, out UInt256 overhead);
+            worldState.Get(_scalarSlot, out UInt256 feeScalar);
+
+            return ComputeL1CostPreEcotone(dataGas + overhead, l1BaseFee, feeScalar);
+        }
+    }
+
+    private void ReadEcotoneScalars(IWorldState worldState, out UInt256 blobBaseFee, out UInt256 l1BaseFeeScalar, out UInt256 l1BlobBaseFeeScalar)
+    {
+        worldState.Get(_blobBaseFeeSlot, out blobBaseFee);
+
+        // Both scalars share one slot: l1BaseFeeScalar in big-endian bytes 16..20, l1BlobBaseFeeScalar in bytes 20..24.
+        worldState.Get(_baseFeeScalarSlot, out UInt256 scalarData);
+        l1BaseFeeScalar = (uint)(scalarData[1] >> 32);
+        l1BlobBaseFeeScalar = (uint)scalarData[1];
+    }
+
+    public UInt256 ComputeOperatorCost(ulong gas, BlockHeader header, IWorldState worldState)
+    {
+        if (!opSpecHelper.IsIsthmus(header))
+            return UInt256.Zero;
+
+        worldState.Get(_operatorFeeParamsSlot, out UInt256 parameters);
+        (uint scalar, ulong constant) operatorFee = ((uint)parameters[1], parameters[0]);
+
+        return opSpecHelper.IsJovian(header)
+            ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant
+            : (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
+    }
+
+    // https://specs.optimism.io/protocol/jovian/exec-engine.html#da-footprint-block-limit
+    public UInt256 ComputeDaFootprint(Block block)
+    {
+        if (block.Transactions.Length == 0)
+            return 0;
+
+        UInt256 daFootprintScalar = GetDaFootprintScalar(block);
+
+        UInt256 footprint = UInt256.Zero;
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.Type == TxType.DepositTx)
+                continue;
+
+            footprint += ComputeDaUsageEstimate(tx) * daFootprintScalar;
+        }
+
+        return footprint;
+    }
+
+    internal static UInt256 ComputeDaUsageEstimate(Transaction tx)
+    {
+        UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
+        return DaUsageFromEstimatedSize(UInt256.Max(
+            MinTransactionSizeScaled,
+            flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
+        ));
+    }
+
+    /// <summary>Scales the Fjord estimated size that <see cref="ComputeL1CostFjord"/> reports down to the DA usage estimate.</summary>
+    internal static UInt256 DaUsageFromEstimatedSize(in UInt256 estimatedSize) =>
+        DaFootprintScale.IsZero ? default : estimatedSize / DaFootprintScale;
+
+    [SkipLocalsInit]
+    public static UInt256 ComputeDataGas(Transaction tx, bool isRegolith)
+    {
+        byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+        ulong zeroCount = (ulong)encoded.Count(static b => b == 0);
+        ulong nonZeroCount = (ulong)encoded.Length - zeroCount;
+        // Add pre-EIP-3529 overhead
+        nonZeroCount += isRegolith ? 0UL : OptimismConstants.PreRegolithNonZeroCountOverhead;
+
+        return zeroCount * GasCostOf.TxDataZero + nonZeroCount * GasCostOf.TxDataNonZeroEip2028;
+    }
+
+    // Fjord L1 formula:
+    // l1FeeScaled = baseFeeScalar * l1BaseFee * 16 + blobFeeScalar * l1BlobBaseFee
+    // estimatedSize = max(minTransactionSize, intercept + fastlzCoef * fastlzSize)
+    // l1Cost = estimatedSize * l1FeeScaled / 1e12
+    public static UInt256 ComputeL1CostFjord(UInt256 fastLzSize, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar, out UInt256 estimatedSize)
+    {
+        UInt256 l1FeeScaled = l1BaseFeeScalar * l1BaseFee * PrecisionMultiplier + l1BlobBaseFeeScalar * blobBaseFee;
+        UInt256 fastLzCost = L1CostFastlzCoef * fastLzSize;
+
+        if (fastLzCost < L1CostInterceptNeg)
+        {
+            fastLzCost = 0;
+        }
+        else
+        {
+            fastLzCost -= L1CostInterceptNeg;
+        }
+
+        estimatedSize = UInt256.Max(MinTransactionSizeScaled, fastLzCost);
+        return FjordDivisor.IsZero ? default : estimatedSize * l1FeeScaled / FjordDivisor;
+    }
+
+    // Ecotone formula: (dataGas) * (16 * l1BaseFee * l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6
+    public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar) => PrecisionDivisor.IsZero ? default : dataGas * (PrecisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / PrecisionDivisor;
+
+    // Pre-Ecotone formula: (dataGas + overhead) * l1BaseFee * scalar / 1e6
+    public static UInt256 ComputeL1CostPreEcotone(UInt256 dataGasWithOverhead, UInt256 l1BaseFee, UInt256 feeScalar) => BasicDivisor.IsZero ? default : dataGasWithOverhead * l1BaseFee * feeScalar / BasicDivisor;
+
+    // Based on:
+    // https://github.com/ethereum-optimism/op-geth/blob/7c2819836018bfe0ca07c4e4955754834ffad4e0/core/types/rollup_cost.go
+    // https://github.com/Vectorized/solady/blob/5315d937d79b335c668896d7533ac603adac5315/js/solady.js
+    // Do not use SkipLocalsInit, `ht` should be zeros initially
+    public static uint ComputeFlzCompressLen(Transaction tx)
+    {
+        byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+        static uint FlzCompressLen(byte[] data)
+        {
+            uint n = 0;
+            Span<uint> ht = stackalloc uint[8192];
+
+            uint u24(uint i) => data[i] | ((uint)data[i + 1] << 8) | ((uint)data[i + 2] << 16);
+            uint cmp(uint p, uint q, uint e)
+            {
+                uint l = 0;
+                for (e -= q; l < e; l++)
+                {
+                    if (data[p + (int)l] != data[q + (int)l])
+                    {
+                        e = 0;
+                    }
+                }
+                return l;
+            }
+            void literals(uint r)
+            {
+                n += 0x21 * (r / 0x20);
+                r %= 0x20;
+                if (r != 0)
+                {
+                    n += r + 1;
+                }
+            }
+            void match(uint l)
+            {
+                l--;
+                n += 3 * (l / 262);
+                if (l % 262 >= 6)
+                {
+                    n += 3;
+                }
+                else
+                {
+                    n += 2;
+                }
+            }
+            uint hash(uint v) => ((2654435769 * v) >> 19) & 0x1fff;
+            uint setNextHash(uint ip, ref Span<uint> ht)
+            {
+                ht[(int)hash(u24(ip))] = ip;
+                return ip + 1;
+            }
+            uint a = 0;
+            uint ipLimit = (uint)data.Length - 13;
+            if (data.Length < 13)
+            {
+                ipLimit = 0;
+            }
+            for (uint ip = a + 2; ip < ipLimit;)
+            {
+                uint d;
+                uint r;
+                for (; ; )
+                {
+                    uint s = u24(ip);
+                    int h = (int)hash(s);
+                    r = ht[h];
+                    ht[h] = ip;
+                    d = ip - r;
+                    if (ip >= ipLimit)
+                    {
+                        break;
+                    }
+                    ip++;
+                    if (d <= 0x1fff && s == u24(r))
+                    {
+                        break;
+                    }
+                }
+                if (ip >= ipLimit)
+                {
+                    break;
+                }
+                ip--;
+                if (ip > a)
+                {
+                    literals(ip - a);
+                }
+                uint l = cmp(r + 3, ip + 3, ipLimit + 9);
+                match(l);
+                ip = setNextHash(setNextHash(ip + l, ref ht), ref ht);
+                a = ip;
+            }
+            literals((uint)data.Length - a);
+            return n;
+        }
+        return FlzCompressLen(encoded);
+    }
+
+    internal static UInt256 ComputeGasUsedFjord(UInt256 estimatedSize) => BasicDivisor.IsZero ? default : estimatedSize * GasCostOf.TxDataNonZeroEip2028 / BasicDivisor;
+
+    // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
+    // https://specs.optimism.io/protocol/jovian/l1-attributes.html
+    internal static UInt256 GetDaFootprintScalar(Block block)
+    {
+        Transaction? firstTx = block.Transactions.FirstOrDefault();
+        if (firstTx?.Type is not TxType.DepositTx)
+            return DaFootprintScalarDefault;
+
+        if (firstTx.Data.Length < 178)
+            return DaFootprintScalarDefault;
+
+        ushort scalar = ReadUInt16BigEndian(firstTx.Data.Span[176..178]);
+        return scalar == 0 ? DaFootprintScalarDefault : scalar;
+    }
+}

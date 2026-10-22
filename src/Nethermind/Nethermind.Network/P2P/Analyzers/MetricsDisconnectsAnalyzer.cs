@@ -8,9 +8,6 @@ namespace Nethermind.Network.P2P.Analyzers
 {
     public class MetricsDisconnectsAnalyzer : IDisconnectsAnalyzer
     {
-        public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
-        {
-            (type == DisconnectType.Remote ? Metrics.RemoteDisconnectsTotal : Metrics.LocalDisconnectsTotal).Increment(reason);
-        }
+        public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details) => (type == DisconnectType.Remote ? Metrics.RemoteDisconnectsTotal : Metrics.LocalDisconnectsTotal).Increment(reason);
     }
 }

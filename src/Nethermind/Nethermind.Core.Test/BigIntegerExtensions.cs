@@ -3,7 +3,6 @@
 
 using System;
 using System.Numerics;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -15,7 +14,7 @@ namespace Nethermind.Core.Test
         public void Test()
         {
             BigInteger a = BigInteger.One;
-            a.ToBigEndianByteArray(0).Should().BeEquivalentTo(Array.Empty<byte>());
+            Assert.That(a.ToBigEndianByteArray(0), Is.EqualTo(Array.Empty<byte>()));
         }
     }
 }

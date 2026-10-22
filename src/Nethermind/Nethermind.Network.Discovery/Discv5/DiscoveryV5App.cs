@@ -1,343 +1,394 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
-using DotNetty.Transport.Channels;
-using Lantern.Discv5.Enr;
-using Lantern.Discv5.Enr.Entries;
-using Lantern.Discv5.Enr.Identity.V4;
-using Lantern.Discv5.WireProtocol;
-using Lantern.Discv5.WireProtocol.Connection;
-using Lantern.Discv5.WireProtocol.Session;
-using Lantern.Discv5.WireProtocol.Table;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using NBitcoin.Secp256k1;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Autofac;
+using Autofac.Features.AttributeFilters;
+using Collections.Pooled;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Db;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Discv5.Kademlia;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
+using Discv5KademliaModule = Nethermind.Network.Discovery.Discv5.Kademlia.KademliaModule;
+
+[assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
 
 namespace Nethermind.Network.Discovery.Discv5;
 
-public class DiscoveryV5App : IDiscoveryApp
+public sealed class DiscoveryV5App : KademliaDiscoveryApp
 {
-    private readonly IDiscv5Protocol _discv5Protocol;
-    private readonly Logging.ILogger _logger;
-    private readonly IDb _discoveryDb;
-    private readonly CancellationTokenSource _appShutdownSource = new();
-    private readonly DiscoveryReport? _discoveryReport;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly SessionOptions _sessionOptions;
+    private readonly bool _allowNonRoutableEnrs;
+    private readonly NetworkListenerState _listenerState;
+    private readonly List<Node> _bootNodes;
+    private readonly DiscoveryPersistenceManager _persistenceManager;
+    private readonly IKademliaAdapter _discv5Adapter;
+    private readonly DiscoveryV5Transport _transport;
+    private readonly ILifetimeScope _discv5Services;
 
-    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IIPResolver? ipResolver, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
+    public DiscoveryV5App(
+        ILifetimeScope rootScope,
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IEnode enode,
+        IIPResolver ipResolver,
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        IProcessExitSource processExitSource,
+        ILogManager logManager,
+        NetworkListenerState listenerState,
+        Action<ContainerBuilder>? configureDiscv5Services = null)
+        : base("discv5", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryV5App>())
     {
-        ArgumentNullException.ThrowIfNull(ipResolver);
+        IPAddress externalIp = enode.HostIp;
+        _listenerState = listenerState;
+        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(externalIp);
 
-        _logger = logManager.GetClassLogger();
-        _discoveryDb = discoveryDb;
+        bool useDefaultBootnodes = ShouldUseDefaultDiscv5Bootnodes(externalIp, discoveryConfig);
+        _bootNodes = CreateBootNodes(networkConfig, discoveryConfig, useDefaultBootnodes);
+        ITimestamper timestamper = rootScope.ResolveOptional<ITimestamper>() ?? Timestamper.Default;
 
-        IdentityVerifierV4 identityVerifier = new();
-
-        _sessionOptions = new()
+        _discv5Services = rootScope.BeginLifetimeScope(builder =>
         {
-            Signer = new IdentitySignerV4(privateKeyProvider.Generate().KeyBytes),
-            Verifier = identityVerifier,
-            SessionKeys = new SessionKeys(privateKeyProvider.Generate().KeyBytes),
-        };
+            builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
+            builder.RegisterInstance(timestamper).As<ITimestamper>();
+            Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), networkConfig.P2PPort, networkConfig.DiscoveryPort, true);
+            builder
+                .AddModule(new Discv5KademliaModule(currentNode, _bootNodes))
+                .AddSingleton<DiscV5Services>();
 
-        string[] bootstrapNodes = [.. (discoveryConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
+            configureDiscv5Services?.Invoke(builder);
+        });
 
-        IServiceCollection services = new ServiceCollection()
-           .AddSingleton<ILoggerFactory, NullLoggerFactory>()
-           .AddSingleton(_sessionOptions.Verifier)
-           .AddSingleton(_sessionOptions.Signer);
-
-        EnrFactory enrFactory = new(new EnrEntryRegistry());
-
-        Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
-            .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
-                .Select(e => new Enode(e))
-                .Select(GetEnr),
-            .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
-            // TODO: Move to routing table's UpdateFromEnr
-            .. _discoveryDb.GetAllValues().Select(enr =>
-                {
-                    try
-                    {
-                        return enrFactory.CreateFromBytes(enr, identityVerifier);
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"unable to decode enr {e}");
-                        return null;
-                    }
-                })
-                .Where(enr => enr != null)!
-            ];
-
-        EnrBuilder enrBuilder = new EnrBuilder()
-            .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
-            .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
-            .WithEntry(EnrEntryKey.Ip, new EntryIp(ipResolver.ExternalIp))
-            .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
-            .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));
-
-        IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
-            .WithConnectionOptions(new ConnectionOptions
-            {
-                UdpPort = networkConfig.DiscoveryPort
-            })
-            .WithSessionOptions(_sessionOptions)
-            .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
-            .WithEnrBuilder(enrBuilder)
-            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
-            .WithServices(s =>
-            {
-                s.AddSingleton(logManager);
-                NettyDiscoveryV5Handler.Register(s);
-            });
-
-        _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
-        _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
-
-        _serviceProvider = discv5Builder.GetServiceProvider();
-        _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
+        DiscV5Services services = _discv5Services.Resolve<DiscV5Services>();
+        _persistenceManager = services.PersistenceManager;
+        _discv5Adapter = services.Discv5Adapter;
+        _transport = services.Transport;
+        UseKademliaServices(services.NodeSource, services.Kademlia);
     }
 
-    private void NodeRemovedByDiscovery(NodeTableEntry removedEntry)
+    /// <summary>
+    /// Just a small class to make resolve easier
+    /// </summary>
+    private record DiscV5Services(
+        IKademliaNodeSource NodeSource,
+        DiscoveryPersistenceManager PersistenceManager,
+        IKademliaAdapter Discv5Adapter,
+        IKademlia<PublicKey, Node> Kademlia,
+        DiscoveryV5Transport Transport
+    )
     {
-        if (!TryGetNodeFromEnr(removedEntry.Record, out Node? removedNode))
+    }
+
+    internal List<Node> CreateBootNodes(INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig)
+        => CreateBootNodes(networkConfig, discoveryConfig, discoveryConfig.UseDefaultDiscv5Bootnodes);
+
+    private List<Node> CreateBootNodes(INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, bool useDefaultBootnodes)
+    {
+        List<Node> bootNodes = [];
+        using PooledSet<Hash256> seen = new(networkConfig.Bootnodes.Length);
+        BootNodeStats configuredStats = new();
+        BootNodeStats defaultStats = new();
+
+        NetworkNode[] configuredBootnodes = networkConfig.Bootnodes;
+        for (int i = 0; i < configuredBootnodes.Length; i++)
+        {
+            configuredStats.Record(AddBootNode(bootNodes, seen, configuredBootnodes[i]));
+        }
+
+        if (useDefaultBootnodes)
+        {
+            string[] defaultBootnodes = GetDefaultBootnodes();
+            for (int i = 0; i < defaultBootnodes.Length; i++)
+            {
+                defaultStats.Record(AddBootNode(bootNodes, seen, NodeRecord.FromEnrString(defaultBootnodes[i])));
+            }
+        }
+
+        if (Logger.IsInfo)
+        {
+            Logger.Info($"Discv5 bootnodes accepted: {bootNodes.Count} ({configuredStats.Added}/{configuredStats.Total} configured, {defaultStats.Added}/{defaultStats.Total} default, duplicates: {configuredStats.Duplicates + defaultStats.Duplicates}, skipped: {configuredStats.Skipped + defaultStats.Skipped}, use default discv5 bootnodes: {useDefaultBootnodes}).");
+        }
+
+        if (bootNodes.Count == 0 && Logger.IsWarn)
+        {
+            Logger.Warn("No discv5 bootnodes specified in configuration");
+        }
+
+        return bootNodes;
+    }
+
+    public override void AddNodeToDiscovery(Node node)
+    {
+        if (node.Enr is not { Signature: not null } record)
         {
             return;
         }
 
-        NodeRemoved?.Invoke(this, new NodeEventArgs(removedNode));
+        try
+        {
+            if (record.EnrSequence < node.HighestObservedEnrSequence)
+            {
+                if (Logger.IsTrace) Logger.Trace($"Skipping stale discv5 discovery ENR for {node:s}.");
+                return;
+            }
 
-        if (_logger.IsDebug) _logger.Debug($"Node removed from discovered via discv5: {removedEntry.Record} = {removedNode}.");
+            if (!TryGetAcceptableNodeFromEnr(record, out Node? enrNode))
+            {
+                return;
+            }
+
+            if (!enrNode.IdHash.Equals(node.IdHash))
+            {
+                if (Logger.IsTrace) Logger.Trace($"Skipping discv5 discovery node {node:s} with mismatched ENR identity.");
+                return;
+            }
+
+            PreserveDiscoveryState(enrNode, node);
+            Kademlia.AddOrRefresh(enrNode);
+        }
+        catch (Exception e)
+        {
+            if (Logger.IsTrace) Logger.Trace($"Unable to parse discv5 discovery ENR for {node}: {e}");
+        }
     }
 
-    private bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NetworkNode networkNode)
     {
-        static PublicKey? GetPublicKeyFromEnr(IEnr entry)
+        if (networkNode.IsEnr)
         {
-            byte[] keyBytes = entry.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1).Value;
-            return Context.Instance.TryCreatePubKey(keyBytes, out _, out ECPubKey? key) ? new PublicKey(key.ToBytes(false)) : null;
+            return AddBootNode(bootNodes, seen, networkNode.Enr);
+        }
+
+        Node node = new(networkNode.NodeId, networkNode.Host, networkNode.Port, networkNode.DiscoveryPort);
+        return AddBootNode(bootNodes, seen, node);
+    }
+
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NodeRecord nodeRecord)
+    {
+        if (!TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node))
+        {
+            return BootNodeAddResult.Skipped;
+        }
+
+        node.SetVerifiedEnr(nodeRecord);
+        return AddReachableBootNode(bootNodes, seen, node);
+    }
+
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
+    {
+        if (!DiscoveryAddressSupport.Supports(LocalIp, node.DiscoveryAddress.Address))
+        {
+            if (Logger.IsTrace) Logger.Trace($"Skipping unreachable discv5 bootnode address family {node:s}.");
+            return BootNodeAddResult.Skipped;
+        }
+
+        return AddReachableBootNode(bootNodes, seen, node);
+    }
+
+    private BootNodeAddResult AddReachableBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
+    {
+        if (!seen.Add(node.IdHash))
+        {
+            if (Logger.IsTrace) Logger.Trace($"Skipping duplicate discv5 bootnode {node:s}.");
+            return BootNodeAddResult.Duplicate;
+        }
+
+        node.IsBootnode = true;
+        bootNodes.Add(node);
+        if (Logger.IsDebug) Logger.Debug($"Accepted discv5 bootnode {node:s}, has ENR: {node.Enr is not null}.");
+        return BootNodeAddResult.Added;
+    }
+
+    private static string[] GetDefaultBootnodes() =>
+        JsonSerializer.Deserialize(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!, BootnodesJsonContext.Default.StringArray) ?? [];
+
+    internal bool TryGetAcceptableNodeFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
+    {
+        if (KademliaAdapter.TryGetAcceptableNode(enr, _allowNonRoutableEnrs, LocalIp, out Node? enrNode))
+        {
+            node = enrNode;
+            return true;
         }
 
         node = null;
-        if (!enr.HasKey(EnrEntryKey.Tcp))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, no TCP port.");
-            return false;
-        }
-        if (!enr.HasKey(EnrEntryKey.Ip))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, no IP.");
-            return false;
-        }
-        if (!enr.HasKey(EnrEntryKey.Secp256K1))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, no signature.");
-            return false;
-        }
-        if (enr.HasKey(EnrEntryKey.Eth2))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, ETH2 detected.");
-            return false;
-        }
-
-        PublicKey? key = GetPublicKeyFromEnr(enr);
-        if (key is null)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, unable to extract public key.");
-            return false;
-        }
-
-        IPAddress ip = enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
-        int tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
-
-        node = new(key, ip.ToString(), tcpPort);
-        return true;
+        if (Logger.IsTrace) Logger.Trace("Enr declined, unable to extract a usable discv5 node endpoint.");
+        return false;
     }
 
-    private Lantern.Discv5.Enr.Enr GetEnr(Enode node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
-        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
-        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
-        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
-        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
-        .Build();
-
-    private Lantern.Discv5.Enr.Enr GetEnr(Node node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
-        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
-        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
-        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
-        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
-        .Build();
-
-    public event EventHandler<NodeEventArgs>? NodeRemoved;
-
-    public void Initialize(PublicKey masterPublicKey) { }
-
-    public void InitializeChannel(IChannel channel)
+    internal Node? RestorePersistedNode(NetworkNode networkNode)
     {
-        var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
-        handler.InitializeChannel(channel);
-        channel.Pipeline.AddLast(handler);
-    }
-
-    public async Task StartAsync()
-    {
-        await _discv5Protocol.InitAsync();
-
-        if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
-    }
-
-    public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
-    {
-        Channel<Node> ch = Channel.CreateBounded<Node>(1);
-
-        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
+        if (networkNode.IsEnr)
         {
-            static int[] GetDistances(byte[] srcNodeId, byte[] destNodeId)
+            if (TryGetAcceptableNodeFromEnr(networkNode.Enr, out Node? node))
             {
-                const int WiderDistanceRange = 3;
-
-                int[] distances = new int[WiderDistanceRange];
-                distances[0] = TableUtility.Log2Distance(srcNodeId, destNodeId);
-
-                for (int n = 1, i = 1; n < WiderDistanceRange; i++)
-                {
-                    if (distances[0] - i > 0)
-                    {
-                        distances[n++] = distances[0] - i;
-                    }
-                    if (distances[0] + i <= 256)
-                    {
-                        distances[n++] = distances[0] + i;
-                    }
-                }
-
-                return distances;
+                node.SetVerifiedEnr(networkNode.Enr);
+                return node;
             }
 
-            Queue<IEnr> nodesToCheck = new(startingNode);
-            HashSet<IEnr> checkedNodes = [];
-
-            while (!token.IsCancellationRequested)
-            {
-                if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
-                {
-                    return;
-                }
-
-                if (TryGetNodeFromEnr(newEntry, out Node? node2))
-                {
-                    await ch.Writer.WriteAsync(node2!, token);
-                    if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
-                    _discoveryReport?.NodeFound();
-                }
-
-                if (!checkedNodes.Add(newEntry))
-                {
-                    continue;
-                }
-
-                IEnumerable<IEnr>? newNodesFound = (await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, nodeId)))?.Where(x => !checkedNodes.Contains(x));
-
-                if (newNodesFound is not null)
-                {
-                    foreach (IEnr? node in newNodesFound)
-                    {
-                        nodesToCheck.Enqueue(node);
-                    }
-                }
-            }
+            return null;
         }
 
-        IEnumerable<IEnr> GetStartingNodes() => _discv5Protocol.GetAllNodes;
-        Random random = new();
+        Node enode = new(networkNode);
+        return DiscoveryAddressSupport.Supports(LocalIp, enode.DiscoveryAddress.Address) ? enode : null;
+    }
 
-        const int RandomNodesToLookupCount = 3;
-
-        Task discoverTask = Task.Run(async () =>
+    internal static bool IsDiscoveryAddressAcceptable(IPAddress ipAddress, bool allowNonRoutable)
+    {
+        if (IPAddress.Any.Equals(ipAddress) || IPAddress.IPv6Any.Equals(ipAddress) || IPAddress.Broadcast.Equals(ipAddress))
         {
-            byte[] randomNodeId = new byte[32];
-            while (!token.IsCancellationRequested)
-            {
-                try
-                {
-                    List<Task> discoverTasks = new List<Task>();
-                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
+            return false;
+        }
 
-                    for (int i = 0; i < RandomNodesToLookupCount; i++)
-                    {
-                        random.NextBytes(randomNodeId);
-                        discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
-                    }
+        if (ipAddress.IsMulticast)
+        {
+            return false;
+        }
 
-                    await Task.WhenAll(discoverTasks);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
-                }
-            }
-        });
+        if (ipAddress.IsSpecialUseAddress)
+        {
+            return false;
+        }
+
+        return allowNonRoutable || !ipAddress.IsLoopbackOrPrivateOrLinkLocal;
+    }
+
+    internal static bool IsDiscoveryAddressRoutable(IPAddress ipAddress)
+        => IsDiscoveryAddressAcceptable(ipAddress, allowNonRoutable: false);
+
+    internal static bool ShouldUseDefaultDiscv5Bootnodes(IPAddress externalIp, IDiscoveryConfig discoveryConfig)
+        => discoveryConfig.UseDefaultDiscv5Bootnodes && !IsKnownPrivateDiscoveryAddress(externalIp);
+
+    private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
+        => IsKnownPrivateDiscoveryAddress(externalIp);
+
+    private static bool IsKnownPrivateDiscoveryAddress(IPAddress externalIp)
+        => !IPAddress.Any.Equals(externalIp)
+            && !IPAddress.IPv6Any.Equals(externalIp)
+            && !IPAddress.None.Equals(externalIp)
+            && externalIp.IsLoopbackOrPrivateOrLinkLocal;
+
+    /// <inheritdoc/>
+    /// <remarks>discv5 is the last protocol on the socket, so it never forwards datagrams.</remarks>
+    internal override void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward)
+    {
+        _transport.BindSocket(socket);
+        OnChannelActivated();
+    }
+
+    internal override void Receive(PooledUdpReceiveResult datagram) => _transport.Receive(datagram);
+
+    protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)
+    {
+        Task adapterTask = _discv5Adapter.RunAsync(cancellationToken);
+        Task? persistenceTask = null;
 
         try
         {
-            await foreach (Node node in ch.Reader.ReadAllAsync(token))
-            {
-                yield return node;
-            }
+            await _persistenceManager.LoadPersistedNodes(cancellationToken, RestorePersistedNode);
+
+            persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
+            await Kademlia.Run(cancellationToken);
         }
         finally
         {
-            await discoverTask;
-        }
-    }
-
-    public async Task StopAsync()
-    {
-        IEnumerable<IEnr> activeNodeEnrs = _discv5Protocol.GetAllNodes;
-        _discoveryDb.Clear();
-
-        IWriteBatch? batch = null;
-        try
-        {
-            foreach (IEnr enr in activeNodeEnrs)
+            try
             {
-                batch ??= _discoveryDb.StartWriteBatch();
-                batch[enr.NodeId] = enr.EncodeRecord();
+                if (persistenceTask is not null)
+                {
+                    await persistenceTask;
+                }
+            }
+            finally
+            {
+                await adapterTask;
             }
         }
-        finally
-        {
-            batch?.Dispose();
-        }
-
-
-        await _discv5Protocol.StopAsync();
-        await _appShutdownSource.CancelAsync();
     }
 
-    public void AddNodeToDiscovery(Node node)
+    protected override async Task StopAsyncCore()
     {
-        var routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
-        routingTable.UpdateFromEnr(GetEnr(node));
+        await _discv5Adapter.DisposeAsync();
+        _transport.Close();
+    }
+
+    protected override ValueTask DisposeAsyncCore() => _discv5Services.DisposeAsync();
+
+    protected override async Task Initialize(CancellationToken cancellationToken)
+    {
+        ReconcileBootNodes();
+        await base.Initialize(cancellationToken);
+    }
+
+    private IPAddress LocalIp => _listenerState.DiscoveryAddress ?? _listenerState.PreferredAddress;
+
+    private void ReconcileBootNodes()
+    {
+        // Kademlia retains this list by reference, so reconcile it before activation starts enumerating boot nodes.
+        for (int i = _bootNodes.Count - 1; i >= 0; i--)
+        {
+            Node current = _bootNodes[i];
+            Node? reachable = current.Enr is { Signature: not null } record
+                ? TryGetAcceptableNodeFromEnr(record, out Node? enrNode) ? enrNode : null
+                : DiscoveryAddressSupport.Supports(LocalIp, current.DiscoveryAddress.Address) ? current : null;
+
+            if (reachable is null)
+            {
+                Kademlia.Remove(current);
+                _bootNodes.RemoveAt(i);
+            }
+            else if (!reachable.DiscoveryAddress.Equals(current.DiscoveryAddress))
+            {
+                PreserveDiscoveryState(reachable, current);
+                Kademlia.Remove(current);
+                Kademlia.AddOrRefresh(reachable);
+                _bootNodes[i] = reachable;
+            }
+        }
+    }
+
+    private enum BootNodeAddResult
+    {
+        Added,
+        Duplicate,
+        Skipped
+    }
+
+    private struct BootNodeStats
+    {
+        public int Total { get; private set; }
+        public int Added { get; private set; }
+        public int Duplicates { get; private set; }
+        public int Skipped { get; private set; }
+
+        public void Record(BootNodeAddResult result)
+        {
+            Total++;
+            switch (result)
+            {
+                case BootNodeAddResult.Added:
+                    Added++;
+                    break;
+                case BootNodeAddResult.Duplicate:
+                    Duplicates++;
+                    break;
+                case BootNodeAddResult.Skipped:
+                    Skipped++;
+                    break;
+            }
+        }
     }
 }
+
+[JsonSerializable(typeof(string[]))]
+internal partial class BootnodesJsonContext : JsonSerializerContext;

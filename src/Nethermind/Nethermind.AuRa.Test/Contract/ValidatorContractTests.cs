@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Processing;
@@ -12,11 +12,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -31,15 +30,20 @@ namespace Nethermind.AuRa.Test.Contract
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
         private IWorldState _stateProvider;
 
+        [TearDown]
+        public void TearDown() => _readOnlyTxProcessorSource?.Dispose();
+
         [SetUp]
         public void SetUp()
         {
-            _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
+            _block = new Block(Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject, new BlockBody());
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _stateProvider = Substitute.For<IWorldState>();
-            _stateProvider.StateRoot.Returns(TestItem.KeccakA);
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+            _readOnlyTxProcessorSource.TryBuild(_block.Header, out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(call => call.Succeed(1, new ReadOnlyTxProcessingScope(
+                _transactionProcessor,
+                new Reactive.AnonymousDisposable(() => { }),
+                _stateProvider)));
         }
 
         [Test]
@@ -53,7 +57,7 @@ namespace Nethermind.AuRa.Test.Contract
                     _stateProvider,
                     _readOnlyTxProcessorSource,
                     new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
-            action.Should().Throw<ArgumentNullException>();
+            Assert.That(action, Throws.TypeOf<ArgumentNullException>());
         }
 
         [Test]
@@ -82,15 +86,16 @@ namespace Nethermind.AuRa.Test.Contract
 
             contract.FinalizeChange(_block.Header);
 
+            _transactionProcessor.Received().SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.Equals(_block.Header)));
             _transactionProcessor.Received().Execute(
-                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)), Arg.Any<ITxTracer>());
+                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Any<ITxTracer>());
         }
 
         private static bool IsEquivalentTo(Transaction expected, Transaction item)
         {
             try
             {
-                item.EqualToTransaction(expected);
+                Assert.That(item, Is.EqualTo(expected).UsingTransactionComparer());
                 return true;
             }
             catch

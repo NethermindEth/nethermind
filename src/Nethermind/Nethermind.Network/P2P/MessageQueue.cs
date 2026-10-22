@@ -1,16 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Network.P2P
 {
-    public class MessageQueue<TMsg, TData>(Action<TMsg> send)
-        where TMsg : MessageBase
+    public class MessageQueue<TMsg, TData>(ProtocolHandlerBase handler)
+        where TMsg : P2PMessage
     {
         private bool _isClosed;
         private Request<TMsg, TData>? _currentRequest;
@@ -20,24 +21,37 @@ namespace Nethermind.Network.P2P
 
         public void Send(Request<TMsg, TData> request)
         {
-            if (_isClosed)
-            {
-                request.Message.TryDispose();
-                return;
-            }
-
             lock (_lock)
             {
+                if (_isClosed)
+                {
+                    request.Message.TryDispose();
+                    request.CompletionSource.TrySetCanceled();
+                    return;
+                }
+
                 if (_currentRequest is null)
                 {
                     _currentRequest = request;
                     _currentRequest.StartMeasuringTime();
-                    send(_currentRequest.Message);
+                    handler.Send(_currentRequest.Message);
                 }
                 else
                 {
                     _requestQueue.Enqueue(request);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Returns the request awaiting a response, so the response can be checked against it before it is decoded.
+        /// </summary>
+        /// <exception cref="SubprotocolException">No request is awaiting a response.</exception>
+        public TMsg GetPendingRequest()
+        {
+            lock (_lock)
+            {
+                return _currentRequest?.Message ?? throw NotRequested();
             }
         }
 
@@ -47,27 +61,44 @@ namespace Nethermind.Network.P2P
             {
                 if (_currentRequest is null)
                 {
-                    if (data is IDisposable d)
-                    {
-                        d.Dispose();
-                    }
-
-                    throw new SubprotocolException($"Received a response to {nameof(TMsg)} that has not been requested");
+                    data.TryDispose();
+                    throw NotRequested();
                 }
 
                 _currentRequest.ResponseSize = size;
-                _currentRequest.CompletionSource.SetResult(data);
+                if (!_currentRequest.CompletionSource.TrySetResult(data))
+                {
+                    data.TryDispose();
+                }
                 if (_requestQueue.TryDequeue(out _currentRequest))
                 {
                     _currentRequest!.StartMeasuringTime();
-                    send(_currentRequest.Message);
+                    handler.Send(_currentRequest.Message);
                 }
             }
         }
 
+        private static SubprotocolException NotRequested() => new($"Received a response to {typeof(TMsg).Name} that has not been requested");
+
         public void CompleteAdding()
         {
-            _isClosed = true;
+            lock (_lock)
+            {
+                _isClosed = true;
+
+                if (_currentRequest is not null)
+                {
+                    _currentRequest.Message.TryDispose();
+                    _currentRequest.CompletionSource.TrySetCanceled();
+                    _currentRequest = null;
+                }
+
+                while (_requestQueue.TryDequeue(out Request<TMsg, TData>? request))
+                {
+                    request.Message.TryDispose();
+                    request.CompletionSource.TrySetCanceled();
+                }
+            }
         }
     }
 }

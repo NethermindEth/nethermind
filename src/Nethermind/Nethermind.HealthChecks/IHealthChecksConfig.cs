@@ -16,10 +16,10 @@ public interface IHealthChecksConfig : IConfig
     [ConfigItem(Description = "The URL slug the health checks service is exposed at.", DefaultValue = "/health")]
     public string Slug { get; set; }
 
-    [ConfigItem(Description = "The web hook URL.", DefaultValue = "null")]
+    [ConfigItem(Description = "The web hook URL.", DefaultValue = "null", IsSensitive = true)]
     public string WebhooksUri { get; set; }
 
-    [ConfigItem(Description = "An escaped JSON paylod to be sent to the web hook on failure.",
+    [ConfigItem(Description = "An escaped JSON payload to be sent to the web hook on failure.",
         DefaultValue = """
             ```json
             {
@@ -46,7 +46,7 @@ public interface IHealthChecksConfig : IConfig
             """)]
     public string WebhooksPayload { get; set; }
 
-    [ConfigItem(Description = "An escaped JSON paylod to be sent to the web hook on recovery.",
+    [ConfigItem(Description = "An escaped JSON payload to be sent to the web hook on recovery.",
         DefaultValue = """
             ```json
             {

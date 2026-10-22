@@ -3,6 +3,7 @@
   <PropertyGroup>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
@@ -10,6 +11,7 @@
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Contract\Nethermind.Network.Contract.csproj" />
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+    <ProjectReference Include="..\Nethermind.History\Nethermind.History.csproj" />
   </ItemGroup>
 
   <ItemGroup>

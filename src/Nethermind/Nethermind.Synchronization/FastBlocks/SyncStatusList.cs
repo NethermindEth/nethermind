@@ -17,11 +17,11 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _queueSize;
         private readonly IBlockTree _blockTree;
         private readonly FastBlockStatusList _statuses;
-        private readonly LruCache<long, BlockInfo> _cache = new(maxCapacity: 64, startCapacity: 64, "blockInfo Cache");
-        private long _lowestInsertWithoutGaps;
-        private readonly long _lowerBound;
+        private readonly LruCache<ulong, BlockInfo> _cache = new(maxCapacity: 64, startCapacity: 64, "blockInfo Cache");
+        private ulong _lowestInsertWithoutGaps;
+        private readonly ulong _lowerBound;
 
-        public long LowestInsertWithoutGaps
+        public ulong LowestInsertWithoutGaps
         {
             get => _lowestInsertWithoutGaps;
             private init => _lowestInsertWithoutGaps = value;
@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public long QueueSize => _queueSize;
 
-        public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted, long lowerBound)
+        public SyncStatusList(IBlockTree blockTree, ulong pivotNumber, ulong? lowestInserted, ulong lowerBound)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _statuses = new FastBlockStatusList(pivotNumber + 1);
@@ -41,7 +41,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private void GetInfosForBatch(Span<BlockInfo?> blockInfos)
         {
             int collected = 0;
-            long currentNumber = Volatile.Read(ref _lowestInsertWithoutGaps);
+            ulong currentNumber = Volatile.Read(ref _lowestInsertWithoutGaps);
             while (collected < blockInfos.Length && currentNumber != 0 && currentNumber >= _lowerBound)
             {
                 if (blockInfos[collected] is not null)
@@ -52,21 +52,30 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (_statuses.TrySet(currentNumber, FastBlockStatus.Sent, out FastBlockStatus status))
                 {
-                    if (_cache.TryGet(currentNumber, out BlockInfo blockInfo))
+                    BlockInfo? blockInfo;
+                    if (_cache.TryGet(currentNumber, out BlockInfo cachedInfo))
                     {
                         _cache.Delete(currentNumber);
+                        blockInfo = cachedInfo;
                     }
                     else
                     {
                         blockInfo = _blockTree.FindCanonicalBlockInfo(currentNumber);
                     }
 
-                    blockInfos[collected] = blockInfo;
-                    collected++;
+                    if (blockInfo is null)
+                    {
+                        _statuses.TrySet(currentNumber, FastBlockStatus.Pending);
+                    }
+                    else
+                    {
+                        blockInfos[collected] = blockInfo;
+                        collected++;
+                    }
                 }
                 else if (status == FastBlockStatus.Inserted)
                 {
-                    long currentLowest = Volatile.Read(ref _lowestInsertWithoutGaps);
+                    ulong currentLowest = Volatile.Read(ref _lowestInsertWithoutGaps);
                     if (currentNumber == currentLowest)
                     {
                         if (Interlocked.CompareExchange(ref _lowestInsertWithoutGaps, currentLowest - 1, currentLowest) == currentLowest)
@@ -87,84 +96,93 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <param name="blockExist"></param>
         /// <param name="infos"></param>
         /// <returns></returns>
-        public bool TryGetInfosForBatch(int batchSize, Func<BlockInfo, bool> blockExist, out BlockInfo?[] infos)
+        public bool TryGetInfosForBatch(int batchSize, IBlockDownloadStrategy blockDownloadStrategy, out BlockInfo?[] infos)
         {
             ArrayPoolList<BlockInfo?> workingArray = new(batchSize, batchSize);
-
-            // Need to be a max attempt to update sync progress
-            const int maxAttempt = 8;
-            for (int attempt = 0; attempt < maxAttempt; attempt++)
+            try
             {
-                // Because the last clause of GetInfosForBatch increment the _lowestInsertWithoutGap need to be run
-                // sequentially, can't find an easy way to parallelize the checking for block exist part in the check
-                // So here we are...
-                GetInfosForBatch(workingArray.AsSpan());
-
-                (bool hasNonNull, bool hasInserted) = ClearExistingBlock();
-
-                if (hasNonNull || !hasInserted)
+                // Need to be a max attempt to update sync progress
+                const int maxAttempt = 8;
+                for (int attempt = 0; attempt < maxAttempt; attempt++)
                 {
-                    CompileOutput(out infos);
-                    return true;
-                }
+                    // Because the last clause of GetInfosForBatch increment the _lowestInsertWithoutGap need to be run
+                    // sequentially, can't find an easy way to parallelize the checking for block exist part in the check
+                    // So here we are...
+                    GetInfosForBatch(workingArray.AsSpan());
 
-                // At this point, hasNonNull is false and hasInserted is true, meaning all entry in workingArray
-                // already exist. We switch to a bigger array to improve parallelization throughput
-                if (workingArray.Count < ParallelExistCheckSize)
-                {
-                    workingArray = new ArrayPoolList<BlockInfo?>(ParallelExistCheckSize, ParallelExistCheckSize);
-                }
-            }
+                    (bool hasNonNull, bool hasInserted) = ClearExistingBlock();
 
-            infos = [];
-            return false;
-
-            (bool, bool) ClearExistingBlock()
-            {
-                bool hasNonNull = false;
-                bool hasInserted = false;
-                ParallelUnbalancedWork.For(0, workingArray.Count, (i) =>
-                {
-                    if (workingArray[i] is not null)
+                    if (hasNonNull || !hasInserted)
                     {
-                        if (blockExist(workingArray[i]))
+                        CompileOutput(out infos);
+                        return true;
+                    }
+
+                    // At this point, hasNonNull is false and hasInserted is true, meaning all entry in workingArray
+                    // already exist. We switch to a bigger array to improve parallelization throughput
+                    if (workingArray.Count < ParallelExistCheckSize)
+                    {
+                        workingArray.Dispose();
+                        workingArray = new ArrayPoolList<BlockInfo?>(ParallelExistCheckSize, ParallelExistCheckSize);
+                    }
+                }
+
+                infos = [];
+                return false;
+
+                (bool, bool) ClearExistingBlock()
+                {
+                    bool hasNonNull = false;
+                    bool hasInserted = false;
+                    ParallelUnbalancedWork.For(0, workingArray.Count, (i) =>
+                    {
+                        if (workingArray[i] is not null)
                         {
-                            MarkInserted(workingArray[i].BlockNumber);
-                            hasInserted = true;
-                            workingArray[i] = null;
+                            if (blockDownloadStrategy.ShouldDownloadBlock(workingArray[i]))
+                            {
+                                hasNonNull = true;
+                            }
+                            else
+                            {
+                                MarkInserted(workingArray[i].BlockNumber);
+                                hasInserted = true;
+                                workingArray[i] = null;
+                            }
+                        }
+                    });
+                    return (hasNonNull, hasInserted);
+                }
+
+                void CompileOutput(out BlockInfo?[] outputArray)
+                {
+                    int slot = 0;
+                    outputArray = new BlockInfo?[batchSize];
+                    for (int i = 0; i < workingArray.Count; i++)
+                    {
+                        if (workingArray[i] is null) continue;
+
+                        if (slot < outputArray.Length)
+                        {
+                            outputArray[slot] = workingArray[i];
+                            slot++;
                         }
                         else
                         {
-                            hasNonNull = true;
+                            // Not enough space in output we'll need to put back the block
+                            MarkPending(workingArray[i]);
                         }
-                    }
-                });
-                return (hasNonNull, hasInserted);
-            }
-
-            void CompileOutput(out BlockInfo?[] outputArray)
-            {
-                int slot = 0;
-                outputArray = new BlockInfo?[batchSize];
-                for (int i = 0; i < workingArray.Count; i++)
-                {
-                    if (workingArray[i] is null) continue;
-
-                    if (slot < outputArray.Length)
-                    {
-                        outputArray[slot] = workingArray[i];
-                        slot++;
-                    }
-                    else
-                    {
-                        // Not enough space in output we'll need to put back the block
-                        MarkPending(workingArray[i]);
                     }
                 }
             }
+            finally
+            {
+                workingArray.Dispose();
+            }
         }
 
-        public void MarkInserted(long blockNumber)
+        public bool IsInserted(ulong blockNumber) => _statuses[blockNumber] == FastBlockStatus.Inserted;
+
+        public void MarkInserted(ulong blockNumber)
         {
             if (_statuses.TrySet(blockNumber, FastBlockStatus.Inserted))
             {

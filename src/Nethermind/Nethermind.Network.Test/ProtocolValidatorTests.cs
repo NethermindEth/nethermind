@@ -1,0 +1,69 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Logging;
+using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.Network.Test;
+
+public class ProtocolValidatorTests
+{
+    private const string TestEnode = "enode://0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b@89.197.135.74:30303";
+
+    private static ISession CreateSession()
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(new NetworkNode(TestEnode)));
+        return session;
+    }
+
+    private static void AssertDisconnect(ISession session, bool shouldDisconnect, DisconnectReason reason)
+    {
+        if (shouldDisconnect)
+        {
+            session.Received(1).InitiateDisconnect(reason, Arg.Any<string>());
+        }
+        else
+        {
+            session.DidNotReceive().InitiateDisconnect(reason, Arg.Any<string>());
+        }
+    }
+
+    [TestCase("besu", "besu/v23.4.0/linux-x86_64/openjdk-java-17", false)]
+    [TestCase("besu", "Geth/v1.12.1-unstable-b8d7da87-20230808/linux-amd64/go1.19.2", true)]
+    [TestCase("^((?!besu).)*$", "Geth/v1.12.1-unstable-b8d7da87-20230808/linux-amd64/go1.19.2", false)]
+    [TestCase("^((?!besu).)*$", "besu/v23.4.0/linux-x86_64/openjdk-java-17", true)]
+    public void On_hello_with_not_matching_client_id(string pattern, string clientId, bool shouldDisconnect)
+    {
+        ProtocolValidator protocolValidator = new(
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IForkInfo>(),
+            new NetworkConfig()
+            {
+                ClientIdMatcher = pattern
+            },
+            LimboLogs.Instance
+        );
+
+        ISession session = CreateSession();
+        IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler>();
+        protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, new P2PProtocolInitializedEventArgs(protocolHandler)
+        {
+            ClientId = clientId,
+            P2PVersion = 5
+        });
+        AssertDisconnect(session, shouldDisconnect, DisconnectReason.ClientFiltered);
+    }
+
+}

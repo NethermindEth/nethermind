@@ -11,8 +11,8 @@ namespace Ethereum.Test.Base
     {
         public Address CurrentCoinbase { get; set; }
         public UInt256 CurrentDifficulty { get; set; }
-        public long CurrentGasLimit { get; set; }
-        public long CurrentNumber { get; set; }
+        public ulong CurrentGasLimit { get; set; }
+        public ulong CurrentNumber { get; set; }
         public ulong CurrentTimestamp { get; set; }
         public UInt256? CurrentBaseFee { get; set; }
         public Hash256 PreviousHash { get; set; }
@@ -20,7 +20,6 @@ namespace Ethereum.Test.Base
         public Hash256? CurrentBeaconRoot { get; set; }
         public Hash256? CurrentWithdrawalsRoot { get; set; }
         public ulong? CurrentExcessBlobGas { get; set; }
-        public UInt256? ParentBlobGasUsed { get; set; }
-        public UInt256? ParentExcessBlobGas { get; set; }
+        public ulong? SlotNumber { get; set; }
     }
 }

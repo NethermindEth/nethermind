@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class SimulateCallResult
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public FrameResult[]? FrameResults { get; set; }
     public ulong Status { get; set; }
     public byte[]? ReturnData { get; set; }
     public ulong? GasUsed { get; set; }
+    public ulong? MaxUsedGas { get; set; }
     public Error? Error { get; set; }
-    public IEnumerable<Log> Logs { get; set; } = [];
+    public ICollection<Log> Logs { get; set; } = [];
 }

@@ -11,19 +11,19 @@ public static class BetterPeerStrategyExtensions
 {
     public static int Compare(this IBetterPeerStrategy peerStrategy, BlockHeader? header, ISyncPeer? peerInfo)
     {
-        UInt256 headerDifficulty = header?.TotalDifficulty ?? UInt256.Zero;
-        long headerNumber = header?.Number ?? 0;
+        UInt256? headerDifficulty = header?.TotalDifficulty;
+        ulong headerNumber = header?.Number ?? 0UL;
 
-        UInt256 peerDifficulty = peerInfo?.TotalDifficulty ?? UInt256.Zero;
-        long peerInfoHeadNumber = peerInfo?.HeadNumber ?? 0;
+        UInt256? peerDifficulty = peerInfo?.TotalDifficulty;
+        ulong peerInfoHeadNumber = peerInfo?.HeadNumber ?? 0UL;
 
         return peerStrategy.Compare((headerDifficulty, headerNumber), (peerDifficulty, peerInfoHeadNumber));
     }
 
-    public static int Compare(this IBetterPeerStrategy peerStrategy, (UInt256 TotalDifficulty, long Number) value, ISyncPeer? peerInfo)
+    public static int Compare(this IBetterPeerStrategy peerStrategy, (UInt256 TotalDifficulty, ulong Number) value, ISyncPeer? peerInfo)
     {
-        UInt256 peerDifficulty = peerInfo?.TotalDifficulty ?? UInt256.Zero;
-        long peerInfoHeadNumber = peerInfo?.HeadNumber ?? 0;
+        UInt256? peerDifficulty = peerInfo?.TotalDifficulty;
+        ulong peerInfoHeadNumber = peerInfo?.HeadNumber ?? 0UL;
         return peerStrategy.Compare(value, (peerDifficulty, peerInfoHeadNumber));
     }
 }

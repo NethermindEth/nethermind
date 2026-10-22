@@ -1,23 +1,23 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Ethereum.Test.Base;
+using System.Globalization;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.GnosisForks;
 using Nethermind.Specs.Test;
 
 namespace Evm.T8n;
 
 public static class T8nInputProcessor
 {
-    private static readonly TxDecoder TxDecoder = TxDecoder.Instance;
+    private static readonly TxDecoder TransactionDecoder = TxDecoder.Instance;
 
     public static T8nTest ProcessInputAndConvertToT8nTest(T8nCommandArguments arguments)
     {
@@ -28,20 +28,21 @@ public static class T8nInputProcessor
             throw new T8nException("Env is not provided", T8nErrorCodes.ErrorIO);
         }
 
-        (ISpecProvider specProvider, IReleaseSpec overridableReleaseSpec, IReleaseSpec spec) = GetSpec(arguments, inputData.Env);
+        (ISpecProvider specProvider, IReleaseSpec spec) = GetSpec(arguments, inputData.Env);
 
         T8nValidator.ApplyChecks(inputData.Env, specProvider, spec);
 
-        var gethTraceOptions = new GethTraceOptions
+        GethTraceOptions gethTraceOptions = new()
         {
             EnableMemory = arguments.TraceMemory,
-            DisableStack = arguments.TraceNoStack
+            DisableStack = arguments.TraceNoStack,
+            EnableReturnData = arguments.TraceReturnData,
         };
 
-        T8nTest test = new(spec, overridableReleaseSpec, specProvider, inputData.Env.CurrentCoinbase)
+        T8nTest test = new(spec, specProvider, inputData.Env.CurrentCoinbase)
         {
             Alloc = inputData.Alloc ?? [],
-            Transactions = inputData.GetTransactions(TxDecoder, specProvider.ChainId, spec),
+            Transactions = inputData.GetTransactions(TransactionDecoder, specProvider.ChainId),
             CurrentGasLimit = inputData.Env.CurrentGasLimit,
             CurrentTimestamp = inputData.Env.CurrentTimestamp,
             CurrentNumber = inputData.Env.CurrentNumber,
@@ -60,45 +61,51 @@ public static class T8nInputProcessor
             CurrentExcessBlobGas = inputData.Env.CurrentExcessBlobGas,
             ParentBlobGasUsed = inputData.Env.ParentBlobGasUsed,
             Ommers = inputData.Env.Ommers,
-            BlockHashes = inputData.Env.BlockHashes,
+            BlockHashes = inputData.Env.BlockHashes?.ToDictionary(kvp => ParseBlockNumber(kvp.Key), kvp => kvp.Value),
             StateChainId = arguments.StateChainId,
             GethTraceOptions = gethTraceOptions,
             IsTraceEnabled = arguments.Trace,
+            AreRewardsEnabled = !IsRewardDisabled(arguments),
         };
 
         return test;
     }
 
-    private static (ISpecProvider, IReleaseSpec, IReleaseSpec) GetSpec(T8nCommandArguments arguments, EnvJson env)
+    private static (ISpecProvider, IReleaseSpec) GetSpec(T8nCommandArguments arguments, EnvJson env)
     {
         IReleaseSpec spec;
         try
         {
-            spec = JsonToEthereumTest.ParseSpec(arguments.StateFork);
+            spec = SpecNameParser.Parse(arguments.StateFork);
         }
         catch (NotSupportedException e)
         {
             throw new T8nException(e, $"unsupported fork {arguments.StateFork}", T8nErrorCodes.ErrorConfig);
         }
-
-        spec = ChainUtils.ResolveSpec(spec, arguments.StateChainId)!;
         OverridableReleaseSpec overridableReleaseSpec = new(spec);
 
-        if (!string.IsNullOrEmpty(arguments.StateReward) && arguments.StateReward != "-1") // (-1 means rewards are disabled)
+        if (!string.IsNullOrEmpty(arguments.StateReward) && !IsRewardDisabled(arguments))
         {
             overridableReleaseSpec.BlockReward = UInt256.Parse(arguments.StateReward);
         }
         ISpecProvider specProvider = arguments.StateChainId == GnosisSpecProvider.Instance.ChainId
-            ? new CustomSpecProvider(arguments.StateChainId, arguments.StateChainId, ((ForkActivation)0, Byzantium.Instance),
-                ((ForkActivation)1, overridableReleaseSpec))
+            ? GnosisSpecProvider.Instance
             : new CustomSpecProvider(((ForkActivation)0, Frontier.Instance),
                 ((ForkActivation)1, overridableReleaseSpec));
 
-        if (spec is Paris)
+        if (spec is NamedReleaseSpec { IsPostMerge: true })
         {
             specProvider.UpdateMergeTransitionInfo(env.CurrentNumber, 0);
         }
 
-        return (specProvider, overridableReleaseSpec, spec);
+        return (specProvider, overridableReleaseSpec);
     }
+
+    /// <remarks>As in geth, a negative <c>--state.reward</c> skips the block and ommer rewards.</remarks>
+    private static bool IsRewardDisabled(T8nCommandArguments arguments) => arguments.StateReward.StartsWith('-');
+
+    private static ulong ParseBlockNumber(string number) =>
+        number.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? ulong.Parse(number.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture)
+            : ulong.Parse(number, CultureInfo.InvariantCulture);
 }

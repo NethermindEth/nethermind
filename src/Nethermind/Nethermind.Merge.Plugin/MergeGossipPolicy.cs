@@ -9,21 +9,14 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class MergeGossipPolicy : IGossipPolicy
+    public class MergeGossipPolicy(
+        IGossipPolicy? apiGossipPolicy,
+        IPoSSwitcher? poSSwitcher,
+        IBlockCacheService blockCacheService) : IGossipPolicy
     {
-        private readonly IGossipPolicy _preMergeGossipPolicy;
-        private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IBlockCacheService _blockCacheService;
-
-        public MergeGossipPolicy(
-            IGossipPolicy? apiGossipPolicy,
-            IPoSSwitcher? poSSwitcher,
-            IBlockCacheService blockCacheService)
-        {
-            _preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
-            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
-        }
+        private readonly IGossipPolicy _preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+        private readonly IBlockCacheService _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
 
         // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
         // We SHOULD NOT advertise the descendant of any terminal PoW block.

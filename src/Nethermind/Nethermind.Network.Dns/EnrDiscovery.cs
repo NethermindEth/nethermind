@@ -2,29 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using System.Net;
 using System.Runtime.CompilerServices;
 using DnsClient;
-using DotNetty.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
+
+[assembly: InternalsVisibleTo("Nethermind.Network.Dns.Test")]
 
 namespace Nethermind.Network.Dns;
 
 public class EnrDiscovery : INodeSource
 {
     private readonly IEnrRecordParser _parser;
+    private readonly IForkInfo _forkInfo;
     private readonly ILogger _logger;
     private readonly EnrTreeCrawler _crawler;
     private readonly string _domain;
 
-    public EnrDiscovery(IEnrRecordParser parser, INetworkConfig networkConfig, ILogManager logManager)
+    public EnrDiscovery(IEnrRecordParser parser, INetworkConfig networkConfig, IForkInfo forkInfo, ILogManager logManager)
     {
         _parser = parser;
-        _logger = logManager.GetClassLogger();
+        _forkInfo = forkInfo;
+        _logger = logManager.GetClassLogger<EnrDiscovery>();
         _crawler = new EnrTreeCrawler(_logger);
         _domain = networkConfig.DiscoveryDns!;
     }
@@ -33,66 +34,68 @@ public class EnrDiscovery : INodeSource
     {
         if (string.IsNullOrWhiteSpace(_domain)) yield break;
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
-        await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain)
+        await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain, cancellationToken)
             .WithCancellation(cancellationToken)
             .GetAsyncEnumerator();
 
-        try
+        // Need to loop manually because of te exception handling
+        while (true)
         {
-            // Need to loop manually because of te exception handling
-            while (true)
+            cancellationToken.ThrowIfCancellationRequested();
+            bool hasNext = false;
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                bool hasNext = false;
-                try
-                {
-                    hasNext = await enumerator.MoveNextAsync();
-                }
-                catch (DnsResponseException dnsException)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{_domain}\" had an error: {dnsException.DnsError}");
-                    yield break;
-                }
+                hasNext = await enumerator.MoveNextAsync();
+            }
+            catch (DnsResponseException dnsException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{_domain}\" had an error: {dnsException.DnsError}");
+                yield break;
+            }
 
-                if (!hasNext)
-                {
-                    yield break;
-                }
+            if (!hasNext)
+            {
+                yield break;
+            }
 
-                string nodeRecordText = enumerator.Current;
-                Node? node = null;
-                try
+            string nodeRecordText = enumerator.Current;
+            Node? node = null;
+            try
+            {
+                NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText);
+                if (_forkInfo.IsNodeRecordForkCompatible(nodeRecord))
                 {
-                    NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText, buffer);
-                    node = CreateNode(nodeRecord);
+                    node = CreateVerifiedNode(nodeRecord);
                 }
-                catch (Exception e)
+                else if (_logger.IsTrace)
                 {
-                    if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR failed to parse enr record {nodeRecordText}", e);
-                }
-
-                if (node is not null)
-                {
-                    // here could add network info to the node
-                    yield return node;
+                    _logger.Trace($"Skipping DNS discovered ENR {nodeRecordText} with incompatible fork ID.");
                 }
             }
-        }
-        finally
-        {
-            buffer.Release();
+            catch (Exception e)
+            {
+                _logger.DebugError($"failed to parse enr record {nodeRecordText}", e);
+            }
+
+            if (node is not null)
+            {
+                // here could add network info to the node
+                yield return node;
+            }
         }
     }
 
-    private static Node? CreateNode(NodeRecord nodeRecord)
+    internal static bool TryCreateNode(NodeRecord nodeRecord, [NotNullWhen(true)] out Node? node) =>
+        Node.TryFromEnr(nodeRecord, out node);
+
+    internal static Node? CreateVerifiedNode(NodeRecord nodeRecord)
     {
-        CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
-        IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
-        int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
-        return compressedPublicKey is not null && ipAddress is not null && port is not null
-            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value)
-            : null;
+        if (!TryCreateNode(nodeRecord, out Node? node) || !node.SetVerifiedEnr(nodeRecord))
+        {
+            return null;
+        }
+
+        return node;
     }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }

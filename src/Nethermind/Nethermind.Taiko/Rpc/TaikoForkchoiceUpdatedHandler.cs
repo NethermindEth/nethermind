@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -16,13 +17,13 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization.Peers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Taiko.Rpc;
 
-internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
-    IManualBlockFinalizationManager manualBlockFinalizationManager,
+internal class TaikoForkchoiceUpdatedHandler(
+    IBlockTree blockTree,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
     IBlockProcessingQueue processingQueue,
@@ -33,44 +34,41 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
     IPeerRefresher peerRefresher,
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
+    IMergeConfig mergeConfig,
     ILogManager logManager,
-    ulong secondsPerSlot,
-    bool simulateBlockProduction = false) : ForkchoiceUpdatedHandler(blockTree,
-          manualBlockFinalizationManager,
-          poSSwitcher,
-          payloadPreparationService,
-          processingQueue,
-          blockCacheService,
-          invalidChainTracker,
-          mergeSyncController,
-          beaconPivot,
-          peerRefresher,
-          specProvider,
-          syncPeerPool,
-          logManager,
-          secondsPerSlot,
-          simulateBlockProduction)
+    IBlockProcessingPauseControl pauseControl,
+    BlockTreeMutationLock mutationLock,
+    IStateReader stateReader) : ForkchoiceUpdatedHandler(
+    blockTree,
+    poSSwitcher,
+    payloadPreparationService,
+    processingQueue,
+    blockCacheService,
+    invalidChainTracker,
+    mergeSyncController,
+    beaconPivot,
+    peerRefresher,
+    specProvider,
+    syncPeerPool,
+    mergeConfig,
+    logManager,
+    pauseControl,
+    mutationLock,
+    stateReader)
 {
-    protected override bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
-       [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+    protected override bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
+        [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
     {
-        errorResult = null;
-        return true;
+        result = null;
+        return false;
     }
 
-    protected override bool IsPayloadAttributesTimestampValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
-        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
-    {
-        if (newHeadBlock.Timestamp > payloadAttributes.Timestamp)
-        {
-            string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater or equal to head block timestamp {newHeadBlock.Timestamp}.";
-            errorResult = ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
-            return false;
-        }
-
-        errorResult = null;
-        return true;
-    }
+    // Taiko finality follows L1 and may regress on L1 reorgs, so Ethereum's spec-ordering bounds
+    // on finalized (Casper FFG monotonicity) and safe (safe >= finalized) don't apply. Keep the
+    // ancestry check via the base call; pass lowerBound=0 to disable the numeric bound.
+    protected override ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(
+        BlockHeader? header, ulong lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
+        => base.RejectIfInconsistent(header, 0, label, newHeadHeader, requestStr);
 
     protected override BlockHeader? ValidateBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
@@ -89,4 +87,12 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
 
         return blockHeader;
     }
+
+    // Taiko allows equal timestamps because multiple L2 blocks can be derived
+    // from a single L1 block, all sharing the same L1 anchor timestamp.
+    protected override bool IsPayloadTimestampValid(BlockHeader newHeadHeader, PayloadAttributes payloadAttributes)
+        => payloadAttributes.Timestamp >= newHeadHeader.Timestamp;
+
+    // Resetting to a block already on the main chain (including genesis) is handled generically by
+    // BlockTree.TryUpdateMainChain's header walk, so no Taiko-specific branch building is needed.
 }

@@ -1,66 +1,53 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
+using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
-    public class Eip1344Tests : VirtualMachineTestsBase
+    [TestFixture(0UL)]
+    [TestFixture(1UL)]
+    [TestFixture(0x0102030405060708UL)]
+    [TestFixture(ulong.MaxValue)]
+    public class Eip1344Tests(ulong chainId) : VirtualMachineTestsBase
     {
-        private void Test(ulong expectedChainId)
+        protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+        private readonly ISpecProvider _specProvider = new TestSpecProvider(Istanbul.Instance) { ChainId = chainId };
+        protected override ISpecProvider SpecProvider => _specProvider;
+        protected override bool SignWithEip155 => chainId <= EthereumEcdsaExtensions.MaxEip155ChainId;
+
+        [Test]
+        public void Chain_id_opcode_puts_expected_value_onto_the_stack([Values] bool traced)
         {
+            ulong expectedChainId = SpecProvider.ChainId;
+
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.CHAINID)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
                 .Done;
-            TestAllTracerWithOutput result = Execute(code);
-            long setCost = expectedChainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
+            ChainIdTracer result = Execute(new ChainIdTracer(traced), code);
+            ulong setCost = expectedChainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
-            AssertStorage(0, ((UInt256)expectedChainId).ToBigEndian());
+            byte[] expected = new byte[32];
+            BinaryPrimitives.WriteUInt64BigEndian(expected.AsSpan(24), expectedChainId);
+            AssertStorage(0, expected);
+            Assert.That(result.FirstPush, traced ? Is.EqualTo(expected) : Is.Null);
         }
 
-        private class Custom0 : Eip1344Tests
+        private sealed class ChainIdTracer(bool traced) : TestAllTracerWithOutput
         {
-            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
-
-            [Test]
-            public void given_custom_0_network_chain_id_opcode_puts_expected_value_onto_the_stack()
-            {
-                Test(SpecProvider.ChainId);
-            }
-        }
-
-        private class Custom32000 : Eip1344Tests
-        {
-            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
-
-            [Test]
-            public void given_custom_custom_32000_network_chain_id_opcode_puts_expected_value_onto_the_stack()
-            {
-                Test(SpecProvider.ChainId);
-            }
-        }
-
-        private class Mainnet : Eip1344Tests
-        {
-            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
-
-            [Test]
-            public void given_mainnet_network_chain_id_opcode_puts_expected_value_onto_the_stack()
-            {
-                Test(SpecProvider.ChainId);
-            }
+            public override bool IsTracingInstructions => traced;
+            public byte[]? FirstPush { get; private set; }
+            public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => FirstPush ??= stackItem.ToArray();
         }
     }
 }

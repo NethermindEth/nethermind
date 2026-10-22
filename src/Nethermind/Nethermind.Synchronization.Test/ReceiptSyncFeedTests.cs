@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -13,11 +12,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Stats;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
@@ -26,13 +28,15 @@ namespace Nethermind.Synchronization.Test;
 
 public class ReceiptSyncFeedTests
 {
-    private IBlockTree _syncingFromBlockTree = null!;
-    private IBlockTree _syncingToBlockTree = null!;
-    private ReceiptsSyncFeed _feed = null!;
-    private ISyncConfig _syncConfig = null!;
-    private Block _pivotBlock = null!;
+    private IBlockTree _syncingFromBlockTree;
+    private IBlockTree _syncingToBlockTree;
+    private ReceiptsSyncFeed _feed;
+    private ISyncConfig _syncConfig;
+    private Block _pivotBlock;
     private InMemoryReceiptStorage _syncingFromReceiptStore;
     private IReceiptStorage _receiptStorage;
+    private ISyncPeerPool _syncPeerPool;
+    private IHistoryPruner _historyPruner;
 
     [SetUp]
     public void Setup()
@@ -47,7 +51,7 @@ public class ReceiptSyncFeedTests
         _syncingToBlockTree = Build.A.BlockTree()
             .TestObject;
 
-        for (int i = 1; i < 100; i++)
+        for (ulong i = 1; i < 100; i++)
         {
             Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
             _syncingToBlockTree.Insert(block.Header);
@@ -60,19 +64,23 @@ public class ReceiptSyncFeedTests
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
-            PivotNumber = _pivotBlock.Number.ToString(),
+            PivotNumber = _pivotBlock.Number,
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
+        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
 
+        _syncPeerPool = Substitute.For<ISyncPeerPool>();
+        _historyPruner = Substitute.For<IHistoryPruner>();
         _feed = new ReceiptsSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
             _receiptStorage,
             new MemorySyncPointers(),
-            Substitute.For<ISyncPeerPool>(),
+            _syncPeerPool,
             _syncConfig,
             new NullSyncReport(),
+            _historyPruner,
             new MemDb(),
             LimboLogs.Instance
         );
@@ -82,6 +90,7 @@ public class ReceiptSyncFeedTests
     public void TearDown()
     {
         _feed.Dispose();
+        _syncPeerPool.DisposeAsync();
     }
 
     [Test]
@@ -101,9 +110,9 @@ public class ReceiptSyncFeedTests
             });
 
         Func<SyncResponseHandlingResult> act = () => _feed.HandleResponse(req);
-        act.Should().Throw<Exception>();
+        Assert.That(act, Throws.TypeOf<Exception>());
         using ReceiptsSyncBatch req2 = (await _feed.PrepareRequest())!;
-        req2.Infos[0]!.BlockNumber.Should().Be(95);
+        Assert.That(req2.Infos[0]!.BlockNumber, Is.EqualTo(95));
     }
 
     [Test]
@@ -115,17 +124,25 @@ public class ReceiptSyncFeedTests
 
         using ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
 
-        req.Infos
+        Assert.That(req.Infos
             .Where(static (bi) => bi is not null)
             .Select(static (bi) => bi!.BlockNumber)
-            .Take(4)
-            .Should()
-            .BeEquivalentTo([
+            .Take(4), Is.EqualTo([
                 _pivotBlock.Number,
                 _pivotBlock.Number - 1,
                 // Skipped
                 _pivotBlock.Number - 3,
                 // Skipped
-                _pivotBlock.Number - 5]);
+                _pivotBlock.Number - 5]));
+    }
+
+    [Test]
+    public async Task ShouldLimitBatchSizeToPeerEstimate()
+    {
+        _feed.InitializeFeed();
+        _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Receipts, default)
+            .Returns(Task.FromResult<int?>(5));
+        ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
+        Assert.That(req.Infos.Length, Is.EqualTo(5));
     }
 }

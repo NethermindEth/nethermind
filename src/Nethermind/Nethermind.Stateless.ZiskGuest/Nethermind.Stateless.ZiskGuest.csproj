@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\Nethermind.Stateless.Guest\Guest.props" />
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.ZiskOS.Runtime" />
+  </ItemGroup>
+
+</Project>

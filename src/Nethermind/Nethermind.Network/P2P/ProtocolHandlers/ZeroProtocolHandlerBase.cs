@@ -2,19 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
-        : ProtocolHandlerBase(session, nodeStats, serializer, logManager), IZeroProtocolHandler
+    public abstract class ZeroProtocolHandlerBase(
+        ISession session,
+        INodeStatsManager nodeStats,
+        IMessageSerializationService serializer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
+        ILogManager logManager)
+        : ProtocolHandlerBase(session, nodeStats, serializer, backgroundTaskScheduler, logManager), IZeroProtocolHandler
     {
+        protected readonly INodeStats _nodeStats = nodeStats.GetOrAdd(session.Node);
+
         public override void HandleMessage(Packet message)
         {
             ZeroPacket zeroPacket = new(message);
@@ -28,23 +39,43 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        public abstract void HandleMessage(ZeroPacket message);
+        public void HandleMessage(ZeroPacket message)
+        {
+            BeforeHandleMessage(message);
+            if (!HandleMessageCore(message))
+            {
+                string details = $"Unknown message type {message.PacketType} received on protocol {ProtocolCode}/{ProtocolVersion}";
+                if (Logger.IsDebug) Logger.Debug($"{Session} {details}");
+                Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
+            }
+        }
 
-        protected async Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
+        protected virtual void BeforeHandleMessage(ZeroPacket message) { }
+
+        protected abstract bool HandleMessageCore(ZeroPacket message);
+
+        protected Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
             MessageQueue<TRequest, TResponse> messageQueue,
             TRequest message,
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
             CancellationToken token
-        ) where TRequest : MessageBase
+        ) where TRequest : P2PMessage
         {
             Request<TRequest, TResponse> request = new(message);
             messageQueue.Send(request);
 
-            return await HandleResponse(request, speedType, describeRequestFunc, token);
+            return HandleResponse(request, speedType, describeRequestFunc, token);
         }
 
-        protected async Task<TResponse> HandleResponse<TRequest, TResponse>(
+        protected Task<TResponse> HandleResponse<TRequest, TResponse>(
+            Request<TRequest, TResponse> request,
+            TransferSpeedType speedType,
+            Func<TRequest, string> describeRequestFunc,
+            CancellationToken token)
+            => HandleResponseInner(request, speedType, describeRequestFunc, token).Unwrap();
+
+        private async Task<Task<TResponse>> HandleResponseInner<TRequest, TResponse>(
             Request<TRequest, TResponse> request,
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
@@ -52,50 +83,57 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         )
         {
             Task<TResponse> task = request.CompletionSource.Task;
-            bool success = false;
-            try
-            {
-                using CancellationTokenSource delayCancellation = new();
-                using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-                Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
-                if (firstTask.IsCanceled)
-                {
-                    token.ThrowIfCancellationRequested();
-                }
 
-                if (firstTask == task)
+            using CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            CancellationToken cancellationToken = compositeCancellation.Token;
+
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, cancellationToken));
+
+            if (ReferenceEquals(firstTask, task))
+            {
+                delayCancellation.Cancel();
+
+                if (task.IsCompletedSuccessfully)
                 {
-                    await delayCancellation.CancelAsync();
                     long elapsed = request.FinishMeasuringTime();
                     long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
                     if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                     StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
-
-                    success = true;
-                    return await task;
+                }
+                else
+                {
+                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
+                    if (Logger.IsTrace) Logger.Trace($"{Session} Request {(task.IsCanceled ? "cancelled" : "failed")}: {describeRequestFunc(request.Message)}");
+                }
+            }
+            else
+            {
+                // TrySetCanceled first: if it succeeds we own the TCS and need to
+                // dispose any late-arriving response. If it fails, the response was
+                // already set by Handle() and the caller owns the data — registering
+                // a disposal continuation would dispose data the caller still holds.
+                if (request.CompletionSource.TrySetCanceled(cancellationToken))
+                {
+                    _ = task.ContinueWith(static t =>
+                    {
+                        if (t.IsCompletedSuccessfully)
+                        {
+                            t.Result.TryDispose();
+                        }
+                    });
                 }
 
                 StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
-                throw new TimeoutException($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
+
+                if (Logger.IsTrace) TraceRequestTimeout(describeRequestFunc(request.Message));
             }
-            finally
-            {
-                if (!success)
-                {
-                    CleanupTimeoutTask(task);
-                }
-            }
+
+            return task;
         }
 
-        private static void CleanupTimeoutTask<TResponse>(Task<TResponse> task)
-        {
-            task.ContinueWith(static t =>
-            {
-                if (t.IsCompletedSuccessfully)
-                {
-                    t.Result.TryDispose();
-                }
-            });
-        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceRequestTimeout(string requestDescription) =>
+            Logger.Trace($"{Session} Request timeout in {requestDescription}");
     }
 }

@@ -6,23 +6,36 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public class ChangeableTransactionProcessorAdapter : ITransactionProcessorAdapter
+    public class ChangeableTransactionProcessorAdapter(ITransactionProcessor transactionProcessor) : ITransactionProcessorAdapter
     {
-        public ITransactionProcessorAdapter CurrentAdapter { get; set; }
-        public ITransactionProcessor TransactionProcessor { get; }
+        /// <summary>The current runtime mode: given a processor, builds the adapter that runs it. Swapped by the debug tracer between Execute and Trace.</summary>
+        public TransactionProcessorAdapterFactory CurrentAdapterFactory { get; set; } = static processor => new ExecuteTransactionProcessorAdapter(processor);
+        public ITransactionProcessor TransactionProcessor { get; } = transactionProcessor;
 
-        private ChangeableTransactionProcessorAdapter(ITransactionProcessorAdapter adapter)
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
+            CurrentAdapterFactory(TransactionProcessor).Execute(transaction, txTracer);
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+            => TransactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+
+        /// <summary>
+        /// Builds an adapter that runs <paramref name="processor"/> in this adapter's current runtime mode,
+        /// re-read on every call.
+        /// </summary>
+        /// <remarks>
+        /// Lets the EIP-7928 block-access-list pool's per-worker processors honour the debug tracer's runtime
+        /// Execute↔Trace swap: the debug scope registers this as its <see cref="TransactionProcessorAdapterFactory"/>,
+        /// so each worker applies this shared adapter's current mode to its own processor.
+        /// </remarks>
+        public ITransactionProcessorAdapter ForProcessor(ITransactionProcessor processor)
+            => new PerProcessorAdapter(this, processor);
+
+        private sealed class PerProcessorAdapter(ChangeableTransactionProcessorAdapter mode, ITransactionProcessor processor)
+            : ITransactionProcessorAdapter
         {
-            CurrentAdapter = adapter;
+            public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
+                mode.CurrentAdapterFactory(processor).Execute(transaction, txTracer);
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+                => processor.SetBlockExecutionContext(in blockExecutionContext);
         }
-
-        public ChangeableTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
-            : this(new ExecuteTransactionProcessorAdapter(transactionProcessor))
-        {
-            TransactionProcessor = transactionProcessor;
-        }
-
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
-            CurrentAdapter.Execute(transaction, in blkCtx, txTracer);
     }
 }

@@ -9,20 +9,16 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("Main: {HasBlockOnMainChain}, Blocks: {BlockInfos.Length}")]
-    public class ChainLevelInfo // TODO: move to blockchain namespace
+    public class ChainLevelInfo(bool hasBlockInMainChain, params BlockInfo[] blockInfos)
     {
-        public ChainLevelInfo(bool hasBlockInMainChain, params BlockInfo[] blockInfos)
-        {
-            HasBlockOnMainChain = hasBlockInMainChain;
-            BlockInfos = blockInfos;
-        }
-
         private const int NotFound = -1;
+        private const BlockMetadata BeaconMetadataMask =
+            BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain;
 
         public bool HasNonBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) == 0);
         public bool HasBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0);
-        public bool HasBlockOnMainChain { get; set; }
-        public BlockInfo[] BlockInfos { get; set; }
+        public bool HasBlockOnMainChain { get; set; } = hasBlockInMainChain;
+        public BlockInfo[] BlockInfos { get; set; } = blockInfos;
         public BlockInfo? MainChainBlock => HasBlockOnMainChain ? BlockInfos[0] : null;
 
         // ToDo we need to rethink this code
@@ -95,7 +91,12 @@ namespace Nethermind.Core
             return index.HasValue ? BlockInfos[index.Value] : null;
         }
 
-        public void InsertBlockInfo(Hash256 hash, BlockInfo blockInfo, bool setAsMain)
+        private static bool HasMatchingStableFields(BlockInfo blockInfo, BlockInfo existingBlockInfo) =>
+            blockInfo.BlockHash.Equals(existingBlockInfo.BlockHash)
+            && blockInfo.TotalDifficulty.Equals(existingBlockInfo.TotalDifficulty)
+            && (blockInfo.Metadata & ~BeaconMetadataMask) == (existingBlockInfo.Metadata & ~BeaconMetadataMask);
+
+        public void InsertBlockInfo(Hash256 hash, BlockInfo blockInfo, bool setAsMain, bool keepExistingMetadata = false)
         {
             BlockInfo[] blockInfos = BlockInfos;
 
@@ -106,11 +107,17 @@ namespace Nethermind.Core
             }
             else
             {
-                if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
-                    blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+                BlockInfo existingBlockInfo = blockInfos[foundIndex.Value];
+                if (keepExistingMetadata)
+                    blockInfo.Metadata |= existingBlockInfo.Metadata;
+                else if (blockInfo.IsBeaconInfo)
+                {
+                    // Beacon reinserts can carry partial metadata; retain the stored beacon classification.
+                    blockInfo.Metadata |= existingBlockInfo.Metadata & BeaconMetadataMask;
+                }
 
-                if (blockInfo.EqualsIgnoringWasProcessed(blockInfos[foundIndex.Value]))
-                    blockInfo.WasProcessed |= blockInfos[foundIndex.Value].WasProcessed;
+                if (HasMatchingStableFields(blockInfo, existingBlockInfo))
+                    blockInfo.WasProcessed |= existingBlockInfo.WasProcessed;
             }
 
             int index = foundIndex ?? blockInfos.Length - 1;
@@ -134,9 +141,6 @@ namespace Nethermind.Core
             BlockInfos = blockInfos;
         }
 
-        public void SwapToMain(int index)
-        {
-            (BlockInfos[index], BlockInfos[0]) = (BlockInfos[0], BlockInfos[index]);
-        }
+        public void SwapToMain(int index) => (BlockInfos[index], BlockInfos[0]) = (BlockInfos[0], BlockInfos[index]);
     }
 }

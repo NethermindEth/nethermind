@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
+using System;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -15,70 +18,171 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class Eip2929Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
-        [Test]
-        public void Case1()
+        [TestCase("0x60013f5060023b506003315060f13f5060f23b5060f3315060f23f5060f33b5060f1315032315030315000", 8653ul)]
+        [TestCase("0x60006000600060ff3c60006000600060ff3c600060006000303c00", 2835ul)]
+        [TestCase("0x60015450601160015560116002556011600255600254600154", 44529ul)]
+        [TestCase("0x60008080808060046000f15060008080808060ff6000f15060008080808060ff6000fa50", 2869ul)]
+        public void Eip2929_gas_cost(string codeHex, ulong expectedGasExcludingTx)
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
             byte[] code = Prepare.EvmCode
-                .FromCode("0x60013f5060023b506003315060f13f5060f23b5060f3315060f23f5060f33b5060f1315032315030315000")
+                .FromCode(codeHex)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 8653);
+            Assert.That(result.StatusCode, Is.EqualTo(1));
+            AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
         }
 
         [Test]
-        public void Case2()
+        public void Tracer_access_mode_controls_gas_charging(
+            [Values(Instruction.SLOAD, Instruction.BALANCE)] Instruction instruction, [Values] bool traceAccess)
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
+            byte[] code = instruction == Instruction.SLOAD
+                ? Prepare.EvmCode.PushData(1).Op(instruction).Op(Instruction.POP).Done
+                : Prepare.EvmCode.PushData(TestItem.AddressC).Op(instruction).Op(Instruction.POP).Done;
 
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x60006000600060ff3c60006000600060ff3c600060006000303c00")
-                .Done;
+            // Leave the default untouched so false cases catch constructor regressions.
+            TestAllTracerWithOutput tracer = traceAccess ? new() { IsTracingAccess = true } : new();
+            Execute(tracer, code);
 
-            TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 2835);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.IsTracingAccess, Is.EqualTo(traceAccess));
+                Assert.That(tracer.AccessReportCount, Is.EqualTo(traceAccess ? 1 : 0));
+                Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                AssertGas(tracer, GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.Base
+                    + (traceAccess ? GasCostOf.WarmStateRead
+                        : instruction == Instruction.SLOAD ? GasCostOf.ColdSLoad : GasCostOf.ColdAccountAccess));
+            }
         }
 
+        /// <remarks>The halted frame must leave slot 1 cold, so both runs pay the same gas.</remarks>
         [Test]
-        public void Case3()
+        public void Cold_sload_out_of_gas_in_a_sub_call_leaves_the_slot_cold()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            ulong gasWhenSubCallTouchesTheSlot = GasOfSloadAfterHaltedSubCall(TestItem.AddressD, subCallSlot: 1);
+            ulong gasWhenSubCallTouchesAnotherSlot = GasOfSloadAfterHaltedSubCall(TestItem.AddressE, subCallSlot: 2);
 
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x60015450601160015560116002556011600255600254600154")
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 44529);
+            Assert.That(gasWhenSubCallTouchesTheSlot, Is.EqualTo(gasWhenSubCallTouchesAnotherSlot),
+                "the out-of-gas sub call must not leave the caller's slot warm");
         }
 
+        private ulong GasOfSloadAfterHaltedSubCall(Address subCall, int subCallSlot)
+            => GasOfCallerAccessAfterFailedSubCall(
+                subCall,
+                Prepare.EvmCode.PushData(subCallSlot).Op(Instruction.SLOAD).Done,
+                subCallGas: 1000,
+                Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Done);
+
+        /// <remarks>The reverted or halted sub call reads the balance of account F; the caller's read of it must still pay cold.</remarks>
         [Test]
-        public void Case4()
+        public void Account_warmed_in_a_reverted_sub_call_is_cold_again([Values] bool outOfGas)
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            ulong gasWhenSubCallTouchesTheAccount = GasOfBalanceAfterFailedSubCall(TestItem.AddressD, TestItem.AddressF);
+            ulong gasWhenSubCallTouchesAnotherAccount = GasOfBalanceAfterFailedSubCall(TestItem.AddressE, TestItem.AddressC);
+
+            Assert.That(gasWhenSubCallTouchesTheAccount, Is.EqualTo(gasWhenSubCallTouchesAnotherAccount),
+                "the reverted sub call must not leave the caller's account warm");
+
+            ulong GasOfBalanceAfterFailedSubCall(Address subCall, Address touched)
+            {
+                Prepare subCallCode = Prepare.EvmCode.PushData(touched).Op(Instruction.BALANCE).Op(Instruction.POP);
+                if (!outOfGas) subCallCode.PushData(0).PushData(0).Op(Instruction.REVERT);
+
+                // A cold BALANCE costs 2600: the out-of-gas sub call halts on the charge.
+                return GasOfCallerAccessAfterFailedSubCall(
+                    subCall,
+                    subCallCode.Done,
+                    subCallGas: outOfGas ? 1000 : 50_000,
+                    Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.BALANCE).Done);
+            }
+        }
+
+        /// <summary>Runs a delegate call to <paramref name="subCall"/> that fails, then <paramref name="callerAccess"/> in the caller.</summary>
+        /// <returns>The gas spent by the whole transaction.</returns>
+        private ulong GasOfCallerAccessAfterFailedSubCall(Address subCall, byte[] subCallCode, long subCallGas, byte[] callerAccess)
+        {
+            TestState.CreateAccount(subCall, 1.Ether);
+            TestState.InsertCode(subCall, subCallCode, Spec);
 
             byte[] code = Prepare.EvmCode
-                .FromCode("0x60008080808060046000f15060008080808060ff6000f15060008080808060ff6000fa50")
+                .DelegateCall(subCall, subCallGas)
+                .Op(Instruction.POP)
+                .Data(callerAccess)
+                .Op(Instruction.POP)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 2869);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), "precondition: only the sub call fails");
+            return result.GasSpent;
         }
 
-        protected override TestAllTracerWithOutput CreateTracer()
+        private sealed class StorageObservationTracer(bool storage) : TestAllTracerWithOutput
         {
-            TestAllTracerWithOutput tracer = base.CreateTracer();
-            tracer.IsTracingAccess = false;
-            return tracer;
+            public override bool IsTracingInstructions => false;
+            public override bool IsTracingOpLevelStorage => storage;
+            public int StorageReads { get; private set; }
+
+            public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) => StorageReads++;
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void Storage_observation_flags_are_independent_and_refreshed(bool storage, bool access)
+        {
+            byte[] code = Bytes.FromHexString("6001545060015450");
+            Verify(storage, access);
+            Verify(!storage, !access);
+
+            void Verify(bool traceStorage, bool traceAccess)
+            {
+                StorageObservationTracer tracer = new(traceStorage) { IsTracingAccess = traceAccess };
+                Execute(tracer, code);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                    Assert.That(tracer.StorageReads, Is.EqualTo(traceStorage ? 2 : 0));
+                    Assert.That(tracer.GasSpent, Is.EqualTo(traceAccess ? 21210UL : 23210UL));
+                }
+            }
+        }
+
+        private sealed class RefundObservationTracer(bool refunds, bool actions) : TestAllTracerWithOutput
+        {
+            public override bool IsTracingInstructions => false;
+            public override bool IsTracingRefunds => refunds;
+            public override bool IsTracingActions => actions;
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void Refund_and_action_flags_are_independent_and_refreshed(bool refunds, bool actions)
+        {
+            byte[] code = Bytes.FromHexString("60016000556000600055");
+            Verify(refunds, actions);
+            Verify(!refunds, !actions);
+
+            void Verify(bool traceRefunds, bool traceActions)
+            {
+                RefundObservationTracer tracer = new(traceRefunds, traceActions) { IsTracingAccess = false };
+                Execute(tracer, code);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                    Assert.That(tracer.Refund, Is.EqualTo(traceRefunds ? RefundOf.SSetReversedHotCold : 0));
+                    Assert.That(tracer.Actions, Has.Count.EqualTo(traceActions ? 1 : 0));
+                }
+            }
         }
     }
 }

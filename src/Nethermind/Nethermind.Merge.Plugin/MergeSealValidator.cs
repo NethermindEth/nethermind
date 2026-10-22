@@ -1,30 +1,28 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Consensus;
 using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeSealValidator : ISealValidator
+public class MergeSealValidator(
+    IPoSSwitcher poSSwitcher,
+    ISealValidator preMergeSealValidator)
+    : ISealValidator
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly ISealValidator _preMergeSealValidator;
-
-    public MergeSealValidator(
-        IPoSSwitcher poSSwitcher,
-        ISealValidator preMergeSealValidator
-    )
-    {
-        _poSSwitcher = poSSwitcher;
-        _preMergeSealValidator = preMergeSealValidator;
-    }
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle) =>
-        _poSSwitcher.IsPostMerge(header) || _preMergeSealValidator.ValidateParams(parent, header, isUncle);
+        poSSwitcher.IsPostMerge(header) || preMergeSealValidator.ValidateParams(parent, header, isUncle);
 
     public bool ValidateSeal(BlockHeader header, bool force)
     {
-        (bool isTerminal, bool isPostMerge) = _poSSwitcher.GetBlockConsensusInfo(header);
-        return isPostMerge || _preMergeSealValidator.ValidateSeal(header, force || isTerminal);
+        (bool isTerminal, bool isPostMerge) = poSSwitcher.GetBlockConsensusInfo(header);
+        return isPostMerge || preMergeSealValidator.ValidateSeal(header, force || isTerminal);
     }
+
+    // Must forward: the interface default is a no-op, so a decorator that omits this silently swallows the
+    // hint and the pre-merge validator never prepares its cache.
+    public void HintValidationRange(Guid guid, ulong start, ulong end) =>
+        preMergeSealValidator.HintValidationRange(guid, start, end);
 }

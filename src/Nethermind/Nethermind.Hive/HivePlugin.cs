@@ -2,72 +2,83 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Logging;
+using Nethermind.Api.Steps;
+using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.KeyStore.Config;
+using Nethermind.Network.Config;
+using Nethermind.TxPool;
 
 namespace Nethermind.Hive;
 
 public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
 {
-    private INethermindApi _api = null!;
-    private ILogger _logger;
-    private readonly CancellationTokenSource _disposeCancellationToken = new();
-
-    public ValueTask DisposeAsync()
-    {
-        _disposeCancellationToken.Cancel();
-        _disposeCancellationToken.Dispose();
-        return ValueTask.CompletedTask;
-    }
-
     public string Name => "Hive";
 
     public string Description => "Plugin used for executing Hive Ethereum Tests";
 
     public string Author => "Nethermind";
 
-    public Task Init(INethermindApi api)
-    {
-        _api = api ?? throw new ArgumentNullException(nameof(api));
-        _logger = _api.LogManager.GetClassLogger();
-
-        return Task.CompletedTask;
-    }
-
-    public async Task InitNetworkProtocol()
-    {
-        if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-        if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-        if (_api.ConfigProvider is null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
-        if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
-        if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
-        if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
-
-        _api.TxPool!.AcceptTxWhenNotSynced = true;
-
-        _api.TxGossipPolicy.Policies.Clear();
-
-        HiveRunner hiveRunner = new(
-            _api.BlockTree,
-            _api.BlockProcessingQueue,
-            _api.ConfigProvider,
-            _api.LogManager.GetClassLogger(),
-            _api.FileSystem,
-            _api.BlockValidator
-        );
-
-        if (_logger.IsInfo) _logger.Info("Hive is starting");
-
-        await hiveRunner.Start(_disposeCancellationToken.Token);
-    }
-
-    public Task InitRpcModules()
-    {
-        return Task.CompletedTask;
-    }
-
     public bool Enabled => hiveConfig.Enabled;
+
+    public IModule Module => new HiveModule();
+}
+
+public class HiveModule : Module
+{
+    private const string ExpectDeepReorgsEnvironmentVariable = "HIVE_EXPECT_DEEP_REORGS";
+    private const ulong DeepReorgDepth = 512;
+
+    protected override void Load(ContainerBuilder builder) => builder
+        .AddSingleton<HiveRunner>()
+        .AddStep(typeof(HiveStep))
+        .AddDecorator<INetworkConfig>((_, networkConfig) =>
+        {
+            networkConfig.FilterPeersByRecentIp = false;
+            return networkConfig;
+        })
+        .AddDecorator<ITxPoolConfig>((_, txPoolConfig) =>
+        {
+            txPoolConfig.ProofsTranslationEnabled = true;
+            return txPoolConfig;
+        })
+        .AddDecorator<IFlatDbConfig>((_, flatDbConfig) =>
+        {
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(ExpectDeepReorgsEnvironmentVariable)))
+            {
+                // The persistence gate has one compaction chunk of look-ahead.
+                flatDbConfig.MinReorgDepth = Math.Max(flatDbConfig.MinReorgDepth, DeepReorgDepth + flatDbConfig.CompactSize);
+            }
+
+            return flatDbConfig;
+        })
+        .AddDecorator<IInitConfig>((_, initConfig) =>
+        {
+            // A Hive container processes a handful of blocks and exits, so the warm-up never pays back.
+            initConfig.EvmWarmupEnabled = false;
+            initConfig.PipelineWarmupEnabled = false;
+            return initConfig;
+        })
+        .AddDecorator<IKeyStoreConfig>((_, keyStoreConfig) =>
+        {
+            if (string.IsNullOrEmpty(keyStoreConfig.TestNodeKey)
+                && string.IsNullOrEmpty(keyStoreConfig.EnodeAccount)
+                && string.IsNullOrEmpty(keyStoreConfig.EnodeKeyFile))
+            {
+                // Supplying the key skips persisting a generated one, whose scrypt keystore copy
+                // dominates startup CPU and peak memory per container and is never read back.
+                using PrivateKeyGenerator generator = new();
+                using PrivateKey nodeKey = generator.Generate();
+                keyStoreConfig.TestNodeKey = nodeKey.ToString();
+            }
+
+            return keyStoreConfig;
+        })
+        .ClearOrderedComponents<ITxGossipPolicy>();
 }

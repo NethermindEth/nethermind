@@ -5,7 +5,7 @@ namespace Nethermind.Core.Metric;
 
 public class NoopMetricObserver : IMetricObserver
 {
-    public static NoopMetricObserver Instance = new();
+    public static readonly NoopMetricObserver Instance = new();
 
     public void Observe(double value, IMetricLabels? labels = null)
     {

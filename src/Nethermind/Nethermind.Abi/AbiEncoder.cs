@@ -44,14 +44,21 @@ namespace Nethermind.Abi
             bool packed = (encodingStyle & AbiEncodingStyle.Packed) == AbiEncodingStyle.Packed;
             bool includeSig = encodingStyle == AbiEncodingStyle.IncludeSignature;
             int sigOffset = includeSig ? 4 : 0;
+            using AbiType.DecodeBudgetScope decodeBudget = AbiType.EnterDecodeBudget(data.Length);
             if (includeSig)
             {
+                if (data.Length < sigOffset)
+                {
+                    throw new AbiException($"Insufficient data to decode ABI signature for {signature}");
+                }
+
                 if (!Bytes.AreEqual(AbiSignature.GetAddress(data), signature.Address))
                 {
                     throw new AbiException($"Signature in encoded ABI data is not consistent with {signature}");
                 }
             }
 
+            AbiType.ConsumeDecodeBudget((uint)AbiType.GetSequenceHeadSize(signature.Types, packed), null);
             (object[] arguments, int position) = AbiType.DecodeSequence(signature.Types.Length, signature.Types, data, packed, sigOffset);
 
             if (position != data.Length)

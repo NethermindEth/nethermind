@@ -2,79 +2,132 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
-using FluentAssertions;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.Db;
+using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Network;
+using Nethermind.Runner.Ethereum.Modules;
+using Nethermind.Runner.Test.Ethereum;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
-using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public class MergePluginTests
 {
+    private sealed class SourceGenProbe
+    {
+        public int Value { get; set; }
+    }
+
+    private sealed class PriorityProbe
+    {
+        public int Value { get; set; }
+    }
+
+    private sealed class ThrowingProbeResolver : IJsonTypeInfoResolver
+    {
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
+            type == typeof(SourceGenProbe) ? throw new InvalidOperationException("probe resolver was used") : null;
+    }
+
+    private sealed class RecordingProbeResolver(string name, List<string> calls) : IJsonTypeInfoResolver
+    {
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options)
+        {
+            if (type == typeof(PriorityProbe))
+            {
+                calls.Add(name);
+            }
+
+            return null;
+        }
+    }
+
+    private ChainSpec _chainSpec = null!;
     private MergeConfig _mergeConfig = null!;
-    private NethermindApi _context = null!;
+    private IJsonRpcConfig _jsonRpcConfig = null!;
     private MergePlugin _plugin = null!;
-    private CliquePlugin? _consensusPlugin = null;
+    private CliquePlugin? _consensusPlugin;
 
     [SetUp]
     public void Setup()
     {
-        _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
-        BlocksConfig? miningConfig = new();
-        IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = [ModuleType.Engine] };
-
-        _context = Build.ContextWithMocks();
-        _context.SealEngineType = SealEngineType.Clique;
-        _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
-        _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
-        _context.ConfigProvider.GetConfig(typeof(ISyncConfig)).Returns(new SyncConfig());
-        _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);
-        _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
-        _context.BlockProcessingQueue?.IsEmpty.Returns(true);
-        _context.DbFactory = new MemDbFactory();
-        _context.BlockProducerEnvFactory = new BlockProducerEnvFactory(
-            _context.WorldStateManager!,
-            _context.BlockTree!,
-            _context.SpecProvider!,
-            _context.BlockValidator!,
-            _context.RewardCalculatorSource!,
-            _context.ReceiptStorage!,
-            _context.BlockPreprocessor!,
-            _context.TxPool!,
-            _context.TransactionComparerProvider!,
-            miningConfig,
-            _context.LogManager!);
-        _context.ProcessExit = Substitute.For<IProcessExitSource>();
-        _context.ChainSpec.SealEngineType = SealEngineType.Clique;
-        var chainSpecParametersProvider = new TestChainSpecParametersProvider(
-            new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
-        _context.ChainSpec.EngineChainSpecParametersProvider = chainSpecParametersProvider;
-        _plugin = new MergePlugin(_context.ChainSpec, _mergeConfig);
-        _consensusPlugin = new(_context.ChainSpec);
+        _chainSpec = new ChainSpec
+        {
+            Parameters = new ChainParameters(),
+            SealEngineType = SealEngineType.Clique,
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
+                new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod }),
+        };
+        _mergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" };
+        _jsonRpcConfig = new JsonRpcConfig { Enabled = true, EnabledModules = [ModuleType.Engine] };
+        _plugin = new MergePlugin(_chainSpec, _mergeConfig);
+        _consensusPlugin = new(_chainSpec);
     }
 
-    [TearDown]
-    public void TearDown() => _plugin.DisposeAsync().GetAwaiter().GetResult();
+    private IContainer BuildContainer(IConfigProvider? configProvider = null, Action<ContainerBuilder>? configure = null)
+    {
+        // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
+        // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new HealthCheckPluginModule())
+            .AddModule(new NethermindRunnerModule(
+                new EthereumJsonSerializer(),
+                _chainSpec,
+                configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig),
+                Substitute.For<IProcessExitSource>(),
+                [_consensusPlugin!, _plugin],
+                null,
+                LimboLogs.Instance))
+            .AddSingleton(Substitute.For<IRpcModuleProvider>())
+            .AddSingleton(Substitute.For<IBlockProcessingQueue>())
+            .AddSingleton(Substitute.For<IProtocolsManager>())
+            .OnBuild(ctx =>
+            {
+                INethermindApi api = ctx.Resolve<INethermindApi>();
+                Build.MockOutNethermindApi((NethermindApi)api);
+
+                ctx.Resolve<IBlockProcessingQueue>().IsEmpty.Returns(true);
+            });
+
+        configure?.Invoke(builder);
+
+        return builder.Build();
+    }
+
+    [Test]
+    public void EngineRequestsTracker_resolves_to_ClHealthRequestsTracker_when_HealthChecks_loaded_first()
+    {
+        using IContainer container = BuildContainer();
+
+        Assert.That(container.Resolve<IEngineRequestsTracker>(), Is.TypeOf<ClHealthRequestsTracker>());
+    }
 
     [Test]
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
     {
-
-        JsonConfigSource? jsonSource = new("MisconfiguredConfig.json");
-        ConfigProvider? configProvider = new();
+        JsonConfigSource jsonSource = new("MisconfiguredConfig.json");
+        ConfigProvider configProvider = new();
         configProvider.AddSource(jsonSource);
         configProvider.Initialize();
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
@@ -85,109 +138,171 @@ public class MergePluginTests
         });
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Init_merge_plugin_does_not_throw_exception(bool enabled)
+    [Test]
+    public async Task Init_merge_plugin_does_not_throw_exception([Values] bool enabled)
     {
+        using IContainer container = BuildContainer();
         _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
-        Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(_context));
-        Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitSynchronization());
-        Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!, null));
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
-        Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
+        await Assert.DoesNotThrowAsync(async () => await container.Resolve<InitializeMergePlugin>().Execute(default));
+        Assert.DoesNotThrow(() => container.Resolve<IBlockProducerFactory>().InitBlockProducer());
+    }
+
+    [Test]
+    public void AddTypeInfoResolver_updates_existing_serializer_instances()
+    {
+        EthereumJsonSerializer serializer = new();
+        EthereumJsonSerializer.AddTypeInfoResolver(new ThrowingProbeResolver());
+
+        Assert.Throws<InvalidOperationException>(() => serializer.Serialize(new SourceGenProbe { Value = 1 }));
+    }
+
+    [Test]
+    public void AddTypeInfoResolver_orders_resolvers_by_priority_then_registration_order()
+    {
+        List<string> calls = [];
+
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("external", calls));
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("json-rpc-response", calls), JsonTypeInfoResolverPriority.JsonRpcResponse);
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("engine-api", calls), JsonTypeInfoResolverPriority.EngineApi);
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("facade-first", calls), JsonTypeInfoResolverPriority.Facade);
+        EthereumJsonSerializer.AddTypeInfoResolver(new RecordingProbeResolver("facade-second", calls), JsonTypeInfoResolverPriority.Facade);
+
+        _ = EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(PriorityProbe));
+
+        Assert.That(calls, Is.EqualTo(new[]
+        {
+            "engine-api",
+            "facade-first",
+            "facade-second",
+            "json-rpc-response",
+            "external"
+        }));
     }
 
     [Test]
     public async Task Initializes_correctly()
     {
-        Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(_context));
-        await _plugin.Init(_context);
-        await _plugin.InitSynchronization();
-        await _plugin.InitNetworkProtocol();
-        ISyncConfig syncConfig = _context.Config<ISyncConfig>();
+        await using IContainer container = BuildContainer();
+        INethermindApi api = container.Resolve<INethermindApi>();
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
+        ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);
-        Assert.That(_context.GossipPolicy.CanGossipBlocks, Is.True);
-        _plugin.InitBlockProducer(_consensusPlugin!, null);
-        Assert.That(_context.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
-        await _plugin.InitRpcModules();
-        _context.RpcModuleProvider!.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
-        await _plugin.DisposeAsync();
+        Assert.That(container.Resolve<IGossipPolicy>().CanGossipBlocks, Is.True);
+        IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
+        Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
+        Assert.That(container.Resolve<IBlockProductionPolicy>(), Is.InstanceOf<MergeBlockProductionPolicy>());
     }
 
-    [TestCase(true, true)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(false, false)]
-    public async Task InitThrowsWhenNoEngineApiUrlsConfigured(bool jsonRpcEnabled, bool configuredViaAdditionalUrls)
+    [Test]
+    public async Task Init_registers_gas_limit_calculator_for_testing_rpc_module()
     {
+        await using IContainer container = BuildContainer();
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
+
+        Assert.DoesNotThrow(() => container.Resolve<IGasLimitCalculator>());
+    }
+
+    [Test]
+    public async Task InitThrowsWhenNoEngineApiUrlsConfigured([Values] bool jsonRpcEnabled, [Values] bool configuredViaAdditionalUrls)
+    {
+        IJsonRpcConfig jsonRpcConfig;
         if (configuredViaAdditionalUrls)
         {
-            _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig()
+            jsonRpcConfig = new JsonRpcConfig()
             {
                 Enabled = jsonRpcEnabled,
-                AdditionalRpcUrls = new[] { "http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth" }
-            });
+                AdditionalRpcUrls = ["http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth"]
+            };
         }
         else
         {
-            _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig()
+            jsonRpcConfig = new JsonRpcConfig()
             {
                 Enabled = jsonRpcEnabled
-            });
+            };
         }
 
-        await _plugin.Invoking((plugin) => plugin.Init(_context))
-            .Should()
-            .ThrowAsync<InvalidConfigurationException>();
+        using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
+        InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
+        Assert.That(async () => await step.Execute(default), Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    [TestCase(null, ModuleType.Engine)]
+    [TestCase("/tmp/nethermind.ipc", ModuleType.Eth)]
+    public async Task InitThrowsWhenIpcDoesNotServeEngineApi(string? ipcUnixDomainSocketPath, string ipcModule)
+    {
+        JsonRpcConfig jsonRpcConfig = new()
+        {
+            EnabledModules = [ModuleType.Eth],
+            IpcUnixDomainSocketPath = ipcUnixDomainSocketPath,
+            IpcEnabledModules = [ipcModule]
+        };
+
+        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
+        InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
+        Assert.That(async () => await step.Execute(default), Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    [Test]
+    public async Task Init_accepts_engine_api_served_only_over_ipc([Values] bool jsonRpcEnabled)
+    {
+        JsonRpcConfig jsonRpcConfig = new()
+        {
+            Enabled = jsonRpcEnabled,
+            EnabledModules = [ModuleType.Eth],
+            IpcUnixDomainSocketPath = "/tmp/nethermind.ipc",
+            IpcEnabledModules = [ModuleType.Engine]
+        };
+
+        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(jsonRpcConfig.Enabled, Is.True);
+            Assert.That(jsonRpcConfig.IpcEnabledModules, Is.EqualTo(new[] { ModuleType.Engine }));
+        }
+    }
+
+    [Test]
+    public void InitThrowsWhenWebSocketsPortTakesEnginePort([Values] bool webSocketsEnabled, [Values] bool configuredViaAdditionalUrls)
+    {
+        JsonRpcConfig jsonRpcConfig = new() { Enabled = true, WebSocketsPort = 8551 };
+        if (configuredViaAdditionalUrls)
+        {
+            jsonRpcConfig.AdditionalRpcUrls = ["http://localhost:8551|http;ws|net;eth;engine|no-auth"];
+        }
+        else
+        {
+            jsonRpcConfig.EnginePort = 8551;
+        }
+
+        using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig, new InitConfig { WebSocketsEnabled = webSocketsEnabled }));
+        InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
+        Assert.That(async () => await step.Execute(default), webSocketsEnabled
+            ? Throws.TypeOf<InvalidConfigurationException>().With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.NoEngineModule)
+            : Throws.Nothing);
     }
 
     [Test]
     public async Task InitDisableJsonRpcUrlWithNoEngineUrl()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = false,
-            EnabledModules = new string[] { "eth", "subscribe" },
-            AdditionalRpcUrls = new[]
-            {
+            EnabledModules = ["eth", "subscribe"],
+            AdditionalRpcUrls =
+            [
                 "http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth",
-                "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client",
-            }
+                "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"
+            ]
         };
-        _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
 
-        await _plugin.Init(_context);
+        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
 
-        jsonRpcConfig.Enabled.Should().BeTrue();
-        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo([]);
-        jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo(new string[]
-        {
-            "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"
-        });
-    }
-
-    [TestCase(true, true, true)]
-    [TestCase(true, false, false)]
-    [TestCase(false, true, false)]
-    public async Task InitThrowExceptionIfBodiesAndReceiptIsDisabled(bool downloadBody, bool downloadReceipt, bool shouldPass)
-    {
-        _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig()
-        {
-            FastSync = true,
-            DownloadBodiesInFastSync = downloadBody,
-            DownloadReceiptsInFastSync = downloadReceipt
-        });
-
-        Func<Task>? invocation = _plugin.Invoking((plugin) => plugin.Init(_context));
-        if (shouldPass)
-        {
-            await invocation.Should().NotThrowAsync();
-        }
-        else
-        {
-            await invocation.Should().ThrowAsync<InvalidConfigurationException>();
-        }
+        Assert.That(jsonRpcConfig.Enabled, Is.True);
+        Assert.That(jsonRpcConfig.EnabledModules, Is.Empty);
+        Assert.That(jsonRpcConfig.AdditionalRpcUrls, Is.EqualTo(new[] { "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client" }));
     }
 }

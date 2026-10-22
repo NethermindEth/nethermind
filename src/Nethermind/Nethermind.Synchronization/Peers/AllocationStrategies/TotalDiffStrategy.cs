@@ -31,8 +31,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             _selectionType = selectionType;
         }
 
-        public bool CanBeReplaced => _strategy.CanBeReplaced;
-
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             UInt256? currentDiffOrNull = blockTree.BestSuggestedHeader?.TotalDifficulty;
@@ -58,7 +56,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new ArgumentOutOfRangeException(nameof(_selectionType), _selectionType, "Unknown selection type.");
             }
 
             return _strategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= currentDiff), nodeStatsManager, blockTree);

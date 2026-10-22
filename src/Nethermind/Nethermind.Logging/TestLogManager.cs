@@ -2,38 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging
 {
-    public class TestLogManager : ILogManager
+    public class TestLogManager(LogLevel level = LogLevel.Warn) : ILogManager
     {
-        public static readonly TestLogManager Instance = new TestLogManager();
+        public static readonly TestLogManager Instance = new();
+        private readonly NUnitLogger _logger = new(level);
 
-        private readonly LogLevel _level;
+        public ILogger GetClassLogger<T>() => new(_logger);
 
-        public TestLogManager(LogLevel level = LogLevel.Info)
+        public ILogger GetLogger(string loggerName) => new(_logger);
+
+        private class NUnitLogger(LogLevel level) : InterfaceLogger
         {
-            _level = level;
-        }
-
-        public ILogger GetClassLogger(Type type) => GetClassLogger();
-
-        public ILogger GetClassLogger<T>() => GetClassLogger();
-
-        public ILogger GetClassLogger([CallerFilePath] string filePath = "") => new(new NUnitLogger(_level));
-
-        public ILogger GetLogger(string loggerName) => GetClassLogger();
-
-        public class NUnitLogger : InterfaceLogger
-        {
-            private readonly LogLevel _level;
-
-            public NUnitLogger(LogLevel level)
-            {
-                _level = level;
-            }
-
             public void Info(string text)
             {
                 if (IsInfo)
@@ -66,7 +48,7 @@ namespace Nethermind.Logging
                 }
             }
 
-            public void Error(string text, Exception ex = null)
+            public void Error(string text, Exception? ex = null)
             {
                 if (IsError)
                 {
@@ -80,15 +62,15 @@ namespace Nethermind.Logging
             public bool IsTrace => CheckLevel(LogLevel.Trace);
             public bool IsError => CheckLevel(LogLevel.Error);
 
-            private bool CheckLevel(LogLevel logLevel) => _level >= logLevel;
+            private bool CheckLevel(LogLevel logLevel) => level >= logLevel;
 
-            private static void Log(string text, Exception ex = null)
+            private static void Log(string text, Exception? ex = null)
             {
-                Console.WriteLine(text);
+                Console.Error.WriteLine(text);
 
                 if (ex is not null)
                 {
-                    Console.WriteLine(ex.ToString());
+                    Console.Error.WriteLine(ex.ToString());
                 }
             }
         }

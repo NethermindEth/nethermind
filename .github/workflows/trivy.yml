@@ -3,6 +3,19 @@ name: Trivy scanner
 on:
   pull_request:
     branches: [master]
+    # Trivy scans the built Docker image; only re-scan on PRs that can change that image's
+    # contents. Docs-only PRs skip it. The weekly `schedule` still catches newly-disclosed CVEs
+    # in unchanged dependencies, and `push: master` scans every merge.
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'scripts/entrypoint.sh'
+      - 'Directory.Packages.props'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'nuget.config'
+      - 'global.json'
+      - '.github/workflows/trivy.yml'
   push:
     branches: [master]
   schedule:
@@ -24,23 +37,21 @@ jobs:
       IMAGE_TAG: nethermind:${{ github.sha }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 #v4.2.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
 
       - name: Build Docker image
         run: docker build -t $IMAGE_TAG .
-      
+
       - name: Scan
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 #v0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 #v0.36.0
         with:
           image-ref: ${{ env.IMAGE_TAG }}
           format: template
           template: '@/contrib/sarif.tpl'
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
-        env:
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db
 
       - name: Upload scan results
-        uses: github/codeql-action/upload-sarif@cf5b0a9041d3c1d336516f1944c96d96598193cc #v2.19.1
+        uses: github/codeql-action/upload-sarif@0c0c5dc2f136b98cb0537075ccfa21f94cd9a63e #v2.24.3
         with:
           sarif_file: trivy-results.sarif

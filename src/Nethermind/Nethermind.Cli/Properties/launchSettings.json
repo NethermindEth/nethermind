@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "Nethermind.Cli": {
-      "commandName": "Project",
-      "commandLineArgs": "--colorScheme=dracula"
-    }
-  }
-}

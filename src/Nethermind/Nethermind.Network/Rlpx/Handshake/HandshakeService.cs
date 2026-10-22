@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Org.BouncyCastle.Crypto;
 
 
 namespace Nethermind.Network.Rlpx.Handshake
@@ -21,6 +22,13 @@ namespace Nethermind.Network.Rlpx.Handshake
     {
         private static readonly int MacBitsSize = 256;
         private static readonly int MacBytesSize = MacBitsSize / 8;
+
+        private const int EciesOverhead = 65 + 16 + 32; // ephemeral public key + IV + MAC
+
+        // EIP-8 size prefixes can start with 0x04 and resemble an ECIES public key.
+        // Exact legacy lengths avoid an extra ECDH before the EIP-8 attempt.
+        private const int LegacyAuthPacketLength = AuthMessageSerializer.Length + EciesOverhead;
+        private const int LegacyAckPacketLength = AckMessageSerializer.TotalLength + EciesOverhead;
 
         private readonly IPrivateKeyGenerator _ephemeralGenerator;
         private readonly ICryptoRandom _cryptoRandom;
@@ -72,7 +80,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 {
                     Nonce = handshake.InitiatorNonce,
                     PublicKey = _privateKey.PublicKey,
-                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Hash256(forSigning)),
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new ValueHash256(forSigning)),
                     IsTokenUsed = false,
                     EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes)
                 };
@@ -96,13 +104,13 @@ namespace Nethermind.Network.Rlpx.Handshake
                 {
                     Nonce = handshake.InitiatorNonce,
                     PublicKey = _privateKey.PublicKey,
-                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Hash256(forSigning))
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new ValueHash256(forSigning))
                 };
 
                 IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
                 try
                 {
-                    int size = authData.ReadableBytes + 32 + 16 + 65; // data + MAC + IV + pub
+                    int size = authData.ReadableBytes + EciesOverhead;
                     byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
                     byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), sizeBytes);
                     handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
@@ -122,26 +130,39 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             AuthMessageBase authMessage;
             bool preEip8Format = false;
-            byte[] plainText = null;
-            try
+            byte[]? plainText = null;
+            if (auth.Data.Length == LegacyAuthPacketLength)
             {
-                if (_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
-                (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
+                try
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
+                    (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);
+                }
+                catch (InvalidCipherTextException ex)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
+                }
             }
 
-            if (preEip8Format)
+            if (preEip8Format && plainText is not null)
             {
                 authMessage = _messageSerializationService.Deserialize<AuthMessage>(plainText);
             }
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
+                if (auth.Data.Length <= 2 + EciesOverhead)
+                {
+                    throw new NetworkingException("Failed to decrypt AUTH message.", NetworkExceptionType.Validation);
+                }
+
                 byte[] sizeData = auth.Data.Slice(0, 2);
-                (_, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
+                (bool success, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
+                if (!success || plainText is null)
+                {
+                    throw new NetworkingException("Failed to decrypt AUTH message.", NetworkExceptionType.Validation);
+                }
+
                 authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plainText);
             }
 
@@ -156,7 +177,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] staticSharedSecret = SecP256k1.EcdhSerialized(handshake.RemoteNodeId.Bytes, _privateKey.KeyBytes);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
-            handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Hash256(forSigning));
+            handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new ValueHash256(forSigning));
 
             byte[] data;
             if (preEip8Format)
@@ -189,7 +210,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
                 try
                 {
-                    int size = ackData.ReadableBytes + 32 + 16 + 65; // data + MAC + IV + pub
+                    int size = ackData.ReadableBytes + EciesOverhead;
                     byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
                     data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), sizeBytes));
                 }
@@ -209,17 +230,20 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.AckPacket = ack;
 
             bool preEip8Format = false;
-            byte[] plainText = null;
-            try
+            byte[]? plainText = null;
+            if (ack.Data.Length == LegacyAckPacketLength)
             {
-                (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
+                try
+                {
+                    (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
+                }
+                catch (InvalidCipherTextException ex)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
+                }
             }
 
-            if (preEip8Format)
+            if (preEip8Format && plainText is not null)
             {
                 AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(plainText);
                 if (_logger.IsTrace) _logger.Trace("Received ACK old");
@@ -229,8 +253,17 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
             else
             {
+                if (ack.Data.Length <= 2 + EciesOverhead)
+                {
+                    throw new NetworkingException("Failed to decrypt ACK message.", NetworkExceptionType.Validation);
+                }
+
                 byte[] sizeData = ack.Data.Slice(0, 2);
-                (_, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
+                (bool success, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
+                if (!success || plainText is null)
+                {
+                    throw new NetworkingException("Failed to decrypt ACK message.", NetworkExceptionType.Validation);
+                }
 
                 AckEip8Message ackEip8Message = _messageSerializationService.Deserialize<AckEip8Message>(plainText);
                 if (_logger.IsTrace) _logger.Trace($"Received ACK v{ackEip8Message.Version}");
@@ -245,13 +278,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 #if DEBUG
             if (_logger.IsTrace)
             {
-                _logger.Trace($"{handshake.RemoteNodeId} ephemeral private key {handshake.EphemeralPrivateKey}");
-                _logger.Trace($"{handshake.RemoteNodeId} initiator nonce {handshake.InitiatorNonce.ToHexString()}");
-                _logger.Trace($"{handshake.RemoteNodeId} recipient nonce {handshake.RecipientNonce.ToHexString()}");
-                _logger.Trace($"{handshake.RemoteNodeId} remote ephemeral public key {handshake.RemoteEphemeralPublicKey}");
-                _logger.Trace($"{handshake.RemoteNodeId} remote public key {handshake.RemoteNodeId}");
-                _logger.Trace($"{handshake.RemoteNodeId} auth packet {handshake.AuthPacket.Data.ToHexString()}");
-                _logger.Trace($"{handshake.RemoteNodeId} ack packet {handshake.AckPacket.Data.ToHexString()}");
+                _logger.Trace($"{handshake.RemoteNodeId} handshake secrets established (auth: {handshake.AuthPacket.Data.Length} bytes, ack: {handshake.AckPacket.Data.Length} bytes)");
             }
 #endif
         }

@@ -4,16 +4,18 @@
     "ChainSpecPath": "chainspec/foundation.json",
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
     "BaseDbPath": "nethermind_db/mainnet",
-    "LogFileName": "mainnet.logs.txt",
-    "MemoryHint": 2048000000
+    "LogFileName": "mainnet.log",
+    "MemoryHint": 1024000000
   },
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 21804000,
-    "PivotHash": "0x88e86a46e03cee614591dcd10ae3f6e92b76ae71f358488cdaef91e5f7567ecc",
+    "PivotNumber": 26214000,
+    "PivotHash": "0xb70d816165168b6b380e94f480ab7f66dcc156b95dbbc9825f84191ecb36e90c",
     "PivotTotalDifficulty": "58750003716598352816469",
-    "FastSyncCatchUpHeightDelta": "10000000000"
+    "FastSyncCatchUpHeightDelta": 10000000000,
+    "AncientReceiptsBarrier": 24600000,
+    "AncientBodiesBarrier": 24600000
   },
   "EthStats": {
     "Server": "wss://ethstats.net/api"
@@ -22,7 +24,7 @@
     "NodeName": "Mainnet"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 36000000
+    "TargetBlockGasLimit": 60000000
   },
   "JsonRpc": {
     "Enabled": true,
@@ -35,5 +37,8 @@
   },
   "Merge": {
     "Enabled": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "All"
   }
 }

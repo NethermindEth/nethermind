@@ -7,10 +7,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -18,14 +19,14 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class StorageAndSelfDestructTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.MuirGlacierBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.MuirGlacierBlockNumber;
 
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [Test]
         public void Load_self_destruct()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -60,7 +61,7 @@ namespace Nethermind.Evm.Test
                 .Call(contractAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            long gasLimit = 1000000;
+            ulong gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1);
             Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
@@ -69,7 +70,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer initTracer = new(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(initTx, blCtx, initTracer);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
 
@@ -85,7 +86,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Destroy_restore_store()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -140,7 +141,7 @@ namespace Nethermind.Evm.Test
                 .Call(deploymentAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            long gasLimit = 1000000;
+            ulong gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1);
             // deploy create 2
@@ -158,7 +159,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(tx0, blCtx, tracer0);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
@@ -191,7 +192,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Destroy_restore_store_different_cells()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -246,7 +247,7 @@ namespace Nethermind.Evm.Test
                 .CallWithValue(deploymentAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            long gasLimit = 1000000;
+            ulong gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1);
             // deploy create 2
@@ -264,7 +265,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(tx0, blCtx, tracer0);
             AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
@@ -353,18 +354,18 @@ namespace Nethermind.Evm.Test
                 .CallWithValue(deploymentAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             //TestState.Commit(SpecProvider.GenesisSpec);
             //TestState.CommitTree(0);
 
             TestState.CreateAccount(deploymentAddress, UInt256.One);
             TestState.InsertCode(deploymentAddress, contractCode, MuirGlacier.Instance);
 
-            TestState.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
+            TestState.Set(new StorageCell(deploymentAddress, 7), new UInt256(new byte[] { 7 }, isBigEndian: true));
             TestState.Commit(MuirGlacier.Instance);
             TestState.CommitTree(0);
 
-            long gasLimit = 1000000;
+            ulong gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1);
             // deploy create 2
@@ -380,7 +381,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(tx0, blCtx, tracer);
 
             tracer = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);

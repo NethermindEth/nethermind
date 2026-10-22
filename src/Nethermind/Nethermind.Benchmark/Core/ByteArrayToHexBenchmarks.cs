@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using BenchmarkDotNet.Attributes;
-using HexMate;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Benchmarks.Core
@@ -18,21 +17,9 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark]
-        public string Improved()
-        {
-            return Bytes.ByteArrayToHexViaLookup32Safe(array, false);
-        }
+        public string Improved() => Bytes.ByteArrayToHexViaLookup32Safe(array, false);
 
         [Benchmark]
-        public string SafeLookup()
-        {
-            return Bytes.ByteArrayToHexViaLookup32Safe(array, false);
-        }
-
-        [Benchmark(Baseline = true)]
-        public string HexMateA()
-        {
-            return Convert.ToHexString(array, HexFormattingOptions.Lowercase);
-        }
+        public string SafeLookup() => Bytes.ByteArrayToHexViaLookup32Safe(array, false);
     }
 }

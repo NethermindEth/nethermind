@@ -1,0 +1,546 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Diagnostics;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
+using System.Threading;
+using Nethermind.Core.Collections;
+using static Nethermind.Core.Caching.SeqlockHeader;
+
+namespace Nethermind.Core.Caching;
+
+/// <summary>
+/// High-throughput 8-way set-associative cache with lock-free reads and
+/// 3-random eviction within a set.
+///
+/// <para>Choose a cache based on tradeoffs:</para>
+/// <list type="table">
+///   <listheader>
+///     <term>Cache</term>
+///     <description>When to use</description>
+///   </listheader>
+///   <item>
+///     <term>LruCache</term>
+///     <description>Prefer when global LRU behavior matters more than contention.</description>
+///   </item>
+///   <item>
+///     <term>ClockCache</term>
+///     <description>Prefer when exact capacity and existing CLOCK semantics are sufficient.</description>
+///   </item>
+///   <item>
+///     <term>AssociativeCache</term>
+///     <description>Prefer on hot read-heavy paths where avoiding global coordination matters
+///     more than exact global eviction order. Uses 3-random eviction within 8-way sets.</description>
+///   </item>
+/// </list>
+///
+/// <para>Key tradeoffs:</para>
+/// <list type="table">
+///   <listheader>
+///     <term>Aspect</term>
+///     <description>LruCache / ClockCache / AssociativeCache</description>
+///   </listheader>
+///   <item><term>Eviction scope</term><description>Global / Global / Within one 8-way set</description></item>
+///   <item><term>Read path</term><description>McsLock / bitmap update / lock-free seqlock read, spinning briefly on an in-flight write of a key with the same tag</description></item>
+///   <item><term>Write path</term><description>McsLock / global lock / set-local gate</description></item>
+///   <item><term>Capacity</term><description>Exact / Exact / Rounded to setCount × 8</description></item>
+///   <item><term>Clear</term><description>O(n) zeroing / O(n) zeroing / O(1) epoch bump + optional O(n) reference release</description></item>
+/// </list>
+///
+/// <para><b>Why <c>TValue : class?</c>:</b> The seqlock read path copies entry fields (Key, Value)
+/// without holding a lock, then validates via sequence number. A reference-type Value is a single
+/// pointer-width store/load — atomic on both x64 and ARM64. A multi-byte value struct (e.g. 72-byte
+/// AccountStruct) is NOT atomic: a concurrent reader could observe a partially-written struct where
+/// some fields belong to the old value and others to the new. The seqlock retry would usually catch
+/// this, but if the writer completes the struct write and bumps the closing sequence between the
+/// reader's first and last field copies, the reader sees a valid sequence with torn data.
+/// Use <see cref="ClockCache{TKey,TValue}"/> for value-type TValues (it uses an McsLock that
+/// makes reads and writes mutually exclusive, preventing tearing).</para>
+/// </summary>
+public sealed partial class AssociativeCache<TKey, TValue>
+    where TKey : struct, IHash64bit<TKey>
+    where TValue : class?
+{
+    private const int Ways = 8;
+    private const int WayShift = 3;
+
+    private readonly Entry[] _entries;
+    private readonly int _setMask;
+    private readonly int _setCount;
+    private readonly int _hashShift;
+    private readonly int[] _setGates;
+
+    /// <summary>
+    /// Combined [Epoch:26][Count:37] field. Epoch occupies bits 37-62 (same as entry headers).
+    /// Count occupies bits 0-36. Atomic CAS in Clear() bumps epoch + resets count in one operation.
+    /// </summary>
+    private long _epochAndCount;
+
+    public int Count => ReadCount(ref _epochAndCount);
+
+    public AssociativeCache(int maxCapacity)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)maxCapacity, MaxCapacity);
+
+        if (maxCapacity == 0)
+        {
+            _entries = [];
+            _setGates = [];
+            _setMask = 0;
+            _setCount = 0;
+            return;
+        }
+        _setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((maxCapacity + Ways - 1) / Ways));
+        _setMask = _setCount - 1;
+        _hashShift = BitOperations.Log2((uint)_setCount);
+        _entries = new Entry[_setCount * Ways];
+        // Gate integers are packed (16 per cache line). Writers to different sets on the same
+        // cache line cause false sharing, but writes are infrequent relative to lock-free reads,
+        // so the memory cost of 64-byte padding per gate is not justified for current usage.
+        _setGates = new int[_setCount];
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TValue? Get(in TKey key)
+    {
+        TryGet(in key, out TValue? value);
+        return value;
+    }
+
+    /// <summary>Lookup that refreshes the eviction ticker on hit.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGet(in TKey key, out TValue? value)
+        => TryGetCore<OnFlag>(in key, key.GetHashCode64(), out value);
+
+    /// <summary><see cref="TryGet(in TKey, out TValue)"/> with the key's <see cref="IHash64bit{TKey}.GetHashCode64"/> already computed.</summary>
+    /// <remarks>For callers probing several caches with one key, so the key is hashed once.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryGet(in TKey key, long hashCode, out TValue? value)
+        => TryGetCore<OnFlag>(in key, hashCode, out value);
+
+    /// <summary>Lookup without refreshing the eviction ticker. Use for Set-then-Get patterns.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGetNoRefresh(in TKey key, out TValue? value)
+        => TryGetCore<OffFlag>(in key, key.GetHashCode64(), out value);
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryGetCore<TRefreshTicker>(in TKey key, long hashCode, out TValue? value)
+        where TRefreshTicker : struct, IFlag
+    {
+        if (_setCount == 0)
+        {
+            value = null;
+            return false;
+        }
+
+        int setIndex = (int)hashCode & _setMask;
+        int baseIdx = setIndex << WayShift;
+
+        long epochTag = ReadEpoch(ref _epochAndCount);
+        long hashPart = ExtractHashPart(hashCode, _hashShift);
+        long expectedTag = epochTag | hashPart | OccupiedBit;
+
+        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+
+        for (int i = 0; i < Ways; i++)
+        {
+            ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
+            long h1 = Volatile.Read(ref e.Header);
+
+            if ((h1 & TagMask) != expectedTag) continue;
+
+            TKey storedKey = e.Key;
+            TValue? storedValue = e.Value;
+            // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+            long h2 = Volatile.Read(ref e.Header);
+            bool settled = (h1 & LockMarker) == 0 && h1 == h2;
+            SettleRead(ref e, expectedTag, ref settled, ref storedKey, ref storedValue);
+            if (!settled) continue;
+
+            if (storedKey.Equals(in key))
+            {
+                // JIT eliminates this branch entirely per TRefreshTicker instantiation.
+                // Eviction age uses the high-resolution clock rather than a shared counter: a
+                // per-hit Interlocked on a cache-wide field is a serialized cross-core RMW under
+                // concurrent readers (and it dirtied the line _epochAndCount lives on, which
+                // every TryGet reads first). Single-threaded the clock read loses a few ns to the
+                // old Interlocked (and more on hosts whose clocksource is not TSC), but it writes
+                // only this entry's own line, so hits scale with reader count — the regime that
+                // motivated the change. Do not flip back to a shared counter for the ns.
+                // Ticker store without the set gate is safe: 8-byte aligned long is atomic on
+                // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
+                // not key/value correctness — the "losing" ticker value is simply slightly stale.
+                if (TRefreshTicker.IsActive)
+                {
+                    bool newest = false;
+                    CheckNewestInSet(ref entries, baseIdx, i, e.Ticker, ref newest);
+                    if (!newest) e.Ticker = Stopwatch.GetTimestamp();
+                }
+                value = storedValue;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    public bool Set(in TKey key, TValue? val) => Set(in key, key.GetHashCode64(), val);
+
+    /// <summary><see cref="Set(in TKey, TValue)"/> with the key's <see cref="IHash64bit{TKey}.GetHashCode64"/> already computed.</summary>
+    internal bool Set(in TKey key, long hashCode, TValue? val)
+    {
+        if (_setCount == 0) return true;
+
+        if (val is null)
+        {
+            return Delete(in key);
+        }
+
+        return SetInSet<OnFlag>(in key, hashCode, val);
+    }
+
+    /// <summary>Caches <paramref name="val"/> only if <paramref name="key"/> is not cached already.</summary>
+    /// <returns><see langword="true"/> when <paramref name="val"/> was added.</returns>
+    /// <remarks>
+    /// For a reader caching a value it loaded from the backing store: a value a writer cached while that load ran is
+    /// newer than the loaded one, which must not replace it.
+    /// </remarks>
+    public bool TryAdd(in TKey key, TValue val)
+    {
+        ArgumentNullException.ThrowIfNull(val);
+        if (_setCount == 0) return false;
+
+        return SetInSet<OffFlag>(in key, key.GetHashCode64(), val);
+    }
+
+    /// <summary>Writes <paramref name="val"/> into the key's set under that set's gate.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool SetInSet<TReplaceExisting>(in TKey key, long hashCode, TValue val)
+        where TReplaceExisting : struct, IFlag
+    {
+        int setIndex = (int)hashCode & _setMask;
+        int baseIdx = setIndex << WayShift;
+        long hashPart = ExtractHashPart(hashCode, _hashShift);
+
+        ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
+        AcquireGate(ref gate);
+        try
+        {
+            return SetCore<TReplaceExisting>(in key, val, baseIdx, hashPart);
+        }
+        finally
+        {
+            ReleaseGate(ref gate);
+        }
+    }
+
+    private bool SetCore<TReplaceExisting>(in TKey key, TValue val, int baseIdx, long hashPart)
+        where TReplaceExisting : struct, IFlag
+    {
+        // Retry with fresh epoch if Clear() races at any point — never drop an insert.
+        while (true)
+        {
+            long epochTag = ReadEpoch(ref _epochAndCount);
+            long tagToStore = epochTag | hashPart | OccupiedBit;
+            long epochOccTag = epochTag | OccupiedBit;
+
+            ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+
+            int bestEmpty = -1;
+            int bestStale = -1;
+
+            for (int i = 0; i < Ways; i++)
+            {
+                ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
+                long h = Volatile.Read(ref e.Header);
+
+                bool occupied = (h & OccupiedBit) != 0;
+                bool currentEpoch = (h & EpochMask) == epochTag;
+
+                if (occupied && currentEpoch)
+                {
+                    if ((h & HashMask) == hashPart && e.Key.Equals(in key))
+                    {
+                        if (!TReplaceExisting.IsActive) return false;
+
+                        // Re-caching the stored instance, as lookups that cache every hit do, only refreshes the
+                        // ticker: locking the entry would make concurrent readers wait for an unchanged value.
+                        if (ReferenceEquals(e.Value, val))
+                            e.Ticker = Stopwatch.GetTimestamp();
+                        else
+                            WriteEntry(ref e, h, in key, val, tagToStore, Stopwatch.GetTimestamp());
+                        return false;
+                    }
+                }
+                else if (!occupied && bestEmpty < 0)
+                {
+                    bestEmpty = i;
+                }
+                else if (occupied && !currentEpoch && bestStale < 0)
+                {
+                    bestStale = i;
+                }
+            }
+
+            if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
+
+            long timestamp = Stopwatch.GetTimestamp();
+            int target = bestEmpty >= 0
+                ? bestEmpty
+                : bestStale >= 0
+                    ? bestStale
+                    : Pick3RandomEvictEntry(ref entries, baseIdx, timestamp, ++_evictProbe);
+
+            ref Entry te = ref Unsafe.Add(ref entries, baseIdx + target);
+            long existing = Volatile.Read(ref te.Header);
+
+            bool evictingLive = (existing & EpochOccMask) == epochOccTag;
+
+            WriteEntry(ref te, existing, in key, val, tagToStore, timestamp);
+            if (!evictingLive) AdjustCountIfEpoch(ref _epochAndCount, epochTag, 1);
+
+            // Final check: if Clear() raced after the write, the entry has a stale epoch
+            // tag and is invisible to readers. AdjustCountIfEpoch already skipped the
+            // count update (epoch mismatch). Retry to write with the current epoch.
+            if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
+
+            return true;
+        }
+    }
+
+    public bool Delete(in TKey key) => Delete(in key, out _);
+
+    public bool Delete(in TKey key, out TValue? value)
+    {
+        if (_setCount == 0)
+        {
+            value = null;
+            return false;
+        }
+
+        return RemoveInSet<OffFlag>(in key, null, out value);
+    }
+
+    /// <summary>Removes <paramref name="key"/> only while it still maps to <paramref name="expected"/>.</summary>
+    /// <returns><see langword="true"/> when the entry was removed.</returns>
+    /// <remarks>
+    /// For a reader withdrawing a value it cached itself: a value a writer cached for the key since then must stay.
+    /// </remarks>
+    public bool TryRemove(in TKey key, TValue expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        return _setCount != 0 && RemoveInSet<OnFlag>(in key, expected, out _);
+    }
+
+    /// <summary>Removes the key's entry under its set's gate, when <typeparamref name="TMatchValue"/> is on only while it holds <paramref name="expected"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool RemoveInSet<TMatchValue>(in TKey key, TValue? expected, out TValue? value)
+        where TMatchValue : struct, IFlag
+    {
+        long hashCode = key.GetHashCode64();
+        int setIndex = (int)hashCode & _setMask;
+        int baseIdx = setIndex << WayShift;
+        long hashPart = ExtractHashPart(hashCode, _hashShift);
+
+        ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
+        AcquireGate(ref gate);
+        try
+        {
+            return DeleteCore<TMatchValue>(in key, baseIdx, hashPart, expected, out value);
+        }
+        finally
+        {
+            ReleaseGate(ref gate);
+        }
+    }
+
+    private bool DeleteCore<TMatchValue>(in TKey key, int baseIdx, long hashPart, TValue? expected, out TValue? value)
+        where TMatchValue : struct, IFlag
+    {
+        long epochTag = ReadEpoch(ref _epochAndCount);
+        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+
+        for (int i = 0; i < Ways; i++)
+        {
+            ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
+            long h = Volatile.Read(ref e.Header);
+
+            if ((h & OccupiedBit) == 0) continue;
+            if ((h & EpochMask) != epochTag) continue;
+            if ((h & HashMask) != hashPart) continue;
+
+            if (e.Key.Equals(in key))
+            {
+                value = e.Value;
+                if (TMatchValue.IsActive && !ReferenceEquals(value, expected))
+                {
+                    value = null;
+                    return false;
+                }
+
+                long newSeq = ((h & SeqMask) + SeqInc) & SeqMask;
+                long lockedHeader = (h & EpochMask) | newSeq | LockMarker;
+
+                Volatile.Write(ref e.Header, lockedHeader);
+                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+                e.Key = default;
+                e.Value = null;
+                e.Ticker = 0;
+
+                Volatile.Write(ref e.Header, (h & EpochMask) | newSeq);
+
+                AdjustCountIfEpoch(ref _epochAndCount, epochTag, -1);
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Logically invalidates all entries via O(1) epoch bump.
+    /// When <paramref name="releaseReferences"/> is true (the default), also walks each set
+    /// under its gate to null out Key/Value fields so the GC can reclaim referenced objects.
+    /// Pass false on hot paths where O(1) clear is preferred and stale GC roots are acceptable.
+    /// </summary>
+    public void Clear(bool releaseReferences = true)
+    {
+        if (_setCount != 0)
+        {
+            long currentEpoch = ClearEpochAndCount(ref _epochAndCount);
+
+            if (releaseReferences)
+            {
+                ClearEntries(currentEpoch);
+            }
+        }
+    }
+
+    /// <remarks>
+    /// Only wipes entries strictly older than <paramref name="currentEpoch"/>. A concurrent
+    /// <c>Clear()</c> can publish a newer epoch mid-walk; those future-epoch slots are live
+    /// and must be preserved — wiping them would drop a just-committed <see cref="Set"/> and
+    /// strand its <c>+1</c> in <c>_epochAndCount</c>.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ClearEntries(long currentEpoch)
+    {
+        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+        ref int gates = ref MemoryMarshal.GetArrayDataReference(_setGates);
+
+        for (int s = 0; s < _setCount; s++)
+        {
+            ref int gate = ref Unsafe.Add(ref gates, s);
+            AcquireGate(ref gate);
+            try
+            {
+                int baseIdx = s << WayShift;
+                for (int i = 0; i < Ways; i++)
+                {
+                    ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
+                    long h = Volatile.Read(ref e.Header);
+
+                    if ((h & OccupiedBit) == 0) continue;
+                    if (!IsEpochOlderThan(h & EpochMask, currentEpoch)) continue;
+
+                    // Seqlock write: lock → null fields → unlock (clears OccupiedBit)
+                    long newSeq = ((h & SeqMask) + SeqInc) & SeqMask;
+                    Volatile.Write(ref e.Header, (h & EpochMask) | newSeq | LockMarker);
+                    if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+                    if (RuntimeHelpers.IsReferenceOrContainsReferences<TKey>())
+                        e.Key = default;
+                    e.Value = null;
+                    e.Ticker = 0;
+
+                    Volatile.Write(ref e.Header, (h & EpochMask) | newSeq);
+                }
+            }
+            finally
+            {
+                ReleaseGate(ref gate);
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool Contains(in TKey key) => TryGetNoRefresh(in key, out _);
+
+    // The recency stamp is a poor sample seed on a coarse clock: two inserts into one set inside a
+    // single tick would sample the same three ways and tie on Ticker, and the tie breaks to the
+    // first, so a same-tick burst keeps evicting one way. A thread-local probe counter varies the
+    // sample per call without reintroducing a shared write. It seeds only the choice of ways; the
+    // stamp written into the entry is still the raw timestamp.
+    [ThreadStatic] private static int _evictProbe;
+
+    /// <summary>
+    /// Sets <paramref name="newest"/> when <paramref name="ticker"/> is newer than every other ticker in the set, so
+    /// refreshing the entry at <paramref name="way"/> cannot change its rank; a tie is not newest.
+    /// </summary>
+    /// <remarks>
+    /// Implemented only for the host, where a refresh's clock read and ticker write are what threads hitting one entry
+    /// contend on. The zkEVM guest runs single-threaded, where the scan only adds work, so without an implementation the
+    /// compiler drops the call and every hit refreshes.
+    /// </remarks>
+    static partial void CheckNewestInSet(ref Entry entries, int baseIdx, int way, long ticker, ref bool newest);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Pick3RandomEvictEntry(ref Entry entries, int baseIdx, long now, int probe)
+    {
+        (int a, int b, int c) = Pick3Indices(now + probe);
+
+        long ta = Unsafe.Add(ref entries, baseIdx + a).Ticker;
+        long tb = Unsafe.Add(ref entries, baseIdx + b).Ticker;
+        long tc = Unsafe.Add(ref entries, baseIdx + c).Ticker;
+
+        return Pick3RandomEvict(ta, tb, tc, a, b, c);
+    }
+
+    /// <summary>
+    /// Re-reads an entry carrying <paramref name="expectedTag"/> that was locked or changed while its key and value
+    /// were copied, setting <paramref name="settled"/> when <paramref name="key"/> and <paramref name="value"/> then
+    /// hold a consistent copy.
+    /// </summary>
+    /// <remarks>
+    /// Implemented only for the host. The zkEVM guest runs single-threaded, so no entry is seen mid-write there, and
+    /// without an implementation the compiler drops the call along with its arguments.
+    /// </remarks>
+    static partial void SettleRead(ref Entry entry, long expectedTag, ref bool settled, ref TKey key, ref TValue? value);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore, long ticker)
+    {
+        long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
+        long lockedHeader = tagToStore | newSeq | LockMarker;
+
+        // STLR on ARM64 is release-only: subsequent stores can move before it.
+        // Barrier ensures Key/Value/Ticker stores stay after the lock.
+        Volatile.Write(ref entry.Header, lockedHeader);
+        if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+        entry.Key = key;
+        entry.Value = value;
+        entry.Ticker = ticker;
+
+        Volatile.Write(ref entry.Header, tagToStore | newSeq);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Entry
+    {
+        public long Header;
+        public long Ticker;
+        public TKey Key;
+        public TValue? Value;
+    }
+}

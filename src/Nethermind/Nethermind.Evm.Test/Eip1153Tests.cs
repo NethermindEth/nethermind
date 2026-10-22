@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using System.Diagnostics;
+using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test;
 
@@ -15,7 +19,7 @@ namespace Nethermind.Evm.Test;
 /// </summary>
 internal class Eip1153Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     /// <summary>
@@ -80,10 +84,10 @@ internal class Eip1153Tests : VirtualMachineTestsBase
     [Test]
     public void transient_storage_performance_test()
     {
-        long blockGasLimit = 30000000;
-        long numOfOps = (long)(blockGasLimit * .95) / (GasCostOf.TLoad + GasCostOf.TStore + GasCostOf.VeryLow * 4);
+        ulong blockGasLimit = 30000000;
+        ulong numOfOps = (blockGasLimit * 95UL / 100UL) / (GasCostOf.TLoad + GasCostOf.TStore + GasCostOf.VeryLow * 4);
         Prepare prepare = Prepare.EvmCode;
-        for (long i = 0; i < numOfOps; i++)
+        for (ulong i = 0; i < numOfOps; i++)
         {
             prepare.StoreDataInTransientStorage(1, 8);
             prepare.LoadDataFromTransientStorage(1);
@@ -117,16 +121,126 @@ internal class Eip1153Tests : VirtualMachineTestsBase
         Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
     }
 
+    private static readonly UInt256[] TransientValues =
+        [UInt256.Zero, UInt256.One, (UInt256)255, new UInt256(1_000_000_000_000_000_000UL), UInt256.MaxValue,
+         new UInt256(0x0123456789abcdef, 0xfedcba9876543210, 0x1020304050607080, 0x8070605040302010)];
+
+    [Test]
+    public void storage_load_reuses_key_slot(
+        [Values(Instruction.SLOAD, Instruction.TLOAD)] Instruction instruction,
+        [Values(0, 1, 1024)] int depth)
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < depth; i++) code.PushData(UInt256.MaxValue);
+        code.Op(instruction);
+        TestAllTracerWithOutput result = Execute(code.Done);
+        Assert.That(result.StatusCode, Is.EqualTo(depth == 0 ? StatusCode.Failure : StatusCode.Success));
+    }
+
+    [Test]
+    public void repeated_tstore_preserves_value_and_gas([ValueSource(nameof(TransientValues))] UInt256 value)
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(value).PushData(0).Op(Instruction.TSTORE)
+            .PushData(value).PushData(0).Op(Instruction.TSTORE)
+            .LoadDataFromTransientStorage(0)
+            .DataOnStackToMemory(0)
+            .Return(32, 0)
+            .Done;
+
+        TransientStoreTracer result = Execute(new TransientStoreTracer(), code);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.ReturnValue.ToUInt256(), Is.EqualTo(value));
+            Assert.That(result.GasSpent, Is.EqualTo(GasCostOf.Transaction + 2 * GasCostOf.TStore + GasCostOf.TLoad + 10 * GasCostOf.VeryLow));
+            Assert.That(result.LoadedBytes, Is.EqualTo(value.IsZero ? new byte[] { 0 } : value.ToBigEndian()));
+            Assert.That(result.Changes, Is.EqualTo(new (UInt256 NewValue, UInt256 CurrentValue)[]
+            {
+                (value, UInt256.Zero),
+                (value, value),
+            }));
+        }
+    }
+
+    [Test]
+    public void tstore_tracing_reports_previous_value([Values] bool tracing)
+    {
+        byte[] code = Prepare.EvmCode
+            .StoreDataInTransientStorage(1, 8)
+            .StoreDataInTransientStorage(1, 9)
+            .LoadDataFromTransientStorage(1)
+            .DataOnStackToMemory(0)
+            .Return(32, 0)
+            .Done;
+
+        TransientStoreTracer result = Execute(new TransientStoreTracer(tracing), code);
+        (UInt256 NewValue, UInt256 CurrentValue)[] expectedChanges = tracing
+            ? [((UInt256)8, UInt256.Zero), ((UInt256)9, (UInt256)8)]
+            : [];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.ReturnValue.ToUInt256(), Is.EqualTo((UInt256)9));
+            Assert.That(result.Changes, Is.EqualTo(expectedChanges));
+        }
+    }
+
+    [Test]
+    public void tstore_tracing_reports_restored_value_after_revert()
+    {
+        byte[] revertedCode = Prepare.EvmCode
+            .StoreDataInTransientStorage(1, 8)
+            .Revert(0, 0)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
+        TestState.InsertCode(TestItem.AddressD, revertedCode, Spec);
+
+        byte[] code = Prepare.EvmCode
+            .StoreDataInTransientStorage(1, 7)
+            .DynamicCallWithInput(Instruction.DELEGATECALL, TestItem.AddressD, 50000, new byte[32])
+            .StoreDataInTransientStorage(1, 9)
+            .LoadDataFromTransientStorage(1)
+            .DataOnStackToMemory(0)
+            .Return(32, 0)
+            .Done;
+
+        TransientStoreTracer result = Execute(new TransientStoreTracer(), code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.ReturnValue.ToUInt256(), Is.EqualTo((UInt256)9));
+            Assert.That(result.Changes, Is.EqualTo(new (UInt256 NewValue, UInt256 CurrentValue)[]
+            {
+                ((UInt256)7, UInt256.Zero),
+                ((UInt256)8, (UInt256)7),
+                ((UInt256)9, (UInt256)7),
+            }));
+        }
+    }
+
+    private sealed class TransientStoreTracer(bool isTracingOpLevelStorage = true) : TestAllTracerWithOutput
+    {
+        public override bool IsTracingOpLevelStorage => isTracingOpLevelStorage;
+        public byte[]? LoadedBytes { get; private set; }
+        public List<(UInt256 NewValue, UInt256 CurrentValue)> Changes { get; } = [];
+
+        public override void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+            => LoadedBytes = value.ToArray();
+
+        public override void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+            => Changes.Add((new UInt256(newValue, isBigEndian: true), new UInt256(currentValue, isBigEndian: true)));
+    }
+
     /// <summary>
     /// Testing transient data store/load from different locations
     /// </summary>
     /// <param name="loadLocation">Location</param>
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
-    public void tload_after_tstore_from_different_locations(int loadLocation)
+    [Test]
+    public void tload_after_tstore_from_different_locations([Values(2, 3, 4, 5, 6)] int loadLocation)
     {
         byte[] code = Prepare.EvmCode
             .StoreDataInTransientStorage(1, 8)
@@ -157,7 +271,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Store 8 at index 1 and call contract from above
@@ -205,7 +319,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -251,7 +365,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -296,7 +410,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 9)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -342,7 +456,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.REVERT)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -390,7 +504,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.REVERT)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -409,7 +523,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
     /// Revert undoes transient storage writes from inner calls that successfully returned
     /// </summary>
     [Test]
-    public void revert_resets_transient_state_from_succesful_calls()
+    public void revert_resets_transient_state_from_successful_calls()
     {
         // If caller is self, TLOAD and return value (break recursion)
         // Else, TSTORE and call self, return the response
@@ -475,7 +589,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 10)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -506,7 +620,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract (1 if successful)
@@ -535,7 +649,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.CALLER)
             .PushData(TestItem.AddressD)
             .Op(Instruction.EQ)
-            .PushData(113)
+            .PushData(callType == Instruction.CALL ? 113 : 111)
             .Op(Instruction.JUMPI)
 
             // Non-reentrant, call self after TSTORE 8
@@ -554,7 +668,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 9)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -589,7 +703,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             // See if we're at call depth 1
             .PushData(1)
             .Op(Instruction.EQ)
-            .PushData(84)
+            .PushData(callType == Instruction.CALL ? 84 : 82)
             .Op(Instruction.JUMPI)
 
             // See if we're at call depth 2
@@ -597,7 +711,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.MLOAD)
             .PushData(2)
             .Op(Instruction.EQ)
-            .PushData(140)
+            .PushData(callType == Instruction.CALL ? 140 : 138)
             .Op(Instruction.JUMPI)
 
             // Call depth = 0, call self after TSTORE 8
@@ -642,7 +756,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 10) // This will fail
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract
@@ -668,7 +782,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .StoreDataInTransientStorage(1, 8)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -702,7 +816,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         byte[] code = Prepare.EvmCode
@@ -787,7 +901,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.CALLER)
             .PushData(TestItem.AddressD)
             .Op(Instruction.EQ)
-            .PushData(114)
+            .PushData(callType == Instruction.CALL ? 114 : 112)
             .Op(Instruction.JUMPI)
 
             // Non-reentrant, call self after TSTORE 8
@@ -804,7 +918,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
         TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
         // Return the result received from the contract

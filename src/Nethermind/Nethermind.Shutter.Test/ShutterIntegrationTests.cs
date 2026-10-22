@@ -10,16 +10,20 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using System.Threading;
 using Nethermind.Merge.Plugin.Test;
 
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class ShutterIntegrationTests : BaseEngineModuleTests
 {
     private const int BuildingSlot = (int)ShutterTestsCommon.InitialSlot;
     private const ulong BuildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
+    private const int ShutterTxCount = 20;
 
     [Test]
     public async Task Can_load_when_previous_block_arrives_late()
@@ -31,30 +35,31 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
             Timestamp = BuildingSlotTimestamp
         };
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[^1];
 
         // keys arrive 5 seconds before slot start
         // waits for previous block to timeout then loads txs
-        chain.Api!.AdvanceSlot(20);
+        chain.Api.AdvanceSlot(ShutterTxCount);
 
         // no events loaded initially
-        var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(0));
+        BlockHeader parent = chain.BlockTree!.Head!.Header;
+        List<Transaction> txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
+        Assert.That(txs.Count, Is.EqualTo(0));
 
         // after timeout they should be loaded
         using CancellationTokenSource cts = new();
-        await chain.Api.TxSource.WaitForTransactions((ulong)BuildingSlot, cts.Token);
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(20));
+        await chain.Api.TxSource.WaitForTransactions(BuildingSlot, cts.Token);
+        parent = chain.BlockTree.Head!.Header;
+        txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
+        Assert.That(txs.Count, Is.EqualTo(ShutterTxCount));
 
         // late block arrives, then next block should contain loaded transactions
-        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 2, lastPayload, true, null, 5);
-        lastPayload = payloads[^1];
-        lastPayload.TryGetBlock(out Block? b);
-        Assert.That(b!.Transactions, Has.Length.EqualTo(20));
+        lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5))[0];
+        Block b = await BuildBlockWithShutterTxs(rpc, chain, lastPayload);
+        Assert.That(b.Transactions, Has.Length.EqualTo(ShutterTxCount));
     }
 
 
@@ -68,27 +73,27 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
             Timestamp = BuildingSlotTimestamp
         };
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
-        ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
+        ExecutionPayload lastPayload = executionPayloads[^1];
 
         // no events loaded initially
-        var txs = chain.Api!.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(0));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        List<Transaction> txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
+        Assert.That(txs.Count, Is.EqualTo(0));
 
-        chain.Api.AdvanceSlot(20);
+        chain.Api.AdvanceSlot(ShutterTxCount);
 
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(20));
+        parent = chain.BlockTree.Head!.Header;
+        txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
+        Assert.That(txs.Count, Is.EqualTo(ShutterTxCount));
 
-        payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
-        lastPayload = payloads[0];
-        lastPayload.TryGetBlock(out Block? b);
-        Assert.That(b!.Transactions, Has.Length.EqualTo(20));
+        Block b = await BuildBlockWithShutterTxs(rpc, chain, lastPayload);
+        Assert.That(b.Transactions, Has.Length.EqualTo(ShutterTxCount));
     }
 
     [Test]
@@ -99,10 +104,10 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         long time = 1;
         Timestamper timestamper = new(time);
 
-        Metrics.ShutterKeysMissed = 0;
+        ulong missedBefore = Metrics.ShutterKeysMissed;
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         ExecutionPayload lastPayload = CreateParentBlockRequestOnHead(chain.BlockTree);
         for (int i = 0; i < 5; i++)
@@ -113,7 +118,29 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
             time += (long)ShutterTestsCommon.SlotLength.TotalSeconds;
         }
 
-        Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(5));
+        // ImproveBlock tasks run in the background and may not have completed yet
+        // when GetPayload returns (it only waits 50ms), so poll until all increments land.
+        Assert.That(() => Metrics.ShutterKeysMissed - missedBefore, Is.EqualTo((ulong)5).After(5000, 50));
+    }
+
+    /// <summary>Builds the next block on <paramref name="parent"/> once the Shutter transactions are in it.</summary>
+    /// <remarks>
+    /// <c>getPayload</c> gives a pending improvement only a short grace period before returning the empty block, which
+    /// a slow runner can miss, so the improvement is awaited first.
+    /// </remarks>
+    private static async Task<Block> BuildBlockWithShutterTxs(IEngineRpcModule rpc, ShutterTestBlockchain chain, ExecutionPayload parent)
+    {
+        await chain.WaitForCommitted(parent.BlockHash);
+        Task improved = chain.WaitForImprovedBlock(parent.BlockHash, ShutterTxCount);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = parent.Timestamp + 5,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero
+        };
+        string payloadId = chain.PayloadPreparationService.StartPreparingPayload(chain.BlockTree.FindHeader(parent.BlockHash)!, payloadAttributes)!;
+        await improved;
+        return (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!.TryGetBlock().Data!;
     }
 
 }

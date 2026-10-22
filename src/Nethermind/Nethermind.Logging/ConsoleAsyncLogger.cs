@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -13,8 +13,8 @@ namespace Nethermind.Logging
     public class ConsoleAsyncLogger : InterfaceLogger
     {
         private readonly LogLevel _logLevel;
-        private readonly string _prefix;
-        private readonly BlockingCollection<string> _queuedEntries = new BlockingCollection<string>(new ConcurrentQueue<string>());
+        private readonly string? _prefix;
+        private readonly BlockingCollection<string> _queuedEntries = new(new ConcurrentQueue<string>());
 
         public void Flush()
         {
@@ -24,7 +24,7 @@ namespace Nethermind.Logging
 
         private readonly Task _task;
 
-        public ConsoleAsyncLogger(LogLevel logLevel, string prefix = null)
+        public ConsoleAsyncLogger(LogLevel logLevel, string? prefix = null)
         {
             _logLevel = logLevel;
             _prefix = prefix;
@@ -34,7 +34,7 @@ namespace Nethermind.Logging
                     {
                         foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
                         {
-                            Console.WriteLine(logEntry);
+                            Console.Error.WriteLine(logEntry);
 
                             if (_queuedEntries.IsAddingCompleted)
                             {
@@ -44,42 +44,24 @@ namespace Nethermind.Logging
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine(e);
+                        Console.Error.WriteLine(e);
                         throw;
                     }
                 },
                 TaskCreationOptions.LongRunning);
         }
 
-        private void Log(string text)
-        {
-            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Environment.CurrentManagedThreadId}] {_prefix}{text}");
-        }
+        private void Log(string text) => _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Environment.CurrentManagedThreadId}] {_prefix}{text}");
 
-        public void Info(string text)
-        {
-            Log(text);
-        }
+        public void Info(string text) => Log(text);
 
-        public void Warn(string text)
-        {
-            Log(text);
-        }
+        public void Warn(string text) => Log(text);
 
-        public void Debug(string text)
-        {
-            Log(text);
-        }
+        public void Debug(string text) => Log(text);
 
-        public void Trace(string text)
-        {
-            Log(text);
-        }
+        public void Trace(string text) => Log(text);
 
-        public void Error(string text, Exception ex = null)
-        {
-            Log(ex is not null ? $"{text}, Exception: {ex}" : text);
-        }
+        public void Error(string text, Exception? ex = null) => Log(ex is not null ? $"{text}, Exception: {ex}" : text);
 
         public bool IsInfo => (int)_logLevel >= 2;
         public bool IsWarn => (int)_logLevel >= 1;

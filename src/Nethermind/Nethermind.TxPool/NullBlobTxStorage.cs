@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -20,19 +21,21 @@ public class NullBlobTxStorage : IBlobTxStorage
         return false;
     }
 
+    public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results) => 0;
+
     public IEnumerable<LightTransaction> GetAll() => Array.Empty<LightTransaction>();
 
     public void Add(Transaction transaction) { }
 
     public void Delete(in ValueHash256 hash, in UInt256 timestamp) { }
 
-    public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
+    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions)
     {
         blockBlobTransactions = default;
         return false;
     }
 
-    public void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions) { }
+    public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions) { }
 
-    public void DeleteBlobTransactionsFromBlock(long blockNumber) { }
+    public void DeleteBlobTransactionsFromBlock(ulong blockNumber) { }
 }

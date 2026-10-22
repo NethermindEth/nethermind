@@ -3,7 +3,13 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Optimism.Test" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Libp2p" />
@@ -21,6 +27,17 @@
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <PackageReference Include="Snappier" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <Folder Include="Raw\" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <None Remove="Raw\Create2Deployer.data" />
+    <EmbeddedResource Include="Raw\Create2Deployer.data" />
   </ItemGroup>
 
 </Project>

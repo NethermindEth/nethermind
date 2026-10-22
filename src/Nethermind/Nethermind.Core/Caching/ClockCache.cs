@@ -1,25 +1,18 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Threading;
-
-using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.Core.Caching;
 
-public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null) : ClockCacheBase<TKey>(maxCapacity)
+public sealed partial class ClockCache<TKey, TValue> : ClockCacheBase<TKey>
     where TKey : struct, IEquatable<TKey>
 {
-    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? CollectionExtensions.LockPartitions, maxCapacity);
-    private readonly McsLock _lock = new();
-
     public TValue Get(TKey key)
     {
         if (MaxCapacity == 0) return default!;
@@ -58,17 +51,23 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
-            _cacheMap[key] = new(val, ov.Offset);
-            MarkAccessed(ov.Offset);
-            return false;
+            // Fast path: atomic update using TryUpdate
+            if (_cacheMap.TryUpdate(key, new(val, ov.Offset), comparisonValue: ov))
+            {
+                MarkAccessed(ov.Offset);
+                return false;
+            }
         }
 
+        // Fallback to slow path with lock
         return SetSlow(key, val);
     }
 
     private bool SetSlow(TKey key, TValue val)
     {
-        using var lockRelease = _lock.Acquire();
+#pragma warning disable IDE0008 // Type depends on the build variant
+        using var lockRelease = _lock.EnterScope();
+#pragma warning restore IDE0008
 
         // Recheck under lock
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
@@ -115,6 +114,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
                 {
                     ThrowInvalidOperationException();
                 }
+
                 _count--;
                 break;
             }
@@ -126,27 +126,34 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         return position;
 
         [DoesNotReturn]
-        void ThrowInvalidOperationException()
-        {
-            throw new InvalidOperationException($"{nameof(ClockCache<TKey, TValue>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
-        }
+        void ThrowInvalidOperationException() => throw new InvalidOperationException($"{nameof(ClockCache<,>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
     }
 
-    public bool Delete(TKey key)
+    public bool Delete(TKey key) => Delete(key, out _);
+
+    public bool Delete(TKey key, [NotNullWhen(true)] out TValue? value)
     {
-        if (MaxCapacity == 0) return false;
+        if (MaxCapacity == 0)
+        {
+            value = default;
+            return false;
+        }
 
-        using var lockRelease = _lock.Acquire();
+#pragma warning disable IDE0008 // Type depends on the build variant
+        using var lockRelease = _lock.EnterScope();
+#pragma warning restore IDE0008
 
-        if (_cacheMap.Remove(key, out LruCacheItem ov))
+        if (_cacheMap.TryRemove(key, out LruCacheItem ov))
         {
             _count--;
             KeyToOffset[ov.Offset] = default;
             ClearAccessed(ov.Offset);
             FreeOffsets.Enqueue(ov.Offset);
-            return true;
+            value = ov.Value;
+            return ov.Value != null;
         }
 
+        value = default;
         return false;
     }
 
@@ -154,7 +161,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
     {
         if (MaxCapacity == 0) return;
 
-        using var lockRelease = _lock.Acquire();
+#pragma warning disable IDE0008 // Type depends on the build variant
+        using var lockRelease = _lock.EnterScope();
+#pragma warning restore IDE0008
 
         base.Clear();
         _cacheMap.NoResizeClear();
@@ -167,9 +176,24 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
     }
 
     [StructLayout(LayoutKind.Auto)]
-    private readonly struct LruCacheItem(TValue v, int offset)
+    private readonly struct LruCacheItem(TValue v, int offset) : IEquatable<LruCacheItem>
     {
         public readonly TValue Value = v;
         public readonly int Offset = offset;
+
+        public bool Equals(LruCacheItem other)
+        {
+            if (other.Offset != Offset)
+            {
+                return false;
+            }
+
+            if (typeof(TValue).IsValueType)
+            {
+                return EqualityComparer<TValue>.Default.Equals(other.Value, Value);
+            }
+
+            return ReferenceEquals(other.Value, Value);
+        }
     }
 }

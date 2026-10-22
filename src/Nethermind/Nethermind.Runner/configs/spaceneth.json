@@ -5,10 +5,9 @@
     "KeepDevWalletInMemory": true,
     "DiscoveryEnabled": false,
     "PeerManagerEnabled": false,
-    "IsMining": true,
     "ChainSpecPath": "chainspec/spaceneth.json",
     "BaseDbPath": "spaceneth_db",
-    "LogFileName": "spaceneth.logs.txt",
+    "LogFileName": "spaceneth.log",
     "DiagnosticMode": "MemDb",
     "MemoryHint": 64000000
   },
@@ -47,11 +46,17 @@
       "Subscribe",
       "Trace",
       "TxPool",
-      "Vault",
       "Web3"
     ]
   },
   "Metrics": {
     "NodeName": "Spaceneth"
+  },
+  "Merge": {
+    "Enabled": false
+  },
+  "Mining":
+  {
+    "Enabled": true
   }
 }

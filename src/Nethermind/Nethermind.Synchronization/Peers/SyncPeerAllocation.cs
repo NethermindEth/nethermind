@@ -2,98 +2,78 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
-using Nethermind.Blockchain;
-using Nethermind.Stats;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public class SyncPeerAllocation
+    public class SyncPeerAllocation(AllocationContexts contexts, Lock? allocationLock = null) : IDisposable
     {
-        public static SyncPeerAllocation FailedAllocation = new(NullStrategy.Instance, AllocationContexts.None, null);
-
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
         /// </summary>
-        private readonly Lock? _allocationLock;
+        private readonly Lock? _allocationLock = allocationLock ?? new Lock();
+        private readonly Action? _onDisposed;
+        private bool _disposed;
 
-        private readonly IPeerAllocationStrategy _peerAllocationStrategy;
-        public AllocationContexts Contexts { get; }
+        internal SyncPeerAllocation(AllocationContexts contexts, Lock? allocationLock, Action onDisposed)
+            : this(contexts, allocationLock) => _onDisposed = onDisposed;
+
+        private AllocationContexts Contexts { get; } = contexts;
 
         [MemberNotNullWhen(true, nameof(HasPeer))]
         public PeerInfo? Current { get; private set; }
 
         public bool HasPeer => Current is not null;
 
-        public SyncPeerAllocation(PeerInfo peerInfo, AllocationContexts contexts, Lock? allocationLock = null)
-            : this(new StaticStrategy(peerInfo), contexts, allocationLock)
+        public void AllocatePeer(PeerInfo? selected)
         {
-        }
-
-        public SyncPeerAllocation(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts, Lock? allocationLock = null)
-        {
-            _peerAllocationStrategy = peerAllocationStrategy;
-            Contexts = contexts;
-            _allocationLock = allocationLock ?? new Lock();
-        }
-
-        public void AllocateBestPeer(
-            IEnumerable<PeerInfo> peers,
-            INodeStatsManager nodeStatsManager,
-            IBlockTree blockTree)
-        {
-            PeerInfo? current = Current;
-            PeerInfo? selected = _peerAllocationStrategy.Allocate(Current, peers, nodeStatsManager, blockTree);
-            if (selected == current)
-            {
-                return;
-            }
-
-            AllocationChangeEventArgs? replacedArgs = null;
             lock (_allocationLock)
             {
+                if (_disposed || selected == Current)
+                {
+                    return;
+                }
+
                 if (selected is not null && selected.TryAllocate(Contexts))
                 {
+                    PeerInfo? current = Current;
                     Current = selected;
-                    replacedArgs = new(current, selected);
                     current?.Free(Contexts);
                 }
             }
-
-            if (replacedArgs is not null)
-            {
-                Replaced?.Invoke(this, replacedArgs);
-            }
         }
 
-        public void Cancel()
+        /// <summary>
+        /// Returns the allocated peer slot. Repeated calls have no effect.
+        /// </summary>
+        public void Dispose()
         {
-            PeerInfo? current = Current;
-            if (current is null)
-            {
-                return;
-            }
-
+            bool released = false;
             lock (_allocationLock)
             {
-                current.Free(Contexts);
-                Current = null;
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                PeerInfo? current = Current;
+                if (current is not null)
+                {
+                    current.Free(Contexts);
+                    Current = null;
+                    released = true;
+                }
             }
 
-            AllocationChangeEventArgs args = new(current, null);
-            Cancelled?.Invoke(this, args);
+            // A peer-less disposal must not wake every allocator on zero-timeout polling paths.
+            if (released)
+            {
+                _onDisposed?.Invoke();
+            }
         }
 
-        public event EventHandler<AllocationChangeEventArgs>? Replaced;
-
-        public event EventHandler<AllocationChangeEventArgs>? Cancelled;
-
-        public override string ToString()
-        {
-            return $"[Allocation|{Current}]";
-        }
+        public override string ToString() => $"[Allocation|{Current}]";
     }
 }

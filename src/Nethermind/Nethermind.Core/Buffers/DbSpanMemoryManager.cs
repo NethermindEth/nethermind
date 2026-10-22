@@ -1,0 +1,52 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+namespace Nethermind.Core.Buffers;
+
+public sealed unsafe class DbSpanMemoryManager(IReadOnlyKeyValueStore db, Span<byte> unmanagedSpan) : MemoryManager<byte>
+{
+    private void* _ptr = Unsafe.AsPointer(ref MemoryMarshal.GetReference(unmanagedSpan));
+    private readonly int _length = unmanagedSpan.Length;
+
+    protected override void Dispose(bool disposing)
+    {
+        if (_ptr is not null)
+        {
+            db.DangerousReleaseMemory(GetSpan());
+        }
+
+        _ptr = null;
+    }
+
+    public override Span<byte> GetSpan()
+    {
+        if (_ptr is null && _length > 0)
+        {
+            ThrowDisposed();
+        }
+
+        return new Span<byte>(_ptr, _length);
+    }
+
+    public override MemoryHandle Pin(int elementIndex = 0)
+    {
+        if (_ptr is null && _length > 0)
+        {
+            ThrowDisposed();
+        }
+
+        return new MemoryHandle(_ptr);
+    }
+
+    public override void Unpin() { }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowDisposed() => throw new ObjectDisposedException(nameof(DbSpanMemoryManager));
+}

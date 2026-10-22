@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
-using FluentAssertions;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -10,7 +11,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -49,10 +49,7 @@ public class AddressTests
     [TestCase("52908400098527886E0F7030069857D2E4169EE7", true, true)]
     [TestCase("0x52908400098527886E0F7030069857D2E4169EE7", false, false)]
     [TestCase("52908400098527886E0F7030069857D2E4169EE7", false, true)]
-    public void Can_check_if_address_is_valid(string addressHex, bool allowPrefix, bool expectedResult)
-    {
-        Assert.That(Address.IsValidAddress(addressHex, allowPrefix), Is.EqualTo(expectedResult));
-    }
+    public void Can_check_if_address_is_valid(string addressHex, bool allowPrefix, bool expectedResult) => Assert.That(Address.IsValidAddress(addressHex, allowPrefix), Is.EqualTo(expectedResult));
 
     [Test]
     public void Bytes_are_correctly_assigned()
@@ -64,16 +61,33 @@ public class AddressTests
     }
 
     [Test]
+    public void Equals_span_works()
+    {
+        Address address = new(Keccak.Compute("a"));
+        Address other = new(Keccak.Compute("b"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(address.Equals(address.Bytes), Is.True);
+            Assert.That(address.Equals(other.Bytes), Is.False);
+            Assert.That(address.Equals(address.Bytes[..19]), Is.False);
+            Assert.That(address.Equals(ReadOnlySpan<byte>.Empty), Is.False);
+        }
+    }
+
+    [Test]
     public void Equals_works()
     {
         Address addressA = new(Keccak.Compute("a"));
         Address addressA2 = new(Keccak.Compute("a"));
         Address addressB = new(Keccak.Compute("b"));
-        Assert.That(addressA.Equals(addressA2), Is.True);
-        // ReSharper disable once EqualExpressionComparison
-        Assert.That(addressA.Equals(addressA), Is.True);
-        Assert.That(addressA.Equals(addressB), Is.False);
-        Assert.That(addressA.Equals(null), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addressA.Equals(addressA2), Is.True);
+            // ReSharper disable once EqualExpressionComparison
+            Assert.That(addressA.Equals(addressA), Is.True);
+            Assert.That(addressA.Equals(addressB), Is.False);
+            Assert.That(addressA.Equals((Address?)null), Is.False);
+        }
     }
 
     [Test]
@@ -82,14 +96,17 @@ public class AddressTests
         Address addressA = new(Keccak.Compute("a"));
         Address addressA2 = new(Keccak.Compute("a"));
         Address addressB = new(Keccak.Compute("b"));
-        Assert.That(addressA == addressA2, Is.True);
-        // ReSharper disable once EqualExpressionComparison
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addressA == addressA2, Is.True);
+            // ReSharper disable once EqualExpressionComparison
 #pragma warning disable CS1718
-        Assert.That(addressA == addressA, Is.True);
+            Assert.That(addressA == addressA, Is.True);
 #pragma warning restore CS1718
-        Assert.That(addressA == addressB, Is.False);
-        Assert.That(addressA is null, Is.False);
-        Assert.That(null == addressA, Is.False);
+            Assert.That(addressA == addressB, Is.False);
+            Assert.That(addressA is null, Is.False);
+            Assert.That(null == addressA, Is.False);
+        }
         Address? address = null;
         Assert.That(address is null, Is.True);
     }
@@ -100,14 +117,17 @@ public class AddressTests
         Address addressA = new(Keccak.Compute("a"));
         Address addressA2 = new(Keccak.Compute("a"));
         Address addressB = new(Keccak.Compute("b"));
-        Assert.That(addressA != addressA2, Is.False);
-        // ReSharper disable once EqualExpressionComparison
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addressA != addressA2, Is.False);
+            // ReSharper disable once EqualExpressionComparison
 #pragma warning disable CS1718
-        Assert.That(addressA != addressA, Is.False);
+            Assert.That(addressA != addressA, Is.False);
 #pragma warning restore CS1718
-        Assert.That(addressA != addressB, Is.True);
-        Assert.That(addressA is not null, Is.True);
-        Assert.That(null != addressA, Is.True);
+            Assert.That(addressA != addressB, Is.True);
+            Assert.That(addressA is not null, Is.True);
+            Assert.That(null != addressA, Is.True);
+        }
         Address? address = null;
         Assert.That(address is not null, Is.False);
     }
@@ -118,7 +138,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 1;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Frontier.Instance), Is.True);
+        Assert.That(Frontier.Instance.IsPrecompile(address), Is.True);
     }
 
     [Test]
@@ -127,7 +147,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 4;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Frontier.Instance), Is.True);
+        Assert.That(Frontier.Instance.IsPrecompile(address), Is.True);
     }
 
     [Test]
@@ -136,7 +156,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 5;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Frontier.Instance), Is.False);
+        Assert.That(Frontier.Instance.IsPrecompile(address), Is.False);
     }
 
     [Test]
@@ -145,7 +165,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 5;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Byzantium.Instance), Is.True);
+        Assert.That(Byzantium.Instance.IsPrecompile(address), Is.True);
     }
 
     [Test]
@@ -154,7 +174,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 9;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Byzantium.Instance), Is.False);
+        Assert.That(Byzantium.Instance.IsPrecompile(address), Is.False);
     }
 
     [TestCase(0, false)]
@@ -163,39 +183,125 @@ public class AddressTests
     public void From_number_for_precompile(int number, bool isPrecompile)
     {
         Address address = Address.FromNumber((UInt256)number);
-        Assert.That(address.IsPrecompile(Byzantium.Instance), Is.EqualTo(isPrecompile));
+        Assert.That(Byzantium.Instance.IsPrecompile(address), Is.EqualTo(isPrecompile));
     }
 
-    [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
-    [TestCase(1, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
-    public void Of_contract(long nonce, string expectedAddress)
+    [TestCase(0UL, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
+    [TestCase(1UL, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
+    // RLP nonce-encoding boundaries: single-byte (< 0x80), the 0x80 length-prefix boundary, and
+    // a multi-byte nonce. The derived address is consensus-critical, so these guard the encoding.
+    [TestCase(0x7fUL, "0xb0099f030fbd2b512080790d100a3a3819ce577f")]
+    [TestCase(0x80UL, "0x3b71de3573667d0860bff1e4d40d9e07264623aa")]
+    [TestCase(0xffUL, "0x198411bfc0fbbeef7194152584c712412e2f3ea5")]
+    [TestCase(0x100UL, "0x66136d11dbd7227e6f5ac5588797899704be8348")]
+    public void Of_contract(ulong nonce, string expectedAddress)
     {
         Address address = ContractAddress.From(TestItem.AddressA, (UInt256)nonce);
         Assert.That(new Address(expectedAddress), Is.EqualTo(address));
     }
 
+    [Test]
+    public void Of_contract_max_ulong_nonce()
+    {
+        Address address = ContractAddress.From(TestItem.AddressA, (UInt256)ulong.MaxValue);
+        Assert.That(new Address("0x7d707106c1e88d29f7585d237f9848e1c33cacfd"), Is.EqualTo(address));
+    }
+
     [TestCaseSource(nameof(PointEvaluationPrecompileTestCases))]
     public bool Is_PointEvaluationPrecompile_properly_activated(IReleaseSpec spec) =>
-        Address.FromNumber(0x0a).IsPrecompile(spec);
+        spec.IsPrecompile(Address.FromNumber(0x0a));
 
     [TestCase(Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, true)]
+    [TestCase("0x00" + Address.SystemUserHex, true)]
+    [TestCase("0x00fffffffffffffffffffffffffffffffffffffffe", true)]
     public void Parse_variable_length(string addressHex, bool allowOverflow)
     {
-        var result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);
-        result.Should().Be(addressHex.Length <= Address.SystemUserHex.Length || allowOverflow);
+        bool result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);
+        Assert.That(result, Is.EqualTo(addressHex.Length <= Address.SystemUserHex.Length || allowOverflow));
         if (result)
         {
-            address.Should().Be(Address.SystemUser);
+            Assert.That(address, Is.EqualTo(Address.SystemUser));
         }
     }
 
     [Test]
     public void Parse_variable_length_too_short()
     {
-        Address.TryParseVariableLength("1", out Address? address).Should().Be(true);
-        address.Should().Be(new Address("0000000000000000000000000000000000000001"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Address.TryParseVariableLength("1", out Address? address), Is.EqualTo(true));
+            Assert.That(address, Is.EqualTo(new Address("0000000000000000000000000000000000000001")));
+        }
+    }
+
+    [Test]
+    [SuppressMessage("ReSharper", "StackAllocInsideLoop")]
+    [SuppressMessage("Reliability", "CA2014:Do not use stackalloc in loops")]
+    public void ToHash_avoid_garbage_in_first_bytes()
+    {
+        for (int j = 0; j < 2; j++) // Loop to ensure stack is filled with some data
+        {
+            Span<byte> addressBytes = stackalloc byte[Address.Size];
+            for (int i = 0; i < Address.Size; i++)
+            {
+                addressBytes[i] = (byte)(i + j);
+            }
+
+            Address address = new(addressBytes);
+
+            Span<byte> expectedHashBytes = stackalloc byte[Hash256.Size];
+            addressBytes.CopyTo(expectedHashBytes[(Hash256.Size - Address.Size)..]);
+            ValueHash256 expectedHash = new(expectedHashBytes);
+
+            Assert.That(address.ToHash(), Is.EqualTo(expectedHash));
+        }
+    }
+
+    [Test]
+    public void Hash_matches_the_ValueAddress_hash_of_the_same_bytes()
+    {
+        Random random = new(42);
+        byte[] bytes = new byte[Address.Size];
+        for (int i = 0; i < 256; i++)
+        {
+            random.NextBytes(bytes);
+            Address address = new(bytes);
+            int expected = new ValueAddress(bytes).GetHashCode();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(address.GetHashCode(), Is.EqualTo(expected));
+                Assert.That(new AddressAsKey(address).GetHashCode(), Is.EqualTo(expected));
+                Assert.That(unchecked((int)new AddressAsKey(address).GetHashCode64()), Is.EqualTo(expected));
+            }
+        }
+    }
+
+    [Test]
+    public void ValueAddress_copies_the_bytes_of_an_unaligned_slice([Values(0, 1, 3)] int offset)
+    {
+        byte[] buffer = new byte[offset + Address.Size];
+        for (int i = 0; i < buffer.Length; i++) buffer[i] = (byte)(i + 1);
+        ReadOnlySpan<byte> source = buffer.AsSpan(offset, Address.Size);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ValueAddress(source).AsSpan, Is.SequenceEqualTo(source));
+            Assert.That(new Address(source).Bytes, Is.SequenceEqualTo(source));
+        }
+    }
+
+    [Test]
+    public void Span_constructors_reject_other_lengths([Values(0, 19, 21, 32)] int length)
+    {
+        byte[] bytes = new byte[length];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => new ValueAddress(bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+            Assert.That(() => new Address(bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+        }
     }
 
     public static IEnumerable PointEvaluationPrecompileTestCases

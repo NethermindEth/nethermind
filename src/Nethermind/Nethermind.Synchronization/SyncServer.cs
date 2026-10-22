@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -9,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -18,10 +20,14 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -39,36 +45,50 @@ namespace Nethermind.Synchronization
         private readonly ISyncPeerPool _pool;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IReceiptFinder _receiptFinder;
+        private readonly IBlockAccessListStore _blockAccessListStore;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly IReadOnlyKeyValueStore? _stateDb;
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
+        private readonly IHistoryPruner _historyPruner;
+        private readonly ISyncPointers? _syncPointers;
+        private readonly ISyncConfig _syncConfig;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
         private readonly LruCache<ValueHash256, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
-        private readonly long _pivotNumber;
+        private readonly ulong _pivotNumber;
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
+        private CancellationTokenSource _rangeBroadcastCts = new();
+        private Task _rangeBroadcastTask = Task.CompletedTask;
+        private readonly Lock _rangeBroadcastLock = new();
+
+        private const int NewHeadBlockRangeUpdateFrequency = 32;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
+            IBlockAccessListStore blockAccessListStore,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
             ISyncPeerPool pool,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             IGossipPolicy gossipPolicy,
+            IHistoryPruner historyPruner,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISyncPointers? syncPointers = null)
         {
+            _syncPointers = syncPointers;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _syncConfig = config;
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -78,13 +98,20 @@ namespace Nethermind.Synchronization
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            _blockAccessListStore = blockAccessListStore ?? throw new ArgumentNullException(nameof(blockAccessListStore));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _pivotNumber = config.PivotNumberParsed;
+            _historyPruner = historyPruner ?? throw new ArgumentNullException(nameof(historyPruner));
+            _logger = logManager?.GetClassLogger<SyncServer>() ?? throw new ArgumentNullException(nameof(logManager));
+            _pivotNumber = _blockTree.SyncPivot.BlockNumber;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
+            _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
+            _historyPruner.NewOldestBlock += OnNewRange;
+            // Seed the served floor at startup so JSON-RPC's pruned-history check agrees with the eth/69
+            // advertisement before the first broadcast recomputes it.
+            _blockTree.UpdateLowestServedBlock(ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor));
         }
 
         public ulong NetworkId => _blockTree.NetworkId;
@@ -110,6 +137,27 @@ namespace Nethermind.Synchronization
                     : _blockTree.Head?.Header;
             }
         }
+
+        // The advertised range covers bodies and receipts, so the honest earliest is the later of the two
+        // download frontiers - the block tree's boundary is only the truth once the pruner has published one.
+        // An absent pointer under fast sync falls back to the static config pivot - bodies exist only from
+        // where full sync began, so the pivot is the honest earliest even when the feeds never run; the live
+        // tree pivot rises with finality, so a genesis-following node (CL-discovered pivot) falls back to zero.
+        private ulong DownloadPointerFloor
+        {
+            get
+            {
+                if (_syncPointers is null)
+                    return 0;
+
+                ulong fallback = _syncConfig.FastSync ? _syncConfig.PivotNumber : 0;
+                return ulong.Max(
+                    _syncPointers.LowestInsertedBodyNumber ?? fallback,
+                    _syncPointers.LowestInsertedReceiptBlockNumber ?? fallback);
+            }
+        }
+
+        public ulong LowestBlock => Math.Min(Head?.Number ?? 0UL, ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor));
 
         public int GetPeerCount() => _pool.PeerCount;
 
@@ -152,7 +200,8 @@ namespace Nethermind.Synchronization
             // it delivers information about the peer's chain.
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
-            bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
+            ulong headNumber = _blockTree.Head?.Number ?? 0UL;
+            bool isBlockOlderThanMaxReorgAllows = block.Number < headNumber.SaturatingSub(Sync.MaxReorgLength);
 
             // We skip blocks that are old
             if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
@@ -181,7 +230,7 @@ namespace Nethermind.Synchronization
 
                     // Recalculate total difficulty as we don't trust total difficulty from gossip
                     block.Header.TotalDifficulty = parent.TotalDifficulty + block.Header.Difficulty;
-                    if (!_blockValidator.ValidateSuggestedBlock(block, out _))
+                    if (!_blockValidator.ValidateSuggestedBlock(block, parent.Header, out _))
                     {
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }
@@ -199,9 +248,9 @@ namespace Nethermind.Synchronization
                     BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
 
                     SyncMode syncMode = _syncModeSelector.Current;
-                    bool notInFastSyncNorStateSyncNorSnap = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes | SyncMode.SnapSync)) == SyncMode.None;
+                    bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
                     bool inFullSyncOrWaitingForBlocks = (syncMode & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
-                    if (notInFastSyncNorStateSyncNorSnap || inFullSyncOrWaitingForBlocks)
+                    if (notInFastSyncNorStateSync || inFullSyncOrWaitingForBlocks)
                     {
                         LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                         SyncBlock(block, nodeWhoSentTheBlock);
@@ -231,13 +280,14 @@ namespace Nethermind.Synchronization
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
             // Otherwise we could hint incorrect ranges and cause expensive cache recalculations.
-            _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
+            ulong start = block.Number.SaturatingSub(128);
+            _sealValidator.HintValidationRange(_sealValidatorUserGuid, start, block.Number + 1024);
             return _sealValidator.ValidateSeal(block.Header, true);
         }
 
         private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
         {
-            if ((block.TotalDifficulty ?? 0) > syncPeer.TotalDifficulty)
+            if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? UInt256.Zero) > peerTD)
             {
                 if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 syncPeer.HeadNumber = block.Number;
@@ -323,11 +373,6 @@ namespace Nethermind.Synchronization
 
             sb.Append($", sent by {syncPeer:s}");
 
-            if (block.Header?.AuRaStep is not null)
-            {
-                sb.Append($", with AuRa step {block.Header.AuRaStep.Value}");
-            }
-
             if (_logger.IsDebug)
             {
                 sb.Append($", with difficulty {block.Difficulty}/{block.TotalDifficulty}");
@@ -336,7 +381,7 @@ namespace Nethermind.Synchronization
             _logger.Info(sb.ToString());
         }
 
-        public void HintBlock(Hash256 hash, long number, ISyncPeer syncPeer)
+        public void HintBlock(Hash256 hash, ulong number, ISyncPeer syncPeer)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
@@ -353,51 +398,74 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public TxReceipt[] GetReceipts(Hash256? blockHash)
+        public TxReceipt[]? GetReceipts(Hash256? blockHash)
         {
-            return blockHash is not null ? _receiptFinder.Get(blockHash) : [];
+            if (blockHash is null) return null;
+
+            Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+            if (block is null || block.IsBodyMissing) return null;
+            if (block.Transactions.Length == 0) return [];
+
+            TxReceipt[] receipts = _receiptFinder.Get(blockHash);
+            return receipts.Length == 0 ? null : receipts;
         }
 
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+        public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash)
         {
-            return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return header?.BlockAccessListHash is null
+                ? null
+                : _blockAccessListStore.GetRlp(header.Number, blockHash);
         }
 
-        public IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+
+        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
-            ArrayPoolList<byte[]?> values = new ArrayPoolList<byte[]>(keys.Count);
+            using DeferredRlpItemList.Builder builder = new(keys.Count);
+            DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+            int count = 0;
+
             for (int i = 0; i < keys.Count; i++)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    return values;
-                }
+                if (cancellationToken.IsCancellationRequested) break;
 
-                values.Add(null);
-                if ((includedTypes & NodeDataType.State) == NodeDataType.State)
+                bool found = false;
+                if ((includedTypes & NodeDataType.State) == NodeDataType.State && _stateDb is not null)
                 {
-                    if (_stateDb is null)
+                    Span<byte> value = _stateDb.GetSpan(keys[i].Bytes);
+                    if (!value.IsNullOrEmpty())
                     {
-                        values[i] = null;
-                    }
-                    else
-                    {
-                        values[i] = _stateDb[keys[i].Bytes];
+                        writer.WriteValue(value);
+                        _stateDb.DangerousReleaseMemory(value);
+                        found = true;
                     }
                 }
 
-                if (values[i] is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
+                if (!found && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
-                    values[i] = _codeDb[keys[i].Bytes];
+                    Span<byte> value = _codeDb.GetSpan(keys[i].Bytes, ReadFlags.HintCacheMiss);
+                    writer.WriteValue(value);
+                    _codeDb.DangerousReleaseMemory(value);
+                    found = true;
                 }
+
+                if (!found)
+                    writer.WriteValue([]);
+                count++;
             }
 
-            return values;
+            writer.Dispose();
+            return count == 0
+                ? EmptyByteArrayList.Instance
+                : new RlpByteArrayList(builder.ToRlpItemList());
         }
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
-        public Hash256? FindHash(long number)
+        public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+        public Hash256? FindHash(ulong number)
         {
             try
             {
@@ -422,6 +490,101 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void OnNewRange(object? sender, OnNewOldestBlockArgs onNewOldestBlockArgs)
+        {
+            if (_blockTree.Head is null)
+                return;
+
+            BlockHeader latest = _blockTree.Head.Header;
+            ulong servedFloor = ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor);
+            _blockTree.UpdateLowestServedBlock(servedFloor);
+            ulong floor = ulong.Min(servedFloor, latest.Number);
+            BlockHeader earliest = onNewOldestBlockArgs.OldestBlockHeader;
+            if (earliest.Number < floor)
+            {
+                // TotalDifficultyNotNeeded: ancient headers carry no TD, and a null here must not fall back below the floor.
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ?? latest;
+            }
+
+            OnNewRange(earliest, latest);
+        }
+
+        private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
+        {
+            Block latestBlock = latestBlockEventArgs.Block;
+
+            // Notify every 32 blocks
+            if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
+                return;
+
+            // The same floor the status handshake advertises, so a peer never sees two different earliest values.
+            ulong servedFloor = ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor);
+            _blockTree.UpdateLowestServedBlock(servedFloor);
+            ulong floor = ulong.Min(servedFloor, latestBlock.Number);
+            BlockHeader? earliest = _historyPruner.OldestBlockHeader;
+            if (earliest is null || earliest.Number > latestBlock.Number || earliest.Number < floor)
+            {
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ?? latestBlock.Header;
+            }
+
+            OnNewRange(earliest, latestBlock.Header);
+        }
+
+        private void OnNewRange(BlockHeader earliest, BlockHeader latest)
+        {
+            if (_pool.PeerCount == 0)
+                return;
+
+            // NewHeadBlock (block-processing thread) and NewOldestBlock (history-pruning background task)
+            // both funnel here, so the swap of _rangeBroadcastCts / _rangeBroadcastTask must be serialised;
+            // otherwise a concurrent CancelDisposeAndClear can dispose the source before Task.Run reads its
+            // token, throwing ObjectDisposedException, or leave a freshly created source orphaned.
+            lock (_rangeBroadcastLock)
+            {
+                CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
+                CancellationTokenSource cts = _rangeBroadcastCts = new();
+                // Capture the token now: RangeBroadcast runs on a pool thread and a later swap may already
+                // have disposed the source by the time it reads cancellation, so it must not touch the CTS.
+                CancellationToken token = cts.Token;
+
+                _rangeBroadcastTask = _rangeBroadcastTask.IsCompleted
+                    ? Task.Run(() => RangeBroadcast(earliest, latest, token), token)
+                    : _rangeBroadcastTask.ContinueWith(
+                        t => RangeBroadcast(earliest, latest, token),
+                        TaskContinuationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        private void RangeBroadcast(BlockHeader earliest, BlockHeader latest, CancellationToken token)
+        {
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            using ArrayPoolList<PeerInfo> allPeers = _pool.AllPeers.ToPooledList(_pool.PeerCount);
+            int counter = 0;
+
+            ParallelUnbalancedWork.For(0, allPeers.Count,
+                (i) =>
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        if (_logger.IsDebug) _logger.Debug("Cancelled broadcasting block range update due to cancellation request.");
+                        return;
+                    }
+                    PeerInfo peerInfo = allPeers[i];
+                    if (peerInfo.ShouldNotifyNewRange(earliest.Number, latest.Number))
+                    {
+                        NotifyOfNewRange(peerInfo, earliest, latest);
+                        Interlocked.Increment(ref counter);
+                    }
+                });
+
+            if (counter > 0 && _logger.IsDebug)
+                _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
+        }
+
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
@@ -436,12 +599,23 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
+        private void NotifyOfNewRange(PeerInfo peerInfo, BlockHeader earliest, BlockHeader latest)
+        {
+            try
+            {
+                peerInfo.SyncPeer.NotifyOfNewRange(earliest, latest);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error while broadcasting block range update: [{earliest.Number}, {latest.Number}, {latest.Hash}] to peer {peerInfo.SyncPeer}.", e);
+            }
+        }
 
+        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
 
         public void StopNotifyingPeersAboutNewBlocks()
         {
-            if (_gossipStopped == false)
+            if (!_gossipStopped)
             {
                 _blockTree.NewHeadBlock -= OnNewHeadBlock;
                 _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
@@ -449,9 +623,23 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void StopNotifyingPeersAboutBlockRangeUpdates()
+        {
+            _blockTree.NewHeadBlock -= OnNewRange;
+            _historyPruner.NewOldestBlock -= OnNewRange;
+        }
+
         public void Dispose()
         {
             StopNotifyingPeersAboutNewBlocks();
+            StopNotifyingPeersAboutBlockRangeUpdates();
+
+            // After the unsubscribes so no further source can be created; under the lock so it cannot race a
+            // concurrent swap. Without this an in-flight RangeBroadcast keeps notifying peers past disposal.
+            lock (_rangeBroadcastLock)
+            {
+                CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
+            }
         }
     }
 }

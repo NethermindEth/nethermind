@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Frozen;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -8,19 +9,25 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// https://github.com/ethereum/EIPs
     /// </summary>
+    /// <remarks>Fork flags carry no default implementations, because no single default is safe: a
+    /// root spec wants the new EIP off, while a forwarding one that inherited that default would
+    /// report it off on a chain enabling it — a silent consensus divergence. Derive from
+    /// <c>ReleaseSpec</c> (new flags off until set) or <see cref="ReleaseSpecDecorator"/> (new flags
+    /// forwarded) to absorb added flags; implementing this interface directly opts into a compile
+    /// error per added flag, which is the only signal that the choice was made deliberately.</remarks>
     public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
-        //EIP-3860: Limit and meter initcode
-        long MaxInitCodeSize => 2 * MaxCodeSize;
-        long MinGasLimit { get; }
-        long GasLimitBoundDivisor { get; }
+        ulong MinGasLimit { get; }
+        ulong MinHistoryRetentionEpochs { get; }
+        ulong MinBalRetentionEpochs { get; }
+        ulong GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
-        long DifficultyBombDelay { get; }
-        long DifficultyBoundDivisor { get; }
-        long? FixedDifficulty { get; }
+        ulong DifficultyBombDelay { get; }
+        ulong DifficultyBoundDivisor { get; }
+        ulong? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
 
         /// <summary>
@@ -197,12 +204,10 @@ namespace Nethermind.Core.Specs
         bool IsEip2930Enabled { get; }
 
         /// <summary>
-        /// Should EIP158 be ignored for this account.
+        /// Account for which EIP-158 state clearing should be ignored.
         /// </summary>
-        /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
-        /// <param name="address"></param>
-        /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address) => false;
+        /// <remarks>This is needed for SystemUser account compatibility with Parity on AuRa chains.</remarks>
+        Address? Eip158IgnoredAccount => null;
 
         /// <summary>
         /// BaseFee opcode
@@ -273,23 +278,20 @@ namespace Nethermind.Core.Specs
         /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
-        bool DepositsEnabled => IsEip6110Enabled;
-        Address DepositContractAddress { get; }
+        Address? DepositContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
-        bool WithdrawalRequestsEnabled => IsEip7002Enabled;
-        Address Eip7002ContractAddress { get; }
+        Address? Eip7002ContractAddress { get; }
 
 
         /// <summary>
         /// EIP-7251: triggered consolidations
         /// </summary>
         bool IsEip7251Enabled { get; }
-        bool ConsolidationRequestsEnabled => IsEip7251Enabled;
-        Address Eip7251ContractAddress { get; }
+        Address? Eip7251ContractAddress { get; }
 
 
         /// <summary>
@@ -301,7 +303,13 @@ namespace Nethermind.Core.Specs
         /// Fetch blockHashes from the state for BLOCKHASH opCode
         /// </summary>
         bool IsEip7709Enabled { get; }
-        Address Eip2935ContractAddress { get; }
+        Address? Eip2935ContractAddress { get; }
+
+        /// <summary>
+        /// EIP-2935 ring buffer size for historical block hash storage.
+        /// Defaults to 8,191 blocks for Ethereum mainnet.
+        /// </summary>
+        public ulong Eip2935RingBufferSize { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction
@@ -309,9 +317,65 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// EIP-8282: builder execution requests (builder deposit + builder exit predeploys).
+        /// </summary>
+        bool IsEip8282Enabled { get; }
+
+        /// <summary>
+        /// EIP-8141: frame transactions (abstract transaction validation, execution, and gas payment).
+        /// </summary>
+        bool IsEip8141Enabled { get; }
+
+        /// <summary>
+        /// EIP-8250: keyed nonces for frame transactions.
+        /// </summary>
+        bool IsEip8250Enabled { get; }
+
+        /// <summary>
+        /// EIP-8272: recent roots for frame transactions.
+        /// </summary>
+        bool IsEip8272Enabled { get; }
+
+        /// <summary>
+        /// EIP-7906: transaction outcome assertions.
+        /// </summary>
+        bool IsEip7906Enabled { get; }
+
+        /// <summary>
+        /// EIP-8151: ecRecover returns the recovered address only when its raw code is empty or an EIP-7702 delegation.
+        /// </summary>
+        bool IsEip8151Enabled { get; }
+
+        /// <summary>
+        /// EIP-7979: call and return opcodes (<c>CALLSUB</c>, <c>CALLDEST</c>, <c>RETURNSUB</c>) with a per-frame return stack.
+        /// </summary>
+        /// <remarks>Assumes EIP-8024 is active: a <c>CALLDEST</c> byte in a valid EIP-8024 immediate is never a destination.</remarks>
+        bool IsEip7979Enabled { get; }
+
+        /// <summary>
+        /// EIP-8038: State-access gas cost update
+        /// </summary>
+        bool IsEip8038Enabled { get; }
+
+        /// <summary>
+        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
+        /// </summary>
+        bool IsEip8024Enabled { get; }
+
+        /// <summary>
         /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }
+
+        /// <summary>
+        /// Set upper bounds for MODEXP
+        /// </summary>
+        bool IsEip7823Enabled { get; }
+
+        /// <summary>
+        /// Blob base fee bounded by execution cost
+        /// </summary>
+        bool IsEip7918Enabled { get; }
 
         /// <summary>
         /// Blob base fee collection for Gnosis
@@ -319,18 +383,10 @@ namespace Nethermind.Core.Specs
         bool IsEip4844FeeCollectorEnabled { get; }
 
         /// <summary>
-        /// Secp256r1 precompile
+        /// SecP256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
-
-        /// OP Granite
-        bool IsOpGraniteEnabled { get; }
-
-        /// OP Holocene
-        bool IsOpHoloceneEnabled { get; }
-
-        /// Taiko Ontake
-        bool IsOntakeEnabled { get; }
+        bool IsEip7951Enabled { get; }
 
         /// <summary>
         ///  Increase call data cost
@@ -338,98 +394,184 @@ namespace Nethermind.Core.Specs
         bool IsEip7623Enabled { get; }
 
         /// <summary>
+        ///  Transaction gas limit cap
+        /// </summary>
+        bool IsEip7825Enabled { get; }
+
+        /// <summary>
+        ///  Increase ModExp Gas Cost
+        /// </summary>
+        bool IsEip7883Enabled { get; }
+
+        /// <summary>
+        ///  RLP Execution Block Size Limit
+        /// </summary>
+        bool IsEip7934Enabled { get; }
+        int Eip7934MaxRlpBlockSize { get; }
+
+        /// <summary>
+        ///  Increase Calldata Floor Cost
+        /// </summary>
+        bool IsEip7976Enabled { get; }
+
+        /// <summary>
+        /// Access List Token Floor Pricing
+        /// </summary>
+        bool IsEip7981Enabled { get; }
+
+        /// <summary>
+        /// EIP-8131: Unified Transaction Content Floor.
+        /// </summary>
+        /// <remarks>
+        /// Replaces the EIP-7976 calldata floor and the EIP-7981 access-list surcharge with a flat 64 gas per content
+        /// byte (calldata, access-list entries, authorizations and blob versioned hashes) at the floor.
+        /// </remarks>
+        bool IsEip8131Enabled { get; }
+
+        /// <summary>
+        /// EIP-8279: Block Access List Byte Floor.
+        /// </summary>
+        /// <remarks>
+        /// Meters the bytes execution adds to the EIP-7928 block access list at 64 gas per byte into the transaction
+        /// floor, checked against the gas limit before each insertion, and adds each authorization's worst-case block
+        /// access list bytes to the static floor. Requires EIP-8131.
+        /// </remarks>
+        bool IsEip8279Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
-        bool ValidateChainId => true;
+        public bool ValidateChainId { get; }
 
         /// <summary>
         /// EIP-7780: Add blob schedule to EL config files
         /// </summary>
         public ulong TargetBlobCount { get; }
         public ulong MaxBlobCount { get; }
-        public UInt256 BlobBaseFeeUpdateFraction { get; }
+        public ulong MaxBlobsPerTx { get; }
+        public ulong BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        // STATE related
-        public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
+        public bool IsEip7594Enabled { get; }
 
-        // VM
-        public bool LimitCodeSize => IsEip170Enabled;
 
-        public bool UseHotAndColdStorage => IsEip2929Enabled;
+        /// <summary>
+        /// Gets a cached set of all precompiled contract addresses for this release specification.
+        /// Chain-specific implementations can override this to include their own precompiled contracts.
+        /// </summary>
+        FrozenSet<AddressAsKey> Precompiles { get; }
 
-        public bool UseTxAccessLists => IsEip2930Enabled;
+        /// <summary>Whether <paramref name="address"/> names a precompile active at this fork.</summary>
+        /// <param name="address">The call target to test.</param>
+        /// <remarks>On the interface rather than beside it because the answer depends on the fork, so only
+        /// the spec can hold a form of it faster than a set probe — a caller memoising one has to re-check
+        /// which fork it belongs to on every call, which costs more than it saves. The default is the probe
+        /// itself, so an implementation that has nothing better keeps today's behaviour.</remarks>
+        bool IsPrecompile(Address address) => address.CouldBePrecompile() && Precompiles.Contains(address);
 
-        public bool AddCoinbaseToTxAccessList => IsEip3651Enabled;
+        /// <summary>
+        /// EIP-7939 - CLZ - Count leading zeros instruction
+        /// </summary>
+        public bool IsEip7939Enabled { get; }
 
-        public bool ModExpEnabled => IsEip198Enabled;
+        /// <summary>
+        /// EIP-7928: Block-Level Access Lists
+        /// </summary>
+        public bool IsEip7928Enabled { get; }
+        bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
 
-        public bool Bn128Enabled => IsEip196Enabled && IsEip197Enabled;
+        /// <summary>
+        /// EIP-8037: Cost Per State Byte / State Size Limit.
+        /// Two-dimensional gas metering for state growth control.
+        /// </summary>
+        public bool IsEip8037Enabled { get; }
 
-        public bool BlakeEnabled => IsEip152Enabled;
+        /// <summary>
+        /// EIP-7708: ETH transfers and burns emit a log
+        /// </summary>
+        public bool IsEip7708Enabled { get; }
 
-        public bool Bls381Enabled => IsEip2537Enabled;
+        /// <summary>
+        /// EIP-7843: SLOTNUM opcode
+        /// </summary>
+        public bool IsEip7843Enabled { get; }
 
-        public bool ChargeForTopLevelCreate => IsEip2Enabled;
+        /// <summary>
+        /// EIP-7954: Increase Maximum Contract Size
+        /// </summary>
+        public bool IsEip7954Enabled { get; }
 
-        public bool FailOnOutOfGasCodeDeposit => IsEip2Enabled;
+        /// <summary>
+        /// EIP-8246: SELFDESTRUCT no longer burns ETH
+        /// </summary>
+        public bool IsEip8246Enabled { get; }
 
-        public bool UseShanghaiDDosProtection => IsEip150Enabled;
+        /// <summary>
+        /// EIP-8253: Bump nonce of zero-nonce storage accounts.
+        /// </summary>
+        /// <remarks>
+        /// Irregular state transition at the fork block: each listed account gets nonce 1 before any
+        /// pre-execution system call, so a later CREATE/CREATE2 to it fails the EIP-684 nonce check.
+        /// </remarks>
+        public bool IsEip8253Enabled { get; }
 
-        public bool UseExpDDosProtection => IsEip160Enabled;
+        /// <summary>
+        /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
+        /// and cold-account costs against actual state work.
+        /// </summary>
+        /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
+        public bool IsEip2780Enabled { get; }
 
-        public bool UseLargeStateDDosProtection => IsEip1884Enabled;
+        /// <summary>
+        /// EIP-5920: PAY opcode (<c>0xfc</c>), transferring ether to an address without executing its code.
+        /// </summary>
+        /// <remarks>Requires EIP-2929 and EIP-7523; the opcode's access and new-account rules assume both.</remarks>
+        public bool IsEip5920Enabled { get; }
 
-        public bool ReturnDataOpcodesEnabled => IsEip211Enabled;
+        /// <summary>
+        /// EIP-8360: TCREATE opcode, creating contracts whose code, nonce and storage exist only for one transaction.
+        /// </summary>
+        bool IsEip8360Enabled { get; }
 
-        public bool ChainIdOpcodeEnabled => IsEip1344Enabled;
+        /// <summary>
+        /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
+        /// </summary>
+        /// <remarks>
+        /// Requires EIP-7778: removing the cap is only safe while block gas excludes refunds, otherwise uncapped
+        /// refunds would let a block exceed its gas limit in work. Specified as a delta on EIP-8037 and EIP-8038;
+        /// enabled without them, it still strikes whichever storage-clear refund and refund cap the spec would
+        /// otherwise apply, and the pre-EIP-3529 SELFDESTRUCT refund, which no same-transaction charge bounds.
+        /// </remarks>
+        public bool IsEip3298Enabled { get; }
 
-        public bool Create2OpcodeEnabled => IsEip1014Enabled;
+        /// <summary>
+        /// EIP-7805: Inclusion lists
+        /// </summary>
+        bool IsEip7805Enabled { get; }
 
-        public bool DelegateCallEnabled => IsEip7Enabled;
+        /// <summary>
+        /// EIP-8298: SETCODEFROM code reuse instruction
+        /// </summary>
+        public bool IsEip8298Enabled { get; }
 
-        public bool StaticCallEnabled => IsEip214Enabled;
+        /// <summary>
+        /// EIP-4758: Deactivate SELFDESTRUCT (SENDALL).
+        /// </summary>
+        /// <remarks>
+        /// SELFDESTRUCT only moves the executing account's whole balance to the beneficiary and halts. It never
+        /// destroys the account, removing the same-transaction deletion EIP-6780 kept and the EIP-8246 tombstone.
+        /// </remarks>
+        public bool IsEip4758Enabled => false;
 
-        public bool ShiftOpcodesEnabled => IsEip145Enabled;
-
-        public bool RevertOpcodeEnabled => IsEip140Enabled;
-
-        public bool ExtCodeHashOpcodeEnabled => IsEip1052Enabled;
-
-        public bool SelfBalanceOpcodeEnabled => IsEip1884Enabled;
-
-        public bool UseConstantinopleNetGasMetering => IsEip1283Enabled;
-
-        public bool UseIstanbulNetGasMetering => IsEip2200Enabled;
-
-        public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
-
-        public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
-
-        public bool Use63Over64Rule => UseShanghaiDDosProtection;
-
-        public bool BaseFeeEnabled => IsEip3198Enabled;
-
-        // EVM Related
-        public bool IncludePush0Instruction => IsEip3855Enabled;
-
-        public bool TransientStorageEnabled => IsEip1153Enabled;
-
-        public bool WithdrawalsEnabled => IsEip4895Enabled;
-        public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
-
-        public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
-        public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
-        public bool MCopyIncluded => IsEip5656Enabled;
-
-        public bool BlobBaseFeeEnabled => IsEip4844Enabled;
-
-        bool IsAuthorizationListEnabled => IsEip7702Enabled;
-
-        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+        /// <summary>
+        /// Precomputed gas cost and refund constants derived from this spec.
+        /// Values are cached per spec instance (singletons per fork) to avoid
+        /// repeated interface dispatch on the EVM opcode hot path.
+        /// </summary>
+        SpecGasCosts GasCosts { get; }
     }
 }

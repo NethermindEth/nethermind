@@ -5,3 +5,8 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nethermind.Core.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.JsonRpc.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Consensus")]
+[assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
+[assembly: InternalsVisibleTo("Nethermind.JsonRpc.Test")]

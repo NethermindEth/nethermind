@@ -17,7 +17,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
     private ulong _nextEonTxIndex = 0;
     private Queue<ISequencerContract.TransactionSubmitted> _events = [];
     private Queue<ISequencerContract.TransactionSubmitted> _nextEonEvents = [];
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterEventQueue>();
 
     public int Count { get => _events.Count; }
 

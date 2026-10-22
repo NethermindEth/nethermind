@@ -1,0 +1,110 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
+
+namespace Nethermind.Optimism.CL.Decoding;
+
+public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
+{
+    private readonly Channel<DaDataSource> _inputChannel = Channel.CreateUnbounded<DaDataSource>();
+    private readonly Channel<(BatchV1, ulong)> _outputChannel = Channel.CreateUnbounded<(BatchV1, ulong)>();
+    private readonly IFrameQueue _frameQueue = new FrameQueue(logManager);
+    private readonly ILogger _logger = logManager.GetClassLogger<DecodingPipeline>();
+
+    public ChannelWriter<DaDataSource> DaDataWriter => _inputChannel.Writer;
+    public ChannelReader<(BatchV1, ulong)> DecodedBatchesReader => _outputChannel.Reader;
+
+    public async Task Run(CancellationToken token)
+    {
+        Memory<byte> buffer = new(new byte[BlobDecoder.MaxBlobDataSize]);
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                Task newDataReady = _inputChannel.Reader.WaitToReadAsync(token).AsTask();
+                await Task.WhenAny(newDataReady, _resetRequested.Task);
+
+                if (_resetRequested.Task.IsCompleted)
+                {
+                    Clear();
+                    _resetRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _resetCompleted.SetResult();
+                    continue;
+                }
+
+                DaDataSource daData = await _inputChannel.Reader.ReadAsync(token);
+                buffer.Clear();
+                try
+                {
+                    Memory<byte> decodedData;
+                    if (daData.DataType == DaDataType.Blob)
+                    {
+                        int read = BlobDecoder.DecodeBlob(daData.Data, buffer.Span);
+                        decodedData = buffer[..read];
+                    }
+                    else
+                    {
+                        decodedData = daData.Data;
+                    }
+
+                    foreach (Frame frame in FrameDecoder.DecodeFrames(decodedData))
+                    {
+                        BatchV1[]? batches = _frameQueue.ConsumeFrame(frame);
+                        if (batches is not null)
+                        {
+                            foreach (BatchV1 batch in batches)
+                            {
+                                await _outputChannel.Writer.WriteAsync((batch, daData.DataOrigin), token);
+                            }
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Unhandled exception in decoding pipeline: {e}");
+                }
+            }
+        }
+        finally
+        {
+            if (_logger.IsInfo) _logger.Info($"Decoding pipeline is shutting down.");
+        }
+    }
+
+    private void Clear()
+    {
+        while (_inputChannel.Reader.Count > 0)
+        {
+            while (_inputChannel.Reader.TryRead(out _)) { }
+        }
+
+        while (_outputChannel.Reader.Count > 0)
+        {
+            while (_outputChannel.Reader.TryRead(out _)) { }
+        }
+
+        _frameQueue.Clear();
+    }
+
+    private TaskCompletionSource _resetCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource _resetRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async Task Reset(CancellationToken token)
+    {
+        if (_logger.IsInfo) _logger.Info("Resetting decoding pipeline");
+
+        _resetRequested.SetResult();
+        await _resetCompleted.Task;
+        _resetCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+}

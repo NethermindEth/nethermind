@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Ethereum.Test.Base;
 using Evm.T8n.Errors;
+using Evm.T8n.JsonConverters;
 using Evm.T8n.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -13,7 +15,7 @@ namespace Evm.T8n;
 
 public static class T8nInputReader
 {
-    private static readonly EthereumJsonSerializer EthereumJsonSerializer = new();
+    private static readonly EthereumJsonSerializer EthereumJsonSerializer = new([new AccountStateJsonConverter()]);
     private const string Stdin = "stdin";
 
     public static InputData ReadInputData(T8nCommandArguments arguments)
@@ -55,15 +57,17 @@ public static class T8nInputReader
     }
 
     private static T LoadDataFromFile<T>(string filePath, string description)
+        where T : class
     {
         try
         {
-            var fileContent = File.ReadAllText(filePath);
-            return EthereumJsonSerializer.Deserialize<T>(fileContent);
+            string fileContent = File.ReadAllText(filePath);
+            return EthereumJsonSerializer.Deserialize<T>(fileContent)
+                ?? throw new T8nException($"failed unmarshalling {filePath} file: {description}: JSON root was null", T8nErrorCodes.ErrorJson);
         }
         catch (FileNotFoundException e)
         {
-            throw new T8nException(e, "failed reading {filePath} file: {description}", T8nErrorCodes.ErrorIO);
+            throw new T8nException(e, $"failed reading {filePath} file: {description}", T8nErrorCodes.ErrorIO);
         }
         catch (JsonException e)
         {
@@ -71,20 +75,32 @@ public static class T8nInputReader
         }
     }
 
+    /// <remarks>
+    /// <c>txs</c> is read twice, as RPC transactions and as their signing metadata, so stdin is parsed once into a document.
+    /// </remarks>
     private static InputData ReadStdInput()
     {
-        using var reader = new StreamReader(Console.OpenStandardInput());
         try
         {
-            var jsonText = reader.ReadToEnd();
-            TransactionMetaDataWrapper txsMetaDataWrapper = EthereumJsonSerializer.Deserialize<TransactionMetaDataWrapper>(jsonText);
-            InputData inputData = EthereumJsonSerializer.Deserialize<InputData>(jsonText);
-            inputData.TransactionMetaDataList = txsMetaDataWrapper.Txs;
-            return inputData;
+            using JsonDocument document = JsonDocument.Parse(Console.OpenStandardInput());
+            JsonElement root = document.RootElement;
+            return new InputData
+            {
+                Alloc = DeserializeProperty<Dictionary<Address, AccountState>>(root, "alloc"),
+                Env = DeserializeProperty<EnvJson>(root, "env"),
+                Txs = DeserializeProperty<TransactionForRpc[]>(root, "txs"),
+                TransactionMetaDataList = DeserializeProperty<TransactionMetaData[]>(root, "txs"),
+                TxRlp = DeserializeProperty<string>(root, "txsRlp"),
+            };
         }
         catch (Exception e)
         {
-            throw new T8nException(e, T8nErrorCodes.ErrorJson);
+            throw new T8nException(e, $"failed unmarshalling stdin: {e.Message}", T8nErrorCodes.ErrorJson);
         }
     }
+
+    private static T? DeserializeProperty<T>(JsonElement root, string name) where T : class =>
+        root.TryGetProperty(name, out JsonElement property)
+            ? EthereumJsonSerializer.Deserialize<T>(JsonMarshal.GetRawUtf8Value(property))
+            : null;
 }

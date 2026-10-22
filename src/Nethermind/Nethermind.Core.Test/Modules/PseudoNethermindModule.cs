@@ -1,22 +1,22 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus.Scheduler;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Timers;
-using Nethermind.Crypto;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Db;
+using Nethermind.Init.Modules;
+using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Config;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Flat;
+using Nethermind.Wallet;
 using Module = Autofac.Module;
 
 namespace Nethermind.Core.Test.Modules;
@@ -32,40 +32,41 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 {
     protected override void Load(ContainerBuilder builder)
     {
-        ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-        INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+        initConfig.AutoDump = DumpOptions.None;
+
+        configProvider.GetConfig<IFlatDbConfig>().EnableLongFinality = false;
 
         base.Load(builder);
         builder
-            .AddModule(new AppInputModule(spec, configProvider, logManager))
-
-            .AddModule(new SynchronizerModule(syncConfig))
-            .AddModule(new NetworkModule(initConfig))
-            .AddModule(new DiscoveryModule(initConfig, networkConfig))
-            .AddModule(new DbModule())
-            .AddModule(new WorldStateModule())
-            .AddModule(new BlockTreeModule())
-            .AddModule(new BlockProcessingModule())
-            .AddSource(new ConfigRegistrationSource())
+            .AddModule(new NethermindModule(spec, configProvider, logManager))
+            .AddModule(new PseudoNetworkModule())
+            .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<DisposableStack>()
-            .AddSingleton<ITimerFactory, TimerFactory>()
-            .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
-                blockProcessingContext.BlockProcessor,
-                initConfig.BackgroundTaskConcurrency,
-                initConfig.BackgroundTaskMaxNumber,
-                logManager))
-            .AddSingleton<IFileSystem>(new FileSystem())
-            .AddSingleton<IDbProvider>(new DbProvider())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+            .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
-            .AddSingleton<ICryptoRandom>(new CryptoRandom())
-            .AddSingleton<IEthereumEcdsa>(new EthereumEcdsa(spec.ChainId))
-            .Bind<IEcdsa, IEthereumEcdsa>()
-            .AddSingleton<IEciesCipher, EciesCipher>()
+            .AddSingleton<ISignerStore>(NullSigner.Instance)
+            .AddSingleton<IKeyStore>(NullKeyStore.Instance)
+            .AddSingleton<IWallet, DevWallet>()
+
+            // FlatDb uses SnapshotableMemColumnsDb for fast O(1) MVCC snapshots instead of slow O(n) full copies
+            .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))
+            .AddDecorator<IFlatDbManager, FlatDbManagerTestCompat>()
+            .Intercept<IFlatDbConfig>((flatDbConfig) =>
+            {
+                // Dont want to make it very slow
+                flatDbConfig.TrieWarmerWorkerCount = 0;
+                flatDbConfig.WarmReadConcurrency = 2;
+                // The default budget allocates a production-sized trie node cache on the large object heap
+                // per container.
+                flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
+                // Matches the inert persisted tier wired above: a replacement IFlatDbConfig defaulting to long finality
+                // would convert in-memory snapshots into the no-op loader and lose that state.
+                flatDbConfig.EnableLongFinality = false;
+            })
             ;
 
 
@@ -78,21 +79,5 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
             }
         });
-    }
-
-    // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.
-    private class AppInputModule(ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager) : Module
-    {
-        protected override void Load(ContainerBuilder builder)
-        {
-            base.Load(builder);
-
-            builder
-                .AddSingleton(configProvider)
-                .AddSingleton<ChainSpec>(chainSpec)
-                .AddSingleton<ILogManager>(logManager)
-                .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
-                ;
-        }
     }
 }

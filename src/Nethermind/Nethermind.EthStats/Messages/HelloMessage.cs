@@ -7,16 +7,10 @@ using Nethermind.EthStats.Messages.Models;
 
 namespace Nethermind.EthStats.Messages
 {
-    public class HelloMessage : IMessage
+    public class HelloMessage(string secret, Info info) : IMessage
     {
         public string? Id { get; set; }
-        public string Secret { get; }
-        public Info Info { get; }
-
-        public HelloMessage(string secret, Info info)
-        {
-            Secret = secret;
-            Info = info;
-        }
+        public string Secret { get; } = secret;
+        public Info Info { get; } = info;
     }
 }

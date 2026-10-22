@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
@@ -26,11 +27,12 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public Address To { get; set; }
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
-        public long? Gas { get; set; }
+        public ulong? Gas { get; set; }
         public byte[] Input { get; set; }
         public byte[] Raw { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address Creates { get; set; }
+        [JsonConverter(typeof(PublicKeyConverter))]
         public PublicKey PublicKey { get; set; }
         public ulong? ChainId { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -44,6 +46,12 @@ namespace Nethermind.JsonRpc.Modules.Parity
         {
         }
 
+        /// <summary>Maps a transaction to the Parity representation.</summary>
+        /// <remarks>
+        /// An EIP-8141 frame transaction has no envelope signature, so <see cref="R"/>/<see cref="S"/> are
+        /// reported absent and <see cref="V"/>/<see cref="StandardV"/> zero rather than fabricated; its
+        /// <see cref="ChainId"/> comes from the explicit field the signed payload carries.
+        /// </remarks>
         public ParityTransaction(Transaction transaction, byte[] raw, PublicKey publicKey,
             Hash256 blockHash = null, UInt256? blockNumber = null, UInt256? txIndex = null)
         {
@@ -60,13 +68,21 @@ namespace Nethermind.JsonRpc.Modules.Parity
             Raw = raw;
             Input = transaction.Data.AsArray();
             PublicKey = publicKey;
-            ChainId = transaction.Signature.ChainId;
-            R = transaction.Signature.R;
-            S = transaction.Signature.S;
-            V = (UInt256)transaction.Signature.V;
-            StandardV = transaction.Signature.RecoveryId;
+            if (transaction.Signature is { } signature)
+            {
+                ChainId = signature.ChainId;
+                R = signature.R;
+                S = signature.S;
+                V = (UInt256)signature.V;
+                StandardV = signature.RecoveryId;
+            }
+            else
+            {
+                ChainId = transaction.ChainId;
+            }
+
             // TKS: it does not seem to work with CREATE2
-            Creates = transaction.IsContractCreation ? ContractAddress.From(transaction.SenderAddress, transaction.Nonce) : null;
+            Creates = transaction.CreatesTopLevelContract ? ContractAddress.From(transaction.SenderAddress, transaction.Nonce) : null;
         }
     }
 }

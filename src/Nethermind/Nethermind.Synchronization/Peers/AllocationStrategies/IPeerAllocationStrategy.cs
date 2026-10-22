@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.ComponentModel;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
 
@@ -15,19 +14,10 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
     /// </summary>
     public interface IPeerAllocationStrategy
     {
-        bool CanBeReplaced { get; }
         PeerInfo? Allocate(
             PeerInfo? currentPeer,
             IEnumerable<PeerInfo> peers,
             INodeStatsManager nodeStatsManager,
             IBlockTree blockTree);
-
-        public void CheckAsyncState(PeerInfo info)
-        {
-            if (!info.IsInitialized)
-            {
-                throw new InvalidAsynchronousStateException($"{GetType().Name} found an uninitialized peer - {info}");
-            }
-        }
     }
 }

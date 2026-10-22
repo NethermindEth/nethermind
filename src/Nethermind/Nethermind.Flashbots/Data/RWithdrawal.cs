@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Int256;
 
 public class RWithdrawal
 {
@@ -19,16 +18,13 @@ public class RWithdrawal
         amount_in_gwei = withdrawal.AmountInGwei;
     }
 
-    public Withdrawal ToWithdrawal()
+    public Withdrawal ToWithdrawal() => new()
     {
-        return new Withdrawal
-        {
-            Index = index,
-            ValidatorIndex = validator_index,
-            Address = address,
-            AmountInGwei = amount_in_gwei
-        };
-    }
+        Index = index,
+        ValidatorIndex = validator_index,
+        Address = address,
+        AmountInGwei = amount_in_gwei
+    };
 
     [JsonConstructor]
     public RWithdrawal(

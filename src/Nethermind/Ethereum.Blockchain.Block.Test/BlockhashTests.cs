@@ -1,0 +1,25 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
+
+namespace Ethereum.Blockchain.Block.Test;
+
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class BlockhashTests : GeneralStateTestBase
+{
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(GeneralStateTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+
+    public static IEnumerable<GeneralStateTest> LoadTests()
+    {
+        TestsSourceLoader loader = new(new LoadGeneralStateTestsStrategy(), Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Blockhash"));
+        return loader.LoadTests<GeneralStateTest>();
+    }
+}

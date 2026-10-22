@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Blocks;
 
 public interface IBlockhashStore
 {
-    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, ITxTracer tracer);
-    public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber);
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec);
 }

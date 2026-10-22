@@ -1,34 +1,97 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text;
+using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Config
 {
-    public class BlocksConfig : IBlocksConfig
+    public partial class BlocksConfig : IBlocksConfig
     {
-        public const string DefaultExtraData = "Nethermind";
+        public const int MaxBlockSizeKilobytes = 10240;
+        public const int MaxCLWrapperKilobytes = 2048;
+        public const int SafetyMarginKilobytes = 256;
+        // 7936
+        public const int DefaultMaxTxKilobytes = MaxBlockSizeKilobytes - MaxCLWrapperKilobytes - SafetyMarginKilobytes;
+        private const string _clientExtraData = "Nethermind";
+        public static string DefaultExtraData = _clientExtraData;
+
+        public static void SetDefaultExtraDataWithVersion() => DefaultExtraData = GetDefaultVersionExtraData();
+
         private byte[] _extraDataBytes = Encoding.UTF8.GetBytes(DefaultExtraData);
         private string _extraDataString = DefaultExtraData;
 
-        public bool Enabled { get; set; }
-        public long? TargetBlockGasLimit { get; set; } = null;
+        private static string GetDefaultVersionExtraData()
+        {
+            ReadOnlySpan<char> version = ProductInfo.Version.AsSpan();
+            int index = version.IndexOfAny('+', '-');
+            string alpha = "";
+            if (index >= 0)
+            {
+                if (version[index] == '-')
+                {
+                    alpha = "a";
+                }
+            }
+            else
+            {
+                index = version.Length;
+            }
 
-        public UInt256 MinGasPrice { get; set; } = 1.Wei();
+            // Don't include too much if the version is long (can be in custom builds)
+            index = Math.Min(index, 9);
+            string defaultExtraData = $"{_clientExtraData} v{version[..index]}{alpha}";
+            return defaultExtraData;
+        }
+
+        public bool Enabled { get; set; }
+        public ulong? TargetBlockGasLimit { get; set; } = null;
+
+        /// <inheritdoc/>
+        public ProducedBlockDumpOptions DumpProducedBlocks { get; set; }
+
+        public UInt256 MinGasPrice { get; set; } = 1.Wei;
 
         public bool RandomizedBlocks { get; set; }
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
-        public bool PreWarmStateOnBlockProcessing { get; set; } = true;
+        public PreWarmMode PreWarming { get; set; } = PreWarmMode.BlockAndMempool;
+
+        // A caller buys at most ~3.4 bytes of cache per gas spent, so a 60M-gas block could ask at max for ~200 MB.
+        // Real blocks store a few hundred KB, so 32 MB is a deliberate cut-off few times below max.
+        // Needs revisiting if the block gas limit or number of precompiles changes significantly.
+        public int PrecompileCacheMaxKilobytes { get; set; } = 32768;
+
         public int PreWarmStateConcurrency { get; set; } = 0;
+
+        public int MempoolPreWarmConcurrency { get; set; } = 0;
+
+        // Off: with parallel execution, reading code ahead has not beaten reading it on demand.
+        public bool PrefetchBlockAccessListCode { get; set; }
+
+        public bool PreWarmHandoff { get; set; } = true;
+
+        public bool PreWarmInFlightReadAhead { get; set; } = true;
+
+        public int PreWarmInFlightReadAheadColdReads { get; set; } = 32;
+
+        public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
+
+        public bool PreWarmCoreSplit { get; set; } = true;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
+
+        public int BlockProcessingTimeoutMs { get; set; } = 180_000;
+
+        public bool ParallelExecution { get; set; } = true;
+        public bool ParallelExecutionBatchRead { get; set; } = true;
 
         public string ExtraData
         {
@@ -39,7 +102,7 @@ namespace Nethermind.Config
             set
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(value);
-                if (bytes is not null && bytes.Length > 32)
+                if (bytes.Length > 32)
                 {
                     throw new InvalidConfigurationException($"Extra Data length was more than 32 bytes. You provided: {_extraDataString}",
                         ExitCodes.TooLongExtraData);
@@ -50,13 +113,23 @@ namespace Nethermind.Config
                 _extraDataBytes = bytes;
             }
         }
-        public byte[] GetExtraDataBytes()
-        {
-            return _extraDataBytes;
-        }
+
+        public bool BuildBlocksOnMainState { get; set; }
+
+        public byte[] GetExtraDataBytes() => _extraDataBytes;
 
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
 
         public static string GasTokenTicker { get; set; } = "ETH";
+
+        public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
+
+        public int? BlockProductionBlobLimit { get; set; }
+
+        public long SlowBlockThresholdMs { get; set; } = -1;
+
+        public long SlowBlockPerTxThresholdMs { get; set; } = -1;
+
+        public ulong MaxGasLimit { get; set; } = 1_000_000_000;
     }
 }

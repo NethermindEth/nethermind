@@ -3,9 +3,10 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Test.Data;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
@@ -20,7 +21,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0 }
             };
