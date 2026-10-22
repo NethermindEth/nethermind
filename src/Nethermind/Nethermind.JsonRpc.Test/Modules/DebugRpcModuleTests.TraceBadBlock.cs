@@ -21,12 +21,7 @@ public partial class DebugRpcModuleTests
         [Values] bool streamMode, [Values(null, "callTracer", ThrowingResultJavaScriptTracer)] string? tracer)
     {
         using Context context = await Context.Create();
-        Block valid = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
-        BlockHeader badHeader = valid.Header.Clone();
-        badHeader.StateRoot = TestItem.KeccakH;
-        badHeader.Hash = badHeader.CalculateHash();
-        Block bad = valid.WithReplacedHeader(badHeader);
-        context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(bad);
+        (Block valid, Block bad) = await AddValidAndBadBlock(context);
 
         string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByHash", valid.Hash!, new { tracer, streamMode });
         string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBadBlock", bad.Hash!, new { tracer, streamMode });
@@ -43,5 +38,35 @@ public partial class DebugRpcModuleTests
                 Assert.That((string?)entry["error"] ?? "", Does.Contain("result failure"), actual);
             }
         }
+    }
+
+    [Test]
+    public async Task Debug_traceBadBlock_without_options_streams_struct_logs()
+    {
+        using Context context = await Context.Create();
+        (Block valid, Block bad) = await AddValidAndBadBlock(context);
+
+        string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByHash", valid.Hash!);
+        string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBadBlock", bad.Hash!);
+
+        Assert.That(actual, Is.EqualTo(expected));
+        JArray entries = (JArray)JToken.Parse(actual)["result"]!;
+        Assert.That(entries, Has.Count.EqualTo(valid.Transactions.Length), actual);
+        foreach (JToken entry in entries)
+        {
+            Assert.That(entry["error"], Is.Null, actual);
+            AssertStructLogsTraced(entry["result"]!, actual);
+        }
+    }
+
+    private static async Task<(Block Valid, Block Bad)> AddValidAndBadBlock(Context context)
+    {
+        Block valid = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        BlockHeader badHeader = valid.Header.Clone();
+        badHeader.StateRoot = TestItem.KeccakH;
+        badHeader.Hash = badHeader.CalculateHash();
+        Block bad = valid.WithReplacedHeader(badHeader);
+        context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(bad);
+        return (valid, bad);
     }
 }
