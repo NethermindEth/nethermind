@@ -456,4 +456,19 @@ public class EraImporterTest
         else
             Assert.That(Check, Throws.TypeOf<EraImportException>().With.Message.Contains("Unknown parent"));
     }
+
+    [Test]
+    public async Task EnsureMatch_MainChainBlock_DoesNotAllocate()
+    {
+        await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10).Build();
+        IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+        Block block = blockTree.FindBlock(5, BlockTreeLookupOptions.None)!;
+        KnownHeaders.EnsureMatch(blockTree, block);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_000; i++)
+            KnownHeaders.EnsureMatch(blockTree, block);
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(1_000));
+    }
 }

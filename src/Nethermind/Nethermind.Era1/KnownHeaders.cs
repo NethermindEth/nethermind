@@ -147,10 +147,30 @@ public static class KnownHeaders
         if (level is not { BlockInfos.Length: > 0 })
             return true;
 
-        BlockInfo? known = Array.Find(Expected(level), info => info.BlockHash == block.Hash);
-        return known is not null
-            && (known.TotalDifficulty.IsZero || block.TotalDifficulty is null || block.TotalDifficulty == known.TotalDifficulty);
+        if (level.MainChainBlock is { } main)
+            return main.BlockHash == block.Hash && TotalDifficultyMatches(main, block);
+
+        bool hasBeaconMain = false;
+        foreach (BlockInfo info in level.BlockInfos)
+        {
+            if (info.IsBeaconMainChain)
+            {
+                hasBeaconMain = true;
+                break;
+            }
+        }
+
+        foreach (BlockInfo info in level.BlockInfos)
+        {
+            if ((!hasBeaconMain || info.IsBeaconMainChain) && info.BlockHash == block.Hash)
+                return TotalDifficultyMatches(info, block);
+        }
+
+        return false;
     }
+
+    private static bool TotalDifficultyMatches(BlockInfo known, Block block) =>
+        known.TotalDifficulty.IsZero || block.TotalDifficulty is null || block.TotalDifficulty == known.TotalDifficulty;
 
     private static BlockInfo[] Expected(ChainLevelInfo level)
     {
