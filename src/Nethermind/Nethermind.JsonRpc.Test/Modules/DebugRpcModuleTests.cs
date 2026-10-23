@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -433,6 +435,38 @@ public partial class DebugRpcModuleTests
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
 
+    [Test]
+    public async Task Debug_traceCall_stops_after_the_call([Values("prestateTracer", "callTracer", null)] string? tracer)
+    {
+        int requestsProcessed = 0;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { Timeout = -1 })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddDecorator<IExecutionRequestsProcessor>((_, inner) => new CountingExecutionRequestsProcessor(inner, () => requestsProcessed++)));
+        requestsProcessed = 0;
+
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString(), value = "0x1", gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(requestsProcessed, Is.Zero, "nothing after the call reaches the trace, so the block must not be finalized");
+        }
+    }
+
+    private sealed class CountingExecutionRequestsProcessor(IExecutionRequestsProcessor inner, Action onProcess) : IExecutionRequestsProcessor
+    {
+        public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+        {
+            onProcess();
+            inner.ProcessExecutionRequests(block, state, receipts, spec);
+        }
+    }
+
     private class Context : IDisposable
     {
         public IDebugRpcModule DebugRpcModule { get; }
@@ -505,6 +539,8 @@ public partial class DebugRpcModuleTests
             ("overlap", "602a601f536002601f2000", """{"0x71378d9bd65a614e4926f9fa621eae99b3f2a1cf19e8c22e41594dc15c16dd33":"0x2a00"}""", 100_000),
             ("offset", "600160202000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
             ("duplicate", "6000600020600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("duplicate_before_memory_overwrite", "602a600053600160002050600160002050602b60005300", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
+            ("distinct_before_memory_overwrite", "602a6000536001600020506000600053600160002050602b60005300", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a","0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
             ("revert", "602a600053600160002060006000fd", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
             ("empty_stack", "20", """{}""", 100_000),
             ("short_stack", "600020", """{}""", 100_000),

@@ -387,7 +387,7 @@ public class GethStyleTracer(
         {
             // A seed skips the prefix, whose logs a traced prefix is there to count.
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered && !tracePreceding ? prefixSeeds : null);
+                tracer.WithCancellation(cancellationToken), txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
         }
@@ -417,6 +417,10 @@ public class GethStyleTracer(
         ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay)
     {
         ArgumentNullException.ThrowIfNull(block);
+
+        // As in geth, a block trace reports a JavaScript tracer's error on the failing transaction's entry, while a
+        // single-transaction trace fails the call. Unlike geth, this also covers a JavaScript child of muxTracer.
+        if (options.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         // A block trace filtered to one transaction is that transaction's trace: the sequential tracer replays the
         // block and keeps one result, and the seeded single-transaction path produces the same result without the
