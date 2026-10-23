@@ -5,7 +5,7 @@
 
 try
 {
-    return RuntimePruner.Run(args, Console.Out, Console.Error);
+    return await RuntimePruner.Run(args, Console.Out, Console.Error);
 }
 catch (Exception exception)
 {

@@ -20,7 +20,7 @@ try
             }
         Directory.CreateDirectory(Path.Combine(root, "unrelated-arch"));
         using var output = new StringWriter();
-        if (RuntimePruner.Run([rid, root], output, Console.Error) != 0)
+        if (await RuntimePruner.Run([rid, root], output, Console.Error) != 0)
             throw new Exception("Pruning failed.");
         foreach (var project in new[] { "project one", "project two" })
             foreach (var name in names)
@@ -33,14 +33,14 @@ try
     }
 
     using var missing = new StringWriter();
-    if (RuntimePruner.Run(["linux-x64", Path.Combine(temporary.FullName, "missing")], missing, Console.Error) != 1 || !missing.ToString().Contains("::error::"))
+    if (await RuntimePruner.Run(["linux-x64", Path.Combine(temporary.FullName, "missing")], missing, Console.Error) != 1 || !missing.ToString().Contains("::error::"))
         throw new Exception("Missing root must fail.");
     Console.WriteLine("PASS: missing bin root fails");
     count++;
 
     var empty = Directory.CreateDirectory(Path.Combine(temporary.FullName, "empty"));
     using var warning = new StringWriter();
-    if (RuntimePruner.Run(["linux-x64", empty.FullName], warning, Console.Error) != 0 || !warning.ToString().Contains("::warning::no runtimes/linux-x64"))
+    if (await RuntimePruner.Run(["linux-x64", empty.FullName], warning, Console.Error) != 0 || !warning.ToString().Contains("::warning::no runtimes/linux-x64"))
         throw new Exception("No native dependencies must warn and succeed.");
     Console.WriteLine("PASS: no native dependencies warns without failing");
     count++;
@@ -54,7 +54,7 @@ try
         Directory.CreateSymbolicLink(Path.Combine(empty.FullName, "runtimes", "foreign-arch"), outside.FullName);
         var removable = Directory.CreateDirectory(Path.Combine(empty.FullName, "runtimes", "other-arch"));
         Directory.CreateSymbolicLink(Path.Combine(removable.FullName, "external"), outside.FullName);
-        if (RuntimePruner.Run(["linux-x64", empty.FullName], TextWriter.Null, Console.Error) != 0 ||
+        if (await RuntimePruner.Run(["linux-x64", empty.FullName], TextWriter.Null, Console.Error) != 0 ||
             !File.Exists(Path.Combine(outside.FullName, "asset")) ||
             !Directory.Exists(Path.Combine(empty.FullName, "runtimes", "foreign-arch")) ||
             Directory.Exists(removable.FullName))

@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
+#:include ScriptProcess.Helpers.cs
 
 internal static class RuntimePruner
 {
-    internal static int Run(string[] args, TextWriter output, TextWriter error)
+    internal static async Task<int> Run(string[] args, TextWriter output, TextWriter error)
     {
         if (args.Length is < 1 or > 2 || string.IsNullOrEmpty(args[0]))
         {
@@ -21,7 +21,7 @@ internal static class RuntimePruner
             return 1;
         }
 
-        var before = DiskUsage(root);
+        var before = await DiskUsage(root);
         var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false };
         var candidates = Directory.GetDirectories(root, "*", options)
             .Where(path => Path.GetFileName(Path.GetDirectoryName(path)) == "runtimes")
@@ -35,31 +35,16 @@ internal static class RuntimePruner
 
         if (!candidates.Any(path => Path.GetFileName(path) == rid && Directory.Exists(path)))
             output.WriteLine($"::warning::no runtimes/{rid} folder present after prune for rid={rid}");
-        output.WriteLine($"prune-runtimes[{rid}]: {before}MB -> {DiskUsage(root)}MB (removed {foreign.Length} foreign RID dirs)");
+        output.WriteLine($"prune-runtimes[{rid}]: {before}MB -> {await DiskUsage(root)}MB (removed {foreign.Length} foreign RID dirs)");
         return 0;
     }
 
-    private static string DiskUsage(string root)
+    private static async Task<string> DiskUsage(string root)
     {
         try
         {
-            using var process = new Process
-            {
-                StartInfo = new ProcessStartInfo("du")
-                {
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false
-                }
-            };
-            process.StartInfo.ArgumentList.Add("-sm");
-            process.StartInfo.ArgumentList.Add(root);
-            process.Start();
-            var output = process.StandardOutput.ReadToEndAsync();
-            var error = process.StandardError.ReadToEndAsync();
-            process.WaitForExit();
-            Task.WhenAll(output, error).GetAwaiter().GetResult();
-            return process.ExitCode == 0 ? output.GetAwaiter().GetResult().Split('\t')[0].Trim() : "?";
+            var result = await ScriptProcess.Run("du", ["-sm", root], CancellationToken.None);
+            return result.Code == 0 ? result.Output.Split('\t')[0].Trim() : "?";
         }
         catch (System.ComponentModel.Win32Exception)
         {
