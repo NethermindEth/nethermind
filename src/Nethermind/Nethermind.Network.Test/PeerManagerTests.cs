@@ -854,6 +854,7 @@ namespace Nethermind.Network.Test
             {
                 ctx.DiscoverNew(25);
                 Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25).After(_delayLonger, 10));
+                ctx.DisconnectAllSessions();
             }
         }
 
