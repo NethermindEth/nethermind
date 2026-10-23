@@ -124,17 +124,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
-    [TestCase("mainnet archive", 4096000000UL)]
-    [TestCase("mainnet ^archive", 1024000000UL)]
-    [TestCase("volta archive", 768000000UL)]
-    [TestCase("volta ^archive", 768000000UL)]
-    [TestCase("gnosis archive", 1024000000UL)]
-    [TestCase("gnosis ^archive", 768000000UL)]
-    [TestCase("poacore archive", 1024000000UL)]
-    [TestCase("poacore ^archive", 768000000UL)]
-    [TestCase("spaceneth.json", 64000000UL)]
-    [TestCase("spaceneth_persistent.json", 128000000UL)]
-    public void Memory_hint_values_are_correct(string configWildcard, ulong expectedValue) => Test<IInitConfig, ulong?>(configWildcard, static c => c.MemoryHint, expectedValue);
+    [TestCase("mainnet archive", 2147483648UL)]
+    [TestCase("^archive", 536870912UL)]
+    public void Shared_block_cache_values_are_correct(string configWildcard, ulong expectedValue) => Test<IDbConfig, ulong>(configWildcard, static c => c.SharedBlockCacheSize, expectedValue);
 
     [TestCase("*")]
     public void Metrics_disabled_by_default(string configWildcard)
@@ -518,7 +510,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void BufferResponses_rpc_is_off(string configWildcard) => Test<IJsonRpcConfig, bool>(configWildcard, static c => c.BufferResponses, false);
 
     [TestCase("*")]
-    public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, -1);
+    public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, INetworkConfig.DefaultNettyArenaOrder);
 
     [TestCase("chiado", 17_000_000UL, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000UL, 5UL, 3000)]
@@ -565,22 +557,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
                 char nextChar = content.ElementAt(commaIndex + 1);
                 Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {filePath}");
             }
-        }
-    }
-
-    [TestCase("*")]
-    public void Memory_hint_is_enough(string configWildcard)
-    {
-        foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
-        {
-            MemoryHintMan memoryHintMan = new(LimboLogs.Instance);
-            memoryHintMan.SetMemoryAllowances(
-                configProvider.GetConfig<IDbConfig>(),
-                configProvider.GetConfig<IInitConfig>(),
-                configProvider.GetConfig<INetworkConfig>(),
-                configProvider.GetConfig<ISyncConfig>(),
-                configProvider.GetConfig<ITxPoolConfig>(),
-                (uint)Environment.ProcessorCount);
         }
     }
 

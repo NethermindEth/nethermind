@@ -11,7 +11,6 @@ namespace Nethermind.Db.Rocks.Config;
 public interface IDbConfig : IConfig
 {
     ulong SharedBlockCacheSize { get; set; }
-    public bool SkipMemoryHintSetting { get; set; }
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics

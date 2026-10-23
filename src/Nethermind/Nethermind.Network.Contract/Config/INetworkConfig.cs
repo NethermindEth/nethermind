@@ -8,8 +8,7 @@ namespace Nethermind.Network.Config;
 
 public interface INetworkConfig : IConfig
 {
-    public const int DefaultNettyArenaOrder = -1;
-    public const int MaxNettyArenaOrder = 14;
+    public const int DefaultNettyArenaOrder = 11;
     public const int DefaultMaxNettyArenaCount = 8;
 
     /// <remarks>
@@ -106,10 +105,10 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", Description = "Whether to enable a verbose diagnostic tracing.")]
     bool DiagTracerEnabled { get; set; }
 
-    [ConfigItem(DefaultValue = "-1", Description = "The size of the DotNetty arena order. `-1` to depend on the memory hint.")]
+    [ConfigItem(DefaultValue = "11", Description = "The size of the DotNetty arena order. The chunk size is 8 KiB << order.")]
     int NettyArenaOrder { get; set; }
 
-    [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Increasing this on a high-core CPU without increasing the memory budget may reduce chunk size so much that it causes a huge memory allocation.")]
+    [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Each arena holds chunks of 8 KiB << `NettyArenaOrder`.")]
     uint MaxNettyArenaCount { get; set; }
 
     [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.")]
