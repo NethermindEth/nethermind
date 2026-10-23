@@ -48,6 +48,8 @@ public sealed class ConfigureMemoryAllocators(
     private void ConfigureNetty(uint cpuCount)
     {
         uint arenaCount = Math.Min(cpuCount * 2, networkConfig.MaxNettyArenaCount);
+        // Old configs may still set -1, the default while Init.MemoryHint existed.
+        int arenaOrder = networkConfig.NettyArenaOrder < 0 ? INetworkConfig.DefaultNettyArenaOrder : networkConfig.NettyArenaOrder;
 
         // For some reason needs to be half page size to get page size
         Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (NettyPageSize / 2).ToString((IFormatProvider?)null));
@@ -56,8 +58,8 @@ public sealed class ConfigureMemoryAllocators(
         // Set it to a fixed 1 MB, 1 arena. Code should prefer NethermindBuffers.Default instead as it is easier to override.
         ConfigureDefaultPooledByteBufferAllocator(8, 1);
 
-        NethermindBuffers.Default = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
-        NethermindBuffers.RlpxAllocator = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
+        NethermindBuffers.Default = NethermindBuffers.CreateAllocator(arenaOrder, arenaCount);
+        NethermindBuffers.RlpxAllocator = NethermindBuffers.CreateAllocator(arenaOrder, arenaCount);
 
         // 1 MB chunk as discovery should be fairly small and does not do much.
         NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(8, arenaCount);
