@@ -146,6 +146,6 @@ public class PbtConfig : IPbtConfig
         "block_based_table_factory.block_size=16000;" +
         "max_bytes_for_level_base=350000000;" +
         "write_buffer_size=64000000;" +
-        "max_write_buffer_number=8;" +
+        "max_write_buffer_number=4;" +
         "";
 }
