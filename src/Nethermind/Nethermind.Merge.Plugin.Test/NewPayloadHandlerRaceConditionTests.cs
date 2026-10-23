@@ -170,7 +170,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         await enqueued.Task.WaitAsync(AnswerWait);
         // The line must not wait for the verdict, which lands only once it is written.
-        await logger.FirstReceived.WaitAsync(TimeSpan.FromSeconds(10));
+        await logger.FirstReceived.WaitAsync(AnswerWait);
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
@@ -212,14 +212,209 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
+    /// <summary>
+    /// A request that has to wait before the hand-off writes its Received line as the wait starts, not once it is
+    /// over, so a wait on our side does not read like a late payload; here, for a parent still committing.
+    /// </summary>
+    [Test]
+    public async Task Received_line_is_written_once_while_the_request_waits_for_a_parent_still_committing()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        bool parentCommitted = false;
+        TaskCompletionSource parentWaitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource parentRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilExecutedCopyRemovedAsync(block.ParentHash!).Returns(_ =>
+        {
+            parentWaitRequested.TrySetResult();
+            return new ValueTask(parentRemoved.Task);
+        });
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            parentProcessedNow: () => parentCommitted,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await parentWaitRequested.Task.WaitAsync(AnswerWait);
+        await logger.FirstReceived.WaitAsync(AnswerWait);
+        Assert.That(request.IsCompleted, Is.False, "the line is written while the request still waits for the parent");
+
+        parentCommitted = true;
+        parentRemoved.SetResult();
+        await enqueued.Task.WaitAsync(AnswerWait);
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Received_line_is_written_once_while_the_request_waits_for_an_earlier_copy()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        bool committed = false;
+        TaskCompletionSource waitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(_ =>
+        {
+            waitRequested.TrySetResult();
+            return new ValueTask(firstCopyRemoved.Task);
+        });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            wasProcessedNow: () => committed,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await waitRequested.Task.WaitAsync(AnswerWait);
+        await logger.FirstReceived.WaitAsync(AnswerWait);
+        Assert.That(request.IsCompleted, Is.False, "the line is written while the request still waits for the first copy");
+
+        committed = true;
+        firstCopyRemoved.SetResult();
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    [Test]
+    public async Task Received_line_is_written_once_while_the_suggest_is_pending()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        TaskCompletionSource<AddBlockResult> suggest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource suggestRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            configure: (blockTree, _) => blockTree
+                .SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(_ =>
+                {
+                    suggestRequested.TrySetResult();
+                    return new ValueTask<AddBlockResult>(suggest.Task);
+                }),
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await suggestRequested.Task.WaitAsync(AnswerWait);
+        await logger.FirstReceived.WaitAsync(AnswerWait);
+        Assert.That(request.IsCompleted, Is.False, "the line is written while the suggest is still pending");
+
+        suggest.SetResult(AddBlockResult.Added);
+        await enqueued.Task.WaitAsync(AnswerWait);
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>A canonical payload behind the head whose re-executed copy is still committing.</summary>
+    [Test]
+    public async Task Received_line_is_written_once_while_a_canonical_payload_waits_for_its_executed_copy()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        bool committed = false;
+        TaskCompletionSource waitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource executedCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilExecutedCopyRemovedAsync(block.Hash!).Returns(_ =>
+        {
+            waitRequested.TrySetResult();
+            return new ValueTask(executedCopyRemoved.Task);
+        });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: true,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            configure: (blockTree, stateReader) =>
+            {
+                blockTree.Head.Returns(block);
+                blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+                stateReader.HasStateForBlock(Arg.Is<BlockHeader>(h => h != null && h.Hash == block.Hash)).Returns(_ => committed);
+            },
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await waitRequested.Task.WaitAsync(AnswerWait);
+        await logger.FirstReceived.WaitAsync(AnswerWait);
+        Assert.That(request.IsCompleted, Is.False, "the line is written while the request still waits for the commit");
+
+        committed = true;
+        executedCopyRemoved.SetResult();
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
     /// <summary>Counts the handler's Received lines; the request writes them from whichever thread it is on.</summary>
     private sealed class ReceivedLineLogger : InterfaceLogger
     {
         private int _receivedCount;
+        private readonly TaskCompletionSource _firstReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public int ReceivedCount => Volatile.Read(ref _receivedCount);
         public Task FirstReceived => _firstReceived.Task;
-        private readonly TaskCompletionSource _firstReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void Info(string text)
         {

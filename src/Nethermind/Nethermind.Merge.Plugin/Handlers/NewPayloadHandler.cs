@@ -141,8 +141,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _lastBlockGasLimit = block.Header.GasLimit;
     }
 
-    /// <summary>A payload's <c>Received</c> line held back until its block is handed to the processing queue.</summary>
-    /// <remarks>Written at most once: by <see cref="Write"/> after the hand-off, or on dispose by a request that ends before it.</remarks>
+    /// <summary>A payload's <c>Received</c> line held back until its block is handed to the processing queue, or until the request first has to wait.</summary>
+    /// <remarks>Written at most once: by <see cref="Write"/> at the first of those, or on dispose by a request that ends before either.</remarks>
     private sealed class ReceivedLine(NewPayloadHandler handler, string requestStr, Block block) : IDisposable
     {
         private bool _written;
@@ -155,6 +155,22 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         public void Dispose() => Write();
+    }
+
+    /// <summary>
+    /// Hands <paramref name="wait"/> back to be awaited, writing <paramref name="receivedLine"/> first when the wait has
+    /// not completed yet: a wait on our side before the hand-off must not make the payload look late in the log.
+    /// </summary>
+    private static ValueTask<T> WriteReceivedIfWaiting<T>(ReceivedLine? receivedLine, ValueTask<T> wait)
+    {
+        if (!wait.IsCompleted) receivedLine?.Write();
+        return wait;
+    }
+
+    private static Task<T> WriteReceivedIfWaiting<T>(ReceivedLine? receivedLine, Task<T> wait)
+    {
+        if (!wait.IsCompleted) receivedLine?.Write();
+        return wait;
     }
 
     /// <summary>
@@ -187,8 +203,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
         string requestStr = $"New Block:  {request}";
-        // Written once the block is handed to the processing queue, off the path to the hash check; disposing
-        // writes it on every path that returns or throws before that hand-off.
+        // Written once the block is handed to the processing queue, off the path to the hash check, or as soon as the
+        // request has to wait before that; disposing writes it on every path that returns or throws before either.
         using ReceivedLine? receivedLine = _logger.IsInfo ? new ReceivedLine(this, requestStr, block) : null;
 
         // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
@@ -278,7 +294,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // A re-executed block is already marked processed, so it can become head before its restored state
                 // commits; wait for that commit before reading the state again.
                 if (IsVerdictServiceable(block)
-                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider) && IsVerdictServiceable(block)))
+                    || (await WriteReceivedIfWaiting(receivedLine, _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider)) && IsVerdictServiceable(block)))
                 {
                     if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
                     return NewPayloadV1Result.Valid(block.Hash);
@@ -298,7 +314,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
                 // The re-execution restoring this state may still be committing, so wait for it before judging.
                 if (_stateReader.HasStateForBlock(block.Header)
-                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider) && _stateReader.HasStateForBlock(block.Header)))
+                    || (await WriteReceivedIfWaiting(receivedLine, _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider)) && _stateReader.HasStateForBlock(block.Header)))
                 {
                     if (EvaluateInclusionListFromState(block) is { } fromState)
                     {
@@ -316,7 +332,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
         // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
         // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
-        if (!await WaitForParentCommitAsync(parentHeader, deadline)) return NewPayloadV1Result.Syncing;
+        if (!await WriteReceivedIfWaiting(receivedLine, WaitForParentCommitAsync(parentHeader, deadline))) return NewPayloadV1Result.Syncing;
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
@@ -778,7 +794,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             AddBlockResult addResult;
             try
             {
-                addResult = await suggest.TimeoutOn(timeoutTask);
+                addResult = await WriteReceivedIfWaiting(receivedLine, suggest.TimeoutOn(timeoutTask));
             }
             catch (TimeoutException)
             {
@@ -795,7 +811,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (addResult == AddBlockResult.AlreadyKnown)
             {
                 Task removed = WaitForEarlierCopiesAsync(block.Hash!, ilDigest);
-                if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
+                if (await WriteReceivedIfWaiting(receivedLine, Task.WhenAny(removed, timeoutTask)) == timeoutTask) throw new TimeoutException();
                 // The first copy's own verdict and removal land on whatever completion is registered for the hash,
                 // so if they consumed this one it must not stand in for the answer to this request. A fault is that
                 // copy's failure, and stands: the CL's next retry re-processes.
