@@ -155,21 +155,24 @@ public partial record BeaconChainSpec
     /// Gloas with Amsterdam (EIP-7928).
     /// </para>
     /// <para>
-    /// Each execution fork from Osaka on that changes the blob parameters adds an EIP-7892 blob schedule entry, which
-    /// changes the fork digest even when the maximum stays the same. An execution fork after Osaka that is neither
-    /// Amsterdam nor a blob parameter change has no beacon equivalent here, so it fails startup rather than being
-    /// dropped. Timestamps above <see cref="Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp"/> are the execution
-    /// layer's placeholders for unscheduled forks and are ignored.
+    /// Each execution fork from Osaka on that changes the blob parameters adds an EIP-7892 blob schedule entry, and so
+    /// does each later blob-parameter-only fork in <paramref name="blobScheduleTimestamps"/> even when it repeats the
+    /// previous parameters, since the fork digest hashes the entry's epoch. Any other later execution fork changes nothing
+    /// the beacon chain uses (for example a Gnosis bytecode rewrite) and is ignored. Timestamps above
+    /// <see cref="Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp"/> are the execution layer's placeholders for
+    /// unscheduled forks and are ignored.
     /// </para>
     /// </remarks>
     /// <param name="execution">The execution-layer fork schedule; its chain id selects the network.</param>
     /// <param name="gloasForkVersion"><c>BeaconChain.GloasForkVersion</c>: the Gloas version as 4 bytes of hex, or
     /// <c>null</c> for the network's published one.</param>
+    /// <param name="blobScheduleTimestamps">The activation timestamps of the chainspec's <c>blobSchedule</c> entries, or
+    /// <c>null</c> to infer blob-parameter-only forks from parameter changes alone.</param>
     /// <exception cref="UnsupportedBeaconNetworkException">The chain id is not a supported network.</exception>
     /// <exception cref="InvalidConfigurationException">The execution schedule has no beacon genesis time, activates a
-    /// fork off an epoch boundary or out of order, has a fork this driver cannot map, or schedules Amsterdam without
-    /// a usable Gloas fork version.</exception>
-    public static BeaconChainSpec ForExecution(ISpecProvider execution, string? gloasForkVersion = null)
+    /// fork off an epoch boundary or out of order, changes blob parameters between Prague and Osaka, or schedules
+    /// Amsterdam without a usable Gloas fork version.</exception>
+    public static BeaconChainSpec ForExecution(ISpecProvider execution, string? gloasForkVersion = null, IEnumerable<ulong>? blobScheduleTimestamps = null)
     {
         BeaconNetwork network = BeaconNetwork.ForChainId(execution.ChainId);
         ulong genesisTime = execution.BeaconChainGenesisTimestamp
@@ -194,19 +197,15 @@ public partial record BeaconChainSpec
         ulong[] epochs = [0, network.AltairForkEpoch, network.BellatrixForkEpoch, EpochAt(capella, "Shanghai"), EpochAt(deneb, "Cancun"), EpochAt(electra, "Prague"), EpochAt(fulu, "Osaka")];
         List<ForkScheduleEntry> forks = [.. network.ForkVersions.Select((version, fork) => new ForkScheduleEntry(version, epochs[fork]))];
 
+        HashSet<ulong> blobParameterForks = [.. blobScheduleTimestamps ?? []];
         List<BlobScheduleEntry> blobSchedule = [];
         for (int i = electra + 1; i < timestamps.Length; i++)
         {
-            if (!SameBlobParameters(specs[i - 1], specs[i]))
-            {
-                if (i < fulu)
-                    throw Conflict($"The execution chainspec changes blob parameters at timestamp {timestamps[i]}, between Prague and Osaka, where the beacon chain has no blob schedule.");
-                blobSchedule.Add(new BlobScheduleEntry(EpochAt(i, "a blob parameter change"), specs[i].MaxBlobCount));
-            }
-            else if (i > fulu && i != gloas)
-            {
-                throw Conflict($"The execution chainspec has a fork at timestamp {timestamps[i]} that is neither Amsterdam nor a blob parameter change; the embedded beacon chain has no fork to activate with it.");
-            }
+            bool changed = !SameBlobParameters(specs[i - 1], specs[i]);
+            if (changed && i < fulu)
+                throw Conflict($"The execution chainspec changes blob parameters at timestamp {timestamps[i]}, between Prague and Osaka, where the beacon chain has no blob schedule.");
+            if (changed || (i > fulu && i != gloas && blobParameterForks.Contains(timestamps[i])))
+                blobSchedule.Add(new BlobScheduleEntry(EpochAt(i, "a blob parameter fork"), specs[i].MaxBlobCount));
         }
 
         ulong gloasEpoch = Presets.FarFutureEpoch;

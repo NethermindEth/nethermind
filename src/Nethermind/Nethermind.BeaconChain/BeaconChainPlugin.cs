@@ -22,6 +22,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Init.Modules;
 using Nethermind.Merge.Plugin;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.BeaconChain;
 
@@ -55,10 +56,10 @@ public class BeaconChainModule : Module
             .AddSingleton<BeaconChainService>()
             .AddSingleton<ProcessStallWatchdog>()
             // The network and its fork timing come from the execution layer's chainspec, so both sides follow the same schedule.
-            .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig>((specProvider, chainConfig) =>
+            .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig, ChainSpec>((specProvider, chainConfig, chainSpec) =>
             {
                 BeaconPresetSelection.Initialize(specProvider.ChainId);
-                BeaconChainSpec spec = BeaconChainSpec.ForExecution(specProvider, chainConfig.GloasForkVersion);
+                BeaconChainSpec spec = BeaconChainSpec.ForExecution(specProvider, chainConfig.GloasForkVersion, chainSpec.Parameters.BlobSchedule?.Select(static entry => entry.Timestamp));
                 ValidatePreset(spec);
                 return spec;
             })

@@ -38,14 +38,17 @@ internal static class ExecutionSchedules
 
     public static BeaconChainSpec SpecForChainId(ulong chainId) => BeaconChainSpec.ForExecution(ForChainId(chainId));
 
+    /// <summary>The execution schedule of <see cref="LoadChainspec"/>.</summary>
+    public static ISpecProvider FromChainspec(string name, Action<JsonObject>? edit = null) => new ChainSpecBasedSpecProvider(LoadChainspec(name, edit));
+
     /// <summary>The shipped <c>chainspec/<paramref name="name"/>.json</c>, after <paramref name="edit"/> changes its JSON.</summary>
-    public static ISpecProvider FromChainspec(string name, Action<JsonObject>? edit = null)
+    public static ChainSpec LoadChainspec(string name, Action<JsonObject>? edit = null)
     {
         using Stream resource = typeof(IConfig).Assembly.GetManifestResourceStream($"Nethermind.Config.chainspec.{name}.json")
             ?? throw new ArgumentException($"No embedded chainspec named {name}.", nameof(name));
         JsonObject json = JsonNode.Parse(resource)!.AsObject();
         edit?.Invoke(json);
         using MemoryStream edited = new(Encoding.UTF8.GetBytes(json.ToJsonString()));
-        return new ChainSpecBasedSpecProvider(new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(edited));
+        return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(edited);
     }
 }

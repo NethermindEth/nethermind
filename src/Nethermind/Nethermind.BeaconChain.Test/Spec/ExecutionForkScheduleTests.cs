@@ -11,6 +11,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.BeaconChain.Test.Spec;
 
@@ -126,10 +127,50 @@ public class ExecutionForkScheduleTests
         Assert.That(spec.BlobSchedule, Is.EqualTo(new BlobScheduleEntry[] { new(274_176, 15), new(275_712, 21), new(300_000, (ulong)max) }));
     }
 
+    // The consensus BLOB_SCHEDULE keeps such an entry, and get_blob_parameters returns its epoch into the fork digest.
     [Test]
-    public void A_fork_after_osaka_that_changes_no_beacon_parameter_is_refused() =>
-        Assert.That(AssertConflict(() => BeaconChainSpec.ForExecution(WithBpo3(14, 21, 11_684_671))).Message,
-            Does.Contain("neither Amsterdam nor a blob parameter change"));
+    public void A_blob_parameter_only_fork_that_repeats_the_parameters_still_adds_an_entry()
+    {
+        ChainSpec chainSpec = ExecutionSchedules.LoadChainspec("sepolia", json => AddBpo3(json["config"]!.AsObject(), 14, 21, 11_684_671));
+        using IContainer container = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia, execution: new ChainSpecBasedSpecProvider(chainSpec), chainSpec: chainSpec).Build();
+
+        BeaconChainSpec spec = container.Resolve<BeaconChainSpec>();
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(spec.BlobSchedule, Is.EqualTo(new BlobScheduleEntry[] { new(274_176, 15), new(275_712, 21), new(300_000, 21) }));
+        Assert.That(ForkDigest.Compute(spec, 300_000), Is.Not.EqualTo(ForkDigest.Compute(spec, 299_999)));
+    }
+
+    // The consensus BLOB_SCHEDULE has no entry at a hard fork that keeps the blob parameters.
+    [TestCase("osaka", 6, 9, 5_007_716)]
+    [TestCase("amsterdam", 14, 21, 11_684_671)]
+    public void A_hard_fork_that_lists_unchanged_blob_parameters_adds_no_entry(string fork, int target, int max, int fraction)
+    {
+        ChainSpec chainSpec = ExecutionSchedules.LoadChainspec("sepolia", json =>
+            json["config"]!["blobSchedule"]![fork] = new JsonObject { ["target"] = target, ["max"] = max, ["baseFeeUpdateFraction"] = fraction });
+
+        BeaconChainSpec spec = BeaconChainSpec.ForExecution(new ChainSpecBasedSpecProvider(chainSpec),
+            blobScheduleTimestamps: chainSpec.Parameters.BlobSchedule!.Select(static entry => entry.Timestamp));
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(chainSpec.Parameters.BlobSchedule!.Select(static entry => entry.Timestamp), Does.Contain(TimeAt(BeaconChainSpec.Sepolia, fork == "osaka" ? 272_640ul : 353_024ul)), "the chainspec lists the fork's blob parameters");
+        Assert.That(spec.BlobSchedule, Is.EqualTo(BeaconChainSpec.Sepolia.BlobSchedule));
+    }
+
+    [Test]
+    public void An_execution_only_fork_after_osaka_leaves_the_beacon_schedule_unchanged()
+    {
+        const ulong rewriteTime = 0x70000000;
+        ChainSpec chainSpec = ExecutionSchedules.LoadChainspec("gnosis", json => json["params"]!["eip7939TransitionTimestamp"] = $"0x{rewriteTime:x}");
+        ISpecProvider execution = new ChainSpecBasedSpecProvider(chainSpec);
+
+        BeaconChainSpec spec = BeaconChainSpec.ForExecution(execution, blobScheduleTimestamps: chainSpec.Parameters.BlobSchedule!.Select(static entry => entry.Timestamp));
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(execution.TransitionActivations.Select(static activation => activation.Timestamp), Does.Contain(rewriteTime), "the execution layer has a fork there");
+        Assert.That(spec.Forks.Select(static fork => fork.Epoch), Is.EqualTo(BeaconChainSpec.Gnosis.Forks.Select(static fork => fork.Epoch)));
+        Assert.That(spec.BlobSchedule, Is.Empty);
+    }
 
     [Test]
     public void A_blob_parameter_fork_before_osaka_is_refused() =>
@@ -170,11 +211,13 @@ public class ExecutionForkScheduleTests
         Assert.That(wrapped.GetBaseException(), Is.TypeOf<InvalidConfigurationException>().With.Message.Contains("has no effect"));
     }
 
-    private static ISpecProvider WithBpo3(int target, int max, int fraction) => Sepolia(config =>
+    private static ISpecProvider WithBpo3(int target, int max, int fraction) => Sepolia(config => AddBpo3(config, target, max, fraction));
+
+    private static void AddBpo3(JsonObject config, int target, int max, int fraction)
     {
         config["bpo3Time"] = TimeAt(BeaconChainSpec.Sepolia, 300_000);
         config["blobSchedule"]!["bpo3"] = new JsonObject { ["target"] = target, ["max"] = max, ["baseFeeUpdateFraction"] = fraction };
-    });
+    }
 
     // Startup surfaces only InvalidConfigurationException as the operator's message and the configuration exit code.
     private static InvalidConfigurationException AssertConflict(Func<BeaconChainSpec> resolve)

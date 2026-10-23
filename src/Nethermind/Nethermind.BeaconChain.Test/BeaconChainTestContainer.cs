@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Test.Spec;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -51,7 +52,8 @@ internal static class BeaconChainTestContainer
         ILogManager? logManager = null,
         IEngineRpcModule? engine = null,
         IBeaconChainConfig? config = null,
-        ISpecProvider? execution = null)
+        ISpecProvider? execution = null,
+        ChainSpec? chainSpec = null)
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>(); // registered by NetworkModule in production
         ipResolver.Resolve(Arg.Any<CancellationToken>())
@@ -67,6 +69,7 @@ internal static class BeaconChainTestContainer
             .AddSingleton<ITimestamper>(Timestamper.Default) // registered by NethermindModule in production
             .AddSingleton(ipResolver)
             .AddSingleton(specProvider)
+            .AddSingleton(chainSpec ?? new ChainSpec())
             .AddSingleton<IDbFactory, MemDbFactory>();
     }
 }
