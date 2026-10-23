@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Serialization.Rlp.Eip7928;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
@@ -32,6 +35,30 @@ public class BadBlockStoreTests
         }
 
         Assert.That(badBlockStore.GetAll(), Is.EquivalentTo(toAdd).UsingBlockComparer());
+        Assert.That(badBlockStore.GetAll().Select(static b => b.EncodedBlockAccessList), Has.All.Null);
+    }
+
+    [Test]
+    public void Insert_keeps_suggested_block_access_list([Values] bool preEncoded)
+    {
+        BadBlockStore badBlockStore = new(new TestMemDb(), 10);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 1)).TestObject)
+            .TestObject;
+        byte[] encoded = BlockAccessListDecoder.EncodeToBytes(bal);
+        Block block = preEncoded
+            ? Build.A.Block.WithNumber(1).WithEncodedBlockAccessList(encoded).TestObject
+            : Build.A.Block.WithNumber(1).WithBlockAccessList(bal).TestObject;
+
+        badBlockStore.Insert(block);
+
+        Block stored = badBlockStore.GetAll().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored.Hash, Is.EqualTo(block.Hash));
+            Assert.That(stored.EncodedBlockAccessList, Is.EqualTo(encoded));
+            Assert.That(stored.BlockAccessList, Is.Null);
+        }
     }
 
     [Test]
