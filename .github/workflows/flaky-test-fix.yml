@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  PROTECTED: '^(\.github|\.agents|scripts)/|^(AGENTS|CLAUDE)\.md$|\.(props|targets|csproj|rsp)$|(^|/)(global\.json|nuget\.config)$|^\.gitmodules$|^src/(tests|bench_precompiles)$'
+  PROTECTED: '^(\.github|\.agents|\.claude|scripts)/|^(AGENTS|CLAUDE)\.md$|\.(props|targets|csproj|rsp)$|(^|/)(global\.json|nuget\.config)$|^\.gitmodules$|^src/(tests|bench_precompiles)$'
 
 defaults:
   run:
@@ -31,7 +31,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow flaky-test-fix.yml -L 100 --created ">=$(date -u +%F)" \
+          runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow flaky-test-fix.yml -L 1000 --created ">=$(date -u +%F)" \
             --json databaseId,conclusion --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID and .conclusion != \"skipped\" and .conclusion != \"cancelled\")] | length")
           [ "$runs" -lt 3 ] && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "Daily limit reached"
 
@@ -84,7 +84,7 @@ jobs:
 
             For one flaky test, find the root cause and fix it with the smallest change. The bug may be in the test
             or in production code. Do not add retries, sleeps, longer timeouts, [Retry]/[Ignore]/[Explicit] attributes
-            or category exclusions, and do not weaken assertions. Do not change .github/, .agents/, scripts/, AGENTS.md,
+            or category exclusions, and do not weaken assertions. Do not change .github/, .agents/, .claude/, scripts/, AGENTS.md,
             CLAUDE.md, *.props, *.targets, *.csproj, *.rsp, global.json or NuGet.Config. Follow AGENTS.md and .agents/rules/.
             Build and run the test with `dotnet test --project <project> -c release -- --filter <filter>`.
 
