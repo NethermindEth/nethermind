@@ -9,9 +9,7 @@ try
 {
     var directory = args[0];
     var expectedCases = int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture);
-    if (Regex.IsMatch(File.ReadAllText(Path.Combine(directory, "run.log")),
-        @"(?:^[ \t]*|--->[ \t]*(?:\(Inner Exception #\d+\)[ \t]*)?|Unhandled exception\.[ \t]*)[\w.]*Exception:|Invalid Blocks?",
-        RegexOptions.Multiline))
+    if (InvalidLog().IsMatch(File.ReadAllText(Path.Combine(directory, "run.log"))))
         throw new InvalidDataException("Benchmark log contains an exception or invalid block");
 
     var results = Path.Combine(directory, "results");
@@ -51,3 +49,9 @@ static bool HasMeasurements(JsonElement statistics) => statistics.ValueKind swit
     JsonValueKind.Number => statistics.GetDouble() != 0,
     _ => true
 };
+
+partial class Program
+{
+    [GeneratedRegex(@"(?:^[ \t]*|--->[ \t]*(?:\(Inner Exception #\d+\)[ \t]*)?|Unhandled exception\.[ \t]*)[\w.]*Exception:|Invalid Blocks?", RegexOptions.Multiline)]
+    private static partial Regex InvalidLog();
+}
