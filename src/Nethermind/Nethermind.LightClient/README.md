@@ -57,6 +57,8 @@ selection and before a cross-check.
 
 `--network` accepts `mainnet` (default), `hoodi` and `sepolia`. The listener defaults to
 `http://127.0.0.1:8545`; `--urls` overrides it. `--help` prints the options.
+`--log-level Debug` adds received beacon-update slots, validation outcomes and
+durable consensus progress to the light-client logs; the default is `Info`.
 To use MetaMask or another browser wallet extension, select
 `http://127.0.0.1:8545` as the RPC URL for Ethereum
 Mainnet (chain ID `1`), or Sepolia (chain ID `11155111`). In MetaMask's network
@@ -298,6 +300,13 @@ a caller does not cancel other callers' download. Log queries prefetch up to fou
 bloom-positive blocks while preserving canonical result order. Bodies, receipts
 and BAL requests share at most three of the four execution request slots, leaving
 capacity for headers; SNAP state requests use a separate request budget.
+Complete finalized numeric-range log results have a separate 32 MiB weighted
+in-memory cache, including verified empty results. Entries bind the normalized
+filter, exact range and authenticated end-block hash. Every lookup still checks
+the current authenticated ancestry and history bounds; failed, cancelled and
+optimistic queries do not populate this cache. Prefetch uses a rolling window
+of four candidates, retaining canonical output order when responses finish out
+of order.
 
 Finalized log headers persist under `<data-dir>/el/<network>/log-history` in
 bounded RocksDB slots with synchronous WAL writes and a 1 GiB disk-write

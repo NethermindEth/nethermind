@@ -761,6 +761,221 @@ public class VerifiedRpcTests
     }
 
     [Test]
+    public async Task Finalized_log_results_reuse_equivalent_filters_across_finality_progress([Values] bool empty)
+    {
+        LogRangeSource source = new();
+        VerifiedHead finalized = source.Head(320);
+        string topic = Keccak.Compute("recent range log").ToString();
+        string otherTopic = Keccak.Compute("another topic").ToString();
+        string unusedAddress = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd";
+        object?[] topics = empty ? [new[] { topic, otherTopic }, null] : [new[] { topic, otherTopic }];
+        using VerifiedRpc rpc = new(source, () => finalized, 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
+        JsonElement first = (JsonElement)await rpc.InvokeAsync("eth_getLogs", Parameters(new
+        {
+            fromBlock = "0x136", toBlock = "0x138", address = new[] { AccountAddress.ToString(), unusedAddress }, topics,
+        }), CancellationToken.None);
+        int headerReads = source.HeaderReads;
+        finalized = source.Head(325);
+        object?[] equivalentTopics = empty ? [new[] { otherTopic, topic, topic }, null] : [new[] { otherTopic, topic, topic }];
+
+        JsonElement repeated = (JsonElement)await rpc.InvokeAsync("eth_getLogs", Parameters(new
+        {
+            fromBlock = "0x136", toBlock = "0x138",
+            address = new[] { "0x" + unusedAddress[2..].ToUpperInvariant(), AccountAddress.ToString(), AccountAddress.ToString() },
+            topics = equivalentTopics,
+        }), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.GetArrayLength(), Is.EqualTo(empty ? 0 : 6));
+            Assert.That(repeated.GetRawText(), Is.EqualTo(first.GetRawText()));
+            Assert.That(source.BodyNumbers, Is.EqualTo(new ulong[] { 310, 311, 312 }));
+            Assert.That(source.ReceiptReads, Is.EqualTo(3));
+            Assert.That(source.HeaderReads, Is.GreaterThan(headerReads), "cache hits still authenticate current canonical ancestry");
+        }
+        if (!empty) AssertRangeLogs(repeated, source, 310, 312);
+    }
+
+    [Test]
+    public async Task Finalized_log_cache_separates_filters_and_ranges(
+        [Values("address", "topic", "arity", "first", "last")] string change)
+    {
+        LogRangeSource source = new();
+        string topic = Keccak.Compute("recent range log").ToString();
+        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
+        JsonElement originalParameters = Parameters(new
+        {
+            fromBlock = "0x136", toBlock = "0x138", address = AccountAddress.ToString(), topics = new[] { topic },
+        });
+        JsonElement original = (JsonElement)await rpc.InvokeAsync("eth_getLogs", originalParameters, CancellationToken.None);
+        object?[] topics = change == "arity" ? [topic, null] : [change == "topic" ? Keccak.Compute("absent").ToString() : topic];
+
+        JsonElement different = (JsonElement)await rpc.InvokeAsync("eth_getLogs", Parameters(new
+        {
+            fromBlock = change == "first" ? "0x137" : "0x136",
+            toBlock = change == "last" ? "0x137" : "0x138",
+            address = change == "address" ? Address.Zero.ToString() : AccountAddress.ToString(), topics,
+        }), CancellationToken.None);
+        int reads = source.ReceiptReads;
+        JsonElement repeated = (JsonElement)await rpc.InvokeAsync("eth_getLogs", originalParameters, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(different.GetRawText(), Is.Not.EqualTo(original.GetRawText()));
+            Assert.That(different.GetArrayLength(), Is.EqualTo(change is "topic" or "arity" ? 0 : change is "first" or "last" ? 4 : 6));
+            Assert.That(repeated.GetRawText(), Is.EqualTo(original.GetRawText()));
+            Assert.That(source.ReceiptReads, Is.EqualTo(reads));
+        }
+    }
+
+    [Test]
+    public async Task Cached_log_results_still_reject_invalid_or_expired_ancestry(
+        [Values("header", "finality", "history-window")] string change)
+    {
+        LogRangeSource source = new();
+        VerifiedHead finalized = source.Head(320);
+        using VerifiedRpc rpc = new(source, () => finalized, 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
+        JsonElement parameters = Parameters(new { fromBlock = "0x136", toBlock = "0x138", address = AccountAddress.ToString() });
+        await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
+        if (change == "header")
+            source.TransformHeader = header => { BlockHeader forged = header.Clone(); forged.Number++; return forged; };
+        else if (change == "finality") finalized = finalized with { BlockHash = Keccak.Compute("conflicting finality") };
+        else finalized = finalized with { Number = 310 + VerifiedLogHeaders.HistoryCapacity };
+
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error!.Code, Is.EqualTo(change == "history-window" ? -32001 : -32000));
+            Assert.That(source.ReceiptReads, Is.EqualTo(3));
+        }
+    }
+
+    [Test]
+    public async Task Log_result_cache_is_bound_to_finalized_canonical_block_hashes()
+    {
+        LogRangeSource source = new();
+        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
+        JsonElement parameters = Parameters(new { fromBlock = "0x136", toBlock = "0x138", address = AccountAddress.ToString() });
+        JsonElement before = (JsonElement)await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
+        source.ReorgFrom(310);
+
+        JsonElement after = (JsonElement)await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
+
+        AssertRangeLogs(after, source, 310, 312);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.GetRawText(), Is.Not.EqualTo(before.GetRawText()));
+            Assert.That(source.ReceiptReads, Is.EqualTo(6));
+        }
+    }
+
+    [Test]
+    public async Task Optimistic_log_ranges_are_cached_only_after_finalization()
+    {
+        LogRangeSource source = new();
+        VerifiedHead finalized = source.Head(309);
+        using VerifiedRpc rpc = new(source, () => finalized, 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
+        JsonElement parameters = Parameters(new { fromBlock = "0x136", toBlock = "0x138", address = AccountAddress.ToString() });
+        for (int repeat = 0; repeat < 2; repeat++) await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
+        Assert.That(source.ReceiptReads, Is.EqualTo(6));
+        finalized = source.Head(320);
+        for (int repeat = 0; repeat < 2; repeat++) await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
+        Assert.That(source.ReceiptReads, Is.EqualTo(9));
+    }
+
+    [Test]
+    public async Task Failed_or_canceled_log_queries_do_not_cache_partial_results([Values] bool cancel)
+    {
+        using CancellationTokenSource caller = new();
+        bool fail = true;
+        LogRangeSource source = new()
+        {
+            BeforeReceiptRead = (number, token) =>
+            {
+                if (fail && number == 311)
+                {
+                    if (cancel) { caller.Cancel(); token.ThrowIfCancellationRequested(); }
+                    throw new InvalidDataException("Invalid receipts after one verified block.");
+                }
+                return Task.CompletedTask;
+            },
+        };
+        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
+        JsonElement parameters = Parameters(new { fromBlock = "0x136", toBlock = "0x138", address = AccountAddress.ToString() });
+        if (cancel)
+            Assert.That(async () => await rpc.InvokeAsync("eth_getLogs", parameters, caller.Token), Throws.InstanceOf<OperationCanceledException>());
+        else
+        {
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_getLogs", parameters, caller.Token));
+            Assert.That(error!.Code, Is.EqualTo(-32000));
+        }
+        fail = false;
+
+        JsonElement recovered = (JsonElement)await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
+        int reads = source.ReceiptReads;
+        JsonElement repeated = (JsonElement)await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
+
+        AssertRangeLogs(recovered, source, 310, 312);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repeated.GetRawText(), Is.EqualTo(recovered.GetRawText()));
+            Assert.That(source.ReceiptReads, Is.EqualTo(reads));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Log_prefetch_refills_before_a_later_candidate_finishes(CancellationToken token)
+    {
+        Channel<ulong> started = Channel.CreateUnbounded<ulong>();
+        TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource straggler = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        LogRangeSource source = new(300, 304)
+        {
+            BeforeReceiptRead = async (number, requestToken) =>
+            {
+                started.Writer.TryWrite(number);
+                if (number == 300) await first.Task.WaitAsync(requestToken);
+                if (number == 303) await straggler.Task.WaitAsync(requestToken);
+            },
+        };
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using VerifiedRpc rpc = new(source, () => source.Head(304), 1, specProvider: MainnetSpecProvider.Instance);
+        Task<object> request = rpc.InvokeAsync("eth_getLogs", Parameters(new
+        {
+            fromBlock = VerifiedRpc.Quantity(300), toBlock = "finalized", address = AccountAddress.ToString(),
+        }), caller.Token);
+        try
+        {
+            for (ulong number = 300; number < 304; number++)
+                Assert.That(await started.Reader.ReadAsync(token), Is.EqualTo(number));
+            first.SetResult();
+            Assert.That(await started.Reader.ReadAsync(token), Is.EqualTo(304), "the fifth candidate must start while the fourth remains pending");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(straggler.Task.IsCompleted, Is.False);
+                Assert.That(request.IsCompleted, Is.False);
+            }
+            straggler.SetResult();
+            AssertRangeLogs((JsonElement)await request.WaitAsync(token), source, 300, 304);
+        }
+        finally
+        {
+            await caller.CancelAsync();
+            first.TrySetResult();
+            straggler.TrySetResult();
+            await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
     [CancelAfter(10_000)]
     public async Task Parallel_log_prefetch_keeps_canonical_coordinates_and_four_payload_limit(
         [Values] bool sparse, CancellationToken token)
@@ -882,7 +1097,7 @@ public class VerifiedRpcTests
         }), caller.Token);
         try
         {
-            for (ulong number = 300; number < 304; number++)
+            for (ulong number = 300; number < 305; number++)
                 Assert.That(await started.Reader.ReadAsync(token), Is.EqualTo(number));
             Assert.That(await source.ReceiptsCompleted.Reader.ReadAsync(token), Is.EqualTo(300), "one verified block is available before the later failure");
             if (cancel) await caller.CancelAsync();
@@ -892,7 +1107,7 @@ public class VerifiedRpcTests
             {
                 Assert.That(request.IsCompleted, Is.False, "the RPC must wait for both sibling requests to drain");
                 Assert.That(drained, Is.Zero);
-                Assert.That(source.BodyNumbers.Count, Is.EqualTo(4));
+                Assert.That(source.BodyNumbers.Count, Is.EqualTo(5));
             }
             release.SetResult();
             if (cancel)
@@ -905,7 +1120,7 @@ public class VerifiedRpcTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(drained, Is.EqualTo(2));
-                Assert.That(source.BodyNumbers.Count, Is.EqualTo(4), "a failed batch must not start the next payloads");
+                Assert.That(source.BodyNumbers.Count, Is.EqualTo(5), "failed prefetch must not refill the remaining window");
             }
         }
         finally
@@ -1701,6 +1916,23 @@ public class VerifiedRpcTests
         }
 
         internal VerifiedHead Head(ulong number) => new(100, number, _blocks[number].Hash!, _blocks[number].StateRoot!);
+
+        internal void ReorgFrom(ulong first)
+        {
+            foreach (ulong number in _blocks.Keys.Where(number => number >= first).Order().ToArray())
+            {
+                Block before = _blocks[number];
+                BlockHeader header = before.Header.Clone();
+                if (number > first) header.ParentHash = _blocks[number - 1].Hash!;
+                header.ExtraData = [1];
+                Hash256 hash = Keccak.Compute(Rlp.Encode(header).Bytes);
+                header.Hash = hash;
+                Block block = new(header, before.Body);
+                _blocks[number] = block;
+                _byHash.Add(hash, block);
+                _receipts.Add(hash, _receipts[before.Hash!]);
+            }
+        }
 
         public Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken)
         {

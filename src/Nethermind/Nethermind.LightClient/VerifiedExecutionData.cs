@@ -117,7 +117,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         try
         {
             int next = 0;
-            while (next < headers.Length)
+            while (next < headers.Length || pending.Count != 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 while (next < headers.Length && pending.Count < LogPrefetchLimit)
@@ -126,13 +126,16 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
                     BlockHeader header = headers[next++];
                     if (MayContainLogs(header.Bloom, addresses, topics)) pending.Add(FetchAsync(header));
                 }
-                await Task.WhenAll(pending);
-                foreach (Task<(BlockHeader Header, Block Block, TxReceipt[] Receipts)> fetch in pending)
+                if (pending.Count == 0) continue;
+                (BlockHeader Header, Block Block, TxReceipt[] Receipts) completed;
+                try { completed = await pending[0]; }
+                catch
                 {
-                    (BlockHeader header, Block block, TxReceipt[] receipts) = await fetch;
-                    Append(header, block, receipts);
+                    await Task.WhenAll(pending);
+                    throw;
                 }
-                pending.Clear();
+                Append(completed.Header, completed.Block, completed.Receipts);
+                pending.RemoveAt(0);
             }
             return BoundedJson.ToElement(result);
         }

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
@@ -17,10 +19,12 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
     : IDisposable
 {
     private const ulong HistoricalStateDepth = 32;
+    private const long LogResultCacheCapacity = 32 * 1024 * 1024;
     private readonly ulong _startingBlock = getLatestHead?.Invoke()?.Number ?? 0;
     private static readonly SemaphoreSlim ActiveExecutionData = new(4, 4);
     private readonly VerifiedExecutionData? _data = specProvider is null ? null : new(execution, specProvider, chainId);
     private readonly SemaphoreSlim _historicalStateRequests = new(2, 2);
+    private readonly MemoryCache _logResults = new(new MemoryCacheOptions { SizeLimit = LogResultCacheCapacity });
 
     internal JsonElement GetHeader(BlockHeader header) => _data!.GetHeader(header);
 
@@ -426,7 +430,42 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         VerifiedHead anchor = optimisticFrom || optimisticTo || last > finalized.Number ? current ?? finalized : finalized;
         if (first > anchor.Number || last > anchor.Number) throw InvalidParameters();
         BlockHeader[] headers = await execution.GetLogHeadersAsync(anchor, finalized, first, last, cancellationToken);
-        return await _data!.GetLogsAsync(headers, addresses, topics, cancellationToken);
+        if (last > finalized.Number)
+            return await _data!.GetLogsAsync(headers, addresses, topics, cancellationToken);
+
+        (ulong First, ulong Last, ValueHash256 EndHash, ValueHash256 Filter) key =
+            (first, last, headers[^1].Hash!.ValueHash256, LogFilterHash(addresses, topics));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_logResults.TryGetValue(key, out JsonElement cached)) return cached;
+
+        JsonElement result = await _data!.GetLogsAsync(headers, addresses, topics, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        // JsonDocument retains its token table as well as the UTF-8 result.
+        long size = Math.Max(1024, result.GetRawText().Length * 4L);
+        if (size <= LogResultCacheCapacity)
+            _logResults.Set(key, result, new MemoryCacheEntryOptions { Size = size });
+        return result;
+    }
+
+    private static ValueHash256 LogFilterHash(HashSet<Address>? addresses, IReadOnlyList<HashSet<Hash256>?> topics)
+    {
+        StringBuilder filter = new();
+        if (addresses is not null)
+        {
+            Address[] sorted = [.. addresses];
+            Array.Sort(sorted);
+            foreach (Address address in sorted) filter.Append(address);
+        }
+        filter.Append(';').Append(topics.Count);
+        foreach (HashSet<Hash256>? choices in topics)
+        {
+            filter.Append(';');
+            if (choices is null) continue;
+            Hash256[] sorted = [.. choices];
+            Array.Sort(sorted);
+            foreach (Hash256 topic in sorted) filter.Append(topic);
+        }
+        return Keccak.Compute(filter.ToString()).ValueHash256;
     }
 
     private VerifiedHead FinalizedHead(VerifiedHead? pinned = null)
@@ -673,6 +712,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
 
     public void Dispose()
     {
+        _logResults.Dispose();
         _data?.Dispose();
         _historicalStateRequests.Dispose();
     }
