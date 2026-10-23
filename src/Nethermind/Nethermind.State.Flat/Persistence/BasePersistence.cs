@@ -599,7 +599,7 @@ public static class BasePersistence
         private bool AccountsNeedPrefetch(ReadOnlySpan<Address> samples)
         {
             PrefetchSampling.Column? column = sampling?.Accounts;
-            Span<byte> value = stackalloc byte[_accountSpanBufferSize];
+            Span<byte> value = stackalloc byte[AccountSpanBufferSize];
             MissTimings misses = default;
             int sentinel = -1;
             // Under a page-cache outcome one probe is kept; only a slow read of it makes the block decide in full. That
