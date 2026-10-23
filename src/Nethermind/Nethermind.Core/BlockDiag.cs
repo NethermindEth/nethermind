@@ -44,6 +44,8 @@ public sealed class BlockDiag
         FinSetAccountChanges, FinStateRoot, FinReceiptsWait, FinBalHash,
         PwDrain, PreCommit, PcStorageTrees, PcStateTree, PcSnapshot,
         ShFull, ShP1, ShP2, WsfPrologue, WsfLoop,
+        // When the first helper of the block's first loop of a kind started its first item, after the loop started; no CPU.
+        PlStorageFirst, PlAccountFirst, PlHashFirst,
         Count
     }
 
@@ -86,6 +88,7 @@ public sealed class BlockDiag
         "set_account_changes", "state_root", "receipts_wait", "bal_hash",
         "pw_drain", "precommit", "pc_storage_trees", "pc_state_tree", "pc_snapshot",
         "sh_full", "sh_p1", "sh_p2", "wsf_prologue", "wsf_loop",
+        "pl_storage_first", "pl_account_first", "pl_hash_first",
     ];
 
     private static readonly string[] CNames =
@@ -123,6 +126,36 @@ public sealed class BlockDiag
 
     /// <summary>Counts one work item of a parallel loop, as run by the block-processing thread or by a helper.</summary>
     public void CountWorkItem(C main, C helper) => Interlocked.Increment(ref _c[ReferenceEquals(Current, this) ? (int)main : (int)helper]);
+
+    /// <summary>
+    /// Counts one work item as <see cref="CountWorkItem(C, C)"/> does; the first item a helper starts in the loop that
+    /// <paramref name="loopStart"/> timed also records into <paramref name="firstHelper"/> how long after the loop's start
+    /// that was, which tells the helpers' wake-up from the imbalance of the work.
+    /// </summary>
+    /// <param name="loopStart">What <see cref="LoopStarted"/> returned for the loop; 0 times nothing.</param>
+    public void CountWorkItem(C main, C helper, F firstHelper, long loopStart)
+    {
+        if (ReferenceEquals(Current, this))
+        {
+            Interlocked.Increment(ref _c[(int)main]);
+            return;
+        }
+
+        Interlocked.Increment(ref _c[(int)helper]);
+        if (loopStart != 0 && Volatile.Read(ref _wall[(int)firstHelper]) == 0)
+            Interlocked.CompareExchange(ref _wall[(int)firstHelper], Math.Max(1, Stopwatch.GetTimestamp() - loopStart), 0);
+    }
+
+    private readonly long[] _loopStart = new long[(int)F.Count];
+
+    /// <summary>Starts timing the block's first parallel loop that reports into <paramref name="firstHelper"/>; called by
+    /// the block-processing thread right before the loop.</summary>
+    /// <returns>The loop's start in <see cref="Stopwatch"/> ticks, or 0 when the block already timed such a loop.</returns>
+    public long LoopStarted(F firstHelper)
+    {
+        if (_loopStart[(int)firstHelper] != 0) return 0;
+        return _loopStart[(int)firstHelper] = Stopwatch.GetTimestamp();
+    }
     public ulong BlockNumber { get; set; }
 
     /// <summary>The request of the block the current thread is processing, if any; set by the block-processing thread.</summary>

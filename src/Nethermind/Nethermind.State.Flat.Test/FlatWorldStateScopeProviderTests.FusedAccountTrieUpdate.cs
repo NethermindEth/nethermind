@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.Intrinsics.X86;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -51,12 +53,47 @@ public partial class FlatWorldStateScopeProviderTests
                 Assert.That(diagOn.Get(BlockDiag.C.FusedLoops) + diagOn.Get(BlockDiag.C.FusedFallback), Is.EqualTo(batches.Count), $"{label}: fused + fallback");
                 Assert.That(diagOn.Get(BlockDiag.C.FusedMain) + diagOn.Get(BlockDiag.C.FusedHelper), Is.GreaterThanOrEqualTo(diagOn.Get(BlockDiag.C.FusedLoops)), $"{label}: jobs");
                 Assert.That(diagOff.Get(BlockDiag.C.FusedLoops) + diagOff.Get(BlockDiag.C.FusedFallback), Is.Zero, $"{label}: off");
+                if (diagOn.Get(BlockDiag.C.FusedLoops) == 1 && diagOn.Get(BlockDiag.C.FusedHelper) > 0)
+                {
+                    Assert.That(diagOn.Get(BlockDiag.F.PlAccountFirst).WallTicks, Is.GreaterThan(0), $"{label}: first helper timed");
+                }
             }
 
             fusedLoops += diagOn.Get(BlockDiag.C.FusedLoops);
         }
 
         Assert.That(fusedLoops, Is.GreaterThan(0), "the fused pass ran");
+    }
+
+    [Test]
+    public void BlockDiag_WritesEveryNamedEntry()
+    {
+        BlockDiag diag = new() { BlockNumber = 1 };
+        using MemoryStream stream = new();
+        using (Utf8JsonWriter writer = new(stream))
+        {
+            writer.WriteStartObject();
+            diag.WriteJson(writer, "diag");
+            writer.WriteEndObject();
+        }
+
+        using JsonDocument json = JsonDocument.Parse(stream.ToArray());
+        JsonElement fin = json.RootElement.GetProperty("diag").GetProperty("fin");
+        JsonElement cnt = json.RootElement.GetProperty("diag").GetProperty("cnt");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fin.EnumerateObject().Count(), Is.EqualTo((int)BlockDiag.F.Count), "sections");
+            Assert.That(cnt.EnumerateObject().Count(), Is.EqualTo((int)BlockDiag.C.Count), "counts");
+            foreach (string name in new[] { "ws_batch_dispose", "ws_account_trie", "state_root", "pl_storage_first", "pl_account_first", "pl_hash_first" })
+            {
+                Assert.That(fin.TryGetProperty(name, out _), Is.True, name);
+            }
+
+            foreach (string name in new[] { "fused_loops", "fused_main", "fused_helper", "fused_fallback" })
+            {
+                Assert.That(cnt.TryGetProperty(name, out _), Is.True, name);
+            }
+        }
     }
 
     /// <summary>Writes a block's batches as block processing does, storage first, then hashes and commits.</summary>

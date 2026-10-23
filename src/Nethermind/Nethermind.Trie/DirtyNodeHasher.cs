@@ -124,11 +124,12 @@ internal static class DirtyNodeHasher
         BlockDiag? diag = BlockDiag.InPhase(BlockDiag.Phase.StateRoot);
         diag?.Add(BlockDiag.C.ParHashLoops, 1);
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
+        long loopStart = diag?.LoopStarted(BlockDiag.F.PlHashFirst) ?? 0;
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
-            (dirtyChildren, root, resolver, pool, maxCollectedNodes, diag),
+            (dirtyChildren, root, resolver, pool, maxCollectedNodes, diag, loopStart),
             static (i, state) =>
             {
-                state.diag?.CountWorkItem(BlockDiag.C.ParHashMain, BlockDiag.C.ParHashHelper);
+                state.diag?.CountWorkItem(BlockDiag.C.ParHashMain, BlockDiag.C.ParHashHelper, BlockDiag.F.PlHashFirst, state.loopStart);
                 // The i-th set bit of the mask.
                 uint remaining = state.dirtyChildren;
                 for (int skipped = 0; skipped < i; skipped++) remaining &= remaining - 1;

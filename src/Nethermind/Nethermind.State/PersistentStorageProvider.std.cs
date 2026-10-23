@@ -209,14 +209,15 @@ internal sealed partial class PersistentStorageProvider
         diag?.Add(BlockDiag.C.ParStorageLoops, 1);
         using BlockDiag.Section loop = BlockDiag.Measure(diag, BlockDiag.F.WsfLoop);
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+        long loopStart = diag?.LoopStarted(BlockDiag.F.PlStorageFirst) ?? 0;
         ParallelUnbalancedWork.For(
             0,
             storages.Count,
             RuntimeInformation.ParallelOptionsLogicalCores,
-            (storages, writes: 0, skips: 0, diag),
+            (storages, writes: 0, skips: 0, diag, loopStart),
             static (i, state) =>
             {
-                state.diag?.CountWorkItem(BlockDiag.C.ParStorageMain, BlockDiag.C.ParStorageHelper);
+                state.diag?.CountWorkItem(BlockDiag.C.ParStorageMain, BlockDiag.C.ParStorageHelper, BlockDiag.F.PlStorageFirst, state.loopStart);
                 ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
                 (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
                 state.writes += writes;

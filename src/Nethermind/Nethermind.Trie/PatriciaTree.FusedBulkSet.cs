@@ -110,11 +110,13 @@ public partial class PatriciaTree
 
         using (ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount))
         {
+            // The account write and the hash below the root are one loop here.
+            long loopStart = diag?.LoopStarted(BlockDiag.F.PlAccountFirst) ?? 0;
             ParallelUnbalancedWork.For(0, jobs.Count, ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
                 (i, workerTraverseStack) =>
                 {
-                    diag?.CountWorkItem(BlockDiag.C.FusedMain, BlockDiag.C.FusedHelper);
+                    diag?.CountWorkItem(BlockDiag.C.FusedMain, BlockDiag.C.FusedHelper, BlockDiag.F.PlAccountFirst, loopStart);
                     FusedJob job = jobs[i];
                     prepare?.Invoke(job.Start, job.Count);
 

@@ -161,11 +161,12 @@ public partial class PatriciaTree
             jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
         }
 
+        long loopStart = diag?.LoopStarted(BlockDiag.F.PlAccountFirst) ?? 0;
         ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
             GetTraverseStack,
             (i, workerTraverseStack) =>
             {
-                diag?.CountWorkItem(BlockDiag.C.ParBulkSetMain, BlockDiag.C.ParBulkSetHelper);
+                diag?.CountWorkItem(BlockDiag.C.ParBulkSetMain, BlockDiag.C.ParBulkSetHelper, BlockDiag.F.PlAccountFirst, loopStart);
                 (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
 
                 Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
