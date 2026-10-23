@@ -1610,6 +1610,22 @@ public class DebugModuleTests
                 "ByTransactionHashStreaming",
                 static (module, _) => module.debug_traceTransaction(TestItem.KeccakA),
                 static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHashMalformedTimeout",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA, new GethTraceOptions
+                {
+                    Tracer = "noopTracer", ParsedTimeout = CustomTimeDurationConverter.Parse("bad")
+                }),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHashStreamingMalformedTimeout",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA, new GethTraceOptions
+                {
+                    ParsedTimeout = CustomTimeDurationConverter.Parse("bad")
+                }),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
             )
         ];
 
