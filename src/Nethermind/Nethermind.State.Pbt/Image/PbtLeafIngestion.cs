@@ -116,7 +116,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
     /// Leaves carry no storage roots and PBT never treats one as authoritative, so accounts are staged as their stem leaves.
     /// Code chunks are keyed by a hash of their code hash, so no bytecode can be reassembled as its chunks stream past: they
     /// are handed to a <see cref="PbtCodeReassembly"/>, which reassembles each bytecode once the code
-    /// section ends.
+    /// section ends. The storage section is staged only after every bytecode is written.
     /// </remarks>
     /// <returns>The staged accounts and slots.</returns>
     public static (ulong Accounts, ulong Slots) Stage(LogicalBatch batch, IEnumerator<RebuildEntry> leaves,
@@ -130,6 +130,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
         ValueHash256? delegation = null;
         PbtVariableTreeKey? runKey = null;
         PackedSlotRun run = SlotRun.Empty;
+        bool codesWritten = false;
 
         while (leaves.MoveNext())
         {
@@ -165,10 +166,11 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
                         throw new InvalidDataException("Snapshot holds a leaf at a reserved account sub-index.");
                 }
             }
-            else
+            else if (!codesWritten)
             {
                 FlushAccount();
-                codes.EndChunks();
+                codes.Complete();
+                codesWritten = true;
             }
 
             slots++;
