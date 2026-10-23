@@ -4,6 +4,7 @@
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -55,7 +56,8 @@ public class JsonRpcGeneratorTests
     [TestCase("eth", "eth_syncing", "`result`: `false` when not syncing, else _object_", "- `isSyncing`:")]
     [TestCase("debug", "debug_getRawBlockAccessList", "`result`: _string_ (hex data)", "- `memory`:")]
     [TestCase("debug", "debug_traceTransaction", "- `structLogs`:", "- `customTracerResult`:")]
-    [TestCase("eth", "eth_getHeaderByNumber", "- `hash`: _string_ (hash) or `null`", "- `baseFeePerGas`: _string_ (hex integer) or `null`")]
+    [TestCase("eth", "eth_getHeaderByNumber", "- `nonce`: _string_ (8-byte hex data) or `null`", "- `baseFeePerGas`: _string_ (hex integer) or `null`")]
+    [TestCase("trace", "trace_get", "- `from`: _string_ (address)\n", "- `from`: _string_ (address) or `null`")]
     [TestCase("debug", "debug_simulateV1", "- `traces`: array of _object_ (the tracer's own result instead when `tracer` is set)", "- `customTracerResult`:")]
     [TestCase("eth", "eth_getTransactionByHash", "- `gas`: _string_ (hex integer)\n", "(transaction type) or `null`")]
     [TestCase("eth", "eth_getStorageValues", "`result`: map of address to array of _string_ (32-byte hex data)", "- `slots`:")]
@@ -84,6 +86,7 @@ public class JsonRpcGeneratorTests
     [TestCase("trace", "trace_filter", "- `fromBlock`: _string_ (block number or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`), _object_ (EIP-1898 `{blockNumber}`)", "requireCanonical")]
     [TestCase("eth", "eth_getProof", "2. `storageKeys`: array of _string_ (hex storage slot), or a _string_ holding that array as JSON", "- `count`:")]
     [TestCase("eth", "eth_getStorageAt", "2. `positionIndex`: _string_ (hex storage slot)", "- `value`:")]
+    [TestCase("eth", "eth_call", "1. `transactionCall`: _object_", "or `null`")]
     public void Parameters_document_accepted_input(string ns, string method, string documented, string notDocumented)
     {
         string parameters = ReadParameters(ns, method);
@@ -228,8 +231,13 @@ public class JsonRpcGeneratorTests
     private static IEnumerable<TestCaseData> ResultsWithNullMembers()
     {
         yield return new TestCaseData("eth", "eth_getHeaderByNumber",
-            new BlockHeaderForRpc(new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, null!, 0, 0, 0, 0, [])))
-            .SetArgDisplayNames("pending header");
+            new AuRaBlockHeaderForRpc(new AuRaBlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 1, 0, 0, [])
+            {
+                Hash = Keccak.Zero,
+                Bloom = Bloom.Empty,
+                AuRaSignature = [1]
+            }))
+            .SetArgDisplayNames("AuRa header");
         yield return new TestCaseData("parity", "parity_pendingTransactions",
             new ParityTransaction(new Transaction { SenderAddress = Address.Zero, Signature = new Signature(1, 1, 27) }, [], null!))
             .SetArgDisplayNames("pending contract creation");
