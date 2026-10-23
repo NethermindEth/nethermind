@@ -883,6 +883,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // So I just leave it here.
     private class WriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
+        private static int _fusedReported;
         private readonly FlatWorldStateScope _scope;
         private readonly ILogger _logger;
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts;
@@ -984,6 +985,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                                 _scope.StateTree.WriteAccounts(_dirtyAccounts);
                             else if (!_scope.StateTree.WriteAccountsFused(_dirtyAccounts, _scope._configuration.FusedAccountTrieMinAccounts))
                                 diag?.Add(BlockDiag.C.FusedFallback, 1);
+                            // CI-only: one line in the job log shows the fused pass ran in this process.
+                            else if (Interlocked.Exchange(ref _fusedReported, 1) == 0)
+                                Console.Error.WriteLine($"bench: FusedAccountTrieUpdate ran its first fused account-trie update ({_dirtyAccounts.Count} accounts)");
                         }
                     }
                     finally
