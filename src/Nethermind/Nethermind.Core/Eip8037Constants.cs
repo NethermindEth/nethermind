@@ -21,7 +21,7 @@ public static class Eip8037Constants
     public const long NewAccountLegacyShare = (long)GasCostOf.NewAccount;
 
     /// <summary> Legacy share of a CREATE's account state gas: paid from <c>gas_left</c> before the reservoir. </summary>
-    /// <remarks> Keeps the <c>gas_left</c> cost of CREATE at least its cost before EIP-8037. </remarks>
+    /// <remarks> Keeps the <c>gas_left</c> cost of CREATE at least its cost before EIP-8037. Assumes EIP-8038 (<c>CREATE_ACCESS</c>), which Amsterdam enables together with EIP-8037. </remarks>
     public const long CreateLegacyShare = (long)(GasCostOf.Create - Eip8038Constants.CreateAccess);
 
     public const ulong SystemCallBaseGasLimit = 30_000_000;
