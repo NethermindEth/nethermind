@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -61,5 +63,15 @@ public class PrivilegedIpProviderTests
             Enode(TestItem.PublicKeyA, ConfigStaticIp));
 
         Assert.That(provider.IsPrivileged(ConfigStaticIp.MapToIPv6()), Is.True, "IPv4-mapped-IPv6 query matches an IPv4 config static peer");
+    }
+
+    [Test]
+    public void Privileges_static_peer_hosts()
+    {
+        PrivilegedIpProvider provider = new(Substitute.For<IStaticNodesManager>(), Substitute.For<ITrustedNodesManager>(), new NetworkConfig(), LimboLogs.Instance,
+            new StaticHostFilter("13.14.15.0/24", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>()));
+
+        Assert.That(provider.IsPrivileged(OtherIp), Is.True);
+        Assert.That(provider.IsPrivileged(TrustedIp), Is.False);
     }
 }

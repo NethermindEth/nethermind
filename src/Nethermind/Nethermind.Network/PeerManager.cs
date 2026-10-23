@@ -42,6 +42,7 @@ namespace Nethermind.Network
         private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
         private readonly ConditionalWeakTable<Peer, StrongBox<long>> _contactRetryAfter = [];
         private readonly TimeProvider _timeProvider;
+        private readonly IStaticHostFilter _staticHostFilter;
         private Task? _peerUpdateLoopTask;
         private Task? _peerUpdateTimerTask;
         private readonly IPeerPool _peerPool;
@@ -73,8 +74,9 @@ namespace Nethermind.Network
             INodeStatsManager stats,
             INetworkConfig networkConfig,
             IEnode enode,
-            ILogManager logManager)
-            : this(rlpxHost, peerPool, stats, networkConfig, enode, logManager, TimeProvider.System)
+            ILogManager logManager,
+            IStaticHostFilter? staticHostFilter = null)
+            : this(rlpxHost, peerPool, stats, networkConfig, enode, logManager, TimeProvider.System, staticHostFilter)
         {
         }
 
@@ -85,9 +87,11 @@ namespace Nethermind.Network
             INetworkConfig networkConfig,
             IEnode enode,
             ILogManager logManager,
-            TimeProvider timeProvider)
+            TimeProvider timeProvider,
+            IStaticHostFilter? staticHostFilter = null)
         {
             _timeProvider = timeProvider;
+            _staticHostFilter = staticHostFilter ?? StaticHostFilter.Empty;
             _logger = logManager.GetClassLogger<PeerManager>();
             _rlpxHost = rlpxHost;
             _enode = enode;
@@ -976,6 +980,12 @@ namespace Nethermind.Network
                 // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
                 session.Node.IsStatic = existingPeer.Node.IsStatic;
                 session.Node.IsTrusted = existingPeer.Node.IsTrusted;
+            }
+
+            // The remote port of an inbound session is ephemeral, so only the IP can be matched.
+            if (!session.Node.IsStatic && _staticHostFilter.IsMatch(session.Node.Address.Address))
+            {
+                session.Node.IsStatic = true;
             }
 
             if (_logger.IsTrace) TraceProcessingIncoming();

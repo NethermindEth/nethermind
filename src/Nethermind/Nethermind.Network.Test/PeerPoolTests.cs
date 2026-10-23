@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -308,6 +309,50 @@ public class PeerPoolTests
         Assert.That(resolved, Is.SameAs(pooled));
         Assert.That(pooled.Node.IsStatic, Is.True,
             "promotion is monotonic: a later plain arrival of the same node id must never demote the pooled peer");
+    }
+
+    [Test]
+    public async Task DiscoveredNode_MatchingStaticPeerHost_IsStatic()
+    {
+        TestNodeSource nodeSource = new();
+        StaticHostFilter filter = new("1.2.3.0/24,9.9.9.9:30303", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+        PeerPool pool = new(nodeSource, Substitute.For<INodeStatsManager>(), new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig(), LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), filter);
+        pool.Start();
+
+        try
+        {
+            nodeSource.AddNode(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234));
+            nodeSource.AddNode(new Node(TestItem.PublicKeyB, "9.9.9.9", 30304));
+            nodeSource.AddNode(new Node(TestItem.PublicKeyC, "9.9.9.9", 30303));
+            nodeSource.AddNode(new Node(TestItem.PublicKeyD, "1.2.4.4", 1234));
+
+            Assert.That(() => pool.PeerCount, Is.EqualTo(4).After(5000, 10));
+            Assert.That(pool.StaticPeers.Select(static p => p.Node.Id), Is.EquivalentTo(new[] { TestItem.PublicKeyA, TestItem.PublicKeyC }));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task ResolvedStaticPeerHost_PromotesAlreadyPooledPeer()
+    {
+        StaticHostFilter filter = new("enode://*@node.example:30303",
+            static (_, _) => Task.FromResult(new[] { IPAddress.Parse("1.2.3.4") }), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+        PeerPool pool = new(new TestNodeSource(), Substitute.For<INodeStatsManager>(), new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig(), LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), filter);
+
+        Peer matching = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+        Peer otherPort = pool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.4", 30304));
+        Assert.That(matching.Node.IsStatic, Is.False, "not resolved yet");
+
+        await filter.RefreshAsync(CancellationToken.None);
+
+        Assert.That(matching.Node.IsStatic, Is.True);
+        Assert.That(otherPort.Node.IsStatic, Is.False);
+        await pool.StopAsync();
     }
 
     [Test]

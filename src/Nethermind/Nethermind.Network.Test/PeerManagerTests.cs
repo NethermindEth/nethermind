@@ -538,6 +538,26 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20), "static and trusted peers do not inflate the limit");
         }
 
+        [TestCase("1.2.3.4:30303", true)]
+        [TestCase("1.2.3.0/24", true)]
+        [TestCase("1.2.4.4", false)]
+        public async Task Incoming_session_from_static_peer_host_is_static_and_bypasses_the_hard_limit(string staticPeerHosts, bool isStatic)
+        {
+            await using Context ctx = new(maxActivePeers: 1, staticPeerHosts: staticPeerHosts);
+            ctx.PeerManager.Start();
+            PrivateKeyGenerator keyGenerator = new();
+            for (int i = 0; i < 100; i++)
+            {
+                PublicKey key = keyGenerator.Generate().PublicKey;
+                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "5.6.7.8", 30303));
+            }
+
+            ctx.RlpxPeer.CreateIncoming(CreateIncomingSessionTemplate(TestItem.PublicKeyA));
+
+            Assert.That(ctx.PeerPool.ActivePeers.TryGetValue(TestItem.PublicKeyA, out Peer? peer), Is.EqualTo(isStatic));
+            if (isStatic) Assert.That(peer!.Node.IsStatic, Is.True);
+        }
+
         // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,
         // applied when a session completes the P2P Hello exchange.
         [TestCase(11, 10, true)]
@@ -1160,9 +1180,11 @@ namespace Nethermind.Network.Test
             public TestNodeSource TestNodeSource { get; }
             public List<Session> Sessions { get; } = [];
             private readonly TimeProvider _timeProvider;
+            private readonly StaticHostFilter _staticHostFilter;
 
-            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null, TimeProvider? timeProvider = null)
+            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null, TimeProvider? timeProvider = null, string? staticPeerHosts = null)
             {
+                _staticHostFilter = new StaticHostFilter(staticPeerHosts, static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
                 _timeProvider = timeProvider ?? TimeProvider.System;
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
@@ -1181,11 +1203,11 @@ namespace Nethermind.Network.Test
                 TestNodeSource = new TestNodeSource();
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager, TestNodeSource);
                 ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance, trustedNodesManager);
+                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance, trustedNodesManager, _staticHostFilter);
                 CreatePeerManager(peerManagerLogManager);
             }
 
-            public void CreatePeerManager(ILogManager? logManager = null) => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), logManager ?? LimboLogs.Instance, _timeProvider);
+            public void CreatePeerManager(ILogManager? logManager = null) => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), logManager ?? LimboLogs.Instance, _timeProvider, _staticHostFilter);
 
             public void SetupPersistedPeers(int count) => Storage.UpdateNodes(CreateNodes(count));
 

@@ -33,6 +33,7 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
         private readonly ITrustedNodesManager _trustedNodesManager;
+        private readonly IStaticHostFilter _staticHostFilter;
         private readonly TimeProvider _timeProvider;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
@@ -52,8 +53,9 @@ namespace Nethermind.Network
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             INetworkConfig networkConfig,
             ILogManager logManager,
-            ITrustedNodesManager trustedNodesManager)
-            : this(nodeSource, nodeStatsManager, peerStorage, networkConfig, logManager, trustedNodesManager, TimeProvider.System)
+            ITrustedNodesManager trustedNodesManager,
+            IStaticHostFilter? staticHostFilter = null)
+            : this(nodeSource, nodeStatsManager, peerStorage, networkConfig, logManager, trustedNodesManager, TimeProvider.System, staticHostFilter)
         {
         }
 
@@ -64,7 +66,8 @@ namespace Nethermind.Network
             INetworkConfig networkConfig,
             ILogManager logManager,
             ITrustedNodesManager trustedNodesManager,
-            TimeProvider timeProvider)
+            TimeProvider timeProvider,
+            IStaticHostFilter? staticHostFilter = null)
         {
             _nodeSource = nodeSource ?? throw new ArgumentNullException(nameof(nodeSource));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -75,7 +78,10 @@ namespace Nethermind.Network
             _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
             _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
+            _staticHostFilter = staticHostFilter ?? StaticHostFilter.Empty;
+
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
+            _staticHostFilter.Changed += OnStaticHostsChanged;
         }
 
         private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
@@ -104,6 +110,7 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(Node node)
         {
+            PromoteIfStaticHost(node);
             if (Peers.TryGetValue(node.Id, out Peer? existing))
             {
                 MergeNodeState(node, existing.Node);
@@ -159,6 +166,27 @@ namespace Nethermind.Network
             {
                 pooled.IsBootnode = true;
                 if (_logger.IsDebug) DebugPromoted(pooled, "bootnode");
+            }
+        }
+
+        private void PromoteIfStaticHost(Node node)
+        {
+            if (!node.IsStatic && _staticHostFilter.IsMatch(node.Address))
+            {
+                node.IsStatic = true;
+                if (_logger.IsDebug) DebugStaticHostMatch(node);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void DebugStaticHostMatch(Node node)
+            => _logger.Debug($"Treating {node:s} as a static peer, its address matches {nameof(INetworkConfig.StaticPeerHosts)}");
+
+        private void OnStaticHostsChanged(object? sender, EventArgs e)
+        {
+            foreach (KeyValuePair<PublicKeyAsKey, Peer> kvp in Peers)
+            {
+                PromoteIfStaticHost(kvp.Value.Node);
             }
         }
 
@@ -348,6 +376,8 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
+                PromoteIfStaticHost(node);
+
                 // Static and trusted nodes bypass throttling so they are always registered (static to stay
                 // dialable, trusted so inbound connections are recognized and counted even at capacity).
                 bool throttlingLogged = false;
@@ -368,6 +398,7 @@ namespace Nethermind.Network
         public async Task StopAsync()
         {
             _nodeSource.NodeRemoved -= NodeSourceOnNodeRemoved;
+            _staticHostFilter.Changed -= OnStaticHostsChanged;
             _cancellationTokenSource.Cancel();
 
             StopTimers();
