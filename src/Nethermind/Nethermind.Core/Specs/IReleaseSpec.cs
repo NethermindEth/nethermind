@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -520,7 +521,7 @@ namespace Nethermind.Core.Specs
         public bool IsEip8253Enabled { get; }
 
         /// <summary>The accounts the EIP-8253 transition sets to nonce 1, from the chain configuration; empty when none are listed.</summary>
-        Address[] Eip8253Accounts { get; }
+        IReadOnlyList<Address> Eip8253Accounts { get; }
 
         /// <summary>
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
