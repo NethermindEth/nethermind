@@ -274,7 +274,7 @@ jobs:
               verdict="output mismatch"
             elif grep -qE 'Exception|Invalid Block' "$dir/stats.log"; then
               verdict="the run logged an exception or an invalid block"
-            elif ! python3 -I "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.py" \
+            elif ! dotnet run --file "$GITHUB_WORKSPACE/scripts/zisk-bench/ParseStats.cs" -- \
               --input "$input" --log "$dir/stats.log" --into "$dir/row.json"; then
               verdict="no cost figures in the log"
             fi
