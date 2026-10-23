@@ -35,7 +35,7 @@ public sealed class ZeroNonceStorageAccountsTransition(ISpecProvider specProvide
             return;
         }
 
-        ReadOnlySpan<Address> accounts = Eip8253Constants.GetAccounts(specProvider.ChainId);
+        ReadOnlySpan<Address> accounts = spec.Eip8253Accounts;
         if (accounts.IsEmpty)
         {
             return;

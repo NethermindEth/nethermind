@@ -1775,7 +1775,7 @@ public partial class EthRpcModuleTests
         Address target = Eip8253Constants.MainnetAccounts[0];
         TestSpecProvider specProvider = new(Bogota.Instance)
         {
-            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] },
             ForkOnBlockNumber = ulong.MaxValue,
             ChainId = BlockchainIds.Mainnet,
             AllowTestChainOverride = false,

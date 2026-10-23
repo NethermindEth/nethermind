@@ -46,8 +46,4 @@ public static class Eip8253Constants
         new("0x19272418753b90d9a3e3efc8430b1612c55fcb3a"),
         new("0xfee7707fa4b8c0a923a0e40399db3e7ce26069c6"),
     ];
-
-    /// <summary>Returns the accounts the EIP-8253 transition bumps on the chain with <paramref name="chainId"/>.</summary>
-    /// <remarks>Only Mainnet has a published list; every other chain gets an empty one and the transition is a no-op.</remarks>
-    public static ReadOnlySpan<Address> GetAccounts(ulong chainId) => chainId == BlockchainIds.Mainnet ? MainnetAccounts : [];
 }

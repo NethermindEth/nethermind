@@ -84,6 +84,9 @@ public class GethGenesisConfigJson : IHasNamedForks
     public bool? TerminalTotalDifficultyPassed { get; set; }
     public Address? DepositContractAddress { get; set; }
 
+    /// <summary>The accounts the EIP-8253 transition sets to nonce 1; <c>null</c> when the chain lists none.</summary>
+    public Address[]? ZeroNonceStorageAccounts { get; set; }
+
     /// <summary>
     /// Unix timestamp, in seconds, of the beacon chain genesis; <c>null</c> when the chain has no beacon chain.
     /// </summary>

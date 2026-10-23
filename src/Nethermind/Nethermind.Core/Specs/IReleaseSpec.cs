@@ -519,6 +519,9 @@ namespace Nethermind.Core.Specs
         /// </remarks>
         public bool IsEip8253Enabled { get; }
 
+        /// <summary>The accounts the EIP-8253 transition sets to nonce 1, from the chain configuration; empty when none are listed.</summary>
+        Address[] Eip8253Accounts { get; }
+
         /// <summary>
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
         /// and cold-account costs against actual state work.
