@@ -92,6 +92,12 @@ public static class FrameExceptionFragments
         "never set a payer",
     ];
 
+    /// <summary>EIP-8141: a <c>max_fee</c> below the transaction's required max fee.</summary>
+    public static readonly string[] MaxFee =
+    [
+        "max fee less than required max fee",
+    ];
+
     /// <summary>
     /// A fee field wider than its type, which the decoder rejects through its length guard.
     /// </summary>

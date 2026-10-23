@@ -744,6 +744,8 @@ public abstract class BlockchainTestBase
             yield return ("TransactionException.TYPE_6_INVALID_FRAME_EXECUTION", fragment);
         foreach (string fragment in FrameExceptionFragments.Decode)
             yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.MaxFee)
+            yield return ("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS", fragment);
         foreach (string fragment in FrameExceptionFragments.FeeOverflow)
         {
             yield return ("TransactionException.GASPRICE_OVERFLOW", fragment);
@@ -775,7 +777,7 @@ public abstract class BlockchainTestBase
         ("BlockException.INVALID_BAL_MISSING_ACCOUNT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
     ];
 
-    private static string[] MapValidationErrorsToEestExceptions(string validationError) =>
+    internal static string[] MapValidationErrorsToEestExceptions(string validationError) =>
     [
         .. ValidationErrorSubstringMappings
             .Where(m => validationError.Contains(m.Substring, StringComparison.Ordinal))
