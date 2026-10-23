@@ -86,6 +86,8 @@ public class Eip8151Tests : VirtualMachineTestsBase
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .AddSingleton(SpecProvider)
+            // Counts the recoveries that reach the precompile rather than its result cache.
+            .AddDecorator<IPrecompileProvider>(static (_, inner) => new MeteredPrecompileProvider(inner))
             .Build();
         CreateProcessor(parallel: false);
     }
@@ -264,12 +266,12 @@ public class Eip8151Tests : VirtualMachineTestsBase
         Assert.That(Read(0).Output, Is.EqualTo(AsWord(Signer)), "output before the account gains code");
 
         DeploySigner(ContractCode);
-        long recoveriesBefore = Precompiles.Metrics.ECRecoverPrecompile;
+        long recoveriesBefore = EcRecoverRuns();
         Run(code);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Precompiles.Metrics.ECRecoverPrecompile, Is.EqualTo(recoveriesBefore), "second recovery is served from the precompile result cache");
+            Assert.That(EcRecoverRuns(), Is.EqualTo(recoveriesBefore), "second recovery is served from the precompile result cache");
             Assert.That(Read(0).Output, Is.EqualTo(eip8151Enabled ? UInt256.Zero : AsWord(Signer)), "output after the account gains code");
         }
     }
@@ -450,6 +452,12 @@ public class Eip8151Tests : VirtualMachineTestsBase
         }
 
         _processor = _processingScope.Resolve<ITransactionProcessor>();
+    }
+
+    private long EcRecoverRuns()
+    {
+        ((MeteredPrecompileProvider)_container.Resolve<IPrecompileProvider>()).PublishMetrics();
+        return Precompiles.Metrics.PrecompileRuns[VirtualMachineStatics.EcRecoverPrecompileName];
     }
 
     private void DeploySigner(byte[]? code)
