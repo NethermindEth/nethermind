@@ -123,9 +123,14 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
-    [TestCase("mainnet archive", 2147483648UL)]
-    [TestCase("^archive", 536870912UL)]
-    public void Shared_block_cache_values_are_correct(string configWildcard, ulong expectedValue) => Test<IDbConfig, ulong>(configWildcard, static c => c.SharedBlockCacheSize, expectedValue);
+    [TestCase("mainnet archive", 2147483648UL, 536870912UL)]
+    [TestCase("op-mainnet_archive.json", 1073741824UL, 268435456UL)]
+    [TestCase("^archive", 536870912UL, 134217728UL)]
+    public void Db_cache_values_are_correct(string configWildcard, ulong sharedBlockCacheSize, ulong stateDbRowCacheSize)
+    {
+        Test<IDbConfig, ulong>(configWildcard, static c => c.SharedBlockCacheSize, sharedBlockCacheSize);
+        Test<IDbConfig, ulong?>(configWildcard, static c => c.StateDbRowCacheSize, stateDbRowCacheSize);
+    }
 
     [TestCase("*")]
     public void Metrics_disabled_by_default(string configWildcard)
