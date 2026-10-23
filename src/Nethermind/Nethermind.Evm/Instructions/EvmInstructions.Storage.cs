@@ -906,7 +906,7 @@ public static partial class EvmInstructions
         if (!result.IsUint64 || offset >= (uint)inputData.Length)
         {
             Unsafe.InitBlockUnaligned(ref slot, 0, EvmStack.WordSize);
-            if (TTracingInst.IsActive && EvmStack.TracesPushes(vm.TxTracer)) vm.TxTracer.ReportStackPush(Bytes.ZeroByteSpan);
+            if (TTracingInst.IsActive && stack.TracesPushes) vm.TxTracer.ReportStackPush(Bytes.ZeroByteSpan);
             return EvmExceptionType.None;
         }
 
