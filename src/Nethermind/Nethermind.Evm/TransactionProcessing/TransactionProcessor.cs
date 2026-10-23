@@ -843,17 +843,18 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (authorizationResult == AuthorizationTupleResult.Valid)
                 {
                     bool accountExists = WorldState.AccountExists(authority);
-                    bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
-
-                    delegatedBeforeTx ??= [];
-                    if (!delegatedBeforeTx.TryGetValue(authority, out bool delegatedBefore))
-                    {
-                        delegatedBefore = hasDelegation;
-                        delegatedBeforeTx[authority] = delegatedBefore;
-                    }
 
                     if (spec.IsEip8037Enabled)
                     {
+                        delegatedBeforeTx ??= [];
+                        if (!delegatedBeforeTx.TryGetValue(authority, out bool delegatedBefore))
+                        {
+                            delegatedBefore = hasDelegation;
+                            delegatedBeforeTx[authority] = delegatedBefore;
+                        }
+
+                        bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
+
                         if (!accountExists && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost()))
                         {
                             return false;
@@ -1173,7 +1174,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (validate
                 && !SkipSenderChecks
-                && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
+                && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!, _codeInfoRepository))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
                 return TransactionResult.SenderHasDeployedCode;
