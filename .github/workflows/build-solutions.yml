@@ -49,7 +49,7 @@ jobs:
           # leaves an unfinished gzip stream, so stall investigations need stacks/scheduler logs.
           MSBUILDDEBUGSCHEDULER: ${{ matrix.solution == 'EthereumTests' && 1 || '' }}
         run: >
-          bash scripts/ci/run-with-stall-watchdog.sh
+          dotnet run --file scripts/ci/RunWithStallWatchdog.cs --
           dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
           ${{ matrix.solution == 'EthereumTests' && format('-bl:{0}/stall-diagnostics/build.binlog', runner.temp) || '' }}
 
