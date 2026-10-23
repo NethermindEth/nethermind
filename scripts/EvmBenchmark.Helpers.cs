@@ -69,7 +69,10 @@ static class EvmBenchmark
         foreach (var opcode in runs.SelectMany(run => run.Keys).Distinct().Order(StringComparer.Ordinal))
         {
             var rows = runs.Where(run => run.ContainsKey(opcode)).Select(run => run[opcode]).ToArray();
-            result[opcode] = new(Median(rows.Select(row => row.Median)), Median(rows.Select(row => row.Mean)), Median(rows.Select(row => row.Error)), Median(rows.Select(row => row.StdDev)), Median(rows.Select(row => row.Threshold)));
+            result[opcode] = new(
+                Median(rows.Select(row => row.Median)), Median(rows.Select(row => row.Mean)),
+                Median(rows.Select(row => row.Error)), Median(rows.Select(row => row.StdDev)),
+                Median(rows.Select(row => row.Threshold)));
         }
         return result;
     }
@@ -116,14 +119,21 @@ static class EvmBenchmark
         }
         if (reruns.Length > 0) lines.Add($"Noisy rerun opcodes: {string.Join(", ", reruns)}");
         lines.Add("");
-        foreach (var (title, rows) in new[] { ("Regressions", flagged.Where(row => row.Delta > 0).ToArray()), ("Improvements", flagged.Where(row => row.Delta < 0).ToArray()), ("New / Removed", flagged.Where(row => row.Delta is null).ToArray()) })
+        foreach (var (title, rows) in new[]
+        {
+            ("Regressions", flagged.Where(row => row.Delta > 0).ToArray()),
+            ("Improvements", flagged.Where(row => row.Delta < 0).ToArray()),
+            ("New / Removed", flagged.Where(row => row.Delta is null).ToArray())
+        })
         {
             if (rows.Length == 0) continue;
             lines.AddRange([$"### {title} ({rows.Length})", "", "| Opcode | Base Median (ns) | PR Median (ns) | Delta | Abs Δ (ns) | Base CV | PR CV | Threshold | Uncertainty | Effective |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]);
             foreach (var row in rows)
             {
                 var delta = row.Delta is null ? "N/A" : (row.Delta >= 0 ? "+" : "") + Format(row.Delta, "F2") + "%";
-                lines.Add($"| {row.Opcode} | {Format(row.Base, "F3")} | {Format(row.Pr, "F3")} | {delta} | {Format(row.AbsoluteDelta, "F3")} | {FormatCv(row.BaseStats)} | {FormatCv(row.PrStats)} | ±{Format(row.Threshold, "F1")}% | ±{Format(row.Uncertainty, "F1")}% | ±{Format(row.Effective, "F1")}% |");
+                lines.Add($"| {row.Opcode} | {Format(row.Base, "F3")} | {Format(row.Pr, "F3")} | {delta} | " +
+                    $"{Format(row.AbsoluteDelta, "F3")} | {FormatCv(row.BaseStats)} | {FormatCv(row.PrStats)} | " +
+                    $"±{Format(row.Threshold, "F1")}% | ±{Format(row.Uncertainty, "F1")}% | ±{Format(row.Effective, "F1")}% |");
             }
             lines.Add("");
         }
