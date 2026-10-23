@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -511,6 +512,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
             if (!CanGossip || !_gossipPolicy.ShouldGossipBlock(block.Header))
+            {
+                return;
+            }
+
+            if (block.Number < HeadNumber.SaturatingSub(Sync.MaxReorgLength))
             {
                 return;
             }

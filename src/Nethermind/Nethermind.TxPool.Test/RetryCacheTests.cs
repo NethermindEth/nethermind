@@ -1783,6 +1783,8 @@ public class RetryCacheTests
     }
 
     [Test]
+    // GC pause accounting is process-wide and other tests force collections.
+    [NonParallelizable]
     public async Task OverflowStorage_ReusesBoundedCapacityAcrossRepeatedBursts(
         [Values(1024, 8192, 32768)] int resourceCount, [Values(2, 6)] int idlePeriods)
     {

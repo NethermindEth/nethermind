@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -82,6 +83,78 @@ public class JsonRpcSocketsClientTests
         Assert.That(fixture.Sink.StopRequested, Is.EqualTo(expectedStopRequested));
 
         await fixture.Sink.EndBatchAsync(CancellationToken.None);
+    }
+
+    private static IEnumerable<TestCaseData> WebSocketFrameCases()
+    {
+        yield return new TestCaseData(null, (Func<object>)(static () => "0x1")).Returns(1).SetName("Small single response");
+        yield return new TestCaseData(3, (Func<object>)(static () => "0x1")).Returns(1).SetName("Small batch response");
+        yield return new TestCaseData(null, (Func<object>)(static () => new FlushingStreamable(chunks: 4))).Returns(5).SetName("Flushing single response");
+        yield return new TestCaseData(3, (Func<object>)(static () => new FlushingStreamable(chunks: 2))).Returns(7).SetName("Flushing batch response");
+        yield return new TestCaseData(4, (Func<object>)(static () => new string('x', 20_000))).Returns(6).SetName("Large batch response");
+    }
+
+    [TestCaseSource(nameof(WebSocketFrameCases))]
+    public async Task<int> WebSocket_response_ends_on_its_last_data_frame(int? batchItems, Func<object> result)
+    {
+        RecordingWebSocket socket = new();
+        using WebSocketMessageStream webSocketStream = new(socket, LimboLogs.Instance);
+        using SocketSendLock webSocketSendLock = new();
+        long bytesWritten = await WriteSocketResponseAsync(webSocketStream, RpcEndpoint.Ws, webSocketSendLock, batchItems, result, CancellationToken.None);
+        using MemoryMessageStream ipcStream = new();
+        using SocketSendLock ipcSendLock = new();
+        await WriteSocketResponseAsync(ipcStream, RpcEndpoint.IPC, ipcSendLock, batchItems, result, CancellationToken.None);
+
+        (int Length, bool EndOfMessage)[] frames = socket.Frames.Select(static frame => (frame.Payload.Length, frame.EndOfMessage)).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frames, Has.None.Matches<(int Length, bool EndOfMessage)>(static frame => frame.Length == 0));
+            Assert.That(Array.FindIndex(frames, static frame => frame.EndOfMessage), Is.EqualTo(frames.Length - 1));
+            Assert.That(bytesWritten, Is.EqualTo(frames.Sum(static frame => frame.Length)));
+            Assert.That(Encoding.UTF8.GetString(ipcStream.ToArray()), Is.EqualTo(Encoding.UTF8.GetString(socket.Frames.SelectMany(static frame => frame.Payload).ToArray()) + "\n"),
+                "both transports carry the same bytes, IPC ending the message with a newline");
+        }
+
+        return frames.Length;
+    }
+
+    [Test]
+    public async Task WebSocket_end_of_message_send_is_cancelled_with_the_request([Values(null, 2)] int? batchItems)
+    {
+        RecordingWebSocket socket = new() { BlockEndOfMessage = true };
+        using WebSocketMessageStream stream = new(socket, LimboLogs.Instance);
+        using SocketSendLock sendLock = new();
+        using CancellationTokenSource request = new();
+
+        // Cancelled once the end-of-message send blocks: a timer can fire before the write has taken the lock.
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batchItems, static () => "0x1", request.Token).AsTask();
+        await socket.EndOfMessageEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await request.CancelAsync();
+
+        await Assert.CatchAsync<OperationCanceledException>(async () => await write.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.That(sendLock.IsFaulted, Is.True, "a cancelled send may have left part of the message on the connection");
+    }
+
+    private static async ValueTask<long> WriteSocketResponseAsync<TStream>(
+        TStream stream, RpcEndpoint endpoint, SocketSendLock sendLock, int? batchItems, Func<object> result, CancellationToken cancellationToken)
+        where TStream : Stream, IMessageBorderPreservingStream
+    {
+        using SocketJsonRpcResponseSink<TStream> sink = new(stream, new NullJsonRpcLocalStats(), null, sendLock, new JsonRpcContext(endpoint));
+        if (batchItems is not { } items)
+        {
+            using JsonRpcSuccessResponse response = new() { Id = 1, Result = result() };
+            await sink.WriteSingleAsync(response, default, cancellationToken);
+            return sink.BytesWritten;
+        }
+
+        await sink.BeginBatchAsync(cancellationToken);
+        for (int i = 0; i < items; i++)
+        {
+            using JsonRpcSuccessResponse response = new() { Id = i, Result = result() };
+            await sink.WriteBatchItemAsync(response, default, cancellationToken);
+        }
+        await sink.EndBatchAsync(cancellationToken);
+        return sink.BytesWritten;
     }
 
     private static SocketSinkFixture CreateSocketSink(RpcEndpoint endpoint = RpcEndpoint.Ws, long maxBatchResponseBodySize = 10_000)
@@ -478,7 +551,7 @@ public class JsonRpcSocketsClientTests
             Assert.That(beforeDisposal, Is.SameAs(failure), "the item failure must fault the lock itself, not rely on disposal");
             Assert.That(fixture.SendLock.Failure, Is.SameAs(failure), "disposal must not replace the item failure");
             Assert.That(rejected!.InnerException, Is.SameAs(failure));
-            Assert.That(Encoding.UTF8.GetString(partial), Is.EqualTo("["));
+            Assert.That(partial, Is.Empty);
             Assert.That(fixture.Stream, Is.SequenceEqualTo(partial));
         }
     }
@@ -548,12 +621,15 @@ public class JsonRpcSocketsClientTests
     }
 
     [Test]
-    public async Task Abandoned_socket_batch_faults_the_connection()
+    public async Task Abandoned_socket_batch_faults_the_connection([Values] bool flushed)
     {
         using SocketSinkFixture fixture = CreateSocketSink();
         await fixture.Sink.BeginBatchAsync(CancellationToken.None);
-        using JsonRpcSuccessResponse item = new() { Id = 1, Result = "0x1" };
-        await fixture.Sink.WriteBatchItemAsync(item, default, CancellationToken.None);
+        // A full response buffer is flushed before the next item is written.
+        using JsonRpcSuccessResponse first = new() { Id = 1, Result = flushed ? new string('x', 32 * 1024) : "0x1" };
+        using JsonRpcSuccessResponse second = new() { Id = 2, Result = "0x2" };
+        await fixture.Sink.WriteBatchItemAsync(first, default, CancellationToken.None);
+        await fixture.Sink.WriteBatchItemAsync(second, default, CancellationToken.None);
         byte[] partial = fixture.Stream.ToArray();
 
         // The processor stops between items, for example when the request is cancelled, and never ends the batch.
@@ -566,7 +642,7 @@ public class JsonRpcSocketsClientTests
         await Assert.ThrowsAsync<IOException>(async () => await next.BeginBatchAsync(CancellationToken.None));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Encoding.UTF8.GetString(partial), Does.StartWith("[{").And.Contain("\"0x1\""));
+            Assert.That(Encoding.UTF8.GetString(partial), flushed ? Does.StartWith("[{") : Is.Empty);
             AssertIncompleteMessageNotExtended(fixture.Stream, partial);
         }
     }
@@ -650,6 +726,34 @@ public class JsonRpcSocketsClientTests
             }
             return new ReceiveResult { Closed = true };
         }
+    }
+
+    private sealed class RecordingWebSocket : WebSocket
+    {
+        public List<(byte[] Payload, bool EndOfMessage)> Frames { get; } = [];
+        public bool BlockEndOfMessage { get; init; }
+        public TaskCompletionSource EndOfMessageEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override WebSocketCloseStatus? CloseStatus => null;
+        public override string? CloseStatusDescription => null;
+        public override WebSocketState State => WebSocketState.Open;
+        public override string? SubProtocol => null;
+
+        public override async Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
+        {
+            if (endOfMessage && BlockEndOfMessage)
+            {
+                EndOfMessageEntered.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            Frames.Add((buffer.ToArray(), endOfMessage));
+        }
+
+        public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken) => Task.CompletedTask;
+        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken) => Task.CompletedTask;
+        public override void Abort() { }
+        public override void Dispose() { }
     }
 
     private static void AssertIncompleteMessageNotExtended(MemoryMessageStream stream, byte[] partial)
@@ -808,7 +912,7 @@ public class JsonRpcSocketsClientTests
             for (int i = 0; i < concurrencyLevel; i++)
             {
                 await sendStream.WriteAsync("test"u8.ToArray(), pair.Cts.Token);
-                await sendStream.WriteEndOfMessageAsync();
+                await sendStream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
             }
 
             Assert.That(() => concurrentCall, Is.EqualTo(concurrencyLevel).After(10000, 10));
@@ -853,9 +957,9 @@ public class JsonRpcSocketsClientTests
             try
             {
                 await sendStream.WriteAsync("slow"u8.ToArray(), pair.Cts.Token);
-                await sendStream.WriteEndOfMessageAsync();
+                await sendStream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
                 await sendStream.WriteAsync("fast"u8.ToArray(), pair.Cts.Token);
-                await sendStream.WriteEndOfMessageAsync();
+                await sendStream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
 
                 answered = await Task.WhenAny(fastAnswered.Task, Task.Delay(TimeSpan.FromSeconds(10))) == fastAnswered.Task;
             }
@@ -896,7 +1000,7 @@ public class JsonRpcSocketsClientTests
             Assert.That(processedRequests, Is.EqualTo(0));
 
             await sendStream.WriteAsync(requestBytes.AsMemory(1), pair.Cts.Token);
-            await sendStream.WriteEndOfMessageAsync();
+            await sendStream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
 
             Assert.That(() => processedRequests, Is.EqualTo(1).After(5000, 10));
             Assert.That(processedRequestSize, Is.EqualTo(requestBytes.Length));

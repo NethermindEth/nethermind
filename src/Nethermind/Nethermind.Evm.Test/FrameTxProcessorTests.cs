@@ -196,7 +196,7 @@ public partial class FrameTxProcessorTests
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 5));
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.SelfVerify(50_000), Frame(FrameMode.Sender, target: Recipient, value: 5));
         tx.FrameSignatures = placeholder
             ? [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)]
             : [];
@@ -5696,7 +5696,7 @@ public partial class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce, KeyedSelfVerifyFrame(keysUsedBefore ? 0 : keys.Length));
         tx.NonceKeys = keys;
 
-        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode), baseFeePerGas: 0, out _);
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode, includeEmpty: false), baseFeePerGas: 0, out _);
         JsonElement root = document.RootElement;
         JsonElement pre = diffMode ? root.GetProperty("pre") : root;
 
@@ -5766,10 +5766,10 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    private static GethTraceOptions PrestateOptions(bool diffMode) => GethTraceOptions.Default with
+    private static GethTraceOptions PrestateOptions(bool diffMode, bool includeEmpty = true) => GethTraceOptions.Default with
     {
         Tracer = NativePrestateTracer.PrestateTracer,
-        TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}}}""")
+        TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}},"includeEmpty":{{(!diffMode && includeEmpty ? "true" : "false")}}}""")
     };
 
     private static BigInteger PrestateBalance(JsonElement state, string address) =>

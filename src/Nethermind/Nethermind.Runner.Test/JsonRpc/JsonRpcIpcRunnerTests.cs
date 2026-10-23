@@ -298,7 +298,7 @@ public class JsonRpcIpcRunnerTests
         public async Task SendAsync(byte[] message, CancellationToken token)
         {
             await _sendStream.WriteAsync(message, token);
-            await _sendStream.WriteEndOfMessageAsync();
+            await _sendStream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
         }
 
         public async ValueTask DisposeAsync()

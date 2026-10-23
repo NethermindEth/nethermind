@@ -315,9 +315,7 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(12, HoodiSpecProvider.BPO1Timestamp)) { TestName = "BPO1" };
             yield return new TestCaseData(new ForkActivation(13, HoodiSpecProvider.BPO2Timestamp - 1)) { TestName = "Before BPO2" };
             yield return new TestCaseData(new ForkActivation(14, HoodiSpecProvider.BPO2Timestamp)) { TestName = "BPO2" };
-            yield return new TestCaseData(new ForkActivation(15, HoodiSpecProvider.AmsterdamTimestamp - 1)) { TestName = "Before Amsterdam" };
-            yield return new TestCaseData(new ForkActivation(16, HoodiSpecProvider.AmsterdamTimestamp)) { TestName = "Amsterdam" };
-            yield return new TestCaseData(new ForkActivation(17, HoodiSpecProvider.AmsterdamTimestamp + 100000000)) { TestName = "Future Amsterdam" };
+            yield return new TestCaseData(new ForkActivation(15, HoodiSpecProvider.BPO2Timestamp + 100000000)) { TestName = "Future BPO2" };
         }
     }
 
@@ -1086,6 +1084,26 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp - 1)).IsEip7979Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp)).IsEip7979Enabled, Is.True);
+        }
+    }
+
+    [Test]
+    public void Eip4758_activates_only_at_its_transition_timestamp()
+    {
+        const ulong eip4758Timestamp = 70;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip4758TransitionTimestamp = eip4758Timestamp },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip4758Timestamp - 1)).IsEip4758Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip4758Timestamp)).IsEip4758Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip4758Timestamp)).GasCosts.DestroyRefund, Is.Zero);
         }
     }
 

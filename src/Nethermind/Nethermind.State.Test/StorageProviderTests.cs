@@ -421,7 +421,7 @@ public partial class StorageProviderTests(bool useFlat)
                 provider.GetOriginal(in probe, out UInt256 original);
                 Assert.That(original, Is.EqualTo((UInt256)7));
 
-                provider.Commit(Frontier.Instance);
+                provider.Commit(Frontier.Instance, new ReadCollectingStorageTracer());
                 capacities[round] = GetCollectionCapacity(GetPrivateField(provider._persistentStorageProvider, "_originalValues"));
             }
 
@@ -1726,9 +1726,10 @@ public partial class StorageProviderTests(bool useFlat)
     /// <summary>The originals-probe memo must not answer across caching rounds.</summary>
     /// <remarks>tx1 memoizes (cell, v1) while writing v2; after commit the next transaction's original for
     /// the same cell is v2. A memo without the round in its key silently returns v1, which mis-meters every
-    /// EIP-2200 SSTORE of tx2 without failing anything.</remarks>
+    /// EIP-2200 SSTORE of tx2 without failing anything. Without root commits the cell stays in the block's
+    /// changes, which still hold the pre-block value as <c>Before</c>.</remarks>
     [Test]
-    public void Get_original_after_commit_is_the_new_rounds_original()
+    public void Get_original_after_commit_is_the_new_rounds_original([Values] bool commitRoots)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
@@ -1751,7 +1752,7 @@ public partial class StorageProviderTests(bool useFlat)
             provider.GetOriginal(in cell, out UInt256 firstTxOriginal);
             Assert.That(firstTxOriginal, Is.EqualTo((UInt256)1), "tx1 original is the committed value");
 
-            provider.Commit(Frontier.Instance);
+            provider.Commit(Frontier.Instance, commitRoots: commitRoots);
 
             provider.Get(in cell, out _);
             provider.GetOriginal(in cell, out UInt256 secondTxOriginal);
@@ -2557,6 +2558,64 @@ public partial class StorageProviderTests(bool useFlat)
                 Assert.That(restored, Is.EqualTo((UInt256)17));
                 Assert.That(restoredOriginal, Is.EqualTo((UInt256)17));
             }
+        }
+    }
+
+    [Test]
+    public void Commit_WhenEmptyStorageSlotIsWrittenBackToItsOriginal_LeavesTheStorageRootAlone()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(cell, out UInt256 original);
+            provider.Set(cell, (UInt256)1);
+            provider.Set(cell, UInt256.Zero);
+            provider.Commit(Frontier.Instance, NullStateTracer.Instance, commitRoots: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(original, Is.EqualTo(UInt256.Zero), "precondition: the contract's storage starts empty");
+                Assert.That(((ICollection)GetPrivateField(provider._persistentStorageProvider, "_toUpdateRoots")).Count, Is.Zero,
+                    "the first read of an empty-storage contract keeps its round stamp, so a slot written back to its original is not saved");
+            }
+        }
+    }
+
+    [TestCase(false, TestName = "Clear")]
+    [TestCase(true, TestName = "Destroy")]
+    public void GetOriginal_RereadUnderClearAfterMemoMoved_ReturnsPreClearValue(bool destroy)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        StorageCell other = new(ctx.Address1, 2);
+        provider.Set(first, (UInt256)17);
+        provider.Commit(Frontier.Instance);
+
+        provider.Get(first, out _);
+        if (destroy) provider.MarkStorageDestroyed(ctx.Address1);
+        else provider.ClearStorage(ctx.Address1);
+
+        provider.Get(first, out UInt256 cleared);
+        provider.Get(other, out _);
+        provider.GetOriginal(first, out UInt256 original);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleared, Is.EqualTo(UInt256.Zero), "the clear zeroes the slot for the rest of the round");
+            Assert.That(original, Is.EqualTo((UInt256)17), "the original is the value before the clear, even after another read moved the memo");
         }
     }
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Net;
@@ -70,7 +71,8 @@ public class WebSocketExtensionsTests
 
         public override WebSocketCloseStatus? CloseStatus { get; }
         public override string CloseStatusDescription { get; }
-        public override WebSocketState State { get; } = WebSocketState.Open;
+        public override WebSocketState State => CurrentState;
+        public WebSocketState CurrentState { get; set; } = WebSocketState.Open;
         public override string SubProtocol { get; }
         public bool ReturnTaskWithFaultOnEmptyQueue { get; set; }
         public byte[] Payload { get; init; }
@@ -302,6 +304,21 @@ public class WebSocketExtensionsTests
             SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
+    }
+
+    [Test]
+    public async Task Writes_to_a_closed_socket_fail_the_same_way([Values] bool endOfMessage)
+    {
+        WebSocketMock mock = new(new Queue<WebSocketReceiveResult>()) { CurrentState = WebSocketState.Closed };
+        WebSocketMessageStream stream = new(mock, Substitute.For<ILogManager>());
+        ReadOnlyMemory<byte> data = "{}"u8.ToArray();
+
+        await Assert.ThatAsync(async () =>
+        {
+            if (endOfMessage) await stream.WriteEndOfMessageAsync(data, CancellationToken.None);
+            else await stream.WriteAsync(data, CancellationToken.None);
+        }, Throws.TypeOf<IOException>());
+        Assert.That(mock.SentBytes, Is.Zero);
     }
 
     [Test]

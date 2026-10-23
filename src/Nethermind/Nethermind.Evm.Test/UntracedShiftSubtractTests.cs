@@ -163,7 +163,7 @@ public class UntracedShiftSubtractTests : VirtualMachineTestsBase
                 (Instruction op, UInt256 first, UInt256 second, UInt256 expected) = cases[start + k];
                 UInt256 actual = new(output.AsSpan(k * 32, 32), isBigEndian: true);
                 if (actual != expected)
-                    Assert.Fail($"{op} first=0x{first.ToString("X")} second=0x{second.ToString("X")} gave 0x{actual.ToString("X")}, expected 0x{expected.ToString("X")}");
+                    Assert.Fail($"{op} first=0x{first:X} second=0x{second:X} gave 0x{actual:X}, expected 0x{expected:X}");
             }
         }
     }
