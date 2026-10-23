@@ -41,7 +41,7 @@ foreach (var (limit, expected) in new[] { (1, 2), (3, 4) })
     tests.Case($"comparison limit {limit} preserves both tails", () =>
     {
         var result = RpcScriptTests.Run("scripts/PerfReport.cs", "compare", before, after, limit.ToString());
-        RpcScriptTests.Assert(result.Code == 0 && Regex.Matches(result.Output, @"\s\d+\.\d+%\s+\d+\.\d+%\s+[+-]\d+\.\d+").Count == expected && result.Output.Contains("Negative") && result.Output.Contains("Positive") && result.Output.Contains("..."), result.ToString());
+        RpcScriptTests.Assert(result.Code == 0 && ComparisonRowRegex().Matches(result.Output).Count == expected && result.Output.Contains("Negative") && result.Output.Contains("Positive") && result.Output.Contains("..."), result.ToString());
     });
 foreach (var (name, contents) in new[] { ("empty", ""), ("whitespace", " \t\n\n"), ("zero", ".NET;Frame 0\n") })
     tests.Case($"validator rejects {name}", () =>
@@ -83,3 +83,9 @@ tests.Case("profile comparison keeps distinct punctuation under UTF8 locale", ()
     finally { Environment.SetEnvironmentVariable("LC_ALL", previous); }
 });
 tests.Complete();
+
+partial class Program
+{
+    [GeneratedRegex(@"\s\d+\.\d+%\s+\d+\.\d+%\s+[+-]\d+\.\d+")]
+    private static partial Regex ComparisonRowRegex();
+}

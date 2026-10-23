@@ -14,7 +14,7 @@ tests.Case("mount table seam remains positional", () => RpcScriptTests.Assert(bo
 tests.Case("holder reap covers all overlay owners", () =>
 {
     var filters = workflows.SelectMany(workflow => CiWorkflow.Bodies(workflow, "Reap leftover benchmark containers and networks"))
-        .Select(body => Regex.Match(body, @"(?m)^\s*for filter in (.*); do$").Groups[1].Value).ToArray();
+        .Select(body => FiltersRegex().Match(body).Groups[1].Value).ToArray();
     RpcScriptTests.Assert(filters.Length == 3 && filters.Distinct().Count() == 1, "holder filters drifted");
     foreach (var filter in new[] { "name=expb", "label=expb", "name=rpcbench-", "name=nethermind-rpcbench" })
         RpcScriptTests.Assert(filters[0].Split(' ').Contains(filter), "missing holder filter " + filter);
@@ -157,4 +157,10 @@ sealed class OverlayFixture
         RpcScriptTests.Assert(result.Code == 0, "best-effort reap failed: " + result.Output + result.Error);
         return (result.Output, File.ReadAllLines(table).Where(line => line.Length > 0).ToArray(), File.ReadAllLines(log));
     }
+}
+
+partial class Program
+{
+    [GeneratedRegex(@"(?m)^\s*for filter in (.*); do$")]
+    private static partial Regex FiltersRegex();
 }

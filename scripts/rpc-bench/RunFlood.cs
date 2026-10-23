@@ -73,7 +73,7 @@ try
         {
             if (line.Contains("Single Load Tests", StringComparison.Ordinal)) { active = true; continue; }
             if (line.Contains("Multi Load Tests", StringComparison.Ordinal)) { active = false; continue; }
-            if (active && !line.Contains("───", StringComparison.Ordinal) && line.Contains("- ", StringComparison.Ordinal)) names.Add(Regex.Replace(line.Replace("- ", "", StringComparison.Ordinal), @"\s", ""));
+            if (active && !line.Contains("───", StringComparison.Ordinal) && line.Contains("- ", StringComparison.Ordinal)) names.Add(WhitespaceRegex().Replace(line.Replace("- ", "", StringComparison.Ordinal), ""));
         }
         tests = names.Where(name => name.Length > 0).ToArray();
     }
@@ -114,8 +114,8 @@ try
                 var lines = new Queue<string>(); var differences = false;
                 foreach (var raw in File.ReadLines(path))
                 {
-                    var line = Regex.Replace(raw, "\u001b\\[[0-9;?]*[ -/]*[@-~]", "");
-                    differences |= Regex.IsMatch(line, "mismatch|not equal|✖|✗|FAILED", RegexOptions.IgnoreCase);
+                    var line = AnsiRegex().Replace(raw, "");
+                    differences |= DifferenceRegex().IsMatch(line);
                     lines.Enqueue(line); if (lines.Count > 120) lines.Dequeue();
                 }
                 if (differences) text.Append($"> :warning: **response differences detected** — see `{test}.log` in the artifact.\n\n");
@@ -166,3 +166,13 @@ finally { Console.CancelKeyPress -= cancel; }
 
 static string Get(string name, string fallback = "") => BenchmarkProcess.EnvironmentValue(name, fallback);
 static bool Exists(string command) => Get("PATH").Split(Path.PathSeparator).Any(directory => File.Exists(Path.Combine(directory, command)));
+
+partial class Program
+{
+    [GeneratedRegex(@"\s")]
+    private static partial Regex WhitespaceRegex();
+    [GeneratedRegex("\u001b\\[[0-9;?]*[ -/]*[@-~]")]
+    private static partial Regex AnsiRegex();
+    [GeneratedRegex("mismatch|not equal|✖|✗|FAILED", RegexOptions.IgnoreCase)]
+    private static partial Regex DifferenceRegex();
+}

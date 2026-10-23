@@ -14,7 +14,7 @@ using System.Text.RegularExpressions;
 
 internal sealed class CorpusParityError(string message) : Exception(message);
 
-internal sealed class CorpusParity : IDisposable
+internal sealed partial class CorpusParity : IDisposable
 {
     internal static readonly string[] CounterFields = ["total", "matched", "both_rpc_errors", "baseline_rpc_errors", "candidate_rpc_errors", "candidate_transport_failures", "candidate_invalid_responses", "baseline_shorter", "candidate_shorter", "length_mismatches", "content_mismatches"];
     internal static readonly string[] LabelFields = ["baseline_client", "candidate_client"];
@@ -219,7 +219,7 @@ internal sealed class CorpusParity : IDisposable
             }
             catch (JsonException) { return ("invalid_response", ""); }
         }
-        if (result is not JsonValue value || !value.TryGetValue<string>(out var text) || !Regex.IsMatch(text, @"\A0x(?:[0-9a-fA-F]{2})*\z")) return ("invalid_response", "");
+        if (result is not JsonValue value || !value.TryGetValue<string>(out var text) || !HexBytesRegex().IsMatch(text)) return ("invalid_response", "");
         return (null, text.ToLowerInvariant());
     }
 
@@ -512,6 +512,8 @@ internal sealed class CorpusParity : IDisposable
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or ArgumentException or FormatException or OverflowException)
         { Console.Error.WriteLine($"error: operation failed ({exception.GetType().Name})"); return 2; }
     }
+    [GeneratedRegex(@"\A0x(?:[0-9a-fA-F]{2})*\z")]
+    private static partial Regex HexBytesRegex();
 }
 
 internal sealed class CorpusGzipStream : Stream

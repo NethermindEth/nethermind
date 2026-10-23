@@ -3,7 +3,7 @@
 
 using System.Text.RegularExpressions;
 
-internal static class BenchmarkPaths
+internal static partial class BenchmarkPaths
 {
     internal static void AssertSane(string path, string label)
     {
@@ -36,7 +36,7 @@ internal static class BenchmarkPaths
 
     internal static string[] MountsUnder(string path, string mountsPath = "/proc/self/mounts") =>
         File.ReadLines(mountsPath).Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Where(parts => parts.Length >= 2)
-            .Select(parts => Regex.Replace(parts[1], @"\\([0-7]{3})", match => ((char)Convert.ToInt32(match.Groups[1].Value, 8)).ToString()))
+            .Select(parts => MountEscapeRegex().Replace(parts[1], match => ((char)Convert.ToInt32(match.Groups[1].Value, 8)).ToString()))
             .Where(mount => Contains(path, mount)).OrderDescending(StringComparer.Ordinal).ToArray();
 
     internal static async Task ReapAsync(IEnumerable<string> prefixes, CancellationToken cancellationToken)
@@ -49,4 +49,6 @@ internal static class BenchmarkPaths
             await BenchmarkProcess.RunAsync("docker", new[] { "rm", "-fv" }.Concat(listed.Output.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)), cancellationToken);
         }
     }
+    [GeneratedRegex(@"\\([0-7]{3})")]
+    private static partial Regex MountEscapeRegex();
 }

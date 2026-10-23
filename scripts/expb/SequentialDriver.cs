@@ -21,17 +21,11 @@ using var termination = OperatingSystem.IsWindows() ? null : PosixSignalRegistra
 return await new SequentialDriver(Environment.GetEnvironmentVariable).Run(cancellation.Token);
 #endif
 
-internal sealed class SequentialDriver(Func<string, string?> environment)
+internal sealed partial class SequentialDriver(Func<string, string?> environment)
 {
     internal const int Limit = 4096;
     internal const int MaxDiagnosticLines = 20;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    private static readonly Regex Ansi = new(@"\x1b\[[0-?]*[ -/]*[@-~]");
-    private static readonly Regex Sse = new(@"\[payload-server\]\s+client_metric\s+block_number=(\d+)\s+processing_ms=(\d+(?:\.\d+)?)");
-    private static readonly Regex K6 = new(@"^\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+(?:\.\d+)?)\s*\|\s*$");
-    private static readonly Regex WarmOk = new(@"\[payload-server\]\s+warmup\s+block=(\d+)\s+ok\b", RegexOptions.IgnoreCase);
-    private static readonly Regex WarmBad = new(@"\[payload-server\]\s+warmup\s+block=(\d+)\s+FAILED\b", RegexOptions.IgnoreCase);
-    private static readonly Regex Severe = new(@"\b(?:Unhandled|Fatal|ERROR)\b", RegexOptions.IgnoreCase);
     private static readonly (string Key, string Environment)[] CpuOverrides = [("cpu", "DOCKER_CPU"), ("cpuset", "DOCKER_CPUSET"), ("infra_cpuset", "DOCKER_INFRA_CPUSET")];
     internal string Get(string name, string fallback = "") => environment(name) ?? fallback;
     private static string Now() => DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", CultureInfo.InvariantCulture);
@@ -44,14 +38,14 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
     internal static List<string> ParseFlags(string value)
     {
         var result = new List<string>();
-        foreach (var item in Regex.Split(value, "[\\r\\n,]").Select(item => item.Trim()).Where(item => item.Length > 0))
+        foreach (var item in SeparatorsRegex().Split(value).Select(item => item.Trim()).Where(item => item.Length > 0))
         {
             if (!item.StartsWith("--", StringComparison.Ordinal) && result.Count > 0 && result[^1].StartsWith("--", StringComparison.Ordinal))
                 result[^1] += $"={item}";
             else
             {
-                var parts = Regex.Split(item, @"\s+", RegexOptions.None, TimeSpan.FromSeconds(1));
-                var boundary = Regex.Match(item, @"\s+");
+                var parts = TimedWhitespaceRegex().Split(item);
+                var boundary = WhitespaceRegex().Match(item);
                 result.Add(parts.Length == 1 || parts[0].Contains('=') ? item : $"{parts[0]}={item[(boundary.Index + boundary.Length)..]}");
             }
         }
@@ -61,12 +55,12 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
     internal static Dictionary<string, string> ParsePairs(string value)
     {
         var result = new Dictionary<string, string>();
-        foreach (var raw in Regex.Split(value, "[\\r\\n,]"))
+        foreach (var raw in SeparatorsRegex().Split(value))
         {
             var item = raw.Trim();
             if (item.Length == 0) continue;
             var split = item.IndexOf('=');
-            if (split < 0 || !Regex.IsMatch(item[..split], @"\A[A-Za-z_][A-Za-z0-9_]*\z"))
+            if (split < 0 || !EnvironmentKeyRegex().IsMatch(item[..split]))
                 throw new ArgumentException($"environment entry must use a valid KEY=VALUE pair: '{item}'");
             result[item[..split]] = item[(split + 1)..];
         }
@@ -76,7 +70,7 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
     internal static long? ParseAmount(string value)
     {
         if (value.Length == 0) return null;
-        if (!Regex.IsMatch(value, @"\A[1-9][0-9]*\z") || !long.TryParse(value, CultureInfo.InvariantCulture, out var amount))
+        if (!PositiveIntegerRegex().IsMatch(value) || !long.TryParse(value, CultureInfo.InvariantCulture, out var amount))
             throw new ArgumentException($"AMOUNT must be a positive integer, got '{value}'");
         return amount;
     }
@@ -104,12 +98,12 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
             if (value.Length == 0) continue;
             if (key == "cpu")
             {
-                if (value != "all" && !Regex.IsMatch(value, @"\A[0-9]+\z"))
+                if (value != "all" && !IntegerRegex().IsMatch(value))
                     throw new ArgumentException($"{variable} must be a whole number of CPUs or 'all', got '{value}'");
                 resources[key] = value == "all" ? 0 : int.Parse(value, CultureInfo.InvariantCulture);
             }
             else if (value == "all") resources.Remove(key);
-            else if (Regex.IsMatch(value, @"\A[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)*\z")) resources[key] = value;
+            else if (CpuSetRegex().IsMatch(value)) resources[key] = value;
             else throw new ArgumentException($"{variable} must be a Docker cpuset list or 'all', got '{value}'");
         }
     }
@@ -245,22 +239,22 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
         var cleanup = false;
         foreach (var raw in File.ReadLines(path))
         {
-            var line = Ansi.Replace(raw, "");
-            var metric = Sse.Match(line);
+            var line = AnsiRegex().Replace(raw, "");
+            var metric = SseRegex().Match(line);
             if (useSse && metric.Success) sse.Add((Number(metric, 1), Timing(metric, 2)));
-            var row = K6.Match(line);
+            var row = K6Regex().Match(line);
             if (row.Success) rows.Add((Number(row, 1), Number(row, 2), Timing(row, 3)));
-            var ok = WarmOk.Match(line);
+            var ok = WarmOkRegex().Match(line);
             if (ok.Success) warmOk.Add(Number(ok, 1));
-            var bad = WarmBad.Match(line);
+            var bad = WarmBadRegex().Match(line);
             if (bad.Success) warmBad.Add(Number(bad, 1));
             foreach (var key in new[] { "exceptions", "invalid", "severe" })
             {
                 var matches = key switch
                 {
                     "exceptions" => line.Contains("Exception", StringComparison.Ordinal),
-                    "invalid" => Regex.IsMatch(line, @"invalid[\s_-]*blocks?", RegexOptions.IgnoreCase),
-                    _ => Severe.IsMatch(line)
+                    "invalid" => InvalidBlockRegex().IsMatch(line),
+                    _ => SevereRegex().IsMatch(line)
                 };
                 if (!matches) continue;
                 counts[key]++;
@@ -377,7 +371,7 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
             {
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
                 var names = await Docker(["ps", "--filter", "label=expb", "--format", "{{.Names}}"]);
-                if (names.Split('\n', StringSplitOptions.RemoveEmptyEntries).Any(name => !Regex.IsMatch(name, @"-(?:k6|alloy|payload-server)$"))) break;
+                if (names.Split('\n', StringSplitOptions.RemoveEmptyEntries).Any(name => !SidecarRegex().IsMatch(name))) break;
             }
             await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
             foreach (var container in (await Docker(["ps", "-q", "--no-trunc", "--filter", "label=expb"])).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
@@ -650,7 +644,7 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
             images = [];
             foreach (var image in raw) images.Add((JsonNode)new JsonObject { ["id"] = Text(image!["id"]), ["image"] = image["image"]!.DeepClone() });
             var ids = images.Select(image => Text(image!["id"])).ToArray();
-            if (ids.Distinct().Count() != ids.Length || ids.Any(id => id is "." or ".." || !Regex.IsMatch(id, @"\A[A-Za-z0-9_.-]+\z"))) throw new ArgumentException("image IDs must be unique and shell-safe");
+            if (ids.Distinct().Count() != ids.Length || ids.Any(id => id is "." or ".." || !ImageIdRegex().IsMatch(id))) throw new ArgumentException("image IDs must be unique and shell-safe");
             runCount = int.Parse(Get("RUN_COUNT", "1"), CultureInfo.InvariantCulture);
             if (runCount < 1) throw new ArgumentException("RUN_COUNT must be positive");
             Render(config, images[0]!.AsObject(), 1);
@@ -699,4 +693,36 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
         }
         return !stopped && !cancellationToken.IsCancellationRequested && failureReasons.Count == 0 && samples.Count == images.Count * runCount && samples.All(item => Text(item!["status"]) == "success") ? 0 : 1;
     }
+    [GeneratedRegex("[\\r\\n,]")]
+    private static partial Regex SeparatorsRegex();
+    [GeneratedRegex(@"\s+", RegexOptions.None, 1000)]
+    private static partial Regex TimedWhitespaceRegex();
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRegex();
+    [GeneratedRegex(@"\A[A-Za-z_][A-Za-z0-9_]*\z")]
+    private static partial Regex EnvironmentKeyRegex();
+    [GeneratedRegex(@"\A[1-9][0-9]*\z")]
+    private static partial Regex PositiveIntegerRegex();
+    [GeneratedRegex(@"\A[0-9]+\z")]
+    private static partial Regex IntegerRegex();
+    [GeneratedRegex(@"\A[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)*\z")]
+    private static partial Regex CpuSetRegex();
+    [GeneratedRegex(@"invalid[\s_-]*blocks?", RegexOptions.IgnoreCase)]
+    private static partial Regex InvalidBlockRegex();
+    [GeneratedRegex(@"-(?:k6|alloy|payload-server)$")]
+    private static partial Regex SidecarRegex();
+    [GeneratedRegex(@"\A[A-Za-z0-9_.-]+\z")]
+    private static partial Regex ImageIdRegex();
+    [GeneratedRegex(@"\x1b\[[0-?]*[ -/]*[@-~]")]
+    private static partial Regex AnsiRegex();
+    [GeneratedRegex(@"\[payload-server\]\s+client_metric\s+block_number=(\d+)\s+processing_ms=(\d+(?:\.\d+)?)")]
+    private static partial Regex SseRegex();
+    [GeneratedRegex(@"^\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+(?:\.\d+)?)\s*\|\s*$")]
+    private static partial Regex K6Regex();
+    [GeneratedRegex(@"\[payload-server\]\s+warmup\s+block=(\d+)\s+ok\b", RegexOptions.IgnoreCase)]
+    private static partial Regex WarmOkRegex();
+    [GeneratedRegex(@"\[payload-server\]\s+warmup\s+block=(\d+)\s+FAILED\b", RegexOptions.IgnoreCase)]
+    private static partial Regex WarmBadRegex();
+    [GeneratedRegex(@"\b(?:Unhandled|Fatal|ERROR)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SevereRegex();
 }

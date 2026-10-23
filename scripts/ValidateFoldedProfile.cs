@@ -23,10 +23,10 @@ var native = 0L;
 var unknown = 0L;
 foreach (var (stack, count) in Profiles.Read(path))
 {
-    if (count <= 0 || !Regex.IsMatch(stack, @"^[^\s;][^;]*;[^\s].*")) continue;
+    if (count <= 0 || !StackRegex().IsMatch(stack)) continue;
     var leaf = stack[(stack.LastIndexOf(';') + 1)..];
     if (Profiles.IsManaged(leaf)) managed = checked(managed + count);
-    else if (Regex.IsMatch(leaf, @"^\[unknown\](\s|$)")) unknown = checked(unknown + count);
+    else if (UnknownFrameRegex().IsMatch(leaf)) unknown = checked(unknown + count);
     else native = checked(native + count);
 }
 var total = managed + native + unknown;
@@ -39,3 +39,11 @@ Console.WriteLine($"Folded profile leaf/self samples: managed={managed} ({manage
 if (managed > 0) return 0;
 Console.Error.WriteLine($"error: folded profile '{path}' has no managed leaf samples; check perf-map symbolization");
 return 1;
+
+partial class Program
+{
+    [GeneratedRegex(@"^[^\s;][^;]*;[^\s].*")]
+    private static partial Regex StackRegex();
+    [GeneratedRegex(@"^\[unknown\](\s|$)")]
+    private static partial Regex UnknownFrameRegex();
+}

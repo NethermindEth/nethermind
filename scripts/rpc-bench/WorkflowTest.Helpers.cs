@@ -5,7 +5,7 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using YamlDotNet.RepresentationModel;
 
-internal sealed class WorkflowTest
+internal sealed partial class WorkflowTest
 {
     internal string Root { get; }
     internal YamlMappingNode Document { get; }
@@ -22,7 +22,7 @@ internal sealed class WorkflowTest
     internal static string Text(YamlNode? node, string key) => (Get(node, key) as YamlScalarNode)?.Value ?? "";
     internal YamlMappingNode Job(string name) => (YamlMappingNode)Get(Get(Document, "jobs"), name)!;
     internal YamlMappingNode Step(string job, string name) => ((YamlSequenceNode)Get(Job(job), "steps")!).Children.Cast<YamlMappingNode>().Single(step => Text(step, "name") == name);
-    internal static string Expand(string script, Dictionary<string, string>? expressions = null) => Regex.Replace(script, @"\$\{\{\s*(.*?)\s*\}\}", match => expressions?.GetValueOrDefault(match.Groups[1].Value.Trim(), "x") ?? "x");
+    internal static string Expand(string script, Dictionary<string, string>? expressions = null) => ExpressionRegex().Replace(script, match => expressions?.GetValueOrDefault(match.Groups[1].Value.Trim(), "x") ?? "x");
 
     internal (int Code, string Output, string Error) Run(string script, Dictionary<string, string> environment, string temporaryDirectory, Dictionary<string, string>? expressions = null)
     {
@@ -48,7 +48,7 @@ internal sealed class WorkflowTest
         var environment = new Dictionary<string, string> { ["EVENT_NAME"] = "workflow_dispatch", ["PUSH_BRANCH"] = "feature/test", ["PR_HEAD_BRANCH"] = "", ["WR_EVENT"] = "", ["WR_CONCLUSION"] = "", ["WR_HEAD_BRANCH"] = "", ["WR_HEAD_SHA"] = "" };
         foreach (var (key, value) in ((YamlMappingNode)Get(step, "env")!).Children)
         {
-            var match = Regex.Match(value.ToString(), @"inputs\.([a-z_]+)");
+            var match = InputRegex().Match(value.ToString());
             if (match.Success) environment[key.ToString()] = Text(Get(defaults, match.Groups[1].Value), "default");
         }
         foreach (var (key, value) in inputs) environment[key] = value;
@@ -70,4 +70,8 @@ internal sealed class WorkflowTest
         }
         return (result.Code, values, result.Output + result.Error);
     }
+    [GeneratedRegex(@"\$\{\{\s*(.*?)\s*\}\}")]
+    private static partial Regex ExpressionRegex();
+    [GeneratedRegex(@"inputs\.([a-z_]+)")]
+    private static partial Regex InputRegex();
 }

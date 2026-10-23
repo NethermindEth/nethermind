@@ -87,7 +87,7 @@ tests.Case("cell-specific cache keys", () =>
 {
     Require(!text.Contains("matrix.payload_set", StringComparison.Ordinal), "old matrix field");
     Contains(text, "cell: ${{ fromJson(needs.resolve.outputs.cells) }}", "Restore master metrics (fusaka)", "Restore master metrics (fusaka-delay1s)");
-    var keys = Regex.Matches(text, @"expb-master-metrics-v\d+-.*");
+    var keys = MetricsCacheRegex().Matches(text);
     Require(keys.Count > 0 && keys.All(key => key.Value.Contains("-run-", StringComparison.Ordinal)), "baseline restore prefix can collide");
 });
 foreach (var (floor, extra, expected) in new[] { ("67108864", "", "FlatDb.CompactionOffset=0"), ("67108864", "--FlatDb.CompactionOffset=5", "FlatDb.CompactionOffset=5"), ("off", "", "") })
@@ -97,7 +97,7 @@ foreach (var (floor, extra, expected) in new[] { ("67108864", "", "FlatDb.Compac
         Require(result.Code == 0, result.Log);
         Require(result.Values["client"] == "nethermind" && result.Values["measurement_source"] == "auto" && result.Values["client_snapshot_dir"] == "" && result.Values["snapshot_mount_path"] == "", "default timing/snapshot changed");
         var flags = result.Values["additional_extra_flags"];
-        Require(Regex.Matches(flags, "CompactionOffset").Count == (expected.Length == 0 ? 0 : 1), "caller offset duplicated or floor-off altered");
+        Require(CompactionOffsetRegex().Matches(flags).Count == (expected.Length == 0 ? 0 : 1), "caller offset duplicated or floor-off altered");
         if (expected.Length > 0) Contains(flags, expected, "FlatDb.PersistenceWriteBufferFloor=67108864");
     });
 foreach (var images in new[] { " , , ", "a/x:latest,b/x:latest,a/x:latest" })
@@ -109,7 +109,7 @@ foreach (var images in new[] { " , , ", "a/x:latest,b/x:latest,a/x:latest" })
         var rows = JsonNode.Parse(result.Values["images"])!.AsArray();
         Require(rows.Select(row => row!["image"]!.ToString()).SequenceEqual(images.Split(',')) && rows.All(row => row!["tag"]!.ToString() == "latest"), "full image references lost");
         var ids = rows.Select(row => row!["id"]!.ToString()).ToArray();
-        Require(ids.Distinct().Count() == 3 && ids.Select((id, index) => Regex.IsMatch(id, $"^image-{index + 1}-[0-9a-f]{{12}}$")).All(valid => valid), "duplicate tags share ids");
+        Require(ids.Distinct().Count() == 3 && ids.Select((id, index) => ImageIdRegex().IsMatch(id) && id.StartsWith($"image-{index + 1}-", StringComparison.Ordinal)).All(valid => valid), "duplicate tags share ids");
     });
 var installers = CiWorkflow.Bodies(workflow, "Install or upgrade expb").Concat(CiWorkflow.Bodies(workflow, "Install or upgrade expb and yq")).ToArray();
 Require(installers.Length == 2, "both EXPB install paths required");
@@ -210,3 +210,13 @@ else foreach (var (cpu, cpuset, infra, expectedCpuSet, expectedInfra) in new[] {
         Require(resources["cpu"]!.GetValue<int>() == 0 && resources["mem"]!.ToString() == "64g" && (resources["cpuset"]?.ToString() ?? "") == expectedCpuSet && (resources["infra_cpuset"]?.ToString() ?? "") == expectedInfra, "resource limits differ");
     });
 tests.Complete();
+
+partial class Program
+{
+    [GeneratedRegex(@"^image-[0-9]+-[0-9a-f]{12}$")]
+    private static partial Regex ImageIdRegex();
+    [GeneratedRegex(@"expb-master-metrics-v\d+-.*")]
+    private static partial Regex MetricsCacheRegex();
+    [GeneratedRegex("CompactionOffset")]
+    private static partial Regex CompactionOffsetRegex();
+}

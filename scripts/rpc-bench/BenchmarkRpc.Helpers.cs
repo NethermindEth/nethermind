@@ -6,7 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-internal static class BenchmarkRpc
+internal static partial class BenchmarkRpc
 {
     internal static async Task<string?> HeadAsync(HttpClient client, string url, CancellationToken cancellationToken)
     {
@@ -37,7 +37,7 @@ internal static class BenchmarkRpc
                 throw new IOException("node container died before serving JSON-RPC");
             }
             var head = await HeadAsync(client, url, cancellationToken);
-            if (head is not null && Regex.IsMatch(head, "^0x[0-9a-fA-F]{1,15}$"))
+            if (head is not null && BlockNumberRegex().IsMatch(head))
             {
                 var number = long.Parse(head[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
                 if (number == 0) throw new IOException("node reports head block 0 — datadir mismatch; refusing to benchmark genesis");
@@ -48,4 +48,6 @@ internal static class BenchmarkRpc
             if (elapsed % 30 == 0) BenchmarkProcess.Log($"  still waiting for RPC... ({elapsed}/{timeout}s)");
         }
     }
+    [GeneratedRegex("^0x[0-9a-fA-F]{1,15}$")]
+    private static partial Regex BlockNumberRegex();
 }

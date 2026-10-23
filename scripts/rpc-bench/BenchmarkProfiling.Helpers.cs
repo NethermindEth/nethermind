@@ -5,7 +5,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
+internal sealed partial class BenchmarkProfiling(Dictionary<string, string> state)
 {
     private string Get(string key, string fallback = "") => state.GetValueOrDefault(key, BenchmarkProcess.EnvironmentValue(key, fallback));
     private string _samplingEvent = "";
@@ -27,14 +27,14 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
 
     internal static (string Start, string Name, string Executable)? Identity(string pid, string procRoot)
     {
-        if (!Regex.IsMatch(pid, "^[1-9][0-9]*$")) return null;
+        if (!PositiveIntegerRegex().IsMatch(pid)) return null;
         try
         {
             var stat = File.ReadAllText(Path.Combine(procRoot, pid, "stat"));
             var boundary = stat.LastIndexOf(") ", StringComparison.Ordinal);
             if (boundary < 0) return null;
             var fields = stat[(boundary + 2)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (fields.Length <= 19 || !Regex.IsMatch(fields[19], "^[0-9]+$")) return null;
+            if (fields.Length <= 19 || !IntegerRegex().IsMatch(fields[19])) return null;
             var name = File.ReadLines(Path.Combine(procRoot, pid, "comm")).FirstOrDefault()?.TrimEnd('\r');
             var executable = File.ResolveLinkTarget(Path.Combine(procRoot, pid, "exe"), returnFinalTarget: true)?.FullName;
             return string.IsNullOrEmpty(name) || string.IsNullOrEmpty(executable) ? null : (fields[19], name, executable);
@@ -55,7 +55,7 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
         var listing = await BenchmarkProcess.RunAsync("docker", ["exec", container, "dotnet", "--list-runtimes"], cancellationToken);
         foreach (var line in listing.Output.Split('\n'))
         {
-            var match = Regex.Match(line.TrimEnd('\r'), @"\[([^\]]+)\]$");
+            var match = RuntimePathRegex().Match(line.TrimEnd('\r'));
             if (!match.Success) continue;
             var root = Path.GetDirectoryName(Path.GetDirectoryName(match.Groups[1].Value));
             if (root is not null && (await BenchmarkProcess.RunAsync("docker", ["exec", container, "test", "-d", root + "/host/fxr"], cancellationToken)).Code == 0) return root;
@@ -70,7 +70,7 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
             if (line.StartsWith("NSpid:", StringComparison.Ordinal))
             {
                 var pid = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[^1];
-                if (Regex.IsMatch(pid, "^[0-9]+$")) return pid;
+                if (IntegerRegex().IsMatch(pid)) return pid;
             }
         throw new IOException($"could not resolve the container PID for client process {hostPid}");
     }
@@ -140,7 +140,7 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
                 var maximum = Get("DOTNET_TRACE_MAX_SECONDS");
                 if (maximum.Length > 0)
                 {
-                    if (!Regex.IsMatch(maximum, "^[1-9][0-9]*$") || !long.TryParse(maximum, out var seconds)) throw new ArgumentException($"DOTNET_TRACE_MAX_SECONDS must be a positive integer (got '{maximum}')");
+                    if (!PositiveIntegerRegex().IsMatch(maximum) || !long.TryParse(maximum, out var seconds)) throw new ArgumentException($"DOTNET_TRACE_MAX_SECONDS must be a positive integer (got '{maximum}')");
                     arguments.AddRange(["--duration", $"{seconds / 3600:D2}:{seconds % 3600 / 60:D2}:{seconds % 60:D2}"]);
                 }
                 using var process = StartRecorder("docker", arguments, log);
@@ -187,4 +187,10 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
         Record("PROFILERS_STARTED_AT", DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture));
         void Record(string key, string value) { BenchmarkState.Append(statePath, key, value); state[key] = value; }
     }
+    [GeneratedRegex("^[1-9][0-9]*$")]
+    private static partial Regex PositiveIntegerRegex();
+    [GeneratedRegex("^[0-9]+$")]
+    private static partial Regex IntegerRegex();
+    [GeneratedRegex(@"\[([^\]]+)\]$")]
+    private static partial Regex RuntimePathRegex();
 }

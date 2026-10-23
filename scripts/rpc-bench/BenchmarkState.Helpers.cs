@@ -5,7 +5,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
-internal static class BenchmarkState
+internal static partial class BenchmarkState
 {
     internal static Dictionary<string, string> Read(string path)
     {
@@ -14,7 +14,7 @@ internal static class BenchmarkState
         {
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
             var separator = line.IndexOf('=');
-            if (separator <= 0 || !Regex.IsMatch(line[..separator], "^[A-Za-z_][A-Za-z0-9_]*$")) throw new IOException("Invalid benchmark state assignment");
+            if (separator <= 0 || !EnvironmentKeyRegex().IsMatch(line[..separator])) throw new IOException("Invalid benchmark state assignment");
             result[line[..separator]] = Decode(line[(separator + 1)..]);
         }
         return result;
@@ -22,7 +22,7 @@ internal static class BenchmarkState
 
     internal static void Append(string path, string key, string value)
     {
-        if (!Regex.IsMatch(key, "^[A-Za-z_][A-Za-z0-9_]*$")) throw new ArgumentException("Invalid state key", nameof(key));
+        if (!EnvironmentKeyRegex().IsMatch(key)) throw new ArgumentException("Invalid state key", nameof(key));
         File.AppendAllText(path, key + "=" + Encode(value) + "\n");
     }
 
@@ -93,4 +93,6 @@ internal static class BenchmarkState
         if (quote != '\0') throw new IOException("Unterminated state quote");
         return builder.ToString();
     }
+    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]*$")]
+    private static partial Regex EnvironmentKeyRegex();
 }

@@ -39,7 +39,7 @@ catch (Exception error) when (error is CorpusResultsError or IOException or Json
 
 internal sealed class CorpusResultsError(string message) : Exception(message);
 
-internal static class CorpusResults
+internal static partial class CorpusResults
 {
     internal const int BaselineSchema = 1;
     internal static readonly Dictionary<string, string[]> MetricFields = new()
@@ -50,7 +50,6 @@ internal static class CorpusResults
     private static readonly string[] ClassFields = [.. MetricFields["http_req_duration"], "count"];
     internal static readonly string[] StagedFilenames = ["summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest", "timings.csv", "parity-diffs.json", "timings.meta.json", "resources.json"];
     private static readonly HashSet<string> ResourceFields = ["wall_seconds", "samples", "cpu_seconds", "cpu_avg_cores", "cpu_peak_cores", "cpu_throttled_usec", "memory_avg_bytes", "memory_peak_bytes", "memory_anon_avg_bytes", "memory_anon_peak_bytes", "memory_file_avg_bytes", "io_read_bytes", "io_write_bytes", "stall_cpu_usec", "stall_io_usec", "stall_memory_usec", "requests", "cpu_ms_per_request", "io_read_bytes_per_request"];
-    private static readonly Regex Status = new(@"\A(ok|transport_failure|invalid_response|rpc_error)(:-?\d+)?\z");
     private static readonly (string Key, string Name)[] CommentMetrics = [("avg", "avg"), ("med", "median"), ("p(90)", "p90"), ("p(95)", "p95"), ("p(99)", "p99"), ("max", "max")];
     private static bool Shape(JsonNode? node, IEnumerable<string> keys) => node is JsonObject obj && obj.Select(pair => pair.Key).ToHashSet(StringComparer.Ordinal).SetEquals(keys);
     private static bool Subset(JsonNode? node, IEnumerable<string> keys) => node is JsonObject obj && obj.All(pair => keys.Contains(pair.Key));
@@ -97,8 +96,8 @@ internal static class CorpusResults
         var classes = new Dictionary<string, JsonObject>();
         foreach (var (key, metric) in metrics)
         {
-            var match = Regex.Match(key, @"^(http_req_duration|http_reqs)\{(.*)\}$");
-            var tag = match.Success ? Regex.Match(match.Groups[2].Value, "req_name:['\"]?(class_[0-9]+)['\"]?") : Match.Empty;
+            var match = TaggedMetricRegex().Match(key);
+            var tag = match.Success ? ClassTagRegex().Match(match.Groups[2].Value) : Match.Empty;
             if (!tag.Success) continue;
             var name = tag.Groups[1].Value;
             if (!classes.TryGetValue(name, out var values)) classes[name] = values = [];
@@ -147,7 +146,7 @@ internal static class CorpusResults
                     Require(metrics["classes"] is JsonObject, "classes is not an object");
                     foreach (var (className, metric) in metrics["classes"]!.AsObject())
                     {
-                        Require(Regex.IsMatch(className, @"\Aclass_[0-9]+\z") && metric is JsonObject obj && Shape(obj["values"], ClassFields), "class entry has an unexpected shape");
+                        Require(ClassNameRegex().IsMatch(className) && metric is JsonObject obj && Shape(obj["values"], ClassFields), "class entry has an unexpected shape");
                         foreach (var field in ClassFields) Number(metric!["values"]![field], $"{className}.{field}");
                     }
                 }
@@ -181,9 +180,9 @@ internal static class CorpusResults
                 Require(Shape(data, ["head", "chain_id", "block_hash", "records", "passes", "requests", "target_rps", "achieved_rps", "concurrency", "warmup_seconds", "warmup_rps", "outcomes"]), "does not match the timings metadata schema");
                 foreach (var key in new[] { "head", "chain_id", "records", "passes", "requests", "concurrency", "warmup_seconds" }) Integer(key);
                 foreach (var key in new[] { "target_rps", "achieved_rps", "warmup_rps" }) Number(data[key], key);
-                Require(data["block_hash"] is JsonValue hash && hash.TryGetValue<string>(out var text) && Regex.IsMatch(text, @"\A0x[0-9a-f]{64}\z"), "block_hash is not a 32-byte hex hash");
+                Require(data["block_hash"] is JsonValue hash && hash.TryGetValue<string>(out var text) && BlockHashRegex().IsMatch(text), "block_hash is not a 32-byte hex hash");
                 Require(data["outcomes"] is JsonObject, "outcomes is not an object");
-                foreach (var (key, value) in data["outcomes"]!.AsObject()) Require(Status.IsMatch(key) && IsInteger(value), "unexpected outcome entry");
+                foreach (var (key, value) in data["outcomes"]!.AsObject()) Require(StatusRegex().IsMatch(key) && IsInteger(value), "unexpected outcome entry");
                 break;
             case "resources.json":
                 Require(Subset(data, ResourceFields), "does not match the resource schema");
@@ -219,7 +218,7 @@ internal static class CorpusResults
                 if (row[index].Length == 0) continue;
                 if (numeric.Contains(index))
                 { if (!double.TryParse(row[index], NumberStyles.Float, CultureInfo.InvariantCulture, out _)) throw new CorpusResultsError($"timings.csv: row {number} holds a non-numeric value"); }
-                else if (!Status.IsMatch(row[index])) throw new CorpusResultsError($"timings.csv: row {number} holds an unexpected status");
+                else if (!StatusRegex().IsMatch(row[index])) throw new CorpusResultsError($"timings.csv: row {number} holds an unexpected status");
             }
         }
     }
@@ -262,7 +261,7 @@ internal static class CorpusResults
         {
             number++;
             if (string.IsNullOrWhiteSpace(line)) continue;
-            var match = Regex.Match(line, @"\A(?<prefix>iso\|[A-Za-z0-9._-]+\|[A-Za-z0-9._-]+\|[A-Za-z0-9._-]+|mix\|[A-Za-z0-9._-]+\|[A-Za-z0-9._-]+)=(?<path>.+jsonbench-summary\.md)\z");
+            var match = ManifestRegex().Match(line);
             if (!match.Success) { Console.Error.WriteLine($"::warning::summaries.manifest: line {number} does not match the manifest shape — index not staged"); return false; }
             var resolved = Resolve(match.Groups["path"].Value);
             if (!Within(source, resolved)) { Console.Error.WriteLine($"::warning::summaries.manifest: line {number} points outside the output root — index not staged"); return false; }
@@ -288,7 +287,7 @@ internal static class CorpusResults
         var relative = Path.GetRelativePath(root, path);
         return !Path.IsPathRooted(relative) && relative != ".." && !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
     }
-    private static string Family(string label) => Regex.Replace(label, @"_r[0-9]+$", "");
+    private static string Family(string label) => RoundSuffixRegex().Replace(label, "");
     private static double? Spread(double[] values) => values.Length < 2 || values.Average() == 0 ? null : (values.Max() - values.Min()) / values.Average() * 100;
     private static double Delta(double baseline, double candidate) => baseline != 0 ? (candidate - baseline) / baseline * 100 : double.NaN;
     private static string Arrow(double delta, double floor) => double.IsNaN(delta) ? "⚪" : delta < -floor ? "🟢" : delta > floor ? "🔴" : "⚪";
@@ -488,6 +487,20 @@ internal static class CorpusResults
         return string.Join('\n', lines);
     }
 
+    [GeneratedRegex(@"^(http_req_duration|http_reqs)\{(.*)\}$")]
+    private static partial Regex TaggedMetricRegex();
+    [GeneratedRegex("req_name:['\"]?(class_[0-9]+)['\"]?")]
+    private static partial Regex ClassTagRegex();
+    [GeneratedRegex(@"\Aclass_[0-9]+\z")]
+    private static partial Regex ClassNameRegex();
+    [GeneratedRegex(@"\A0x[0-9a-f]{64}\z")]
+    private static partial Regex BlockHashRegex();
+    [GeneratedRegex(@"\A(?<prefix>iso\|[A-Za-z0-9._-]+\|[A-Za-z0-9._-]+\|[A-Za-z0-9._-]+|mix\|[A-Za-z0-9._-]+\|[A-Za-z0-9._-]+)=(?<path>.+jsonbench-summary\.md)\z")]
+    private static partial Regex ManifestRegex();
+    [GeneratedRegex(@"_r[0-9]+$")]
+    private static partial Regex RoundSuffixRegex();
+    [GeneratedRegex(@"\A(ok|transport_failure|invalid_response|rpc_error)(:-?\d+)?\z")]
+    private static partial Regex StatusRegex();
 }
 
 // Keep the seeded bootstrap samples compatible with Python's MT19937 random.choices.

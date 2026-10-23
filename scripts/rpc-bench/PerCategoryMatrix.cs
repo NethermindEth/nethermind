@@ -81,17 +81,27 @@ static (Dictionary<string, double> Overall, Dictionary<string, double> Methods) 
     var methods = new Dictionary<string, double>();
     foreach (var (key, label) in new[] { ("avg", "latency avg (ms)"), ("median", "latency p50 (ms)"), ("p90", "latency p90 (ms)"), ("p99", "latency p99 (ms)"), ("tput", "throughput (req/s)"), ("checks", "checks passed") })
     {
-        var match = Regex.Match(text, @"\|\s*" + Regex.Escape(label) + @"\s*\|\s*([0-9.]+)" + (key == "checks" ? "%" : ""));
-        if (match.Success) overall[key] = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+        var match = OverallRowRegex().Matches(text).FirstOrDefault(match => match.Groups[1].Value == label && (key != "checks" || match.Groups[3].Success));
+        if (match is not null) overall[key] = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
     }
     var inMethods = false;
     foreach (var line in text.Split('\n'))
     {
         if (line.Trim().StartsWith("### Per method", StringComparison.Ordinal)) { inMethods = true; continue; }
         if (!inMethods) continue;
-        var match = Regex.Match(line.Trim(), @"^\|\s*([\w/#-]+)\s*\|" + string.Concat(Enumerable.Repeat(@"\s*([0-9.]+)\s*\|", 6)));
+        var match = MethodRowRegex().Match(line.Trim());
         if (match.Success && match.Groups[1].Value != "method")
-            methods[Regex.Replace(match.Groups[1].Value, "[^a-zA-Z0-9_-]", "-")] = double.Parse(match.Groups[6].Value, CultureInfo.InvariantCulture);
+            methods[UnsafeNameRegex().Replace(match.Groups[1].Value, "-")] = double.Parse(match.Groups[6].Value, CultureInfo.InvariantCulture);
     }
     return (overall, methods);
+}
+
+partial class Program
+{
+    [GeneratedRegex(@"\|\s*(latency (?:avg|p50|p90|p99) \(ms\)|throughput \(req/s\)|checks passed)\s*\|\s*([0-9.]+)(%)?")]
+    private static partial Regex OverallRowRegex();
+    [GeneratedRegex(@"^\|\s*([\w/#-]+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|")]
+    private static partial Regex MethodRowRegex();
+    [GeneratedRegex("[^a-zA-Z0-9_-]")]
+    private static partial Regex UnsafeNameRegex();
 }

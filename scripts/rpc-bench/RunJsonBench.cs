@@ -46,7 +46,7 @@ try
     if (mode == "compare" && reference.Length == 0) throw new ArgumentException("JB_MODE=compare needs a reference node");
     var corpus = Get("JB_ETH_CALL_CORPUS", "false");
     if (corpus is not ("true" or "false")) throw new ArgumentException("JB_ETH_CALL_CORPUS must be true or false");
-    var seed = Get("JB_SEED", "1"); if (!Regex.IsMatch(seed, "^[0-9]+$")) throw new ArgumentException($"JB_SEED must be a non-negative integer, got '{seed}'");
+    var seed = Get("JB_SEED", "1"); if (!SeedRegex().IsMatch(seed)) throw new ArgumentException($"JB_SEED must be a non-negative integer, got '{seed}'");
     var method = Get("CORPUS_METHOD", "eth_call");
     if (method is not ("eth_call" or "debug_traceCall" or "trace_call")) throw new ArgumentException("CORPUS_METHOD must be eth_call, debug_traceCall or trace_call");
     if (method != "eth_call" && corpus != "true") throw new ArgumentException($"CORPUS_METHOD={method} requires the eth_call corpus (JB_ETH_CALL_CORPUS=true)");
@@ -68,7 +68,7 @@ try
     scratch = await BenchmarkPaths.CanonicalAsync(scratch, false, cancellation.Token); BenchmarkPaths.AssertSane(scratch, "SCRATCH_ROOT");
     var work = Path.Combine(scratch, "jsonbench"); var source = Path.Combine(work, "src"); var io = Path.Combine(work, "io");
     var repository = Get("JB_REPO", "https://github.com/NethermindEth/json-bench.git"); var revision = Get("JB_REF", "de1bcfadea47258ccacae2f420141032a82a9ded");
-    var tag = Regex.Replace(revision, "[^a-zA-Z0-9_.-]", "-"); tag = "jsonbench-runner:" + tag[..Math.Min(24, tag.Length)];
+    var tag = UnsafeTagRegex().Replace(revision, "-"); tag = "jsonbench-runner:" + tag[..Math.Min(24, tag.Length)];
     var fixtures = Path.Combine(source, "rpc-calls", "corpus"); var marker = Path.Combine(work, "prepared");
     var reuse = Get("JB_REUSE_PREPARED", "false") == "true"; var prepared = false; var preparationId = "";
     Environment.SetEnvironmentVariable("GIT_TERMINAL_PROMPT", "0");
@@ -303,7 +303,7 @@ static YamlNode ToYaml(JsonNode? node) => node switch
 };
 #endif
 
-internal static class JsonBenchReporting
+internal static partial class JsonBenchReporting
 {
     internal static (string Markdown, double FailPercent) Performance(JsonObject root)
     {
@@ -320,7 +320,7 @@ internal static class JsonBenchReporting
         foreach (var (key, value) in metrics)
         {
             if (!key.StartsWith("http_req_duration{", StringComparison.Ordinal)) continue;
-            var match = Regex.Match(key, @"req_name:([^,}]+)");
+            var match = RequestNameRegex().Match(key);
             if (match.Success) methods.Add((match.Groups[1].Value.Trim().Trim('\'', '"'), value));
         }
         if (metrics["classes"] is JsonObject classes) methods.AddRange(classes.Select(pair => (pair.Key, pair.Value)));
@@ -409,11 +409,17 @@ internal static class JsonBenchReporting
         YamlScalarNode scalar when scalar.Value is "true" or "True" or "TRUE" or "yes" or "Yes" or "YES" or "on" or "On" or "ON" => JsonValue.Create(true),
         YamlScalarNode scalar when scalar.Value is "false" or "False" or "FALSE" or "no" or "No" or "NO" or "off" or "Off" or "OFF" => JsonValue.Create(false),
         YamlScalarNode scalar when long.TryParse(scalar.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) => JsonValue.Create(number),
-        YamlScalarNode scalar when Regex.IsMatch(scalar.Value ?? "", @"^[+-]?0x[0-9a-fA-F]+$") => JsonValue.Create((scalar.Value![0] == '-' ? -1 : 1) * Convert.ToInt64(scalar.Value.TrimStart('+', '-')[2..], 16)),
-        YamlScalarNode scalar when Regex.IsMatch(scalar.Value ?? "", @"^[+-]?(?:[0-9][0-9_]*\.[0-9_]*|\.[0-9_]+)(?:[eE][+-][0-9]+)?$") && double.TryParse(scalar.Value!.Replace("_", "", StringComparison.Ordinal), NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number) => JsonValue.Create(number),
+        YamlScalarNode scalar when HexIntegerRegex().IsMatch(scalar.Value ?? "") => JsonValue.Create((scalar.Value![0] == '-' ? -1 : 1) * Convert.ToInt64(scalar.Value.TrimStart('+', '-')[2..], 16)),
+        YamlScalarNode scalar when DecimalRegex().IsMatch(scalar.Value ?? "") && double.TryParse(scalar.Value!.Replace("_", "", StringComparison.Ordinal), NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number) => JsonValue.Create(number),
         YamlScalarNode scalar => JsonValue.Create(scalar.Value),
         _ => throw new IOException("Unsupported benchmark YAML node")
     };
+    [GeneratedRegex(@"req_name:([^,}]+)")]
+    private static partial Regex RequestNameRegex();
+    [GeneratedRegex(@"^[+-]?0x[0-9a-fA-F]+$")]
+    private static partial Regex HexIntegerRegex();
+    [GeneratedRegex(@"^[+-]?(?:[0-9][0-9_]*\.[0-9_]*|\.[0-9_]+)(?:[eE][+-][0-9]+)?$")]
+    private static partial Regex DecimalRegex();
 }
 
 internal sealed class ResourceSamplerSession : IAsyncDisposable
@@ -447,4 +453,12 @@ internal sealed class ResourceSamplerSession : IAsyncDisposable
         try { await _task; }
         finally { _stop.Dispose(); }
     }
+}
+
+partial class Program
+{
+    [GeneratedRegex("^[0-9]+$")]
+    private static partial Regex SeedRegex();
+    [GeneratedRegex("[^a-zA-Z0-9_.-]")]
+    private static partial Regex UnsafeTagRegex();
 }

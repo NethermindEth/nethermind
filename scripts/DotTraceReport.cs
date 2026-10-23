@@ -58,12 +58,11 @@ static string Name(string path) => Path.GetFileNameWithoutExtension(path).Replac
 static Dictionary<string, (double Total, double Own)> Extract(string path)
 {
     // Keep the reporter's escaped FQN text, which is also the comparison key in existing reports.
-    var expression = new Regex(".*FQN=\"([^\"]*)\".*TotalTime=\"([^\"]*)\".*OwnTime=\"([^\"]*)\"", RegexOptions.CultureInvariant);
     var values = new Dictionary<string, (double Total, double Own)>(StringComparer.Ordinal);
     foreach (var line in File.ReadLines(path))
     {
         if (!line.Contains("<Function ", StringComparison.Ordinal)) continue;
-        var match = expression.Match(line);
+        var match = FunctionRegex().Match(line);
         if (!match.Success) continue;
         var total = double.TryParse(match.Groups[2].Value, CultureInfo.InvariantCulture, out var totalTime) ? totalTime : 0;
         var own = double.TryParse(match.Groups[3].Value, CultureInfo.InvariantCulture, out var ownTime) ? ownTime : 0;
@@ -71,4 +70,10 @@ static Dictionary<string, (double Total, double Own)> Extract(string path)
         if (!values.TryGetValue(name, out var previous) || own > previous.Own) values[name] = (total, own);
     }
     return values;
+}
+
+partial class Program
+{
+    [GeneratedRegex(".*FQN=\"([^\"]*)\".*TotalTime=\"([^\"]*)\".*OwnTime=\"([^\"]*)\"", RegexOptions.CultureInvariant)]
+    private static partial Regex FunctionRegex();
 }

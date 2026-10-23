@@ -4,6 +4,7 @@
 #:package YamlDotNet
 #:include CiWorkflowTests.Helpers.cs
 using System.Globalization;
+using System.Text.RegularExpressions;
 using YamlDotNet.RepresentationModel;
 
 if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Workflow fixtures require Linux Bash.");
@@ -33,7 +34,7 @@ tests.Case("summary survives checkout failure", () =>
     var fixture = new WorkspaceFixture(tests.DirectoryPath, workflow);
     var target = fixture.Prepare();
     RpcScriptTests.Assert(Directory.Exists(target) && !Directory.Exists(Path.Combine(target, ".git")), "always steps need a checkout-free working directory");
-    fixture.Run(System.Text.RegularExpressions.Regex.Replace(Body("Publish step summary"), @"\$\{\{.*?\}\}", "false"), target);
+    fixture.Run(ExpressionRegex().Replace(Body("Publish step summary"), "false"), target);
     RpcScriptTests.Assert(File.ReadAllText(fixture.Environment["GITHUB_STEP_SUMMARY"]).Contains("# RPC Benchmark", StringComparison.Ordinal), "summary missing");
 });
 foreach (var name in new[] { "Stop reference node and verify DB integrity", "Stop node and verify DB integrity", "Collect perf profile", "Collect dotTrace snapshots", "Collect dotnet-trace", "Upload perf profile", "Upload dotTrace snapshot", "Upload dotnet-trace", "Stage private corpus results", "Defensive cleanup" })
@@ -165,4 +166,10 @@ sealed class WorkspaceFixture
             du() { :; }; find() { :; }; apt-get() { :; }; journalctl() { :; }
             """ + "\n" + body;
     }
+}
+
+partial class Program
+{
+    [GeneratedRegex(@"\$\{\{.*?\}\}")]
+    private static partial Regex ExpressionRegex();
 }

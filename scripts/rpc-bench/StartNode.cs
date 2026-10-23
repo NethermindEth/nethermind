@@ -60,7 +60,7 @@ try
             if (Directory.Exists(root))
                 foreach (var child in Directories(root))
                     foreach (var candidate in Directories(child).SelectMany(path => new[] { path }.Concat(Directories(path))))
-                        if (Regex.IsMatch(Path.GetFileName(candidate), "^[Nn]ethermind.*snapshot|^(nethermind|geth|reth)-") || root == "/data" && Path.GetFileName(candidate).Contains('-')) candidates.Add(candidate);
+                        if (SnapshotNameRegex().IsMatch(Path.GetFileName(candidate)) || root == "/data" && Path.GetFileName(candidate).Contains('-')) candidates.Add(candidate);
         Console.WriteLine(candidates.Count > 0 ? string.Join('\n', candidates.Select(path => "  " + path)) : "  <none found under /mnt or /data>");
         throw new IOException("set node_config.db_source to a valid snapshot path");
     }
@@ -195,3 +195,9 @@ catch (Exception exception) when (exception is IOException or UnauthorizedAccess
     Console.Error.WriteLine($"ERROR: {exception.Message}"); return 1;
 }
 finally { Console.CancelKeyPress -= cancel; }
+
+partial class Program
+{
+    [GeneratedRegex("^[Nn]ethermind.*snapshot|^(nethermind|geth|reth)-")]
+    private static partial Regex SnapshotNameRegex();
+}

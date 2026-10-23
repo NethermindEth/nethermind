@@ -30,11 +30,11 @@ tests.Case("baseline cache keys include cell fingerprint on lookup and save", ()
 tests.Case("all shaping sweep options belong to the cell fingerprint", () =>
 {
     var nonShaping = new HashSet<string>(["clients", "corpus_baseline", "rounds", "iso_configs", "iso_duration", "db_isolation_allow_snapshot_mutation", "resource_sampling", "parity_diffs", "max_divergence_indexes", "max_fail_rate_pct"]);
-    var exported = Regex.Matches(StepText("Run RPC sweep"), @"\b([a-z][a-z_0-9]*):([A-Z][A-Z_0-9]*)\b").Select(match => match.Groups[1].Value).Where(key => !nonShaping.Contains(key)).ToHashSet();
+    var exported = ExportedInputRegex().Matches(StepText("Run RPC sweep")).Select(match => match.Groups[1].Value).Where(key => !nonShaping.Contains(key)).ToHashSet();
     var resolve = WorkflowTest.Text(workflow.Step("resolve", "Resolve configuration"), "run");
-    var cellKeys = JsonNode.Parse(Regex.Match(resolve, @"cell_keys='(\[.*?\])'", RegexOptions.Singleline).Groups[1].Value)!.AsArray().Select(node => node!.ToString()).Where(key => key != "rps_list").ToHashSet();
+    var cellKeys = JsonNode.Parse(CellKeysRegex().Match(resolve).Groups[1].Value)!.AsArray().Select(node => node!.ToString()).Where(key => key != "rps_list").ToHashSet();
     RpcScriptTests.Assert(exported.SetEquals(cellKeys), "sweep shape and fingerprint differ");
-    var shape = Regex.Match(resolve, "cell_shape=\"\\$\\(jq.*?\\)\"", RegexOptions.Singleline).Value;
+    var shape = CellShapeRegex().Match(resolve).Value;
     Contains(shape, "cpu_max_freq_khz", "cpuset", "memory", "corpus_method", "trace_call_tracer", "trace_call_types");
 });
 tests.Case("cached baselines are checked before use and retain metadata", () =>
@@ -235,3 +235,13 @@ tests.Case("workflow canonicalizes output symlink before overlap check", () =>
     RpcScriptTests.Assert(result.Code != 0 && !Directory.EnumerateFileSystemEntries(parked).Any(), result.ToString());
 });
 tests.Complete();
+
+partial class Program
+{
+    [GeneratedRegex(@"\b([a-z][a-z_0-9]*):([A-Z][A-Z_0-9]*)\b")]
+    private static partial Regex ExportedInputRegex();
+    [GeneratedRegex(@"cell_keys='(\[.*?\])'", RegexOptions.Singleline)]
+    private static partial Regex CellKeysRegex();
+    [GeneratedRegex("cell_shape=\"\\$\\(jq.*?\\)\"", RegexOptions.Singleline)]
+    private static partial Regex CellShapeRegex();
+}

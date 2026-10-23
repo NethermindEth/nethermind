@@ -19,7 +19,7 @@ try
     var maximum = BenchmarkProcess.EnvironmentValue("CPU_MAX_FREQ_KHZ");
     if (args.Length != 1 || args[0] is not ("apply" or "restore")) throw new ArgumentException("usage: CpuStabilize.cs apply|restore");
     if (args[0] == "restore") { await Restore(); return 0; }
-    if (maximum.Length > 0 && !Regex.IsMatch(maximum, "^[1-9][0-9]*$")) throw new ArgumentException($"CPU_MAX_FREQ_KHZ must be a positive integer, got '{maximum}'");
+    if (maximum.Length > 0 && !PositiveIntegerRegex().IsMatch(maximum)) throw new ArgumentException($"CPU_MAX_FREQ_KHZ must be a positive integer, got '{maximum}'");
     Directory.CreateDirectory(state);
     if (HasState())
     {
@@ -29,7 +29,7 @@ try
     if (HasState()) throw new IOException($"refusing to apply over unrestored cpu state in {saved} — the box is still capped; restore it by hand first");
     var turbo = File.Exists(Path.Combine(cpu, "intel_pstate/no_turbo")) ? (Path.Combine(cpu, "intel_pstate/no_turbo"), "1") : File.Exists(Path.Combine(cpu, "cpufreq/boost")) ? (Path.Combine(cpu, "cpufreq/boost"), "0") : ("", "");
     var policyRoot = Path.Combine(cpu, "cpufreq");
-    var policies = Directory.Exists(policyRoot) ? Directory.EnumerateDirectories(policyRoot, "policy*").Where(path => Regex.IsMatch(Path.GetFileName(path), "^policy[0-9]") && File.Exists(Path.Combine(path, "scaling_governor"))).Order(StringComparer.Ordinal).ToArray() : [];
+    var policies = Directory.Exists(policyRoot) ? Directory.EnumerateDirectories(policyRoot, "policy*").Where(path => PolicyRegex().IsMatch(Path.GetFileName(path)) && File.Exists(Path.Combine(path, "scaling_governor"))).Order(StringComparer.Ordinal).ToArray() : [];
     var originals = new List<(string Path, string Value)>();
     if (turbo.Item1.Length > 0) Save(turbo.Item1);
     foreach (var policy in policies)
@@ -90,3 +90,11 @@ catch (Exception exception) when (exception is IOException or UnauthorizedAccess
     Console.Error.WriteLine($"ERROR: {exception.Message}"); return 1;
 }
 finally { Console.CancelKeyPress -= cancel; }
+
+partial class Program
+{
+    [GeneratedRegex("^[1-9][0-9]*$")]
+    private static partial Regex PositiveIntegerRegex();
+    [GeneratedRegex("^policy[0-9]")]
+    private static partial Regex PolicyRegex();
+}

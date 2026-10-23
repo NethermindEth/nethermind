@@ -18,6 +18,7 @@ client.DefaultRequestHeaders.UserAgent.ParseAdd("Nethermind-CI");
 var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 if (!string.IsNullOrEmpty(token)) client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("token", token);
 var started = DateTimeOffset.UtcNow;
+Regex? nameFilter = null;
 try
 {
     var organization = EnvironmentValue("ORG_NAME"); var repository = EnvironmentValue("REPO_NAME");
@@ -48,7 +49,7 @@ try
                 if (text.Contains("API rate limit exceeded", StringComparison.Ordinal)) { Console.Error.WriteLine("❌ API rate limit exceeded. Please try again later."); return 1; }
                 if (text.Contains("Not Found", StringComparison.Ordinal)) { Console.Error.WriteLine("❌ Invalid input provided (organization, repository, or workflow ID). Please check your inputs."); return 1; }
             }
-            runId = Discover(response.RootElement, reference[11..], name, started.AddMinutes(-1)) ?? "";
+            runId = Discover(response.RootElement, reference[11..], name, started.AddMinutes(-1), ref nameFilter) ?? "";
             if (runId.Length > 0) { Console.WriteLine($"🎉 Workflow triggered! Run ID: {runId}"); break; }
             if (++attempts * interval >= maxWait * 60) { Console.Error.WriteLine("❌ Maximum waiting time for the workflow to be triggered has been reached. Exiting."); return 1; }
             await Task.Delay(TimeSpan.FromSeconds(interval), cancellation.Token);
@@ -102,7 +103,7 @@ finally { Console.CancelKeyPress -= cancel; }
 
 static string EnvironmentValue(string name) => Environment.GetEnvironmentVariable(name) ?? "";
 
-static string? Discover(JsonElement response, string branch, string namePattern, DateTimeOffset since)
+static string? Discover(JsonElement response, string branch, string namePattern, DateTimeOffset since, ref Regex? nameFilter)
 {
     if (!response.TryGetProperty("workflow_runs", out var runs) || runs.ValueKind != JsonValueKind.Array) return null;
     long? newest = null;
@@ -110,7 +111,7 @@ static string? Discover(JsonElement response, string branch, string namePattern,
     {
         if (run.GetProperty("head_branch").GetString() != branch || run.GetProperty("status").GetString() == "completed") continue;
         if (!DateTimeOffset.TryParse(run.GetProperty("created_at").GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var created) || created < since) continue;
-        if (namePattern.Length > 0 && !Regex.IsMatch(run.GetProperty("name").GetString() ?? "", namePattern, RegexOptions.None, TimeSpan.FromSeconds(1))) continue;
+        if (namePattern.Length > 0 && !(nameFilter ??= new Regex(namePattern, RegexOptions.None, TimeSpan.FromSeconds(1))).IsMatch(run.GetProperty("name").GetString() ?? "")) continue;
         var id = run.GetProperty("id").GetInt64();
         if (newest is null || id > newest) newest = id;
     }

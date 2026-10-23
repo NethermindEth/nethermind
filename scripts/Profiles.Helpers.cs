@@ -4,9 +4,9 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-internal static class Profiles
+internal static partial class Profiles
 {
-    internal static bool IsManaged(string frame) => Regex.IsMatch(frame, @"\[[A-Za-z0-9_.-]+\]\s.*::");
+    internal static bool IsManaged(string frame) => ManagedFrameRegex().IsMatch(frame);
 
     internal static Dictionary<string, long> Fold(TextReader input)
     {
@@ -27,14 +27,14 @@ internal static class Profiles
             if (!char.IsWhiteSpace(line[0]))
             {
                 Flush();
-                command = Regex.Split(line, @"\s+")[0];
+                command = WhitespaceRegex().Split(line)[0];
                 continue;
             }
             line = line.TrimEnd();
-            var dso = Regex.Match(line, @"\(([^)]*)\)$");
+            var dso = ModuleRegex().Match(line);
             if (dso.Success) line = line[..dso.Index];
-            line = Regex.Replace(line, @"^\s+[0-9a-fA-F]+\s+", "");
-            line = Regex.Replace(line, @"\+0x[0-9a-fA-F]+\s*$", "").TrimEnd();
+            line = AddressRegex().Replace(line, "");
+            line = OffsetRegex().Replace(line, "").TrimEnd();
             if (line is "" or "[unknown]")
             {
                 var library = dso.Groups[1].Value;
@@ -50,7 +50,7 @@ internal static class Profiles
     {
         foreach (var line in File.ReadLines(path))
         {
-            var match = Regex.Match(line, @"^(.*)\s+([0-9]+)\s*$");
+            var match = SampleRegex().Match(line);
             if (match.Success && long.TryParse(match.Groups[2].Value, CultureInfo.InvariantCulture, out var count))
                 yield return (match.Groups[1].Value, count);
         }
@@ -74,4 +74,16 @@ internal static class Profiles
     }
 
     internal static string Display(string frame, int width) => frame.Length > width ? "..." + frame[^(width - 3)..] : frame;
+    [GeneratedRegex(@"\[[A-Za-z0-9_.-]+\]\s.*::")]
+    private static partial Regex ManagedFrameRegex();
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRegex();
+    [GeneratedRegex(@"\(([^)]*)\)$")]
+    private static partial Regex ModuleRegex();
+    [GeneratedRegex(@"^\s+[0-9a-fA-F]+\s+")]
+    private static partial Regex AddressRegex();
+    [GeneratedRegex(@"\+0x[0-9a-fA-F]+\s*$")]
+    private static partial Regex OffsetRegex();
+    [GeneratedRegex(@"^(.*)\s+([0-9]+)\s*$")]
+    private static partial Regex SampleRegex();
 }

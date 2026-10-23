@@ -43,7 +43,7 @@ catch (Exception exception) when (exception is ArgumentException or IOException 
 }
 #endif
 
-internal sealed record SweepArm(string Client, string Image, string Environment, string Flags, string Label)
+internal sealed partial record SweepArm(string Client, string Image, string Environment, string Flags, string Label)
 {
     internal static SweepArm Parse(string entry, string defaultImage)
     {
@@ -58,23 +58,31 @@ internal sealed record SweepArm(string Client, string Image, string Environment,
         var image = imageIndex < 0 ? defaultImage : specification[(imageIndex + 1)..];
         if (client is not ("nethermind" or "geth" or "reth")) throw new ArgumentException($"unknown sweep client type '{client}'");
         if (image.Length == 0) throw new ArgumentException("sweep client entry has an empty image");
-        if (flagIndex >= 0 && flags.Split(';').Any(flag => !Regex.IsMatch(flag, @"^--[^\s;#]+$"))) throw new ArgumentException("malformed arm flag list");
-        var label = imageIndex < 0 ? client : client + "_" + Regex.Replace(image[(image.LastIndexOf(':') + 1)..], "[^a-zA-Z0-9]", "_");
+        if (flagIndex >= 0 && flags.Split(';').Any(flag => !FlagRegex().IsMatch(flag))) throw new ArgumentException("malformed arm flag list");
+        var label = imageIndex < 0 ? client : client + "_" + NonAlphanumericRegex().Replace(image[(image.LastIndexOf(':') + 1)..], "_");
         if (environment.Length > 0)
         {
-            var suffix = Regex.Replace(environment, "NETHERMIND_[A-Z]+CONFIG_", "");
-            label += "_" + Regex.Replace(Regex.Replace(suffix, "[^a-zA-Z0-9]", "_"), "_+", "_").TrimEnd('_');
+            var suffix = ConfigPrefixRegex().Replace(environment, "");
+            label += "_" + UnderscoresRegex().Replace(NonAlphanumericRegex().Replace(suffix, "_"), "_").TrimEnd('_');
         }
         if (flags.Length > 0)
         {
-            var readable = Regex.Replace(flags, "[^a-zA-Z0-9]", "_");
+            var readable = NonAlphanumericRegex().Replace(flags, "_");
             label += "_" + readable[..Math.Min(24, readable.Length)] + "_" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(flags)))[..12];
         }
         return new(client, image, environment.Replace(',', ' '), flags.Replace(';', ' '), label);
     }
+    [GeneratedRegex(@"^--[^\s;#]+$")]
+    private static partial Regex FlagRegex();
+    [GeneratedRegex("[^a-zA-Z0-9]")]
+    private static partial Regex NonAlphanumericRegex();
+    [GeneratedRegex("NETHERMIND_[A-Z]+CONFIG_")]
+    private static partial Regex ConfigPrefixRegex();
+    [GeneratedRegex("_+")]
+    private static partial Regex UnderscoresRegex();
 }
 
-internal sealed class SweepConfiguration
+internal sealed partial class SweepConfiguration
 {
     internal readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
     internal string this[string name] => Values[name];
@@ -107,7 +115,7 @@ internal sealed class SweepConfiguration
         foreach (var name in new[] { "ROUNDS", "CORPUS_REQUESTS", "CORPUS_PASSES", "CORPUS_TIMINGS_PASSES", "CORPUS_TIMINGS_CONCURRENCY", "CORPUS_WARMUP_RPS" })
             if (this[name].Length > 0) Integer(name, this[name], true);
         foreach (var name in new[] { "CORPUS_TIMINGS_RPS", "CORPUS_WARMUP_RPS_MAX", "JB_SEED" }) Integer(name, this[name], false);
-        if (!Regex.IsMatch(this["CORPUS_WARMUP_DURATION"], "^[0-9]+s?$")) throw new ArgumentException("corpus_warmup_duration must be integer seconds");
+        if (!DurationRegex().IsMatch(this["CORPUS_WARMUP_DURATION"])) throw new ArgumentException("corpus_warmup_duration must be integer seconds");
         Values["WARMUP_SECONDS"] = this["CORPUS_WARMUP_DURATION"].TrimEnd('s');
         Integer("WARMUP_SECONDS", this["WARMUP_SECONDS"], false);
         if (this["CORPUS_REQUESTS"].Length > 0 && this["CORPUS_PASSES"].Length > 0) throw new ArgumentException("corpus_requests and corpus_passes are mutually exclusive");
@@ -124,18 +132,26 @@ internal sealed class SweepConfiguration
     }
 
     internal static string[] Words(string value) => value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-    internal static long Integer(string name, string value, bool positive) => Regex.IsMatch(value, positive ? "^[1-9][0-9]*$" : "^[0-9]+$") && long.TryParse(value, out var number) ? number : throw new ArgumentException($"{name} must be a {(positive ? "positive" : "non-negative")} integer");
+    internal static long Integer(string name, string value, bool positive) => (positive ? PositiveIntegerRegex() : IntegerRegex()).IsMatch(value) && long.TryParse(value, out var number) ? number : throw new ArgumentException($"{name} must be a {(positive ? "positive" : "non-negative")} integer");
     internal static string CorpusLabel(string path)
     {
         var label = Path.GetFileName(path);
         if (label.StartsWith("eth-call-corpus", StringComparison.Ordinal)) label = label[15..];
         if (label.StartsWith('-')) label = label[1..];
         if (label.EndsWith(".jsonl.gz", StringComparison.Ordinal)) label = label[..^9];
-        return Regex.Replace(label.Length == 0 ? "default" : label, "[^a-zA-Z0-9._\n]", "-");
+        return UnsafeLabelRegex().Replace(label.Length == 0 ? "default" : label, "-");
     }
+    [GeneratedRegex("^[1-9][0-9]*$")]
+    private static partial Regex PositiveIntegerRegex();
+    [GeneratedRegex("^[0-9]+$")]
+    private static partial Regex IntegerRegex();
+    [GeneratedRegex("^[0-9]+s?$")]
+    private static partial Regex DurationRegex();
+    [GeneratedRegex("[^a-zA-Z0-9._\n]")]
+    private static partial Regex UnsafeLabelRegex();
 }
 
-internal sealed class SweepRunner(SweepConfiguration configuration)
+internal sealed partial class SweepRunner(SweepConfiguration configuration)
 {
     private readonly List<string> _summaries = [];
     private readonly List<string> _labels = [];
@@ -170,7 +186,7 @@ internal sealed class SweepRunner(SweepConfiguration configuration)
             {
                 if (!labels.Add(SweepConfiguration.CorpusLabel(corpus))) throw new ArgumentException("corpus labels collide");
                 var validation = await Script("CorpusParity.cs", ["validate", "--corpus", corpus], null, cancellationToken);
-                var count = Regex.Match(validation.Output, @"corpus OK: ([0-9]+)");
+                var count = CorpusCountRegex().Match(validation.Output);
                 if (validation.Code != 0 || !count.Success || !long.TryParse(count.Groups[1].Value, out var records) || records <= 0) throw new IOException("corpus validation failed");
                 _records[corpus] = records;
             }
@@ -433,7 +449,7 @@ internal sealed class SweepRunner(SweepConfiguration configuration)
                 var inputs = _labels.Select(label => (Label: label, Path: Path.Combine(Get("OUT_DIR"), "mix", label, rate.ToString(CultureInfo.InvariantCulture), "deep-check-" + label + ".jsonl"))).Where(entry => File.Exists(entry.Path)).Select(entry => entry.Label + "=" + entry.Path).ToArray();
                 if (inputs.Length < 2) continue;
                 var comparison = await Script("DeepCheckCompare.cs", inputs, null, cancellationToken, false);
-                var lines = (comparison.Output + comparison.Error).Split('\n').Where(line => Regex.IsMatch(line, "requests compared|DIVERGENT|MALFORMED", RegexOptions.IgnoreCase));
+                var lines = (comparison.Output + comparison.Error).Split('\n').Where(line => ParitySummaryRegex().IsMatch(line));
                 text.AppendLine($"- rps {rate}: {string.Join(' ', lines)}");
             }
         }
@@ -448,12 +464,12 @@ internal sealed class SweepRunner(SweepConfiguration configuration)
         var exceptions = 0; var invalid = false; var shutdown = false; var severe = 0;
         foreach (var raw in File.ReadLines(path))
         {
-            var line = Regex.Replace(raw, @"\x1B\[[0-?]*[ -/]*[@-~]", "");
+            var line = AnsiRegex().Replace(raw, "");
             if (line.Contains("Exception", StringComparison.OrdinalIgnoreCase) && !line.Contains("Incorrect JSON RPC parameters", StringComparison.Ordinal))
             { exceptions++; if (!privateCorpus && exceptions <= 20) Console.WriteLine(line); }
-            invalid |= Regex.IsMatch(line, @"invalid[\s_-]*block", RegexOptions.IgnoreCase);
+            invalid |= InvalidBlockRegex().IsMatch(line);
             shutdown |= line.Contains("Nethermind is shut down", StringComparison.Ordinal);
-            if (Regex.IsMatch(line, "Unhandled|Fatal|ERROR", RegexOptions.IgnoreCase)) severe++;
+            if (SevereRegex().IsMatch(line)) severe++;
         }
         if (exceptions > 0) Console.WriteLine($"::warning::{label}: {exceptions} Exception line(s) in node log");
         if (severe > 0) Console.WriteLine($"::warning::{label}: {severe} severe log line(s)");
@@ -540,4 +556,14 @@ internal sealed class SweepRunner(SweepConfiguration configuration)
             try { await Task.WhenAll(output, error); } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { Console.Error.WriteLine("Process output draining cancelled."); }
         }
     }
+    [GeneratedRegex(@"corpus OK: ([0-9]+)")]
+    private static partial Regex CorpusCountRegex();
+    [GeneratedRegex("requests compared|DIVERGENT|MALFORMED", RegexOptions.IgnoreCase)]
+    private static partial Regex ParitySummaryRegex();
+    [GeneratedRegex(@"\x1B\[[0-?]*[ -/]*[@-~]")]
+    private static partial Regex AnsiRegex();
+    [GeneratedRegex(@"invalid[\s_-]*block", RegexOptions.IgnoreCase)]
+    private static partial Regex InvalidBlockRegex();
+    [GeneratedRegex("Unhandled|Fatal|ERROR", RegexOptions.IgnoreCase)]
+    private static partial Regex SevereRegex();
 }
