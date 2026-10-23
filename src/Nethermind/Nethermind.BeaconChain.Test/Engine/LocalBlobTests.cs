@@ -79,6 +79,40 @@ public class LocalBlobTests
         }
     }
 
+    [Test]
+    public async Task Slow_local_blob_retrieval_is_bounded_and_its_late_response_is_disposed([Values] bool blocksSynchronously)
+    {
+        ImportableBlobBlock block = ImportableBlobBlock.Create(blobCount: 1);
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using OwnedResponse response = [];
+        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
+        engine.engine_getBlobsV2(Arg.Any<byte[][]>()).Returns(_ =>
+        {
+            started.TrySetResult();
+            return blocksSynchronously ? Task.FromResult(completion.Task.GetAwaiter().GetResult()) : completion.Task;
+        });
+        ExternalClDetector detector = EngineTests.CreateDetector(engine, out _);
+        EngineDriver driver = TestEngineDriver.Create(detector, localColumnsTimeout: TimeSpan.Zero);
+        Task<DataColumnSidecar[]> lookup = Task.Run(() => driver.GetLocalColumns(block.Block));
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(await lookup.WaitAsync(TimeSpan.FromSeconds(5)), Is.Empty);
+            Assert.That(await driver.GetLocalColumns(block.Block).WaitAsync(TimeSpan.FromSeconds(5)), Is.Empty);
+            _ = engine.Received(1).engine_getBlobsV2(Arg.Any<byte[][]>());
+            Assert.That(detector.WaitForEmbeddedCallsAsync().IsCompleted, Is.False, "shutdown must still drain the timed-out call");
+        }
+        finally
+        {
+            completion.TrySetResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(response));
+            await lookup.WaitAsync(TimeSpan.FromSeconds(5));
+            await detector.WaitForEmbeddedCallsAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        Assert.That(response.Disposed, Is.True);
+    }
+
     private sealed class OwnedResponse : List<BlobAndProofV2?>, IDisposable
     {
         public bool Disposed { get; private set; }

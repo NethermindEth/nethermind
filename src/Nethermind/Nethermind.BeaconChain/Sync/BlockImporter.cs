@@ -299,7 +299,7 @@ public sealed class BlockImporter : IBlockImporter
             return result;
         }
 
-        if (CheckBeforeTransition(block.Slot, block.ParentRoot, out bool failedValidation, out bool rejectGossip) is { } refusal)
+        if (CheckBeforeTransition(block.Slot, block.ParentRoot, out bool failedValidation, out bool rejectGossip, out BlockImportResult refusalResult) is { } refusal)
         {
             RejectGossip = rejectGossip && verifySignatures && CanRejectBlock(block);
             // specs/phase0/beacon-chain.md process_block_header: a block not after its parent's slot is invalid data, whatever this node's store.
@@ -310,7 +310,7 @@ public sealed class BlockImporter : IBlockImporter
                 _failedBlocks?.Add(blockRoot, block.Slot);
             }
 
-            return BlockImportResult.Invalid;
+            return refusalResult;
         }
 
         // fork-choice.md on_block: even a trusted replay must wait until its slot.
@@ -337,17 +337,20 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>Checks on_block conditions in spec order, then block.slot &gt; parent slot, before costly process_slots (phase0/fork-choice.md).</summary>
     /// <param name="failedValidation">Permanent validation failure; false for future slots or blocks at/below finality.</param>
     /// <param name="rejectGossip">Whether this failure rejects gossip after preceding checks pass.</param>
+    /// <param name="result">Distinguishes an unvalidated future block from other refusals.</param>
     /// <returns>The refusal, or null.</returns>
     /// <remarks>Uses the node clock, never fork-choice time, with MAXIMUM_GOSSIP_CLOCK_DISPARITY;
     /// early blocks inside that allowance still wait for their slot (see <see cref="IsBeforeItsSlot"/>).</remarks>
-    private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot, out bool failedValidation, out bool rejectGossip)
+    private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot, out bool failedValidation, out bool rejectGossip, out BlockImportResult result)
     {
         failedValidation = false;
         rejectGossip = false;
+        result = BlockImportResult.Invalid;
         ulong currentSlot = _clock.CurrentSlot;
         ulong latestSlot = _clock.UnixMilliseconds + GossipRouter.MaximumGossipClockDisparityMs >= _clock.SlotStartMilliseconds(currentSlot + 1) ? currentSlot + 1 : currentSlot;
         if (slot > latestSlot)
         {
+            result = BlockImportResult.TooEarly;
             return $"the block is from the future (current slot {currentSlot})";
         }
 
@@ -505,6 +508,15 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.UnknownParent;
         }
 
+        // An uncached key within the registry is checked by the transition; a known forgery must not buy a state copy.
+        if (verifySignatures && (block.ProposerIndex >= (ulong)parentState.Validators!.Length
+            || VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == false))
+        {
+            RejectGossip = true;
+            if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: Invalid proposer signature");
+            return BlockImportResult.Invalid;
+        }
+
         ulong parentEpoch = parentState.GetCurrentEpoch();
         ulong blockEpoch = BeaconStateAccessors.ComputeEpochAtSlot(block.Slot);
         bool crossesEpoch = blockEpoch > parentEpoch;
@@ -527,16 +539,6 @@ public sealed class BlockImporter : IBlockImporter
         }
         else
         {
-            // A branch block may advance its parent across many slots, which a forged signature must not buy.
-            // An uncached key within the registry is a recently added validator, checked by the transition itself.
-            if (verifySignatures && (block.ProposerIndex >= (ulong)parentState.Validators!.Length
-                || VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == false))
-            {
-                RejectGossip = true;
-                if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: invalid proposer signature");
-                return BlockImportResult.Invalid;
-            }
-
             if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state: the lineage is at {_states.LineageRoot}");
             state = parentState.Clone();
             cache = new EpochCache { Hasher = _lineageCache.Hasher };
@@ -683,6 +685,15 @@ public sealed class BlockImporter : IBlockImporter
             {
                 fuluParent = _states.GetBlockState(parentRoot);
             }
+        }
+
+        if (verifySignatures && (gloasParent?.Validators ?? fuluParent?.Validators) is { } validators
+            && (block.ProposerIndex >= (ulong)validators.Length
+                || VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain) == false))
+        {
+            RejectGossip = true;
+            if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: invalid proposer signature");
+            return BlockImportResult.Invalid;
         }
 
         parentState = gloasParent is not null ? new ForkedBeaconState.OfGloas(gloasParent.Clone())
@@ -862,7 +873,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <remarks>The tick pulls up unrealized finality (specs/phase0/fork-choice.md on_tick), which the checks before the transition never saw; a refusal for any other reason, such as data availability, stays unrecorded.</remarks>
     private void RecordIfRefusalIsPermanent(Hash256 blockRoot, ulong slot, Hash256 parentRoot)
     {
-        if (_failedBlocks is not null && CheckBeforeTransition(slot, parentRoot, out bool failedValidation, out _) is not null && failedValidation)
+        if (_failedBlocks is not null && CheckBeforeTransition(slot, parentRoot, out bool failedValidation, out _, out _) is not null && failedValidation)
         {
             _failedBlocks.Add(blockRoot, slot);
         }
@@ -956,12 +967,12 @@ public sealed class BlockImporter : IBlockImporter
     private BlockImportResult DeferBehindDeferredParent(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot, DeferredBlock parent)
     {
         ulong slot = signedBlock.Message!.Slot;
-        string? refusal = CheckBeforeTransition(slot, parent.AncestorRoot, out _, out _) ?? (slot > parent.Slot ? null : $"the block is not after its parent's slot {parent.Slot}");
+        string? refusal = CheckBeforeTransition(slot, parent.AncestorRoot, out _, out _, out BlockImportResult refusalResult) ?? (slot > parent.Slot ? null : $"the block is not after its parent's slot {parent.Slot}");
         if (refusal is not null)
         {
             LastRefusal = slot > parent.Slot ? ImportRefusal.LocalAdmission : ImportRefusal.None;
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {slot} before its state transition: {refusal}");
-            return BlockImportResult.Invalid;
+            return refusalResult;
         }
 
         return DeferForParentPayload(signedBlock, blockRoot, parent.AncestorRoot, parentDeferred: true);
