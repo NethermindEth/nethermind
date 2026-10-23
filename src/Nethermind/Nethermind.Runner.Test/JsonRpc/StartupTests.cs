@@ -1331,10 +1331,7 @@ public class StartupTests
         public TestJsonRpcUrlCollection() { }
 
         public TestJsonRpcUrlCollection(JsonRpcUrl url)
-            : base(capacity: 1)
-        {
-            Add(url.Port, url);
-        }
+            : base(capacity: 1) => Add(url.Port, url);
 
         public string[] Urls => Values.Select(static url => url.ToString()).ToArray();
     }
