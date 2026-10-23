@@ -1454,6 +1454,45 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_logs_unprocessed_block_is_not_reported_as_pruned([Values] bool aheadOfHead, [Values] bool viaFilter, [Values] bool bloomMatches, [Values] bool range)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithSyncMode(SyncMode.Full).Build();
+        Block unprocessed = SuggestUnprocessedBlock(chain, aheadOfHead);
+        string blocks = range ? $"\"fromBlock\":\"0x1\",\"toBlock\":\"{unprocessed.Hash}\"" : $"\"blockHash\":\"{unprocessed.Hash}\"";
+        // An empty header bloom matches only a filter that does not name an address.
+        string filter = bloomMatches ? $"{{{blocks}}}" : $"{{{blocks},\"address\":\"{TestItem.AddressA}\"}}";
+
+        string serialized = viaFilter
+            ? await chain.TestEthRpc("eth_getFilterLogs", JsonDocument.Parse(await chain.TestEthRpc("eth_newFilter", filter)).RootElement.GetProperty("result").GetString()!)
+            : await chain.TestEthRpc("eth_getLogs", filter);
+
+        // A range cannot be served until its end block is processed, whatever the bloom.
+        Assert.That(serialized, Is.EqualTo(bloomMatches || range
+            ? $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.ResourceNotFound},\"message\":\"failed to get logs for block #{unprocessed.Number}\"}},\"id\":67}}"
+            : """{"jsonrpc":"2.0","result":[],"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_get_logs_unprocessed_block_while_receipts_sync_is_reported_as_not_synced()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithSyncMode(SyncMode.FastReceipts).Build();
+        Block unprocessed = SuggestUnprocessedBlock(chain, aheadOfHead: true);
+
+        string serialized = await chain.TestEthRpc("eth_getLogs", $"{{\"blockHash\":\"{unprocessed.Hash}\"}}");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable"},"id":67}"""));
+    }
+
+    private static Block SuggestUnprocessedBlock(TestRpcBlockchain chain, bool aheadOfHead)
+    {
+        Block head = chain.BlockTree.Head!;
+        Block parent = aheadOfHead ? head : chain.BlockTree.FindBlock(head.ParentHash!)!;
+        Block unprocessed = Build.A.Block.WithParent(parent).WithReceiptsRoot(TestItem.KeccakA).WithExtraData([1]).TestObject;
+        chain.BlockTree.SuggestBlock(unprocessed, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        return unprocessed;
+    }
+
+    [Test]
     public async Task Eth_get_filter_logs_with_resourceNotFound()
     {
         using Context ctx = await Context.Create();
