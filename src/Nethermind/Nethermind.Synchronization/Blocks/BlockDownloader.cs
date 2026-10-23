@@ -13,6 +13,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.History;
@@ -230,7 +231,7 @@ namespace Nethermind.Synchronization.Blocks
                     BlockEntry entry = satisfiedEntry[blockIndex];
                     Block currentBlock = entry.Block!;
 
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
+                    if (!IsValidDownloadedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
                     {
                         PeerInfo peer = entry.PeerInfo;
                         if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
@@ -273,6 +274,17 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         public void PruneDownloadBuffer() => _downloadRequests.Clear();
+
+        private bool IsValidDownloadedBlock(Block block, BlockHeader parent, out string? errorMessage)
+        {
+            if (!HeaderValidator.ValidateHash(block.Header, out Hash256 actualHash))
+            {
+                errorMessage = BlockErrorMessages.InvalidHeaderHash(block.Header.Hash!, actualHash);
+                return false;
+            }
+
+            return _blockValidator.ValidateSuggestedBlock(block, parent, out errorMessage, validateHashes: false);
+        }
 
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {

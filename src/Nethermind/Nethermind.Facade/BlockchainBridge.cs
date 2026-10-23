@@ -731,37 +731,27 @@ namespace Nethermind.Facade
                 return;
             }
 
-            using ArrayPoolList<Address?> storedSenders = new(transactions.Length);
-            int receiptCount = 0;
-            using (ReceiptsIterator receipts = iterator)
-            {
-                while (receipts.TryGetNext(out TxReceiptStructRef receipt))
-                {
-                    if (receiptCount < transactions.Length)
-                    {
-                        // An absent sender decodes to the shared zero address, which a stored one never aliases.
-                        storedSenders.Add(transactions[receiptCount].SenderAddress is null && receipt.Sender.Bytes != Address.Zero.Bytes
-                            ? receipt.Sender.ToAddress()
-                            : null);
-                    }
-
-                    receiptCount++;
-                }
-            }
-
-            if (receiptCount != transactions.Length)
+            using ReceiptsIterator receipts = iterator;
+            if (receipts.CountRemaining() != transactions.Length)
             {
                 RecoverEachTxSender(block);
                 return;
             }
 
             bool? useSignatureChainId = null;
-            for (int i = 0; i < transactions.Length; i++)
+            int i = 0;
+            for (; i < transactions.Length && receipts.TryGetNext(out TxReceiptStructRef receipt); i++)
             {
                 Transaction transaction = transactions[i];
-                transaction.SenderAddress ??= storedSenders[i]
-                    ?? RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
+                if (transaction.SenderAddress is not null) continue;
+
+                // An absent sender decodes to the shared zero address, which a stored one never aliases.
+                transaction.SenderAddress = receipt.Sender.Bytes != Address.Zero.Bytes
+                    ? receipt.Sender.ToAddress()
+                    : RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
             }
+
+            if (i < transactions.Length) RecoverEachTxSender(block);
         }
 
         private static bool HaveSenders(Transaction[] transactions)
