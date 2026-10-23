@@ -113,7 +113,7 @@ internal static class EngineBenchmarkHost
             {
                 GCKeeper gcKeeper = app.ApplicationServices.GetRequiredService<GCKeeper>();
                 JsonRpcService service = new(modules, NullLogManager.Instance, config, gcKeeper);
-                JsonRpcProcessor processor = new(service, config, fs, NullLogManager.Instance);
+                JsonRpcProcessor processor = new(service, config, fs, NullLogManager.Instance, []);
                 app.Use(async (ctx, next) =>
                 {
                     if (ctx.Request.Method != "POST" ||

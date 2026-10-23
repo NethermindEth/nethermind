@@ -97,6 +97,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // Eth and its dependencies
             .AddSingleton<IBlockForRpcFactory, BlockForRpcFactory>()
             .AddSingleton<HashesOnlyBlockReader>()
+            .AddSingleton<IBatchConcurrencyStrategy, EthCallBatchConcurrency>()
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
                     (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
@@ -124,6 +125,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
+            .AddSingleton<IBatchConcurrencyStrategy, DebugTraceCallBatchConcurrency>()
             .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.GetDebugModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()

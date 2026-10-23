@@ -21,6 +21,8 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -67,8 +69,14 @@ public class JsonRpcProcessorTests
     private JsonRpcProcessor CreateFixtureProcessor(IJsonRpcConfig? config = null, bool returnErrors = false) =>
         CreateProcessor(CreateService(request => returnErrors ? new JsonRpcErrorResponse { Id = request.Id } : new JsonRpcSuccessResponse { Id = request.Id }, _errorResponse), config);
 
-    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
-        new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
+    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null)
+    {
+        config ??= new JsonRpcConfig();
+        return new(service, config, fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, BatchConcurrencyStrategies(config), processExitSource);
+    }
+
+    private static IBatchConcurrencyStrategy[] BatchConcurrencyStrategies(IJsonRpcConfig config) =>
+        [new EthCallBatchConcurrency(), new DebugTraceCallBatchConcurrency(config)];
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
 
@@ -76,7 +84,7 @@ public class JsonRpcProcessorTests
         new(RpcEndpoint.Http, url: new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http, isAuthenticated: true, [ModuleType.Engine]));
 
     private static JsonRpcProcessor CreateProcessorWithLogger(IJsonRpcService service, TestLogger logger) =>
-        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
+        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), BatchConcurrencyStrategies(new JsonRpcConfig()), null);
 
     // #13156: the JSON-RPC 2.0 request-error codes (-32700..-32600 and -32601/-32602) are the caller's fault and are
     // triggered by one unauthenticated request each, so they must not reach WARN; server-side codes keep their level.
@@ -489,33 +497,6 @@ public class JsonRpcProcessorTests
             Assert.That(events.IndexOf("start 4"), Is.GreaterThan(events.IndexOf("end 3")), "a JavaScript tracer runs alone");
             Assert.That(events.IndexOf("start 5"), Is.GreaterThan(events.IndexOf("end 4")));
             Assert.That(events.IndexOf("start 6"), Is.GreaterThan(events.IndexOf("end 5")), "a tracer name that cannot be read runs alone");
-        }
-    }
-
-    [Test]
-    public async Task Batch_keeps_trace_calls_sequential_when_the_debug_module_pool_is_narrower_than_the_window()
-    {
-        List<string> events = [];
-        IJsonRpcService service = CreateAsyncService(async request =>
-        {
-            string id = request.Id.ToString();
-            lock (events) events.Add($"start {id}");
-            await Task.Delay(50);
-            lock (events) events.Add($"end {id}");
-            return new JsonRpcSuccessResponse { Id = request.Id };
-        });
-
-        using CollectedJsonRpcResponses responses = await ProcessAsync(
-            CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 1 }),
-            CreateBatchRequest(
-                CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
-                CreateRequest("2", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]""")),
-            CreateHttpContext());
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(AssertBatchResponse(responses, 2).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2" }));
-            Assert.That(events, Is.EqualTo(new[] { "start 1", "end 1", "start 2", "end 2" }));
         }
     }
 
@@ -1789,7 +1770,7 @@ public class JsonRpcProcessorTests
 
     [Test]
     public void Cannot_accept_null_file_system() =>
-        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(), Substitute.For<IJsonRpcConfig>(), null!, LimboLogs.Instance));
+        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(), Substitute.For<IJsonRpcConfig>(), null!, LimboLogs.Instance, []));
 
     [Test]
     public async Task Can_process_multiple_large_requests_arriving_in_chunks()

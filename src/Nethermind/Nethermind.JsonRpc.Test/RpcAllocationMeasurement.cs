@@ -84,7 +84,7 @@ public class RpcAllocationMeasurement
             .AddScoped<ITraceRpcModule>(_ => chain.TraceRpcModule)
             .Build();
 
-        JsonRpcProcessor processor = new(container.Resolve<IJsonRpcService>(), new JsonRpcConfig(), Substitute.For<IFileSystem>(), NullLogManager.Instance);
+        JsonRpcProcessor processor = new(container.Resolve<IJsonRpcService>(), new JsonRpcConfig(), Substitute.For<IFileSystem>(), NullLogManager.Instance, []);
         CountingStream stream = new();
         ResponseSink sink = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)), stream);
         using AllocationTypeListener? listener = breakdown ? new AllocationTypeListener() : null;
