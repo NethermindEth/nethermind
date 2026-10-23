@@ -689,17 +689,26 @@ public partial class ForwardHeaderProviderTests
         return new PeerInfo(syncPeer);
     }
 
-    private class SlowSealValidator : ISealValidator
+    // Cancels the request from inside the first validation, so the cancellation lands while seals are being validated:
+    // a CancelAfter timer could not fire on a pool whose threads all sleep in this validator.
+    private class SlowSealValidator(CancellationTokenSource cancellation) : ISealValidator
     {
+        private int _sealsValidated;
+
+        public int SealsValidated => Volatile.Read(ref _sealsValidated);
+
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
-            Thread.Sleep(1000);
+            cancellation.Cancel();
+            Thread.Sleep(200);
             return true;
         }
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
-            Thread.Sleep(1000);
+            Interlocked.Increment(ref _sealsValidated);
+            cancellation.Cancel();
+            Thread.Sleep(200);
             return true;
         }
     }
@@ -707,7 +716,9 @@ public partial class ForwardHeaderProviderTests
     [Test, MaxTime(7000)]
     public async Task Can_cancel_seal_validation()
     {
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(new SlowSealValidator()));
+        using CancellationTokenSource cancellation = new();
+        SlowSealValidator sealValidator = new(cancellation);
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(sealValidator));
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -721,14 +732,13 @@ public partial class ForwardHeaderProviderTests
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.HeadNumber.Returns(1000UL);
 
-        CancellationTokenSource cancellation = new();
-        cancellation.CancelAfter(100);
-
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, cancellation.Token);
         Assert.That(async () => await headerTask(), Throws.InstanceOf<OperationCanceledException>());
+        // The validation itself must stop early: only the seals already in flight when the token was cancelled run.
+        Assert.That(sealValidator.SealsValidated, Is.InRange(1, 127));
     }
 
     [Test]

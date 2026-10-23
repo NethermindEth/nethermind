@@ -199,6 +199,7 @@ public static class BaseFlatPersistence
             }
         }
 
+        [SkipLocalsInit]
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
             ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], address);
