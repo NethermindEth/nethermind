@@ -6,11 +6,13 @@ import sys
 import tempfile
 import unittest
 
+from embedded import CASES
+
 
 class RuntimeBuildTests(unittest.TestCase):
     def test_selected_tests_build_with_missing_or_prebuilt_runtime_and_failures_stop_publication(self):
         script = Path(__file__).with_name("build-runtime.sh")
-        selected = ["durability", "resumption", "resumption_append", "native_system", "nethermind_streaming_controls"]
+        selected = list(CASES) + ["nethermind_streaming_controls"]
         for prebuilt in (False, True):
             for failed in (False, True):
                 with self.subTest(prebuilt=prebuilt, failed=failed), tempfile.TemporaryDirectory() as directory:
@@ -40,7 +42,7 @@ class RuntimeBuildTests(unittest.TestCase):
                     self.assertIn("--locked", cargo)
                     self.assertIn("--timings", cargo)
                     self.assertEqual(cargo[cargo.index("--profile") + 1], "ci-e2e")
-                    self.assertEqual([cargo[i + 1] for i, value in enumerate(cargo) if value == "--test"], selected)
+                    self.assertCountEqual([cargo[i + 1] for i, value in enumerate(cargo) if value == "--test"], selected)
                     packages = [cargo[i + 1] for i, value in enumerate(cargo) if value == "-p"]
                     self.assertEqual(packages, ["eez-node-e2e"] + ([] if prebuilt else ["eez-node", "eez-follower", "eez-prover-stateless"]))
                     self.assertEqual("--bins" in cargo, not prebuilt)

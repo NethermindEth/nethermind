@@ -191,7 +191,11 @@ impl Candidate {
     }
 
     pub async fn verify(&self, reference: &str, minimum: u64, phase: &str) -> Result<()> {
-        self.observe(reference, minimum, phase, None).await
+        self.observe(reference, minimum, phase, None, None).await
+    }
+
+    pub async fn verify_settled(&self, reference: &str, hash: &str, phase: &str) -> Result<()> {
+        self.observe(reference, 1, phase, None, Some(hash)).await
     }
 
     pub async fn verify_native(
@@ -201,7 +205,7 @@ impl Candidate {
         phase: &str,
         expected: &Value,
     ) -> Result<()> {
-        self.observe(reference, minimum, phase, Some(expected))
+        self.observe(reference, minimum, phase, Some(expected), None)
             .await
     }
 
@@ -211,10 +215,14 @@ impl Candidate {
         minimum: u64,
         phase: &str,
         expected: Option<&Value>,
+        settled_hash: Option<&str>,
     ) -> Result<()> {
         let mut settings = self.settings.clone();
         if let Some(state) = expected {
             settings["native_state"] = state.clone();
+        }
+        if let Some(hash) = settled_hash {
+            settings["settled_hash"] = json!(hash);
         }
         settings["reference"] = json!(reference);
         settings["candidate"] = json!(self.url());

@@ -83,6 +83,49 @@ class EmbeddedCoverageTests(unittest.TestCase):
             self.assertTrue(cases["ignored_case"]["upstream_ignored"])
             self.assertEqual("required_but_missing", cases["ignored_case"]["candidate_status"])
 
+    def test_partial_consumption_inventory_keeps_network_cases_and_helper_oracles_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "crates/eez-node-e2e/tests/partial_consumption.rs"
+            path.parent.mkdir(parents=True)
+            path.write_text(''.join('#[tokio::test]\nasync fn ' + name + '() {}\n'
+                                    for name in embedded.CASES["partial_consumption"])
+                            + '#[test]\nfn settlement_height_oracle_rejects_a_non_sync_height() {}\n')
+            cases = embedded.inventory(root)
+            network = [case for case in cases if case["asynchronous"]]
+            self.assertEqual(set(embedded.CASES["partial_consumption"]), {case["test"] for case in network})
+            self.assertTrue(all(case["candidate_status"] == "planned" for case in network))
+            self.assertEqual(["required_but_missing"], [case["candidate_status"] for case in cases if not case["asynchronous"]])
+
+    def test_new_suites_require_exact_settlement_evidence_in_every_observation(self):
+        revision, image = "a" * 40, "sha256:" + "b" * 64
+        for suite in ("contract_post", "partial_consumption"):
+            for mutation in (None, "missing-hash", "invalid-hash", "zero-height", "future-height"):
+                with self.subTest(suite=suite, mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    cases = []
+                    for name, (label, phases) in embedded.CASES[suite].items():
+                        cases.append({"source": "crates/eez-node-e2e/tests/" + suite + ".rs", "test": name, "candidate_status": "planned"})
+                        for phase in phases:
+                            observation = {"result": "pass", "case": label, "phase": phase, "verified_blocks": 3,
+                                "height": 2, "settled_height": 1, "settled_hash": "0x" + "12" * 32,
+                                "candidate_revision": revision, "image_id": image}
+                            if mutation == "missing-hash": del observation["settled_hash"]
+                            if mutation == "invalid-hash": observation["settled_hash"] = "0x12"
+                            if mutation == "zero-height": observation["settled_height"] = 0
+                            if mutation == "future-height": observation["settled_height"] = 3
+                            (root / (label + "-" + phase + ".json")).write_text(json.dumps(observation))
+                    inventory = root / "inventory.json"
+                    inventory.write_text(json.dumps({"cases": cases}))
+                    args = SimpleNamespace(inventory=inventory, directory=root)
+                    with patch.dict(os.environ, {"GITHUB_SHA": revision, "EEZ_CANDIDATE_IMAGE": image, "EEZ_SUITE": "embedded-" + suite}):
+                        if mutation is not None:
+                            with self.assertRaisesRegex(ValueError, "exact scenario settlement"): embedded.report(args)
+                            self.assertFalse((root / "candidate-coverage.json").exists())
+                        else:
+                            embedded.report(args)
+                            self.assertTrue(all(case["candidate_status"] == "passed" for case in json.loads((root / "candidate-coverage.json").read_text())["cases"]))
+
     def test_observation_insertion_rejects_missing_and_duplicate_boundaries(self):
         for source in ("changed assertion", "expected assertion\nexpected assertion"):
             with self.subTest(source=source), self.assertRaisesRegex(ValueError, "boundary changed"):
@@ -159,9 +202,11 @@ class EmbeddedCoverageTests(unittest.TestCase):
 
     def test_actual_verification_checks_running_image_source_and_canonical_prefix(self):
         revision, image = "a" * 40, "sha256:" + "b" * 64
-        for case in ("resumption", "native-system"):
+        for case in ("resumption", "native-system", "contract-post", "partial-prefix", "anchor-only"):
             failures = (None, "image", "source", "container", "l1-reorg", "candidate-fork", "prefix")
             if case == "native-system": failures += ("native-state", "native-count")
+            scenario = case in ("contract-post", "partial-prefix", "anchor-only")
+            if scenario: failures += ("scenario-fork", "scenario-missing", "scenario-lag")
             for failure in failures:
                 with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
@@ -173,29 +218,52 @@ class EmbeddedCoverageTests(unittest.TestCase):
                     nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}
                     if failure == "l1-reorg": nodes["l1"].l1_hash = "fork"
                     if failure == "candidate-fork": nodes["candidate"].canonical_hash = "fork"
-                    phase = "after-outbound" if case == "native-system" else "after-resumption"
+                    phase = {"native-system": "after-outbound", "contract-post": "after-contract-post",
+                             "partial-prefix": "after-partial-settlement", "anchor-only": "after-anchor-settlement"}.get(case, "after-resumption")
+                    settled_hash = "0x" + "12" * 32
+                    if scenario:
+                        for role in ("reference", "candidate"):
+                            node = nodes[role]
+                            node.height = 3
+                            original = node.call
+                            def call(method, *arguments, role=role, original=original):
+                                if method == "eth_getBlockByHash" and arguments[0] == settled_hash:
+                                    if failure == "scenario-missing" and role == "reference": return None
+                                    return {"hash": settled_hash, "number": "0x2"}
+                                if method == "eth_getBlockByHash" and arguments[0] == "behind":
+                                    return {"hash": "behind", "number": "0x1"}
+                                if method == "eth_getBlockByNumber" and arguments[0] == "0x2":
+                                    return {"hash": "fork" if failure == "scenario-fork" and role == "candidate" else settled_hash, "number": "0x2"}
+                                return original(method, *arguments)
+                            node.call = call
                     settings = {"case": case, "phase": phase, "native_state": {"system_nonce": "0x2"}, "candidate_revision": revision,
                         "image_id": image, "container": "container-name", "database_id": "database",
                         "result_directory": directory, "rollup_id": "1", "l1_chain_id": "1",
                         "registry": "registry", "minimum_height": 1, **{role: role for role in nodes}}
+                    if scenario: settings["settled_hash"] = settled_hash
                     settings_path = root / "settings.json"
                     settings_path.write_text(json.dumps(settings))
-                    result = {"height": 1, "endpoint": "end", "verified_blocks": 2, "verified_receipts": 1, "verified_native_transactions": 2 if case == "native-system" and failure != "native-count" else 1}
+                    result = {"height": 3 if scenario else 1, "endpoint": "end", "verified_blocks": 4 if scenario else 2, "verified_receipts": 1, "verified_native_transactions": 2 if case == "native-system" and failure != "native-count" else 1}
                     with contextlib.ExitStack() as stack:
                         stack.enter_context(patch.dict(os.environ, {"GITHUB_SHA": revision, "EEZ_EMBEDDED_RESULTS": directory}))
                         stack.enter_context(patch("embedded.subprocess.check_output", side_effect=[json.dumps([image_info]), json.dumps([container]), "calldata"]))
                         stack.enter_context(patch("embedded.Rpc", side_effect=lambda role, deadline: nodes[role]))
-                        stack.enter_context(patch("embedded.registry", return_value="end"))
+                        stack.enter_context(patch("embedded.registry", side_effect=["behind", "end"] if failure == "scenario-lag" else None, return_value="end"))
+                        sleep = stack.enter_context(patch("embedded.time.sleep"))
                         prefix = stack.enter_context(patch("embedded.verify_prefix", return_value=dict(result)))
                         native_state = stack.enter_context(patch("embedded.check_native_state"))
                         if failure == "native-state": native_state.side_effect = AssertionError("native state differs")
                         stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
                         if failure == "prefix": prefix.side_effect = AssertionError("actual prefix differs")
                         output = root / (case + "-" + phase + ".json")
-                        if failure is None:
+                        if failure in (None, "scenario-lag"):
                             embedded.verify(settings_path)
                             prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192)
-                            self.assertEqual("container-id", json.loads(output.read_text())["container"])
+                            observation = json.loads(output.read_text())
+                            self.assertEqual("container-id", observation["container"])
+                            if scenario:
+                                self.assertEqual((settled_hash, 2), (observation["settled_hash"], observation["settled_height"]))
+                            if failure == "scenario-lag": sleep.assert_called_once_with(1)
                             if case == "native-system":
                                 native_state.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", settings["native_state"])
                             else:
@@ -204,8 +272,9 @@ class EmbeddedCoverageTests(unittest.TestCase):
                             expected = {"image": "candidate image", "source": "candidate image source",
                                 "container": "running candidate image", "l1-reorg": "canonical L1 recheck",
                                 "candidate-fork": "canonical settled endpoint", "prefix": "actual prefix differs",
-                                "native-state": "native state differs", "native-count": "native scenario did not execute"}[failure]
-                            with self.assertRaisesRegex(ValueError if failure == "native-count" else AssertionError, expected): embedded.verify(settings_path)
+                                "native-state": "native state differs", "native-count": "native scenario did not execute", "scenario-fork": "canonical scenario settlement",
+                                "scenario-missing": "reference is missing the scenario settlement"}[failure]
+                            with self.assertRaisesRegex(ValueError if failure in ("native-count", "scenario-missing") else AssertionError, expected): embedded.verify(settings_path)
                             self.assertFalse(output.exists())
 
     def test_adaptation_cannot_remove_an_upstream_assertion(self):

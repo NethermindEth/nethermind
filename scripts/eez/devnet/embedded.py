@@ -25,6 +25,16 @@ CASES = {
         "a_resumed_batch_appends_the_l2_content_of_the_entries_it_settled":
             ("resumption-append", ("before-resumption", "after-resumption")),
     },
+    "contract_post": {
+        "a_contract_post_derives_identically_and_an_untraced_node_stops":
+            ("contract-post", ("after-contract-post", "after-subsequent-settlement")),
+    },
+    "partial_consumption": {
+        "inclusion_revert_settles_a_mixed_prefix_and_follower_converges":
+            ("partial-prefix", ("after-partial-settlement",)),
+        "inclusion_revert_can_settle_only_the_anchor":
+            ("anchor-only", ("after-anchor-settlement",)),
+    },
     "native_system": {
         "two_composers_two_keyless_followers":
             ("native-system", ("after-deposit", "after-outbound", "fresh-follower")),
@@ -49,6 +59,7 @@ def inventory(upstream):
             selected = path.parent == upstream / "crates/eez-node-e2e/tests" and name in CASES.get(path.stem, {})
             cases.append({"source": str(path.relative_to(upstream)), "test": name,
                           "source_sha256": digest(source), "upstream_ignored": ignored,
+                          "asynchronous": "async fn " in match[0],
                           "candidate_status": "planned" if selected else "required_but_missing"})
     if not cases:
         raise ValueError("no upstream integration test inventory")
@@ -69,13 +80,33 @@ def adapt(suite, source):
         source = insert(source, marker, addition)
         additions.append(addition)
 
-    module_marker = "use serde_json::{Value, json};" if suite == "native_system" else "use std::time::Duration;"
+    module_marker = {
+        "native_system": "use serde_json::{Value, json};",
+        "contract_post": "use std::time::{Duration, Instant};",
+        "partial_consumption": "const TIMEOUT: Duration = Duration::from_mins(6);",
+    }.get(suite, "use std::time::Duration;")
     after(module_marker, '\n\n#[path = "nethermind/mod.rs"]\nmod nethermind;')
     if suite == "native_system":
         after("    let withdrawal_before = l2_balance(&l1_rpc, world.withdrawal_recipient).await?;", '\n    let candidate = nethermind::Candidate::start_cross_chain("native-system", &world).await?;\n    let mut native_expected = json!({\n        "system_balance": "0x0", "system_nonce": "0x1",\n        "recipient": world.recipient, "recipient_balance": format!("{:#x}", recipient_before + deposit),\n    });')
         after("    // Drain any already accepted Composer 1 bundle before switching producers.",
               '\n    candidate.verify_native(&primary_rpc, 1, "after-deposit", &native_expected).await?;')
         after("    world.node.assert_no_divergence_failure_logs();", '\n    native_expected["system_balance"] = json!(format!("{withdrawal:#x}"));\n    native_expected["system_nonce"] = json!("0x2");\n    candidate.verify_native(&primary_rpc, final_height, "after-outbound", &native_expected).await?;\n    drop(candidate);\n    let fresh = nethermind::Candidate::start_cross_chain("native-system", &world).await?;\n    fresh.verify_native(&primary_rpc, final_height, "fresh-follower", &native_expected).await?;')
+    elif suite == "contract_post":
+        after("    let w = setup_cross_chain_with_env(&[external]).await.unwrap();",
+              '\n    let candidate = nethermind::Candidate::start_cross_chain("contract-post", &w).await.unwrap();')
+        after("    let first = commitment_at(&w, copied).await.unwrap();",
+              '\n    candidate.verify_settled(&w.l2_rpc(), &first.to_string(), "after-contract-post").await.unwrap();')
+        after("    assert_safe_holds_commitment(&w, &[&w.node, &traced], later).await;",
+              '\n    let committed = commitment_at(&w, later).await.unwrap();\n    candidate.verify_settled(&w.l2_rpc(), &committed.to_string(), "after-subsequent-settlement").await.unwrap();')
+    elif suite == "partial_consumption":
+        for name, label in (("inclusion_revert_settles_a_mixed_prefix_and_follower_converges", "partial-prefix"),
+                            ("inclusion_revert_can_settle_only_the_anchor", "anchor-only")):
+            after("async fn " + name + "() {\n    let w = setup_cross_chain().await.unwrap();",
+                  '\n    let candidate = nethermind::Candidate::start_cross_chain("' + label + '", &w).await.unwrap();')
+        after("    assert_follower_reaches(&w, settled).await;",
+              '\n    candidate.verify_settled(&l2_rpc, &settled.1.to_string(), "after-partial-settlement").await.unwrap();')
+        after("    assert_follower_reaches(&w, (settled.0, settled.1)).await;",
+              '\n    candidate.verify_settled(&l2_rpc, &settled.1.to_string(), "after-anchor-settlement").await.unwrap();')
     elif suite == "durability":
         after("    let states_before = chain.executed_states().await.unwrap();", "\n    let mut candidate = nethermind::Candidate::start(\"durability\", harness.l2_genesis_path(), &harness.follower_env(None).await.unwrap()).await.unwrap();")
         after('        .expect("composer did not retain its newly settled safe block");', '\n        candidate.verify(&node.l2_rpc_url(), settled_before_restart.0, "before-restart").await.unwrap();\n        candidate.restart().await.unwrap();')
@@ -120,7 +151,7 @@ def prepare(args):
     for suite, selected in CASES.items():
         path = directory / (suite + ".rs")
         source = path.read_text()
-        found = [case for case in cases if case["source"] == str(path.relative_to(upstream)) and not case["upstream_ignored"]]
+        found = [case for case in cases if case["source"] == str(path.relative_to(upstream)) and not case["upstream_ignored"] and case["asynchronous"]]
         if {case["test"] for case in found} != set(selected):
             raise ValueError("upstream suite inventory changed; candidate observations required: " + suite)
         changed, restored = adapt(suite, source)
@@ -160,12 +191,21 @@ def verify(settings_path):
     equal(l1.call("eth_chainId"), hex(int(settings["l1_chain_id"])), "L1 chain identity")
     equal(reference.call("eth_chainId"), candidate.call("eth_chainId"), "L2 chain identity")
     genesis = reference.call("eth_getBlockByNumber", "0x0", False)["hash"]
+    expected_hash = settings.get("settled_hash")
+    expected_height = 0
+    if expected_hash is not None:
+        if not re.fullmatch(r"0x[a-fA-F0-9]{64}", expected_hash):
+            raise ValueError("invalid scenario settlement hash")
+        expected = reference.call("eth_getBlockByHash", expected_hash, False)
+        if expected is None or expected["hash"] != expected_hash or int(expected["number"], 16) == 0:
+            raise ValueError("reference is missing the scenario settlement")
+        expected_height = int(expected["number"], 16)
     while time.monotonic() < deadline:
         snapshot = l1.call("eth_getBlockByNumber", "latest", False)
         commitment = registry(l1, settings["registry"], call, snapshot)
         endpoint = reference.call("eth_getBlockByHash", commitment, False)
         own = candidate.call("eth_getBlockByHash", commitment, False)
-        if endpoint is None or own is None or int(endpoint["number"], 16) < settings["minimum_height"]:
+        if endpoint is None or own is None or int(endpoint["number"], 16) < max(settings["minimum_height"], expected_height):
             time.sleep(1)
             continue
         result = verify_prefix(reference, candidate, commitment, genesis, 8192)
@@ -180,6 +220,11 @@ def verify(settings_path):
         equal(l1.call("eth_getBlockByNumber", snapshot["number"], False)["hash"], snapshot["hash"], "canonical L1 recheck")
         for node in (reference, candidate):
             equal(node.call("eth_getBlockByNumber", hex(result["height"]), False)["hash"], commitment, "canonical settled endpoint")
+            if expected_hash is not None:
+                equal(node.call("eth_getBlockByNumber", hex(expected_height), False)["hash"], expected_hash,
+                      "canonical scenario settlement")
+        if expected_hash is not None:
+            result.update(settled_hash=expected_hash, settled_height=expected_height)
         if case == "resumption-append" and phase == "after-resumption" and result["verified_native_transactions"] == 0:
             raise AssertionError("append scenario has no verified native transactions")
         result.update({"result": "pass", "case": case, "phase": phase, "image_id": settings["image_id"],
@@ -220,6 +265,10 @@ def report(args):
             equal(observation["candidate_revision"], os.environ["GITHUB_SHA"], "candidate test source")
             equal(observation["image_id"], os.environ["EEZ_CANDIDATE_IMAGE"], "candidate test image")
             observations.append(observation)
+        if suite in ("contract_post", "partial_consumption"):
+            for observation in observations:
+                if not re.fullmatch(r"0x[a-fA-F0-9]{64}", observation.get("settled_hash", "")) or not 0 < observation.get("settled_height", 0) <= observation["height"]:
+                    raise ValueError("missing exact scenario settlement evidence")
         if suite == "durability":
             before, restarted, advanced, fresh = observations
             if before["database_id"] != restarted["database_id"] or restarted["database_id"] != advanced["database_id"] or fresh["database_id"] == before["database_id"]:

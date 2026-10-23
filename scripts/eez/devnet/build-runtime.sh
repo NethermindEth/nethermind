@@ -12,7 +12,7 @@ if [[ "$EEZ_PROFILE" == rollup0 ]]; then
     runtime_targets=(-p eez-node -p eez-follower -p eez-prover-stateless --bins --examples)
   fi
   cargo build --locked --profile ci-e2e -p eez-node-e2e "${runtime_targets[@]}" --message-format=json --timings \
-    --test durability --test resumption --test resumption_append --test native_system --test nethermind_streaming_controls \
+    --test durability --test resumption --test resumption_append --test native_system --test contract_post --test partial_consumption --test nethermind_streaming_controls \
     > "$EEZ_CI_RESULT_DIR/test-build.jsonl"
   cp target/cargo-timings/cargo-timing.html "$EEZ_CI_RESULT_DIR/cargo-timing.html"
   python3 "$HERE/bundle.py" tests --directory "$EEZ_CI_RESULT_DIR"

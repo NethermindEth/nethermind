@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import controls
+from embedded import CASES
 from test_canonical_snapshot import Node
 
 
@@ -93,7 +94,7 @@ class StreamingControlInputTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[3]
         producer = (root / 'scripts/eez/devnet/build-runtime.sh').read_text()
         self.assertEqual(producer.count('cargo build --locked --profile ci-e2e'), 1)
-        for suite in ('durability', 'resumption', 'resumption_append', 'native_system', 'nethermind_streaming_controls'):
+        for suite in (*CASES, 'nethermind_streaming_controls'):
             self.assertIn('--test ' + suite, producer)
         self.assertLess(producer.index('controls.py" install'), producer.index('cargo build'))
         self.assertLess(producer.index('cargo build'), producer.index('bundle.py" tests'))
