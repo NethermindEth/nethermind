@@ -40,6 +40,9 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v6
+
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v4
 
@@ -104,10 +107,8 @@ runs:
           echo "Also tagging as: $master_tag"
         fi
 
-        # The OCI version label. release.yml reads the same properties with xmlstarlet, which is
-        # not on the runner image and has to be installed first; version.sh needs no dependencies
-        # and validates what it read, so an unusable version fails here instead of being published.
-        if ! version=$(scripts/version.sh src/Nethermind/Directory.Build.props); then
+        # Use the same validated version for the OCI label as other image checks.
+        if ! version=$(dotnet run --file scripts/Version.cs -- src/Nethermind/Directory.Build.props); then
           echo "::error::Could not determine the version for the image labels"
           exit 1
         fi
