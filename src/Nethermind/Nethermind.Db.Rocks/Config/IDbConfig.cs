@@ -10,6 +10,7 @@ namespace Nethermind.Db.Rocks.Config;
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
 public interface IDbConfig : IConfig
 {
+    [ConfigItem(Description = "The size of the block cache shared by all databases, in bytes.", DefaultValue = "536870912")]
     ulong SharedBlockCacheSize { get; set; }
 
     /// <summary>

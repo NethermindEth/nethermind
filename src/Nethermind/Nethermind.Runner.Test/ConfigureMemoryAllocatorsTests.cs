@@ -29,14 +29,15 @@ public class ConfigureMemoryAllocatorsTests
 
     [TestCase(-1, INetworkConfig.DefaultNettyArenaOrder)]
     [TestCase(9, 9)]
-    public void Uses_configured_netty_arena_order_or_default_when_negative(int configuredOrder, int expectedOrder)
+    public void Uses_configured_netty_arena_order_or_default_when_negative_and_caps_arena_count(int configuredOrder, int expectedOrder)
     {
-        NetworkConfig networkConfig = new() { NettyArenaOrder = configuredOrder };
+        NetworkConfig networkConfig = new() { NettyArenaOrder = configuredOrder, MaxNettyArenaCount = 1 };
 
         new ConfigureMemoryAllocators(new InitConfig(), networkConfig, LimboLogs.Instance, Substitute.For<MallocHelper>()).Execute(CancellationToken.None);
 
         int expectedChunkSize = PooledByteBufferAllocator.DefaultPageSize << expectedOrder;
         Assert.That(((PooledByteBufferAllocator)NethermindBuffers.Default).Metric.ChunkSize, Is.EqualTo(expectedChunkSize));
         Assert.That(((PooledByteBufferAllocator)NethermindBuffers.RlpxAllocator).Metric.ChunkSize, Is.EqualTo(expectedChunkSize));
+        Assert.That(((PooledByteBufferAllocator)NethermindBuffers.Default).Metric.HeapArenas().Count, Is.EqualTo(1));
     }
 }
