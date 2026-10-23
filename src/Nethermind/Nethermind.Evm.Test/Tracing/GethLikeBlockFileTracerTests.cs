@@ -115,13 +115,15 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void File_summary_preserves_output_larger_than_stack_buffer()
+    public void File_summary_preserves_output_at_buffer_boundaries([Values(127, 128, 257, 1023, 1024)] int outputLength)
     {
-        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(257, 0).Done;
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(outputLength, 0).Done;
         string file = TraceFile(code);
         string summary = file.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1];
         using JsonDocument json = JsonDocument.Parse(summary);
-        Assert.That(json.RootElement.GetProperty("output").GetString(), Is.EqualTo(new string('0', 62) + "2a" + new string('0', 450)));
+        Assert.That(json.RootElement.GetProperty("output").GetString(),
+            Is.EqualTo(new string('0', 62) + "2a" + new string('0', (outputLength - 32) * 2)),
+            "the file summary must retain every output byte without adding a prefix or trimming leading zeros");
     }
 
     [TestCase("negative", 0)]

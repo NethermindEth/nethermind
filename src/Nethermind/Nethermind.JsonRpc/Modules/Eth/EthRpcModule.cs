@@ -254,17 +254,19 @@ public partial class EthRpcModule(
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(requests.TotalSlots * 32);
         int bufferOffset = 0;
+        using ArrayPoolSpan<UInt256> storageValues = new(requests.TotalSlots);
 
         Dictionary<Address, Memory<byte>[]> slots = new(requests.Entries.Count);
         foreach (KeyValuePair<Address, UInt256[]> entry in requests.Entries)
         {
             UInt256[] slotKeys = entry.Value;
+            Span<UInt256> storage = storageValues.Slice(0, slotKeys.Length);
+            _stateReader.GetStorage(header, entry.Key, slotKeys, storage);
             Memory<byte>[] values = new Memory<byte>[slotKeys.Length];
             for (int i = 0; i < slotKeys.Length; i++)
             {
-                _stateReader.GetStorage(header, entry.Key, in slotKeys[i], out UInt256 storage);
                 Memory<byte> slot = buffer.AsMemory(bufferOffset, 32);
-                storage.ToBigEndian(slot.Span);
+                storage[i].ToBigEndian(slot.Span);
                 values[i] = slot;
                 bufferOffset += 32;
             }

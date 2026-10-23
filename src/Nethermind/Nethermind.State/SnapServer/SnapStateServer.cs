@@ -195,7 +195,7 @@ public class SnapStateServer : ISnapStateServer
                 break;
             }
 
-            Hash256? storageRoot = GetStorageRootByPath(tree, rootHash, accounts[i].Path.Bytes.ToArray());
+            Hash256? storageRoot = GetStorageRootByPath(tree, rootHash, accounts[i].Path.Bytes);
             if (storageRoot is null)
             {
                 break;
@@ -252,7 +252,7 @@ public class SnapStateServer : ISnapStateServer
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
     }
 
-    private Hash256? GetStorageRootByPath(StateTree tree, in ValueHash256 rootHash, byte[] accountPath)
+    private Hash256? GetStorageRootByPath(StateTree tree, in ValueHash256 rootHash, ReadOnlySpan<byte> accountPath)
     {
         try
         {

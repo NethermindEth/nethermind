@@ -3551,6 +3551,7 @@ public class BlockCachePreWarmerTests
                 preWarmer,
                 new PrewarmerState(preBlockCaches, isPrewarmer),
                 _processingScope.Resolve<IWorldState>(),
+                _processingScope.Resolve<ICodeInfoRepository>(),
                 LimboLogs.Instance);
 
             adapter.Execute(Build.A.Transaction.TestObject, NullTxTracer.Instance);
