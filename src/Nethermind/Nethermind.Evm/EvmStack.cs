@@ -43,7 +43,7 @@ public ref partial struct EvmStack
     public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo)
     {
         Head = head;
-        _tracer = null!;
+        _tracer = null;
         _codeInfo = codeInfo;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
