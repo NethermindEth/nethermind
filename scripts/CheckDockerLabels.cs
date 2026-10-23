@@ -7,6 +7,9 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
 
+// Final-stage ARGs must be redeclared or OCI labels silently inherit empty values.
+// Round-trip supplied build arguments through image inspection; check publishing callers separately.
+// The default stub build context checks final-stage labels without compiling the client.
 var full = false;
 var dockerfiles = new List<string>();
 for (var i = 0; i < args.Length; i++)
@@ -33,9 +36,20 @@ try
     var root = ScriptVersion.Root();
     if (dockerfiles.Count == 0)
     {
-        string[] excluded = ["Dockerfile.diag", "Dockerfile.pgo", "scripts/build/Dockerfile", "scripts/build/deb/Dockerfile",
-            "src/Nethermind/Nethermind.Runner/Dockerfile", "src/Nethermind/Nethermind.Test.Runner/Dockerfile",
-            "tools/EngineApiProxy/Dockerfile", "tools/Kute/Dockerfile", "tools/RpcTests/RpcTests.Monitor/Dockerfile", "tools/SendBlobs/Dockerfile"];
+        // New images must be checked or deliberately excluded, including published internal tooling.
+        string[] excluded =
+        [
+            "Dockerfile.diag", // Ad hoc dotTrace image for gas benchmarks.
+            "Dockerfile.pgo", // Throwaway collect-pgo-profile.yml image.
+            "scripts/build/Dockerfile", // Release package builder; image is not pushed.
+            "scripts/build/deb/Dockerfile", // Debian package builder; image is not pushed.
+            "src/Nethermind/Nethermind.Runner/Dockerfile", // Visual Studio debug container.
+            "src/Nethermind/Nethermind.Test.Runner/Dockerfile",
+            "tools/EngineApiProxy/Dockerfile", // E2E fixture; image is never pushed.
+            "tools/Kute/Dockerfile",
+            "tools/RpcTests/RpcTests.Monitor/Dockerfile", // Published as nethermindeth/rpc-monitor for internal operations.
+            "tools/SendBlobs/Dockerfile"
+        ];
         var tracked = await Run("git", ["-C", root, "ls-files", "--", "Dockerfile", "Dockerfile.*", "*/Dockerfile", "*/Dockerfile.*"]);
         dockerfiles.AddRange(tracked.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(file => file.TrimEnd('\r')).Except(excluded).Order(StringComparer.Ordinal));
         if (dockerfiles.Count == 0) throw new InvalidOperationException("error: found no Dockerfile to check");

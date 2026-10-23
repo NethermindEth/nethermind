@@ -107,8 +107,9 @@ runs:
           echo "Also tagging as: $master_tag"
         fi
 
-        # Use the same validated version for the OCI label as other image checks.
-        if ! version=$(dotnet run --file scripts/Version.cs -- src/Nethermind/Directory.Build.props); then
+        # Validate captured CLI output before it enters the evaluated Docker command.
+        if ! version=$(dotnet run --file scripts/Version.cs -- src/Nethermind/Directory.Build.props) ||
+          [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
           echo "::error::Could not determine the version for the image labels"
           exit 1
         fi
