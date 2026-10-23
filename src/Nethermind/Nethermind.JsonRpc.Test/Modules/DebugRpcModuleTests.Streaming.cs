@@ -138,6 +138,25 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public void StructLogEnvelopeWriter_BundleDefault_RetainsDurationError()
+    {
+        ArrayBufferWriter<byte> buffer = new();
+        using Utf8JsonWriter writer = new(buffer);
+        StructLogEnvelopeWriter.EmitTraceObject(writer, null, CancellationToken.None,
+            (_, _, _) => throw new TraceDurationFormatException("bad duration"),
+            LimboLogs.Instance.GetClassLogger<DebugRpcModuleTests>(), fallbackGas: 21_000);
+        writer.Flush();
+        JToken parsed = JToken.Parse(Encoding.UTF8.GetString(buffer.WrittenSpan));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["failed"]!.Value<bool>(), Is.True);
+            Assert.That(parsed["error"]!.Value<string>(), Is.EqualTo("tracing failed: bad duration"));
+            Assert.That(parsed["errorCode"]!.Value<int>(), Is.EqualTo(ErrorCodes.InternalError));
+            Assert.That(parsed["gas"]!.Value<int>(), Is.EqualTo(21_000));
+        }
+    }
+
+    [Test]
     public void GethLikeTxTraceStreamingSingleResult_WhenTraceThrows_WritesErrorAndErrorCode()
     {
         CancellationTokenSource timeoutCts = new();

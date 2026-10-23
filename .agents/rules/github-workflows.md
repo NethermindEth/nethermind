@@ -20,7 +20,7 @@ Conventions for GitHub Actions, CODEOWNERS, and repo automation under `.github/`
 
 ## Pull request template
 
-- `.github/pull_request_template.md`: Fill in "Changes", tick type-of-change checkboxes, and complete Testing/Documentation sections. Checkboxes drive PR labeling; do not remove required sections.
+- `.github/pull_request_template.md`: Link the resolved issue, if any, and fill in "Changes"; put breaking-change, release-notes, docs or testing details under "Remarks". `pr-labeler.yml` labels PRs from the title and changed paths, not the body.
 
 ## CODEOWNERS
 

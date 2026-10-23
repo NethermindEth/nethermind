@@ -100,6 +100,11 @@ public static class JsonRpcResponseWriter
             return ValueTask.CompletedTask;
         }
 
+        if (response.StreamedResultObservation is { } observation)
+        {
+            return WriteObservedAsync(writer, response, observation, streamable, options, isBatch, cancellationToken);
+        }
+
         if (response.Streaming is { } streaming)
         {
             return WriteDeferredAsync(writer, response, streaming, streamable, options, isBatch, cancellationToken);
@@ -108,6 +113,37 @@ public static class JsonRpcResponseWriter
         return cancellationToken.IsCancellationRequested
             ? CancelledAsync(cancellationToken)
             : WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+    }
+
+    /// <summary>Writes a streamed result as <see cref="WriteAsync(PipeWriter, JsonRpcResponse, JsonSerializerOptions, bool, CancellationToken)"/> does, reporting it to its observer.</summary>
+    private static async ValueTask WriteObservedAsync(
+        PipeWriter writer,
+        JsonRpcResponse response,
+        StreamedResultObservation observation,
+        IStreamableResult streamable,
+        JsonSerializerOptions options,
+        bool isBatch,
+        CancellationToken cancellationToken)
+    {
+        bool written = false;
+        try
+        {
+            if (response.Streaming is { } streaming)
+            {
+                await WriteDeferredAsync(writer, response, streaming, streamable, options, isBatch, cancellationToken);
+                written = streaming.Replacement is null;
+            }
+            else
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+                written = true;
+            }
+        }
+        finally
+        {
+            observation.Complete(written);
+        }
     }
 
     /// <summary>Completes as cancelled with the <see cref="OperationCanceledException"/> itself, as an async method does.</summary>
@@ -234,23 +270,26 @@ public static class JsonRpcResponseWriter
         CancellationToken cancellationToken)
     {
         writer.Write(SuccessEnvelopeStart);
+        StreamedResultObservation? observation = response.StreamedResultObservation;
+        PipeWriter resultWriter = observation?.Wrap(writer) ?? writer;
         StreamableResultStatus? status = null;
         if (streamable is IBatchAwareStreamableResultWithStatus batchAwareStatusStreamable)
         {
-            status = await batchAwareStatusStreamable.WriteToWithStatusAsync(writer, isBatch, cancellationToken);
+            status = await batchAwareStatusStreamable.WriteToWithStatusAsync(resultWriter, isBatch, cancellationToken);
         }
         else if (streamable is IStreamableResultWithStatus statusStreamable)
         {
-            status = await statusStreamable.WriteToWithStatusAsync(writer, cancellationToken);
+            status = await statusStreamable.WriteToWithStatusAsync(resultWriter, cancellationToken);
         }
         else if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
         {
-            await batchAwareStreamable.WriteToAsync(writer, isBatch, cancellationToken);
+            await batchAwareStreamable.WriteToAsync(resultWriter, isBatch, cancellationToken);
         }
         else
         {
-            await streamable.WriteToAsync(writer, cancellationToken);
+            await streamable.WriteToAsync(resultWriter, cancellationToken);
         }
+        observation?.ResultWritten(status);
         if (status is not null)
         {
             writer.Write(StreamStatusSeparator);
