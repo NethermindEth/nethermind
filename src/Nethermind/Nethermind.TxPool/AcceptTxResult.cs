@@ -146,7 +146,7 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// An EIP-8141 frame transaction whose validation prefix plus signature verification would cost a node more
-        /// than <c>MAX_VERIFY_GAS</c> to check. It stays consensus-valid; only public mempool propagation is refused.
+        /// than the node verification budget to check. It stays consensus-valid; only public mempool propagation is refused.
         /// </summary>
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 

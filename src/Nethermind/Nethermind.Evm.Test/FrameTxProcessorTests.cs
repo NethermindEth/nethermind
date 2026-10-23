@@ -196,7 +196,7 @@ public partial class FrameTxProcessorTests
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 5));
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.SelfVerify(50_000), Frame(FrameMode.Sender, target: Recipient, value: 5));
         tx.FrameSignatures = placeholder
             ? [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)]
             : [];

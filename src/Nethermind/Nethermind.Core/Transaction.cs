@@ -304,7 +304,7 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs || !MayHaveNetworkForm
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
 
