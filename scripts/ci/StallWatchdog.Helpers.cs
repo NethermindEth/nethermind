@@ -156,19 +156,24 @@ static class StallWatchdog
             var destination = Directory.CreateDirectory(Path.Combine(directory, "msbuild-debug"));
             foreach (var file in Directory.GetFiles(debug))
             {
-                using var source = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                var end = source.Length;
-                var length = Math.Min(end, 5_000_000);
-                source.Seek(end - length, SeekOrigin.Begin);
-                using var output = File.Create(Path.Combine(destination.FullName, Path.GetFileName(file)));
-                var buffer = new byte[81920];
-                while (length > 0)
+                try
                 {
-                    var count = await source.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, length)), cancellationToken);
-                    if (count == 0) break;
-                    await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
-                    length -= count;
+                    using var source = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    var end = source.Length;
+                    var length = Math.Min(end, 5_000_000);
+                    source.Seek(end - length, SeekOrigin.Begin);
+                    using var output = File.Create(Path.Combine(destination.FullName, Path.GetFileName(file)));
+                    var buffer = new byte[81920];
+                    while (length > 0)
+                    {
+                        var count = await source.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, length)), cancellationToken);
+                        if (count == 0) break;
+                        await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+                        length -= count;
+                    }
                 }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                { Console.Error.WriteLine($"Could not copy scheduler diagnostic {file}: {exception.Message}"); }
             }
         }
     }

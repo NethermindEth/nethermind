@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #:include ScriptProcess.Helpers.cs
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
 
@@ -20,6 +21,30 @@ var dotnet = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathS
 var script = Path.Combine(root.FullName, "scripts/ci/RunWithStallWatchdog.cs");
 var passed = 0;
 void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+async Task<int> ReadPid(string path, CancellationToken cancellationToken)
+{
+    while (true)
+    {
+        if (File.Exists(path) && int.TryParse(File.ReadAllText(path).Trim(), out var pid) && pid > 0) return pid;
+        await Task.Delay(10, cancellationToken);
+    }
+}
+async Task CheckDead(int pid, CancellationToken cancellationToken)
+{
+    var elapsed = Stopwatch.StartNew();
+    while (elapsed.Elapsed < TimeSpan.FromSeconds(5))
+    {
+        try
+        {
+            var stat = File.ReadAllText($"/proc/{pid}/stat");
+            if (stat[(stat.LastIndexOf(')') + 1)..].TrimStart().StartsWith('Z')) return;
+        }
+        catch (FileNotFoundException) { return; }
+        catch (DirectoryNotFoundException) { return; }
+        await Task.Delay(20, cancellationToken);
+    }
+    throw new InvalidOperationException($"fixture process {pid} survived watchdog cleanup");
+}
 async Task<(int Code, string Output)> Run(string executable, string[] arguments, string cwd, Dictionary<string, string>? environment = null, CancellationToken cancellationToken = default)
 {
     if (environment is not null)
@@ -33,7 +58,7 @@ async Task<(int Code, string Output)> Run(string executable, string[] arguments,
 if (OperatingSystem.IsLinux())
 {
     var setsid = (await Run("which", ["setsid"], root.FullName)).Output.Trim();
-    foreach (var scenario in new[] { "hung-install", "hung-stack", "healthy", "exit-zero", "exit-seven", "missing-command", "aggregate", "clamped-install", "missing-pid", "ignoring-child", "arguments", "cancel", "scheduler-tail" })
+    foreach (var scenario in new[] { "hung-install", "hung-stack", "healthy", "exit-zero", "exit-seven", "missing-command", "aggregate", "clamped-install", "missing-pid", "ignoring-child", "arguments", "cancel", "scheduler-tail", "scheduler-unreadable" })
     {
         var work = Directory.CreateTempSubdirectory("watchdog tests ");
         var tools = Directory.CreateDirectory(Path.Combine(work.FullName, "tools"));
@@ -65,14 +90,18 @@ if (OperatingSystem.IsLinux())
         if (scenario == "ignoring-child") command = ["bash", "-c", "bash -c 'trap \"\" TERM; echo $BASHPID > \"$DIAG_DIR/child.pid\"; exec sleep 60' & wait"];
         if (scenario == "arguments") command = ["printf", "%s\\n", "space argument", "$(literal)", "a'b\"c"];
         if (scenario == "scheduler-tail") File.WriteAllText(Path.Combine(scheduler.FullName, "SchedulerState.txt"), new string('a', 5_000_010) + "evidence");
+        if (scenario == "scheduler-unreadable")
+        {
+            File.CreateSymbolicLink(Path.Combine(scheduler.FullName, "missing.txt"), Path.Combine(work.FullName, "missing"));
+            File.WriteAllText(Path.Combine(scheduler.FullName, "SchedulerState.txt"), "retained evidence");
+        }
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             var run = Run(dotnet, ["run", "--file", script, "--", .. command], root.FullName, environment, timeout.Token);
             if (scenario == "cancel")
             {
-                while (!File.Exists(Path.Combine(diag, "command.pid"))) await Task.Delay(10, timeout.Token);
-                var group = int.Parse(File.ReadAllText(Path.Combine(diag, "command.pid")).Trim());
+                var group = await ReadPid(Path.Combine(diag, "command.pid"), timeout.Token);
                 // setsid --fork is the session's parent; its parent is the watchdog app.
                 int Parent(int pid) => int.Parse(File.ReadAllLines($"/proc/{pid}/status").First(line => line.StartsWith("PPid:", StringComparison.Ordinal))[5..].Trim());
                 var watchdog = Parent(Parent(group));
@@ -94,20 +123,16 @@ if (OperatingSystem.IsLinux())
             if (scenario == "aggregate") Check(File.ReadAllLines(Path.Combine(diag, "captures")).Length is > 0 and <= 3, "aggregate deadline ignored");
             if (scenario == "clamped-install") Check(Directory.GetFiles(diag, "stack-*.txt").Length == 0, "stack captured after deadline");
             if (scenario == "scheduler-tail") Check(new FileInfo(Path.Combine(diag, "msbuild-debug/SchedulerState.txt")).Length == 5_000_000, "scheduler log unbounded");
-            if (scenario == "ignoring-child")
-            {
-                var pid = File.ReadAllText(Path.Combine(diag, "child.pid")).Trim();
-                var statPath = $"/proc/{pid}/stat";
-                var dead = !File.Exists(statPath) || File.ReadAllText(statPath).Split(')')[^1].TrimStart().StartsWith('Z');
-                Check(dead, "child survived group cleanup");
-            }
+            if (scenario == "scheduler-unreadable") Check(File.ReadAllText(Path.Combine(diag, "msbuild-debug/SchedulerState.txt")) == "retained evidence" && result.Output.Contains("Could not copy scheduler diagnostic", StringComparison.Ordinal), "unreadable scheduler file lost other diagnostics");
+            foreach (var name in new[] { "command.pid", "fallback.pid", "child.pid" })
+                if (File.Exists(Path.Combine(diag, name))) await CheckDead(await ReadPid(Path.Combine(diag, name), timeout.Token), timeout.Token);
             Console.WriteLine($"PASS {scenario}"); passed++;
         }
         finally
         {
             foreach (var name in new[] { "command.pid", "fallback.pid" })
-                if (File.Exists(Path.Combine(diag, name)))
-                    await Run("kill", ["-KILL", "--", "-" + File.ReadAllText(Path.Combine(diag, name)).Trim()], root.FullName);
+                if (File.Exists(Path.Combine(diag, name)) && int.TryParse(File.ReadAllText(Path.Combine(diag, name)).Trim(), out var pid) && pid > 0)
+                    await Run("kill", ["-KILL", "--", "-" + pid], root.FullName);
             work.Delete(recursive: true);
         }
     }
