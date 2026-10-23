@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
@@ -106,10 +105,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// The filter as its payload cache key, or <c>null</c> for one accepting every log of every block.
         /// </summary>
         /// <remarks>A wildcard topic position still rejects logs with fewer topics, so only a filter without topic positions qualifies.</remarks>
-        private Filter? GetFilterKey(Filter? filter) =>
-            filter is null || _filter is { AcceptsAnyBlock: true, FromBlock.Type: BlockParameterType.Latest, ToBlock.Type: BlockParameterType.Latest } && filter.Topics?.Any() != true
-                ? null
-                : filter;
+        private Filter? GetFilterKey(Filter? filter)
+        {
+            if (filter is null)
+                return null;
+            if (_filter is not { AcceptsAnyBlock: true, FromBlock.Type: BlockParameterType.Latest, ToBlock.Type: BlockParameterType.Latest })
+                return filter;
+
+            foreach (Hash256[]? topic in filter.Topics ?? [])
+                return filter;
+
+            return null;
+        }
 
         /// <summary>Equates filters accepting the same logs of the same blocks.</summary>
         /// <remarks>Addresses are compared as a set; topics position by position, in order.</remarks>
@@ -117,13 +124,25 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             public static readonly FilterComparer Instance = new();
 
-            public bool Equals(Filter? x, Filter? y) =>
-                ReferenceEquals(x, y)
-                || x is not null && y is not null
-                && x.FromBlock == y.FromBlock
-                && x.ToBlock == y.ToBlock
-                && (x.Address is null ? y.Address is null : y.Address is not null && x.Address.SetEquals(y.Address))
-                && (x.Topics ?? []).SequenceEqual(y.Topics ?? [], TopicComparer.Instance);
+            public bool Equals(Filter? x, Filter? y)
+            {
+                if (ReferenceEquals(x, y))
+                    return true;
+                if (x is null || y is null
+                    || x.FromBlock != y.FromBlock
+                    || x.ToBlock != y.ToBlock
+                    || (x.Address is null ? y.Address is not null : y.Address is null || !x.Address.SetEquals(y.Address)))
+                    return false;
+
+                using IEnumerator<Hash256[]?> left = (x.Topics ?? []).GetEnumerator();
+                using IEnumerator<Hash256[]?> right = (y.Topics ?? []).GetEnumerator();
+                while (left.MoveNext())
+                {
+                    if (!right.MoveNext() || !TopicComparer.Instance.Equals(left.Current, right.Current))
+                        return false;
+                }
+                return !right.MoveNext();
+            }
 
             public int GetHashCode(Filter filter)
             {
