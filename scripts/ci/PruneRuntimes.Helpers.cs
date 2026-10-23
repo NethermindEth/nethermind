@@ -29,9 +29,6 @@ internal static class RuntimePruner
         var foreign = candidates.Where(path => Path.GetFileName(path).Contains('-') && Path.GetFileName(path) != rid).ToArray();
         foreach (var path in foreign)
         {
-            var relative = Path.GetRelativePath(root, path);
-            if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-                throw new IOException($"Runtime directory is outside the bin root: {path}");
             if (Directory.Exists(path))
                 Directory.Delete(path, recursive: true);
         }
