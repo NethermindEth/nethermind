@@ -25,8 +25,11 @@ catch (Exception error)
 }
 #endif
 
-static class DevnetGenesis
+static partial class DevnetGenesis
 {
+    [GeneratedRegex("^devnet-[0-9]+$")]
+    private static partial Regex DevnetName();
+
     internal static async Task<int> Fetch(Func<string, string?> environment,
         Func<string, string[], CancellationToken, Task<(int ExitCode, string Output)>> execute,
         TextWriter output, CancellationToken cancellationToken)
@@ -48,7 +51,7 @@ static class DevnetGenesis
             var listing = await execute("gh", ["api", $"repos/ethpandaops/{repo}/contents/network-configs?ref={sha}", "--jq", ".[] | select(.type == \"dir\") | .name"], cancellationToken);
             if (listing.ExitCode != 0) return listing.ExitCode;
             var devnets = listing.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-                .Where(name => Regex.IsMatch(name, "^devnet-[0-9]+$"))
+                .Where(name => DevnetName().IsMatch(name))
                 .OrderBy(name => BigInteger.Parse(name.AsSpan(7), CultureInfo.InvariantCulture))
                 .ThenBy(name => name, StringComparer.Ordinal)
                 .TakeLast(count).ToArray();
