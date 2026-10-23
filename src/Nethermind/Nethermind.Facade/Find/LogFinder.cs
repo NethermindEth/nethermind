@@ -88,9 +88,9 @@ namespace Nethermind.Facade.Find
 
             if (_bodiesOnDisk)
             {
-                bool fromMissing = fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!);
+                bool fromMissing = ReceiptsMissing(fromBlock);
                 cancellationToken.ThrowIfCancellationRequested();
-                bool toMissing = toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!);
+                bool toMissing = ReceiptsMissing(toBlock);
 
                 if (fromMissing && !WasPruned(fromBlock))
                 {
@@ -121,6 +121,19 @@ namespace Nethermind.Facade.Find
                 FilterLogsIteratively<BlockFilterLogs, FilterLog>(filter, fromBlock, toBlock, cancellationToken),
                 FilterLogsIteratively<BlockSerializedLogs, SerializedLogs>(filter, fromBlock, toBlock, cancellationToken));
         }
+
+        /// <summary>Throws when the receipts of <paramref name="header"/> are missing because the block is not processed yet.</summary>
+        /// <exception cref="BlockNotProcessedException">The block is not processed yet.</exception>
+        protected void ThrowIfNotProcessed(BlockHeader header)
+        {
+            if (_bodiesOnDisk && ReceiptsMissing(header) && !WasPruned(header))
+            {
+                throw new BlockNotProcessedException(header.Number);
+            }
+        }
+
+        private bool ReceiptsMissing(BlockHeader header) =>
+            header.Number != 0 && header.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(header.Number, header.Hash!);
 
         /// <remarks>
         /// A block ahead of the processed head or off the main chain may not be processed yet, so its receipts can

@@ -1156,7 +1156,8 @@ public partial class EthRpcModule(
         }
     }
 
-    private ResultWrapper<IEnumerable<FilterLog>> GetLogsFailure(ResourceNotFoundException e) => e is BlockNotProcessedException
+    // While receipts sync, the processed head can trail the synced headers, so a missing block is reported as not synced yet.
+    private ResultWrapper<IEnumerable<FilterLog>> GetLogsFailure(ResourceNotFoundException e) => e is BlockNotProcessedException && !_ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet()
         ? ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound)
         : ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
 

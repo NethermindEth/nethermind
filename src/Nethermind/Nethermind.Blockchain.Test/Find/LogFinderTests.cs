@@ -31,7 +31,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -582,6 +581,19 @@ public class LogFinderTests
 
         Assert.That(logs.Select(static log => log.BlockNumber), Is.EqualTo(new ulong[] { 1, 1, 4 }));
         AssertSerializedAsFilterLogs(logs);
+    }
+
+    [Test]
+    public void Indexed_range_ending_in_unprocessed_block_throws_before_enumeration([Values] bool indexCoversEnd)
+    {
+        Block parent = _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
+        Block unprocessed = Build.A.Block.WithParent(parent).WithReceiptsRoot(TestItem.KeccakA).WithExtraData([1]).TestObject;
+        Assert.That(_rawBlockTree.SuggestBlock(unprocessed), Is.EqualTo(AddBlockResult.Added));
+        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(1, (int)unprocessed.Number - (indexCoversEnd ? 0 : 1));
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(unprocessed.Number).WithAddress(TestItem.AddressA).Build();
+
+        Assert.That(() => CreateIndexedLogFinder(logIndexStorage).FindLogs(filter, _blockTree.FindHeader(1)!, unprocessed.Header),
+            Throws.TypeOf<BlockNotProcessedException>());
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
