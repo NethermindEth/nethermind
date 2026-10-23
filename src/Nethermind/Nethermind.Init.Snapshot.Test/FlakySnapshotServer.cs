@@ -154,7 +154,7 @@ internal sealed class FlakySnapshotServer : IDisposable
             if (ranged && IgnoreFirstByteRange && rangeHeader == "bytes=0-0")
                 ranged = false;
 
-            if (ranged && IgnoreRangeOnce && rangeHeader != "bytes=0-1" && Interlocked.Exchange(ref _rangeIgnored, 1) == 0)
+            if (ranged && IgnoreRangeOnce && requestNumber > 1 && Interlocked.Exchange(ref _rangeIgnored, 1) == 0)
                 ranged = false;
 
             if (ranged && from >= content.Length)
