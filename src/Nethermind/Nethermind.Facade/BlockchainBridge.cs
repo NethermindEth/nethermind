@@ -604,10 +604,18 @@ namespace Nethermind.Facade
         {
             if (discovered is null) return null;
 
+            HashSet<Address>? requestedAddresses = null;
+            if (requested is { IsEmpty: false })
+            {
+                requestedAddresses = new(requested.Count.AddressesCount);
+                foreach ((Address listed, _) in requested)
+                    requestedAddresses.Add(listed);
+            }
+
             AccessList.Builder builder = new();
             foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in discovered)
             {
-                if (storageKeys.Count == 0 && !referenced.Contains(address) && !IsListed(requested, address))
+                if (storageKeys.Count == 0 && !referenced.Contains(address) && requestedAddresses?.Contains(address) != true)
                     continue;
 
                 builder.AddAddress(address);
@@ -616,18 +624,6 @@ namespace Nethermind.Facade
             }
 
             return builder.Build();
-        }
-
-        private static bool IsListed(AccessList? accessList, Address address)
-        {
-            if (accessList is null) return false;
-
-            foreach ((Address listed, _) in accessList)
-            {
-                if (listed == address) return true;
-            }
-
-            return false;
         }
 
         /// <summary>Records the addresses Geth's access-list tracer adds: the target of a call and the account an account-reading opcode names.</summary>
