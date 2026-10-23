@@ -311,6 +311,8 @@ public class GethStyleTracer(
         if ((uint)txIndex >= (uint)Math.Max(block.Transactions.Length, 1)) throw new ArgumentOutOfRangeException(nameof(txIndex));
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header);
+        // Chains whose block processor cannot stop before a transaction (AuRa, Taiko) do not install the trace executor.
+        if (scope.Component.TraceExecutor is null) throw new NotSupportedException("Replaying a block up to a transaction is not supported on this chain.");
         TransactionTraceBoundary boundary = TransactionTraceBoundary.BeforeTransaction(NullBlockTracer.Instance.WithCancellation(cancellationToken), block, txIndex);
         scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
         // A processor that must build the full block access list executes the whole block, past the boundary.
@@ -669,5 +671,5 @@ public class GethStyleTracer(
         public UInt256? BlobBaseFee { get; set; }
     }
 
-    public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor, IStateReader StateReader);
+    public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor, IStateReader StateReader, TransactionTraceExecutor? TraceExecutor = null);
 }

@@ -61,6 +61,7 @@ public interface IGethStyleTracer
     /// </summary>
     /// <param name="startKey">The hashed slot key to start at.</param>
     /// <param name="limit">The maximum number of slots to collect.</param>
+    /// <exception cref="System.NotSupportedException">The chain's block processor cannot stop the replay before a transaction.</exception>
     StorageRangeVisitor StorageRangeAt(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken);
     IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken);
     IEnumerable<string> TraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken);

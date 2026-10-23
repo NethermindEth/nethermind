@@ -7,14 +7,19 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -111,6 +116,47 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_storageRangeAt", block.Hash!, 1, contract, "0x", 100);
 
         Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
+    }
+
+    [Test]
+    public async Task Debug_storageRangeAt_is_not_supported_without_prefix_replay([Values(0, 1)] int txIndex)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(static builder => builder.AddSingleton<IBlockValidationModule, UnsupportedTraceValidationModule>());
+        (Address contract, Block block) = await AddStorageRangeBlocks(chain);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_storageRangeAt", block.Hash!, txIndex, contract, "0x", 100);
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.MethodNotFound), response);
+    }
+
+    [Test]
+    public async Task Debug_storageRangeAt_clamps_max_result([Values(0, int.MaxValue)] int maxResult)
+    {
+        const int slotCount = StorageRangeResult.MaxResults + 1;
+        Address account = TestItem.AddressD;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddScoped<IGenesisPostProcessor, IWorldState>(worldState =>
+                new FunctionalGenesisPostProcessor(_ =>
+                {
+                    worldState.CreateAccount(account, UInt256.One);
+                    for (int slot = 1; slot <= slotCount; slot++)
+                    {
+                        worldState.Set(new StorageCell(account, (UInt256)slot), UInt256.One);
+                    }
+                })));
+        Block block = await chain.AddBlock();
+
+        JToken result = await StorageRangeAt(chain, block.Hash!, 0, account, "0x", maxResult);
+
+        int expectedCount = Math.Min(maxResult, StorageRangeResult.MaxResults);
+        List<string> keys = Enumerable.Range(1, slotCount).Select(static slot => ValueKeccak.Compute(((UInt256)slot).ToBigEndian()).ToString())
+            .Order(StringComparer.Ordinal).ToList();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((JObject)result["storage"]!).Properties().Select(static p => p.Name), Is.EqualTo(keys.Take(expectedCount)));
+            Assert.That((string?)result["nextKey"], Is.EqualTo(keys[expectedCount]));
+        }
     }
 
     [Test]

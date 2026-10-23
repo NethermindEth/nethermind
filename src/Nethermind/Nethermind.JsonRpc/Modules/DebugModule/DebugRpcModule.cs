@@ -728,7 +728,16 @@ public class DebugRpcModule(
         int limit = Math.Clamp(maxResult, 0, StorageRangeResult.MaxResults);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        StorageRangeVisitor range = debugBridge.GetStorageRange(block!, txIndex, address, startKey, limit, timeout.Token);
+        StorageRangeVisitor range;
+        try
+        {
+            range = debugBridge.GetStorageRange(block!, txIndex, address, startKey, limit, timeout.Token);
+        }
+        catch (NotSupportedException e)
+        {
+            return ResultWrapper<StorageRangeResult>.Fail(e.Message, ErrorCodes.MethodNotFound);
+        }
+
         return ResultWrapper<StorageRangeResult>.Success(new StorageRangeResult(range));
     }
 
