@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -132,10 +133,7 @@ public class Startup : IStartup
 
         services.AddSingleton<MatcherPolicy, LocalPortMatcherPolicy>();
 
-        services.AddCors(options => options.AddDefaultPolicy(builder => builder
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .WithOrigins(jsonRpcConfig.CorsOrigins)));
+        services.AddCors(options => options.AddDefaultPolicy(CreateCorsPolicy(jsonRpcConfig)));
 
         services.AddResponseCompression(options =>
         {
@@ -147,6 +145,12 @@ public class Startup : IStartup
     }
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
+
+    internal static CorsPolicy CreateCorsPolicy(IJsonRpcConfig jsonRpcConfig) => new CorsPolicyBuilder()
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .WithOrigins(jsonRpcConfig.CorsOrigins)
+        .Build();
 
     public void Configure(IApplicationBuilder app)
     {
@@ -225,12 +229,17 @@ public class Startup : IStartup
 
         if (initConfig.WebSocketsEnabled)
         {
+            CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
             app.UseWebSockets(new WebSocketOptions());
             app.UseWhen(ctx =>
                 ctx.WebSockets.IsWebSocketRequest &&
                 jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                 jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-            builder => builder.UseWebSocketsModules());
+            builder =>
+            {
+                builder.UseWebSocketOriginFilter(corsPolicy);
+                builder.UseWebSocketsModules();
+            });
         }
 
         IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
