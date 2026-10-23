@@ -106,14 +106,17 @@ internal static class JsonBenchReporting
         }
     }
 
-    private static JsonNode? ToJson(YamlNode node) => node switch
+    internal static JsonNode? ToJson(YamlNode node) => node switch
     {
         YamlMappingNode mapping => new JsonObject(mapping.Children.Select(pair => KeyValuePair.Create(pair.Key.ToString(), ToJson(pair.Value)))),
         YamlSequenceNode sequence => new JsonArray(sequence.Children.Select(ToJson).ToArray()),
         YamlScalarNode scalar when scalar.Style is YamlDotNet.Core.ScalarStyle.SingleQuoted or YamlDotNet.Core.ScalarStyle.DoubleQuoted => JsonValue.Create(scalar.Value),
-        YamlScalarNode scalar when scalar.Value is "null" or "~" or null => null,
-        YamlScalarNode scalar when bool.TryParse(scalar.Value, out var boolean) => JsonValue.Create(boolean),
+        YamlScalarNode scalar when scalar.Value is "null" or "Null" or "NULL" or "~" or "" or null => null,
+        YamlScalarNode scalar when scalar.Value is "true" or "True" or "TRUE" or "yes" or "Yes" or "YES" or "on" or "On" or "ON" => JsonValue.Create(true),
+        YamlScalarNode scalar when scalar.Value is "false" or "False" or "FALSE" or "no" or "No" or "NO" or "off" or "Off" or "OFF" => JsonValue.Create(false),
         YamlScalarNode scalar when long.TryParse(scalar.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) => JsonValue.Create(number),
+        YamlScalarNode scalar when Regex.IsMatch(scalar.Value ?? "", @"^[+-]?0x[0-9a-fA-F]+$") => JsonValue.Create((scalar.Value![0] == '-' ? -1 : 1) * Convert.ToInt64(scalar.Value.TrimStart('+', '-')[2..], 16)),
+        YamlScalarNode scalar when Regex.IsMatch(scalar.Value ?? "", @"^[+-]?(?:[0-9][0-9_]*\.[0-9_]*|\.[0-9_]+)(?:[eE][+-][0-9]+)?$") && double.TryParse(scalar.Value!.Replace("_", "", StringComparison.Ordinal), NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number) => JsonValue.Create(number),
         YamlScalarNode scalar => JsonValue.Create(scalar.Value),
         _ => throw new IOException("Unsupported benchmark YAML node")
     };

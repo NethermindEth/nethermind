@@ -32,7 +32,7 @@ internal static class BenchmarkFiles
                 await process.WaitForExitAsync(CancellationToken.None);
             }
             try { await Task.WhenAll(stdout, stderr); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { Console.Error.WriteLine("Process output draining cancelled."); }
         }
 
         async Task Copy(Stream source)
@@ -105,7 +105,7 @@ internal static class BenchmarkFiles
                 await process.WaitForExitAsync(CancellationToken.None);
             }
             try { await Task.WhenAll(copy, errors); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { Console.Error.WriteLine("Process output draining cancelled."); }
         }
         async Task Copy()
         {

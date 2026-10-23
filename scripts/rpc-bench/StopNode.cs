@@ -120,8 +120,12 @@ try
         }
         else if (Get("DB_ISOLATION") != "direct" && Get("SCRATCH_ROOT").Length > 0)
         {
-            var anchors = Path.Combine(Get("SCRATCH_ROOT"), "fingerprints"); Directory.CreateDirectory(anchors);
-            File.Copy(final, Path.Combine(anchors, Path.GetFileName(Get("DB_SOURCE")) + ".txt"), overwrite: true);
+            try
+            {
+                var anchors = Path.Combine(Get("SCRATCH_ROOT"), "fingerprints"); Directory.CreateDirectory(anchors);
+                File.Copy(final, Path.Combine(anchors, Path.GetFileName(Get("DB_SOURCE")) + ".txt"), overwrite: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { BenchmarkProcess.Log("::warning::could not refresh fingerprint anchor: " + exception.Message); }
             BenchmarkProcess.Log($"  OK — snapshot unchanged ({File.ReadLines(final).LongCount()} fingerprint lines match).");
         }
     }, warnOnly: Get("DB_ISOLATION") == "direct");

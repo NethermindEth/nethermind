@@ -408,7 +408,7 @@ internal sealed class SweepRunner(SweepConfiguration configuration)
         finally
         {
             if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(CancellationToken.None); }
-            try { await Task.WhenAll(output, error); } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            try { await Task.WhenAll(output, error); } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { Console.Error.WriteLine("Process output draining cancelled."); }
         }
     }
 }

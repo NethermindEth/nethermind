@@ -32,11 +32,11 @@ foreach (var argument in args)
     clients[pair[0]] = rows;
 }
 var order = clients.Values.SelectMany(rows => rows.Keys).Distinct(StringComparer.Ordinal).ToArray();
-var divergent = new List<(string Fingerprint, string? Method, Dictionary<string, (string Kind, string? Detail)> Classes)>();
+var divergent = new List<(string Fingerprint, string? Method, Dictionary<string, (string Kind, object? Detail)> Classes)>();
 var malformed = 0;
 foreach (var fingerprint in order)
 {
-    var classes = new Dictionary<string, (string Kind, string? Detail)>();
+    var classes = new Dictionary<string, (string Kind, object? Detail)>();
     string? method = null;
     foreach (var (label, rows) in clients)
     {
@@ -58,7 +58,7 @@ if (divergent.Count > 0)
 }
 return divergent.Count > 0 || malformed > 0 ? 1 : 0;
 
-static (string Kind, string? Detail) Classify(JsonElement response)
+static (string Kind, object? Detail) Classify(JsonElement response)
 {
     if (response.ValueKind != JsonValueKind.Object) return ("malformed", null);
     if (response.TryGetProperty("_capture_error", out var capture))
@@ -67,7 +67,7 @@ static (string Kind, string? Detail) Classify(JsonElement response)
         return ("malformed", text[..Math.Min(60, text.Length)]);
     }
     if (response.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
-        return ("error", error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var code) && code.ValueKind != JsonValueKind.Null ? code.ToString() : null);
+        return ("error", error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var code) && code.ValueKind != JsonValueKind.Null ? code.ValueKind switch { JsonValueKind.String => code.GetString(), JsonValueKind.Number => code.GetDecimal(), JsonValueKind.True => true, JsonValueKind.False => false, _ => code.GetRawText() } : null);
     if (response.TryGetProperty("result", out var result))
         return ("result", Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(RpcJson.Canonical(result))))[..12]);
     return ("malformed", null);

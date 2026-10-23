@@ -30,12 +30,12 @@ internal static class BenchmarkProcess
             if (!process.HasExited)
             {
                 try { process.Kill(entireProcessTree: true); }
-                catch (InvalidOperationException) { }
+                catch (InvalidOperationException exception) { Console.Error.WriteLine($"Child exited during cleanup: {exception.Message}"); }
                 await process.WaitForExitAsync(CancellationToken.None);
             }
             // Observe both drain tasks even when cancellation interrupts the child.
             try { await Task.WhenAll(output, error); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { Console.Error.WriteLine("Process output draining cancelled."); }
         }
     }
 

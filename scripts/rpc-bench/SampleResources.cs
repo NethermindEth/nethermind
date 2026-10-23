@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include ResourceSampling.Helpers.cs
+#:include BenchmarkProcess.Helpers.cs
 
-using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 
@@ -32,19 +32,11 @@ try
         Console.CancelKeyPress += cancel;
         try
         {
-            var start = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true };
-            foreach (var argument in new[] { "inspect", "--format", "{{.Id}}", options["--container"] }) start.ArgumentList.Add(argument);
-            using var process = Process.Start(start) ?? throw new IOException("cannot inspect container");
-            var output = process.StandardOutput.ReadToEndAsync();
-            var error = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(30_000))
-            {
-                process.Kill(entireProcessTree: true); process.WaitForExit();
-                throw new IOException("cannot inspect container: timed out");
-            }
-            error.GetAwaiter().GetResult();
-            if (process.ExitCode != 0) throw new IOException("container not found");
-            var id = output.GetAwaiter().GetResult().Trim();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            var result = await BenchmarkProcess.RunAsync("docker", ["inspect", "--format", "{{.Id}}", options["--container"]], timeout.Token);
+            if (result.Code != 0) throw new IOException("container not found");
+            var id = result.Output.Trim();
             var roots = new[] { $"/sys/fs/cgroup/system.slice/docker-{id}.scope", $"/sys/fs/cgroup/docker/{id}", $"/sys/fs/cgroup/kubepods/docker-{id}.scope" };
             var cgroup = roots.FirstOrDefault(root => File.Exists(Path.Combine(root, "cpu.stat"))) ?? throw new IOException("no cgroup v2 directory found for the container");
             var summary = ResourceSampling.Sample(cgroup, () => stop.IsCancellationRequested, () => stop.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(interval)));
@@ -53,7 +45,7 @@ try
         finally { Console.CancelKeyPress -= cancel; }
     }
 }
-catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or ArgumentException or FormatException or OverflowException)
+catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or OperationCanceledException or System.ComponentModel.Win32Exception or ArgumentException or FormatException or OverflowException)
 {
     Console.Error.WriteLine($"resource sampling unavailable: {exception.Message}");
 }

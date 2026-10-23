@@ -649,7 +649,7 @@ silently dropping it would still produce timings, and they would not be measurin
 call. If a capture uses block overrides, only the `debug_traceCall` mode can replay it faithfully.
 
 The rewrite is not per request. It happens once per run, in the two places the corpus is read:
-`PrepareEthCallCorpus.cs` when the k6 fixture is built, and `corpus_parity.load_corpus` for
+`PrepareEthCallCorpus.cs` when the k6 fixture is built, and `CorpusParity.LoadCorpus` for
 the parity and timings replays. k6 therefore sends bodies that are already rewritten, and a trace
 cell costs exactly what an eth_call cell costs to set up. The corpus file on disk is never
 modified.

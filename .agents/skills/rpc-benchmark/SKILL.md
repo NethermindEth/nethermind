@@ -58,7 +58,7 @@ the thing to get right:
 Size a cell by request count instead of duration with `corpus_requests` (absolute) or `corpus_passes`
 (a multiple of the corpus's record count) — `corpus_passes: 5` on 497 records at 100 rps is ~2,485
 requests. Note these are draws *with replacement*, so coverage is `N x (1 - (1 - 1/N)^requests)`, not a
-full pass. `corpus_parity.py` refuses corpora above **10,000 records** unless `max_corpus_records` is
+full pass. `CorpusParity.cs` refuses corpora above **10,000 records** unless `max_corpus_records` is
 raised, and the k6 fixture is the real ceiling long before parity is (~142 MB for 497 records), so a
 50k-record capture wants sampling down rather than a bigger cap.
 

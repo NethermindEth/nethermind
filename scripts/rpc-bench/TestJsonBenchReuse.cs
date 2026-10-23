@@ -2,8 +2,25 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include RpcScriptTests.Helpers.cs
+#:package YamlDotNet
+#:include JsonBenchReporting.Helpers.cs
+#:include BenchmarkProcess.Helpers.cs
+#:include RpcJson.Helpers.cs
+
+using YamlDotNet.RepresentationModel;
 
 using var tests = new RpcScriptTests();
+foreach (var (yaml, expected) in new[]
+{
+    ("[1.5, -2.25, 0x10, -0x10]", "[1.5,-2.25,16,-16]"),
+    ("['1.5', \"0x10\", 'yes', 'NULL']", "[\"1.5\",\"0x10\",\"yes\",\"NULL\"]"),
+    ("[yes, OFF, Null, NULL, 1e3, 1.0e3, 1.0e+3]", "[true,false,null,null,\"1e3\",\"1.0e3\",1000]")
+})
+    tests.Case($"deep-check preserves YAML scalar types {yaml}", () =>
+    {
+        var stream = new YamlStream(); stream.Load(new StringReader(yaml));
+        RpcScriptTests.Assert(JsonBenchReporting.ToJson(stream.Documents[0].RootNode)!.ToJsonString() == expected, "YAML parameter types changed");
+    });
 tests.Case("missing paths fail before external commands", () =>
 {
     var output = Environment.GetEnvironmentVariable("OUT_DIR");
