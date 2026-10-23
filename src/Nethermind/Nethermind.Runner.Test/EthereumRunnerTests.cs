@@ -1031,7 +1031,6 @@ public class EthereumRunnerTests
             api.Context.Resolve<ISealValidator>();
             api.Context.Resolve<ISealer>();
             api.Context.Resolve<ISealEngine>();
-            api.Context.Resolve<IRewardCalculatorSource>();
             api.Context.Resolve<IBlockValidator>();
             api.Context.Resolve<IHeaderValidator>();
             api.Context.Resolve<IUnclesValidator>();

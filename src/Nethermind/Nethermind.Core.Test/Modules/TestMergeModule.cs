@@ -25,7 +25,7 @@ public class TestMergeModule(IModule? mergeModule) : Module
             builder.AddModule(mergeModule);
 
         builder
-            .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
+            .AddDecorator<IRewardCalculator, MergeRewardCalculator>()
 
             // Block production related.
             .AddScoped<PostMergeBlockProducerFactory>()
