@@ -69,7 +69,7 @@ try
     Check("one release lookup; token only on API request", handler.Requests.Count == 7 && handler.Requests[0].Authorization == "Bearer stub" && handler.Requests.Skip(1).All(request => request.Authorization is null));
     var environment = File.ReadAllText(Path.Combine(happy.Run, "github_env"));
     var artifacts = Path.Combine(happy.Run, "temp", "frame-verify-gas-groth16");
-    Check("happy-path-env", environment.Contains($"FRAME_GROTH16_ARTIFACTS={artifacts}\n") && environment.Contains("GROTH16_ARTIFACTS_VERSION=v1.0.0\n") && Regex.IsMatch(environment, "GROTH16_ARTIFACTS_SHA256SUMS_DIGEST=[0-9a-f]{64}\n"));
+    Check("happy-path-env", environment.Contains($"FRAME_GROTH16_ARTIFACTS={artifacts}\n") && environment.Contains("GROTH16_ARTIFACTS_VERSION=v1.0.0\n") && ChecksumsDigest().IsMatch(environment));
     Check("happy-path-tree", files.All(pair => File.ReadAllBytes(Path.Combine(artifacts, pair.Key)).SequenceEqual(pair.Value)) && Directory.GetFiles(artifacts, "*", SearchOption.AllDirectories).Length == files.Count && environment.Contains($"GROTH16_ARTIFACTS_SHA256SUMS={Path.Combine(happy.Run, "temp", "frame-verify-gas-groth16.SHA256SUMS")}\n") && File.ReadAllBytes(Path.Combine(happy.Run, "temp", "frame-verify-gas-groth16.SHA256SUMS")).SequenceEqual(handler.Assets["v1.0.0"]["SHA256SUMS"]));
     Check("happy-path-no-download-dir-left", Directory.GetDirectories(Path.Combine(happy.Run, "temp"), "frame-verify-gas-download.*").Length == 0);
     await Expect("happy-path-no-token", "v1.0.0", 0, "extracted to", "");
@@ -184,6 +184,12 @@ void Release(string version, Action<Dictionary<string, byte[]>>? contents = null
 
 static string Repeat(string text, int count) => string.Concat(Enumerable.Repeat(text, count));
 static void ChangeSums(Dictionary<string, byte[]> data, Func<string[], string[]> change) => data["SHA256SUMS"] = Encoding.ASCII.GetBytes(string.Join('\n', change(Encoding.ASCII.GetString(data["SHA256SUMS"]).TrimEnd('\n').Split('\n'))) + "\n");
+
+partial class Program
+{
+    [GeneratedRegex("GROTH16_ARTIFACTS_SHA256SUMS_DIGEST=[0-9a-f]{64}\n")]
+    private static partial Regex ChecksumsDigest();
+}
 
 sealed class Releases : HttpMessageHandler
 {

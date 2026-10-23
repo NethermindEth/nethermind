@@ -21,8 +21,20 @@ using var http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
 return await ArtifactFetch.Run(http, Environment.GetEnvironmentVariable("REQUESTED_VERSION") ?? "", Environment.GetEnvironmentVariable("RUNNER_TEMP") ?? "", Environment.GetEnvironmentVariable("GITHUB_ENV") ?? "", Environment.GetEnvironmentVariable("GH_TOKEN") ?? "", cancellation.Token);
 #endif
 
-internal static class ArtifactFetch
+internal static partial class ArtifactFetch
 {
+    [GeneratedRegex(@"\s")]
+    private static partial Regex Whitespace();
+
+    [GeneratedRegex(@"\Av(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z")]
+    private static partial Regex ReleaseVersion();
+
+    [GeneratedRegex(@"\A[0-9a-f]{64} [ *]sweep-[a-z0-9]+\.tar\.gz\z")]
+    private static partial Regex ChecksumLine();
+
+    [GeneratedRegex(@"\A(?:\./|(?:\./)?(?<sweep>[A-Za-z0-9._-]+)(?:/[A-Za-z0-9._-]+)*/?)\z")]
+    private static partial Regex ArchivePath();
+
     internal const string Repository = "NethermindEth/frame-verify-gas";
     // This sweep represents a real pool; the other sweeps are synthetic ceiling controls.
     // Pin its upstream commit so releases cannot silently change the measured profile.
@@ -34,9 +46,9 @@ internal static class ArtifactFetch
         string? work = null;
         try
         {
-            version = Regex.Replace(version, @"\s", "");
+            version = Whitespace().Replace(version, "");
             if (version.Length == 0) throw new IOException($"groth16_artifacts_version is empty. Supply a published {Repository} release tag (vMAJOR.MINOR.PATCH).");
-            if (!Regex.IsMatch(version, @"\Av(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z")) throw new IOException($"groth16_artifacts_version '{version}' is not a vMAJOR.MINOR.PATCH release tag.");
+            if (!ReleaseVersion().IsMatch(version)) throw new IOException($"groth16_artifacts_version '{version}' is not a vMAJOR.MINOR.PATCH release tag.");
             if (temporary.Length == 0) throw new IOException("RUNNER_TEMP is not set.");
             if (environmentFile.Length == 0) throw new IOException("GITHUB_ENV is not set.");
             work = Path.Combine(Path.GetFullPath(temporary), "frame-verify-gas-download." + Guid.NewGuid().ToString("N"));
@@ -66,7 +78,7 @@ internal static class ArtifactFetch
             }
             var sums = Path.Combine(assets, "SHA256SUMS");
             var lines = await File.ReadAllLinesAsync(sums, cancellationToken);
-            if (lines.Length != tarballs.Length || lines.Any(line => !Regex.IsMatch(line, @"\A[0-9a-f]{64} [ *]sweep-[a-z0-9]+\.tar\.gz\z")) || !lines.Select(line => line[66..]).Order(StringComparer.Ordinal).SequenceEqual(tarballs.Order(StringComparer.Ordinal)))
+            if (lines.Length != tarballs.Length || lines.Any(line => !ChecksumLine().IsMatch(line)) || !lines.Select(line => line[66..]).Order(StringComparer.Ordinal).SequenceEqual(tarballs.Order(StringComparer.Ordinal)))
                 throw new IOException($"SHA256SUMS of release {version} must list exactly: {string.Join(' ', tarballs.Order(StringComparer.Ordinal))}.");
             foreach (var line in lines)
                 if (await Hash(Path.Combine(assets, line[66..])) != line[..64]) throw new IOException($"The downloaded tarballs do not match SHA256SUMS of release {version}; the download is corrupt, partial or was altered. Re-dispatch.");
@@ -194,7 +206,8 @@ internal static class ArtifactFetch
         while (reader.GetNextEntry() is { } entry)
         {
             count++;
-            if (!Regex.IsMatch(entry.Name, @"\A(?:\./|(?:\./)?" + sweep + @"(?:/[A-Za-z0-9._-]+)*/?)\z") || entry.Name.Split('/').Contains("..", StringComparer.Ordinal))
+            var path = ArchivePath().Match(entry.Name);
+            if (!path.Success || entry.Name != "./" && path.Groups["sweep"].Value != sweep || entry.Name.Split('/').Contains("..", StringComparer.Ordinal))
                 throw new IOException($"{sweep}.tar.gz has a member with an unexpected path or prefix ('{JsonEncodedText.Encode(entry.Name)}'); only {sweep}/ or ./{sweep}/ without '..' is allowed.");
             if (entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile or TarEntryType.Directory)) throw new IOException($"{sweep}.tar.gz has a link or special-file member; only regular files and directories are allowed.");
             expanded = checked(expanded + entry.Length);

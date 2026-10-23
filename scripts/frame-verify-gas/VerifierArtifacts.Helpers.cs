@@ -4,8 +4,14 @@
 using System.Text;
 using System.Text.RegularExpressions;
 
-internal static class VerifierArtifacts
+internal static partial class VerifierArtifacts
 {
+    [GeneratedRegex(@"\A[1-9][0-9]{0,8}\z")]
+    private static partial Regex PositiveInteger();
+
+    [GeneratedRegex(@"\A0x(?:[0-9a-fA-F]{2})+\z")]
+    private static partial Regex HexBytes();
+
     internal static int Check(string root, IEnumerable<string> labels)
     {
         var failures = new List<string>();
@@ -34,7 +40,7 @@ internal static class VerifierArtifacts
             }
             var calldata = sweep + "/calldata-invalid.hex";
             if (ReadHex(calldata) is { Length: < 4 }) Reject(calldata, "length", "shorter than a function selector");
-            if (!Regex.IsMatch(Read(sweep + "/gas.txt"), @"\A[1-9][0-9]{0,8}\z")) Reject(sweep + "/gas.txt", "integer", "not a positive integer");
+            if (!PositiveInteger().IsMatch(Read(sweep + "/gas.txt"))) Reject(sweep + "/gas.txt", "integer", "not a positive integer");
         }
         foreach (var failure in failures) Console.WriteLine("::error::" + failure);
         return failures.Count > 0 ? 1 : 0;
@@ -44,7 +50,7 @@ internal static class VerifierArtifacts
         byte[]? ReadHex(string path)
         {
             var text = Read(path);
-            if (Regex.IsMatch(text, @"\A0x(?:[0-9a-fA-F]{2})+\z")) return Convert.FromHexString(text[2..]);
+            if (HexBytes().IsMatch(text)) return Convert.FromHexString(text[2..]);
             Reject(path, "hex", "not 0x-prefixed, byte-aligned hex");
             return null;
         }
