@@ -49,7 +49,7 @@ static string[] Logs(string directory, string side)
 }
 static double? ParseNs(string value)
 {
-    var match = Regex.Match(value.Trim(), @"^\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*([a-zA-Zµμ]+)\s*$");
+    var match = TimingRegex().Match(value.Trim());
     if (!match.Success) return null;
     var scale = match.Groups[2].Value switch { "ns" => 1d, "us" or "µs" or "μs" => 1_000d, "ms" => 1_000_000d, "s" => 1_000_000_000d, _ => (double?)null };
     return scale * Number(match.Groups[1].Value.Replace(",", "", StringComparison.Ordinal));
@@ -61,7 +61,7 @@ static double? Median(IEnumerable<double?> values)
 }
 static Dictionary<string, Stats> Extract(string text)
 {
-    var lines = Regex.Replace(text.Replace('\u00a0', ' '), @"\x1B\[[0-9;]*[A-Za-z]", "").Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+    var lines = AnsiEscapeRegex().Replace(text.Replace('\u00a0', ' '), "").Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
     var header = Array.FindLastIndex(lines, line => line.Trim().StartsWith('|') && line.Contains("Opcode", StringComparison.Ordinal) && line.Contains("Mean", StringComparison.Ordinal));
     var result = new Dictionary<string, Stats>(StringComparer.Ordinal);
     if (header < 0) return result;
@@ -171,3 +171,11 @@ sealed record Config(double Threshold = 5, double Noise = 2, double Error = 1, d
 sealed record Stats(double? Median, double? Mean, double? Error, double? StdDev, double? Threshold);
 sealed record Comparison(string Opcode, double? Base, double? Pr, double? Delta, double? AbsoluteDelta,
     Stats? BaseStats, Stats? PrStats, double Threshold, double Noise, double Uncertainty, double Effective, bool Flagged, bool Noisy);
+
+partial class Program
+{
+    [GeneratedRegex(@"\x1B\[[0-9;]*[A-Za-z]")]
+    private static partial Regex AnsiEscapeRegex();
+    [GeneratedRegex(@"^\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*([a-zA-Zµμ]+)\s*$")]
+    private static partial Regex TimingRegex();
+}
