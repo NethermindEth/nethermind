@@ -1,10 +1,8 @@
 #!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-#:include SweepConfiguration.Helpers.cs
-#:include SweepRunner.Helpers.cs
-#:include BenchmarkProcess.Helpers.cs
-#:include BenchmarkPaths.Helpers.cs
+#:property DefineConstants=SCRIPT_TEST
+#:include RunRpcSweep.cs
 #:include RpcScriptTests.Helpers.cs
 
 using System.Text.Json.Nodes;

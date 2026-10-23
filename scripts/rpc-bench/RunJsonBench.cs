@@ -7,22 +7,23 @@
 #:include BenchmarkFiles.Helpers.cs
 #:include BenchmarkRpc.Helpers.cs
 #:include NodeConfiguration.Helpers.cs
-#:include JsonBenchConfiguration.Helpers.cs
-#:include JsonBenchReporting.Helpers.cs
 #:include RpcJson.Helpers.cs
 #:include ResourceSampling.Helpers.cs
-#:include ResourceSamplerSession.Helpers.cs
 
 using System.Globalization;
+#if !SCRIPT_TEST
 using System.Runtime.InteropServices;
+#endif
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using YamlDotNet.RepresentationModel;
 
-CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+#if !SCRIPT_TEST
 using var cancellation = new CancellationTokenSource();
+CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 using var terminate = OperatingSystem.IsWindows() ? null : PosixSignalRegistration.Create(PosixSignal.SIGTERM, context => { context.Cancel = true; cancellation.Cancel(); });
 ConsoleCancelEventHandler cancel = (_, context) => { context.Cancel = true; cancellation.Cancel(); };
 Console.CancelKeyPress += cancel;
@@ -112,15 +113,15 @@ try
     }
     var clients = new YamlSequenceNode { new YamlMappingNode { { "name", label }, { "type", clientType }, { "url", url }, { "timeout", "60s" }, { "max_retries", "3" } } };
     if (reference.Length > 0) clients.Add(new YamlMappingNode { { "name", referenceLabel }, { "type", referenceType }, { "url", reference }, { "timeout", "60s" }, { "max_retries", "3" } });
-    var clientsPath = Path.Combine(io, "clients.yaml"); JsonBenchConfiguration.Save(clientsPath, new YamlMappingNode { { "clients", clients } });
+    var clientsPath = Path.Combine(io, "clients.yaml"); Save(clientsPath, new YamlMappingNode { { "clients", clients } });
     var benchmarkName = Get("JB_BENCHMARK_CONFIG"); YamlMappingNode? benchmark = null;
     if (mode == "benchmark")
     {
         var configPath = benchmarkName.Length == 0 ? "" : Path.IsPathRooted(benchmarkName) ? benchmarkName : benchmarkName.Contains('/') ? Path.Combine(source, benchmarkName) : Path.Combine(source, "config", "benchmark", benchmarkName + ".yaml");
         if (configPath.Length > 0 && !File.Exists(configPath)) throw new IOException($"benchmark_config '{benchmarkName}' not found (looked at {configPath})");
         if (corpus == "true" && !prepared) { Directory.CreateDirectory(fixtures); await Script("PrepareEthCallCorpus.cs", [corpusPath, fixtures]); }
-        benchmark = JsonBenchConfiguration.Render(configPath, label, reference.Length > 0 ? referenceLabel : "", corpus == "true" ? Path.Combine(fixtures, "classes.json") : "", method, name => name == "JB_SEED" ? seed : Get(name));
-        JsonBenchConfiguration.Save(Path.Combine(io, "benchmark.yaml"), benchmark);
+        benchmark = Render(configPath, label, reference.Length > 0 ? referenceLabel : "", corpus == "true" ? Path.Combine(fixtures, "classes.json") : "", method, name => name == "JB_SEED" ? seed : Get(name));
+        Save(Path.Combine(io, "benchmark.yaml"), benchmark);
     }
     if (reuse) await File.WriteAllTextAsync(marker, preparationId + "\n", cancellation.Token);
     await Required("chmod", ["-R", "a+rwX", io]);
@@ -249,3 +250,201 @@ finally
 }
 static string Get(string name, string fallback = "") => BenchmarkProcess.EnvironmentValue(name, fallback);
 static bool Nonempty(string path) => File.Exists(path) && new FileInfo(path).Length > 0;
+static YamlMappingNode Render(string source, string primary, string reference, string classesPath, string method, Func<string, string> environment)
+{
+    YamlMappingNode config;
+    if (source.Length > 0)
+    {
+        using var input = File.OpenText(source); var yaml = new YamlStream(); yaml.Load(input);
+        config = yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is YamlScalarNode { Value: "" or null or "null" } ? [] : yaml.Documents[0].RootNode as YamlMappingNode ?? throw new IOException("benchmark config must be a mapping");
+    }
+    else config = (YamlMappingNode)ToYaml(JsonNode.Parse("""
+        {"test_name":"RPC read benchmark","description":"Snapshot-backed read-path benchmark","duration":"60s","rps":100,"vus":10,"calls":[
+          {"name":"WETH balance eth_call","method":"eth_call","weight":40,"params":[{"to":"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","data":"0x70a08231000000000000000000000000000000000000000000000000000000000000000a"}]},
+          {"name":"eth_getBalance","method":"eth_getBalance","weight":20,"params":["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045","latest"]},
+          {"name":"eth_blockNumber","method":"eth_blockNumber","weight":20,"params":[]},
+          {"name":"eth_getTransactionCount","method":"eth_getTransactionCount","weight":10,"params":["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045","latest"]},
+          {"name":"eth_getBlockByNumber","method":"eth_getBlockByNumber","weight":10,"params":["latest",false]}
+        ]}
+        """));
+    var clients = new YamlSequenceNode { primary }; if (reference.Length > 0) clients.Add(reference); config.Children[new YamlScalarNode("clients")] = clients;
+    foreach (var key in new[] { "rps", "vus", "seed" })
+    {
+        var value = environment("JB_" + key.ToUpperInvariant());
+        if (!string.IsNullOrWhiteSpace(value)) config.Children[new YamlScalarNode(key)] = new YamlScalarNode(long.Parse(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture));
+    }
+    var duration = environment("JB_DURATION"); if (!string.IsNullOrWhiteSpace(duration)) config.Children[new YamlScalarNode("duration")] = new YamlScalarNode(duration);
+    if (classesPath.Length > 0)
+    {
+        var classes = JsonNode.Parse(File.ReadAllText(classesPath))!.AsObject();
+        var calls = new YamlSequenceNode();
+        foreach (var (name, count) in classes)
+            calls.Add(new YamlMappingNode { { "name", (method == "eth_call" ? "" : method + " ") + name }, { "file", "./rpc-calls/corpus/" + name + ".json" }, { "file_type", "json" }, { "weight", count!.ToJsonString() } });
+        config.Children[new YamlScalarNode("calls")] = calls;
+    }
+    if (config.Children.TryGetValue(new YamlScalarNode("calls"), out var entries) && entries is YamlSequenceNode sequence)
+        foreach (var call in sequence.Children.OfType<YamlMappingNode>())
+            if (!call.Children.ContainsKey(new YamlScalarNode("thresholds"))) call.Add("thresholds", new YamlSequenceNode { "p(99)<600000" });
+    return config;
+}
+
+static void Save(string path, YamlMappingNode config)
+{
+    using var output = File.CreateText(path); new YamlStream(new YamlDocument(config)).Save(output, assignAnchors: false);
+}
+
+static YamlNode ToYaml(JsonNode? node) => node switch
+{
+    JsonObject obj => new YamlMappingNode(obj.Select(pair => KeyValuePair.Create<YamlNode, YamlNode>(new YamlScalarNode(pair.Key), ToYaml(pair.Value)))),
+    JsonArray array => new YamlSequenceNode(array.Select(ToYaml)),
+    JsonValue value when value.TryGetValue<string>(out var text) => new YamlScalarNode(text) { Style = YamlDotNet.Core.ScalarStyle.DoubleQuoted },
+    null => new YamlScalarNode("null"),
+    _ => new YamlScalarNode(node.ToJsonString())
+};
+#endif
+
+internal static class JsonBenchReporting
+{
+    internal static (string Markdown, double FailPercent) Performance(JsonObject root)
+    {
+        var metrics = root["metrics"] as JsonObject ?? (root["metrics"] is null ? [] : throw new JsonException("metrics must be an object"));
+        var duration = metrics["http_req_duration"]; var requests = metrics["http_reqs"]; var failures = metrics["http_req_failed"]; var checks = metrics["checks"];
+        var rate = Number(failures, "rate"); if (rate == 0) rate = Number(failures, "value");
+        var passed = Number(checks, "passes"); var failed = Number(checks, "fails");
+        var text = new StringBuilder("### Overall\n\n| metric | value |\n|---|---:|\n");
+        text.Append(CultureInfo.InvariantCulture, $"| requests | {(long)Number(requests, "count")} |\n| throughput (req/s) | {Number(requests, "rate"):F2} |\n| http fail rate | {rate * 100:F2}% |\n");
+        if (passed + failed > 0) text.Append(CultureInfo.InvariantCulture, $"| checks passed | {passed / (passed + failed) * 100:F2}% |\n");
+        var fields = new[] { ("avg", "avg"), ("p50", "med"), ("p90", "p(90)"), ("p95", "p(95)"), ("p99", "p(99)"), ("max", "max") };
+        foreach (var (label, key) in fields) text.Append(CultureInfo.InvariantCulture, $"| latency {label} (ms) | {Number(duration, key):F2} |\n");
+        var methods = new List<(string Name, JsonNode? Values)>();
+        foreach (var (key, value) in metrics)
+        {
+            if (!key.StartsWith("http_req_duration{", StringComparison.Ordinal)) continue;
+            var match = Regex.Match(key, @"req_name:([^,}]+)");
+            if (match.Success) methods.Add((match.Groups[1].Value.Trim().Trim('\'', '"'), value));
+        }
+        if (metrics["classes"] is JsonObject classes) methods.AddRange(classes.Select(pair => (pair.Key, pair.Value)));
+        if (methods.Count > 0)
+        {
+            text.Append("\n### Per method (http_req_duration, ms)\n\n| method | avg | p50 | p90 | p95 | p99 | max |\n|---|---:|---:|---:|---:|---:|---:|\n");
+            foreach (var (name, values) in methods.OrderBy(row => row.Name, StringComparer.Ordinal)) text.Append("| ").Append(name).Append(" | ").AppendJoin(" | ", fields.Select(field => Number(values, field.Item2).ToString("F2", CultureInfo.InvariantCulture))).Append(" |\n");
+        }
+        return (text.ToString(), rate * 100);
+    }
+
+    internal static double Number(JsonNode? node, string field)
+    {
+        if (node is not JsonObject obj) return 0;
+        if (obj[field] is JsonValue value && value.TryGetValue<double>(out var number)) return number;
+        return obj["values"] is JsonObject values && values[field] is JsonValue nested && nested.TryGetValue<double>(out number) ? number : 0;
+    }
+
+    internal static (string Markdown, int Differences) Comparison(JsonNode? root)
+    {
+        if (root is not (JsonArray or JsonObject)) throw new JsonException("comparison results must be an object or array");
+        var rows = root as JsonArray ?? (root as JsonObject)?["results"] as JsonArray ?? (root as JsonObject)?["comparisons"] as JsonArray ?? [];
+        var different = rows.OfType<JsonObject>().Where(row => row["differences"] is JsonObject { Count: > 0 } or JsonArray { Count: > 0 }).ToArray();
+        var text = new StringBuilder($"**{rows.Count} calls compared, {different.Length} with response differences.**\n\n");
+        if (different.Length > 0)
+        {
+            text.Append("| method | params | differences |\n|---|---|---|\n");
+            foreach (var row in different.Take(50))
+            {
+                var parameters = (row["params"] ?? new JsonArray()).ToJsonString(); parameters = parameters[..Math.Min(80, parameters.Length)];
+                var keys = row["differences"] is JsonObject fields ? string.Join(", ", fields.Select(pair => pair.Key).Order(StringComparer.Ordinal)) : string.Join(", ", Enumerable.Range(0, row["differences"]!.AsArray().Count));
+                text.Append($"| {row["method"]} | {parameters} | {keys} |\n");
+            }
+            text.Append("\nFull diff detail: `comparison-results.json` / `comparison-report.html` in the artifact.\n");
+        }
+        return (text.ToString(), different.Length);
+    }
+
+    internal static async Task CaptureAsync(YamlMappingNode config, string source, string url, string output, CancellationToken cancellationToken)
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+        await using var writer = File.CreateText(output);
+        var sequence = 0;
+        if (config.Children.TryGetValue(new YamlScalarNode("calls"), out var calls) && calls is YamlSequenceNode entries)
+            foreach (var call in entries.Children.Cast<YamlMappingNode>())
+            {
+                if (call.Children.TryGetValue(new YamlScalarNode("file"), out var file))
+                {
+                    foreach (var line in File.ReadLines(Path.Combine(source, file.ToString().TrimStart('.', '/'))))
+                    {
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+                        var request = JsonNode.Parse(line)!;
+                        await Capture(request["method"]?.GetValue<string>(), request["params"]?.DeepClone() ?? new JsonArray());
+                    }
+                }
+                else await Capture(call.Children.TryGetValue(new YamlScalarNode("method"), out var method) ? method.ToString() : null, call.Children.TryGetValue(new YamlScalarNode("params"), out var parameters) ? ToJson(parameters) : new JsonArray());
+            }
+        BenchmarkProcess.Log($"deep-check: captured {sequence} responses -> {output}");
+
+        async Task Capture(string? method, JsonNode? parameters)
+        {
+            var identity = new JsonArray(JsonValue.Create(method), parameters?.DeepClone());
+            using var identityDocument = JsonDocument.Parse(identity.ToJsonString());
+            var fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(RpcJson.Canonical(identityDocument.RootElement))))[..16];
+            JsonNode? response;
+            try
+            {
+                var request = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = 1, ["method"] = method, ["params"] = parameters?.DeepClone() };
+                using var content = new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json");
+                using var result = await http.PostAsync(url, content, cancellationToken); result.EnsureSuccessStatusCode();
+                response = JsonNode.Parse(await result.Content.ReadAsStringAsync(cancellationToken));
+            }
+            catch (Exception exception) when (exception is HttpRequestException or JsonException || exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            { response = new JsonObject { ["_capture_error"] = exception.Message }; }
+            var row = new JsonObject { ["seq"] = sequence++, ["fp"] = fingerprint, ["method"] = method, ["response"] = response };
+            await writer.WriteLineAsync(row.ToJsonString().AsMemory(), cancellationToken);
+        }
+    }
+
+    internal static JsonNode? ToJson(YamlNode node) => node switch
+    {
+        YamlMappingNode mapping => new JsonObject(mapping.Children.Select(pair => KeyValuePair.Create(pair.Key.ToString(), ToJson(pair.Value)))),
+        YamlSequenceNode sequence => new JsonArray(sequence.Children.Select(ToJson).ToArray()),
+        YamlScalarNode scalar when scalar.Style is YamlDotNet.Core.ScalarStyle.SingleQuoted or YamlDotNet.Core.ScalarStyle.DoubleQuoted => JsonValue.Create(scalar.Value),
+        YamlScalarNode scalar when scalar.Value is "null" or "Null" or "NULL" or "~" or "" or null => null,
+        YamlScalarNode scalar when scalar.Value is "true" or "True" or "TRUE" or "yes" or "Yes" or "YES" or "on" or "On" or "ON" => JsonValue.Create(true),
+        YamlScalarNode scalar when scalar.Value is "false" or "False" or "FALSE" or "no" or "No" or "NO" or "off" or "Off" or "OFF" => JsonValue.Create(false),
+        YamlScalarNode scalar when long.TryParse(scalar.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) => JsonValue.Create(number),
+        YamlScalarNode scalar when Regex.IsMatch(scalar.Value ?? "", @"^[+-]?0x[0-9a-fA-F]+$") => JsonValue.Create((scalar.Value![0] == '-' ? -1 : 1) * Convert.ToInt64(scalar.Value.TrimStart('+', '-')[2..], 16)),
+        YamlScalarNode scalar when Regex.IsMatch(scalar.Value ?? "", @"^[+-]?(?:[0-9][0-9_]*\.[0-9_]*|\.[0-9_]+)(?:[eE][+-][0-9]+)?$") && double.TryParse(scalar.Value!.Replace("_", "", StringComparison.Ordinal), NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number) => JsonValue.Create(number),
+        YamlScalarNode scalar => JsonValue.Create(scalar.Value),
+        _ => throw new IOException("Unsupported benchmark YAML node")
+    };
+}
+
+internal sealed class ResourceSamplerSession : IAsyncDisposable
+{
+    private readonly CancellationTokenSource _stop = new();
+    private readonly Task _task;
+
+    internal ResourceSamplerSession(string container, string output) =>
+        _task = Task.Run(async () =>
+        {
+            if (container.Length == 0 || output.Length == 0) return;
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                var result = await BenchmarkProcess.RunAsync("docker", ["inspect", "--format", "{{.Id}}", container], timeout.Token);
+                if (result.Code != 0) throw new IOException("container not found");
+                var id = result.Output.Trim();
+                var roots = new[] { $"/sys/fs/cgroup/system.slice/docker-{id}.scope", $"/sys/fs/cgroup/docker/{id}", $"/sys/fs/cgroup/kubepods/docker-{id}.scope" };
+                var root = roots.FirstOrDefault(path => File.Exists(Path.Combine(path, "cpu.stat"))) ?? throw new IOException("no cgroup v2 directory found for the container");
+                var summary = ResourceSampling.Sample(root, () => _stop.IsCancellationRequested, () => _stop.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(.25)));
+                ResourceSampling.Write(output, summary);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or OperationCanceledException or System.ComponentModel.Win32Exception)
+            { Console.Error.WriteLine($"resource sampling unavailable: {exception.Message}"); }
+        });
+
+    public async ValueTask DisposeAsync()
+    {
+        _stop.Cancel();
+        try { await _task; }
+        finally { _stop.Dispose(); }
+    }
+}

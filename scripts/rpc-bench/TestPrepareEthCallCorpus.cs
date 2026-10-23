@@ -1,9 +1,9 @@
 #!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-#:include CorpusParity.Helpers.cs
-#:include RpcJson.Helpers.cs
-#:include PrepareEthCallCorpus.Helpers.cs
+#:property DefineConstants=SCRIPT_TEST
+#:include RpcScriptTests.Helpers.cs
+#:include PrepareEthCallCorpus.cs
 
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -102,8 +102,15 @@ try
     });
     Check("CLI success and failure", () =>
     {
-        Equal(PrepareEthCallCorpus.Run([Source([Call("0xaaaaaaaa")]), Destination()], EnvironmentFor()), 0);
-        Equal(PrepareEthCallCorpus.Run([Source(["not json"]), Destination()], EnvironmentFor()), 1);
+        var names = new[] { "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES" };
+        var previous = names.Select(Environment.GetEnvironmentVariable).ToArray();
+        try
+        {
+            foreach (var name in names) Environment.SetEnvironmentVariable(name, EnvironmentFor()(name));
+            Equal(RpcScriptTests.Run("scripts/rpc-bench/PrepareEthCallCorpus.cs", Source([Call("0xaaaaaaaa")]), Destination()).Code, 0);
+            Equal(RpcScriptTests.Run("scripts/rpc-bench/PrepareEthCallCorpus.cs", Source(["not json"]), Destination()).Code, 1);
+        }
+        finally { for (var index = 0; index < names.Length; index++) Environment.SetEnvironmentVariable(names[index], previous[index]); }
     });
     Console.WriteLine($"Passed {tests} tests."); return 0;
 }

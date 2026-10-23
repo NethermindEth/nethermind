@@ -1,9 +1,9 @@
 #!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-#:include CorpusParity.Helpers.cs
-#:include RpcJson.Helpers.cs
-#:include CorpusResults.Helpers.cs
+#:property DefineConstants=SCRIPT_TEST
+#:include RpcScriptTests.Helpers.cs
+#:include CorpusResults.cs
 
 using System.Globalization;
 using System.Text.Json.Nodes;
@@ -48,7 +48,7 @@ try
     Check("missing source diagnostic contains no private path", () =>
     {
         var previous = Console.Error; using var errors = new StringWriter();
-        try { Console.SetError(errors); Equal(CorpusResults.Run(["sanitize", Path.Combine(root.FullName, "SENTINEL.json"), Path.Combine(root.FullName, "out.json")]), 1); }
+        try { Console.SetError(errors); Equal(Run(["sanitize", Path.Combine(root.FullName, "SENTINEL.json"), Path.Combine(root.FullName, "out.json")]), 1); }
         finally { Console.SetError(previous); }
         Equal(errors.ToString().Contains("SENTINEL"), false);
     });
@@ -59,7 +59,7 @@ try
         Write(Path.Combine(source, "corpus/a/reth/parity.json"), Parity());
         File.WriteAllText(Path.Combine(source, "corpus/a/nm/100/jsonbench-summary.md"), "## ok\n");
         foreach (var filename in new[] { "raw-responses.jsonl", "jsonbench.log", "results.json" }) File.WriteAllText(Path.Combine(source, filename), "SENTINEL");
-        var destination = Path.Combine(root.FullName, Guid.NewGuid().ToString("N")); Equal(CorpusResults.Run(["stage", source, destination]), 0);
+        var destination = Path.Combine(root.FullName, Guid.NewGuid().ToString("N")); Equal(Run(["stage", source, destination]), 0);
         var paths = Directory.GetFiles(destination, "*", SearchOption.AllDirectories).Select(path => Path.GetRelativePath(destination, path).Replace('\\', '/')).Order().ToArray();
         Equal(string.Join(',', paths), "corpus/a/nm/100/jsonbench-summary.md,corpus/a/nm/100/summary.json,corpus/a/reth/parity.json,corpus/warmup-heavy/nm/100/summary.json");
         Equal(Directory.GetFiles(destination, "*", SearchOption.AllDirectories).Any(path => File.ReadAllText(path).Contains("SENTINEL")), false);
@@ -150,7 +150,7 @@ try
     {
         Cell("master", 20, 100); Cell("pr", 20.6, 103);
         var previous = Console.Out; using var output = new StringWriter();
-        try { Console.SetOut(output); Equal(CorpusResults.Run(["comment", root.FullName, "--baseline", "master", "--candidate", "pr", .. cached ? new[] { "--cached-baseline" } : []]), 0); }
+        try { Console.SetOut(output); Equal(Run(["comment", root.FullName, "--baseline", "master", "--candidate", "pr", .. cached ? new[] { "--cached-baseline" } : []]), 0); }
         finally { Console.SetOut(previous); }
         Contains(output.ToString(), "corpus-a", "| metric | master | PR | delta |"); Equal(output.ToString().Contains("not co-run"), cached);
     });
@@ -161,7 +161,7 @@ try
         Contains(Comment(), "mixed concurrency 8/16, not comparable", "1 replay request(s) did not return a result");
     });
     Check("missing client and empty comments", () => { Equal(Comment(), "No corpus cells were produced, so there is nothing to compare."); Cell("master", 20, 100); Contains(Comment(), "missing a client"); });
-    Check("CLI rejects missing stage and unknown options", () => { Equal(CorpusResults.Run(["stage", Path.Combine(root.FullName, "absent"), Path.Combine(root.FullName, "stage")]), 1); Equal(CorpusResults.Run(["comment", root.FullName, "--baseline", "master", "--candidate", "pr", "--bad"]), 2); });
+    Check("CLI rejects missing stage and unknown options", () => { Equal(Run(["stage", Path.Combine(root.FullName, "absent"), Path.Combine(root.FullName, "stage")]), 1); Equal(Run(["comment", root.FullName, "--baseline", "master", "--candidate", "pr", "--bad"]), 2); });
     Check("bootstrap generator preserves seeded samples", () =>
     {
         var random = new CorpusBootstrapRandom(20260825);
@@ -221,3 +221,10 @@ void Timings(string label, double[] latencies, double achieved, int concurrency 
     File.WriteAllLines(Path.Combine(path, "timings.csv"), rows); Write(Path.Combine(path, "timings.meta.json"), Meta(latencies.Length, achieved, concurrency));
 }
 string Comment(bool cached = false) => CorpusResults.Comment(root.FullName, "master", "pr", cached);
+
+static int Run(string[] arguments)
+{
+    var result = RpcScriptTests.Run("scripts/rpc-bench/CorpusResults.cs", arguments);
+    Console.Write(result.Output); Console.Error.Write(result.Error);
+    return result.Code;
+}

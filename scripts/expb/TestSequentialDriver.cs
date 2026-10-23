@@ -1,8 +1,8 @@
 #!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-#:include SequentialDriver.Helpers.cs
-#:include ../ci/ScriptProcess.Helpers.cs
+#:property DefineConstants=SCRIPT_TEST
+#:include SequentialDriver.cs
 
 using System.Diagnostics;
 using System.IO.Pipes;

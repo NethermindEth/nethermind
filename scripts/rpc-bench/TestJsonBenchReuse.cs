@@ -3,9 +3,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include RpcScriptTests.Helpers.cs
 #:package YamlDotNet
-#:include JsonBenchReporting.Helpers.cs
-#:include BenchmarkProcess.Helpers.cs
-#:include RpcJson.Helpers.cs
+#:property DefineConstants=SCRIPT_TEST
+#:include RunJsonBench.cs
 
 using YamlDotNet.RepresentationModel;
 
