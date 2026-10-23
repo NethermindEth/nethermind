@@ -111,6 +111,7 @@ namespace Nethermind.Evm.Test
                 new Instruction[]
                 {
                     Instruction.SLOTNUM,
+                    Instruction.STATEGAS,
                     Instruction.SWAPN,
                     Instruction.DUPN,
                     Instruction.EXCHANGE,

@@ -499,22 +499,24 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         EvmExceptionType expectedException)
     {
         InitWorldState(TestState, extraCode);
+        // Deferred state-gas settlement: a top-level creation needs its account state gas within the state-gas limit
+        // before its init code runs, so the code runs from a call to keep its execution budget exact.
+        TestState.CreateAccount(_testAddress, 0, 1);
+        TestState.InsertCode(_testAddress, code, SpecProvider.GenesisSpec);
 
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
         Block block = Build.A.Block.TestObject;
 
         Transaction templateTx = Build.A.Transaction
-            .WithCode(code)
+            .To(_testAddress)
             .WithGasLimit(0)
             .WithValue(_testAccountBalance)
             .TestObject;
-        // The top-level creation's state gas is settled at the end, so it does not reduce gas_left; the calldata
-        // floor still bounds the gas limit.
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(templateTx, Amsterdam.Instance, block.Header.GasLimit);
         ulong gasLimit = Math.Max(intrinsicGas.Standard.Value + executionGas, intrinsicGas.FloorGas.Value);
 
         Transaction createTx = Build.A.Transaction
-            .WithCode(code)
+            .To(_testAddress)
             .WithGasLimit(gasLimit)
             .WithValue(_testAccountBalance)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
@@ -1055,6 +1057,44 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>
+    /// Deferred state-gas settlement: when a child exceeds the transaction's state-gas limit, execution stops at once,
+    /// so an account the parent would access afterwards does not enter the block access list.
+    /// </summary>
+    [TestCase(200_000UL, false)]
+    [TestCase(400_000UL, true)]
+    public void Eip7928_state_gas_limit_stops_execution_before_later_accesses(ulong gasLimit, bool settles)
+    {
+        Address child = TestItem.AddressE;
+        Address probe = TestItem.AddressF;
+        // Two new slots: 195,840 state gas, above the limit of a 200k transaction.
+        byte[] childCode = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .PushData(1).PushData(1).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] parentCode = Prepare.EvmCode
+            .Call(child, 150_000).Op(Instruction.POP)
+            .PushData(probe).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        InitWorldState(TestState, parentCode);
+        TestState.CreateAccount(child, 0);
+        TestState.InsertCode(child, ValueKeccak.Compute(childCode), childCode, SpecProvider.GenesisSpec);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+
+        BlockAccessListAtIndex bal = ExecuteCallTxs(BuildCallTx(_callTargetAddress, gasLimit: gasLimit));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bal.GetAccountChanges(child), Is.Not.Null);
+            Assert.That(bal.GetAccountChanges(probe), settles ? Is.Not.Null : Is.Null);
+        }
+    }
+
     [TestCase(0, TestName = "EIP7928_create2_selfdestruct_then_recreate_same_block_zero_balance")]
     [TestCase(100, TestName = "EIP7928_create2_selfdestruct_then_recreate_same_block_nonzero_balance")]
     public void Eip7928_create2_selfdestruct_then_recreate_same_block_records_fresh_changes(int firstCreateBalance)
@@ -1386,8 +1426,12 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .Call(_callTargetAddress, 20_000)
             .Done;
 
+        // The code runs from a call: a top-level creation would need its account state gas before its init code runs.
+        TestState.CreateAccount(_testAddress, 0, 1);
+        TestState.InsertCode(_testAddress, code, SpecProvider.GenesisSpec);
+
         Transaction templateTx = Build.A.Transaction
-            .WithCode(code)
+            .To(_testAddress)
             .WithGasLimit(0)
             .TestObject;
         ulong intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
@@ -1399,7 +1443,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         ulong executionGas = pushOperandsCost + GasCostOf.Call + Eip8038Constants.ColdAccountAccess + GasCostOf.WarmStateRead - 1;
 
         Transaction tx = Build.A.Transaction
-            .WithCode(code)
+            .To(_testAddress)
             .WithGasLimit(intrinsicGas + executionGas)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
 
@@ -1636,9 +1680,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                     .WithAddress(_testAddress)
                     .WithStorageReads(slot)
                     .TestObject,
-                new(ContractAddress.From(_testAddress, UInt256.One)),
-                // The value CALL to a new account runs: its state gas is settled at the end, not charged in the frame.
-                new(TestItem.AddressB)
+                new(ContractAddress.From(_testAddress, UInt256.One))
             ];
             yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
@@ -1770,8 +1812,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             code = Prepare.EvmCode
                 .Create(createInitCode, 0)
                 .Done;
-            // The nested CREATE runs its init code; the transaction then fails its state-gas settlement.
-            changes = [new ReadOnlyAccountChanges(_testAddress), Build.An.AccountChanges.WithAddress(ContractAddress.From(_testAddress, UInt256.One)).WithStorageReads(slot).TestObject];
+            // The nested CREATE reaches its target account; its state gas then exceeds the state-gas limit, which stops execution.
+            changes = [new ReadOnlyAccountChanges(_testAddress), new ReadOnlyAccountChanges(ContractAddress.From(_testAddress, UInt256.One))];
             yield return new TestCaseData(changes, code, null, false) { TestName = "create" };
 
             byte[] create2Salt = new byte[32];
@@ -1779,7 +1821,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             code = Prepare.EvmCode
                 .Create2(createInitCode, create2Salt, 0)
                 .Done;
-            changes = [new ReadOnlyAccountChanges(_testAddress), Build.An.AccountChanges.WithAddress(ContractAddress.From(_testAddress, create2Salt, createInitCode)).WithStorageReads(slot).TestObject];
+            changes = [new ReadOnlyAccountChanges(_testAddress), new ReadOnlyAccountChanges(ContractAddress.From(_testAddress, create2Salt, createInitCode))];
             yield return new TestCaseData(changes, code, null, false) { TestName = "create2" };
 
             code = Prepare.EvmCode

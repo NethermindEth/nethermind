@@ -71,6 +71,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
         EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
         EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
         EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+        EvmExceptionType.StateGasSettlementFailed => "state gas settlement failed",
         _ => "Error"
     };
 

@@ -1680,7 +1680,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // The settlement failure is an exceptional halt of the top-level frame: execution is rolled back and gas_left is consumed.
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction: state gas not settled");
             bool restoreRipemdTouch = substate.ShouldRestoreRipemdTouch;
-            substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
+            substate = new TransactionSubstate(EvmExceptionType.StateGasSettlementFailed, tracer.IsTracing);
             WorldState.Restore(snapshot);
             VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, restoreRipemdTouch);
             TGasPolicy settlementIntrinsicGasStandard = gas.Standard;

@@ -196,6 +196,22 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool FailsStateGasSettlement(in TSelf gas) => false;
 
+    /// <summary>Whether the transaction's net state gas exceeded its state-gas limit, which stops all execution.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ExceedsStateGasLimit(in TSelf gas) => false;
+
+    /// <summary>Carries an exceeded state-gas limit from <paramref name="chargedGas"/>, a copy that took a failed charge, to <paramref name="gas"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void MarkStateGasLimitExceeded(ref TSelf gas, in TSelf chargedGas) { }
+
+    /// <summary>Whether the frame owning <paramref name="gas"/> may create <paramref name="stateGasCost"/> more net state gas.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool HasStateGasAllowance(in TSelf gas, long stateGasCost) => true;
+
+    /// <summary>The transaction's net state gas since execution started, as <c>STATEGAS</c> reports it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual long GetExecutionStateGasUsed(in TSelf gas) => 0;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeCreateStateGas(ref TSelf gas) =>
         TSelf.TryConsumeStateGas(ref gas, TSelf.GetCreateStateCost());

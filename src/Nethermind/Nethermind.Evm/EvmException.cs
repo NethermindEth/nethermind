@@ -42,6 +42,8 @@ public enum EvmExceptionType
     ReturnStackOverflow,
     /// <summary>EIP-7979: <c>RETURNSUB</c> with an empty return stack.</summary>
     ReturnStackUnderflow,
+    /// <summary>Deferred state-gas settlement: the transaction cannot pay its state gas, which fails it as a whole.</summary>
+    StateGasSettlementFailed,
 }
 
 public static class EvmExceptionTypeExtensions
@@ -75,6 +77,7 @@ public static class EvmExceptionTypeExtensions
         EvmExceptionType.CallDepthExceeded => nameof(EvmExceptionType.CallDepthExceeded),
         EvmExceptionType.ReturnStackOverflow => nameof(EvmExceptionType.ReturnStackOverflow),
         EvmExceptionType.ReturnStackUnderflow => nameof(EvmExceptionType.ReturnStackUnderflow),
+        EvmExceptionType.StateGasSettlementFailed => nameof(EvmExceptionType.StateGasSettlementFailed),
         _ => ((int)type).ToString(),
     };
 }

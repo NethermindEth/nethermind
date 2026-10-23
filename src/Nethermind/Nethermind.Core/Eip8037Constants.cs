@@ -16,6 +16,10 @@ public static class Eip8037Constants
     /// <summary> Absolute cap on <c>tx.gas</c> covering both gas dimensions (2^32 - 1). </summary>
     public const ulong TxMaxTotalGasLimit = 4_294_967_295;
 
+    /// <summary>Pre-EIP-8037 <c>GAS_CODE_DEPOSIT</c>, the lowest gas per new state byte before EIP-8037.</summary>
+    /// <remarks>Deferred state-gas settlement: a call frame with <c>g</c> gas may create at most <c>g * CPSB / 200</c> net state gas.</remarks>
+    public const long LegacyGasPerStateByte = 200;
+
     public const ulong SystemCallBaseGasLimit = 30_000_000;
     public const long SystemMaxSstoresPerCall = 16;
     public const long SystemCallStateReservoir = GasCostOf.StateBytesPerStorageSet * GasCostOf.CostPerStateByte * SystemMaxSstoresPerCall;

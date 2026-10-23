@@ -677,9 +677,9 @@ public static partial class EvmInstructions
                             if (newIsZero) attemptedRefund += sClearRefunds;
                         }
                         if (originalValue == newValue)
-                            attemptedRefund += Eip8038.IsActive ? (long)Eip8038Constants.StorageWrite
-                                : TEip8037.IsActive && originalIsZero ? (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead)
-                                : (long)gasCosts.RefundFromReversal(originalIsZero);
+                            attemptedRefund += TEip8037.IsActive && originalIsZero
+                                ? Eip8038.IsActive ? (long)Math.Max(Eip8038Constants.StorageWrite, GasCostOf.SSet) : (long)(GasCostOf.SSet - GasCostOf.WarmStateRead)
+                                : Eip8038.IsActive ? (long)Eip8038Constants.StorageWrite : (long)gasCosts.RefundFromReversal(originalIsZero);
                         vm.TraceStorageRefund(attemptedRefund);
                         vm.TraceOperationReady(traceExecutionCost, "out of gas");
                     }
@@ -728,8 +728,10 @@ public static partial class EvmInstructions
                         {
                             vm.CreditStateGasRefund<TEip8037>(ref gas, stateGasCost);
                         }
-                        if (!Eip8038.IsActive)
-                            refundFromReversal = (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead);
+                        // The execution floor of the new slot is refunded too, so a slot set and cleared costs only its access.
+                        refundFromReversal = Eip8038.IsActive
+                            ? (long)Math.Max(Eip8038Constants.StorageWrite, GasCostOf.SSet)
+                            : (long)(GasCostOf.SSet - GasCostOf.WarmStateRead);
                     }
 
                     vmState.Refund += refundFromReversal;

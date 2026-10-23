@@ -965,4 +965,15 @@ public static partial class EvmInstructions
         return EvmExceptionType.BadInstruction;
     }
 
+    /// <summary>Implements the STATEGAS opcode: pushes the transaction's net state gas since execution started.</summary>
+    /// <remarks>Deferred state-gas settlement; the value excludes the state gas of EIP-7702 authorizations and can decrease.</remarks>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionStateGas<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        return stack.PushUInt64<TTracingInst, OnFlag>((ulong)TGasPolicy.GetExecutionStateGasUsed(in gas));
+    }
+
 }

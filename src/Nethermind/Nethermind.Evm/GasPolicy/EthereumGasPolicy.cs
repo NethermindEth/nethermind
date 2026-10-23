@@ -41,8 +41,17 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public bool DeferStateGas;
     /// <summary>The execution gas at the start of deferred settlement; a debt above it exceeds the transaction's state-gas limit.</summary>
     public long StateDebtLimit;
-    /// <summary>Set once the state-gas debt exceeds <see cref="StateDebtLimit"/>; the transaction then fails its settlement.</summary>
+    /// <summary>The state reservoir at the start of deferred settlement; the difference to <see cref="StateReservoir"/> is the transaction's net state gas.</summary>
+    public long StateReservoirAtStart;
+    /// <summary>Set when the state-gas debt exceeds <see cref="StateDebtLimit"/>: execution stops and the transaction fails its settlement.</summary>
     public bool StateGasLimitExceeded;
+    /// <summary>The net state gas this frame and its successful descendants may create.</summary>
+    public long StateGasAllowance;
+    /// <summary><see cref="StateGasAllowance"/> minus the frame's net state gas so far; a frame that takes it below zero halts.</summary>
+    public long StateGasAllowanceLeft;
+
+    /// <summary>The allowance of the top-level frame, which has none.</summary>
+    private const long NoStateGasAllowance = long.MaxValue / 4;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy FromULong(ulong value) => new() { Value = value };
@@ -138,13 +147,15 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         {
             gas.StateReservoir -= stateGasCost;
             gas.StateGasUsed += stateGasCost;
-            // Exceeding the state-gas limit fails the transaction at settlement, never the frame.
+            gas.StateGasAllowanceLeft -= stateGasCost;
+            // The transaction's state-gas limit is checked first: exceeding it stops all execution, not only this frame.
             if (gas.StateReservoir < -gas.StateDebtLimit)
             {
                 gas.StateGasLimitExceeded = true;
+                return false;
             }
 
-            return true;
+            return gas.StateGasAllowanceLeft >= 0;
         }
 
         long reservoir = gas.StateReservoir;
@@ -186,6 +197,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateGasSpill += childGas.StateGasSpill;
         gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
         gas.StateGasLimitExceeded |= childGas.StateGasLimitExceeded;
+        gas.StateGasAllowanceLeft -= childGas.StateGasAllowance - childGas.StateGasAllowanceLeft;
     }
 
     /// <inheritdoc/>
@@ -198,11 +210,29 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         gas.DeferStateGas = true;
         gas.StateDebtLimit = (long)gas.Value;
+        gas.StateReservoirAtStart = gas.StateReservoir;
+        gas.StateGasAllowance = NoStateGasAllowance;
+        gas.StateGasAllowanceLeft = NoStateGasAllowance;
     }
 
     /// <inheritdoc/>
     public static bool FailsStateGasSettlement(in EthereumGasPolicy gas) =>
         gas.DeferStateGas && (gas.StateGasLimitExceeded || (Int128)gas.Value + gas.StateReservoir < 0);
+
+    /// <inheritdoc/>
+    public static bool ExceedsStateGasLimit(in EthereumGasPolicy gas) => gas.StateGasLimitExceeded;
+
+    /// <inheritdoc/>
+    public static void MarkStateGasLimitExceeded(ref EthereumGasPolicy gas, in EthereumGasPolicy chargedGas) =>
+        gas.StateGasLimitExceeded |= chargedGas.StateGasLimitExceeded;
+
+    /// <inheritdoc/>
+    public static bool HasStateGasAllowance(in EthereumGasPolicy gas, long stateGasCost) =>
+        !gas.DeferStateGas || gas.StateGasAllowanceLeft >= stateGasCost;
+
+    /// <inheritdoc/>
+    public static long GetExecutionStateGasUsed(in EthereumGasPolicy gas) =>
+        gas.DeferStateGas ? gas.StateReservoirAtStart - gas.StateReservoir : 0;
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -250,6 +280,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Code deposit failure halts the child create frame after it merged into the parent;
         // spilled state gas is burned, so only the reservoir-funded portion returns.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
+        parentGas.StateGasAllowanceLeft += childGas.StateGasAllowance - childGas.StateGasAllowanceLeft;
         parentGas.StateGasSpill -= childGas.StateGasSpill;
         parentGas.StateGasSpillRefunded -= childGas.StateGasSpillRefunded;
         parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
@@ -623,6 +654,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.Value += (ulong)toGasLeft;
         gas.StateReservoir += appliedRefund - toGasLeft;
         gas.StateGasUsed -= appliedRefund;
+        gas.StateGasAllowanceLeft += appliedRefund;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -644,6 +676,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long toGasLeft = trackSpillRefund ? TrackStateGasSpillRefund(ref gas, amount) : 0;
         gas.Value += (ulong)toGasLeft;
         gas.StateReservoir += amount - toGasLeft;
+        gas.StateGasAllowanceLeft += amount;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -754,6 +787,10 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         long childStateReservoir = parentGas.StateReservoir;
         parentGas.StateReservoir = 0;
+        // Deferred settlement: the child may create the net state gas its gas could buy before EIP-8037, within the parent's remaining allowance.
+        long childStateGasAllowance = parentGas.DeferStateGas
+            ? Math.Min(parentGas.StateGasAllowanceLeft, (long)childExecutionGas * GasCostOf.CostPerStateByte / Eip8037Constants.LegacyGasPerStateByte)
+            : 0;
 
         return new EthereumGasPolicy
         {
@@ -762,6 +799,9 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             IndependentStatePool = parentGas.IndependentStatePool,
             DeferStateGas = parentGas.DeferStateGas,
             StateDebtLimit = parentGas.StateDebtLimit,
+            StateReservoirAtStart = parentGas.StateReservoirAtStart,
+            StateGasAllowance = childStateGasAllowance,
+            StateGasAllowanceLeft = childStateGasAllowance,
         };
     }
 

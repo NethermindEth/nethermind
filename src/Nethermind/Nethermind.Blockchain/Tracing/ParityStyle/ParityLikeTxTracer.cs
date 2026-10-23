@@ -122,6 +122,7 @@ public partial class ParityLikeTxTracer : TxTracer
         EvmExceptionType.ReturnStackOverflow => "Return stack overflow",
         EvmExceptionType.ReturnStackUnderflow => "Return stack underflow",
         EvmExceptionType.Revert => "Reverted",
+        EvmExceptionType.StateGasSettlementFailed => "State gas settlement failed",
         _ => "Error",
     };
 

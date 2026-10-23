@@ -1582,11 +1582,11 @@ public class GethLikeJavaScriptSStoreTracerTests : VirtualMachineTestsBase
             yield return new TestCaseData(7UL, "600060005500", 0, 4, gas, "step:2100:0::0,0:0:0", 0).SetName($"SStore_Amsterdam_noop_{gas}");
             yield return new TestCaseData(7UL, "600160005500", 0, 4, gas, "step:22100:0::0,1:0:0", 1).SetName($"SStore_Amsterdam_create_{gas}");
             yield return new TestCaseData(7UL, "600060005500", 1, 4, gas, "step:12100:11616::0,0:1:0", 0).SetName($"SStore_Amsterdam_clear_{gas}");
-            yield return new TestCaseData(7UL, "6001600055600060005500", 0, 9, gas, "step:100:10000::0,0:1:0", 0).SetName($"SStore_Amsterdam_reverse_zero_{gas}");
+            yield return new TestCaseData(7UL, "6001600055600060005500", 0, 9, gas, "step:100:20000::0,0:1:0", 0).SetName($"SStore_Amsterdam_reverse_zero_{gas}");
             yield return new TestCaseData(7UL, "6000600055600160005500", 1, 9, gas, "step:100:10000::0,1:0:0", 1).SetName($"SStore_Amsterdam_reverse_one_{gas}");
             yield return new TestCaseData(7UL, "6000600055600260005500", 1, 9, gas, "step:100:0::0,2:0:0", 2).SetName($"SStore_Amsterdam_replace_cleared_{gas}");
         }
-        yield return new TestCaseData(7UL, "600160005500", 0, 4, 50000UL, "step:22100:0::0,1:0:0", 0).SetName("SStore_Amsterdam_state_gas_deferred_to_settlement");
+        yield return new TestCaseData(7UL, "600160005500", 0, 4, 50000UL, "step:22100:0:out of gas:0,1:0:0", 0).SetName("SStore_Amsterdam_state_gas_limit_stops_execution");
         yield return new TestCaseData(7UL, "600060005500", 1, 4, 10000UL, "step:12100:11616:out of gas:0,0:1:0", 1).SetName("SStore_Amsterdam_clear_execution_oog");
         yield return new TestCaseData(7UL, "600060005500", 0, 4, 2300UL, "step:0:0:out of gas: not enough gas for reentrancy sentry:0,0:0:0", 0).SetName("SStore_Amsterdam_sentry");
         yield return new TestCaseData(7UL, "600060005500", 0, 4, 2301UL, "step:2100:0::0,0:0:0", 0).SetName("SStore_Amsterdam_above_sentry_noop");

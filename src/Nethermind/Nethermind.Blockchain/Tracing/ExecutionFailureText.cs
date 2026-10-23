@@ -84,6 +84,7 @@ public static class ExecutionFailureText
         new(0x49, "BLOBHASH", 1, 1),
         new(0x4a, "BLOBBASEFEE", 0, 1),
         new(0x4b, "SLOTNUM", 0, 1),
+        new(0x4c, "STATEGAS", 0, 1),
         new(0x50, "POP", 1, 0),
         new(0x51, "MLOAD", 1, 1),
         new(0x52, "MSTORE", 2, 0),

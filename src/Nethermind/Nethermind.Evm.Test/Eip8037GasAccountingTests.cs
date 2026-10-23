@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -161,7 +162,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(executionGas));
             Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(executionGas));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-            Assert.That(tracer.Refund, Is.EqualTo(collision ? 0L : (long)Eip8038Constants.StorageWrite), "refund generated during initcode");
+            Assert.That(tracer.Refund, Is.EqualTo(collision ? 0L : (long)Math.Max(Eip8038Constants.StorageWrite, GasCostOf.SSet)), "refund generated during initcode");
             Assert.That(tracer.GasConsumedResult.GasRefund, Is.Zero, "initcode refunds are rolled back");
             Assert.That(block.Header.GasUsed, Is.EqualTo(executionGas));
             Assert.That(TestState.GetBalance(Sender), Is.EqualTo(senderBalance - executionGas));

@@ -269,7 +269,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.StateGasSettlementFailed)));
             Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         }
@@ -465,8 +465,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.Actions, Has.Count.EqualTo(1));
             Assert.That(tracer.Actions[0].CallType, Is.EqualTo(ExecutionType.CREATE));
             Assert.That(tracer.Actions[0].Gas, Is.EqualTo((ulong)GasCostOf.CreateState - 1));
-            // The creation frame completes; the transaction then fails its state-gas settlement.
-            Assert.That(tracer.ReportedActionErrors, Is.Empty);
+            // The creation charge exceeds the state-gas limit before the frame runs.
+            Assert.That(tracer.ReportedActionErrors, Is.EqualTo(new[] { EvmExceptionType.OutOfGas }));
             Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
             Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, contractAddress, block.Header.GasBeneficiary! }));
         }
@@ -1167,7 +1167,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-            Assert.That(tracer.Error, Is.EqualTo("OutOfGas"));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.StateGasSettlementFailed)));
             Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
             Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit));
@@ -2313,8 +2313,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, 70_000, parentCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
-            "The parent SSTORE should run out of gas once the child CALL burns its own failed SSTORE gas.");
-        Assert.That(tracer.Error, Is.EqualTo("OutOfGas"));
+            "The child SSTORE exceeds the transaction's state-gas limit, which stops execution at once.");
+        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.StateGasSettlementFailed)));
     }
 
     [TestCase(17_777_216ul, TestName = "Eip8037_reverting_child_restoring_parent_fresh_slot_credits_no_state_gas_reservoir_funded")]
@@ -2394,6 +2394,293 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             AssertStorage(new StorageCell(Recipient, UInt256.One), UInt256.One);
             AssertStorage(new StorageCell(Recipient, (UInt256)2), UInt256.Zero);
             AssertStorage(new StorageCell(Recipient, (UInt256)3), UInt256.Zero);
+        }
+    }
+
+    private const ulong UntrustedCallBudget = 100_000;
+
+    /// <summary>The most net state gas a call frame with <paramref name="gas"/> may create.</summary>
+    private static ulong StateGasAllowance(ulong gas) => gas * (ulong)GasCostOf.CostPerStateByte / (ulong)Eip8037Constants.LegacyGasPerStateByte;
+
+    private static byte[] ReturnZeroCodeInitCode(int codeLength) =>
+        Prepare.EvmCode.PushData(codeLength).PushData(0).Op(Instruction.RETURN).Done;
+
+    private void InstallCode(Address address, byte[] code, UInt256 balance = default)
+    {
+        TestState.CreateAccount(address, balance);
+        TestState.InsertCode(address, code, SpecProvider.GenesisSpec);
+    }
+
+    /// <summary>
+    /// A batch calls three untrusted callees with fixed budgets and records each result. A callee that deploys a contract
+    /// larger than its budget allows fails alone; the others and the transaction succeed, because a transaction with
+    /// <c>tx.gas</c> at least its execution gas plus <c>CPSB / 200</c> times the forwarded budgets cannot fail settlement.
+    /// </summary>
+    [Test]
+    public void Eip8037_state_gas_allowance_contains_malicious_callee_in_batch()
+    {
+        byte[] benignCode = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        // CREATE of 2,000 bytes, far above what 100k gas could deploy; INVALID if the creation failed.
+        byte[] createPart = Prepare.EvmCode.Create(ReturnZeroCodeInitCode(2_000), UInt256.Zero).Done;
+        int failDestination = createPart.Length + 6;
+        byte[] maliciousCode =
+        [
+            .. createPart,
+            (byte)Instruction.ISZERO, (byte)Instruction.PUSH2, (byte)(failDestination >> 8), (byte)failDestination,
+            (byte)Instruction.JUMPI, (byte)Instruction.STOP, (byte)Instruction.JUMPDEST, (byte)Instruction.INVALID,
+        ];
+        InstallCode(TestItem.AddressC, benignCode);
+        InstallCode(TestItem.AddressD, maliciousCode);
+        InstallCode(TestItem.AddressE, benignCode);
+
+        byte[] batchCode = Prepare.EvmCode
+            .Call(TestItem.AddressC, (long)UntrustedCallBudget).PushData(0).Op(Instruction.SSTORE)
+            .Call(TestItem.AddressD, (long)UntrustedCallBudget).PushData(1).Op(Instruction.SSTORE)
+            .Call(TestItem.AddressE, (long)UntrustedCallBudget).PushData(2).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        ulong gasLimit = 400_000 + StateGasAllowance(3 * UntrustedCallBudget);
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, batchCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+            AssertStorage(new StorageCell(Recipient, 1), UInt256.Zero);
+            AssertStorage(new StorageCell(Recipient, 2), UInt256.One);
+            AssertStorage(new StorageCell(TestItem.AddressC, 0), UInt256.One);
+            AssertStorage(new StorageCell(TestItem.AddressE, 0), UInt256.One);
+            Assert.That(TestState.AccountExists(ContractAddress.From(TestItem.AddressD, 0)), Is.False);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(4 * GasCostOf.SSetState));
+        }
+    }
+
+    /// <summary>
+    /// A callee with 400k gas deploys 1,500 bytes, then creates a second contract whose own gas could deploy far more:
+    /// the callee's remaining allowance limits it. 260 bytes take the allowance exactly, 261 bytes exceed it, and a slot
+    /// the callee creates takes allowance until it is cleared again.
+    /// </summary>
+    [TestCase(260, false, false, true)]
+    [TestCase(261, false, false, false)]
+    [TestCase(260, true, false, false)]
+    [TestCase(260, true, true, true)]
+    public void Eip8037_state_gas_allowance_limits_child_by_parent_remaining(int secondCodeLength, bool setSlot, bool clearSlot, bool succeeds)
+    {
+        Prepare callee = Prepare.EvmCode.Create(ReturnZeroCodeInitCode(1_500), UInt256.Zero).Op(Instruction.POP);
+        if (setSlot) callee.PushData(1).PushData(1).Op(Instruction.SSTORE);
+        if (clearSlot) callee.PushData(0).PushData(1).Op(Instruction.SSTORE);
+        callee.Create(ReturnZeroCodeInitCode(secondCodeLength), UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP);
+        InstallCode(TestItem.AddressC, callee.Done);
+
+        // Allowance 400,000 * 1,530 / 200 = 3,060,000 = 2 * 183,600 (accounts) + 1,500 * 1,530 + 260 * 1,530.
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 400_000).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        TestAllTracerWithOutput tracer = Execute(Activation, 5_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+            Assert.That(TestState.AccountExists(ContractAddress.From(TestItem.AddressC, 0)), Is.True);
+            Assert.That(TestState.AccountExists(ContractAddress.From(TestItem.AddressC, 1)), Is.EqualTo(succeeds));
+        }
+    }
+
+    public enum StateCreation
+    {
+        Slot,
+        Account,
+        Contract
+    }
+
+    /// <summary>
+    /// A budget that pays the execution gas of a state-creating operation never fails on the allowance: a frame with
+    /// <c>g</c> gas may create the state that <c>g</c> gas could buy before EIP-8037.
+    /// </summary>
+    [TestCase(StateCreation.Slot, 22_106UL)]
+    [TestCase(StateCreation.Account, 40_000UL)]
+    [TestCase(StateCreation.Contract, 60_000UL)]
+    public void Eip8037_state_gas_allowance_keeps_execution_sized_budgets(StateCreation creation, ulong budget)
+    {
+        byte[] calleeCode = creation switch
+        {
+            StateCreation.Slot => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
+            StateCreation.Account => Prepare.EvmCode.CallWithValue(TestItem.AddressF, 0, UInt256.One).Op(Instruction.POP).Op(Instruction.STOP).Done,
+            _ => Prepare.EvmCode.Create(ReturnZeroCodeInitCode(45), UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done,
+        };
+        InstallCode(TestItem.AddressC, calleeCode, balance: 1.Ether);
+
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, (long)budget).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+        }
+    }
+
+    private const ulong LargeDeploymentBlockGasLimit = 500_000_000;
+    private static readonly byte[] MaxCodeInitCode = ReturnZeroCodeInitCode(CodeSizeConstants.MaxCodeSizeEip7954);
+    private static readonly byte[] FirstSalt = [0x01];
+    private static readonly byte[] SecondSalt = [0x02];
+
+    /// <summary>The state gas of one deployment of the maximum code size: code bytes plus the new account.</summary>
+    private const long MaxCodeDeploymentStateGas = CodeSizeConstants.MaxCodeSizeEip7954 * GasCostOf.CodeDepositState + GasCostOf.CreateState;
+
+    private void AssertMaxCodeDeployed(Address address, bool deployed) =>
+        Assert.That(TestState.GetCode(address).Length, Is.EqualTo(deployed ? CodeSizeConstants.MaxCodeSizeEip7954 : 0), $"code of {address}");
+
+    /// <summary>A contract-creation transaction deploys code of the maximum size; the top-level frame has no allowance.</summary>
+    [Test]
+    public void Eip8037_top_level_transaction_deploys_max_size_code()
+    {
+        const ulong gasLimit = 110_000_000;
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, MaxCodeInitCode, value: 0, blockGasLimit: LargeDeploymentBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = MaxCodeInitCode;
+        Address created = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(MaxCodeDeploymentStateGas));
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.LessThan(1_000_000UL), "execution gas stays far below TX_MAX_GAS_LIMIT");
+            AssertMaxCodeDeployed(created, deployed: true);
+        }
+    }
+
+    /// <summary>
+    /// A transaction calls a router, which calls a deployer that deploys code of the maximum size with CREATE2. Forwarding
+    /// all gas leaves the create frame about 15M gas, an allowance of about 115M state gas. A budget for the deployer that
+    /// could not buy the code bytes before EIP-8037 fails the deployment alone.
+    /// </summary>
+    [TestCase(long.MaxValue, true)]
+    [TestCase(13_500_000L, true)]
+    [TestCase(13_100_000L, false)]
+    public void Eip8037_max_size_deployment_through_two_call_levels(long deployerBudget, bool deployed)
+    {
+        Address deployer = TestItem.AddressD;
+        InstallCode(deployer, Prepare.EvmCode.Create2(MaxCodeInitCode, FirstSalt, UInt256.Zero).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        // The transaction calls the router, which calls the deployer.
+        byte[] routerCode = Prepare.EvmCode.Call(deployer, deployerBudget).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        TestAllTracerWithOutput tracer = Execute(Activation, 130_000_000, routerCode, blockGasLimit: LargeDeploymentBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+            AssertMaxCodeDeployed(ContractAddress.From(deployer, FirstSalt.PadLeft(32), MaxCodeInitCode), deployed);
+        }
+    }
+
+    /// <summary>
+    /// Two deployments of the maximum code size from one sub-call share that sub-call's allowance, so the second fails.
+    /// The same deployments from two sub-calls of the top-level frame, which has no allowance, both succeed.
+    /// </summary>
+    [Test]
+    public void Eip8037_max_size_deployments_share_the_sub_call_allowance([Values] bool separateSubCalls)
+    {
+        Address deployer = TestItem.AddressD;
+        Prepare deployerCode = Prepare.EvmCode.Create2(MaxCodeInitCode, FirstSalt, UInt256.Zero).Op(Instruction.POP);
+        if (!separateSubCalls)
+        {
+            deployerCode.Create2(MaxCodeInitCode, SecondSalt, UInt256.Zero).Op(Instruction.POP);
+        }
+
+        InstallCode(deployer, deployerCode.Op(Instruction.STOP).Done);
+        InstallCode(TestItem.AddressE, Prepare.EvmCode.Create2(MaxCodeInitCode, SecondSalt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+
+        Prepare router = Prepare.EvmCode.Call(deployer, long.MaxValue).PushData(0).Op(Instruction.SSTORE);
+        if (separateSubCalls)
+        {
+            router.Call(TestItem.AddressE, long.MaxValue).PushData(1).Op(Instruction.SSTORE);
+        }
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 240_000_000, router.Op(Instruction.STOP).Done, blockGasLimit: LargeDeploymentBlockGasLimit);
+
+        Address secondDeployer = separateSubCalls ? TestItem.AddressE : deployer;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+            AssertMaxCodeDeployed(ContractAddress.From(deployer, FirstSalt.PadLeft(32), MaxCodeInitCode), deployed: true);
+            AssertMaxCodeDeployed(ContractAddress.From(secondDeployer, SecondSalt.PadLeft(32), MaxCodeInitCode), deployed: separateSubCalls);
+        }
+    }
+
+    public enum StateGasProbe
+    {
+        ChildCreatesSlot,
+        ClearInFrame,
+        RevertedChild
+    }
+
+    /// <summary>
+    /// <c>STATEGAS</c> reports the transaction's net state gas: a sub-call that creates a slot adds <c>SSetState</c>, a
+    /// clear removes it, and a reverted sub-call leaves it unchanged. Slot 0 receives the value after minus the value before.
+    /// </summary>
+    [TestCase(StateGasProbe.ChildCreatesSlot, GasCostOf.SSetState)]
+    [TestCase(StateGasProbe.ClearInFrame, -GasCostOf.SSetState)]
+    [TestCase(StateGasProbe.RevertedChild, 0L)]
+    public void Eip8037_stategas_reports_net_state_gas(StateGasProbe probe, long expectedChange)
+    {
+        Prepare childCode = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE);
+        InstallCode(TestItem.AddressC, probe == StateGasProbe.RevertedChild ? childCode.Revert(0, 0).Done : childCode.Op(Instruction.STOP).Done);
+
+        Prepare code = Prepare.EvmCode;
+        if (probe == StateGasProbe.ClearInFrame) code.PushData(1).PushData(1).Op(Instruction.SSTORE);
+        code.Op(Instruction.STATEGAS);
+        if (probe == StateGasProbe.ClearInFrame)
+        {
+            code.PushData(0).PushData(1).Op(Instruction.SSTORE);
+        }
+        else
+        {
+            code.Call(TestItem.AddressC, 100_000).Op(Instruction.POP);
+        }
+
+        code.Op(Instruction.STATEGAS).Op(Instruction.SUB).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP);
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code.Done, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), expectedChange >= 0 ? (UInt256)(ulong)expectedChange : UInt256.MaxValue - (UInt256)(ulong)(-expectedChange - 1));
+        }
+    }
+
+    [Test]
+    public void Eip8037_stategas_is_undefined_before_the_fork()
+    {
+        byte[] code = Prepare.EvmCode.Op(Instruction.STATEGAS).Op(Instruction.STOP).Done;
+
+        TestAllTracerWithOutput tracer = Execute(MainnetSpecProvider.OsakaActivation, 100_000, code);
+
+        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
+    }
+
+    /// <summary>A slot set and cleared in the same transaction refunds its full execution floor, so it costs only its access.</summary>
+    [Test]
+    public void Eip8037_set_and_clear_refunds_the_new_slot_floor()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.Refund, Is.EqualTo((long)Math.Max(Eip8038Constants.StorageWrite, GasCostOf.SSet)));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         }
     }
 }

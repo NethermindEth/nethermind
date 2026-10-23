@@ -68,6 +68,8 @@ public enum Instruction : byte
     BLOBHASH = 0x49,
     BLOBBASEFEE = 0x4a,
     SLOTNUM = 0x4b,
+    // Deferred state-gas settlement; provisional opcode.
+    STATEGAS = 0x4c,
 
     POP = 0x50,
     MLOAD = 0x51,

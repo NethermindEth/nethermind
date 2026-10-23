@@ -383,6 +383,20 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 ReturnDataBuffer = default;
             }
+            // Deferred state-gas settlement: an exceeded state-gas limit stops execution at once, so every frame
+            // up to the top level halts without running another instruction.
+            else if (TGasPolicy.ExceedsStateGasLimit(in _currentState.Gas))
+            {
+                CallResult stopResult = new(EvmExceptionType.StateGasSettlementFailed);
+                TransactionSubstate stopSubstate = HandleException(in stopResult, ref previousCallOutputLength, out bool stopExit);
+                if (stopExit)
+                {
+                    _currentState = null!;
+                    return stopSubstate;
+                }
+
+                continue;
+            }
 
             Exception? failure;
             string? substateError;
@@ -774,8 +788,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
         ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in previousState.Gas, stateDepositCost);
         ulong codeDepositGasCost = executionDepositCost + stateSpill;
+        // Deferred state-gas settlement charges the code deposit to the create frame's allowance.
         bool hasEnoughGas = gasAvailableForCodeDeposit >= executionDepositCost
-            && gasAvailableForCodeDeposit - executionDepositCost >= stateSpill;
+            && gasAvailableForCodeDeposit - executionDepositCost >= stateSpill
+            && TGasPolicy.HasStateGasAllowance(in previousState.Gas, stateDepositCost);
         bool chargedCodeDeposit = false;
 
         if (hasEnoughGas && !invalidCode)
@@ -785,6 +801,7 @@ public partial class VirtualMachine<TGasPolicy>(
             // there fails the deposit. EIP-8360 TCREATE code is discarded at the end of the transaction.
             chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost)
                 && (previousState.ExecutionType == ExecutionType.TCREATE || TryMeterBalData((ulong)code.Length));
+            TGasPolicy.MarkStateGasLimitExceeded(ref _currentState.Gas, in gasAfterCodeDeposit);
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;
@@ -1120,13 +1137,16 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
+        EvmExceptionType exceptionType = TGasPolicy.ExceedsStateGasLimit(in _currentState.Gas)
+            ? EvmExceptionType.StateGasSettlementFailed
+            : callResult.ExceptionType;
 
         // Report the error for action-level tracing if enabled. An exceptional halt consumes all the
         // frame's gas, as in HandleFailure, so none is left whatever the frame held when it halted.
         if (IsTracingActions)
         {
             txTracer.ReportActionRemainingGas(0);
-            txTracer.ReportActionError(callResult.ExceptionType);
+            txTracer.ReportActionError(exceptionType);
         }
 
         // Restore the world state to its snapshot before the current call execution.
@@ -1140,7 +1160,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (_currentState.IsTopLevel)
         {
             shouldExit = true;
-            return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing)
+            return new TransactionSubstate(exceptionType, txTracer.IsTracing)
             {
                 ShouldRestoreRipemdTouch = _shouldRestoreRipemdTouch,
             };

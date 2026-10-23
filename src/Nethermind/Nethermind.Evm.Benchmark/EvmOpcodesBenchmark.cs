@@ -519,7 +519,7 @@ public unsafe class EvmOpcodesBenchmark
             or Instruction.COINBASE or Instruction.TIMESTAMP or Instruction.NUMBER or Instruction.PREVRANDAO
             or Instruction.GASLIMIT or Instruction.CHAINID or Instruction.SELFBALANCE or Instruction.BASEFEE
             or Instruction.MSIZE or Instruction.GAS or Instruction.PC or Instruction.BLOBBASEFEE
-            or Instruction.SLOTNUM => (0, 1, 0),
+            or Instruction.SLOTNUM or Instruction.STATEGAS => (0, 1, 0),
         Instruction.CALL or Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.CALLCODE => (6, 1, 0),
         >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, (ushort)(instruction - Instruction.PUSH0)),
         >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),

@@ -25,6 +25,7 @@ public static class EvmExceptionExtensions
             EvmExceptionType.CallDepthExceeded => "max call depth exceeded",
             EvmExceptionType.ReturnStackOverflow => "return stack limit reached",
             EvmExceptionType.ReturnStackUnderflow => "return stack underflow",
+            EvmExceptionType.StateGasSettlementFailed => "state gas settlement failed",
             _ => "error"
         };
 }
