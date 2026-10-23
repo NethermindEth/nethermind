@@ -17,6 +17,10 @@ public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvide
     public Hash256 Hash { get; } = block.Header.Hash;
     public byte[] Rlp { get; } = blockDecoder.EncodeAsBytes(block);
 
+    /// <summary>RLP of the block access list that the block was suggested with, if any.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? BlockAccessList { get; } = block.EncodedBlockAccessList;
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public GeneratedBlockAccessList? GeneratedBlockAccessList { get; } = block.GeneratedBlockAccessList;
 }
