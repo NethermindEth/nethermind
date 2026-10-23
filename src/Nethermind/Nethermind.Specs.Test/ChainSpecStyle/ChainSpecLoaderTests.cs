@@ -61,7 +61,7 @@ public class ChainSpecLoaderTests
             Assert.That(chainSpec.GrayGlacierBlockNumber, Is.EqualTo(MainnetSpecProvider.GrayGlacierBlockNumber));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(MainnetSpecProvider.ShanghaiBlockTimestamp));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(MainnetSpecProvider.Instance.TimestampFork));
-            Assert.That(chainSpec.Parameters.ZeroNonceStorageAccounts, Is.EqualTo(Eip8253Constants.MainnetAccounts.ToArray()), "EIP-8253 accounts");
+            Assert.That(chainSpec.Parameters.ZeroNonceStorageAccounts, Is.EqualTo(Eip8253TestData.MainnetAccounts.ToArray()), "EIP-8253 accounts");
         }
     }
 

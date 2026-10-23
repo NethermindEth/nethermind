@@ -1103,7 +1103,7 @@ public class EthSimulateTestsBlocksAndTransactions
     [Test]
     public async Task eth_simulateV1_applies_the_eip8253_bump_only_in_the_simulated_fork_block()
     {
-        Address target = Eip8253Constants.MainnetAccounts[5];
+        Address target = Eip8253TestData.MainnetAccounts[5];
         Address creator = new("0x9ca228250f9d8f86c23690074c2b96d5f5479f79");
         TestSpecProvider specProvider = new(Bogota.Instance)
         {

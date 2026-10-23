@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 
-namespace Nethermind.Core;
+namespace Nethermind.Specs.Test;
 
 /// <summary><see href="https://eips.ethereum.org/EIPS/eip-8253">EIP-8253</see> (Bump nonce of zero-nonce storage accounts) parameters.</summary>
-public static class Eip8253Constants
+public static class Eip8253TestData
 {
     /// <summary>The Mainnet accounts whose nonce is set to 1 at the fork block.</summary>
     /// <remarks>

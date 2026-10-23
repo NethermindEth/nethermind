@@ -42,11 +42,11 @@ public class Eip8253TransitionTests
     private const ulong ForkBlockNumber = 2;
 
     // On Mainnet 0x8398…8462 was created by 0x9ca2…9f79 at nonce 0, so a factory placed there collides with it.
-    private static readonly Address Target = Eip8253Constants.MainnetAccounts[5];
+    private static readonly Address Target = Eip8253TestData.MainnetAccounts[5];
     private static readonly Address TargetCreator = new("0x9ca228250f9d8f86c23690074c2b96d5f5479f79");
-    private static readonly Address AbsentTarget = Eip8253Constants.MainnetAccounts[0];
+    private static readonly Address AbsentTarget = Eip8253TestData.MainnetAccounts[0];
     private static readonly Address LookAlike = TestItem.AddressF;
-    private static readonly Address[] MainnetList = Eip8253Constants.MainnetAccounts.ToArray();
+    private static readonly Address[] MainnetList = Eip8253TestData.MainnetAccounts.ToArray();
     private static readonly UInt256 TargetBalance = 1.Ether;
     private static readonly UInt256 StoredValue = 0xabcdef;
 
@@ -83,7 +83,7 @@ public class Eip8253TransitionTests
 
             AssertOnlyBump(forkBal.GetAccountChanges(Target), balanceChangeIndex: 2);
             AssertOnlyBump(forkBal.GetAccountChanges(AbsentTarget), balanceChangeIndex: null);
-            Assert.That(Eip8253Constants.MainnetAccounts.ToArray().Select(a => forkBal.GetAccountChanges(a)?.NonceChanges),
+            Assert.That(Eip8253TestData.MainnetAccounts.ToArray().Select(a => forkBal.GetAccountChanges(a)?.NonceChanges),
                 Is.All.EqualTo(new[] { new NonceChange(0, 1) }), "every listed account records the bump at index 0");
             Assert.That(forkBal.GetAccountChanges(LookAlike)!.NonceChanges, Is.Empty, "an unlisted account of the same shape is not bumped");
 
@@ -203,7 +203,7 @@ public class Eip8253TransitionTests
     [Test]
     public void Mainnet_list_has_the_published_accounts_in_address_hash_order()
     {
-        Address[] accounts = Eip8253Constants.MainnetAccounts.ToArray();
+        Address[] accounts = Eip8253TestData.MainnetAccounts.ToArray();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accounts, Has.Length.EqualTo(28));

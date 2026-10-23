@@ -507,7 +507,7 @@ public partial class BlockProcessorTests
     [Test]
     public async Task AccessListSeed_OnTheEip8253ForkBlock_TracesStartFromTheBumpedNonce()
     {
-        Address target = Eip8253Constants.MainnetAccounts[0];
+        Address target = Eip8253TestData.MainnetAccounts[0];
         IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] };
         TestSpecProvider specProvider = new(Bogota.Instance) { NextForkSpec = eip8253, ForkOnBlockNumber = 2, AllowTestChainOverride = false };
         using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder
