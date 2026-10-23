@@ -109,6 +109,7 @@ internal static class JsonRpcGenerator
     private static readonly Dictionary<Type, string> _knownConverterObjectNames = new()
     {
         [typeof(AccessListForRpc.JsonConverter)] = "array of _object_",
+        [typeof(BlockTransactionsConverter)] = "array of _string_ (hash), or array of _object_ (transaction) when full transactions are requested",
         [typeof(GethLikeTxTraceCollectionConverter)] = "array of _object_ (`error` _string_ in place of `result` when a JavaScript tracer fails)",
         [typeof(GethLikeTxTraceConverter)] = "_object_ (the tracer's own result instead when `tracer` is set)",
         [typeof(SyncingResultJsonConverter)] = "`false` when not syncing, else _object_",
@@ -170,6 +171,12 @@ internal static class JsonRpcGenerator
             ("fromBlock", typeof(FilterBlockBound), null), ("toBlock", typeof(FilterBlockBound), null),
             ("topics", typeof(FilterTopics), null), ("useIndex", typeof(bool), null),
         ],
+    };
+
+    // Converters that write an array of another type's objects, documented by that type's members
+    private static readonly Dictionary<Type, Type> _knownConverterItemTypes = new()
+    {
+        [typeof(BlockTransactionsConverter)] = typeof(TransactionForRpc),
     };
 
     // Methods whose declared result type hides the type that the serializer writes
@@ -649,9 +656,14 @@ internal static class JsonRpcGenerator
 
     private static IEnumerable<(string Name, Type Type, Type? Converter, bool CanBeNull)> GetSerializedMembers(Type type, Type? converterType)
     {
+        Type? shapeConverter = GetShapeConverter(type, converterType);
+
+        if (shapeConverter is not null && _knownConverterItemTypes.TryGetValue(shapeConverter, out Type? itemType))
+            return GetSerializedMembers(itemType, null);
+
         JsonTypeInfo? contract = GetContract(type);
 
-        if ((GetShapeConverter(type, converterType) is { } shapeConverter &&
+        if ((shapeConverter is not null &&
             _knownConverterMembers.TryGetValue(shapeConverter, out (string Name, Type Type, Type? Converter)[]? members)) ||
             _knownConverterMembers.TryGetValue(type, out members))
             return members.Select(m => (m.Name, m.Type, m.Converter, CanBeNull: false));
