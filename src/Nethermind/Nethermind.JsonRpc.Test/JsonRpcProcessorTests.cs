@@ -21,6 +21,8 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -67,8 +69,14 @@ public class JsonRpcProcessorTests
     private JsonRpcProcessor CreateFixtureProcessor(IJsonRpcConfig? config = null, bool returnErrors = false) =>
         CreateProcessor(CreateService(request => returnErrors ? new JsonRpcErrorResponse { Id = request.Id } : new JsonRpcSuccessResponse { Id = request.Id }, _errorResponse), config);
 
-    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
-        new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
+    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null)
+    {
+        config ??= new JsonRpcConfig();
+        return new(service, config, fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource, BatchConcurrencyStrategies(config));
+    }
+
+    private static IBatchConcurrencyStrategy[] BatchConcurrencyStrategies(IJsonRpcConfig config) =>
+        [new EthCallBatchConcurrency(), new DebugTraceCallBatchConcurrency(config)];
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
 
@@ -76,7 +84,7 @@ public class JsonRpcProcessorTests
         new(RpcEndpoint.Http, url: new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http, isAuthenticated: true, [ModuleType.Engine]));
 
     private static JsonRpcProcessor CreateProcessorWithLogger(IJsonRpcService service, TestLogger logger) =>
-        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
+        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null, BatchConcurrencyStrategies(new JsonRpcConfig()));
 
     // #13156: the JSON-RPC 2.0 request-error codes (-32700..-32600 and -32601/-32602) are the caller's fault and are
     // triggered by one unauthenticated request each, so they must not reach WARN; server-side codes keep their level.
@@ -448,6 +456,47 @@ public class JsonRpcProcessorTests
             Assert.That(AssertBatchResponse(responses, 6).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2", "3", "4", "5", "6" }));
             Assert.That(events.IndexOf("start 4"), Is.GreaterThan(new[] { "end 1", "end 2", "end 3" }.Max(events.IndexOf)));
             Assert.That(new[] { "start 5", "start 6" }.Min(events.IndexOf), Is.GreaterThan(events.IndexOf("end 4")));
+        }
+    }
+
+    [Test]
+    public async Task Batch_executes_trace_calls_concurrently_only_with_a_native_tracer()
+    {
+        List<string> events = [];
+        TaskCompletionSource bothNativeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int nativeStartedCount = 0;
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            string id = request.Id.ToString();
+            lock (events) events.Add($"start {id}");
+            if (id is "1" or "2")
+            {
+                if (Interlocked.Increment(ref nativeStartedCount) == 2) bothNativeStarted.SetResult();
+                await bothNativeStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            lock (events) events.Add($"end {id}");
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 4 }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("2", "debug_traceCall", """[{},"latest",{"tracer":"callTracer"}]"""),
+                CreateRequest("3", "debug_traceCall", """[{},"latest"]"""),
+                CreateRequest("4", "debug_traceCall", """[{},"latest",{"tracer":"{result:function(){return 1},fault:function(){}}"}]"""),
+                CreateRequest("5", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("6", "debug_traceCall", """[{},"latest",{"tracer":"\uD800"}]""")),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertBatchResponse(responses, 6).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2", "3", "4", "5", "6" }));
+            Assert.That(events.IndexOf("start 2"), Is.LessThan(events.IndexOf("end 1")), "native traced calls overlap");
+            Assert.That(events.IndexOf("start 3"), Is.GreaterThan(new[] { "end 1", "end 2" }.Max(events.IndexOf)), "a struct log trace may stream, so it runs alone");
+            Assert.That(events.IndexOf("start 4"), Is.GreaterThan(events.IndexOf("end 3")), "a JavaScript tracer runs alone");
+            Assert.That(events.IndexOf("start 5"), Is.GreaterThan(events.IndexOf("end 4")));
+            Assert.That(events.IndexOf("start 6"), Is.GreaterThan(events.IndexOf("end 5")), "a tracer name that cannot be read runs alone");
         }
     }
 
