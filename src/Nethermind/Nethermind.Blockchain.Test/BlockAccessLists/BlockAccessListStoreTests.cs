@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.BlockAccessLists;
@@ -144,6 +145,75 @@ public class BlockAccessListStoreTests
     }
 
     [Test]
+    public async Task Decoded_bal_is_not_written_again_when_the_store_holds_it([Values] bool deferred)
+    {
+        using TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = CreateStoreContainer(db, writer);
+        IBlockAccessListStore store = container.Resolve<IBlockAccessListStore>();
+        byte[] stored = [0xc1, 0x80];
+        Block block = Build.A.Block.WithNumber(5).WithBlockAccessList(new ReadOnlyBlockAccessList()).TestObject;
+        byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+        store.Insert(block.Number, block.Hash!, stored);
+        Assert.That(db[key], Is.EqualTo(stored), "The existing encoding must be durable before insertion.");
+
+        if (deferred)
+        {
+            store.InsertFromBlockDeferred(block);
+        }
+        else
+        {
+            store.InsertFromBlock(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.QueuedCount, Is.Zero);
+            Assert.That(db[key], Is.EqualTo(stored));
+        }
+    }
+
+    [Test]
+    public async Task Decoded_bal_is_written_when_the_store_does_not_hold_it([Values] bool deferred)
+    {
+        using TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = CreateStoreContainer(db, writer);
+        IBlockAccessListStore store = container.Resolve<IBlockAccessListStore>();
+        ReadOnlyBlockAccessList bal = new();
+        Block block = Build.A.Block.WithNumber(5).WithBlockAccessList(bal).TestObject;
+        byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+        byte[] encoded = BlockAccessListDecoder.EncodeToBytes(bal);
+        Assert.That(store.Exists(block.Number, block.Hash!), Is.False, "The block must have no stored or pending BAL before insertion.");
+
+        if (deferred)
+        {
+            store.InsertFromBlockDeferred(block);
+        }
+        else
+        {
+            store.InsertFromBlock(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.QueuedCount, Is.EqualTo(deferred ? 1 : 0));
+            Assert.That(db[key], Is.EqualTo(deferred ? null : encoded),
+                "The durable database must match the insertion mode before flush.");
+        }
+
+        using (MemoryManager<byte>? pending = store.GetRlp(block.Number, block.Hash!))
+        {
+            Assert.That(pending, Is.Not.Null, "The inserted BAL must be readable before flush.");
+            Assert.That(pending!.Memory, Is.SequenceEqualTo(encoded));
+        }
+
+        writer.Pump();
+
+        Assert.That(db[key], Is.EqualTo(encoded));
+    }
+
+    [Test]
     public async Task Replacing_pending_bal_coalesces_the_queued_write()
     {
         TestMemDb db = new();
@@ -255,6 +325,15 @@ public class BlockAccessListStoreTests
             await deletion.WaitAsync(TimeSpan.FromSeconds(10));
             if (insertion is not null) await insertion.WaitAsync(TimeSpan.FromSeconds(10));
         }
+    }
+
+    private static IContainer CreateStoreContainer(TestMemDb db, DeferredBlockDataWriter writer)
+    {
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new TestNethermindModule());
+        builder.RegisterInstance(db).Keyed<IDb>(DbNames.BlockAccessLists).ExternallyOwned();
+        builder.RegisterInstance(writer).As<IDeferredBlockDataWriter>().ExternallyOwned();
+        return builder.Build();
     }
 
     private sealed class RangeTrackingDb : TestMemDb, IRangeRemovableKeyValueStore

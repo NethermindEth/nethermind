@@ -15,7 +15,7 @@ using Nethermind.Core.ServiceStopper;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork),
-        typeof(ReviewBlockTree))]
+        typeof(LoadGenesisBlock))]
     public class InitializeBlockProducer(
         INethermindApi api,
         IServiceStopper serviceStopper,
