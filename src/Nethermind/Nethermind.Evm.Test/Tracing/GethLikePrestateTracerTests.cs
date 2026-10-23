@@ -208,6 +208,33 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Execute_WhenPrestateIsTraced_ReportsStackPushesOnlyWhenAnotherTracerObservesThem([Values] bool fullTrace)
+    {
+        RecordingPrestateTracer tracer = new(TestState);
+        FullInstructionTracer full = new();
+        using ITxTracer executionTracer = new CancellationTxTracer(new CompositeTxTracer(
+            tracer, fullTrace ? full : NullTxTracer.Instance));
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(2)
+            .Op(Instruction.ADD)
+            .Op(Instruction.DUP1)
+            .PushData(0)
+            .Op(Instruction.SLOAD)
+            .Op(Instruction.STOP)
+            .Done;
+
+        Execute(executionTracer, code, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations, Does.Contain(Instruction.SLOAD));
+            Assert.That(tracer.Pushes > 0, Is.EqualTo(fullTrace));
+            Assert.That(full.Pushes > 0, Is.EqualTo(fullTrace));
+        }
+    }
+
+    [Test]
     public void Execute_WhenExcludedOpcodeFails_ReportsTheError()
     {
         using RecordingPrestateTracer tracer = new(TestState);
@@ -1421,6 +1448,9 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     private sealed class FullInstructionTracer : TxTracer
     {
         public override bool IsTracingInstructions => true;
+        public int Pushes { get; private set; }
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => Pushes++;
     }
 
     private sealed class RecordingPrestateTracer(IWorldState worldState)
@@ -1428,6 +1458,13 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     {
         public List<Instruction> Operations { get; } = [];
         public EvmExceptionType? Error { get; private set; }
+        public int Pushes { get; private set; }
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        {
+            Pushes++;
+            base.ReportStackPush(stackItem);
+        }
 
         public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
         {
