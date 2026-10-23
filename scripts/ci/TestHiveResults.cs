@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include ../HiveResults.Helpers.cs
 
-using System.Diagnostics;
-using System.Text.Json;
+#:include ScriptProcess.Helpers.cs
+using System.Text.Json.Nodes;
 
 var launch = "client launch (nethermind)";
 var failing = "known failing (nethermind)";
@@ -46,27 +46,10 @@ foreach (var scenario in new[]
         File.WriteAllText(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"), $"# suite\n\n{failing}\nsync/{failing}\nsnapsync/{failing}\n{flaky}\n{launch}\n");
         File.WriteAllText(Path.Combine(scripts.FullName, "known-flaky-hive-tests.txt"), $"# suite\n\n{flaky}\n");
         var logs = Directory.CreateDirectory(Path.Combine(directory.FullName, "hive", "workspace", "logs"));
-        using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer))
-        {
-            writer.WriteStartObject();
-            writer.WriteString("name", suite);
-            writer.WritePropertyName("testCases");
-            if (name == "array_cases") writer.WriteStartArray(); else writer.WriteStartObject();
-            for (var index = 0; index < cases.Length; index++)
-            {
-                if (name != "array_cases") writer.WritePropertyName(index.ToString());
-                writer.WriteStartObject();
-                writer.WriteString("name", cases[index].Item1);
-                writer.WriteStartObject("summaryResult");
-                writer.WriteBoolean("pass", cases[index].Item2);
-                writer.WriteEndObject();
-                writer.WriteEndObject();
-            }
-            if (name == "array_cases") writer.WriteEndArray(); else writer.WriteEndObject();
-            writer.WriteEndObject();
-        }
-        var json = System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+        var entries = cases.Select(test => (JsonNode)new JsonObject { ["name"] = test.Item1, ["summaryResult"] = new JsonObject { ["pass"] = test.Item2 } }).ToArray();
+        var testCases = name == "array_cases" ? (JsonNode)new JsonArray(entries)
+            : new JsonObject(entries.Select((test, index) => KeyValuePair.Create(index.ToString(), (JsonNode?)test)));
+        var json = new JsonObject { ["name"] = suite, ["testCases"] = testCases }.ToJsonString();
         if (name == "missing_pass_ignored")
             json = "{\"name\":\"engine\",\"testCases\":{\"1\":{\"name\":\"pending\",\"summaryResult\":{}}}}";
         if (name == "null_summary_ignored")
@@ -87,28 +70,14 @@ foreach (var scenario in new[]
         var code = HiveResults.Run(arguments, directory.FullName, output, error);
         if (name is "cli_working_directory" or "cli_checkout_directory")
         {
-            using var process = new Process
-            {
-                StartInfo = new ProcessStartInfo("dotnet")
-                {
-                    WorkingDirectory = name == "cli_checkout_directory" ? Path.Combine(directory.FullName, "nethermind") : directory.FullName,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false
-                }
-            };
-            foreach (var argument in new[] { "run", "--file", FindEntryPoint(), "--", name == "cli_checkout_directory" ? "../" + arguments[0] : arguments[0] })
-                process.StartInfo.ArgumentList.Add(argument);
-            process.Start();
-            var stdout = process.StandardOutput.ReadToEndAsync();
-            var stderr = process.StandardError.ReadToEndAsync();
             using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-            try { await process.WaitForExitAsync(timeout.Token); }
-            finally { if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); } }
-            code = process.ExitCode;
+            var result = await ScriptProcess.Run("dotnet",
+                ["run", "--file", FindEntryPoint(), "--", name == "cli_checkout_directory" ? "../" + arguments[0] : arguments[0]], timeout.Token,
+                workingDirectory: name == "cli_checkout_directory" ? Path.Combine(directory.FullName, "nethermind") : directory.FullName);
+            code = result.Code;
             output.GetStringBuilder().Clear();
-            output.Write(await stdout);
-            error.Write(await stderr);
+            output.Write(result.Output);
+            error.Write(result.Error);
         }
         if (code != expectedCode || !output.ToString().Replace("\r\n", "\n").Contains(expectedOutput, StringComparison.Ordinal) ||
             (name is "malformed_json" or "missing_known_file" && error.ToString().Length == 0))
