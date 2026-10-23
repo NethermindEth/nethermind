@@ -35,7 +35,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
         foreach (StorageCell storageCell in accessedStorageCells)
         {
             ref HashSet<UInt256>? set = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, storageCell.Address, out _);
-            set ??= new HashSet<UInt256>();
+            set ??= [];
             set.Add(storageCell.Index);
         }
 
