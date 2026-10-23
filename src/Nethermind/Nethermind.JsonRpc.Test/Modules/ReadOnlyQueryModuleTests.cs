@@ -491,7 +491,8 @@ public class ReadOnlyQueryModuleTests
         }
     }
 
-    // A traced call and a block traced whole have no untraced transaction, but their blocks end with untraced system calls.
+    // A traced call and a block traced whole have no untraced transaction. A block traced whole ends with untraced
+    // system calls; a traced call stops after the call, so nothing after it runs.
     [TestCase("debug_traceCall", StructLogger)]
     [TestCase("debug_traceCall", "prestateTracer")]
     [TestCase("debug_traceCall", JavaScriptTracer)]
@@ -512,8 +513,11 @@ public class ReadOnlyQueryModuleTests
             AssertSucceeded(response);
             foreach (Address contract in Contracts)
                 Assert.That(probe.OffersFor(contract), Is.Zero, "a transaction traced opcode by opcode must never reach the runner");
-            Assert.That(probe.OffersFor(Eip7002Constants.WithdrawalRequestPredeployAddress) + probe.OffersFor(Eip7251Constants.ConsolidationRequestPredeployAddress),
-                Is.GreaterThan(0), "the execution request system calls that end the block still do");
+            int systemCallOffers = probe.OffersFor(Eip7002Constants.WithdrawalRequestPredeployAddress) + probe.OffersFor(Eip7251Constants.ConsolidationRequestPredeployAddress);
+            if (method == "debug_traceCall")
+                Assert.That(systemCallOffers, Is.Zero, "a traced call stops before the execution request system calls that end the block");
+            else
+                Assert.That(systemCallOffers, Is.GreaterThan(0), "the execution request system calls that end the block still do");
         }
     }
 

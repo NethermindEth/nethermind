@@ -973,6 +973,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public static implicit operator SlotKey(in UInt256 index) => new(in index);
 
         public static implicit operator UInt256(in SlotKey key) => key.Index;
+
+        /// <summary>The index viewed in place as a key, where the implicit conversion copies it into a temporary.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ref readonly SlotKey Of(in UInt256 index) => ref Unsafe.As<UInt256, SlotKey>(ref Unsafe.AsRef(in index));
     }
 
     private sealed class DefaultableDictionary()
@@ -1072,12 +1076,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public ref StorageChangeTrace GetValueRefOrAddDefault(in UInt256 storageCellIndex, out bool exists)
         {
             OptimizedDictionary<SlotKey, StorageChangeTrace> dictionary = _dictionary;
-            if (dictionary.Count == dictionary.Capacity && dictionary.Count >= GrowIntoLargeAt && !dictionary.ContainsKey(storageCellIndex))
+            if (dictionary.Count == dictionary.Capacity && dictionary.Count >= GrowIntoLargeAt && !dictionary.ContainsKey(SlotKey.Of(in storageCellIndex)))
             {
                 GrowIntoLarge();
             }
 
-            ref StorageChangeTrace value = ref _dictionary.GetValueRefOrAddDefault(storageCellIndex, out exists);
+            ref StorageChangeTrace value = ref _dictionary.GetValueRefOrAddDefault(SlotKey.Of(in storageCellIndex), out exists);
             if (!exists && _missingAreDefault)
             {
                 // Where we know the rest of the tree is empty
@@ -1111,7 +1115,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public ref StorageChangeTrace GetValueRefOrNullRef(in UInt256 storageCellIndex)
-            => ref _dictionary.GetValueRefOrNullRef(storageCellIndex);
+            => ref _dictionary.GetValueRefOrNullRef(SlotKey.Of(in storageCellIndex));
 
         public OptimizedDictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
@@ -1484,21 +1488,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             else
             {
                 Provider._metrics.IncrementStorageTreeCache();
+                value = valueChange.After;
             }
 
             ulong round = provider._originalsRound;
             if (valueChange.CapturedRound != round)
             {
                 // Capture updates the provider's separate originals map, leaving this dictionary ref valid.
-                provider.CaptureOriginalValue(storageCell, valueChange.After);
+                provider.CaptureOriginalValue(storageCell, value);
                 valueChange.SetCapturedRound(round);
             }
 
             _lastReadIndex = storageCell.Index;
-            _lastReadValue = valueChange.After;
+            _lastReadValue = value;
             _lastReadRound = round;
-
-            value = valueChange.After;
         }
 
         public void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 
@@ -65,7 +67,9 @@ public class StatusMessageSerializer69 :
     {
         int forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
         writer.StartSequence(forkIdContentLength);
-        writer.Encode(forkId.HashBytes);
+        Span<byte> forkHash = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(forkHash, forkId.ForkHash);
+        writer.Encode(forkHash);
         writer.Encode(forkId.Next);
     }
 
