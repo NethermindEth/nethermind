@@ -344,6 +344,39 @@ public class PayloadPreparationServiceTests
 
     [Test]
     [CancelAfter(30000)]
+    public async Task StartPreparingPayload_does_not_wait_for_the_empty_block()
+    {
+        Block empty = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        TaskCompletionSource<Block?> emptyBuild = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>())
+            .Returns(emptyBuild.Task);
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>())
+            .Returns(new TaskCompletionSource<Block?>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        using TestPayloadPreparationService service = new(producer, Substitute.For<ITxPool>(),
+            new BlockImprovementContextFactory(producer, TimePerSlot), Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
+
+        try
+        {
+            string payloadId = await Task.Run(() => service.StartPreparingPayload(ParentHeader, Attributes)).WaitAsync(WaitTimeout);
+            ValueTask<IBlockProductionContext?> payload = service.GetPayload(payloadId);
+            bool waitedForEmptyBlock = !payload.IsCompleted;
+            emptyBuild.SetResult(empty);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(waitedForEmptyBlock, Is.True);
+                Assert.That((await payload)?.CurrentBestBlock, Is.SameAs(empty));
+            }
+        }
+        finally
+        {
+            emptyBuild.TrySetResult(empty);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
     public async Task GetPayload_waits_for_the_improvement_when_there_is_no_empty_block([Values] bool skipCancel)
     {
         using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
