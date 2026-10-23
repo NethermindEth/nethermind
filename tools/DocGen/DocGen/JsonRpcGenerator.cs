@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
@@ -107,6 +108,7 @@ internal static class JsonRpcGenerator
     private static readonly Dictionary<Type, string> _knownConverterObjectNames = new()
     {
         [typeof(AccessListForRpc.JsonConverter)] = "array of _object_",
+        [typeof(GethLikeTxTraceCollectionConverter)] = "array of _object_ (`error` _string_ in place of `result` when a JavaScript tracer fails)",
         [typeof(GethLikeTxTraceConverter)] = "_object_ (the tracer's own result instead when `tracer` is set)",
         [typeof(SyncingResultJsonConverter)] = "`false` when not syncing, else _object_",
     };
@@ -119,6 +121,7 @@ internal static class JsonRpcGenerator
         [
             ("address", typeof(Address), null), ("storageKeys", typeof(IEnumerable<UInt256>), typeof(StorageCellIndexConverter)),
         ],
+        [typeof(GethLikeTxTraceCollectionConverter)] = [("result", typeof(GethLikeTxTrace), null), ("txHash", typeof(Hash256), null)],
         // Forced raw number conversion writes gas as a JSON number
         [typeof(GethLikeTxTraceConverter)] =
         [
@@ -166,6 +169,15 @@ internal static class JsonRpcGenerator
             ("fromBlock", typeof(FilterBlockBound), null), ("toBlock", typeof(FilterBlockBound), null),
             ("topics", typeof(FilterTopics), null), ("useIndex", typeof(bool), null),
         ],
+    };
+
+    // Methods whose declared result type hides the type that the serializer writes
+    private static readonly Dictionary<string, Type> _knownResultTypes = new()
+    {
+        [nameof(IDebugRpcModule.debug_traceBadBlock)] = typeof(GethLikeTxTraceCollection),
+        [nameof(IDebugRpcModule.debug_traceBlock)] = typeof(GethLikeTxTraceCollection),
+        [nameof(IDebugRpcModule.debug_traceBlockByHash)] = typeof(GethLikeTxTraceCollection),
+        [nameof(IDebugRpcModule.debug_traceBlockByNumber)] = typeof(GethLikeTxTraceCollection),
     };
 
     // Markers for the forms Filter.ReadJson accepts; its range bounds are parsed from their text, so they take no EIP-1898 object
@@ -395,7 +407,7 @@ internal static class JsonRpcGenerator
             `result`: 
             """);
 
-        WriteExpandedType(file, GetReturnType(method.ReturnType));
+        WriteExpandedType(file, _knownResultTypes.GetValueOrDefault(method.Name) ?? GetReturnType(method.ReturnType));
 
         if (attr.ResultCanBeNull)
             file.WriteLine("""

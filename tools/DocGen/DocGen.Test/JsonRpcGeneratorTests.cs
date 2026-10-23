@@ -11,6 +11,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
@@ -137,7 +138,6 @@ public class JsonRpcGeneratorTests
     {
         yield return new TestCaseData("eth", "eth_getProof", new AccountProof());
         yield return new TestCaseData("eth", "eth_syncing", new SyncingResult { IsSyncing = true });
-        yield return new TestCaseData("debug", "debug_traceTransaction", new GethLikeTxTrace { TxHash = Keccak.Zero });
     }
 
     [TestCaseSource(nameof(ConverterWrittenResults))]
@@ -145,8 +145,50 @@ public class JsonRpcGeneratorTests
     {
         using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(result));
 
-        AssertDocumentedProperties(wire.RootElement, ReadResponse(ns, method), 2);
+        AssertDocumentedPropertiesMatch(wire.RootElement, ReadResponse(ns, method), 2);
     }
+
+    [TestCase("debug_traceTransaction", false)]
+    [TestCase("debug_traceBlockByNumber", true)]
+    public void Trace_response_documents_struct_log_entries(string method, bool isBlockTrace)
+    {
+        GethLikeTxTrace trace = CreateTraceWithStructLog();
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(
+            isBlockTrace ? new GethLikeTxTraceStreamingResult([trace]) : (object)trace));
+        string response = ReadResponse("debug", method);
+        JsonElement traceElement = isBlockTrace ? wire.RootElement[0].GetProperty("result") : wire.RootElement;
+        int indentation = isBlockTrace ? 4 : 2;
+        string traceResponse = isBlockTrace ? ReadPropertyBlock(response, "result", 2) : response;
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (isBlockTrace)
+                AssertDocumentedPropertiesMatch(wire.RootElement[0], response, 2);
+
+            AssertDocumentedPropertiesMatch(traceElement, traceResponse, indentation);
+            AssertDocumentedPropertiesMatch(traceElement.GetProperty("structLogs")[0],
+                ReadPropertyBlock(traceResponse, "structLogs", indentation), indentation + 2);
+            Assert.That(traceResponse.Split('\n'), Has.Some.EqualTo($"{new string(' ', indentation)}- `gas`: _integer_"));
+        }
+    }
+
+    private static GethLikeTxTrace CreateTraceWithStructLog() => new()
+    {
+        TxHash = Keccak.Zero,
+        Entries =
+        [
+            new GethTxTraceEntry
+            {
+                Opcode = "SSTORE",
+                Error = "out of gas",
+                Refund = 1,
+                Stack = new ReadOnlyMemory<byte>(new byte[32]),
+                Memory = new ReadOnlyMemory<byte>(new byte[32]),
+                Storage = new Dictionary<UInt256, UInt256> { [UInt256.One] = UInt256.One },
+                ReturnData = new ReadOnlyMemory<byte>([1])
+            }
+        ]
+    };
 
     [Test]
     public void Create_access_list_response_documents_access_list_items()
@@ -158,7 +200,7 @@ public class JsonRpcGeneratorTests
 
         using (Assert.EnterMultipleScope())
         {
-            AssertDocumentedProperties(wire.RootElement.GetProperty("accessList")[0], accessListResponse, 4);
+            AssertDocumentedPropertiesMatch(wire.RootElement.GetProperty("accessList")[0], accessListResponse, 4);
             Assert.That(accessListResponse, Does.Contain("- `storageKeys`: array of _string_ (32-byte hex data)"));
         }
     }
@@ -168,6 +210,20 @@ public class JsonRpcGeneratorTests
         foreach (JsonProperty property in value.EnumerateObject())
             Assert.That(response.Split('\n'), Has.Some.StartsWith($"{new string(' ', indentation)}- `{property.Name}`:"),
                 $"serialized property {property.Name} is missing from its response object");
+    }
+
+    // Holds only for converters that write every member on every call
+    private static void AssertDocumentedPropertiesMatch(JsonElement value, string response, int indentation)
+    {
+        AssertDocumentedProperties(value, response, indentation);
+
+        string prefix = $"{new string(' ', indentation)}- `";
+
+        foreach (string line in response.Split('\n').Where(l => l.StartsWith(prefix, StringComparison.Ordinal)))
+        {
+            string name = line[prefix.Length..line.IndexOf('`', prefix.Length)];
+            Assert.That(value.TryGetProperty(name, out _), Is.True, $"documented property {name} is not serialized");
+        }
     }
 
     private static string ReadPropertyBlock(string response, string property, int indentation)
