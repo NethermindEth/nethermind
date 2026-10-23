@@ -164,14 +164,22 @@ public class GethStyleTracer(
         if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
         options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
         if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
-        IReleaseSpec overrideSpec = callSpec.WithoutEip158();
-        state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, overrideSpec);
-        state.Commit(overrideSpec);
+        ApplyCallStateOverrides(state, options.StateOverrides, callSpec);
         transactionProcessorAdapter.CurrentAdapterFactory = processor =>
         {
             // This Ethereum context does not invoke chain-specific BlockProcessor context overrides (for example XDC).
             return CreateCallAdapter(processor, tracedBlock.Header, callSpec, options.BlockOverrides, blobBaseFee);
         };
+    }
+
+    /// <summary>Applies a traced call's state overrides on top of the state the replay has reached.</summary>
+    /// <remarks>As in <c>eth_call</c>, the commit leaves the trie and storage roots alone: the call reads the overridden state,
+    /// and nothing in a trace reads a root.</remarks>
+    private void ApplyCallStateOverrides(IWorldState state, Dictionary<Address, AccountOverride>? overrides, IReleaseSpec callSpec)
+    {
+        IReleaseSpec overrideSpec = callSpec.WithoutEip158();
+        state.ApplyStateOverridesNoCommit(codeInfoRepository, overrides, overrideSpec);
+        state.Commit(overrideSpec, commitRoots: false);
     }
 
     private static UInt256? GetCallBlobBaseFee(Transaction call, GethTraceOptions options) =>
@@ -387,21 +395,20 @@ public class GethStyleTracer(
         try
         {
             IBlockTracer traced = tracer.WithCancellation(cancellationToken);
+            CallAtIndexBlockTracer? overridesTracer = null;
             if (useBlockAsBase && options.StateOverrides is { } stateOverrides)
             {
                 IWorldState state = scope.Component.WorldState;
-                IReleaseSpec overrideSpec = specProvider.GetSpec(block.Header).WithoutEip158();
-                traced = new CallAtIndexBlockTracer(traced, block.Header, block.Transactions[0], _ =>
-                {
-                    state.ApplyStateOverridesNoCommit(codeInfoRepository, stateOverrides, overrideSpec);
-                    state.Commit(overrideSpec);
-                });
+                IReleaseSpec callSpec = specProvider.GetSpec(block.Header);
+                traced = overridesTracer = new CallAtIndexBlockTracer(traced, block.Header, block.Transactions[0],
+                    _ => ApplyCallStateOverrides(state, stateOverrides, callSpec));
             }
 
             // A seed skips the prefix, whose logs a traced prefix is there to count.
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
                 traced, txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
+            if (overridesTracer is { IsPrepared: false }) throw new InvalidOperationException($"The state overrides of the call in block {block.Number} were not applied.");
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
         }
         finally
