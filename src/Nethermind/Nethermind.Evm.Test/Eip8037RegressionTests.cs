@@ -2332,4 +2332,38 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             AssertStorage(new StorageCell(Recipient, 0), expectedSuccess ? UInt256.One : UInt256.Zero);
         }
     }
+
+    [Test]
+    public void Eip8037_top_level_create_rollback_refills_account_charge(
+        [Values] bool exceptionalHalt,
+        [Values(0L, 100_000L, 500_000L)] long reservoir)
+    {
+        // Reservoir 0 pays the account charge from gas_left, 100,000 splits it, 500,000 pays it in full.
+        byte[] initCode = exceptionalHalt
+            ? Prepare.EvmCode.Op(Instruction.INVALID).Done
+            : Prepare.EvmCode.Revert(0, 0).Done;
+        ulong gasLimit = reservoir == 0 ? 1_000_000 : Eip7825Constants.DefaultTxGasLimitCap + (ulong)reservoir;
+
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, initCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec).Standard;
+        UInt256 senderBalanceBefore = TestState.GetBalance(Sender);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        ulong spentGas = tracer.GasConsumedResult.SpentGas;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            // A halt consumes gas_left but returns the reservoir; a revert returns gas_left and refills the account charge.
+            if (exceptionalHalt)
+                Assert.That(spentGas, Is.EqualTo(gasLimit - (ulong)reservoir));
+            else
+                Assert.That(spentGas, Is.LessThan(intrinsicGas + 1_000));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(TestState.GetBalance(Sender), Is.EqualTo(senderBalanceBefore - spentGas));
+        }
+    }
 }
