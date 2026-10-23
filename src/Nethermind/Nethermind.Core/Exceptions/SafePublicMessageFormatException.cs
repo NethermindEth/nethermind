@@ -10,8 +10,12 @@ namespace Nethermind.Core.Exceptions;
 /// </summary>
 /// <param name="message">The public message.</param>
 /// <param name="omitArgumentPosition">See <see cref="IExceptionWithSafePublicMessage.OmitArgumentPosition"/>.</param>
-public sealed class SafePublicMessageFormatException(string message, bool omitArgumentPosition = false) : FormatException(message), IExceptionWithSafePublicMessage
+public sealed class SafePublicMessageFormatException(string message, bool omitArgumentPosition) : FormatException(message), IExceptionWithSafePublicMessage
 {
+    /// <summary>Creates an exception whose public message includes the argument position when binding fails.</summary>
+    /// <param name="message">The public message.</param>
+    public SafePublicMessageFormatException(string message) : this(message, false) { }
+
     /// <inheritdoc/>
     public bool OmitArgumentPosition => omitArgumentPosition;
 }

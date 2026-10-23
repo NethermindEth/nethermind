@@ -183,12 +183,12 @@ public class Filter : IJsonRpcParam
             return new Address(bytes);
         }
 
-        byte[] decoded = Bytes.FromHexString(element.ToString());
-        return decoded.Length == Core.Address.Size
-            ? new Address(decoded)
+        int length = DecodeHex(element, bytes);
+        return length == Core.Address.Size
+            ? new Address(bytes)
             : throw new SafePublicMessageFormatException(index < 0
-                ? $"invalid address: {GetInvalidLengthMessage(decoded.Length, Core.Address.Size, "address")}"
-                : $"invalid address at index {index}: {GetInvalidLengthMessage(decoded.Length, Core.Address.Size, "address")}");
+                ? $"invalid address: {GetInvalidLengthMessage(length, Core.Address.Size, "address")}"
+                : $"invalid address at index {index}: {GetInvalidLengthMessage(length, Core.Address.Size, "address")}");
     }
 
     private static Hash256 ParseHash(JsonElement element)
@@ -199,10 +199,23 @@ public class Filter : IJsonRpcParam
             return new Hash256(bytes);
         }
 
-        byte[] decoded = Bytes.FromHexString(element.ToString());
-        return decoded.Length == Hash256.Size
-            ? new Hash256(decoded)
-            : throw new SafePublicMessageFormatException(GetInvalidLengthMessage(decoded.Length, Hash256.Size, "topic"));
+        int length = DecodeHex(element, bytes);
+        return length == Hash256.Size
+            ? new Hash256(bytes)
+            : throw new SafePublicMessageFormatException(GetInvalidLengthMessage(length, Hash256.Size, "topic"));
+    }
+
+    private static int DecodeHex(JsonElement element, Span<byte> destination)
+    {
+        string hex = element.ToString();
+        int digits = hex.StartsWith("0x", StringComparison.Ordinal) ? hex.Length - 2 : hex.Length;
+        if ((digits + 1) / 2 == destination.Length)
+        {
+            Bytes.FromHexString(hex.AsSpan(), destination);
+            return destination.Length;
+        }
+
+        return Bytes.FromHexString(hex).Length;
     }
 
     private static string GetInvalidLengthMessage(int length, int expectedLength, string name) =>

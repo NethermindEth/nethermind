@@ -55,6 +55,20 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class JsonRpcServiceTests
 {
+    [Test]
+    public void Safe_public_message_exception_preserves_single_string_constructor()
+    {
+        ConstructorInfo? constructor = typeof(SafePublicMessageFormatException).GetConstructor([typeof(string)]);
+        Assert.That(constructor, Is.Not.Null);
+
+        SafePublicMessageFormatException exception = (SafePublicMessageFormatException)constructor!.Invoke(["invalid input"]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Is.EqualTo("invalid input"));
+            Assert.That(exception.OmitArgumentPosition, Is.False);
+        }
+    }
+
     [TestCase("engine_newPayloadV1", true, true, RpcEndpoint.Http)]
     [TestCase("engine_newPayloadV5", true, true, RpcEndpoint.Http)]
     [TestCase("engine_newPayloadV99", true, true, RpcEndpoint.Http)]

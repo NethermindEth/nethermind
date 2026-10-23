@@ -150,6 +150,26 @@ public class FilterTests
         Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
     }
 
+    [Test]
+    public void ReadJson_accepts_hex_spellings(
+        [Values(20, 32)] int size, [Values] bool prefixed, [Values] bool oddLength, [Values] bool escaped)
+    {
+        string canonical = "0" + new string('1', size * 2 - 1);
+        string hex = oddLength ? canonical[1..] : canonical;
+        if (prefixed) hex = "0x" + hex;
+        if (escaped) hex = hex[..^1] + "\\u0031";
+        string json = size == Address.Size ? $$"""{"address":"{{hex}}"}""" : $$"""{"topics":["{{hex}}"]}""";
+        Filter filter = new();
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+
+        if (size == Address.Size)
+            Assert.That(filter.Address, Is.EqualTo(new AddressAsKey[] { new(new Address(canonical)) }));
+        else
+            Assert.That(filter.Topics, Is.EqualTo(new Hash256[][] { [new(canonical)] }));
+    }
+
     [TestCase("""{"address":"0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5g"}""", typeof(FormatException))]
     [TestCase("""{"address":["0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda"]}""", typeof(SafePublicMessageFormatException))]
     [TestCase("""{"address":["0XC2D77D118326C33BBE36EBEABF4F7ED6BC2DDA5C"]}""", typeof(FormatException))]
