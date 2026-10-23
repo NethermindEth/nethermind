@@ -7,8 +7,26 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-static class ZiskBench
+static partial class ZiskBench
 {
+    [GeneratedRegex(@"^STEPS\s+(\d[\d,]*)\s*$", RegexOptions.Multiline)]
+    private static partial Regex StepsRegex();
+    [GeneratedRegex(@"^MAIN\s+(\d[\d,]*)\s", RegexOptions.Multiline)]
+    private static partial Regex MainRegex();
+    [GeneratedRegex(@"^OPCODES\s+(\d[\d,]*)\s", RegexOptions.Multiline)]
+    private static partial Regex OpcodesRegex();
+    [GeneratedRegex(@"^PRECOMPILES\s+(\d[\d,]*)\s", RegexOptions.Multiline)]
+    private static partial Regex PrecompilesRegex();
+    [GeneratedRegex(@"^MEMORY\s+(\d[\d,]*)\s", RegexOptions.Multiline)]
+    private static partial Regex MemoryRegex();
+    [GeneratedRegex(@"^TOTAL\s+(\d[\d,]*)\s", RegexOptions.Multiline)]
+    private static partial Regex TotalRegex();
+
+    [GeneratedRegex(@"\A-?[0-9]+\z")]
+    private static partial Regex IntegerValueRegex();
+    [GeneratedRegex(@"\A[0-9]+\.ssz\z")]
+    private static partial Regex InputNameRegex();
+
     internal const string Marker = "<!-- zisk-guest-benchmark-report -->";
     internal static readonly string[] Buckets = ["main", "opcodes", "precompiles", "memory"];
 
@@ -33,10 +51,10 @@ static class ZiskBench
 
     internal static JsonObject Parse(string log, string input)
     {
-        if (!Regex.IsMatch(input, @"\A[0-9]+\.ssz\z")) throw new ArgumentException("input must be a numeric block filename ending in .ssz");
+        if (!InputNameRegex().IsMatch(input)) throw new ArgumentException("input must be a numeric block filename ending in .ssz");
         JsonNode Number(string name, bool steps = false)
         {
-            var match = Regex.Match(log, "^" + name + @"\s+(\d[\d,]*)\s" + (steps ? "*$" : ""), RegexOptions.Multiline);
+            var match = (name switch { "STEPS" => StepsRegex(), "MAIN" => MainRegex(), "OPCODES" => OpcodesRegex(), "PRECOMPILES" => PrecompilesRegex(), "MEMORY" => MemoryRegex(), "TOTAL" => TotalRegex(), _ => throw new ArgumentOutOfRangeException(nameof(name)) }).Match(log);
             if (!match.Success) throw new ArgumentException(steps ? "no STEPS line in the log — the run did not complete" : $"cost bucket '{name}' not found — did ziskemu run with -X?");
             return JsonNode.Parse(BigInteger.Parse(match.Groups[1].Value.Replace(",", "", StringComparison.Ordinal), CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture))!;
         }
@@ -58,7 +76,7 @@ static class ZiskBench
             foreach (var node in rows)
             {
                 if (node is not JsonObject row || row["input"] is not JsonValue input || !input.TryGetValue<string>(out var name) ||
-                    new[] { "steps", "total", "main", "opcodes", "precompiles", "memory" }.Any(field => row[field] is not JsonValue number || number.GetValueKind() != JsonValueKind.Number || !Regex.IsMatch(number.ToJsonString(), @"\A-?[0-9]+\z")) ||
+                    new[] { "steps", "total", "main", "opcodes", "precompiles", "memory" }.Any(field => row[field] is not JsonValue number || number.GetValueKind() != JsonValueKind.Number || !IntegerValueRegex().IsMatch(number.ToJsonString())) ||
                     !result.TryAdd(name, row)) return null;
             }
             return (result, commitNode?.GetValue<string>() ?? "");

@@ -34,9 +34,9 @@ try
     (int Code, string Output, string Error) App(string name, params string[] arguments) => Run("dotnet", ["run", "--file", Path.Combine(root, "scripts/zisk-bench", name + ".cs"), "--", .. arguments]);
     string Step(string name, string? yaml = null)
     {
-        var match = Regex.Match(yaml ?? workflow, @"      - name: " + Regex.Escape(name) + @"\n(?:(?!      - name:).)*?        run: \|\n((?:          [^\n]*\n|\n)+)", RegexOptions.Singleline);
-        Require(match.Success, "step not found: " + name);
-        return Regex.Replace(match.Groups[1].Value, "^          ", "", RegexOptions.Multiline);
+        var match = StepRegex().Matches(yaml ?? workflow).FirstOrDefault(match => match.Groups[1].Value == name);
+        Require(match is not null, "step not found: " + name);
+        return StepIndentRegex().Replace(match!.Groups[2].Value, "");
     }
     (int Code, string Output, string Error) Bash(string script, Dictionary<string, string> environment, string? directory = null) =>
         Run("env", [.. environment.Select(pair => pair.Key + "=" + pair.Value), "bash", "-c", script], directory);
@@ -148,8 +148,8 @@ try
         var inputs = JsonNode.Parse(File.ReadAllText(Path.Combine(root, guest, "inputs.json")))!.AsArray();
         Require(inputs.Count >= 9, "pinned blocks dropped");
         foreach (var row in inputs)
-            foreach (var (key, pattern) in new[] { ("input", @"\A[0-9]+\.ssz\z"), ("hash", @"\A[0-9a-f]{64}\z"), ("output", @"\A[0-9a-f]{86}\z"), ("digest", @"\A[0-9a-f]{64}\z") })
-                Require(Regex.IsMatch(row![key]!.ToString(), pattern), "invalid pin " + key);
+            foreach (var (key, pattern) in new[] { ("input", InputNameRegex()), ("hash", HashRegex()), ("output", OutputRegex()), ("digest", HashRegex()) })
+                Require(pattern.IsMatch(row![key]!.ToString()), "invalid pin " + key);
     });
 
     if (OperatingSystem.IsLinux())
@@ -173,7 +173,7 @@ try
             });
         Case("staged baseline provenance", () =>
         {
-            var expression = Regex.Match(workflow, "jq --arg commit \"\\$GITHUB_SHA\" '(.*?)'").Groups[1].Value;
+            var expression = CommitExpressionRegex().Match(workflow).Groups[1].Value;
             var path = Write("baseline.json", new JsonArray(Row("1.ssz", 10, 100)).ToJsonString());
             var result = Run("jq", ["--arg", "commit", "base-sha", expression, path]);
             Require(result.Code == 0, result.Error);
@@ -257,7 +257,7 @@ try
             if (change == "no-base") Require(!result.Output.Contains("No base-owned measurement definitions", StringComparison.Ordinal), "no-base notice changed");
         });
 
-        var script = Regex.Replace(workflow.Split("          script: |\n", 2)[1], "^            ", "", RegexOptions.Multiline);
+        var script = ScriptIndentRegex().Replace(workflow.Split("          script: |\n", 2)[1], "");
         var node = Write("comment.cjs", """
             const {script,comments,result,report} = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
             const calls = [];
@@ -290,3 +290,22 @@ try
     Console.WriteLine($"Passed {passed} tests.");
 }
 finally { Directory.Delete(temporary, true); }
+
+partial class Program
+{
+    [GeneratedRegex(@"      - name: ([^\n]*)\n(?:(?!      - name:).)*?        run: \|\n((?:          [^\n]*\n|\n)+)", RegexOptions.Singleline)]
+    private static partial Regex StepRegex();
+    [GeneratedRegex(@"\A[0-9]+\.ssz\z")]
+    private static partial Regex InputNameRegex();
+    [GeneratedRegex(@"\A[0-9a-f]{64}\z")]
+    private static partial Regex HashRegex();
+    [GeneratedRegex(@"\A[0-9a-f]{86}\z")]
+    private static partial Regex OutputRegex();
+
+    [GeneratedRegex("^            ", RegexOptions.Multiline)]
+    private static partial Regex ScriptIndentRegex();
+    [GeneratedRegex("jq --arg commit \"\\$GITHUB_SHA\" '(.*?)'")]
+    private static partial Regex CommitExpressionRegex();
+    [GeneratedRegex("^          ", RegexOptions.Multiline)]
+    private static partial Regex StepIndentRegex();
+}
