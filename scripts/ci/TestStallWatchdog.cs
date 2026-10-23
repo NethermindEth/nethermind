@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
+#:include ScriptProcess.Helpers.cs
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
 
@@ -22,22 +22,13 @@ var passed = 0;
 void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 async Task<(int Code, string Output)> Run(string executable, string[] arguments, string cwd, Dictionary<string, string>? environment = null, CancellationToken cancellationToken = default)
 {
-    var info = new ProcessStartInfo(executable) { WorkingDirectory = cwd, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-    foreach (var argument in arguments) info.ArgumentList.Add(argument);
-    foreach (var (key, value) in environment ?? []) info.Environment[key] = value;
-    using var process = Process.Start(info)!;
-    var stdout = process.StandardOutput.ReadToEndAsync();
-    var stderr = process.StandardError.ReadToEndAsync();
-    try
+    if (environment is not null)
     {
-        await process.WaitForExitAsync(cancellationToken);
-        return (process.ExitCode, await stdout + await stderr);
+        arguments = [.. environment.Select(pair => $"{pair.Key}={pair.Value}"), executable, .. arguments];
+        executable = "env";
     }
-    finally
-    {
-        if (!process.HasExited) process.Kill(entireProcessTree: true);
-        await process.WaitForExitAsync();
-    }
+    var result = await ScriptProcess.Run(executable, arguments, cancellationToken, workingDirectory: cwd);
+    return (result.Code, result.Output + result.Error);
 }
 if (OperatingSystem.IsLinux())
 {
