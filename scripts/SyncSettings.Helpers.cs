@@ -1,0 +1,99 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+using System.Globalization;
+using System.Numerics;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+internal static class SyncSettings
+{
+    internal static readonly (string Name, string Url, int Reduction, int Multiple, bool Pos)[] Configs =
+    [
+        ("mainnet", "https://api.etherscan.io/v2/api?chainid=1", 1000, 1000, true),
+        ("gnosis", "https://rpc.gnosischain.com", 8192, 10000, true),
+        ("chiado", "https://rpc.chiadochain.net", 8192, 10000, true),
+        ("sepolia", "https://api.etherscan.io/v2/api?chainid=11155111", 1000, 1000, true),
+        ("op-mainnet", "https://mainnet.optimism.io", 8192, 10000, true),
+        ("op-sepolia", "https://sepolia.optimism.io", 8192, 10000, true),
+        ("worldchain-mainnet", "https://worldchain-mainnet.g.alchemy.com/public", 8192, 10000, true),
+        ("worldchain-sepolia", "https://worldchain-sepolia.g.alchemy.com/public", 8192, 10000, true),
+        ("linea-mainnet", "https://rpc.linea.build", 8192, 10000, false),
+        ("linea-sepolia", "https://rpc.sepolia.linea.build", 8192, 10000, false),
+        ("xdc", "https://erpc.xinfin.network", 8192, 10000, false),
+        ("xdc-testnet", "https://rpc.apothem.network", 8192, 10000, false)
+    ];
+
+    internal static async Task<int> Update(HttpClient http, string key, bool superchain, string directory, Func<TimeSpan, Task> delay)
+    {
+        Console.WriteLine("Fast Sync configuration settings initialization     ✅ ");
+        var failed = new List<string>();
+        foreach (var (name, url, reduction, multiple, pos) in Configs)
+        {
+            if (superchain && name is not ("op-mainnet" or "op-sepolia" or "worldchain-mainnet" or "worldchain-sepolia")) continue;
+            Console.WriteLine($"{char.ToUpperInvariant(name[0])}{name[1..]} section                                     ✅ ");
+            (long Number, string Hash, BigInteger Difficulty)? pivot = null;
+            for (var attempt = 1; attempt <= 5; attempt++)
+            {
+                try
+                {
+                    var latest = long.Parse((await Request("eth_blockNumber", null))!.GetValue<string>()[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                    var number = latest - reduction;
+                    number -= (number % multiple + multiple) % multiple;
+                    var block = await Request("eth_getBlockByNumber", "0x" + number.ToString("x", CultureInfo.InvariantCulture));
+                    var hash = block!["hash"]!.GetValue<string>();
+                    var totalDifficulty = block.AsObject().TryGetPropertyValue("totalDifficulty", out var declaredDifficulty)
+                        ? declaredDifficulty?.GetValue<string>() ?? throw new JsonException("Null totalDifficulty") : "0x0";
+                    var difficulty = BigInteger.Parse("0" + totalDifficulty[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                    Console.WriteLine($"{name} LatestBlock: {latest}");
+                    pivot = (number, hash, difficulty);
+                    break;
+                }
+                catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException or JsonException or FormatException or OverflowException or InvalidOperationException or NullReferenceException or ArgumentOutOfRangeException)
+                {
+                    Console.WriteLine($"{name} attempt {attempt}/5 failed: {exception.GetType().Name}");
+                    if (attempt < 5) await delay(TimeSpan.FromSeconds(10 * attempt));
+                }
+            }
+            if (pivot is not { } value)
+            {
+                Console.WriteLine($"::error::{name}: could not fetch the pivot from {url}, config left unchanged");
+                failed.Add(name);
+                continue;
+            }
+            var updated = new Dictionary<string, JsonNode>();
+            foreach (var target in name == "mainnet" ? new[] { name, "mainnet_aztec" } : [name])
+            {
+                Console.WriteLine($"{target} PivotNumber: {value.Number}\n{target} PivotHash: {value.Hash}");
+                if (!pos) Console.WriteLine($"{target} PivotTotalDifficulty: {value.Difficulty}");
+                var config = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(directory, target + ".json")))!;
+                var sync = config["Sync"] ?? throw new JsonException($"Missing Sync section in {target}");
+                sync["PivotNumber"] = value.Number;
+                sync["PivotHash"] = value.Hash;
+                if (!pos) sync["PivotTotalDifficulty"] = value.Difficulty.ToString(CultureInfo.InvariantCulture);
+                updated[target] = config;
+            }
+            foreach (var (target, config) in updated)
+                await File.WriteAllTextAsync(Path.Combine(directory, target + ".json"), config.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+            async Task<JsonNode?> Request(string method, string? tag)
+            {
+                using var request = new HttpRequestMessage();
+                if (url.Contains("etherscan", StringComparison.Ordinal))
+                    request.RequestUri = new Uri(url + "&module=proxy&action=" + method + "&apikey=" + Uri.EscapeDataString(key) + (tag is null ? "" : "&tag=" + tag + "&boolean=true"));
+                else
+                {
+                    request.Method = HttpMethod.Post;
+                    request.RequestUri = new Uri(url);
+                    var body = new JsonObject { ["id"] = 0, ["jsonrpc"] = "2.0", ["method"] = method, ["params"] = tag is null ? [] : new JsonArray(JsonValue.Create(tag), JsonValue.Create(false)) };
+                    request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+                }
+                using var response = await http.SendAsync(request);
+                return JsonNode.Parse(await response.Content.ReadAsStringAsync())?["result"];
+            }
+        }
+        if (failed.Count == 0) return 0;
+        Console.Error.WriteLine("Failed to update: " + string.Join(", ", failed));
+        return 1;
+    }
+}
