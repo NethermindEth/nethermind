@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -401,6 +402,112 @@ public class ConsensusTests
         Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(tamper ? finalizedSlot - 1 : finalizedSlot));
         Assert.That(store.FinalizedHeader.ExecutionBlockHash, Is.EqualTo(tamper ? bootstrap.Header!.Execution!.BlockHash : update.FinalizedHeader!.ExecutionBlockHash));
         Assert.That(store.FinalizedHeader.IsGloas, Is.EqualTo(!tamper));
+    }
+
+    [Test]
+    public async Task Gloas_committee_rollover_and_optimistic_progress_survive_wire_and_journal_replay([Values] bool restartBeforeRollover)
+    {
+        BeaconChainSpec spec = Spec with { GloasForkEpoch = 1 };
+        LightClientBootstrap bootstrap = LightClientWireCodec.DecodeBootstrap(
+            LightClientWireCodec.EncodeBootstrap(GloasBootstrap(8188, 1), spec), spec);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        LightClientStore store = new(spec, checkpoint, bootstrap, 8188);
+        string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
+            "NethermindLightClientGloasRollover", Guid.NewGuid().ToString("N"));
+        VerifiedConsensusJournal journal = new(directory, spec, "sepolia", checkpoint, NullLogger.Instance);
+        try
+        {
+            await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+            LightClientUpdate learning = LightClientWireCodec.DecodeUpdate(
+                LightClientWireCodec.EncodeUpdate(GloasUpdate(8189, 8190, 8191, 1, spec, nextKey: 2), spec), spec);
+            store.Process(learning, 8191);
+            await journal.AppendAsync(learning, store, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(learning.NextSyncCommitteeBranch, Has.Length.EqualTo(11));
+                Assert.That(learning.FinalityBranch, Has.Length.EqualTo(9));
+                Assert.That(store.SyncProgress, Is.EqualTo((0UL, true)));
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(8190));
+            }
+
+            if (restartBeforeRollover) await ResumeAsync(8191);
+            LightClientOptimisticUpdate first = Optimistic(8192, 2);
+            store.Process(first, 8193);
+            await journal.AppendAsync(first, store, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.SyncProgress, Is.EqualTo((0UL, true)));
+                Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(8189));
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(8192));
+            }
+
+            LightClientUpdate signedFinality = GloasUpdate(8192, 8194, 8195, 2, spec);
+            LightClientFinalityUpdate finality = LightClientWireCodec.DecodeFinality(
+                LightClientWireCodec.EncodeFinality(new LightClientFinalityUpdate
+                {
+                    AttestedHeader = signedFinality.AttestedHeader,
+                    FinalizedHeader = signedFinality.FinalizedHeader,
+                    FinalityBranch = signedFinality.FinalityBranch,
+                    SyncAggregate = signedFinality.SyncAggregate,
+                    SignatureSlot = signedFinality.SignatureSlot,
+                }, spec), spec);
+            store.Process(finality, 8195);
+            await journal.AppendAsync(finality, store, CancellationToken.None);
+            Assert.That(store.SyncProgress, Is.EqualTo((1UL, false)));
+
+            LightClientUpdate next = LightClientWireCodec.DecodeUpdate(
+                LightClientWireCodec.EncodeUpdate(GloasUpdate(8193, 8196, 8197, 2, spec, nextKey: 3), spec), spec);
+            store.Process(next, 8197);
+            await journal.AppendAsync(next, store, CancellationToken.None);
+            await ResumeAsync(8197);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.SyncProgress, Is.EqualTo((1UL, true)));
+                Assert.That(store.FinalizedHeader.IsGloas, Is.True);
+                Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(8193));
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(8196));
+                Assert.That(store.PreviousMaxParticipants, Is.EqualTo(342));
+                Assert.That(store.CurrentMaxParticipants, Is.EqualTo(342));
+            }
+
+            Assert.That(() => store.Process(Optimistic(8198, 1), 8199),
+                Throws.TypeOf<InvalidDataException>().With.Message.Contains("signature"));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(8196));
+            LightClientOptimisticUpdate latest = Optimistic(8198, 2);
+            store.Process(latest, 8199);
+            await journal.AppendAsync(latest, store, CancellationToken.None);
+            await ResumeAsync(8199);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.SyncProgress, Is.EqualTo((1UL, true)));
+                Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(8193));
+                Assert.That(store.OptimisticHeader.IsGloas, Is.True);
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(8198));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+
+        async Task ResumeAsync(ulong currentSlot)
+        {
+            journal = new(directory, spec, "sepolia", checkpoint, NullLogger.Instance);
+            LightClientStore? resumed = await journal.LoadAsync(currentSlot, CancellationToken.None);
+            Assert.That(resumed, Is.Not.Null);
+            store = resumed!;
+        }
+
+        LightClientOptimisticUpdate Optimistic(ulong attestedSlot, byte key)
+        {
+            LightClientUpdate signed = GloasUpdate(8189, attestedSlot, attestedSlot + 1, key, spec);
+            return LightClientWireCodec.DecodeOptimistic(LightClientWireCodec.EncodeOptimistic(new LightClientOptimisticUpdate
+            {
+                AttestedHeader = signed.AttestedHeader,
+                SyncAggregate = signed.SyncAggregate,
+                SignatureSlot = signed.SignatureSlot,
+            }, spec), spec);
+        }
     }
 
     [Test]
@@ -1326,10 +1433,13 @@ public class ConsensusTests
     }
 
     private static LightClientUpdate GloasUpdate(ulong finalizedSlot, ulong attestedSlot, ulong signatureSlot,
-        byte key, BeaconChainSpec spec)
+        byte key, BeaconChainSpec spec, byte? nextKey = null)
     {
         LightClientHeader finalized = GloasHeader(finalizedSlot);
-        Hash256[] tree = Tree(new Dictionary<int, Hash256> { [735] = SszRoots.HashTreeRoot(finalized.Beacon!) });
+        SyncCommittee next = nextKey.HasValue ? Committee(nextKey.Value) : new SyncCommittee { Pubkeys = new BlsPublicKey[512] };
+        Dictionary<int, Hash256> leaves = new() { [735] = SszRoots.HashTreeRoot(finalized.Beacon!) };
+        if (nextKey.HasValue) leaves[2946] = SszRoots.HashTreeRoot(next);
+        Hash256[] tree = Tree(leaves);
         LightClientHeader attested = GloasHeader(attestedSlot);
         attested.Beacon!.StateRoot = tree[1];
         LightClientUpdate update = new()
@@ -1338,8 +1448,8 @@ public class ConsensusTests
             AttestedHeader = attested,
             SignatureSlot = signatureSlot,
             FinalityBranch = Branch(tree, 735),
-            NextSyncCommittee = new SyncCommittee { Pubkeys = new BlsPublicKey[512] },
-            NextSyncCommitteeBranch = Enumerable.Repeat(Hash256.Zero, 11).ToArray(),
+            NextSyncCommittee = next,
+            NextSyncCommitteeBranch = nextKey.HasValue ? Branch(tree, 2946) : Enumerable.Repeat(Hash256.Zero, 11).ToArray(),
         };
         Sign(update, key, 342, spec);
         return update;

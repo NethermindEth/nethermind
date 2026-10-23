@@ -42,6 +42,7 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
     private ulong? _forwardedOptimisticSlot;
     private ulong? _subscriptionEpoch;
     internal Task Completion => _rotation ?? Task.CompletedTask;
+    internal Action<PeerId, ulong>? ValidatedUpdate { get; set; }
 
     internal void Configure(PubsubRouter router, PubsubSettings settings)
     {
@@ -133,7 +134,7 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
             using CancellationTokenSource deadline = new(ValidationTimeout, _time);
             using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token, deadline.Token);
             await HandleAsync(message.Topic, message.Data.Memory,
-                validity => _router!.CompleteValidation(message, validity), attempt.Token);
+                validity => _router!.CompleteValidation(message, validity), attempt.Token, source);
         }
         catch (OperationCanceledException)
         {
@@ -154,7 +155,7 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
     }
 
     internal async Task<MessageValidity> HandleAsync(string topic, ReadOnlyMemory<byte> compressed,
-        Func<MessageValidity, bool> complete, CancellationToken token)
+        Func<MessageValidity, bool> complete, CancellationToken token, PeerId? source = null)
     {
         await _validation.WaitAsync(token);
         bool forwardingIgnored = false;
@@ -180,6 +181,7 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
                      finalizedSlot == _forwardedFinalitySlot && supermajority && !_forwardedSupermajority);
                 forwardingIgnored = !mayForward;
                 bool advanced = await _finality!(update, token);
+                if (source is not null) ValidatedUpdate?.Invoke(source, attestedSlot);
                 MessageValidity validity = mayForward && advanced ? MessageValidity.Accepted : MessageValidity.Ignored;
                 if (complete(validity) && validity == MessageValidity.Accepted)
                 {
@@ -201,6 +203,7 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
                 (_forwardedOptimisticSlot is null || optimisticSlot > _forwardedOptimisticSlot);
             forwardingIgnored = !eligible;
             bool progressed = await _optimistic!(optimistic, token);
+            if (source is not null) ValidatedUpdate?.Invoke(source, optimisticSlot);
             bool matchesFinality = _forwardedFinalityFields is not null && ssz!.AsSpan().SequenceEqual(_forwardedFinalityFields);
             MessageValidity result = eligible && (progressed || matchesFinality) ? MessageValidity.Accepted : MessageValidity.Ignored;
             if (complete(result) && result == MessageValidity.Accepted) _forwardedOptimisticSlot = optimisticSlot;

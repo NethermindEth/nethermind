@@ -1926,13 +1926,20 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     internal static bool IsUnresponsiveFailure(IBeaconSyncPeer peer, Exception e) =>
         IsSilence(e) && !((ManagedPeer)peer).ViolatedProtocolSinceLastHealthyCheck;
 
+    /// <summary>Closes a current peer normally so another candidate can take its place.</summary>
+    public Task RecyclePeerAsync(IBeaconSyncPeer peer, string detail, CancellationToken token) =>
+        peer is ManagedPeer managed
+            ? DropAsync(managed, GoodbyeReason.TooManyPeers, detail, token, currentSessionOnly: true)
+            : Task.CompletedTask;
+
     /// <param name="unresponsive">The peer only stopped answering: the drop is recorded but earns no step toward a ban.</param>
-    private async Task DropAsync(ManagedPeer peer, ulong reason, string detail, CancellationToken token, bool unresponsive = false, Exception? healthFailure = null)
+    private async Task DropAsync(ManagedPeer peer, ulong reason, string detail, CancellationToken token, bool unresponsive = false, Exception? healthFailure = null, bool currentSessionOnly = false)
     {
         bool kept;
         bool removed = false;
         lock (_admissionLock)
         {
+            if (currentSessionOnly && (!_peers.TryGetValue(peer.Id, out ManagedPeer? current) || !ReferenceEquals(current, peer))) return;
             kept = healthFailure is not null && IsKeptAtPeerFloor(healthFailure, _peers.Count, peer.ViolatedProtocolSinceLastHealthyCheck);
             if (kept)
             {

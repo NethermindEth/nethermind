@@ -28,6 +28,7 @@ if (Array.Exists(args, static arg => arg is "--help" or "-h"))
         "          --beacon-port 9050 --beacon-quic-port 9051 (0 disables QUIC) --execution-port 30307\n" +
         "          --host-accounts <0xaddress,0xaddress,...> (complete account state retained in RAM)\n" +
         "          --host-accounts-bal true|false (incremental BAL storage updates; default false)\n" +
+        "          --log-level Trace|Debug|Info|Warn|Error|Fatal (default Info)\n" +
         "Mainnet needs --checkpoint or --checkpoint-url; Hoodi and Sepolia use EF-operated defaults.\n" +
         "See README.md for verified RPC selectors and checkpoint trust requirements.");
     return;
@@ -54,6 +55,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     const ulong FinalizedHeadMaxAgeSeconds = 3600;
     stoppingToken.ThrowIfCancellationRequested();
     WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+    NLog.LogLevel logLevel = NLog.LogLevel.FromString(builder.Configuration["log-level"] ?? "Info");
     LoggingConfiguration loggingConfiguration = new();
     ColoredConsoleTarget consoleTarget = new("console")
     {
@@ -62,8 +64,8 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     loggingConfiguration.AddTarget(consoleTarget);
     loggingConfiguration.LoggingRules.Add(new LoggingRule("Microsoft.*", NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget) { Final = true });
     loggingConfiguration.LoggingRules.Add(new LoggingRule("System.*", NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget) { Final = true });
-    loggingConfiguration.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, consoleTarget, "LightClient");
-    loggingConfiguration.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, consoleTarget, "LightClient.*");
+    loggingConfiguration.AddRule(logLevel, NLog.LogLevel.Fatal, consoleTarget, "LightClient");
+    loggingConfiguration.AddRule(logLevel, NLog.LogLevel.Fatal, consoleTarget, "LightClient.*");
     loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "BeaconChain.P2P.*");
     loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "Network.*");
     loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "Synchronization.Peers.*");
@@ -252,10 +254,22 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 token.ThrowIfCancellationRequested();
                 ulong before = slot();
+                if (logger.IsEnabled(LogLevel.Debug))
+                {
+                    (ulong period, bool knowsNext) = store.SyncProgress;
+                    logger.LogDebug("Consensus validation starting at sync period {Period}, next committee known {KnowsNext}, finalized slot {FinalizedSlot}, optimistic slot {OptimisticSlot}",
+                        period, knowsNext, store.FinalizedHeader.Beacon!.Slot, store.OptimisticHeader.Beacon!.Slot);
+                }
                 process();
+                if (logger.IsEnabled(LogLevel.Debug))
+                    logger.LogDebug("Validated consensus progress: finalized slot {FinalizedSlot}, optimistic slot {OptimisticSlot}",
+                        store.FinalizedHeader.Beacon!.Slot, store.OptimisticHeader.Beacon!.Slot);
                 // Once authenticated, an update is durably recorded before another mutation, independently of a peer's request deadline.
                 await PersistAsync(persist(app.Lifetime.ApplicationStopping), app.Lifetime.ApplicationStopping);
                 PublishPersistedHeaders();
+                if (logger.IsEnabled(LogLevel.Debug))
+                    logger.LogDebug("Persisted consensus progress: finalized slot {FinalizedSlot}, optimistic slot {OptimisticSlot}",
+                        store.FinalizedHeader.Beacon!.Slot, store.OptimisticHeader.Beacon!.Slot);
                 return slot() > before;
             }
             finally { consensusGate.Release(); }

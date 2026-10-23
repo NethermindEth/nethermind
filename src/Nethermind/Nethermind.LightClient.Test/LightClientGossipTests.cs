@@ -107,11 +107,53 @@ public class LightClientGossipTests
     public async Task Invalid_signature_is_rejected_without_advancing_the_store()
     {
         await using Fixture fixture = new();
+        PeerId source = new Identity().PeerId;
+        List<ulong> authenticated = [];
+        fixture.Gossip.ValidatedUpdate = (_, slot) => authenticated.Add(slot);
         LightClientOptimisticUpdate update = Optimistic(ConsensusTests.Update(2, 3, 4, 1));
         update.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(new byte[96]);
 
-        Assert.That(await fixture.Handle(update), Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(await fixture.Handle(update, source), Is.EqualTo(MessageValidity.Rejected));
         Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+        Assert.That(authenticated, Is.Empty);
+    }
+
+    [Test]
+    public async Task Authenticated_gossip_identifies_its_supplier_even_when_the_head_is_already_known([Values] bool finality)
+    {
+        await using Fixture fixture = new();
+        PeerId source = new Identity().PeerId;
+        List<(PeerId Source, ulong Slot)> authenticated = [];
+        fixture.Gossip.ValidatedUpdate = (peer, slot) => authenticated.Add((peer, slot));
+        LightClientUpdate update = ConsensusTests.Update(2, 3, 4, 1);
+
+        for (int i = 0; i < 2; i++)
+        {
+            MessageValidity result = finality ? await fixture.Handle(Finality(update), source) : await fixture.Handle(Optimistic(update), source);
+            Assert.That(result, Is.EqualTo(i == 0 ? MessageValidity.Accepted : MessageValidity.Ignored));
+        }
+
+        Assert.That(authenticated, Is.EqualTo(new[] { (source, 3UL), (source, 3UL) }));
+    }
+
+    [Test]
+    public async Task Gossip_rejected_by_local_consensus_state_does_not_credit_a_supplier([Values] bool unavailableCommittee)
+    {
+        ManualClock clock = new();
+        clock.SetSlot(10, 6);
+        await using LightClientGossip gossip = new(ConsensusTests.Spec, LimboLogs.Instance, clock);
+        List<ulong> authenticated = [];
+        gossip.ValidatedUpdate = (_, slot) => authenticated.Add(slot);
+        gossip.Start(static _ => new FakeTopic(), static (_, _) => Task.FromResult(false), (_, _) =>
+            Task.FromException<bool>(unavailableCommittee ? new LightClientLocalStateException("Committee unavailable.")
+                : new IrrelevantLightClientUpdateException()), CancellationToken.None);
+        string topic = GossipTopics.Topic(ForkDigest.Compute(ConsensusTests.Spec, 0), GossipTopics.LightClientOptimisticUpdate);
+
+        await gossip.HandleAsync(topic, Snappy.CompressToArray(LightClientWireCodec.EncodeOptimistic(
+            Optimistic(ConsensusTests.Update(2, 3, 4, 1)), ConsensusTests.Spec)), static _ => true,
+            CancellationToken.None, new Identity().PeerId);
+
+        Assert.That(authenticated, Is.Empty);
     }
 
     [Test]
@@ -229,10 +271,10 @@ public class LightClientGossipTests
 
         private ulong Slot() => ConsensusTests.Spec.GetSlotAtTime((ulong)Clock.GetUtcNow().ToUnixTimeSeconds());
         internal string Topic(string name) => GossipTopics.Topic(ForkDigest.Compute(ConsensusTests.Spec, 0), name);
-        internal Task<MessageValidity> Handle(LightClientFinalityUpdate update) => Gossip.HandleAsync(Topic(GossipTopics.LightClientFinalityUpdate),
-            Snappy.CompressToArray(LightClientWireCodec.EncodeFinality(update, ConsensusTests.Spec)), static _ => true, CancellationToken.None);
-        internal Task<MessageValidity> Handle(LightClientOptimisticUpdate update) => Gossip.HandleAsync(Topic(GossipTopics.LightClientOptimisticUpdate),
-            Snappy.CompressToArray(LightClientWireCodec.EncodeOptimistic(update, ConsensusTests.Spec)), static _ => true, CancellationToken.None);
+        internal Task<MessageValidity> Handle(LightClientFinalityUpdate update, PeerId? source = null) => Gossip.HandleAsync(Topic(GossipTopics.LightClientFinalityUpdate),
+            Snappy.CompressToArray(LightClientWireCodec.EncodeFinality(update, ConsensusTests.Spec)), static _ => true, CancellationToken.None, source);
+        internal Task<MessageValidity> Handle(LightClientOptimisticUpdate update, PeerId? source = null) => Gossip.HandleAsync(Topic(GossipTopics.LightClientOptimisticUpdate),
+            Snappy.CompressToArray(LightClientWireCodec.EncodeOptimistic(update, ConsensusTests.Spec)), static _ => true, CancellationToken.None, source);
         public ValueTask DisposeAsync() => Gossip.DisposeAsync();
     }
 

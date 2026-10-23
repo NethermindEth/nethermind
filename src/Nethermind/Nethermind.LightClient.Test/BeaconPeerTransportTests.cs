@@ -6,6 +6,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -15,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.LightClient.Consensus;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
+using NSubstitute;
 
 namespace Nethermind.LightClient.Test;
 
@@ -544,6 +546,355 @@ public class BeaconPeerTransportTests
         Assert.That(peer.Failures, Is.Empty);
     }
 
+    [Test]
+    public async Task Bootstrap_supplier_is_preferred_for_optimistic_polling_before_it_has_a_fresh_head()
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        BootstrapPeer unknown = new(bootstrap, "unknown");
+        BootstrapPeer supplier = new(bootstrap, "supplier");
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        providers.Admit(unknown, PeerDirection.Outbound);
+        providers.Admit(supplier, PeerDirection.Outbound);
+        BeaconPeerTransport.PeerRequests requests = new(clock, providers: providers);
+        await requests.RequestAsync<LightClientBootstrap>([supplier], (peer, token) => peer.RequestLightClientBootstrapAsync(
+            SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), token), Validate<LightClientBootstrap>(value =>
+                _ = new LightClientStore(ConsensusTests.Spec, SszRoots.HashTreeRoot(value.Header!.Beacon!), value, 14)), CancellationToken.None);
+        List<IBeaconSyncPeer> requested = [];
+        LightClientOptimisticUpdate expected = Optimistic(13);
+
+        LightClientOptimisticUpdate? selected = await requests.PollAsync(() => [unknown, supplier], (peer, _) =>
+        {
+            requested.Add(peer);
+            return Task.FromResult(expected);
+        }, Validate<LightClientOptimisticUpdate>(value =>
+            new LightClientStore(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 14).Process(value, 14)), CancellationToken.None);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(selected, Is.SameAs(expected));
+        Assert.That(requested, Is.EqualTo(new[] { supplier }));
+        Assert.That(unknown.Failures, Is.Empty);
+    }
+
+    [Test]
+    public async Task Validated_fresh_duplicate_retains_supplier_preference_without_advancing_the_store()
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        LightClientStore store = OptimisticStore(bootstrap);
+        BootstrapPeer unknown = new(bootstrap, "unknown");
+        BootstrapPeer supplier = new(bootstrap, "supplier");
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        providers.Admit(unknown, PeerDirection.Outbound);
+        providers.Admit(supplier, PeerDirection.Outbound);
+        BeaconPeerTransport.PeerRequests requests = new(clock, providers: providers);
+
+        LightClientOptimisticUpdate? selected = await requests.PollAsync(() => [supplier], (_, _) => Task.FromResult(Optimistic(10)),
+            (value, _) => AdvanceOptimistic(store, value), CancellationToken.None);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(selected, Is.Null);
+        Assert.That(providers.Preferred<LightClientOptimisticUpdate>([unknown, supplier], 0), Is.EqualTo(1));
+        Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(10));
+        Assert.That(supplier.Failures, Is.Empty);
+    }
+
+    [Test]
+    public async Task Unverified_or_old_data_does_not_establish_a_current_supplier([Values] bool invalid)
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        LightClientStore store = OptimisticStore(bootstrap);
+        BootstrapPeer supplier = new(bootstrap);
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(25);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        providers.Admit(supplier, PeerDirection.Outbound);
+        LightClientOptimisticUpdate update = Optimistic(invalid ? 11UL : 10UL);
+        if (invalid) update.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(new byte[96]);
+
+        await new BeaconPeerTransport.PeerRequests(clock, providers: providers).RequestAsync([supplier], (_, _) => Task.FromResult(update),
+            (value, _) => AdvanceOptimistic(store, value), CancellationToken.None);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(providers.Preferred<LightClientOptimisticUpdate>([supplier], 0), Is.EqualTo(-1));
+        Assert.That(providers.Maintain([]).Reconnect, Is.Null);
+        Assert.That(supplier.Failures, Is.EqualTo(invalid ? [PeerFailureReason.ProtocolViolation] : Array.Empty<PeerFailureReason>()));
+    }
+
+    [Test]
+    public void Supplier_credit_belongs_to_the_current_session()
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        BootstrapPeer old = new(ConsensusTests.Bootstrap(1, 1), "same-identity");
+        BootstrapPeer replacement = new(ConsensusTests.Bootstrap(1, 1), old.Id);
+        providers.Admit(old, PeerDirection.Outbound);
+        providers.RecordValidated(old, Optimistic(13));
+        providers.Admit(replacement, PeerDirection.Outbound);
+        providers.RecordValidated(old, Optimistic(13));
+
+        Assert.That(providers.Preferred<LightClientOptimisticUpdate>([old, replacement], 0), Is.EqualTo(-1));
+        providers.RecordValidated(replacement, Optimistic(13));
+        Assert.That(providers.Preferred<LightClientOptimisticUpdate>([old, replacement], 0), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Request_failure_clears_only_its_protocol_preference()
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        BootstrapPeer supplier = new(ConsensusTests.Bootstrap(1, 1));
+        providers.Admit(supplier, PeerDirection.Outbound);
+        providers.RecordValidated(supplier, ConsensusTests.Bootstrap(1, 1));
+        providers.RecordValidated(supplier, ConsensusTests.Update(1, 13, 14, 1));
+        providers.Failed<LightClientFinalityUpdate>(supplier);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(providers.Preferred<LightClientFinalityUpdate>([supplier], 0), Is.EqualTo(-1));
+            Assert.That(providers.Preferred<LightClientOptimisticUpdate>([supplier], 0), Is.Zero);
+        }
+        providers.RecordValidated(supplier, new LightClientFinalityUpdate { AttestedHeader = Optimistic(13).AttestedHeader });
+        Assert.That(providers.Preferred<LightClientFinalityUpdate>([supplier], 0), Is.Zero);
+    }
+
+    [Test]
+    public async Task Unavailable_optional_data_changes_supplier_selection_without_a_peer_fault(
+        [Values] bool wrapped, [Values(ReqRespFraming.ResponseCode.ResourceUnavailable, ReqRespFraming.ResponseCode.InvalidRequest)] byte responseCode)
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        LightClientStore store = OptimisticStore(bootstrap);
+        BootstrapPeer unavailable = new(bootstrap, "unavailable");
+        BootstrapPeer available = new(bootstrap, "available");
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        providers.Admit(unavailable, PeerDirection.Outbound);
+        providers.Admit(available, PeerDirection.Outbound);
+        providers.RecordValidated(unavailable, bootstrap);
+        Exception failure = new Eth2ReqRespException("Data unavailable.", responseCode);
+        if (wrapped) failure = new AggregateException(failure);
+        LightClientOptimisticUpdate update = Optimistic(11);
+        BeaconPeerTransport.PeerRequests requests = new(clock, providers: providers);
+        await requests.RequestAsync<LightClientOptimisticUpdate>([unavailable], (_, _) => Task.FromException<LightClientOptimisticUpdate>(failure),
+            (value, _) => AdvanceOptimistic(store, value), CancellationToken.None);
+        List<IBeaconSyncPeer> requested = [];
+
+        LightClientOptimisticUpdate? selected = await requests.PollAsync(() => [unavailable, available], (peer, _) =>
+            {
+                requested.Add(peer);
+                return peer == unavailable ? Task.FromException<LightClientOptimisticUpdate>(failure) : Task.FromResult(update);
+            },
+            (value, _) => AdvanceOptimistic(store, value), CancellationToken.None);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(selected, Is.SameAs(update));
+        Assert.That(requested, Is.EqualTo(new[] { available }), "a failed candidate must not override the next peer rotation");
+        Assert.That(providers.Preferred<LightClientOptimisticUpdate>([unavailable], 0), Is.EqualTo(-1));
+        Assert.That(unavailable.Failures, Is.EqualTo(responseCode == ReqRespFraming.ResponseCode.ResourceUnavailable
+            ? Array.Empty<PeerFailureReason>() : [PeerFailureReason.RequestFailed]));
+        Assert.That(available.Failures, Is.Empty);
+    }
+
+    [Test]
+    public void Successful_supplier_addresses_are_retained_with_a_fixed_capacity()
+    {
+        ManualDeadlineClock clock = new();
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        BootstrapPeer[] peers = ProviderPeers(17);
+        for (int i = 0; i < peers.Length; i++)
+        {
+            clock.SetSlot((ulong)i + 1);
+            providers.Admit(peers[i], PeerDirection.Outbound);
+            providers.RecordValidated(peers[i], ConsensusTests.Bootstrap(1, 1));
+        }
+        List<string> redialed = [];
+        for (int i = 0; i < peers.Length; i++)
+        {
+            string? address = providers.Maintain([]).Reconnect;
+            if (address is not null) redialed.Add(address);
+        }
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(redialed, Has.Count.EqualTo(16));
+        Assert.That(redialed, Does.Not.Contain(peers[0].Id));
+        Assert.That(redialed.Distinct().Count(), Is.EqualTo(16));
+        Assert.That(providers.Preferred<LightClientBootstrap>([peers[0]], 0), Is.EqualTo(-1));
+    }
+
+    [Test]
+    public void Admission_churn_evicts_an_unproductive_record_before_a_fresh_supplier()
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        BootstrapPeer[] peers = ProviderPeers(17);
+        providers.Admit(peers[0], PeerDirection.Outbound);
+        providers.RecordValidated(peers[0], Optimistic(13));
+
+        foreach (BootstrapPeer peer in peers.Skip(1)) providers.Admit(peer, PeerDirection.Outbound);
+
+        Assert.That(providers.Preferred<LightClientOptimisticUpdate>(peers, 0), Is.Zero);
+    }
+
+    [Test]
+    public void Supplier_search_preserves_fresh_gossip_after_rpc_failure_and_redials_only_outbound_addresses(
+        [Values(PeerDirection.Inbound, PeerDirection.Outbound)] PeerDirection supplierDirection)
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(1);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        PeerId source = new Identity().PeerId;
+        BootstrapPeer[] peers = ProviderPeers(8, source.ToString());
+        for (int i = 0; i < peers.Length; i++) providers.Admit(peers[i], i == 0 ? supplierDirection : PeerDirection.Outbound);
+        PeerRecord[] connected = Connected(peers);
+        connected[0] = connected[0] with { Direction = supplierDirection };
+        Assert.That(providers.Maintain(connected), Is.EqualTo(((IBeaconSyncPeer?)null, (string?)null)), "new peers need time to supply data");
+        clock.SetSlot(14);
+        providers.RecordGossip(source, 13);
+        providers.Failed<LightClientOptimisticUpdate>(peers[0]);
+
+        (IBeaconSyncPeer? recycle, _) = providers.Maintain(connected);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recycle, Is.Not.Null.And.Not.SameAs(peers[0]));
+            Assert.That(providers.Preferred<LightClientOptimisticUpdate>(peers, 0), Is.EqualTo(-1), "gossip does not prove request support");
+        }
+        PeerRecord[] disconnected = connected[1..];
+        string? redialAddress = supplierDirection == PeerDirection.Outbound ? peers[0].Id : null;
+        Assert.That(providers.Maintain(disconnected).Reconnect, Is.EqualTo(redialAddress), "an observed inbound endpoint is not a listening address");
+        Assert.That(providers.Maintain(disconnected).Reconnect, Is.Null, "redial goes through a bounded retry cadence");
+        clock.SetSlot(17);
+        Assert.That(providers.Maintain(disconnected).Reconnect, Is.EqualTo(redialAddress));
+        clock.SetSlot(70);
+        Assert.That(providers.Maintain(disconnected).Reconnect, Is.Null, "disconnected addresses expire instead of being retained indefinitely");
+    }
+
+    [Test]
+    public void Supplier_search_requires_fresh_verified_data_instead_of_connected_peer_count([Values(0, 1, 2)] int freshSuppliers)
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(1);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        BootstrapPeer[] peers = ProviderPeers(8);
+        foreach (BootstrapPeer peer in peers) providers.Admit(peer, PeerDirection.Outbound);
+        clock.SetSlot(14);
+        for (int i = 0; i < peers.Length; i++) providers.RecordValidated(peers[i], Optimistic(i < freshSuppliers ? 13UL : 3UL));
+
+        (IBeaconSyncPeer? recycle, string? reconnect) = providers.Maintain(Connected(peers));
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(reconnect, Is.Null);
+        if (freshSuppliers == 2) Assert.That(recycle, Is.Null);
+        else
+        {
+            Assert.That(recycle, Is.Not.Null);
+            Assert.That(peers.Take(freshSuppliers), Does.Not.Contain(recycle));
+        }
+    }
+
+    [Test]
+    public void Gossip_progress_does_not_expire_request_suppliers_between_healthy_repair_polls()
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(1);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        PeerId gossipSource = new Identity().PeerId;
+        BootstrapPeer[] peers = ProviderPeers(8, gossipSource.ToString());
+        foreach (BootstrapPeer peer in peers) providers.Admit(peer, PeerDirection.Outbound);
+        clock.SetSlot(4);
+        providers.RecordValidated(peers[1], Optimistic(3));
+        providers.RecordValidated(peers[2], Optimistic(3));
+        foreach (BootstrapPeer peer in peers.Skip(3)) providers.RecordValidated(peer, ConsensusTests.Bootstrap(1, 1));
+        clock.SetSlot(9);
+        providers.RecordGossip(gossipSource, 8);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(providers.Maintain(Connected(peers)).Recycle, Is.Null,
+                "request suppliers remain useful while gossip delays the next healthy repair poll by sixty seconds");
+            Assert.That(providers.Preferred<LightClientOptimisticUpdate>(peers, 0), Is.EqualTo(1));
+        }
+        providers.Failed<LightClientOptimisticUpdate>(peers[1]);
+        providers.Failed<LightClientOptimisticUpdate>(peers[2]);
+        Assert.That(providers.Maintain(Connected(peers)).Recycle, Is.SameAs(peers[1]));
+    }
+
+    [Test]
+    public void Valid_older_updates_do_not_erase_recent_supplier_credit([Values] bool gossip)
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(1);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        PeerId source = new Identity().PeerId;
+        BootstrapPeer[] peers = ProviderPeers(8, source.ToString());
+        foreach (BootstrapPeer peer in peers) providers.Admit(peer, PeerDirection.Outbound);
+        clock.SetSlot(14);
+        foreach (BootstrapPeer peer in peers.Skip(1)) providers.RecordValidated(peer, ConsensusTests.Bootstrap(1, 1));
+        LightClientStore store = OptimisticStore(ConsensusTests.Bootstrap(1, 1));
+
+        foreach (ulong slot in new[] { 13UL, 3UL })
+        {
+            LightClientOptimisticUpdate update = Optimistic(slot);
+            store.Process(update, 14);
+            if (gossip) providers.RecordGossip(source, slot);
+            else providers.RecordValidated(peers[0], update);
+        }
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(13), "the older update is valid but does not advance consensus");
+        Assert.That(providers.Maintain(Connected(peers)).Recycle, Is.Not.Null.And.Not.SameAs(peers[0]));
+        Assert.That(providers.Preferred<LightClientOptimisticUpdate>(peers, 0), Is.EqualTo(gossip ? 1 : 0));
+    }
+
+    [Test]
+    public async Task Recycling_an_old_session_cannot_drop_its_replacement_or_record_a_fault([Values] bool replaceSession)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        await using BeaconPeerTransport transport = new(ConsensusTests.Spec, LimboLogs.Instance, db, quicPort: 0);
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        PeerManager manager = (PeerManager)typeof(BeaconPeerTransport).GetField("_peers", flags)!.GetValue(transport)!;
+        string id = new Identity().PeerId.ToString();
+        string address = $"/ip4/127.0.0.1/tcp/9000/p2p/{id}";
+        ISession oldSession = Substitute.For<ISession>();
+        IBeaconSyncPeer old = Add(oldSession);
+        ISession currentSession = replaceSession ? Substitute.For<ISession>() : oldSession;
+        if (replaceSession) Add(currentSession);
+
+        await manager.RecyclePeerAsync(old, "seeking another supplier", CancellationToken.None);
+
+        Assert.That(manager.PeerCount, Is.EqualTo(replaceSession ? 1 : 0));
+        if (replaceSession)
+        {
+            await oldSession.DidNotReceive().DisconnectAsync();
+            await currentSession.DidNotReceive().DisconnectAsync();
+            Assert.That(manager.GetPeerDiagnostics(), Is.Empty);
+        }
+        else
+        {
+            await oldSession.Received(1).DisconnectAsync();
+            PeerManager.PeerDiagnostics diagnostics = manager.GetPeerDiagnostics().Single();
+            using IDisposable scope = Assert.EnterMultipleScope();
+            Assert.That(diagnostics.LastDisconnectReason, Is.EqualTo("TooManyPeers"));
+            Assert.That(diagnostics.FailuresReported, Is.Zero);
+            Assert.That(diagnostics.Banned, Is.False);
+        }
+
+        IBeaconSyncPeer Add(ISession session) => (IBeaconSyncPeer)typeof(PeerManager).GetMethod("AddPeerForTest", flags)!
+            .Invoke(manager, [session, address, null, true])!;
+    }
+
+    private static BootstrapPeer[] ProviderPeers(int count, string first = "first") => Enumerable.Range(0, count)
+        .Select(index => new BootstrapPeer(ConsensusTests.Bootstrap(1, 1), $"/ip4/127.0.0.1/tcp/9000/p2p/{(index == 0 ? first : index.ToString())}")).ToArray();
+
+    private static PeerRecord[] Connected(IEnumerable<BootstrapPeer> peers) => peers.Select(peer => new PeerRecord(
+        peer.Id[(peer.Id.LastIndexOf("/p2p/", StringComparison.Ordinal) + 5)..], PeerDirection.Outbound,
+        PeerConnectionState.Connected, peer.Id, null, null)).ToArray();
+
     private static Func<T, CancellationToken, Task<bool>> Validate<T>(Action<T> validate) => (value, _) =>
     {
         validate(value);
@@ -614,8 +965,15 @@ public class BeaconPeerTransportTests
 
     private sealed class ManualDeadlineClock : TimeProvider
     {
+        private DateTimeOffset _now;
         private TimerCallback? _callback;
         private object? _state;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+        public override long GetTimestamp() => _now.UtcTicks;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        internal void SetSlot(ulong slot) => _now = DateTimeOffset.FromUnixTimeSeconds(
+            (long)(ConsensusTests.Spec.GenesisTime + slot * ConsensusTests.Spec.SecondsPerSlot));
 
         public TimeSpan DueTime { get; private set; }
 

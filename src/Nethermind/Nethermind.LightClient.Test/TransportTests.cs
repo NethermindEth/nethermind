@@ -1896,7 +1896,10 @@ public class TransportTests
             SyncPeer.ProtocolVersion.Returns(ethVersion);
             SyncPeer.IsInitialized = true;
             BlockHeader initial = EmptyHeader();
+            initial.Bloom = Bloom.Empty;
             initial.Hash = initial.CalculateHash();
+            // Admission must not queue a refresh that can overwrite scripted initialization.
+            Services(owner.Transport).Resolve<IBlockTree>().Insert(initial, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
             SyncPeer.HeadHash = initial.Hash;
             SyncPeer.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(async call =>
             {
