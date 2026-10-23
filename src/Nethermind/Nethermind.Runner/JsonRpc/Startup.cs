@@ -229,7 +229,7 @@ public class Startup : IStartup
 
         if (initConfig.WebSocketsEnabled)
         {
-            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection);
+            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection, logger);
         }
 
         IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
@@ -277,10 +277,10 @@ public class Startup : IStartup
     }
 
     /// <summary>
-    /// Serves WebSockets on the ports that enable them. Browsers from origins that <see cref="IJsonRpcConfig.CorsOrigins"/>
-    /// does not allow are turned away before a socket is accepted.
+    /// Serves WebSockets on the ports that enable them. Clients that send an <c>Origin</c> that
+    /// <see cref="IJsonRpcConfig.CorsOrigins"/> does not allow are turned away before a socket is accepted.
     /// </summary>
-    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection)
+    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogger logger)
     {
         CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
         app.UseWebSockets(new WebSocketOptions());
@@ -290,7 +290,7 @@ public class Startup : IStartup
             jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
         builder =>
         {
-            builder.UseWebSocketOriginFilter(corsPolicy);
+            builder.UseWebSocketOriginFilter(corsPolicy, logger);
             builder.UseWebSocketsModules();
         });
     }

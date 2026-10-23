@@ -231,7 +231,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Whether to enable eth_signTransaction. Disabled by default; enable only on nodes that explicitly manage unlocked accounts.", DefaultValue = "false")]
     bool EnableEthSignTransaction { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC server CORS origins. WebSocket requests from browsers are accepted only from these origins too.", DefaultValue = "*")]
+    [ConfigItem(Description = "The JSON-RPC server CORS origins. Also limits WebSocket connections: a handshake with an `Origin` header not in this list is refused with HTTP 403; handshakes without an `Origin` header are accepted.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
 
     [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Connections that are authenticated or enable the Engine module always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]

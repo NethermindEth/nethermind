@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 
 namespace Nethermind.Runner.JsonRpc;
 
@@ -20,14 +21,17 @@ namespace Nethermind.Runner.JsonRpc;
 /// </remarks>
 internal static class WebSocketOriginFilter
 {
-    public static void UseWebSocketOriginFilter(this IApplicationBuilder app, CorsPolicy policy)
+    public static void UseWebSocketOriginFilter(this IApplicationBuilder app, CorsPolicy policy, ILogger logger)
     {
         if (policy.AllowAnyOrigin) return;
 
         app.Use((ctx, next) =>
         {
-            if (IsAllowed(ctx.Request.Headers.Origin, policy)) return next(ctx);
+            StringValues origin = ctx.Request.Headers.Origin;
+            if (IsAllowed(origin, policy)) return next(ctx);
 
+            // The client only sees 403, so the reason is in the node's log.
+            if (logger.IsDebug) logger.Debug($"Refused a WebSocket connection from origin '{origin}', which JsonRpc.CorsOrigins does not allow.");
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
             return Task.CompletedTask;
         });

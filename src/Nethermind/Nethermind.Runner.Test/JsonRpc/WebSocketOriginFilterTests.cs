@@ -15,8 +15,10 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Sockets;
 using NSubstitute;
@@ -43,7 +45,8 @@ public class WebSocketOriginFilterTests
     [Test]
     public async Task Handshake_is_refused_for_another_origin_before_the_socket_is_accepted()
     {
-        await using WebApplication app = await StartAsync(new JsonRpcConfig { CorsOrigins = [AllowedOrigin] });
+        TestLogger logger = new();
+        await using WebApplication app = await StartAsync(new JsonRpcConfig { CorsOrigins = [AllowedOrigin] }, logger);
         Uri uri = WebSocketUri(app);
 
         using (ClientWebSocket allowed = await ConnectAsync(uri, AllowedOrigin))
@@ -56,15 +59,20 @@ public class WebSocketOriginFilterTests
             Assert.That(nonBrowser.State, Is.EqualTo(WebSocketState.Open));
         }
 
+        Assert.That(logger.LogList, Is.Empty);
+
         WebSocketException? refused = await Assert.ThrowsAsync<WebSocketException>(() => ConnectAsync(uri, OtherOrigin));
         Assert.That(refused!.Message, Does.Contain("403"));
+        // The node logs the refused origin before it answers, so the line is there once the client sees 403.
+        Assert.That(logger.LogList, Has.Exactly(1).Items);
+        Assert.That(logger.LogList[0], Does.Contain(OtherOrigin).And.Contain("JsonRpc.CorsOrigins"));
     }
 
     /// <summary>
     /// Serves WebSockets through <see cref="Startup.UseJsonRpcWebSockets"/>, the pipeline <see cref="Startup"/> builds,
     /// with a module that accepts every socket.
     /// </summary>
-    private static async Task<WebApplication> StartAsync(IJsonRpcConfig config)
+    private static async Task<WebApplication> StartAsync(IJsonRpcConfig config, TestLogger logger)
     {
         WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
         builder.Services.AddLogging();
@@ -73,7 +81,7 @@ public class WebSocketOriginFilterTests
 
         WebApplication app = builder.Build();
         WebSocketUrls urls = new();
-        Startup.UseJsonRpcWebSockets(app, config, urls);
+        Startup.UseJsonRpcWebSockets(app, config, urls, new ILogger(logger));
 
         await app.StartAsync();
         // The port is known only once Kestrel has bound it; the pipeline looks it up per request.
