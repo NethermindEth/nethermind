@@ -112,8 +112,8 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(Activation, GasLimit, code.Done);
 
-        // Restoring a new slot to zero also refunds its pre-EIP-8037 execution floor.
-        ulong reversalRefund = original == 0 ? Math.Max(StorageWrite, GasCostOf.SSet) : StorageWrite;
+        // Restoring a new slot to zero refunds GAS_STORAGE_SET - WARM_ACCESS, as before EIP-8037.
+        ulong reversalRefund = original == 0 ? GasCostOf.SSet - GasCostOf.WarmStateRead : StorageWrite;
         ulong refundCounter = (ulong)writeReversals * reversalRefund
             + (eip3298Enabled ? 0 : (ulong)netClears * RefundOf.SClearEip8038);
         AssertSettlement(result, refundCounter);

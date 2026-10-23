@@ -191,6 +191,9 @@ public static partial class EvmInstructions
             goto OutOfGasTraced;
         }
 
+        bool targetWasCold = TEip8037.IsActive && hasValueTransfer && TSpec.UseHotAndColdStorage
+            && vm.VmState.AccessTracker.IsCold(codeSource) && !spec.IsPrecompile(codeSource);
+
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.IsTracingAccess, codeSource))
@@ -215,7 +218,9 @@ public static partial class EvmInstructions
         bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
 
         traceNewAccountCharge = chargesNewAccount;
-        bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas);
+        bool newAccountOutOfGas = chargesNewAccount && (TEip8037.IsActive
+            ? !TGasPolicy.TryConsumeStateAndExecutionGas(ref gas, TGasPolicy.GetNewAccountStateCost(), LegacyNewAccountCallTopUp<TGasPolicy, TSpec>(spec, targetWasCold))
+            : !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas));
 
         if (newAccountOutOfGas)
         {
@@ -338,6 +343,20 @@ public static partial class EvmInstructions
 
     /// <summary>Whether a transfer to <paramref name="target"/> pays the new-account charge under the given fork rules.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /// <summary>
+    /// The gas an account-creating value <c>CALL</c> takes after its access and value charges, so that together they
+    /// are exactly its pre-EIP-8037 charge: 34,100 warm or 36,600 cold, plus memory expansion.
+    /// </summary>
+    private static ulong LegacyNewAccountCallTopUp<TGasPolicy, TSpec>(IReleaseSpec spec, bool targetWasCold)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSpec : struct, ICallSpec
+    {
+        ulong legacyCharge = (targetWasCold ? GasCostOf.ColdAccountAccess : GasCostOf.WarmStateRead) + GasCostOf.CallValue + GasCostOf.NewAccount;
+        ulong charged = (targetWasCold ? TGasPolicy.GetColdAccountAccessCost(spec) : GasCostOf.WarmStateRead)
+            + (TSpec.IsEip2780Enabled ? Eip8038Constants.CallValue : GasCostOf.CallValue);
+        return legacyCharge - charged;
+    }
+
     private static bool ChargesNewAccount<TSpec>(IWorldState state, Address target, bool hasValueTransfer)
         where TSpec : struct, ICallSpec =>
         TSpec.IsEip8038Enabled

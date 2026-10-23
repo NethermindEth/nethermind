@@ -96,7 +96,7 @@ public partial class TransactionProcessorTests
     }
 
     [Test]
-    public void Eip8037_simple_transfer_reports_runtime_out_of_gas_to_action_trace()
+    public void Eip8037_simple_transfer_reports_state_gas_settlement_failure_to_action_trace()
     {
         IReleaseSpec spec = Amsterdam.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
@@ -117,12 +117,12 @@ public partial class TransactionProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.True);
-            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.StateGasSettlementFailed));
             Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
             Assert.That(tracer.ActionCalls, Is.EqualTo(1));
             Assert.That(tracer.ActionEndCalls, Is.EqualTo(0));
             Assert.That(tracer.ActionErrorCalls, Is.EqualTo(1));
-            Assert.That(tracer.ActionErrorType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(tracer.ActionErrorType, Is.EqualTo(EvmExceptionType.StateGasSettlementFailed));
         }
     }
 

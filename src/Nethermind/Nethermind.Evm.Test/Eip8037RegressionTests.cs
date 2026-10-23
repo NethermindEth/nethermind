@@ -151,7 +151,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(foundPrecompileCall, Is.True);
-            Assert.That(precompileCallGas, Is.EqualTo(927_140));
+            Assert.That(precompileCallGas, Is.EqualTo(929_798));
         }
     }
 
@@ -466,7 +466,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.Actions[0].CallType, Is.EqualTo(ExecutionType.CREATE));
             Assert.That(tracer.Actions[0].Gas, Is.EqualTo((ulong)GasCostOf.CreateState - 1));
             // The creation charge exceeds the state-gas limit before the frame runs.
-            Assert.That(tracer.ReportedActionErrors, Is.EqualTo(new[] { EvmExceptionType.OutOfGas }));
+            Assert.That(tracer.ReportedActionErrors, Is.EqualTo(new[] { EvmExceptionType.StateGasSettlementFailed }));
             Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
             Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, contractAddress, block.Header.GasBeneficiary! }));
         }
@@ -2520,6 +2520,169 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>
+    /// A code deposit that exceeds both the create frame's allowance and the transaction's state-gas limit fails only the
+    /// CREATE: the allowance check comes first, and the rollback of the create frame removes the charge.
+    /// </summary>
+    /// <remarks>
+    /// The top frame forwards 50,000 gas (allowance 382,500) to untrusted code, whose CREATE returns 24,576 zero bytes.
+    /// The account charge (183,600) fits; the code deposit (37,601,280) exceeds the create frame's allowance and the
+    /// state-gas limit of a 1,000,000 gas transaction.
+    /// </remarks>
+    [Test]
+    public void Eip8037_allowance_check_comes_before_state_gas_limit()
+    {
+        byte[] untrustedCode = Prepare.EvmCode
+            .Create(Bytes.FromHexString("0x6160005ff3"), UInt256.Zero)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        InstallCode(TestItem.AddressC, untrustedCode);
+
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+            Assert.That(TestState.AccountExists(ContractAddress.From(TestItem.AddressC, 0)), Is.False);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
+        }
+    }
+
+    /// <summary>
+    /// A state-creating operation takes exactly its pre-EIP-8037 charge from gas_left: a warm new slot 20,000, a cold
+    /// account-creating CALL 36,600, and a CREATE to a prefunded address 32,000. The callee budgets cover the other
+    /// instructions plus exactly that charge, or one gas less.
+    /// </summary>
+    [TestCase(StateCreation.Slot, 3 + Eip8038Constants.ColdStorageAccess + 2 + 6 + 20_000UL, true)]
+    [TestCase(StateCreation.Slot, 3 + Eip8038Constants.ColdStorageAccess + 2 + 6 + 20_000UL, false)]
+    [TestCase(StateCreation.Account, 21 + 36_600UL, true)]
+    [TestCase(StateCreation.Account, 21 + 36_600UL, false)]
+    [TestCase(StateCreation.Contract, 9 + 32_000UL, true)]
+    [TestCase(StateCreation.Contract, 9 + 32_000UL, false)]
+    public void Eip8037_state_creation_takes_exact_legacy_charge(StateCreation creation, ulong exactBudget, bool enoughGas)
+    {
+        Address created = creation switch
+        {
+            StateCreation.Account => TestItem.AddressF,
+            StateCreation.Contract => ContractAddress.From(TestItem.AddressC, 0),
+            _ => TestItem.AddressC,
+        };
+        byte[] calleeCode = creation switch
+        {
+            // The SLOAD warms the slot, so the SSTORE creates a warm new slot.
+            StateCreation.Slot => Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP)
+                .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
+            StateCreation.Account => Prepare.EvmCode.CallWithValue(created, 0, UInt256.One).Op(Instruction.STOP).Done,
+            _ => Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Op(Instruction.STOP).Done,
+        };
+        InstallCode(TestItem.AddressC, calleeCode, balance: 1.Ether);
+        if (creation == StateCreation.Contract)
+        {
+            TestState.CreateAccount(created, UInt256.One);
+        }
+
+        ulong budget = enoughGas ? exactBudget : exactBudget - 1;
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, (long)budget).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), enoughGas ? UInt256.One : UInt256.Zero);
+            switch (creation)
+            {
+                case StateCreation.Slot:
+                    AssertStorage(new StorageCell(created, 0), enoughGas ? UInt256.One : UInt256.Zero);
+                    break;
+                case StateCreation.Account:
+                    Assert.That(TestState.AccountExists(created), Is.EqualTo(enoughGas));
+                    break;
+                default:
+                    Assert.That(TestState.GetNonce(created), Is.EqualTo(enoughGas ? 1UL : 0UL));
+                    break;
+            }
+        }
+    }
+
+    public enum Blake2FInput
+    {
+        Empty,
+        TooFewRoundsGas,
+        Valid
+    }
+
+    /// <summary>
+    /// A value CALL to an active precompile without an account runs the precompile frame: when the precompile fails, on
+    /// invalid input or for lack of gas, the transfer and its NEW_ACCOUNT state gas are undone.
+    /// </summary>
+    [TestCase(Blake2FInput.Empty, false)]
+    [TestCase(Blake2FInput.TooFewRoundsGas, false)]
+    [TestCase(Blake2FInput.Valid, true)]
+    public void Eip8037_value_call_to_failing_precompile_charges_no_new_account(Blake2FInput input, bool succeeds)
+    {
+        // EIP-152 test vector 4 (0 rounds); 100,000 rounds cost more than the call stipend.
+        const string validInput = "0000000048c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001";
+        byte[] callData = input switch
+        {
+            Blake2FInput.Empty => [],
+            Blake2FInput.TooFewRoundsGas => Bytes.FromHexString("000186a0" + validInput[8..]),
+            _ => Bytes.FromHexString(validInput),
+        };
+        Address precompile = Blake2FPrecompile.Address;
+
+        byte[] code = Prepare.EvmCode
+            .StoreDataInMemory(0, callData)
+            .PushData(0).PushData(0).PushData(callData.Length).PushData(0)
+            .PushData(1).PushData(precompile).PushData(0)
+            .Op(Instruction.CALL)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), succeeds ? UInt256.One : UInt256.Zero);
+            Assert.That(TestState.AccountExists(precompile), Is.EqualTo(succeeds));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(succeeds ? GasCostOf.NewAccountState + GasCostOf.SSetState : 0));
+        }
+    }
+
+    /// <summary>
+    /// EIP-7778: refunds lower what the sender pays, not the block execution gas, which stays the pre-refund total. A
+    /// settlement failure sets the refund counter to zero, so both are the same.
+    /// </summary>
+    [Test]
+    public void Eip8037_block_execution_gas_is_pre_refund([Values] bool settles)
+    {
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), UInt256.One);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        // Clears an originally non-zero slot (STORAGE_CLEAR_REFUND), then creates a slot.
+        byte[] code = Prepare.EvmCode
+            .PushData(0).PushData(0).Op(Instruction.SSTORE)
+            .PushData(1).PushData(1).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+        ulong gasLimit = settles ? 1_000_000UL : 100_000UL;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        GasConsumed gas = tracer.GasConsumedResult;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(settles ? StatusCode.Success : StatusCode.Failure));
+            Assert.That(tracer.Refund, Is.EqualTo((long)RefundOf.SClearEip8038), "refund generated during execution");
+            Assert.That(gas.GasRefund, settles ? Is.GreaterThan(0UL) : Is.Zero, "refund applied");
+            Assert.That(gas.BlockGas + gas.BlockStateGas, Is.EqualTo(gas.SpentGas + gas.GasRefund), "block gas is the pre-refund total");
+        }
+    }
+
     private const ulong LargeDeploymentBlockGasLimit = 500_000_000;
     private static readonly byte[] MaxCodeInitCode = ReturnZeroCodeInitCode(CodeSizeConstants.MaxCodeSizeEip7954);
     private static readonly byte[] FirstSalt = [0x01];
@@ -2664,9 +2827,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
     }
 
-    /// <summary>A slot set and cleared in the same transaction refunds its full execution floor, so it costs only its access.</summary>
+    /// <summary>A slot set and cleared in the same transaction refunds GAS_STORAGE_SET - WARM_ACCESS, as before EIP-8037.</summary>
     [Test]
-    public void Eip8037_set_and_clear_refunds_the_new_slot_floor()
+    public void Eip8037_set_and_clear_refunds_the_new_slot_charge()
     {
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(0).Op(Instruction.SSTORE)
@@ -2679,7 +2842,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.Refund, Is.EqualTo((long)Math.Max(Eip8038Constants.StorageWrite, GasCostOf.SSet)));
+            Assert.That(tracer.Refund, Is.EqualTo((long)(GasCostOf.SSet - GasCostOf.WarmStateRead)));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         }
     }

@@ -573,6 +573,9 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
+        // EIP-8037 deferred settlement: a cold new slot takes the pre-EIP-8037 COLD_SLOAD + GAS_STORAGE_SET.
+        bool slotWasCold = TEip8037.IsActive && Eip8038.IsActive && vmState.AccessTracker.IsCold(in storageCell);
+
         // Charge gas based on whether this is a cold or warm storage access before reading
         // the slot; BAL records the read only once the access cost is covered.
         ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
@@ -617,11 +620,13 @@ public static partial class EvmInstructions
             if (currentSameAsOriginal)
             {
                 traceExecutionCost = traceStorageAccessCost + (currentIsZero
-                    ? TEip8037.IsActive && Eip8038.IsActive ? Math.Max(Eip8038Constants.StorageWrite, GasCostOf.SSet) : GasCostOf.SSet
+                    ? TEip8037.IsActive && Eip8038.IsActive ? GasCostOf.SSet - GasCostOf.WarmStateRead + (slotWasCold ? GasCostOf.WarmStateRead : 0) : GasCostOf.SSet
                     : Eip8038.IsActive ? Eip8038Constants.StorageWrite : gasCosts.SStoreResetCost);
                 if (currentIsZero)
                 {
-                    bool ssetOutOfGas = !TGasPolicy.TryConsumeStorageWrite<TEip8037, OnFlag, Eip8038>(ref gas, spec);
+                    // EIP-8038's 2,100 cold access already includes the warm 100 that GAS_STORAGE_SET covers.
+                    bool ssetOutOfGas = (slotWasCold && !TGasPolicy.UpdateGas(ref gas, GasCostOf.WarmStateRead))
+                        || !TGasPolicy.TryConsumeStorageWrite<TEip8037, OnFlag, Eip8038>(ref gas, spec);
                     if (ssetOutOfGas)
                     {
                         if (TTracingInst.IsActive && !TEip8037.IsActive && !Eip8038.IsActive)
@@ -678,7 +683,7 @@ public static partial class EvmInstructions
                         }
                         if (originalValue == newValue)
                             attemptedRefund += TEip8037.IsActive && originalIsZero
-                                ? Eip8038.IsActive ? (long)Math.Max(Eip8038Constants.StorageWrite, GasCostOf.SSet) : (long)(GasCostOf.SSet - GasCostOf.WarmStateRead)
+                                ? (long)(GasCostOf.SSet - GasCostOf.WarmStateRead)
                                 : Eip8038.IsActive ? (long)Eip8038Constants.StorageWrite : (long)gasCosts.RefundFromReversal(originalIsZero);
                         vm.TraceStorageRefund(attemptedRefund);
                         vm.TraceOperationReady(traceExecutionCost, "out of gas");
@@ -728,10 +733,8 @@ public static partial class EvmInstructions
                         {
                             vm.CreditStateGasRefund<TEip8037>(ref gas, stateGasCost);
                         }
-                        // The execution floor of the new slot is refunded too, so a slot set and cleared costs only its access.
-                        refundFromReversal = Eip8038.IsActive
-                            ? (long)Math.Max(Eip8038Constants.StorageWrite, GasCostOf.SSet)
-                            : (long)(GasCostOf.SSet - GasCostOf.WarmStateRead);
+                        // As before EIP-8037: GAS_STORAGE_SET - WARM_ACCESS.
+                        refundFromReversal = (long)(GasCostOf.SSet - GasCostOf.WarmStateRead);
                     }
 
                     vmState.Refund += refundFromReversal;

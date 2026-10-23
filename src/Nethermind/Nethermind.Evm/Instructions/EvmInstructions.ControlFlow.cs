@@ -387,6 +387,8 @@ public static partial class EvmInstructions
         if (inheritor is null)
             goto StackUnderflow;
 
+        bool inheritorWasCold = TEip8037.IsActive && vmState.AccessTracker.IsCold(inheritor) && !spec.IsPrecompile(inheritor);
+
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
             goto OutOfGas;
@@ -417,11 +419,13 @@ public static partial class EvmInstructions
             false => !inheritorAccountExists && TSpec.UseShanghaiDDosProtection,
         };
 
-        // EIP-8038 adds an ACCOUNT_WRITE execution charge on top of the NEW_ACCOUNT state gas;
-        // charge execution first so an execution-gas OOG does not spill state gas.
-        bool outOfGas = chargesNewAccount &&
-            !((!TSpec.IsEip8038Enabled || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
-              && TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas));
+        // EIP-8037 deferred settlement: an account-creating SELFDESTRUCT takes exactly its pre-EIP-8037 charge,
+        // 30,000 warm or 32,600 cold, so no EIP-8038 ACCOUNT_WRITE; the NEW_ACCOUNT state gas is settled later.
+        bool outOfGas = chargesNewAccount && (TEip8037.IsActive
+            ? !TGasPolicy.TryConsumeStateAndExecutionGas(ref gas, TGasPolicy.GetNewAccountStateCost(),
+                GasCostOf.NewAccount + (inheritorWasCold ? GasCostOf.ColdAccountAccess : 0) - (inheritorWasCold ? TGasPolicy.GetColdAccountAccessCost(spec) : 0))
+            : !((!TSpec.IsEip8038Enabled || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
+              && TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas)));
 
         if (outOfGas) goto OutOfGas;
 

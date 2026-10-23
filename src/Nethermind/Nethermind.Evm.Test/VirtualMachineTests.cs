@@ -1180,7 +1180,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         AssertCallbacksPaired(tracer, 9, (Instruction.CALL, 0, EvmExceptionType.NotEnoughBalance));
         Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
         {
-            978_997, 978_994, 978_991, 978_988, 978_985, 978_982, 978_979, 889_679, 941_979
+            978_997, 978_994, 978_991, 978_988, 978_985, 978_982, 978_979, 892_379, 944_679
         }));
     }
 

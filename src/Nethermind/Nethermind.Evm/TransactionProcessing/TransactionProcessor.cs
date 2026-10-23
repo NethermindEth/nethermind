@@ -460,14 +460,16 @@ namespace Nethermind.Evm.TransactionProcessing
             long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
 
             // A new (dead) recipient — including an empty precompile — pays NEW_ACCOUNT state gas.
+            bool topFrameSettlementFailure = false;
             if (!topFrameOutOfGas && eip8037 && !tx.IsContractCreation && !tx.ValueRef.IsZero
                 && tx.To is not null && tx.SenderAddress != tx.To
                 && WorldState.IsDeadAccount(tx.To))
             {
                 // A recipient without code cannot revert, so an unpaid charge already fails the settlement;
-                // halting here matches the simple-transfer fast path.
+                // halting here matches the simple-transfer fast path. A precompile's code info is not empty: it can fail.
                 topFrameOutOfGas = !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost())
                     || (env.CodeInfo is { IsEmpty: true } && FailsStateGasSettlement(tx, in gasAvailable));
+                topFrameSettlementFailure = topFrameOutOfGas;
             }
 
             if (topFrameOutOfGas && eip8037)
@@ -493,8 +495,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IntrinsicGas<TGasPolicy> executionIntrinsicGas = new(executionIntrinsicGasStandard, intrinsicGas.FloorGas);
 
             int statusCode = !DispatchFlags.Tracing(_tracerFlags.IsTracingInstructions) ?
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out RefundResult refundResult) :
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out refundResult);
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, topFrameSettlementFailure, out TransactionSubstate substate, out RefundResult refundResult) :
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, topFrameSettlementFailure, out substate, out refundResult);
 
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
@@ -617,14 +619,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 // IsError, so this halt must surface via EvmExceptionType only, or gas accounting changes.
                 shouldRevert: false,
                 isTracerConnected: false, // safe: the ctor reads this only when shouldRevert is true
-                evmExceptionType: newAccountOutOfGas ? EvmExceptionType.OutOfGas : EvmExceptionType.None,
+                evmExceptionType: newAccountOutOfGas ? EvmExceptionType.StateGasSettlementFailed : EvmExceptionType.None,
                 logger: Logger);
 
             if (isTracingActions)
             {
                 if (newAccountOutOfGas)
                 {
-                    tracer.ReportActionError(EvmExceptionType.OutOfGas);
+                    tracer.ReportActionError(EvmExceptionType.StateGasSettlementFailed);
                 }
                 else
                 {
@@ -669,7 +671,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void TraceHaltedTopFrameAction(Transaction tx, ExecutionEnvironment env, ITxTracer tracer, in TGasPolicy gasAvailable)
+        private static void TraceHaltedTopFrameAction(Transaction tx, ExecutionEnvironment env, ITxTracer tracer, in TGasPolicy gasAvailable, EvmExceptionType error)
         {
             if (!tracer.IsTracingActions) return;
 
@@ -683,7 +685,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 isContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION);
 
             if (tracer.IsTracingCode) tracer.ReportByteCode(env.CodeInfo.Code);
-            tracer.ReportActionError(EvmExceptionType.OutOfGas);
+            tracer.ReportActionError(error);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1477,6 +1479,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy gasAvailable,
             ExecutionEnvironment env,
             bool topFrameOutOfGas,
+            bool topFrameSettlementFailure,
             out TransactionSubstate substate,
             out RefundResult gasConsumed)
             where TTracingInst : struct, IFlag
@@ -1493,8 +1496,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (topFrameOutOfGas)
             {
-                TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
-                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
+                EvmExceptionType topFrameError = topFrameSettlementFailure ? EvmExceptionType.StateGasSettlementFailed : EvmExceptionType.OutOfGas;
+                TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable, topFrameError);
+                substate = new TransactionSubstate(topFrameError, tracer.IsTracing);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
                 gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
                 goto CompleteWithoutFrame;
@@ -1542,8 +1546,9 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (spec.IsEip8037Enabled && topLevelCreateStateGasCharged && !TGasPolicy.TryConsumeCreateStateGas(ref state.Gas))
                 {
-                    TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
-                    substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
+                    EvmExceptionType createChargeError = TGasPolicy.ExceedsStateGasLimit(in state.Gas) ? EvmExceptionType.StateGasSettlementFailed : EvmExceptionType.OutOfGas;
+                    TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable, createChargeError);
+                    substate = new TransactionSubstate(createChargeError, tracer.IsTracing);
                     gasAvailable = state.Gas;
                     WorldState.Restore(snapshot);
                     TGasPolicy createStateOogIntrinsicGasStandard = gas.Standard;

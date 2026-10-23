@@ -148,14 +148,20 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             gas.StateReservoir -= stateGasCost;
             gas.StateGasUsed += stateGasCost;
             gas.StateGasAllowanceLeft -= stateGasCost;
-            // The transaction's state-gas limit is checked first: exceeding it stops all execution, not only this frame.
+            // The frame's allowance is checked first: a charge above it fails only this frame, whose rollback removes it.
+            if (gas.StateGasAllowanceLeft < 0)
+            {
+                return false;
+            }
+
+            // A charge within the allowance that exceeds the transaction's state-gas limit stops all execution.
             if (gas.StateReservoir < -gas.StateDebtLimit)
             {
                 gas.StateGasLimitExceeded = true;
                 return false;
             }
 
-            return gas.StateGasAllowanceLeft >= 0;
+            return true;
         }
 
         long reservoir = gas.StateReservoir;
@@ -552,8 +558,11 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (!TIsSlotCreation.IsActive)
             return UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.StorageWrite : spec.GasCosts.SStoreResetCost);
 
-        // A new slot never costs less execution gas than its pre-EIP-8037 GAS_STORAGE_SET.
-        ulong executionWriteCost = Math.Max(TMode.IsEip8038Enabled(spec) ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution, GasCostOf.SSet);
+        // EIP-8037 deferred settlement: a new slot takes exactly its pre-EIP-8037 charge from gas_left. EIP-8038 already
+        // charged the warm access, so the write is GAS_STORAGE_SET minus it; a cold slot adds the rest in the SSTORE.
+        ulong executionWriteCost = TEip8037.IsActive
+            ? TMode.IsEip8038Enabled(spec) ? GasCostOf.SSet - GasCostOf.WarmStateRead : GasCostOf.SSet
+            : TMode.IsEip8038Enabled(spec) ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution;
         return TEip8037.IsActive switch
         {
             // EIP-8037: charge the execution component first so an OOG halt does not

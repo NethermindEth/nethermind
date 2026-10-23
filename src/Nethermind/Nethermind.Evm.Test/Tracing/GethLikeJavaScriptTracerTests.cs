@@ -1582,7 +1582,7 @@ public class GethLikeJavaScriptSStoreTracerTests : VirtualMachineTestsBase
             yield return new TestCaseData(7UL, "600060005500", 0, 4, gas, "step:2100:0::0,0:0:0", 0).SetName($"SStore_Amsterdam_noop_{gas}");
             yield return new TestCaseData(7UL, "600160005500", 0, 4, gas, "step:22100:0::0,1:0:0", 1).SetName($"SStore_Amsterdam_create_{gas}");
             yield return new TestCaseData(7UL, "600060005500", 1, 4, gas, "step:12100:11616::0,0:1:0", 0).SetName($"SStore_Amsterdam_clear_{gas}");
-            yield return new TestCaseData(7UL, "6001600055600060005500", 0, 9, gas, "step:100:20000::0,0:1:0", 0).SetName($"SStore_Amsterdam_reverse_zero_{gas}");
+            yield return new TestCaseData(7UL, "6001600055600060005500", 0, 9, gas, "step:100:19900::0,0:1:0", 0).SetName($"SStore_Amsterdam_reverse_zero_{gas}");
             yield return new TestCaseData(7UL, "6000600055600160005500", 1, 9, gas, "step:100:10000::0,1:0:0", 1).SetName($"SStore_Amsterdam_reverse_one_{gas}");
             yield return new TestCaseData(7UL, "6000600055600260005500", 1, 9, gas, "step:100:0::0,2:0:0", 2).SetName($"SStore_Amsterdam_replace_cleared_{gas}");
         }
@@ -1785,9 +1785,12 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
         int inputs = opcode == Instruction.DELEGATECALL ? 6 : 7;
         ulong entryGas = available - reservoir - (ulong)(inputs * 3) - warmup - clearingCost;
         bool createsAccount = opcode == Instruction.CALL && newAccount && (!spec.ClearEmptyAccountWhenTouched || value != 0);
-        ulong extra = access + (ulong)(memoryLength / 32 * 3) + (value != 0 ? spec.IsEip8038Enabled ? 11300UL : 9000UL : 0)
-            // EIP-8037 settles NEW_ACCOUNT state gas at the end of the transaction; the call pays the pre-EIP-8037 execution floor.
-            + (createsAccount ? 25000UL : 0);
+        // EIP-8037 settles NEW_ACCOUNT state gas at the end of the transaction; an account-creating CALL takes exactly
+        // its pre-EIP-8037 access, value and new-account charge from gas_left.
+        ulong callCharge = createsAccount && spec.IsEip8037Enabled
+            ? (warm ? 100UL : 2600UL) + 9000UL + 25000UL
+            : access + (value != 0 ? spec.IsEip8038Enabled ? 11300UL : 9000UL : 0) + (createsAccount ? 25000UL : 0);
+        ulong extra = callCharge + (ulong)(memoryLength / 32 * 3);
         ulong forwarded = maximumForwarding ? entryGas - extra - (entryGas - extra) / 64 : 10000;
         string result = RunTrace(block, transaction, CallTracer, out GethLikeTxTrace native);
         using (native)
