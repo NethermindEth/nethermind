@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
+#:include ScriptProcess.Helpers.cs
 using System.Text.RegularExpressions;
 
 if (args.Length is < 1 or > 2 || (args.Length == 2 && args[0] != "--check"))
@@ -89,46 +89,8 @@ catch (Exception exception)
 static async Task<string> Run(string executable, string[] arguments, CancellationToken cancellationToken)
 {
     Console.WriteLine($"> {executable} {string.Join(' ', arguments)}");
-    using var process = new Process
-    {
-        StartInfo = new ProcessStartInfo(executable)
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        }
-    };
-    foreach (var argument in arguments)
-        process.StartInfo.ArgumentList.Add(argument);
-    process.Start();
-    var stdout = Drain(process.StandardOutput, Console.Out, cancellationToken);
-    var stderr = Drain(process.StandardError, Console.Error, cancellationToken);
-    try
-    {
-        await process.WaitForExitAsync(cancellationToken);
-        var output = string.Join('\n', await Task.WhenAll(stdout, stderr));
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException($"{executable} exited with code {process.ExitCode}.");
-        return output;
-    }
-    finally
-    {
-        if (!process.HasExited)
-        {
-            process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(CancellationToken.None);
-        }
-        await Task.WhenAll(stdout, stderr);
-    }
-}
-
-static async Task<string> Drain(StreamReader reader, TextWriter writer, CancellationToken cancellationToken)
-{
-    var output = new System.Text.StringBuilder();
-    while (await reader.ReadLineAsync(cancellationToken) is { } line)
-    {
-        await writer.WriteLineAsync(line);
-        output.AppendLine(line);
-    }
-    return output.ToString();
+    var result = await ScriptProcess.Run(executable, arguments, cancellationToken, echo: true);
+    if (result.Code != 0)
+        throw new InvalidOperationException($"{executable} exited with code {result.Code}.");
+    return result.Output + result.Error;
 }
