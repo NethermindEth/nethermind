@@ -196,7 +196,7 @@ public class SnapStateServer : ISnapStateServer
                 break;
             }
 
-            Account? accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes.ToArray());
+            Account? accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes);
             if (accountNeth is null)
             {
                 break;
@@ -253,7 +253,7 @@ public class SnapStateServer : ISnapStateServer
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
     }
 
-    private Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, byte[] accountPath)
+    private Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, ReadOnlySpan<byte> accountPath)
     {
         try
         {
