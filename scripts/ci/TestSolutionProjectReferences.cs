@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 
 var passed = 0;
@@ -92,5 +91,10 @@ static List<string> FindMissingReferences(string solution)
     return errors;
 }
 
-static string GetRepositoryRoot([CallerFilePath] string source = "") =>
-    Path.GetFullPath("../..", Path.GetDirectoryName(source)!);
+static string GetRepositoryRoot()
+{
+    for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)
+        if (File.Exists(Path.Combine(directory.FullName, "src/Nethermind/Nethermind.slnx")))
+            return directory.FullName;
+    throw new DirectoryNotFoundException("Run this test from within the Nethermind checkout.");
+}
