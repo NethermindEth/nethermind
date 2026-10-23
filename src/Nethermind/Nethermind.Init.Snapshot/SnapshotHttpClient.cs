@@ -24,7 +24,7 @@ internal sealed class SnapshotHttpClient : IDisposable
 
     public async Task<SnapshotRemoteInfo> ProbeAsync(string url, CancellationToken cancellationToken)
     {
-        using HttpResponseMessage response = await GetAsync(url, new RangeHeaderValue(0, 0), ifRange: null, cancellationToken).ConfigureAwait(false);
+        using HttpResponseMessage response = await GetAsync(url, new RangeHeaderValue(0, 1), ifRange: null, cancellationToken).ConfigureAwait(false);
         EntityTagHeaderValue? etag = response.Headers.ETag;
 
         if (response.StatusCode == HttpStatusCode.PartialContent)

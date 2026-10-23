@@ -156,6 +156,22 @@ public class SnapshotHttpStreamTests
     }
 
     [Test]
+    public async Task Probe_ServerAnswersSingleByteRangeWithFullBody_ReportsRangeSupport()
+    {
+        _server.Content = BuildContent(100_000);
+        _server.IgnoreSingleByteRange = true;
+        using SnapshotHttpClient client = new();
+
+        SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remoteInfo.SupportsRanges, Is.True, "a CDN that answers only bytes=0-0 with 200 must not disable parallel resumable downloads");
+            Assert.That(remoteInfo.Length, Is.EqualTo(100_000));
+        }
+    }
+
+    [Test]
     public async Task Dispose_AfterFullDownload_ReleasesPooledBuffers()
     {
         byte[] content = BuildContent(100_000);
