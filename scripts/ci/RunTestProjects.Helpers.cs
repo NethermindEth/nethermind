@@ -19,7 +19,9 @@ internal static class TestProjects
             try
             {
                 var directory = Path.GetFullPath(Path.Combine(root, "src", "Nethermind", project));
-                if (!Directory.Exists(directory) || !await RunProject(directory, project, environment, execute, output, cancellationToken))
+                if (!Directory.Exists(directory))
+                    throw new DirectoryNotFoundException($"Project directory does not exist: {directory}");
+                if (!await RunProject(directory, project, environment, execute, output, cancellationToken))
                     failed.Add(project);
             }
             catch (Exception exception) when (exception is IOException or System.ComponentModel.Win32Exception)
@@ -45,7 +47,7 @@ internal static class TestProjects
         if (!linux && await execute(directory, "dotnet", ["build", $"{project}.csproj", "-c", "release", "-p:RunAnalyzersDuringBuild=false"], cancellationToken) != 0)
             return false;
         await execute(directory, "dotnet", ["build-server", "shutdown"], cancellationToken);
-        var command = linux ? $"../artifacts/bin/{project}/release/{project}" : "dotnet";
+        var command = linux ? Path.GetFullPath(Path.Combine(directory, "..", "artifacts", "bin", project, "release", project)) : "dotnet";
         var arguments = new List<string>();
         if (linux)
             arguments.AddRange(["--results-directory", "TestResults"]);
@@ -73,7 +75,13 @@ internal static class TestProjects
                 return false;
             }
             output.WriteLine($"::warning::{project}: test process crashed (exit code {result}), retrying...");
-            File.AppendAllText(environment("GITHUB_OUTPUT") ?? throw new ArgumentException("GITHUB_OUTPUT is required for crash retries"), "crashed=true\n");
+            var githubOutput = environment("GITHUB_OUTPUT");
+            if (string.IsNullOrEmpty(githubOutput))
+            {
+                output.WriteLine($"::error::{project}: GITHUB_OUTPUT is required for crash retries");
+                return false;
+            }
+            File.AppendAllText(githubOutput, "crashed=true\n");
             if (await execute(directory, command, arguments.ToArray(), cancellationToken) != 0)
                 return false;
         }

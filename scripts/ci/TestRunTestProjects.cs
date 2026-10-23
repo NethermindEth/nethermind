@@ -77,7 +77,8 @@ foreach (var (name, os, firstExit, secondExit, retry, hang, coverage, report, bu
             throw new Exception($"{name}: crash marker mismatch");
         foreach (var call in calls.Where(call => call.Args[0] is not ("build" or "build-server")))
         {
-            if (!call.Args.Contains(os == "Linux" ? "8m" : "4m") || call.Command != (os == "Linux" ? $"../artifacts/bin/{Path.GetFileName(call.Directory)}/release/{Path.GetFileName(call.Directory)}" : "dotnet"))
+            var project = Path.GetFileName(call.Directory);
+            if (!call.Args.Contains(os == "Linux" ? "8m" : "4m") || call.Command != (os == "Linux" ? Path.Combine(root.FullName, "src", "Nethermind", "artifacts", "bin", project, "release", project) : "dotnet"))
                 throw new Exception($"{name}: command/timeout mismatch");
             if (coverage && !call.Args.Contains(Path.Combine(root.FullName, "src/Nethermind/codecoverage.json")))
                 throw new Exception($"{name}: coverage path is not absolute");
@@ -171,6 +172,45 @@ try
 finally
 {
     cancelledRoot.Delete(recursive: true);
+}
+foreach (var missingDirectory in new[] { true, false })
+{
+    var root = Directory.CreateTempSubdirectory("missing project inputs ");
+    try
+    {
+        Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/Second"));
+        if (!missingDirectory) Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/First"));
+        var secondRan = false;
+        using var output = new StringWriter();
+        var result = await TestProjects.Run(root.FullName, key => key switch { "PROJECTS" => "First Second", "RUNNER_OS" => "Linux", _ => null },
+            (directory, command, arguments, token) =>
+            {
+                secondRan |= directory.EndsWith("Second");
+                return Task.FromResult(arguments[0] == "build-server" || directory.EndsWith("Second") ? 0 : 7);
+            }, output, CancellationToken.None);
+        if (result != 1 || !secondRan || !output.ToString().Contains(missingDirectory ? "Project directory does not exist" : "GITHUB_OUTPUT is required", StringComparison.Ordinal) || !output.ToString().Contains("Failed: First", StringComparison.Ordinal))
+            throw new Exception("Missing inputs must report the failed project and continue.");
+        Console.WriteLine($"PASS: missing {(missingDirectory ? "project directory" : "GITHUB_OUTPUT")} reports failure and continues");
+        passed++;
+    }
+    finally { root.Delete(recursive: true); }
+}
+if (OperatingSystem.IsLinux())
+{
+    var root = Directory.CreateTempSubdirectory("real artifact host ");
+    try
+    {
+        Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/First"));
+        var artifacts = Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/artifacts/bin/First/release"));
+        File.CreateSymbolicLink(Path.Combine(artifacts.FullName, "First"), "/usr/bin/true");
+        var result = await TestProjects.Run(root.FullName, key => key switch { "PROJECTS" => "First", "RUNNER_OS" => "Linux", _ => null },
+            (directory, command, arguments, token) => arguments[0] == "build-server" ? Task.FromResult(0) : TestProjects.Execute(directory, command, arguments, token),
+            TextWriter.Null, CancellationToken.None);
+        if (result != 0) throw new Exception("Artifact host failed to launch from a different parent working directory.");
+        Console.WriteLine("PASS: real Linux artifact host launches from project directory");
+        passed++;
+    }
+    finally { root.Delete(recursive: true); }
 }
 Console.WriteLine($"Passed {passed} tests.");
 return 0;
