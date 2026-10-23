@@ -1,0 +1,8 @@
+# CI scripts
+
+- Prefer C# file-based apps for new CI automation and substantive additions to migrated tooling. Use top-level statements, `var`, `using var`, and small local functions; share implementation through `#:include` when needed. Apply the same style to script tests and helpers.
+- Run apps with `dotnet run --file path/to/Script.cs -- arguments` after setting up the required SDK. Use a prebuilt executable when an SDK is unavailable; do not add SDK dependencies to container entrypoints or pre-runtime bootstrap solely to follow this preference.
+- Keep simple workflow command invocations in their existing shell. Use another language when an integration/bootstrap environment requires it or the user requests it. This preference does not authorize unrelated rewrites of `scripts/build/`, Dockerfiles, container entrypoints, package hooks, application JavaScript, or developer utilities.
+- Preserve command arguments, exit codes, output formats, working directories, and environment propagation when migrating scripts. A C# subprocess cannot modify its parent's environment like a sourced shell file; use explicit state and GitHub output/environment files.
+- Name new CI entry points in PascalCase, executable script tests `Test*.cs`, and included helpers `*.Helpers.cs`. Run mixed suites with `dotnet run --file scripts/ci/RunScriptTests.cs -- scripts/<suite>`. Each C# test executable must report test names and finish with `Passed N tests.` (N greater than zero); failures must return a nonzero exit code.
+- Validate changed file-based apps with `dotnet run --file scripts/ci/RunScriptTests.cs -- --check path/to/Script.cs`. Keep unused-import checks enabled for entry points and included helpers.
