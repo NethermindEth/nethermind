@@ -76,6 +76,7 @@ public class Eth72ProtocolHandler(
     private const int RequestToAnnouncementRatioThreshold = 5;
     private const int MinCellRequestsBeforeRatioDisconnect = 5;
     private const int MaxCountedBlobAnnouncements = 4096;
+    private const int MaxUnansweredCellRequestRestores = 2;
     private const int MaxPendingCellRequests = 1024;
     internal const int MaxSentCellRequests = 2048;
     private const int MaxPendingCellRequestWork = 4096;
@@ -100,6 +101,8 @@ public class Eth72ProtocolHandler(
     private readonly Lazy<ClockCache<ValueHash256, BlobCellMask>> _announcedBlobTransactionMasks = new(
         static () => new(MemoryAllowance.TxHashCacheSize, lockPartition: 1));
     private readonly Lazy<ClockCache<ValueHash256, DateTimeOffset>> _partialCellResponseBackoff = new(
+        static () => new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1));
+    private readonly Lazy<ClockCache<ValueHash256, int>> _unansweredCellRequests = new(
         static () => new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1));
     private readonly Queue<CellStateKey> _pendingCellRequestOrder = new();
     private readonly Queue<CellStateKey> _sentCellRequestOrder = new();
@@ -808,6 +811,11 @@ public class Eth72ProtocolHandler(
             return;
         }
 
+        if (_unansweredCellRequests.IsValueCreated)
+        {
+            _unansweredCellRequests.Value.Delete(key);
+        }
+
         bool applied = _sparseBlobPoolPeerRegistry.TryApplyRecordedCells(hash);
         if (!applied
             && _txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask)
@@ -1286,7 +1294,18 @@ public class Eth72ProtocolHandler(
                 ParkCellRequest(sentRequest.Hash, sentRequest.Mask, restoreMask: BlobCellMask.Empty);
                 break;
             case CellRequeueReason.PeerUnanswered:
-                BackOffAndParkCellRequest(requestedHash, sentRequest.Mask);
+                if (CountUnansweredCellRequest(sentRequest.Hash) > MaxUnansweredCellRequestRestores)
+                {
+                    // A peer that keeps announcing cells it never serves stops being a provider for
+                    // this transaction; the cells are still requested from other providers.
+                    _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, requestedHash);
+                    ParkCellRequest(sentRequest.Hash, sentRequest.Mask, restoreMask: BlobCellMask.Empty);
+                }
+                else
+                {
+                    BackOffAndParkCellRequest(requestedHash, sentRequest.Mask);
+                }
+
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(reason), reason, null);
@@ -1307,6 +1326,16 @@ public class Eth72ProtocolHandler(
     /// </remarks>
     private void BackOffAndParkCellRequest(Hash256 hash, BlobCellMask parkMask) =>
         ParkCellRequest(hash.ValueHash256, parkMask, _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash));
+
+    /// <summary>Records one more unanswered cell request for a transaction since the peer last delivered its cells.</summary>
+    /// <returns>The number of consecutive unanswered requests, including this one.</returns>
+    private int CountUnansweredCellRequest(ValueHash256 hash)
+    {
+        ClockCache<ValueHash256, int> unanswered = _unansweredCellRequests.Value;
+        int count = unanswered.TryGet(hash, out int previous) ? previous + 1 : 1;
+        unanswered.Set(hash, count);
+        return count;
+    }
 
     /// <summary>Holds cells back from the announcement re-request path until the retry falls due.</summary>
     /// <param name="key">The transaction whose cells are parked.</param>

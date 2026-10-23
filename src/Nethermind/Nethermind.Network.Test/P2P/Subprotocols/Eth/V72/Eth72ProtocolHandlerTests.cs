@@ -3412,6 +3412,47 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
+    // A peer that announces full custody but answers every cells request empty must not be
+    // restored as a provider forever: each restore re-arms the retry and the registry lifetime.
+    [Test]
+    public void should_stop_restoring_announcement_after_repeated_empty_cells_responses()
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
+        registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
+        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>()).Returns(true);
+        RecreateHandler(sparseBlobPoolPeerRegistry: registry);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+
+        HandleIncomingStatusMessage();
+        const int emptyResponses = 10;
+        for (int i = 0; i < emptyResponses; i++)
+        {
+            ParkEmptyCellsResponse(tx.Hash!, cellMask);
+            // Past the 5s backoff, so the parked request is retried and its announcement restored.
+            ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
+        }
+
+        int restores = registry.ReceivedCalls()
+            .Count(c => c.GetMethodInfo().Name == nameof(ISparseBlobPoolPeerRegistry.RecordAnnouncement));
+        Assert.That(restores, Is.LessThan(emptyResponses));
+
+        registry.ClearReceivedCalls();
+        ParkEmptyCellsResponse(tx.Hash!, cellMask);
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
+
+        using (Assert.EnterMultipleScope())
+        {
+            registry.Received(1).RemoveAnnouncement(_handler, tx.Hash!);
+            registry.DidNotReceive().RecordAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>());
+        }
+    }
+
     // Local scheduler saturation is our fault: the retry is still throttled, but the peer keeps the
     // announcement that marks it as a provider node-wide.
     [Test]
