@@ -618,10 +618,10 @@ internal static class JsonRpcGenerator
         (member is PropertyInfo property ? _nullabilityContext.Create(property) : _nullabilityContext.Create((FieldInfo)member))
             .ReadState is not NullabilityState.NotNull;
 
-    // A null member is omitted under WhenWritingNull (the serializer default) and only reaches the wire under Never
+    // A null member is omitted under WhenWritingNull (the serializer default) and only reaches the wire under Never or WhenReading
     private static bool IsWrittenWhenNull(MemberInfo? member) =>
         (member?.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition ?? EthereumJsonSerializer.JsonOptions.DefaultIgnoreCondition)
-            is JsonIgnoreCondition.Never;
+            is JsonIgnoreCondition.Never or JsonIgnoreCondition.WhenReading;
 
     // SimulateBlockResult<TTrace> returns null from one of these by its type argument, so the serializer never writes it
     private static bool IsNullForSpecialization(Type type, JsonPropertyInfo property) =>

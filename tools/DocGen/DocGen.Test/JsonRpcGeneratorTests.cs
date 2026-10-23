@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -42,7 +43,8 @@ public class JsonRpcGeneratorTests
     [TestCase("trace", "trace_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("debug", "debug_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("eth", "eth_simulateV1", "- `calls`:", "- `traces`:")]
-    [TestCase("eth", "eth_getHeaderByNumber", "- `hash`: _string_ (hash) or `null`", "- `baseFeePerGas`: _string_ (hex integer) or `null`")]
+    [TestCase("eth", "eth_getHeaderByNumber", "- `nonce`: _string_ (8-byte hex data) or `null`", "- `baseFeePerGas`: _string_ (hex integer) or `null`")]
+    [TestCase("trace", "trace_get", "- `from`: _string_ (address)\n", "- `from`: _string_ (address) or `null`")]
     public void Response_documents_wire_shape(string ns, string method, string documented, string notDocumented)
     {
         string response = ReadResponse(ns, method);
@@ -61,6 +63,7 @@ public class JsonRpcGeneratorTests
     [TestCase("eth", "eth_newFilter", "- `blockHash`: _string_ (hash, not allowed with `fromBlock` or `toBlock`)", "- `topics`: array of array")]
     [TestCase("eth", "eth_getStorageValues", "1. `requests`: map of address to array of _string_ (hex storage slot), 1 to 1024 slots in total", "- `entries`:")]
     [TestCase("trace", "trace_filter", "- `fromBlock`: _string_ (block number or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`), _object_ (EIP-1898 `{blockNumber}`)", "requireCanonical")]
+    [TestCase("eth", "eth_call", "1. `transactionCall`: _object_", "or `null`")]
     public void Parameters_document_accepted_input(string ns, string method, string documented, string notDocumented)
     {
         string parameters = ReadParameters(ns, method);
@@ -128,8 +131,13 @@ public class JsonRpcGeneratorTests
     private static IEnumerable<TestCaseData> ResultsWithNullMembers()
     {
         yield return new TestCaseData("eth", "eth_getHeaderByNumber",
-            new BlockHeaderForRpc(new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, null!, 0, 0, 0, 0, [])))
-            .SetArgDisplayNames("pending header");
+            new AuRaBlockHeaderForRpc(new AuRaBlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 1, 0, 0, [])
+            {
+                Hash = Keccak.Zero,
+                Bloom = Bloom.Empty,
+                AuRaSignature = [1]
+            }))
+            .SetArgDisplayNames("AuRa header");
         yield return new TestCaseData("parity", "parity_pendingTransactions",
             new ParityTransaction(new Transaction { SenderAddress = Address.Zero, Signature = new Signature(1, 1, 27) }, [], null!))
             .SetArgDisplayNames("pending contract creation");
