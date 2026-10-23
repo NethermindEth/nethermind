@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
@@ -80,27 +82,43 @@ public class DevBlockProducerTests
         Assert.That(includingBlock!.Number, Is.EqualTo(2));
     }
 
+    public enum StuckTx
+    {
+        FeeBelowBaseFeeFloor,
+        NonceGap,
+        PremiumBelowMinGasPrice
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task Does_not_produce_empty_blocks_for_a_tx_it_cannot_include([Values] bool nonceGap)
+    public async Task Does_not_produce_empty_blocks_for_a_tx_it_cannot_include([Values] StuckTx stuckTxKind)
     {
         // An empty block cannot lower the base fee below this floor.
-        using NethDevTestBlockchain chain = await NethDevTestBlockchain.Create(7.Wei);
+        using NethDevTestBlockchain chain = await NethDevTestBlockchain.Create(7.Wei, stuckTxKind is StuckTx.PremiumBelowMinGasPrice ? 1.Wei : 0);
         UInt256 nextBaseFee = chain.NextBaseFee();
 
-        Transaction stuckTx = SubmitTx(chain, nonceGap ? 1UL : 0UL, nonceGap ? nextBaseFee * 2 : nextBaseFee - 1);
+        Transaction stuckTx = stuckTxKind switch
+        {
+            StuckTx.FeeBelowBaseFeeFloor => SubmitTx(chain, 0, nextBaseFee - 1),
+            // The pool drops a gapped tx on a new head, so an empty block would also lose this tx.
+            StuckTx.NonceGap => SubmitTx(chain, 1, nextBaseFee * 2),
+            _ => SubmitTx(chain, 0, nextBaseFee),
+        };
 
         await Task.Delay(1_000);
         Assert.That(chain.BlockTree.Head!.Number, Is.Zero, "empty blocks were produced for the stuck tx");
 
-        Block? requested = await chain.Container.Resolve<IManualBlockProductionTrigger>().BuildBlock();
-        Assert.That(requested?.Transactions, Is.Empty, "a requested block can be empty");
-
-        if (nonceGap)
+        if (stuckTxKind is StuckTx.NonceGap)
         {
             Task stuckTxIncluded = chain.WaitForNewHeadWhere(b => b.Transactions.Any(tx => tx.Hash == stuckTx.Hash));
             SubmitTx(chain, 0, nextBaseFee * 2);
             await stuckTxIncluded;
         }
+
+        ulong requestedNumber = chain.BlockTree.Head!.Number + 1;
+        Task requestedBlockAdded = chain.WaitForNewHeadWhere(b => b.Number == requestedNumber);
+        Block? requested = await chain.Container.Resolve<IManualBlockProductionTrigger>().BuildBlock();
+        Assert.That(requested?.Transactions, Is.Empty, "a requested block can be empty");
+        await requestedBlockAdded;
     }
 
     private static Transaction SubmitTx(NethDevTestBlockchain chain, ulong nonce, UInt256 gasPrice)
@@ -119,13 +137,13 @@ public class DevBlockProducerTests
         public ITxSource Create() => EmptyTxSource.Instance;
     }
 
-    private sealed class NethDevTestBlockchain : BasicTestBlockchain
+    private sealed class NethDevTestBlockchain(UInt256 minGasPrice) : BasicTestBlockchain
     {
         private NethDevBlockProducerFactory Factory => Container.Resolve<NethDevBlockProducerFactory>();
 
-        public static async Task<NethDevTestBlockchain> Create(UInt256 genesisBaseFee)
+        public static async Task<NethDevTestBlockchain> Create(UInt256 genesisBaseFee, UInt256 minGasPrice = default)
         {
-            NethDevTestBlockchain chain = new();
+            NethDevTestBlockchain chain = new(minGasPrice);
             await chain.Build(builder => builder
                 .AddModule(new NethDevPlugin(new ChainSpec()).Module)
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
@@ -139,6 +157,8 @@ public class DevBlockProducerTests
             IReleaseSpec spec = SpecProvider.GetSpec(head);
             return spec.BaseFeeCalculator.Calculate(head, spec);
         }
+
+        protected override IEnumerable<IConfig> CreateConfigs() => [new BlocksConfig { MinGasPrice = minGasPrice }];
 
         protected override IBlockProducer CreateTestBlockProducer() => Factory.InitBlockProducer();
 
