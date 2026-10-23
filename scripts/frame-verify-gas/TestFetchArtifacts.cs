@@ -16,6 +16,7 @@ var root = Directory.CreateTempSubdirectory("verifier-tests-").FullName;
 using var handler = new Releases();
 using var http = new HttpClient(handler);
 var passed = 0;
+var failures = new List<string>();
 var good = "0x600660076008fa" + Repeat("5b", 1100) + "\n";
 var files = new Dictionary<string, byte[]>();
 foreach (var label in ArtifactFetch.Labels)
@@ -120,13 +121,24 @@ try
     handler.Redirects[redirect] = new Uri("http://artifacts.invalid/insecure");
     await Expect("HTTPS downgrade rejected", "v1.0.0", 1, "Only HTTPS downloads and redirects are allowed");
     handler.Redirects.Clear();
+    handler.Redirects[$"https://api.github.com/repos/{ArtifactFetch.Repository}/releases/tags/v1.0.0"] = new Uri("https://release.invalid/v1.0.0");
+    await Expect("cross-authority API redirect", "v1.0.0", 0, "extracted to");
+    Check("API redirect drops authorization", handler.Requests[0].Authorization == "Bearer stub" && handler.Requests[1].Authorization is null);
+    handler.Redirects.Clear();
+    Release("v6.0.0", assets: data =>
+    {
+        data["sweep-250k.tar.gz"] = "not a gzip archive"u8.ToArray();
+        data["SHA256SUMS"] = Encoding.ASCII.GetBytes(string.Concat(data.Where(pair => pair.Key != "SHA256SUMS").Select(pair => Convert.ToHexStringLower(SHA256.HashData(pair.Value)) + "  " + pair.Key + "\n")));
+    });
+    await Expect("checksummed corrupt archive", "v6.0.0", 1, "::error::sweep-250k.tar.gz is not a readable, non-empty gzip tarball");
+    if (failures.Count > 0) throw new InvalidOperationException(string.Join('\n', failures));
     Console.WriteLine($"Passed {passed} tests.");
 }
 finally { Directory.Delete(root, recursive: true); }
 
 void Check(string name, bool result)
 {
-    if (!result) throw new InvalidOperationException(name);
+    if (!result) { failures.Add(name); Console.Error.WriteLine("FAIL " + name); return; }
     Console.WriteLine("PASS " + name); passed++;
 }
 
@@ -188,7 +200,7 @@ sealed class Releases : HttpMessageHandler
             var response = new HttpResponseMessage(HttpStatusCode.Redirect); response.Headers.Location = redirect;
             return Task.FromResult(response);
         }
-        if (url.Host == "api.github.com")
+        if (url.Host is "api.github.com" or "release.invalid")
         {
             var version = url.Segments[^1];
             if (!States.TryGetValue(version, out var state) || state.Draft) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));

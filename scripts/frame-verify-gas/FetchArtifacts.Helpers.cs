@@ -12,6 +12,8 @@ using System.Text.RegularExpressions;
 internal static class ArtifactFetch
 {
     internal const string Repository = "NethermindEth/frame-verify-gas";
+    // This sweep represents a real pool; the other sweeps are synthetic ceiling controls.
+    // Pin its upstream commit so releases cannot silently change the measured profile.
     internal const string SoispokeCommit = "6dedda193bf09c9d80cd89b3dc23eccf580d1026";
     internal static readonly string[] Labels = ["250k", "300k", "400k", "500k", "soispoke"];
 
@@ -28,7 +30,8 @@ internal static class ArtifactFetch
             work = Path.Combine(Path.GetFullPath(temporary), "frame-verify-gas-download." + Guid.NewGuid().ToString("N"));
             if (OperatingSystem.IsWindows()) Directory.CreateDirectory(work);
             else Directory.CreateDirectory(work, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            var assets = Path.Combine(work, "assets"); Directory.CreateDirectory(assets);
+            var assets = Path.Combine(work, "assets");
+            Directory.CreateDirectory(assets);
             var releasePath = Path.Combine(work, "release.json");
             try { await Download(new Uri($"https://api.github.com/repos/{Repository}/releases/tags/{version}"), releasePath, true); }
             catch (Exception exception) when (exception is HttpRequestException or IOException || exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
@@ -36,6 +39,7 @@ internal static class ArtifactFetch
             using var release = JsonDocument.Parse(await File.ReadAllTextAsync(releasePath, cancellationToken));
             var root = release.RootElement;
             if (root.GetProperty("prerelease").GetBoolean()) throw new IOException($"Release {version} on {Repository} is a prerelease. Supply a full release.");
+            // The tags endpoint normally returns 404 for drafts rather than exposing this state.
             if (root.GetProperty("draft").GetBoolean()) throw new IOException($"Release {version} on {Repository} has unexpected draft/prerelease state 'true false'.");
             var urls = new Dictionary<string, string>();
             if (root.TryGetProperty("assets", out var list))
@@ -63,8 +67,13 @@ internal static class ArtifactFetch
                 cancellationToken.ThrowIfCancellationRequested();
                 var sweep = "sweep-" + label;
                 var archive = Path.Combine(assets, sweep + ".tar.gz");
-                ValidateArchive(archive, sweep);
-                var staging = Path.Combine(work, sweep); Directory.CreateDirectory(staging);
+                try { ValidateArchive(archive, sweep); }
+                catch (InvalidDataException exception)
+                {
+                    throw new IOException($"{sweep}.tar.gz is not a readable, non-empty gzip tarball; the download is corrupt.", exception);
+                }
+                var staging = Path.Combine(work, sweep);
+                Directory.CreateDirectory(staging);
                 using (var source = File.OpenRead(archive))
                 using (var gzip = new GZipStream(source, CompressionMode.Decompress))
                 using (var reader = new TarReader(gzip))
@@ -106,7 +115,7 @@ internal static class ArtifactFetch
             Console.WriteLine($"Groth16 artifacts of {Repository}@{version} extracted to {artifacts}.");
             return 0;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or HttpRequestException or OperationCanceledException or ArgumentException or InvalidOperationException or KeyNotFoundException)
+        catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException or UnauthorizedAccessException or JsonException or HttpRequestException or OperationCanceledException or ArgumentException or InvalidOperationException or KeyNotFoundException)
         { Console.WriteLine("::error::" + exception.Message); return 1; }
         finally { if (work is not null && Directory.Exists(work)) Directory.Delete(work, recursive: true); }
 
@@ -130,12 +139,15 @@ internal static class ArtifactFetch
                         if (target.Scheme != Uri.UriSchemeHttps) throw new IOException("Only HTTPS downloads and redirects are allowed.");
                         using var request = new HttpRequestMessage(HttpMethod.Get, target);
                         request.Headers.UserAgent.ParseAdd("Nethermind-verifier-artifacts");
-                        if (release && token.Length > 0 && target.Authority == address.Authority) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                        // Public releases need no token; authentication only raises the API rate limit.
+                        if (release && token.Length > 0 && target.Authority == address.Authority)
+                            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
                         if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308)
                         {
                             if (redirects >= 50 || response.Headers.Location is null) throw new HttpRequestException("Too many redirects or missing redirect location.");
-                            target = new Uri(target, response.Headers.Location); continue;
+                            target = new Uri(target, response.Headers.Location);
+                            continue;
                         }
                         response.EnsureSuccessStatusCode();
                         await using var file = File.Create(output);
@@ -143,11 +155,21 @@ internal static class ArtifactFetch
                         return;
                     }
                 }
-                catch (Exception exception) when (attempt < 3 && !cancellationToken.IsCancellationRequested && (exception is OperationCanceledException or HttpIOException || exception is HttpRequestException error && (!release || error.StatusCode is null or HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests || (int)error.StatusCode >= 500)))
-                { Console.Error.WriteLine($"Download retry {attempt + 1}: {exception.Message}"); await Task.Delay(TimeSpan.FromSeconds(1 << attempt), cancellationToken); }
+                catch (Exception exception) when (attempt < 3 && !cancellationToken.IsCancellationRequested && IsTransient(exception, release))
+                {
+                    Console.Error.WriteLine($"Download retry {attempt + 1}: {exception.Message}");
+                    await Task.Delay(TimeSpan.FromSeconds(1 << attempt), cancellationToken);
+                }
             }
         }
     }
+
+    private static bool IsTransient(Exception exception, bool release) => exception switch
+    {
+        OperationCanceledException or HttpIOException => true,
+        HttpRequestException error => !release || error.StatusCode is null or HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests || (int)error.StatusCode >= 500,
+        _ => false
+    };
 
     private static void ValidateArchive(string archive, string sweep)
     {
@@ -155,7 +177,8 @@ internal static class ArtifactFetch
         using var source = File.OpenRead(archive);
         using var gzip = new GZipStream(source, CompressionMode.Decompress);
         using var reader = new TarReader(gzip);
-        var count = 0; var expanded = 0L;
+        var count = 0;
+        var expanded = 0L;
         while (reader.GetNextEntry() is { } entry)
         {
             count++;
