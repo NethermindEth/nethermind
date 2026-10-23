@@ -131,10 +131,10 @@ void Defaults()
 
 async Task<(int Code, string Output, string Error)> Run(string step, string directory)
 {
-    var match = Regex.Match(workflow, $@"(?ms)^      - name: {step}\n.*?^        run: \|\n(?<script>(?:^          [^\n]*\n|^\n)+)");
+    var match = (step == "Detect version" ? DetectVersionStep() : PublishStep()).Match(workflow);
     if (!match.Success) throw new InvalidOperationException($"Missing workflow step: {step}");
     var script = Path.Combine(temporary.FullName, "step.sh");
-    File.WriteAllText(script, mock + "\n" + Regex.Replace(match.Groups["script"].Value, "(?m)^          ", ""));
+    File.WriteAllText(script, mock + "\n" + Indentation().Replace(match.Groups["script"].Value, ""));
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
     return await ScriptProcess.Run("bash", ["-e", script], timeout.Token, workingDirectory: directory);
 }
@@ -144,4 +144,14 @@ void Check(bool condition, string name, string output)
     if (!condition) throw new InvalidOperationException($"{name}: {output}");
     Console.WriteLine($"PASS: {name}");
     count++;
+}
+
+partial class Program
+{
+    [GeneratedRegex(@"(?ms)^      - name: Detect version\n.*?^        run: \|\n(?<script>(?:^          [^\n]*\n|^\n)+)")]
+    private static partial Regex DetectVersionStep();
+    [GeneratedRegex(@"(?ms)^      - name: Publish\n.*?^        run: \|\n(?<script>(?:^          [^\n]*\n|^\n)+)")]
+    private static partial Regex PublishStep();
+    [GeneratedRegex("(?m)^          ")]
+    private static partial Regex Indentation();
 }

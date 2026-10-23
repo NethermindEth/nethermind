@@ -3,7 +3,7 @@
 
 using System.Text.RegularExpressions;
 
-static class ScriptVersion
+static partial class ScriptVersion
 {
     internal static string Root()
     {
@@ -12,7 +12,19 @@ static class ScriptVersion
         return directory?.FullName ?? throw new InvalidOperationException("Run from the repository or one of its subdirectories.");
     }
 
-    internal static string Property(string text, string name) => string.Join('\n', Regex.Matches(text, $@".*<{name}>(.*)</{name}>.*").Select(match => match.Groups[1].Value));
+    internal static string Property(string text, string name) => string.Join('\n', (name switch
+    {
+        "VersionPrefix" => Prefix(),
+        "VersionSuffix" => Suffix(),
+        _ => throw new ArgumentOutOfRangeException(nameof(name))
+    }).Matches(text).Select(match => match.Groups[1].Value));
+
+    [GeneratedRegex(@".*<VersionPrefix>(.*)</VersionPrefix>.*")]
+    private static partial Regex Prefix();
+    [GeneratedRegex(@".*<VersionSuffix>(.*)</VersionSuffix>.*")]
+    private static partial Regex Suffix();
+    [GeneratedRegex(@"\A[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\z")]
+    private static partial Regex ValidVersion();
 
     internal static string Read(string file)
     {
@@ -22,7 +34,7 @@ static class ScriptVersion
         var suffix = Property(text, "VersionSuffix");
         if (prefix.Length == 0) throw new InvalidOperationException($"error: '{file}' declares no <VersionPrefix>");
         var version = suffix.Length == 0 ? prefix : $"{prefix}-{suffix}";
-        if (!Regex.IsMatch(version, @"\A[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\z"))
+        if (!ValidVersion().IsMatch(version))
             throw new InvalidOperationException($"error: '{file}' produced an unusable version: {version}");
         return version;
     }

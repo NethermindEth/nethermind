@@ -16,7 +16,7 @@ if (args.Length < 2 || args[0].Length == 0 || args[1].Length == 0)
 }
 try
 {
-    var branch = Regex.Match(args[0], @"\Arefs/heads/release/([0-9]+)\.([0-9]+)\.0\z");
+    var branch = ReleaseBranch().Match(args[0]);
     if (!branch.Success) throw new InvalidOperationException("error: Invalid branch name format. Expected: refs/heads/release/X.Y.0");
     if (!File.Exists(args[1])) throw new InvalidOperationException($"error: Directory.Build.props not found at {args[1]}");
     var minor = branch.Groups[2].Value;
@@ -26,7 +26,7 @@ try
     var text = File.ReadAllText(args[1]);
     var current = ScriptVersion.Property(text, "VersionPrefix");
     var update = current != version;
-    if (update) File.WriteAllText(args[1], Regex.Replace(text, @"<VersionPrefix>.*</VersionPrefix>", $"<VersionPrefix>{version}</VersionPrefix>"));
+    if (update) File.WriteAllText(args[1], VersionPrefix().Replace(text, $"<VersionPrefix>{version}</VersionPrefix>"));
     Console.WriteLine(update ? $"Updated version from {current} to {version}" : $"Version {version} is already set in {args[1]}");
     Console.WriteLine($"needs_update={update.ToString().ToLowerInvariant()}\ncurrent_version={current}\nnew_version={version}");
     return 0;
@@ -35,4 +35,12 @@ catch (Exception exception)
 {
     Console.Error.WriteLine(exception.Message);
     return 1;
+}
+
+partial class Program
+{
+    [GeneratedRegex(@"\Arefs/heads/release/([0-9]+)\.([0-9]+)\.0\z")]
+    private static partial Regex ReleaseBranch();
+    [GeneratedRegex(@"<VersionPrefix>.*</VersionPrefix>")]
+    private static partial Regex VersionPrefix();
 }
