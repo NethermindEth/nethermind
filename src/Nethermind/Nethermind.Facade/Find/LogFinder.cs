@@ -380,6 +380,7 @@ namespace Nethermind.Facade.Find
 
             TxReceipt[] receipts = GetReceipts(blockHash, blockNumber);
             long logIndexInBlock = 0;
+            bool receiptsRecovered = false;
             if (receipts is not null)
             {
                 for (int i = 0; i < receipts.Length; i++)
@@ -398,7 +399,12 @@ namespace Nethermind.Facade.Find
                             LogEntry log = receipt.Logs[j];
                             if (filter.Accepts(log))
                             {
-                                RecoverReceiptsData(blockHash, receipts);
+                                if (!receiptsRecovered)
+                                {
+                                    RecoverReceiptsData(blockHash, receipts);
+                                    receiptsRecovered = true;
+                                }
+
                                 yield return new FilterLog(logIndexInBlock, receipt, log, blockTimestamp);
                             }
 

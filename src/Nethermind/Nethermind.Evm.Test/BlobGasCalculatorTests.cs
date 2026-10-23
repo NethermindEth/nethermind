@@ -108,6 +108,31 @@ public class BlobGasCalculatorTests
     }
 
     [Test]
+    public void GetGasInfo_computes_the_fee_per_blob_gas_once_per_block()
+    {
+        IReleaseSpec spec = Cancun.Instance;
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).WithBaseFee(1).TestObject;
+        Transaction legacyTx = Build.A.Transaction.TestObject;
+        Transaction blobTx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1).WithMaxFeePerBlobGas(1000).TestObject;
+        UInt256? feePerBlobGas = null;
+
+        legacyTx.GetGasInfo(spec, header, ref feePerBlobGas);
+        UInt256? afterLegacy = feePerBlobGas;
+        TxGasInfo first = blobTx.GetGasInfo(spec, header, ref feePerBlobGas);
+        UInt256? afterBlob = feePerBlobGas;
+        feePerBlobGas = 7;
+        TxGasInfo second = blobTx.GetGasInfo(spec, header, ref feePerBlobGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterLegacy, Is.Null);
+            Assert.That(first.BlobGasPrice, Is.EqualTo(blobTx.GetGasInfo(spec, header).BlobGasPrice));
+            Assert.That(afterBlob, Is.EqualTo(first.BlobGasPrice));
+            Assert.That(second.BlobGasPrice, Is.EqualTo((UInt256)7));
+        }
+    }
+
+    [Test]
     public void Blob_base_fee_requires_excess_blob_gas()
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1).TestObject;
