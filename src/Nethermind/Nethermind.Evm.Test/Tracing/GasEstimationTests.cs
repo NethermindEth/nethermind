@@ -12,6 +12,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
@@ -806,7 +807,131 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.CommitTree(0);
             }
 
+            /// <summary>Whether <paramref name="tx"/> succeeds with <paramref name="gasLimit"/>.</summary>
+            public bool Succeeds(Transaction tx, BlockHeader header, ulong gasLimit)
+            {
+                tx.GasLimit = gasLimit;
+                CallOutputTracer tracer = new();
+                _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header)), tracer);
+                return tracer.StatusCode == StatusCode.Success;
+            }
+
             public void Dispose() => _closer.Dispose();
+        }
+
+        private const ulong AmsterdamBlockGasLimit = 60_000_000;
+
+        private static Transaction AmsterdamCall(Address to) => Build.A.Transaction
+            .WithGasLimit(AmsterdamBlockGasLimit)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .WithTo(to)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+
+        private static BlockHeader AmsterdamHeader(Transaction tx) => Build.A.Block
+            .WithNumber(MainnetSpecProvider.AmsterdamActivation.BlockNumber)
+            .WithTimestamp(MainnetSpecProvider.AmsterdamBlockTimestamp)
+            .WithGasLimit(AmsterdamBlockGasLimit)
+            .WithTransactions(tx)
+            .TestObject.Header;
+
+        /// <summary>
+        /// Deferred state-gas settlement: three new slots, then a call with the default forwarding to a callee that runs
+        /// out of gas, fail settlement for every gas limit under the transaction cap. The estimate funds the settlement
+        /// with gas above the cap, and a transaction sent with it succeeds.
+        /// </summary>
+        [Test]
+        public void Eip8037_estimate_funds_settlement_above_the_transaction_cap()
+        {
+            using TestEnvironment testEnvironment = new();
+            Address guzzler = TestItem.AddressB;
+            testEnvironment.InsertContract(guzzler, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData((byte)0).Op(Instruction.JUMP).Done);
+            Address creator = TestItem.AddressC;
+            testEnvironment.InsertContract(creator, Prepare.EvmCode
+                .PushData(1).PushData(0).Op(Instruction.SSTORE)
+                .PushData(1).PushData(1).Op(Instruction.SSTORE)
+                .PushData(1).PushData(2).Op(Instruction.SSTORE)
+                .Call(guzzler, long.MaxValue).Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done);
+            Transaction tx = AmsterdamCall(creator);
+            BlockHeader header = AmsterdamHeader(tx);
+
+            ulong estimate = testEnvironment.Estimate(tx, header, out string? err);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null, err);
+                Assert.That(estimate, Is.GreaterThan(Eip7825Constants.DefaultTxGasLimitCap));
+                Assert.That(testEnvironment.Succeeds(tx, header, estimate), Is.True, "a transaction sent with the estimate succeeds");
+                Assert.That(testEnvironment.Succeeds(tx, header, Eip7825Constants.DefaultTxGasLimitCap), Is.False, "the transaction cap is not enough");
+            }
+        }
+
+        /// <summary>
+        /// A transaction that creates state and settles under the transaction cap gets an estimate under the cap. With
+        /// 15,000 intrinsic gas, a new cold slot (22,106 execution gas, 97,920 debt) fails at 120,000 and needs exactly
+        /// 135,026, because unused execution gas pays the debt.
+        /// </summary>
+        [Test]
+        public void Eip8037_estimate_of_state_creation_stays_under_the_transaction_cap()
+        {
+            using TestEnvironment testEnvironment = new();
+            Address creator = TestItem.AddressC;
+            testEnvironment.InsertContract(creator, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+            Transaction tx = AmsterdamCall(creator);
+            BlockHeader header = AmsterdamHeader(tx);
+
+            ulong exact = testEnvironment.Estimate(tx, header, out string? exactErr, errorMargin: 0);
+            ulong estimate = testEnvironment.Estimate(tx, header, out string? err);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exactErr, Is.Null, exactErr);
+                Assert.That(err, Is.Null, err);
+                Assert.That(estimate, Is.LessThan(Eip7825Constants.DefaultTxGasLimitCap));
+                Assert.That(estimate, Is.InRange(exact, exact + exact * GasEstimator.DefaultErrorMargin / 10_000 + 1));
+                Assert.That(exact, Is.EqualTo(135_026UL));
+                Assert.That(testEnvironment.Succeeds(tx, header, exact), Is.True);
+                Assert.That(testEnvironment.Succeeds(tx, header, exact - 1), Is.False);
+                Assert.That(testEnvironment.Succeeds(tx, header, 120_000), Is.False);
+            }
+        }
+
+        /// <summary>
+        /// Deferred state-gas settlement: a loop deploys 24,576-byte contracts while <c>GAS</c> is above 100,000. With more
+        /// gas it deploys more and fails settlement, also above the cap within the block gas limit; with little gas it
+        /// deploys none. The estimate is a gas limit with which the transaction succeeds.
+        /// </summary>
+        [Test]
+        public void Eip8037_estimate_of_gas_dependent_deployments_returns_a_settling_gas_limit()
+        {
+            using TestEnvironment testEnvironment = new();
+            byte[] createPart = Prepare.EvmCode.Create(Bytes.FromHexString("0x6160005ff3"), UInt256.Zero).Done;
+            int exitDestination = 11 + createPart.Length + 4;
+            byte[] loopCode =
+            [
+                // JUMPDEST; if 100,000 > GAS jump to the exit
+                (byte)Instruction.JUMPDEST, (byte)Instruction.GAS, (byte)Instruction.PUSH3, 0x01, 0x86, 0xa0, (byte)Instruction.GT,
+                (byte)Instruction.PUSH2, (byte)(exitDestination >> 8), (byte)exitDestination, (byte)Instruction.JUMPI,
+                .. createPart,
+                (byte)Instruction.POP, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.JUMP,
+                (byte)Instruction.JUMPDEST, (byte)Instruction.STOP,
+            ];
+            Address deployer = TestItem.AddressC;
+            testEnvironment.InsertContract(deployer, loopCode);
+            Transaction tx = AmsterdamCall(deployer);
+            BlockHeader header = AmsterdamHeader(tx);
+
+            ulong estimate = testEnvironment.Estimate(tx, header, out string? err);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null, err);
+                Assert.That(testEnvironment.Succeeds(tx, header, estimate), Is.True, "a transaction sent with the estimate succeeds");
+                Assert.That(testEnvironment.Succeeds(tx, header, Eip7825Constants.DefaultTxGasLimitCap), Is.False, "more gas deploys more and fails settlement");
+            }
         }
 
         [Test]

@@ -1058,6 +1058,48 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     /// <summary>
+    /// Deferred state-gas settlement: when the third of three authorizations does not fit the gas, pre-execution fails and
+    /// all authorizations roll back, but the accesses it made stay in the block access list.
+    /// </summary>
+    [Test]
+    public void Eip7928_failed_pre_execution_keeps_authority_accesses()
+    {
+        PrivateKey[] authorities = [TestItem.PrivateKeyB, TestItem.PrivateKeyE, TestItem.PrivateKeyF];
+        InitWorldState(TestState);
+        foreach (PrivateKey authority in authorities)
+        {
+            TestState.CreateAccount(authority.Address, 1);
+        }
+
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+
+        AuthorizationTuple[] authorizations = [.. authorities.Select(authority => SignAuthorization(authority, _delegationTargetAddress))];
+        Transaction tx = BuildSetCodeCallTx(_callTargetAddress, authorizations);
+        // 110,000 gas after intrinsic gas: each authorization needs 9,000 execution gas and 35,190 state gas, so the third fails.
+        tx.GasLimit = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance).Standard + 110_000;
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader.WithGasLimit(120_000_000).WithBaseFee(1).TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True, res.ToString());
+            foreach (PrivateKey authority in authorities)
+            {
+                AccountChangesAtIndex? changes = bal.GetAccountChanges(authority.Address);
+                Assert.That(changes, Is.Not.Null, $"authority {authority.Address} is accessed");
+                Assert.That(changes!.NonceChange, Is.Null, $"authority {authority.Address} nonce rolled back");
+                Assert.That(changes.CodeChange, Is.Null, $"authority {authority.Address} delegation rolled back");
+            }
+        }
+    }
+
+    /// <summary>
     /// Deferred state-gas settlement: when a child exceeds the transaction's state-gas limit, execution stops at once,
     /// so an account the parent would access afterwards does not enter the block access list.
     /// </summary>

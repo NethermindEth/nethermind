@@ -45,6 +45,8 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateReservoirAtStart;
     /// <summary>Set when the state-gas debt exceeds <see cref="StateDebtLimit"/>: execution stops and the transaction fails its settlement.</summary>
     public bool StateGasLimitExceeded;
+    /// <summary>The transaction's net state gas when <see cref="StateGasLimitExceeded"/> was set, before any rollback.</summary>
+    public long StateGasUsedAtLimit;
     /// <summary>The net state gas this frame and its successful descendants may create.</summary>
     public long StateGasAllowance;
     /// <summary><see cref="StateGasAllowance"/> minus the frame's net state gas so far; a frame that takes it below zero halts.</summary>
@@ -158,6 +160,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             if (gas.StateReservoir < -gas.StateDebtLimit)
             {
                 gas.StateGasLimitExceeded = true;
+                gas.StateGasUsedAtLimit = gas.StateReservoirAtStart - gas.StateReservoir;
                 return false;
             }
 
@@ -202,7 +205,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
         gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
-        gas.StateGasLimitExceeded |= childGas.StateGasLimitExceeded;
+        CarryStateGasLimit(ref gas, in childGas);
         gas.StateGasAllowanceLeft -= childGas.StateGasAllowance - childGas.StateGasAllowanceLeft;
     }
 
@@ -230,7 +233,20 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     /// <inheritdoc/>
     public static void MarkStateGasLimitExceeded(ref EthereumGasPolicy gas, in EthereumGasPolicy chargedGas) =>
-        gas.StateGasLimitExceeded |= chargedGas.StateGasLimitExceeded;
+        CarryStateGasLimit(ref gas, in chargedGas);
+
+    /// <inheritdoc/>
+    public static long GetSettlementDebt(in EthereumGasPolicy gas) =>
+        gas.StateGasLimitExceeded ? gas.StateGasUsedAtLimit : GetExecutionStateGasUsed(in gas);
+
+    private static void CarryStateGasLimit(ref EthereumGasPolicy gas, in EthereumGasPolicy chargedGas)
+    {
+        if (chargedGas.StateGasLimitExceeded)
+        {
+            gas.StateGasLimitExceeded = true;
+            gas.StateGasUsedAtLimit = chargedGas.StateGasUsedAtLimit;
+        }
+    }
 
     /// <inheritdoc/>
     public static bool HasStateGasAllowance(in EthereumGasPolicy gas, long stateGasCost) =>
@@ -268,7 +284,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
-        parentGas.StateGasLimitExceeded |= childGas.StateGasLimitExceeded;
+        CarryStateGasLimit(ref parentGas, in childGas);
     }
 
     // On a child exceptional halt state gas produced no durable growth: restore the child's
@@ -280,7 +296,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // portion refills gas_left, which the halt burns as execution gas.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
-        parentGas.StateGasLimitExceeded |= childGas.StateGasLimitExceeded;
+        CarryStateGasLimit(ref parentGas, in childGas);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

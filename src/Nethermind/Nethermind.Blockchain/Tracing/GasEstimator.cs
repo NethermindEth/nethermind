@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -37,6 +38,9 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
 
     /// <summary>Reported when an EIP-8141 frame transaction's reservation exceeds the block or transaction gas limits.</summary>
     public const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
+
+    /// <summary>Reported when no gas limit lets the transaction pay its deferred state gas.</summary>
+    public const string StateGasSettlementFailed = "state gas settlement failed";
 
     private const int MaxErrorMargin = 10000;
     private const double BasisPointsDivisor = 10000d;
@@ -105,13 +109,33 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
                 return GasEstimation.Success(transfer.GasUsed);
         }
 
-        Run probe = execution.Run(hi);
+        double errorRatio = errorMargin / BasisPointsDivisor;
+        Run probe;
+        if (spec.IsEip8037Enabled && hi > Eip7825Constants.DefaultTxGasLimitCap)
+        {
+            // Deferred state-gas settlement: a gas limit under the transaction cap is preferred, and the run at the cap
+            // is the run at every higher gas limit, because gas_left stays at the cap.
+            probe = execution.Run(Eip7825Constants.DefaultTxGasLimitCap);
+            if (probe.Status == RunStatus.Succeeded)
+                hi = Eip7825Constants.DefaultTxGasLimitCap;
+            else if (probe.SettlementFailed)
+                return EstimateAboveCap(execution, in probe, hi, errorRatio);
+            else
+                probe = execution.Run(hi);
+        }
+        else
+        {
+            probe = execution.Run(hi);
+        }
+
         switch (probe.Status)
         {
             case RunStatus.Rejected:
                 return GasEstimation.Rejected(probe.Error!, hi);
             case RunStatus.Failed when probe.Reverted:
                 return GasEstimation.Revert(probe.Error!, probe.ReturnValue);
+            case RunStatus.Failed when probe.SettlementFailed:
+                return EstimateBelowCap(execution, hi, errorRatio);
             case RunStatus.Failed when !probe.OutOfGas:
                 return execution.TryDescribeFailure(hi, in probe, out string failureText)
                     ? GasEstimation.Failure(failureText)
@@ -138,7 +162,12 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
                 lo = optimistic;
         }
 
-        double errorRatio = errorMargin / BasisPointsDivisor;
+        return Bisect(execution, lo, hi, errorRatio);
+    }
+
+    /// <summary>Bisects between a gas limit that fails and one that succeeds, and returns one that succeeds.</summary>
+    private static GasEstimation Bisect(Execution execution, ulong lo, ulong hi, double errorRatio)
+    {
         while (lo + 1 < hi)
         {
             if (errorRatio > 0 && IsWithinErrorRatio(lo, hi, errorRatio))
@@ -156,6 +185,55 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
         }
 
         return GasEstimation.Success(hi);
+    }
+
+    /// <summary>Deferred state-gas settlement: searches above the transaction cap after the run at the cap failed settlement.</summary>
+    /// <remarks>
+    /// Above the cap gas_left stays at the cap, so every gas limit runs the same execution and only the settlement
+    /// budget grows: success is monotone there. The debt of a failed run only chooses the next gas limit to try; it is
+    /// not a lower bound, because unused execution gas pays part of it. The lower bound is always a gas limit that
+    /// failed. When no gas limit up to <paramref name="hi"/> settles, the gas limits under the cap are searched.
+    /// </remarks>
+    private static GasEstimation EstimateAboveCap(Execution execution, in Run atCap, ulong hi, double errorRatio)
+    {
+        ulong cap = Eip7825Constants.DefaultTxGasLimitCap;
+        ulong lo = cap;
+        ulong debt = atCap.SettlementDebt;
+        while (lo < hi)
+        {
+            ulong candidate = Math.Min(hi, cap + Math.Max(debt, Math.Max(1, (lo - cap) * 2)));
+            Run run = execution.Run(candidate);
+            if (run.Status == RunStatus.Rejected)
+                return GasEstimation.Rejected(run.Error!, candidate);
+
+            if (run.Status == RunStatus.Succeeded)
+                return Bisect(execution, lo, candidate, errorRatio);
+
+            if (!run.SettlementFailed)
+                break;
+
+            lo = candidate;
+            debt = run.SettlementDebt;
+        }
+
+        return EstimateBelowCap(execution, cap, errorRatio);
+    }
+
+    /// <summary>Deferred state-gas settlement: searches down from <paramref name="top"/>, which failed settlement.</summary>
+    /// <remarks>Code that reads <c>GAS</c> can create less state with less gas, so a lower gas limit can settle.</remarks>
+    private static GasEstimation EstimateBelowCap(Execution execution, ulong top, double errorRatio)
+    {
+        for (ulong gasLimit = top / 2; gasLimit >= GasCostOf.Transaction; gasLimit /= 2)
+        {
+            Run run = execution.Run(gasLimit);
+            if (run.Status == RunStatus.Rejected)
+                return GasEstimation.Rejected(run.Error!, gasLimit);
+
+            if (run.Status == RunStatus.Succeeded)
+                return Bisect(execution, run.GasUsed - 1, gasLimit, errorRatio);
+        }
+
+        return GasEstimation.Failure($"{StateGasSettlementFailed} ({top})");
     }
 
     /// <summary>Reports an execution failure at the highest gas limit that has no standard text, as it always was.</summary>
@@ -252,7 +330,9 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
         byte[]? ReturnValue = null,
         EvmExceptionType ExceptionType = EvmExceptionType.None,
         string? TracerError = null,
-        TransactionResult.ErrorType RejectionType = TransactionResult.ErrorType.None);
+        TransactionResult.ErrorType RejectionType = TransactionResult.ErrorType.None,
+        bool SettlementFailed = false,
+        ulong SettlementDebt = 0);
 
     private sealed class Execution
     {
@@ -335,7 +415,9 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
                 exceptionType == EvmExceptionType.OutOfGas && (!_tracer.TracksFrames || _tracer.TopFrameOutOfGas),
                 _tracer.ReturnValue,
                 exceptionType,
-                _tracer.Error);
+                _tracer.Error,
+                SettlementFailed: exceptionType == EvmExceptionType.StateGasSettlementFailed,
+                SettlementDebt: _tracer.SettlementDebt);
         }
 
         /// <summary>How a run failed, with a precompile that rejected its input told apart from running out of gas.</summary>
@@ -358,6 +440,7 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
 
         public bool TracksFrames => tracksFrames;
         public bool TopFrameOutOfGas { get; private set; }
+        public ulong SettlementDebt { get; private set; }
         public override bool IsTracingActions => tracksFrames;
 
         public void ResetRun()
@@ -366,6 +449,13 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
             _depth = 0;
             _inPrecompile = false;
             TopFrameOutOfGas = false;
+            SettlementDebt = 0;
+        }
+
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+        {
+            base.MarkAsFailed(recipient, in gasSpent, output, error, stateRoot);
+            SettlementDebt = gasSpent.SettlementDebt;
         }
 
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)

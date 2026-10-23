@@ -1552,7 +1552,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     gasAvailable = state.Gas;
                     WorldState.Restore(snapshot);
                     TGasPolicy createStateOogIntrinsicGasStandard = gas.Standard;
-                    gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in createStateOogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
+                    gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in createStateOogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir,
+                        settlementDebt: TGasPolicy.GetSettlementDebt(in gasAvailable));
                     goto CompleteWithoutFrame;
                 }
 
@@ -1689,7 +1690,8 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.Restore(snapshot);
             VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, restoreRipemdTouch);
             TGasPolicy settlementIntrinsicGasStandard = gas.Standard;
-            gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in settlementIntrinsicGasStandard, ExecutedFloorGas(spec, floorGasLong), postIntrinsicStateReservoir);
+            gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in settlementIntrinsicGasStandard, ExecutedFloorGas(spec, floorGasLong), postIntrinsicStateReservoir,
+                settlementDebt: TGasPolicy.GetSettlementDebt(in gasAvailable));
             goto Complete;
         CompleteWithoutFrame:
             // The create-state-gas halt jumps here from inside the top-level `using (VmState ...)`, so the
@@ -1738,7 +1740,8 @@ namespace Nethermind.Evm.TransactionProcessing
             in TGasPolicy intrinsicGasStandard,
             ulong floorGas,
             long postIntrinsicStateReservoir,
-            ulong codeInsertExecutionRefund = 0)
+            ulong codeInsertExecutionRefund = 0,
+            long settlementDebt = 0)
         {
             long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
             long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
@@ -1761,7 +1764,9 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, postHaltIntrinsicStateGas);
             // EIP-8037: burn execution gas after rollback, including any refilled state-gas spill.
             TGasPolicy.ClearExecutionGas(ref gas);
-            return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, codeInsertExecutionRefund);
+            RefundResult refund = RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, codeInsertExecutionRefund);
+            // A failed state-gas settlement reports its debt; gas estimation uses it to choose the next gas limit.
+            return settlementDebt > 0 && refund.Result ? refund.Gas with { SettlementDebt = (ulong)settlementDebt } : refund;
         }
 
         protected RefundResult RefundOnFail(
@@ -2002,7 +2007,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (substate.IsError && spec.IsEip8037Enabled)
             {
                 // Preserve the top-frame authorization state gas folded into the execution baseline.
-                return CompleteEip8037Halt(tx, spec, opts, ref gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir, codeInsertExecutionRefund);
+                long settlementDebt = substate.EvmExceptionType == EvmExceptionType.StateGasSettlementFailed ? TGasPolicy.GetSettlementDebt(in gasAfterExecution) : 0;
+                return CompleteEip8037Halt(tx, spec, opts, ref gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir, codeInsertExecutionRefund, settlementDebt);
             }
 
             (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertExecutionRefund);

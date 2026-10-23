@@ -2647,39 +2647,14 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     [TestCase(2, true, AuthorizationOutcome.SettlementFailure)]
     public void Eip8037_authorizations_are_charged_one_at_a_time(int authorityCount, bool createsSlot, AuthorizationOutcome outcome)
     {
-        const ulong authorizationExecutionGas = Eip8038Constants.AccountWrite;
-        const long authorizationStateGas = Eip8037Constants.StateBytesPerAuthBase * GasCostOf.CostPerStateByte;
-        PrivateKey[] authorities = [TestItem.PrivateKeyC, TestItem.PrivateKeyE, TestItem.PrivateKeyF];
-        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
-        AuthorizationTuple[] authorizations = new AuthorizationTuple[authorityCount];
-        for (int i = 0; i < authorityCount; i++)
-        {
-            TestState.CreateAccount(authorities[i].Address, 1);
-            authorizations[i] = ecdsa.Sign(authorities[i], 0, TestItem.AddressD, 0);
-        }
-
         byte[] code = createsSlot
             ? Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done
             : Prepare.EvmCode.Op(Instruction.STOP).Done;
-        TestState.CreateAccount(Recipient, 0);
-        TestState.InsertCode(Recipient, code, SpecProvider.GenesisSpec);
-        Transaction transaction = Build.A.Transaction
-            .WithType(TxType.SetCode)
-            .WithTo(Recipient)
-            .WithGasLimit(1_000_000)
-            .WithGasPrice(1)
-            .WithAuthorizationCode(authorizations)
-            .SignedAndResolved(ecdsa, SenderKey, true)
-            .TestObject;
-        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec).Standard;
-        transaction.GasLimit = intrinsicGas + 110_000;
-        (Block block, _) = PrepareTx(Activation, transaction.GasLimit, null, value: 0, blockGasLimit: DynamicStatePricingBlockGasLimit, transaction: transaction);
+        TestAllTracerWithOutput tracer = ExecuteAuthorizations(authorityCount, code, 110_000, out Transaction transaction, out ulong intrinsicGas);
+        PrivateKey[] authorities = Authorities;
 
-        TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-
-        ulong preExecutionGas = (ulong)authorityCount * authorizationExecutionGas;
-        ulong committedStateGas = (ulong)(authorityCount * authorizationStateGas);
+        ulong preExecutionGas = (ulong)authorityCount * AuthorizationExecutionGas;
+        ulong committedStateGas = (ulong)(authorityCount * AuthorizationStateGas);
         GasConsumed gas = tracer.GasConsumedResult;
         using (Assert.EnterMultipleScope())
         {
@@ -2713,6 +2688,68 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
                 Assert.That(TestState.GetNonce(authority.Address), Is.EqualTo(delegated ? 1UL : 0UL));
             }
         }
+    }
+
+    /// <summary>
+    /// The access of the delegation target of <c>tx.to</c> is pre-execution gas, charged after the authorizations: when it
+    /// does not fit, pre-execution fails and all authorizations roll back.
+    /// </summary>
+    [Test]
+    public void Eip8037_delegation_target_access_is_pre_execution_gas([Values] bool fits)
+    {
+        byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. Address.FromNumber(0xdead).Bytes];
+        ulong gasAfterIntrinsic = 2 * (AuthorizationExecutionGas + (ulong)AuthorizationStateGas) + Eip8038Constants.ColdAccountAccess - (fits ? 0UL : 1UL);
+
+        TestAllTracerWithOutput tracer = ExecuteAuthorizations(2, delegation, gasAfterIntrinsic, out Transaction transaction, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(fits ? StatusCode.Success : StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(transaction.GasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(fits ? (ulong)(2 * AuthorizationStateGas) : 0UL));
+            foreach (PrivateKey authority in Authorities[..2])
+            {
+                Assert.That(TestState.GetNonce(authority.Address), Is.EqualTo(fits ? 1UL : 0UL), $"authorization of {authority.Address}");
+            }
+        }
+    }
+
+    private const ulong AuthorizationExecutionGas = Eip8038Constants.AccountWrite;
+    private const long AuthorizationStateGas = Eip8037Constants.StateBytesPerAuthBase * GasCostOf.CostPerStateByte;
+    private static readonly PrivateKey[] Authorities = [TestItem.PrivateKeyC, TestItem.PrivateKeyE, TestItem.PrivateKeyF];
+
+    /// <summary>
+    /// Sends a set-code transaction to <see cref="VirtualMachineTestsBase.Recipient"/>, which has <paramref name="recipientCode"/>,
+    /// with the authorizations of the first <paramref name="authorityCount"/> existing, undelegated authorities and
+    /// <paramref name="gasAfterIntrinsic"/> gas above its intrinsic gas.
+    /// </summary>
+    private TestAllTracerWithOutput ExecuteAuthorizations(int authorityCount, byte[] recipientCode, ulong gasAfterIntrinsic, out Transaction transaction, out ulong intrinsicGas)
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        AuthorizationTuple[] authorizations = new AuthorizationTuple[authorityCount];
+        for (int i = 0; i < authorityCount; i++)
+        {
+            TestState.CreateAccount(Authorities[i].Address, 1);
+            authorizations[i] = ecdsa.Sign(Authorities[i], 0, TestItem.AddressD, 0);
+        }
+
+        TestState.CreateAccount(Recipient, 0);
+        TestState.InsertCode(Recipient, recipientCode, SpecProvider.GenesisSpec);
+        transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(authorizations)
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec).Standard;
+        transaction.GasLimit = intrinsicGas + gasAfterIntrinsic;
+        (Block block, _) = PrepareTx(Activation, transaction.GasLimit, null, value: 0, blockGasLimit: DynamicStatePricingBlockGasLimit, transaction: transaction);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        return tracer;
     }
 
     public enum Blake2FInput

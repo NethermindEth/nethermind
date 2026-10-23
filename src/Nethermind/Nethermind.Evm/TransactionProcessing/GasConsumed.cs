@@ -12,7 +12,8 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// <param name="BlockStateGas">EIP-8037: State gas for block accounting. Block gasUsed = max(sum_execution, sum_state).</param>
 /// <param name="MaxUsedGas">Maximum gas consumed before refunds; if 0, use SpentGas.</param>
 /// <param name="GasRefund">Gas refund applied to the transaction (capped at one fifth of the pre-refund gas by EIP-3529 until EIP-3298).</param>
-public readonly record struct GasConsumed(ulong SpentGas, ulong OperationGas, ulong BlockGas = 0, ulong BlockStateGas = 0, ulong MaxUsedGas = 0, ulong GasRefund = 0)
+/// <param name="SettlementDebt">Deferred state-gas settlement: the net state gas a failed settlement had to pay, before the rollback; 0 otherwise.</param>
+public readonly record struct GasConsumed(ulong SpentGas, ulong OperationGas, ulong BlockGas = 0, ulong BlockStateGas = 0, ulong MaxUsedGas = 0, ulong GasRefund = 0, ulong SettlementDebt = 0)
 {
     /// <summary>
     /// Gets the effective execution gas for block accounting. When EIP-7778 is enabled,
