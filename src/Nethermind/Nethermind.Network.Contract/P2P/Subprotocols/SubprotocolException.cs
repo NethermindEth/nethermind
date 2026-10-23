@@ -3,6 +3,7 @@
 
 using System;
 
+#pragma warning disable IDE0130 // Lives here so sync can tell peer protocol faults apart; keeps its original namespace.
 namespace Nethermind.Network.P2P.Subprotocols
 {
     public class SubprotocolException(string message) : Exception(message)
