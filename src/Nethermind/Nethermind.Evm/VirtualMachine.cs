@@ -1530,7 +1530,7 @@ public partial class VirtualMachine<TGasPolicy>(
     private static bool IsEip8151EcRecover(IPrecompile precompile, IReleaseSpec spec) =>
         spec.IsEip8151Enabled && precompile.Name == EcRecoverPrecompileName;
 
-    /// <summary>Zeroes ecRecover's output unless the recovered account's code is empty or an EIP-7702 delegation.</summary>
+    /// <summary>Empties ecRecover's output unless the recovered account's code is empty or an EIP-7702 delegation.</summary>
     /// <remarks>Runs after <see cref="IPrecompile.Run"/> so the result cache never holds a code-dependent answer, and
     /// charges the access cost and meters the EIP-8279 address bytes before reading the account so running out of gas
     /// leaves it cold and out of the BAL.</remarks>
@@ -1539,12 +1539,12 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         if (output.Length == 0)
         {
-            output = Bytes.Zero32;
             return true;
         }
 
         Address recovered = new(output.AsSpan(output.Length - Address.Size));
         if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, IsTracingAccess, recovered)
+            || !TGasPolicy.UpdateGas(ref state.Gas, GasCostOf.WarmStateRead)
             || (spec.IsEip8279Enabled && !TryMeterBalAddress(recovered)))
         {
             return false;
@@ -1555,7 +1555,7 @@ public partial class VirtualMachine<TGasPolicy>(
         ReadOnlySpan<byte> code = _codeInfoRepository.GetCachedCodeInfo(recovered, followDelegation: false, spec, out _).CodeSpan;
         if (!code.IsEmpty && !Eip7702Constants.IsDelegatedCode(code))
         {
-            output = Bytes.Zero32;
+            output = [];
         }
 
         return true;
