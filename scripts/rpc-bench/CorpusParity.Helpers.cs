@@ -212,7 +212,12 @@ internal sealed class CorpusParity : IDisposable
         if (method != "eth_call")
         {
             if (result is null) return ("invalid_response", "");
-            return (null, "0x" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(result)))));
+            try
+            {
+                using var document = JsonDocument.Parse(result.ToJsonString());
+                return (null, "0x" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(RpcJson.Canonical(document.RootElement, compact: true)))));
+            }
+            catch (JsonException) { return ("invalid_response", ""); }
         }
         if (result is not JsonValue value || !value.TryGetValue<string>(out var text) || !Regex.IsMatch(text, @"\A0x(?:[0-9a-fA-F]{2})*\z")) return ("invalid_response", "");
         return (null, text.ToLowerInvariant());
@@ -220,16 +225,6 @@ internal sealed class CorpusParity : IDisposable
 
     private static string RpcError(JsonNode? error) => error is JsonObject obj && obj["code"] is JsonValue code && code.TryGetValue<long>(out var number) ? $"rpc_error:{number}" : "rpc_error";
     internal static string? BaseCategory(string? category) => category?.Split(':', 2)[0];
-    private static string Canonical(JsonNode node)
-    {
-        static JsonNode? Sort(JsonNode? value) => value switch
-        {
-            JsonObject obj => new JsonObject(obj.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => KeyValuePair.Create(pair.Key, Sort(pair.Value)))),
-            JsonArray array => new JsonArray(array.Select(Sort).ToArray()),
-            _ => value?.DeepClone()
-        };
-        return Sort(node)!.ToJsonString();
-    }
 
     internal async Task Probe(string corpus, string url, CancellationToken cancellationToken)
     {

@@ -2,9 +2,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include CorpusParity.Helpers.cs
+#:include RpcJson.Helpers.cs
 #:include PrepareEthCallCorpus.Helpers.cs
 
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 
 var tests = 0;
@@ -55,8 +57,21 @@ try
     Check("many selector classes keep descriptors bounded", () =>
     {
         var destination = Destination();
-        var classes = PrepareEthCallCorpus.Convert(Source(Enumerable.Range(0, 100).Select(index => Call($"0x{index:x8}")).ToArray()), destination, EnvironmentFor());
-        Equal(classes.Count, 100); Equal(classes.Values.Sum(), 100); Equal(Directory.GetFiles(destination, "*.tmp").Length, 0);
+        var source = Source(Enumerable.Range(0, 100).Select(index => Call($"0x{index:x8}")).ToArray());
+        var original = new DescriptorLimit.Limit();
+        if (OperatingSystem.IsLinux())
+        {
+            Equal(DescriptorLimit.Get(7, out original), 0);
+            var bounded = original; bounded.Soft = (ulong)Directory.GetFileSystemEntries("/proc/self/fd").Length + 16;
+            Equal(DescriptorLimit.Set(7, in bounded), 0);
+        }
+        try
+        {
+            var classes = PrepareEthCallCorpus.Convert(source, destination, EnvironmentFor());
+            Equal(classes.Count, 100); Equal(classes.Values.Sum(), 100); Equal(Directory.GetFiles(destination, "*.tmp").Length, 0);
+            foreach (var path in Directory.GetFiles(destination)) { using var exclusive = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None); }
+        }
+        finally { if (OperatingSystem.IsLinux()) Equal(DescriptorLimit.Set(7, in original), 0); }
     });
     Check("debug overrides and default block", () =>
     {
@@ -114,3 +129,13 @@ string Source(string[] lines, bool compressed = false)
 static string Call(string data) => $"{{\"method\":\"eth_call\",\"params\":[{{\"to\":\"0x1\",\"data\":\"{data}\"}},\"latest\"]}}";
 static JsonArray Fixture(string destination, string name) => JsonNode.Parse(File.ReadAllText(Path.Combine(destination, name + ".json")))!.AsArray();
 static Func<string, string?> EnvironmentFor(string method = "eth_call") => key => key == "RPC_BENCH_CORPUS_METHOD" ? method : null;
+
+static class DescriptorLimit
+{
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Limit { internal ulong Soft; internal ulong Hard; }
+    [DllImport("libc", EntryPoint = "getrlimit")]
+    internal static extern int Get(int resource, out Limit limit);
+    [DllImport("libc", EntryPoint = "setrlimit")]
+    internal static extern int Set(int resource, in Limit limit);
+}

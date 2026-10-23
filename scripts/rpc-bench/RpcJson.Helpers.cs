@@ -7,20 +7,33 @@ using System.Text.Json;
 
 internal static class RpcJson
 {
-    internal static string Canonical(JsonElement value) => value.ValueKind switch
+    internal static string Canonical(JsonElement value, bool compact = false) => value.ValueKind switch
     {
-        JsonValueKind.Object => "{" + string.Join(", ", value.EnumerateObject().OrderBy(property => property.Name, StringComparer.Ordinal).Select(property => Quote(property.Name) + ": " + Canonical(property.Value))) + "}",
-        JsonValueKind.Array => "[" + string.Join(", ", value.EnumerateArray().Select(Canonical)) + "]",
+        JsonValueKind.Object => "{" + string.Join(compact ? "," : ", ", value.EnumerateObject().OrderBy(property => property.Name, CodePointOrder).Select(property => Quote(property.Name) + (compact ? ":" : ": ") + Canonical(property.Value, compact))) + "}",
+        JsonValueKind.Array => "[" + string.Join(compact ? "," : ", ", value.EnumerateArray().Select(item => Canonical(item, compact))) + "]",
         JsonValueKind.String => Quote(value.GetString()!),
         JsonValueKind.Number => Number(value),
         _ => value.GetRawText()
     };
 
+    private static readonly Comparer<string> CodePointOrder = Comparer<string>.Create((left, right) =>
+    {
+        var a = left.EnumerateRunes(); var b = right.EnumerateRunes();
+        while (a.MoveNext())
+        {
+            if (!b.MoveNext()) return 1;
+            var comparison = a.Current.Value.CompareTo(b.Current.Value);
+            if (comparison != 0) return comparison;
+        }
+        return b.MoveNext() ? -1 : 0;
+    });
+
     static string Number(JsonElement value)
     {
         var raw = value.GetRawText();
-        if (!raw.Contains('.') && !raw.Contains('e') && !raw.Contains('E')) return raw;
+        if (!raw.Contains('.') && !raw.Contains('e') && !raw.Contains('E')) return raw == "-0" ? "0" : raw;
         var number = value.GetDouble();
+        if (!double.IsFinite(number)) throw new JsonException("Non-finite JSON number");
         var text = number.ToString("R", CultureInfo.InvariantCulture).ToLowerInvariant();
         if (text.Contains('e')) return text;
         if (Math.Abs(number) >= 1e16)

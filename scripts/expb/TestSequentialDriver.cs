@@ -2,12 +2,24 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include SequentialDriver.Helpers.cs
+#:include ../ci/ScriptProcess.Helpers.cs
 
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
+
+if (args.SequenceEqual(["orphan"]))
+{
+    using var termination = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context => context.Cancel = true);
+    using var pipe = new NamedPipeClientStream(".", Environment.GetEnvironmentVariable("EXPB_TEST_PIPE")!, PipeDirection.Out, PipeOptions.Asynchronous);
+    await pipe.ConnectAsync(CancellationToken.None);
+    using var writer = new StreamWriter(pipe) { AutoFlush = true };
+    await writer.WriteLineAsync(Environment.ProcessId.ToString());
+    await Task.Delay(Timeout.Infinite);
+    return 0;
+}
 
 if (args.Length > 0 && args[0] == "execute-scenarios")
 {
@@ -16,6 +28,12 @@ if (args.Length > 0 && args[0] == "execute-scenarios")
     var config = JsonNode.Parse(File.ReadAllText(configPath))!;
     if (config["export"]?["secret"]?.ToString() != "private") return 9;
     if (Environment.GetEnvironmentVariable("EXPB_TEST_VALUE") != "value with spaces") return 10;
+    if (mode == "orphan")
+    {
+        using var child = Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "orphan") { UseShellExecute = false })!;
+        await child.WaitForExitAsync();
+        return 0;
+    }
     if (mode is "cancel" or "kill")
     {
         using var exit = new CancellationTokenSource();
@@ -292,7 +310,7 @@ try
         foreach (var flag in new[] { "--dottrace", "--dotnet-trace", "--perf" }) if (!command.Contains(flag, StringComparison.Ordinal)) throw new Exception($"Missing {flag}");
         Equal(File.Exists(Path.Combine(root.FullName, "image-1-abc-run1", "metadata.json")), true);
     });
-    foreach (var mode in OperatingSystem.IsLinux() ? new[] { "cancel", "kill" } : ["cancel"])
+    foreach (var mode in OperatingSystem.IsLinux() ? new[] { "cancel", "kill", "orphan" } : ["cancel"])
     await CheckAsync($"real cancellation {mode} retains metadata and terminates child", async () =>
     {
         var root = Directory.CreateDirectory(Path.Combine(temporary.FullName, "cancel sample"));
@@ -308,7 +326,17 @@ try
         using var reader = new StreamReader(pipe);
         var pid = int.Parse((await reader.ReadLineAsync(timeout.Token))!);
         cancellation.Cancel();
-        var result = await sample;
+        JsonObject result;
+        try { result = await sample.WaitAsync(TimeSpan.FromSeconds(10)); }
+        finally
+        {
+            if (!sample.IsCompleted)
+            {
+                using var remaining = Process.GetProcessById(pid);
+                remaining.Kill();
+                await sample;
+            }
+        }
         Equal(result["status"]!.ToString(), "failed");
         if (!result["failure_reasons"]!.ToJsonString().Contains("campaign cancellation requested", StringComparison.Ordinal)) throw new Exception("Cancellation reason missing");
         if (OperatingSystem.IsLinux()) Equal(result["metrics"]!["cleanup"]!.GetValue<bool>(), mode == "cancel");

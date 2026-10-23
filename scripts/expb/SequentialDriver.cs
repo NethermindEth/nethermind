@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include SequentialDriver.Helpers.cs
+#:include ../ci/ScriptProcess.Helpers.cs
 
 using System.Runtime.InteropServices;
 

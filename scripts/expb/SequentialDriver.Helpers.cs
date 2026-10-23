@@ -285,24 +285,9 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
 
     internal static async Task<string> Capture(string command, string[] arguments, CancellationToken cancellationToken)
     {
-        using var process = new Process { StartInfo = new ProcessStartInfo(command) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true } };
-        foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
-        process.Start();
-        var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
-            var text = await stdout;
-            var errors = await stderr;
-            if (process.ExitCode != 0) throw new IOException($"{command} exited with code {process.ExitCode}: {errors}");
-            return text;
-        }
-        finally
-        {
-            if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); }
-            try { await Task.WhenAll(stdout, stderr); } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        }
+        var result = await ScriptProcess.Run(command, arguments, cancellationToken);
+        if (result.Code != 0) throw new IOException($"{command} exited with code {result.Code}: {result.Error}");
+        return result.Output;
     }
 
     internal async Task VerifyClean(JsonObject config, CancellationToken cancellationToken)
@@ -371,7 +356,7 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(30));
             try { return (await Capture(Get("DOCKER_BIN", "docker"), arguments, timeout.Token)).Trim(); }
-            catch (Exception exception) when (exception is IOException or System.ComponentModel.Win32Exception or OperationCanceledException) { return ""; }
+            catch (Exception exception) when (exception is IOException or System.ComponentModel.Win32Exception or OperationCanceledException) { Console.Error.WriteLine($"Cgroup inspection unavailable: {exception.Message}"); return ""; }
         }
         try
         {
@@ -392,8 +377,7 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
                     string Read(string leaf)
                     {
                         try { return File.ReadAllText(Path.Combine(directory, leaf)).Trim(); }
-                        catch (IOException) { return ""; }
-                        catch (UnauthorizedAccessException) { return ""; }
+                        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { Console.Error.WriteLine($"Cgroup limit unavailable: {exception.Message}"); return ""; }
                     }
                     cgroup = $"cpu.max='{Read("cpu.max")}' cpuset.cpus.effective='{Read("cpuset.cpus.effective")}'";
                     break;
@@ -401,7 +385,7 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
                 report.Add($"{(limits.Length == 0 ? container : limits)} {cgroup}");
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { Console.Error.WriteLine("Cgroup inspection cancelled."); }
     }
 
     internal async Task<int> ExecuteLogged(string[] command, string directory, Dictionary<string, string> childEnvironment, string logPath, CancellationToken cancellationToken)
@@ -423,20 +407,20 @@ internal sealed class SequentialDriver(Func<string, string?> environment)
         var stderr = Drain(process.StandardError, writer, CancellationToken.None);
         try
         {
-            try { await process.WaitForExitAsync(cancellationToken); }
+            try { await Task.WhenAll(process.WaitForExitAsync(CancellationToken.None), stdout, stderr).WaitAsync(cancellationToken); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                if (!process.HasExited && linux)
+                if (linux)
                 {
                     try { await Capture("/bin/kill", ["-TERM", "--", $"-{process.Id}"], CancellationToken.None); }
-                    catch (IOException) when (process.HasExited) { }
+                    catch (IOException exception) when (process.HasExited) { Console.Error.WriteLine($"Process group exited during termination: {exception.Message}"); }
                     var grace = int.Parse(Get("CLEANUP_GRACE_SECONDS", "90"), CultureInfo.InvariantCulture);
                     using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(grace));
-                    try { await process.WaitForExitAsync(cleanup.Token); }
+                    try { await Task.WhenAll(process.WaitForExitAsync(CancellationToken.None), stdout, stderr).WaitAsync(cleanup.Token); }
                     catch (OperationCanceledException) when (cleanup.IsCancellationRequested)
                     {
                         try { await Capture("/bin/kill", ["-KILL", "--", $"-{process.Id}"], CancellationToken.None); }
-                        catch (IOException) when (process.HasExited) { }
+                        catch (IOException exception) when (process.HasExited) { Console.Error.WriteLine($"Process group exited during cleanup: {exception.Message}"); }
                     }
                 }
                 if (!process.HasExited) process.Kill(entireProcessTree: true);

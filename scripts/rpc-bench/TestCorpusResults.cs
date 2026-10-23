@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include CorpusParity.Helpers.cs
+#:include RpcJson.Helpers.cs
 #:include CorpusResults.Helpers.cs
 
 using System.Globalization;
@@ -58,7 +59,7 @@ try
         Write(Path.Combine(source, "corpus/a/reth/parity.json"), Parity());
         File.WriteAllText(Path.Combine(source, "corpus/a/nm/100/jsonbench-summary.md"), "## ok\n");
         foreach (var filename in new[] { "raw-responses.jsonl", "jsonbench.log", "results.json" }) File.WriteAllText(Path.Combine(source, filename), "SENTINEL");
-        var destination = Path.Combine(root.FullName, Guid.NewGuid().ToString("N")); CorpusResults.Stage(source, destination);
+        var destination = Path.Combine(root.FullName, Guid.NewGuid().ToString("N")); Equal(CorpusResults.Run(["stage", source, destination]), 0);
         var paths = Directory.GetFiles(destination, "*", SearchOption.AllDirectories).Select(path => Path.GetRelativePath(destination, path).Replace('\\', '/')).Order().ToArray();
         Equal(string.Join(',', paths), "corpus/a/nm/100/jsonbench-summary.md,corpus/a/nm/100/summary.json,corpus/a/reth/parity.json,corpus/warmup-heavy/nm/100/summary.json");
         Equal(Directory.GetFiles(destination, "*", SearchOption.AllDirectories).Any(path => File.ReadAllText(path).Contains("SENTINEL")), false);

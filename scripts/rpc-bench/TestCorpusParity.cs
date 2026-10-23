@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include CorpusParity.Helpers.cs
+#:include RpcJson.Helpers.cs
 
 using System.Diagnostics;
 using System.IO.Compression;
@@ -168,9 +169,28 @@ try
         {
             var secret = new string('d', 64); var zero = new string('0', 64);
             var diff = CorpusParity.DescribeDivergence(1, "0x" + (reverse ? secret : zero), "0x" + (reverse ? zero : secret));
-            Equal(diff["differing_words"]![0]!["direction"]!.ToString(), reverse ? "lower" : "higher"); Equal(diff.ToJsonString().Contains(secret), false);
+            Equal(diff["differing_words"]!.ToJsonString(), "[{\"word\":0,\"direction\":\"" + (reverse ? "lower" : "higher") + "\"}]"); Equal(diff.ToJsonString().Contains(secret), false);
         }
         return Task.CompletedTask;
+    });
+    foreach (var (json, digest) in new[]
+    {
+        ("""{"html":"<>&'","unicode":"é😀"}""", "20e197fdee72458c5b6959f2c26bbadb6c453fd2bb8fdd61ac46292dafe66dac"),
+        ("""{"n":1e0,"small":1.0e-7,"big":1.0e16}""", "65bb61e856aadd01a93cca06d4b32cbbf820ffce15b244af3e8acbd1367e70d5"),
+        ("""{"n":1.0,"small":0.0000001,"big":10000000000000000.0}""", "65bb61e856aadd01a93cca06d4b32cbbf820ffce15b244af3e8acbd1367e70d5"),
+        ("""{"n":-0}""", "f3013f933b9fb80ab6d995e7ad9da36f683837ba1d81e950c943d40111eac2f0"),
+        ("""{"\ud800\udc00":1,"\ue000":2}""", "e435664447ae90b0ae08eea493d3808d1143a0a0894ea1df55f14a290519725e"),
+        ("""{"z":[true,null,"\n\t"],"a":-0.0}""", "488d68989b7e7ce27b9c41dd099a933657b83ba6ed87913a76c87a2fa6c793d2")
+    }) await Check("trace digest matches Python canonical JSON " + digest[..8], async () =>
+    {
+        using var parity = Create(_ => Raw("{\"id\":1,\"result\":" + json + "}"));
+        var result = await parity.Post(url, 1, [], "debug_traceCall", CancellationToken.None);
+        Equal(result.Category, null); Equal(result.Result, "0x" + digest);
+    });
+    await Check("trace rejects non-finite numbers", async () =>
+    {
+        using var parity = Create(_ => Raw("{\"id\":1,\"result\":1e999}"));
+        Equal((await parity.Post(url, 1, [], "debug_traceCall", CancellationToken.None)).Category, "invalid_response");
     });
     foreach (var method in new[] { "debug_traceCall", "trace_call" })
     {
@@ -251,7 +271,10 @@ try
     {
         var output = Path.Combine(root.FullName, "timings.csv");
         using var parity = Create(request => failures && request["id"]!.GetValue<int>() == 2 ? Error(2, -32000) : Result(request["id"]!.GetValue<int>(), "0xab"));
-        await parity.Timings(Corpus(3), url, output, 4, 0, 4, 3, 17, CancellationToken.None);
+        var console = Console.Out; using var messages = new StringWriter();
+        try { Console.SetOut(messages); await parity.Timings(Corpus(3), url, output, 4, 0, 4, 3, 17, CancellationToken.None); }
+        finally { Console.SetOut(console); }
+        Equal(messages.ToString().Contains("did not return a result", StringComparison.Ordinal), failures);
         var lines = File.ReadAllLines(output); Equal(lines.Length, 4);
         Equal(lines[0], "record_index,pass_1_ms,pass_1_status,pass_2_ms,pass_2_status,pass_3_ms,pass_3_status,pass_4_ms,pass_4_status");
         for (var index = 1; index < lines.Length; index++)
@@ -266,7 +289,10 @@ try
     await Check("timing pacing target", async () =>
     {
         using var parity = Create(); var start = Stopwatch.GetTimestamp();
-        await parity.Timings(Corpus(5), url, Path.Combine(root.FullName, "paced.csv"), 4, 40, 8, 0, 0, CancellationToken.None);
+        var console = Console.Out; using var messages = new StringWriter();
+        try { Console.SetOut(messages); await parity.Timings(Corpus(5), url, Path.Combine(root.FullName, "paced.csv"), 4, 40, 8, 0, 0, CancellationToken.None); }
+        finally { Console.SetOut(console); }
+        Equal(messages.ToString().Contains("target 40", StringComparison.Ordinal), true);
         Equal(Stopwatch.GetElapsedTime(start).TotalSeconds >= .4, true);
     });
     await Check("validate CLI no network and content-free errors", async () =>
