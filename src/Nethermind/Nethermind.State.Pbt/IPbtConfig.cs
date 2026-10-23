@@ -220,6 +220,12 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "RocksDB options of the pbt metadata column.", HiddenFromDocs = true)]
     string MetadataRocksDbOptions { get; set; }
 
+    [ConfigItem(Description = "RocksDB options shared by the pbt flat entry columns (accounts, storages, codes and code leaves). Applied after the shared options and before each column's own options.", HiddenFromDocs = true)]
+    string FlatEntriesRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options applied last to every pbt flat entry column, overriding all the other pbt options of those columns.", DefaultValue = "")]
+    string FlatEntriesAdditionalRocksDbOptions { get; set; }
+
     [ConfigItem(Description = "RocksDB options of the pbt whole accounts column, keyed by the PBT address hash.", HiddenFromDocs = true)]
     string AccountsRocksDbOptions { get; set; }
 
@@ -234,4 +240,7 @@ public interface IPbtConfig : IConfig
 
     [ConfigItem(Description = "RocksDB options shared by the pbt account, code and storage node-group columns, keyed by boundary path.", HiddenFromDocs = true)]
     string NodeGroupsRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options applied last to every pbt node-group column, overriding all the other pbt options of those columns.", DefaultValue = "")]
+    string NodeGroupsAdditionalRocksDbOptions { get; set; }
 }

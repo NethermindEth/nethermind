@@ -98,15 +98,16 @@ public class PbtConfig : IPbtConfig
     public string MetadataRocksDbOptions { get; set; } = "max_bytes_for_level_base=1000000;";
 
     // Missing accounts, storage words and code records need last-level filters too.
-    private const string PbtCommonRecordOptions =
+    public string FlatEntriesRocksDbOptions { get; set; } =
         "optimize_filters_for_hits=false;" +
         "target_file_size_base=64000000;" +
         "";
 
+    public string FlatEntriesAdditionalRocksDbOptions { get; set; } = "";
+
     // Mirrors the flat Account column: small, slim-encoded records where compression and locality buy little,
     // so small blocks, small files and a small write buffer keep compaction and duplicate versions down.
     public string AccountsRocksDbOptions { get; set; } =
-        PbtCommonRecordOptions +
         "compression=kNoCompression;" +
         "target_file_size_multiplier=3;" +
         "target_file_size_base=32000000;" +
@@ -119,7 +120,6 @@ public class PbtConfig : IPbtConfig
 
     // Code is written only on deployment, so this column is read-heavy.
     public string CodesRocksDbOptions { get; set; } =
-        PbtCommonRecordOptions +
         "max_bytes_for_level_base=64000000;" +
         "write_buffer_size=16000000;" +
         "max_write_buffer_number=2;" +
@@ -135,7 +135,6 @@ public class PbtConfig : IPbtConfig
 
     // Mirrors the flat Storage column: 8 KB blocks are faster IO-wise than 4 KB at a modest index-memory cost.
     public string StoragesRocksDbOptions { get; set; } =
-        PbtCommonRecordOptions +
         "block_based_table_factory.block_size=8000;" +
         "write_buffer_size=32000000;" +
         "max_write_buffer_number=4;" +
@@ -149,4 +148,6 @@ public class PbtConfig : IPbtConfig
         "write_buffer_size=64000000;" +
         "max_write_buffer_number=4;" +
         "";
+
+    public string NodeGroupsAdditionalRocksDbOptions { get; set; } = "";
 }

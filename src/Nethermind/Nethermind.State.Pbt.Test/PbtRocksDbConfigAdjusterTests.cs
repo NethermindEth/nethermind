@@ -26,25 +26,28 @@ public class PbtRocksDbConfigAdjusterTests
         BlockCacheSizeBudget = blockCacheSizeBudget,
         RocksDbOptions = "shared=1;",
         MetadataRocksDbOptions = $"column={nameof(PbtColumns.Metadata)};",
+        FlatEntriesRocksDbOptions = "flatEntries=1;",
+        FlatEntriesAdditionalRocksDbOptions = "flatEntriesAdditional=1;",
         AccountsRocksDbOptions = $"column={nameof(PbtColumns.Accounts)};",
         CodesRocksDbOptions = $"column={nameof(PbtColumns.Codes)};",
         CodeLeavesRocksDbOptions = $"column={nameof(PbtColumns.CodeLeaves)};",
         StoragesRocksDbOptions = $"column={nameof(PbtColumns.Storages)};",
-        NodeGroupsRocksDbOptions = "column=NodeGroups;",
+        NodeGroupsRocksDbOptions = "nodeGroups=1;",
+        NodeGroupsAdditionalRocksDbOptions = "nodeGroupsAdditional=1;",
     };
 
     [TestCase(nameof(PbtColumns.Metadata), "global=1;shared=1;column=Metadata;")]
-    [TestCase(nameof(PbtColumns.Accounts), "global=1;shared=1;column=Accounts;")]
-    [TestCase(nameof(PbtColumns.Codes), "global=1;shared=1;column=Codes;")]
-    [TestCase(nameof(PbtColumns.CodeLeaves), "global=1;shared=1;column=CodeLeaves;")]
-    [TestCase(nameof(PbtColumns.Storages), "global=1;shared=1;column=Storages;")]
-    [TestCase(nameof(PbtColumns.AccountNodeGroups), "global=1;shared=1;column=NodeGroups;")]
-    [TestCase(nameof(PbtColumns.CodeNodeGroups), "global=1;shared=1;column=NodeGroups;")]
-    [TestCase(nameof(PbtColumns.StorageNodeGroups), "global=1;shared=1;column=NodeGroups;")]
-    [TestCase(nameof(PbtColumns.TopNodeGroups), "global=1;shared=1;column=NodeGroups;")]
+    [TestCase(nameof(PbtColumns.Accounts), "global=1;shared=1;flatEntries=1;column=Accounts;flatEntriesAdditional=1;")]
+    [TestCase(nameof(PbtColumns.Codes), "global=1;shared=1;flatEntries=1;column=Codes;flatEntriesAdditional=1;")]
+    [TestCase(nameof(PbtColumns.CodeLeaves), "global=1;shared=1;flatEntries=1;column=CodeLeaves;flatEntriesAdditional=1;")]
+    [TestCase(nameof(PbtColumns.Storages), "global=1;shared=1;flatEntries=1;column=Storages;flatEntriesAdditional=1;")]
+    [TestCase(nameof(PbtColumns.AccountNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;")]
+    [TestCase(nameof(PbtColumns.CodeNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;")]
+    [TestCase(nameof(PbtColumns.StorageNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;")]
+    [TestCase(nameof(PbtColumns.TopNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;")]
     [TestCase(null, "global=1;shared=1;", TestName = "DatabaseItselfGetsTheSharedOptionsOnly")]
     [TestCase("NodeGroups", "global=1;shared=1;", TestName = "LegacyNodeGroupsColumnGetsTheSharedOptionsOnly")]
-    public void ColumnGetsTheGlobalThenSharedThenItsOwnOptions(string? columnName, string expectedOptions)
+    public void ColumnGetsTheGlobalThenSharedThenGroupThenItsOwnThenGroupAdditionalOptions(string? columnName, string expectedOptions)
     {
         IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
             .GetForDatabase(nameof(DbNames.Pbt), columnName);
