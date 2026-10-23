@@ -1488,7 +1488,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8037_reverted_ancestor_discards_descendant_storage_refund_credit()
+    public void Eip8037_reverted_ancestor_discards_descendant_storage_refund_credit(
+        [Values] bool exceptionalHalt,
+        [Values] bool initialReservoir)
     {
         byte[] descendantCode = Prepare.EvmCode
             .PushData(0)
@@ -1500,11 +1502,10 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressC, 0);
         TestState.InsertCode(TestItem.AddressC, descendantCode, SpecProvider.GenesisSpec);
 
-        byte[] intermediateCode = Prepare.EvmCode
+        Prepare intermediate = Prepare.EvmCode
             .DelegateCall(TestItem.AddressC, 400_000)
-            .Op(Instruction.POP)
-            .Revert(0, 0)
-            .Done;
+            .Op(Instruction.POP);
+        byte[] intermediateCode = (exceptionalHalt ? intermediate.Op(Instruction.INVALID) : intermediate.Revert(0, 0)).Done;
 
         TestState.CreateAccount(TestItem.AddressD, 0);
         TestState.InsertCode(TestItem.AddressD, intermediateCode, SpecProvider.GenesisSpec);
@@ -1518,11 +1519,16 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestAllTracerWithOutput tracer = Execute(Activation, 900_000, parentCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+        // Above TX_MAX_GAS_LIMIT, the parent's slot is paid from the reservoir; below it, from gas_left.
+        ulong gasLimit = initialReservoir ? Eip7825Constants.DefaultTxGasLimitCap + 500_000 : 900_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, parentCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
-        AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+        }
     }
 
     private Address SetupStaticCreateAttempt(bool create2)
