@@ -37,6 +37,12 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public bool OutOfGas;
     /// <summary>When set, a state charge exceeding the reservoir halts rather than spilling into <see cref="Value"/> (EIP-8141: no EIP-8037 reservoir spill within a frame transaction).</summary>
     public bool IndependentStatePool;
+    /// <summary>When set, state charges never draw from <see cref="Value"/>: <see cref="StateReservoir"/> goes negative and the debt is settled when the transaction ends.</summary>
+    public bool DeferStateGas;
+    /// <summary>The execution gas at the start of deferred settlement; a debt above it exceeds the transaction's state-gas limit.</summary>
+    public long StateDebtLimit;
+    /// <summary>Set once the state-gas debt exceeds <see cref="StateDebtLimit"/>; the transaction then fails its settlement.</summary>
+    public bool StateGasLimitExceeded;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy FromULong(ulong value) => new() { Value = value };
@@ -96,7 +102,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong CalculateStateGasSpill(in EthereumGasPolicy gas, long stateGasCost)
     {
-        if (stateGasCost <= 0)
+        if (stateGasCost <= 0 || gas.DeferStateGas)
         {
             return 0;
         }
@@ -128,6 +134,19 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeStateGas(ref EthereumGasPolicy gas, long stateGasCost)
     {
+        if (gas.DeferStateGas)
+        {
+            gas.StateReservoir -= stateGasCost;
+            gas.StateGasUsed += stateGasCost;
+            // Exceeding the state-gas limit fails the transaction at settlement, never the frame.
+            if (gas.StateReservoir < -gas.StateDebtLimit)
+            {
+                gas.StateGasLimitExceeded = true;
+            }
+
+            return true;
+        }
+
         long reservoir = gas.StateReservoir;
         if (reservoir >= stateGasCost)
         {
@@ -166,7 +185,24 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
         gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
+        gas.StateGasLimitExceeded |= childGas.StateGasLimitExceeded;
     }
+
+    /// <inheritdoc/>
+    public static void BeginDeferredStateGas(ref EthereumGasPolicy gas)
+    {
+        if (gas.IndependentStatePool)
+        {
+            return;
+        }
+
+        gas.DeferStateGas = true;
+        gas.StateDebtLimit = (long)gas.Value;
+    }
+
+    /// <inheritdoc/>
+    public static bool FailsStateGasSettlement(in EthereumGasPolicy gas) =>
+        gas.DeferStateGas && (gas.StateGasLimitExceeded || (Int128)gas.Value + gas.StateReservoir < 0);
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -193,6 +229,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
+        parentGas.StateGasLimitExceeded |= childGas.StateGasLimitExceeded;
     }
 
     // On a child exceptional halt state gas produced no durable growth: restore the child's
@@ -204,6 +241,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // portion refills gas_left, which the halt burns as execution gas.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
+        parentGas.StateGasLimitExceeded |= childGas.StateGasLimitExceeded;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -483,7 +521,8 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (!TIsSlotCreation.IsActive)
             return UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.StorageWrite : spec.GasCosts.SStoreResetCost);
 
-        ulong executionWriteCost = TMode.IsEip8038Enabled(spec) ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution;
+        // A new slot never costs less execution gas than its pre-EIP-8037 GAS_STORAGE_SET.
+        ulong executionWriteCost = Math.Max(TMode.IsEip8038Enabled(spec) ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution, GasCostOf.SSet);
         return TEip8037.IsActive switch
         {
             // EIP-8037: charge the execution component first so an OOG halt does not
@@ -610,6 +649,12 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RemoveStateGasRefundFromReservoir(ref EthereumGasPolicy gas, long amount)
     {
+        if (gas.DeferStateGas)
+        {
+            gas.StateReservoir -= amount;
+            return;
+        }
+
         // Revoke what is still parked in the reservoir (never fabricating spill debt), then what
         // the credit funded from usage; any remainder refilled a net-spill hole, so restore the debt.
         long fromReservoir = Math.Clamp(gas.StateReservoir, 0, amount);
@@ -680,7 +725,8 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
     {
-        true => TryConsumeStateGas(ref gas, GasCostOf.NewAccountState),
+        // A new account never costs less execution gas than its pre-EIP-8037 GAS_NEW_ACCOUNT.
+        true => TryConsumeStateAndExecutionGas(ref gas, GasCostOf.NewAccountState, GasCostOf.NewAccount),
         false => UpdateGas(ref gas, GasCostOf.NewAccount)
     };
 
@@ -714,6 +760,8 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             Value = childExecutionGas,
             StateReservoir = childStateReservoir,
             IndependentStatePool = parentGas.IndependentStatePool,
+            DeferStateGas = parentGas.DeferStateGas,
+            StateDebtLimit = parentGas.StateDebtLimit,
         };
     }
 

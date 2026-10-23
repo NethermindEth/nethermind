@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 
@@ -14,12 +15,16 @@ namespace Nethermind.Evm.GasPolicy;
 internal static class CreateGasCost
 {
     /// <summary>The base charge, before init-code words and memory.</summary>
-    /// <remarks>EIP-8360: <c>TCREATE</c> pays <c>BASE_OPCODE_COST</c> instead of the account-creation charge.</remarks>
+    /// <remarks>
+    /// EIP-8360: <c>TCREATE</c> pays <c>BASE_OPCODE_COST</c> instead of the account-creation charge.
+    /// With EIP-8037 state gas settled at the end of the transaction, creation never costs less execution gas than the
+    /// pre-EIP-8037 <c>GAS_CREATE</c>.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Base<TOpCreate>(bool eip8038, bool eip8037) where TOpCreate : struct, EvmInstructions.IOpCreate =>
         TOpCreate.IsTransient ? GasCostOf.TCreate
+        : eip8037 ? Math.Max(eip8038 ? Eip8038Constants.CreateAccess : GasCostOf.CreateExecution, GasCostOf.Create)
         : eip8038 ? Eip8038Constants.CreateAccess
-        : eip8037 ? GasCostOf.CreateExecution
         : GasCostOf.Create;
 
     /// <summary>The EIP-1014 init-code hashing charge, paid by the salted variants only.</summary>

@@ -1017,8 +1017,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         ulong[] expectedGas = instruction switch
         {
-            Instruction.CREATE => [978_997, 978_994, 978_991, 783_391, 783_391],
-            Instruction.CREATE2 => [978_997, 978_994, 978_991, 978_988, 783_388, 783_388],
+            Instruction.CREATE => [978_997, 978_994, 978_991, 946_991, 946_991],
+            Instruction.CREATE2 => [978_997, 978_994, 978_991, 978_988, 946_988, 946_988],
             _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
         };
         AssertCallbacksPaired(tracer, expectedGas.Length);
@@ -1032,7 +1032,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
                     (Instruction.PUSH1, 0, 978_997),
                     (Instruction.PUSH1, 0, 978_994),
                     (Instruction.CREATE, 0, 978_991),
-                    (Instruction.STOP, 0, 783_391)
+                    (Instruction.STOP, 0, 946_991)
                 },
                 Instruction.CREATE2 => new (Instruction, int, ulong)[]
                 {
@@ -1041,7 +1041,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
                     (Instruction.PUSH1, 0, 978_994),
                     (Instruction.PUSH1, 0, 978_991),
                     (Instruction.CREATE2, 0, 978_988),
-                    (Instruction.STOP, 0, 783_388)
+                    (Instruction.STOP, 0, 946_988)
                 },
                 _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
             }));
@@ -1071,17 +1071,17 @@ public class VirtualMachineTests : VirtualMachineTestsBase
                 (Instruction.PUSH1, 0, 978_994),
                 (Instruction.PUSH1, 0, 978_991),
                 (Instruction.CREATE2, 0, 978_988),
-                (Instruction.PUSH1, 0, 783_388),
-                (Instruction.PUSH1, 0, 783_385),
-                (Instruction.PUSH1, 0, 783_382),
-                (Instruction.PUSH1, 0, 783_379),
-                (Instruction.CREATE2, 0, 783_376),
-                (Instruction.STOP, 0, 12_052)
+                (Instruction.PUSH1, 0, 946_988),
+                (Instruction.PUSH1, 0, 946_985),
+                (Instruction.PUSH1, 0, 946_982),
+                (Instruction.PUSH1, 0, 946_979),
+                (Instruction.CREATE2, 0, 946_976),
+                (Instruction.STOP, 0, 14_296)
             }));
             Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
             {
-                978_997, 978_994, 978_991, 978_988, 783_388,
-                783_385, 783_382, 783_379, 783_376, 771_376, 12_052
+                978_997, 978_994, 978_991, 978_988, 946_988,
+                946_985, 946_982, 946_979, 946_976, 914_976, 14_296
             }));
         }
     }
@@ -1110,18 +1110,18 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Instruction.RETURN => new ulong[]
             {
-                978_997, 978_994, 978_988, 978_985, 978_982, 978_979, 783_377,
-                771_134, 771_131, 771_131, 783_371
+                978_997, 978_994, 978_988, 978_985, 978_982, 978_979, 946_977,
+                932_178, 932_175, 932_175, 946_971
             },
             Instruction.REVERT => new ulong[]
             {
-                978_997, 978_994, 978_988, 978_985, 978_982, 978_979, 783_377,
-                771_134, 771_131, 771_131, 966_971
+                978_997, 978_994, 978_988, 978_985, 978_982, 978_979, 946_977,
+                932_178, 932_175, 932_175, 946_971
             },
             Instruction.INVALID => new ulong[]
             {
-                978_997, 978_994, 978_988, 978_985, 978_982, 978_979, 783_377,
-                771_127, 195_840
+                978_997, 978_994, 978_988, 978_985, 978_982, 978_979, 946_977,
+                932_171, 14_796
             },
             _ => throw new ArgumentOutOfRangeException(nameof(halt), halt, null)
         }));
@@ -1165,7 +1165,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         AssertCallbacksPaired(tracer, 5);
         Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
         {
-            978_997, 978_994, 978_991, 966_991, 966_991
+            978_997, 978_994, 978_991, 946_991, 946_991
         }));
     }
 
@@ -1180,7 +1180,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         AssertCallbacksPaired(tracer, 9, (Instruction.CALL, 0, EvmExceptionType.NotEnoughBalance));
         Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
         {
-            978_997, 978_994, 978_991, 978_988, 978_985, 978_982, 978_979, 731_079, 966_979
+            978_997, 978_994, 978_991, 978_988, 978_985, 978_982, 978_979, 889_679, 941_979
         }));
     }
 
@@ -1209,7 +1209,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         AssertCallbacksPaired(tracer, 5);
         Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
         {
-            978_997, 978_994, 978_991, 966_991, 966_991
+            978_997, 978_994, 978_991, 946_991, 946_991
         }));
     }
 
@@ -1247,7 +1247,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         AssertCallbacksPaired(tracer, 5);
         Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
         {
-            999_997, 999_994, 999_991, 987_991, 987_991
+            999_997, 999_994, 999_991, 967_991, 967_991
         }));
     }
 

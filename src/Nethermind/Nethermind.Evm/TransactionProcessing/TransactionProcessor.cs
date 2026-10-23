@@ -450,6 +450,12 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, loadRecipient, ref gasAvailable, ref topFrameOutOfGas, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
+            // EIP-8037: authorizations are paid before execution; every later state charge is settled at the end.
+            if (eip8037 && !topFrameOutOfGas)
+            {
+                TGasPolicy.BeginDeferredStateGas(ref gasAvailable);
+            }
+
             // EIP-7702/EIP-8037: capture after durable authorizations but before reversible top-level state charges.
             long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
 
@@ -458,7 +464,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 && tx.To is not null && tx.SenderAddress != tx.To
                 && WorldState.IsDeadAccount(tx.To))
             {
-                topFrameOutOfGas = !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
+                // A recipient without code cannot revert, so an unpaid charge already fails the settlement;
+                // halting here matches the simple-transfer fast path.
+                topFrameOutOfGas = !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost())
+                    || (env.CodeInfo is { IsEmpty: true } && FailsStateGasSettlement(tx, in gasAvailable));
             }
 
             if (topFrameOutOfGas && eip8037)
@@ -563,7 +572,15 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.IsEip8037Enabled && hasValueTransfer && !senderIsRecipient
                 && WorldState.IsDeadAccount(recipient))
             {
-                newAccountOutOfGas = !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
+                // Without code nothing can undo the charge, so it settles now: an unpaid one fails the transaction.
+                TGasPolicy.BeginDeferredStateGas(ref gasAvailable);
+                TGasPolicy gasAfterCharge = gasAvailable;
+                newAccountOutOfGas = !TGasPolicy.TryConsumeStateGas(ref gasAfterCharge, TGasPolicy.GetNewAccountStateCost())
+                    || FailsStateGasSettlement(tx, in gasAfterCharge);
+                if (!newAccountOutOfGas)
+                {
+                    gasAvailable = gasAfterCharge;
+                }
             }
 
             // Self-send: sender account is already touched/warmed by gas charging and any
@@ -1552,6 +1569,10 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
                     WorldState.Restore(snapshot);
                     VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, substate.ShouldRestoreRipemdTouch);
+                    if (substate.ShouldRevert && FailsStateGasSettlement(tx, in gasAvailable))
+                    {
+                        goto FailStateGasSettlement;
+                    }
                 }
                 else
                 {
@@ -1573,6 +1594,11 @@ namespace Nethermind.Evm.TransactionProcessing
                         {
                             goto FailContractCreate;
                         }
+                    }
+
+                    if (FailsStateGasSettlement(tx, in gasAvailable))
+                    {
+                        goto FailStateGasSettlement;
                     }
 
                     if (accessedItems.TransientCreates is not null)
@@ -1650,6 +1676,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(spec, floorGasLong));
             }
             goto Complete;
+        FailStateGasSettlement:
+            // The settlement failure is an exceptional halt of the top-level frame: execution is rolled back and gas_left is consumed.
+            if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction: state gas not settled");
+            bool restoreRipemdTouch = substate.ShouldRestoreRipemdTouch;
+            substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
+            WorldState.Restore(snapshot);
+            VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, restoreRipemdTouch);
+            TGasPolicy settlementIntrinsicGasStandard = gas.Standard;
+            gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in settlementIntrinsicGasStandard, ExecutedFloorGas(spec, floorGasLong), postIntrinsicStateReservoir);
+            goto Complete;
         CompleteWithoutFrame:
             // The create-state-gas halt jumps here from inside the top-level `using (VmState ...)`, so the
             // tracker outlives the Dispose: RentTopLevel leaves `_canRestore` false, so it never Restores.
@@ -1660,6 +1696,10 @@ namespace Nethermind.Evm.TransactionProcessing
         Complete:
             return statusCode;
         }
+
+        /// <remarks>System calls are not settled: their state gas does not count toward the block.</remarks>
+        private static bool FailsStateGasSettlement(Transaction tx, in TGasPolicy gas) =>
+            !tx.IsSystem() && TGasPolicy.FailsStateGasSettlement(in gas);
 
         /// <summary>The floor to settle an executed transaction against: the static floor extended by EIP-8279's metered bytes.</summary>
         /// <remarks>Metered bytes are never rewound, so the extension applies whether execution succeeded, reverted or halted.</remarks>

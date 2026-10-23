@@ -48,7 +48,8 @@ public class Eip5920Tests : VirtualMachineTestsBase
 
     private const ulong ColdAccess = Eip8038Constants.ColdAccountAccess;
     private const ulong ValueCost = Eip8038Constants.AccountWrite;
-    private const ulong NewAccountCost = GasCostOf.NewAccountState;
+    // The NEW_ACCOUNT state gas is settled at the end of the transaction; the opcode pays the pre-EIP-8037 execution floor.
+    private const ulong NewAccountCost = GasCostOf.NewAccount;
 
     protected override TestAllTracerWithOutput CreateTracer() => new LogTracer();
 
@@ -160,7 +161,8 @@ public class Eip5920Tests : VirtualMachineTestsBase
     [Test]
     public void Pay_with_insufficient_balance_to_missing_account_refunds_the_new_account_charge()
     {
-        // As with CALL, the EIP-8037 NEW_ACCOUNT state charge is refilled when no account is created.
+        // As with CALL, the EIP-8037 NEW_ACCOUNT state charge is refilled when no account is created; the
+        // execution floor is not, as before EIP-8037.
         byte[] code = Pay(Prepare.EvmCode, Missing, UInt256.MaxValue).STOP().Done;
         byte[] reference = Pay(Prepare.EvmCode, Existing, UInt256.MaxValue).STOP().Done;
         TestState.CreateAccount(Existing, 5);
@@ -168,7 +170,7 @@ public class Eip5920Tests : VirtualMachineTestsBase
         ulong missingGas = Run(code).GasSpent;
         ulong existingGas = Run(reference).GasSpent;
 
-        Assert.That(missingGas - existingGas, Is.EqualTo(0UL));
+        Assert.That(missingGas - existingGas, Is.EqualTo(GasCostOf.NewAccount));
     }
 
     [Test]

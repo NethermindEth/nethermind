@@ -310,7 +310,7 @@ public class Eip4758Tests : VirtualMachineTestsBase
         {
             Assert.That(TestState.AccountExists(Fresh), Is.EqualTo(balance != 0), "a zero sweep creates no account");
             Assert.That(toFresh.BlockStateGas - toExisting.BlockStateGas, Is.EqualTo(balance == 0 ? 0UL : (ulong)GasCostOf.NewAccountState));
-            Assert.That(toFresh.BlockGas - toExisting.BlockGas, Is.EqualTo(balance == 0 ? 0UL : Eip8038Constants.AccountWrite));
+            Assert.That(toFresh.BlockGas - toExisting.BlockGas, Is.EqualTo(balance == 0 ? 0UL : Eip8038Constants.AccountWrite + GasCostOf.NewAccount));
         }
     }
 

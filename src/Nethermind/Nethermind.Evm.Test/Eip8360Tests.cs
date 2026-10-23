@@ -536,7 +536,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(create2.BlockGas - tcreate.BlockGas,
-                Is.EqualTo(Eip8038Constants.CreateAccess - (GasCostOf.TCreate + Eip8038Constants.ColdAccountAccess) + codeDepositExecution));
+                Is.EqualTo(Math.Max(Eip8038Constants.CreateAccess, GasCostOf.Create) - (GasCostOf.TCreate + Eip8038Constants.ColdAccountAccess) + codeDepositExecution));
             Assert.That(tcreate.BlockStateGas, Is.Zero);
             Assert.That(create2.BlockStateGas, Is.EqualTo((ulong)(GasCostOf.CreateState + codeDepositState)));
         }

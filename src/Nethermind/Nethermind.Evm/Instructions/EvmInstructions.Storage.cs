@@ -617,7 +617,7 @@ public static partial class EvmInstructions
             if (currentSameAsOriginal)
             {
                 traceExecutionCost = traceStorageAccessCost + (currentIsZero
-                    ? TEip8037.IsActive ? Eip8038.IsActive ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution : GasCostOf.SSet
+                    ? TEip8037.IsActive && Eip8038.IsActive ? Math.Max(Eip8038Constants.StorageWrite, GasCostOf.SSet) : GasCostOf.SSet
                     : Eip8038.IsActive ? Eip8038Constants.StorageWrite : gasCosts.SStoreResetCost);
                 if (currentIsZero)
                 {

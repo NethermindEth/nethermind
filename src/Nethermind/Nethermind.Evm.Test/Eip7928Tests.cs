@@ -508,7 +508,10 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(0)
             .WithValue(_testAccountBalance)
             .TestObject;
-        ulong gasLimit = CalculateCreateTxGasLimit(templateTx, executionGas, block.Header);
+        // The top-level creation's state gas is settled at the end, so it does not reduce gas_left; the calldata
+        // floor still bounds the gas limit.
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(templateTx, Amsterdam.Instance, block.Header.GasLimit);
+        ulong gasLimit = Math.Max(intrinsicGas.Standard.Value + executionGas, intrinsicGas.FloorGas.Value);
 
         Transaction createTx = Build.A.Transaction
             .WithCode(code)
@@ -1038,7 +1041,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
         TestState.RecalculateStateRoot();
 
-        BlockAccessListAtIndex bal = ExecuteCallTxs(BuildCallTx(_callTargetAddress, gasLimit: 33_000));
+        // Enough for the CREATE floor (GAS_CREATE) and the child slot access, not for the child slot write.
+        BlockAccessListAtIndex bal = ExecuteCallTxs(BuildCallTx(_callTargetAddress, gasLimit: 53_000));
         AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
 
         using (Assert.EnterMultipleScope())
@@ -1396,7 +1400,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         Transaction tx = Build.A.Transaction
             .WithCode(code)
-            .WithGasLimit(intrinsicGas + TopLevelCreateStateGas + executionGas)
+            .WithGasLimit(intrinsicGas + executionGas)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
@@ -1632,7 +1636,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                     .WithAddress(_testAddress)
                     .WithStorageReads(slot)
                     .TestObject,
-                new(ContractAddress.From(_testAddress, UInt256.One))
+                new(ContractAddress.From(_testAddress, UInt256.One)),
+                // The value CALL to a new account runs: its state gas is settled at the end, not charged in the frame.
+                new(TestItem.AddressB)
             ];
             yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
@@ -1764,8 +1770,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             code = Prepare.EvmCode
                 .Create(createInitCode, 0)
                 .Done;
-            // The nested CREATE reaches its target account before running out of state gas.
-            changes = [new ReadOnlyAccountChanges(_testAddress), new ReadOnlyAccountChanges(ContractAddress.From(_testAddress, UInt256.One))];
+            // The nested CREATE runs its init code; the transaction then fails its state-gas settlement.
+            changes = [new ReadOnlyAccountChanges(_testAddress), Build.An.AccountChanges.WithAddress(ContractAddress.From(_testAddress, UInt256.One)).WithStorageReads(slot).TestObject];
             yield return new TestCaseData(changes, code, null, false) { TestName = "create" };
 
             byte[] create2Salt = new byte[32];
@@ -1773,7 +1779,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             code = Prepare.EvmCode
                 .Create2(createInitCode, create2Salt, 0)
                 .Done;
-            changes = [new ReadOnlyAccountChanges(_testAddress), new ReadOnlyAccountChanges(ContractAddress.From(_testAddress, create2Salt, createInitCode))];
+            changes = [new ReadOnlyAccountChanges(_testAddress), Build.An.AccountChanges.WithAddress(ContractAddress.From(_testAddress, create2Salt, createInitCode)).WithStorageReads(slot).TestObject];
             yield return new TestCaseData(changes, code, null, false) { TestName = "create2" };
 
             code = Prepare.EvmCode

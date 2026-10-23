@@ -184,6 +184,18 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RepayStateGasSpill(ref TSelf gas) { }
 
+    /// <summary>Starts deferred EIP-8037 state-gas settlement for the transaction's execution.</summary>
+    /// <remarks>
+    /// Called once, after the pre-execution charges that a top-level rollback does not undo. From then on, state-gas
+    /// charges do not draw from the execution gas: they accumulate as a debt that the transaction settles at its end.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void BeginDeferredStateGas(ref TSelf gas) { }
+
+    /// <summary>Whether the transaction cannot pay its deferred state gas from the gas it has left.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool FailsStateGasSettlement(in TSelf gas) => false;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeCreateStateGas(ref TSelf gas) =>
         TSelf.TryConsumeStateGas(ref gas, TSelf.GetCreateStateCost());
