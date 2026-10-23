@@ -119,6 +119,9 @@ generations. Its signature and branches are reverified on restart without
 changing the replayed heads or participation thresholds. Interrupted or corrupt
 candidate persistence disables that recovery candidate while preserving the
 authenticated replay state.
+Optimistic polling runs independently of committee catch-up and finality polling,
+so a delayed repair request does not postpone optimistic recovery. Consensus
+updates still pass through the same serialized verification and persistence path.
 
 Native beacon networking keeps its private P2P identity and monotonically
 increasing signed ENR sequence in `<data-dir>/cl/<chain-id>/network`, using
@@ -288,7 +291,13 @@ on the selected chain. Optimistic ancestry is transient and bounded to 512
 parent steps behind the pinned optimistic head. Older finalized ranges and log
 `blockHash` selectors use an on-demand authenticated header cache retaining at
 most 262,144 headers, including the finalized anchor. Bodies and receipts must
-still be fetched and verified for each selected block; cached headers alone do not establish complete log results.
+also be verified; cached headers alone do not establish complete log results.
+Verified bodies and receipts have separate 32 MiB weighted in-memory caches keyed
+by block hash. Concurrent misses for the same payload share one download; canceling
+a caller does not cancel other callers' download. Log queries prefetch up to four
+bloom-positive blocks while preserving canonical result order. Bodies, receipts
+and BAL requests share at most three of the four execution request slots, leaving
+capacity for headers; SNAP state requests use a separate request budget.
 
 Finalized log headers persist under `<data-dir>/el/<network>/log-history` in
 bounded RocksDB slots with synchronous WAL writes and a 1 GiB disk-write
@@ -316,8 +325,10 @@ Omitting the selector uses the authenticated optimistic `"latest"` head, which m
 They fetch the selected execution header by its authenticated hash, then run
 Nethermind's EVM against the corresponding state root. Accounts, storage slots
 and bytecode are fetched from execution peers on demand and verified before a
-clean execution attempt is resumed. A bounded 32 MiB cache makes repeated reads
-fast; four calls may execute concurrently. Calls have a 10 million gas cap,
+clean execution attempt is resumed. A bounded 32 MiB cache retains demanded state.
+Accounts are authenticated separately at each world-state root; verified code is
+reused by code hash and storage values by authenticated storage root, account and
+slot. Four calls may execute concurrently. Calls have a 10 million gas cap,
 60-second deadline and at most 128 distinct state-fetch rounds. State changes
 made by a call or estimate are discarded. `BLOCKHASH` uses the authenticated parent hash,
 an anchored execution-header chain, or the verified EIP-2935 history-contract
