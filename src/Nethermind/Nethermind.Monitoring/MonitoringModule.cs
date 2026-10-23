@@ -3,62 +3,53 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Autofac;
 using DotNetty.Buffers;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
+using Nethermind.Init;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Init.Modules;
+namespace Nethermind.Monitoring;
 
-public class MonitoringModule(IMetricsConfig metricsConfig) : Module
+public class MonitoringModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        if (metricsConfig.Enabled || metricsConfig.CountersEnabled)
+    protected override void Load(ContainerBuilder builder) => builder
+        .AddSingleton<IMonitoringService, MonitoringService>()
+        .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, IPruningConfig, ISpecProvider>(
+            PrepareProductInfoMetrics)
+
+        .AddSingleton<AllocatorMetricsUpdater>()
+        .Intercept<IMonitoringService>(ConfigureDefaultMetrics)
+
+        .Intercept<IEthSyncingInfo>((syncInfo, ctx) =>
         {
-            builder
-                .AddSingleton<IMonitoringService, MonitoringService>()
-                .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, IPruningConfig, ISpecProvider>(
-                    PrepareProductInfoMetrics)
+            ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(() =>
+            {
+                Synchronization.Metrics.SyncTimeSeconds = (long)syncInfo.UpdateAndGetSyncTime().TotalSeconds;
+            });
+        })
 
-                .AddSingleton<AllocatorMetricsUpdater>()
-                .Intercept<IMonitoringService>(ConfigureDefaultMetrics)
-
-                .Intercept<IEthSyncingInfo>((syncInfo, ctx) =>
-                {
-                    ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(() =>
-                    {
-                        Synchronization.Metrics.SyncTimeSeconds = (long)syncInfo.UpdateAndGetSyncTime().TotalSeconds;
-                    });
-                })
-
-                // Attached via the sync-mode selector (not resolved during IMonitoringService
-                // construction) to avoid a container cycle: IMonitoringService -> tracker ->
-                // ISyncModeSelector -> ... -> IMonitoringService.
-                .Intercept<ISyncModeSelector>((syncModeSelector, ctx) =>
-                {
-                    Synchronization.SyncTimeInModeTracker tracker = new(syncModeSelector);
-                    ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(tracker.UpdateMetrics);
-                })
-
-                ;
-        }
-        else
+        // Attached via the sync-mode selector (not resolved during IMonitoringService
+        // construction) to avoid a container cycle: IMonitoringService -> tracker ->
+        // ISyncModeSelector -> ... -> IMonitoringService.
+        .Intercept<ISyncModeSelector>((syncModeSelector, ctx) =>
         {
-            builder.AddSingleton<IMonitoringService, NoopMonitoringService>();
-        }
-    }
+            Synchronization.SyncTimeInModeTracker tracker = new(syncModeSelector);
+            ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(tracker.UpdateMetrics);
+        })
+        ;
 
+    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "Metrics types are discovered by reflection at startup.")]
     private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, IPruningConfig pruningConfig, ISpecProvider specProvider)
     {
         // Need to be set here, or we cant start before blocktree, which is the one that set this normally.
@@ -72,11 +63,11 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
 
 
         ProductInfo.PruningMode = pruningConfig.Mode.ToString();
-        Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
+        Init.Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
 
         IMetricsController controller = new MetricsController(metricsConfig);
 
-        IEnumerable<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics));
+        IEnumerable<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Init.Metrics));
         foreach (Type metric in metrics)
         {
             controller.RegisterMetrics(metric);

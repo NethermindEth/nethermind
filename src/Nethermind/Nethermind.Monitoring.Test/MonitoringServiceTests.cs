@@ -11,11 +11,11 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Core;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Network;
 using NUnit.Framework;
@@ -84,7 +84,7 @@ public class MonitoringServiceTests
             InitializeStaticLabels = false
         };
         return new ContainerBuilder()
-            .AddModule(new MonitoringModule(config))
+            .AddModule(new MonitoringModule())
             .AddSingleton<IMetricsConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMetricsController, MetricsController>()

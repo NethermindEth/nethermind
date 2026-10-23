@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Monitoring.Config;
+namespace Nethermind.Api.Monitoring;
 
 public class MetricsConfig : IMetricsConfig
 {
     public string ExposeHost { get; set; } = "+";
-    public int? ExposePort { get; set; } = null;
+    public int? ExposePort { get; set; }
     public bool Enabled { get; set; } = false;
     public bool CountersEnabled { get; set; } = false;
-    public string PushGatewayUrl { get; set; } = null;
-    public string PushGatewayUsername { get; set; } = null;
-    public string PushGatewayPassword { get; set; } = null;
+    public string? PushGatewayUrl { get; set; }
+    public string? PushGatewayUsername { get; set; }
+    public string? PushGatewayPassword { get; set; }
     public int IntervalSeconds { get; set; } = 5;
     public int DbMetricIntervalSeconds { get; set; } = 60;
     public bool PauseDbMetricDuringBlockProcessing { get; set; } = true;

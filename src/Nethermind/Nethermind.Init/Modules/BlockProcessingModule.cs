@@ -4,6 +4,7 @@
 using System;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -32,8 +33,6 @@ using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -189,7 +188,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .WithMetadata(PrewarmerEnvFactory.HandoffMetadata, true);
 
         // Metering costs a virtual dispatch and an atomic per precompile call, so it is only installed
-        // when something is there to scrape it - the same condition MonitoringModule registers on.
+        // when something is there to scrape it - the same condition that enables MonitoringPlugin.
         builder.AddDecorator<IPrecompileProvider>(static (ctx, inner) =>
         {
             IMetricsConfig metricsConfig = ctx.Resolve<IMetricsConfig>();
