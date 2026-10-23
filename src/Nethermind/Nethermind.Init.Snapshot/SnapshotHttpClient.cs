@@ -24,6 +24,7 @@ internal sealed class SnapshotHttpClient : IDisposable
 
     public async Task<SnapshotRemoteInfo> ProbeAsync(string url, CancellationToken cancellationToken)
     {
+        // Cloudflare/R2 answers bytes=0-0 with 200 and the full body but honours other ranges (#14770).
         using HttpResponseMessage response = await GetAsync(url, new RangeHeaderValue(0, 1), ifRange: null, cancellationToken).ConfigureAwait(false);
         EntityTagHeaderValue? etag = response.Headers.ETag;
 

@@ -159,7 +159,7 @@ public class SnapshotHttpStreamTests
     public async Task Probe_ServerAnswersSingleByteRangeWithFullBody_ReportsRangeSupport()
     {
         _server.Content = BuildContent(100_000);
-        _server.IgnoreSingleByteRange = true;
+        _server.IgnoreFirstByteRange = true;
         using SnapshotHttpClient client = new();
 
         SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, CancellationToken.None);
