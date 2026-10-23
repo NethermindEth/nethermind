@@ -415,7 +415,8 @@ public class LongFinalityIntegrationTests
             LimboLogs.Instance,
             Substitute.For<IPersistedSnapshotCompactor>(),
             tier.Loader,
-            Substitute.For<IProcessExitSource>());
+            Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget());
     }
 
     private static StateId AddInMemoryBase(FlatTestContainer tier, StateId from, ulong toBlock)

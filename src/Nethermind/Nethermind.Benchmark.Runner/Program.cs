@@ -21,10 +21,10 @@ namespace Nethermind.Benchmark.Runner
     {
         public DashboardConfig(params Job[] jobs)
         {
-            //foreach (Job job in jobs)
-            //{
-            //    AddJob(job.WithToolchain(InProcessNoEmitToolchain.Instance));
-            //}
+            foreach (Job job in jobs)
+            {
+                AddJob(job);
+            }
 
             AddColumnProvider(DefaultColumnProviders.Descriptor);
             AddColumnProvider(DefaultColumnProviders.Statistics);

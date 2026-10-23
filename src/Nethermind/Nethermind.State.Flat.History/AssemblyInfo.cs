@@ -5,3 +5,5 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
+[assembly: InternalsVisibleTo("Nethermind.State.Pbt")]
+[assembly: InternalsVisibleTo("Nethermind.State.Pbt.Test")]

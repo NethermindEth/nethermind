@@ -6,6 +6,7 @@
   
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Blake3" />
     <PackageReference Include="System.IO.Hashing" />
   </ItemGroup>
   <ItemGroup>
@@ -16,5 +17,6 @@
     <ProjectReference Include="..\Nethermind.Network.Stats\Nethermind.Network.Stats.csproj" />
     <ProjectReference Include="..\Nethermind.SendPolicy.Plugin\Nethermind.SendPolicy.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.State.Flat\Nethermind.State.Flat.csproj" />
+    <ProjectReference Include="..\Nethermind.State.Pbt\Nethermind.State.Pbt.csproj" />
   </ItemGroup>
 </Project>

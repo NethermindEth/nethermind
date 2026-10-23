@@ -1073,6 +1073,13 @@
           "Snappier": "[1.3.1, )"
         }
       },
+      "nethermind.pbt": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Numerics.Int256": "[1.12.0, )"
+        }
+      },
       "nethermind.portfolioviewer.plugin": {
         "type": "Project",
         "dependencies": {
@@ -1191,6 +1198,25 @@
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
           "Nethermind.State": "[2.3.0-preview, )",
           "Nethermind.State.Flat": "[2.3.0-preview, )",
+          "Nethermind.Trie": "[2.3.0-preview, )"
+        }
+      },
+      "nethermind.state.pbt": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
+          "Nethermind.Pbt": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )",
+          "Nethermind.State.Flat": "[2.3.0-preview, )",
+          "Nethermind.Synchronization": "[2.3.0-preview, )",
           "Nethermind.Trie": "[2.3.0-preview, )"
         }
       },

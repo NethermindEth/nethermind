@@ -190,6 +190,15 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
             || StorageChanges.Length > 0;
 
     /// <summary>
+    /// True iff the BAL changes this account's balance, nonce or code.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasBalanceNonceOrCodeChanges
+        => BalanceChanges.Length > 0
+            || NonceChanges.Length > 0
+            || CodeChanges.Length > 0;
+
+    /// <summary>
     /// Most recent balance strictly before <paramref name="blockAccessIndex"/>; null if none.
     /// </summary>
     public UInt256? GetBalance(uint blockAccessIndex)
