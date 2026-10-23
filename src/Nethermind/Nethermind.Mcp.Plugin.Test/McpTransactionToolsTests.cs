@@ -1164,9 +1164,12 @@ public class McpTransactionToolsTests
         CallToolResult call = await McpToolCalls.Call(client, "diagnose_transaction", [("address", TestItem.AddressB.ToString())]);
         JsonElement result = McpAssert.Success(call);
         Assert.That(result.TryGetProperty("stale", out JsonElement stale), Is.True, "below-latest pool entries need their own count");
-        Assert.That(stale.GetInt32(), Is.EqualTo(1));
-        Assert.That(result.GetProperty("summary").GetString(), Does.Contain("1 pending and 1 queued").And.Contain("1 stale"));
-        Assert.That(result.GetProperty("notes").GetRawText(), Does.Contain("stale"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stale.GetInt32(), Is.EqualTo(1));
+            Assert.That(result.GetProperty("summary").GetString(), Does.Contain("1 pending and 1 queued").And.Contain("1 stale"));
+            Assert.That(result.GetProperty("notes").GetRawText(), Does.Contain("stale"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "diagnose_transaction", call);
     }
 
@@ -1677,7 +1680,7 @@ public class McpTransactionToolsTests
     }
 
     [Test]
-    public async Task Simulate_with_code_override_runs_the_overridden_code()
+    public async Task Simulate_with_code_override_runs_the_overridden_code_without_changing_state()
     {
         Address empty = TestItem.AddressF;
         string overrides = $$$"""{"{{{empty}}}":{"code":"{{{McpTxScenario.RevertRuntimeCode.ToHexString(true)}}}","balance":"0x1"}}""";
@@ -1685,7 +1688,13 @@ public class McpTransactionToolsTests
             ("to", empty.ToString()),
             ("stateOverrides", JsonSerializer.Deserialize<JsonElement>(overrides)));
 
-        Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("reverted"));
+        bool exists = _node.Chain.WorldStateManager.GlobalStateReader.TryGetAccount(_node.Chain.BlockTree.Head!.Header, empty, out AccountStruct account);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("reverted"));
+            Assert.That(exists, Is.False, "overrides must not reach the node's state");
+            Assert.That(account.Balance, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]

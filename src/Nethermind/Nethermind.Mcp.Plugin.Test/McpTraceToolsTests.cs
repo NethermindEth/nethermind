@@ -131,14 +131,15 @@ public class McpTraceToolsTests
         }
     }
 
-    [TestCase(true, new[] { "eth", "trace" }, null)]
-    [TestCase(true, new[] { "Eth", "Debug" }, null)]
-    [TestCase(true, new[] { "eth", "net", "web3" }, "JsonRpc.EnabledModules")]
-    [TestCase(false, new[] { "eth", "debug", "trace" }, "Mcp.EnableTracing=false")]
-    public void Tracing_follows_the_replay_modules_the_operator_exposes(bool enableTracing, string[] modules, string? reason)
+    [TestCase(true, true, new[] { "eth", "trace" }, null)]
+    [TestCase(true, true, new[] { "Eth", "Debug" }, null)]
+    [TestCase(true, true, new[] { "eth", "net", "web3" }, "JsonRpc.EnabledModules")]
+    [TestCase(false, true, new[] { "eth", "debug", "trace" }, "Mcp.EnableTracing=false")]
+    [TestCase(true, false, new[] { "eth", "debug", "trace" }, "JsonRpc.Enabled=false")]
+    public void Tracing_follows_the_replay_modules_the_operator_exposes(bool enableTracing, bool rpcEnabled, string[] modules, string? reason)
     {
         McpConfig config = new() { EnableTracing = enableTracing };
-        JsonRpcConfig rpcConfig = new() { EnabledModules = modules };
+        JsonRpcConfig rpcConfig = new() { Enabled = rpcEnabled, EnabledModules = modules };
 
         string? disabled = McpTraceTools.TracingDisabledReason(config, rpcConfig);
 

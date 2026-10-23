@@ -98,7 +98,12 @@ internal sealed class McpTestNode : IAsyncDisposable
             builder
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance))
                 .AddModule(new McpModule())
-                .AddSingleton<IMcpConfig>(config);
+                .AddSingleton<IMcpConfig>(config)
+                .AddDecorator<IJsonRpcConfig>(static (_, rpc) =>
+                {
+                    rpc.Enabled = true;
+                    return rpc;
+                });
             configureContainer?.Invoke(builder);
         });
 

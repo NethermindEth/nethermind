@@ -300,6 +300,26 @@ public class McpConfigValidatorTests
         }
     }
 
+    [TestCase(UnixFileMode.UserRead | UnixFileMode.UserWrite, false)]
+    [TestCase(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead, true)]
+    [TestCase(UnixFileMode.UserRead | UnixFileMode.OtherRead, true)]
+    public void Auth_token_file_readable_by_others_is_warned(UnixFileMode mode, bool warned)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Ignore("Windows has no Unix file modes.");
+            return;
+        }
+
+        using TempPath file = TempPath.GetTempFile();
+        File.WriteAllText(file.Path, ValidToken);
+        File.SetUnixFileMode(file.Path, mode);
+
+        using McpListenerSettings settings = McpConfigValidator.Load(new McpConfig { AuthTokenFile = file.Path }, EnabledRpc());
+
+        Assert.That(settings.Warnings, warned ? Has.One.Contains("Mcp.AuthTokenFile") : Is.Empty);
+    }
+
     [Test]
     public void Malformed_allowed_origin_is_rejected(
         [Values("*", "localhost:6274", "ftp://localhost", "http://localhost:6274/path", "http://user@localhost:6274",

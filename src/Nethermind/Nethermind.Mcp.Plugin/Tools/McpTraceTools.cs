@@ -23,7 +23,7 @@ namespace Nethermind.Mcp.Plugin.Tools;
 /// Uses the debug module's native <c>callTracer</c> rather than the parity-style <c>trace_transaction</c>: it returns a
 /// nested tree with revert reasons and errors per frame in one non-streaming call, and the debug module has a larger
 /// instance pool than the trace module (two instances by default). Replay is offered only while the operator also exposes
-/// <c>debug</c> or <c>trace</c> in <c>JsonRpc.EnabledModules</c>; see <see cref="TracingDisabledReason"/>.
+/// <c>debug</c> or <c>trace</c> in <c>JsonRpc.EnabledModules</c> with <c>JsonRpc.Enabled</c>; see <see cref="TracingDisabledReason"/>.
 /// </remarks>
 /// <param name="executor">Runs tool bodies against rented modules under the MCP limits.</param>
 /// <param name="config">The MCP limits; <see cref="IMcpConfig.MaxTraceCalls"/> caps the frames returned.</param>
@@ -73,11 +73,12 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
     /// <summary>Why transaction replay is off, or <see langword="null"/> when MCP may trace.</summary>
     /// <remarks>
     /// Replay costs as much as the JSON-RPC trace methods, so MCP offers it only when the operator has exposed one of the
-    /// replay modules there as well; <see cref="IMcpConfig.EnableTracing"/> can still turn it off for MCP alone.
+    /// replay modules there as well, with JSON-RPC enabled; <see cref="IMcpConfig.EnableTracing"/> can still turn it off for MCP alone.
     /// </remarks>
     internal static string? TracingDisabledReason(IMcpConfig config, IJsonRpcConfig rpcConfig)
     {
         if (!config.EnableTracing) return "Mcp.EnableTracing=false";
+        if (!rpcConfig.Enabled) return "JsonRpc.Enabled=false";
         foreach (string module in rpcConfig.EnabledModules)
         {
             if (string.Equals(module, ModuleType.Debug, StringComparison.OrdinalIgnoreCase)

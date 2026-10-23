@@ -123,13 +123,15 @@ internal static class McpConfigValidator
         }
 
         string? token = LoadAuthToken(config.AuthTokenFile);
+        List<string> warnings = [];
+        if (token is not null && AuthTokenFileAccessWarning(config.AuthTokenFile!) is { } accessWarning)
+            warnings.Add(accessWarning);
 
         if (!hasCertificate)
         {
-            return new McpListenerSettings { Address = address, AllowedOrigins = origins, AllowedHosts = allowedHosts, AuthToken = token };
+            return new McpListenerSettings { Address = address, AllowedOrigins = origins, AllowedHosts = allowedHosts, AuthToken = token, Warnings = warnings };
         }
 
-        List<string> warnings = [];
         X509Certificate2 certificate = LoadCertificate(
             config.TlsCertificatePath!, config.TlsCertificateKeyPath!, now ?? DateTimeOffset.UtcNow, warnings, out X509Certificate2Collection chain);
 
@@ -230,6 +232,28 @@ internal static class McpConfigValidator
                 "which no client can send in an Authorization header. Put the token on a single line using only visible ASCII, e.g. `openssl rand -hex 32`.");
 
         return token;
+    }
+
+    /// <summary>Returns a warning when the token file at <paramref name="path"/> is readable by its group or by others, or <see langword="null"/>.</summary>
+    /// <remarks>Always <see langword="null"/> on Windows, which has no Unix file modes.</remarks>
+    internal static string? AuthTokenFileAccessWarning(string path)
+    {
+        if (OperatingSystem.IsWindows()) return null;
+
+        UnixFileMode mode;
+        try
+        {
+            mode = File.GetUnixFileMode(path);
+        }
+        catch (Exception e) when (IsFileError(e))
+        {
+            return null;
+        }
+
+        const UnixFileMode groupOrOthers = UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.OtherRead | UnixFileMode.OtherWrite;
+        return (mode & groupOrOthers) == 0
+            ? null
+            : $"Mcp.AuthTokenFile '{path}' can be read or written by its group or by others; restrict it to the node's user, e.g. `chmod 600`.";
     }
 
     /// <summary>Loads a PEM certificate (plus any chain certificates in the same file) and its PEM private key.</summary>
