@@ -22,7 +22,7 @@ Cases.Test("matrix required fields and types", () =>
         foreach (var key in new[] { "network", "timeout", "machine_type", "local_ssd_count", "spot", "cl", "cl_image", "checkpoint-sync-url" }) Cases.True(entry!.AsObject().ContainsKey(key), key);
         Cases.True(entry!["local_ssd_count"]!.GetValue<int>() >= 1, "local SSD required");
         _ = entry["spot"]!.GetValue<bool>();
-        Cases.True(Regex.IsMatch(entry["machine_type"]!.ToString(), "^(c2|c3d)-"), "machine family");
+        Cases.True(MachineFamilyRegex().IsMatch(entry["machine_type"]!.ToString()), "machine family");
     }
     Cases.Equal(0, Sync.ShapeErrors(matrix).Count());
 });
@@ -40,9 +40,9 @@ foreach (var file in new[] { "sync-supported-chains.yml", "sync-master-validatio
         var text = File.ReadAllText(Path.Combine(root, ".github/workflows", file));
         Cases.True(text.IndexOf("$machine_type", StringComparison.Ordinal) < text.IndexOf("CheckRunnerShapes.cs", StringComparison.Ordinal), "shape validation follows override");
         Cases.True(text.Contains("SelectNetworks.cs", StringComparison.Ordinal), "network selector invoked");
-        var expression = Regex.Match(text, @"provisioning_model: \((.*?)\n\s*\),", RegexOptions.Singleline);
+        var expression = ProvisioningModelRegex().Match(text);
         Cases.True(expression.Success, "provisioning expression exists");
-        expressions.Add(Regex.Replace(expression.Groups[1].Value, @"\s+", " ").Trim());
+        expressions.Add(WhitespaceRegex().Replace(expression.Groups[1].Value, " ").Trim());
     });
 Cases.Test("matrix provisioning expressions agree", () => Cases.Equal(expressions[0], expressions[1]));
 foreach (var (model, config, expected) in new[] { ("Default", "{}", "SPOT"), ("Default", "{\"spot\":null}", "SPOT"), ("Default", "{\"spot\":true}", "SPOT"), ("Default", "{\"spot\":false}", "STANDARD"), ("", "{}", "SPOT"), ("Spot", "{\"spot\":false}", "SPOT"), ("Standard", "{\"spot\":true}", "STANDARD") })
@@ -53,3 +53,13 @@ foreach (var (model, config, expected) in new[] { ("Default", "{}", "SPOT"), ("D
         Cases.Equal(expected, result.Output.Trim());
     });
 Cases.Finish();
+
+partial class Program
+{
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRegex();
+    [GeneratedRegex(@"provisioning_model: \((.*?)\n\s*\),", RegexOptions.Singleline)]
+    private static partial Regex ProvisioningModelRegex();
+    [GeneratedRegex("^(c2|c3d)-")]
+    private static partial Regex MachineFamilyRegex();
+}

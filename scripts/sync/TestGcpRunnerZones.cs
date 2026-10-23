@@ -7,6 +7,8 @@
 #:include ../../.github/actions/gcp-runner/Gcp.Helpers.cs
 #:include ../../.github/actions/gcp-runner/Lifecycle.Helpers.cs
 
+using System.Text.RegularExpressions;
+
 var zones = string.Join(',', new[] { "europe-west1", "europe-west4", "europe-north1", "europe-west3", "europe-west2", "europe-west6" }.SelectMany(region => (region == "europe-west1" ? "bcd" : "abc").Select(suffix => $"{region}-{suffix}")));
 foreach (var seed in new[] { "seed", "mainnet", "gnosis", "hoodi", "sepolia" })
     Cases.Test($"zone permutation deterministic contiguous {seed}", () =>
@@ -74,7 +76,7 @@ Cases.Test("no implicit standard fallback", () =>
 {
     var text = File.ReadAllText(Path.Combine(Cases.Root(), ".github/actions/gcp-runner/action.yaml"));
     var block = text[text.IndexOf("  spot_fallback_to_standard:", StringComparison.Ordinal)..];
-    Cases.True(System.Text.RegularExpressions.Regex.Match(block, @"\A  spot_fallback_to_standard:\n(?:    .*\n)*").Value.Contains("default: \"false\"", StringComparison.Ordinal), "default false");
+    Cases.True(SpotFallbackRegex().Match(block).Value.Contains("default: \"false\"", StringComparison.Ordinal), "default false");
 });
 foreach (var response in new[] { "{broken", "[]", "null", "{\"status\":\"offline\"}" })
     await Cases.Test($"poll past invalid or offline runner response {response}", async () =>
@@ -87,3 +89,9 @@ foreach (var response in new[] { "{broken", "[]", "null", "{\"status\":\"offline
         Cases.True(!fixture.Commands.Any(command => command.Contains("delete") || command.Contains("DELETE")), "retry leaves live runner intact");
     });
 Cases.Finish();
+
+partial class Program
+{
+    [GeneratedRegex(@"\A  spot_fallback_to_standard:\n(?:    .*\n)*")]
+    private static partial Regex SpotFallbackRegex();
+}

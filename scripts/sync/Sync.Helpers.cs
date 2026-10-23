@@ -5,8 +5,11 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-static class Sync
+static partial class Sync
 {
+    [GeneratedRegex(@"^c3d-(standard|highmem)-(\d+)-lssd$")]
+    private static partial Regex LocalSsdMachineRegex();
+
     internal static string Container(string network) => network.StartsWith("taiko-", StringComparison.Ordinal)
         ? "sedge-execution-taiko-client"
         : new[] { "base-", "world-", "op-" }.Any(prefix => network.StartsWith(prefix, StringComparison.Ordinal))
@@ -34,7 +37,7 @@ static class Sync
         {
             var type = entry!["machine_type"]!.GetValue<string>();
             var count = entry["local_ssd_count"]!.GetValue<int>();
-            var match = Regex.Match(type, @"^c3d-(standard|highmem)-(\d+)-lssd$");
+            var match = LocalSsdMachineRegex().Match(type);
             var known = match.Success && int.TryParse(match.Groups[2].Value, out var size) && bundled.TryGetValue(size, out _);
             var prefix = $"{entry["network"]}: {type}";
             if (type.StartsWith("c3d-", StringComparison.Ordinal) && type.EndsWith("-lssd", StringComparison.Ordinal) && !known)

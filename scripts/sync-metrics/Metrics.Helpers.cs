@@ -6,8 +6,13 @@ using System.Numerics;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-static class Metrics
+static partial class Metrics
 {
+    [GeneratedRegex(@"Accounts=(\d+), Slots=(\d+)")]
+    private static partial Regex StateCountsRegex();
+    [GeneratedRegex(@"(?:^|\t)(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d+)?Z\s")]
+    private static partial Regex TimestampRegex();
+
     internal static readonly Dictionary<string, string> Markers = new()
     {
         ["snap_start"] = "Starting snap sync.", ["snap_end"] = "Snap sync completed.",
@@ -18,13 +23,13 @@ static class Metrics
 
     internal static void ParseLine(string line, Dictionary<string, DateTimeOffset> found, JsonObject counters)
     {
-        var timestamp = Regex.Match(line, @"(?:^|\t)(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d+)?Z\s");
+        var timestamp = TimestampRegex().Match(line);
         if (!timestamp.Success) return;
         foreach (var (key, marker) in Markers)
         {
             if (found.ContainsKey(key) || !line.Contains(marker, StringComparison.Ordinal)) continue;
             found[key] = DateTimeOffset.ParseExact(timestamp.Groups[1].Value, "yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
-            var count = Regex.Match(line, @"Accounts=(\d+), Slots=(\d+)");
+            var count = StateCountsRegex().Match(line);
             if (key == "verify_end_flat" && count.Success)
             {
                 counters["accounts"] = JsonNode.Parse(BigInteger.Parse(count.Groups[1].Value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture));

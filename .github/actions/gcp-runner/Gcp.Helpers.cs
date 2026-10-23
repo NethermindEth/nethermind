@@ -7,11 +7,14 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-static class Gcp
+static partial class Gcp
 {
+    [GeneratedRegex(@"\s")]
+    private static partial Regex WhitespaceRegex();
+
     internal static string InstanceName(string label, string attempt) => $"gh-{new string(label.ToLowerInvariant().Replace('_', '-').Where(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-').Take(40).ToArray())}-{Convert.ToHexStringLower(SHA1.HashData(Encoding.UTF8.GetBytes(label)))[..8]}-a{attempt}";
     internal static string Region(string zone) => zone.Contains('-') ? zone[..zone.LastIndexOf('-')] : zone;
-    internal static string[] Zones(string zones) => zones.Split(',').Select(zone => Regex.Replace(zone, @"\s", "")).Where(zone => zone.Length > 0).ToArray();
+    internal static string[] Zones(string zones) => zones.Split(',').Select(zone => WhitespaceRegex().Replace(zone, "")).Where(zone => zone.Length > 0).ToArray();
     internal static string[] OrderZones(string seed, string zones)
     {
         var groups = Zones(zones).GroupBy(Region).Select(group => group.ToArray()).ToArray();
@@ -22,15 +25,23 @@ static class Gcp
             return Enumerable.Range(0, group.Length).Select(j => group[(j + offset) % group.Length]);
         }).ToArray();
     }
+    [GeneratedRegex("Machine type with name .* does not exist in zone")]
+    private static partial Regex NotOfferedRegex();
+    [GeneratedRegex("Quota .* exceeded.* in region ")]
+    private static partial Regex QuotaRegex();
+    [GeneratedRegex("ZONE_RESOURCE_POOL_EXHAUSTED|RESOURCE_POOL_EXHAUSTED|does not have enough resources|resource availability|currently unavailable|No available zone")]
+    private static partial Regex RetryableRegex();
+    [GeneratedRegex("PERMISSION_DENIED|Required .* permission|QUOTA_EXCEEDED|Quota .* exceeded")]
+    private static partial Regex FatalRegex();
     internal static string Classify(string error)
     {
         foreach (var (kind, pattern) in new[]
         {
-            ("not-offered", "Machine type with name .* does not exist in zone"),
-            ("quota", "Quota .* exceeded.* in region "),
-            ("retryable", "ZONE_RESOURCE_POOL_EXHAUSTED|RESOURCE_POOL_EXHAUSTED|does not have enough resources|resource availability|currently unavailable|No available zone"),
-            ("fatal", "PERMISSION_DENIED|Required .* permission|QUOTA_EXCEEDED|Quota .* exceeded")
-        }) if (Regex.IsMatch(error, pattern)) return kind;
+            ("not-offered", NotOfferedRegex()),
+            ("quota", QuotaRegex()),
+            ("retryable", RetryableRegex()),
+            ("fatal", FatalRegex())
+        }) if (pattern.IsMatch(error)) return kind;
         return "unrecognised";
     }
     internal static async Task<CommandResult> Run(string executable, string[] arguments, string? input, CancellationToken cancellationToken)

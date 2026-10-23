@@ -5,8 +5,11 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-static class StartupProvision
+static partial class StartupProvision
 {
+    [GeneratedRegex(@"-part[0-9]")]
+    private static partial Regex PartitionRegex();
+
     internal static async Task<int> Run(string root, Func<string, string[], string?, CancellationToken, Task<CommandResult>> execute, string[] args, CancellationToken token)
     {
         string PathAt(string path) => Path.Combine(root, path.TrimStart('/'));
@@ -60,7 +63,7 @@ static class StartupProvision
                 await execute("systemctl", command, null, token);
             await Stage("disks");
             await Apt("update");
-            var disks = Directory.GetFiles(PathAt("/dev/disk/by-id"), "google-local-nvme-ssd-*").Where(path => File.Exists(path) && !Regex.IsMatch(path, @"-part[0-9]")).Order(StringComparer.Ordinal).ToArray();
+            var disks = Directory.GetFiles(PathAt("/dev/disk/by-id"), "google-local-nvme-ssd-*").Where(path => File.Exists(path) && !PartitionRegex().IsMatch(path)).Order(StringComparer.Ordinal).ToArray();
             var expected = int.Parse(await Attribute("local-ssd-count", "0"));
             Console.WriteLine($"local NVMe SSDs: found {disks.Length}, expected {expected} -> {string.Join(' ', disks)}");
             if (disks.Length != expected) throw new InvalidOperationException($"expected {expected} local SSDs but found {disks.Length}");

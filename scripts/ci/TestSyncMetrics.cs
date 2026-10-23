@@ -130,7 +130,7 @@ foreach (var scenario in new[] { "legacy", "reusable", "trigger", "paginate", "f
 await Cases.Test("dashboard pinned master images", async () =>
 {
     var html = File.ReadAllText(Path.Combine(Cases.Root(), "scripts/sync-metrics/index.html"));
-    var script = Regex.Match(html, "<script>(.*?)</script>", RegexOptions.Singleline).Groups[1].Value.Replace("init();", "", StringComparison.Ordinal);
+    var script = HtmlScriptRegex().Match(html).Groups[1].Value.Replace("init();", "", StringComparison.Ordinal);
     script += """
         for (const [row, expected] of [
             [{event:'workflow_run',image:'nethermindeth/nethermind:master'},false],
@@ -143,3 +143,9 @@ await Cases.Test("dashboard pinned master images", async () =>
     Cases.Equal(0, result.Code);
 });
 Cases.Finish();
+
+partial class Program
+{
+    [GeneratedRegex("<script>(.*?)</script>", RegexOptions.Singleline)]
+    private static partial Regex HtmlScriptRegex();
+}

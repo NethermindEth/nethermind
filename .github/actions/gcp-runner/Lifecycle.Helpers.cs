@@ -5,8 +5,11 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-sealed class Lifecycle(Func<string, string[], string?, CancellationToken, Task<CommandResult>> run, Func<string, string?> environment, Func<TimeSpan, CancellationToken, Task> delay)
+sealed partial class Lifecycle(Func<string, string[], string?, CancellationToken, Task<CommandResult>> run, Func<string, string?> environment, Func<TimeSpan, CancellationToken, Task> delay)
 {
+    [GeneratedRegex("^[0-9]+$")]
+    private static partial Regex SsdCountRegex();
+
     private string Env(string key, string fallback = "") => environment(key) ?? fallback;
     private string Name => Gcp.InstanceName(Env("RUNNER_LABEL"), Env("GITHUB_RUN_ATTEMPT", "1"));
     private string Project => $"--project={Env("PROJECT_ID")}";
@@ -108,7 +111,7 @@ sealed class Lifecycle(Func<string, string[], string?, CancellationToken, Task<C
     internal async Task<int> Create(string actionDirectory, CancellationToken token)
     {
         Console.WriteLine($"instance name: {Name}");
-        if (!Regex.IsMatch(Env("LOCAL_SSD_COUNT"), "^[0-9]+$") || !int.TryParse(Env("LOCAL_SSD_COUNT"), out var ssdCount))
+        if (!SsdCountRegex().IsMatch(Env("LOCAL_SSD_COUNT")) || !int.TryParse(Env("LOCAL_SSD_COUNT"), out var ssdCount))
         {
             Console.WriteLine($"::error title=GCP runner::local_ssd_count must be a non-negative integer, got '{Env("LOCAL_SSD_COUNT")}'");
             return 1;
