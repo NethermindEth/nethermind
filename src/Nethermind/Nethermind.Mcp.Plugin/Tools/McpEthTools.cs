@@ -320,7 +320,7 @@ internal sealed partial class McpEthTools(
 
         return _executor.ExecuteAsync("get_balance", nameof(IEthRpcModule.eth_getBalance), async (eth, _) =>
         {
-            using ResultWrapper<UInt256?> result = await eth.eth_getBalance(account, blockParameter);
+            using ResultWrapper<UInt256?> result = eth.eth_getBalance(account, blockParameter);
             if (result.Result.ResultType != ResultType.Success)
             {
                 return _executor.Failure("get_balance", result);

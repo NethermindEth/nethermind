@@ -283,7 +283,7 @@ public class McpNodeToolsTests
     {
         IEthRpcModule module = Substitute.For<IEthRpcModule>();
         module.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())
-            .Returns(Task.FromResult(ResultWrapper<UInt256?>.Fail("No state available for block 0x1 (1)", ErrorCodes.ResourceUnavailable)));
+            .Returns(ResultWrapper<UInt256?>.Fail("No state available for block 0x1 (1)", ErrorCodes.ResourceUnavailable));
         await using McpTestNode node = await McpTestNode.Create(configureContainer: static builder => builder
             .AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
         ((FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>()).Override(nameof(IEthRpcModule.eth_getBalance), module);

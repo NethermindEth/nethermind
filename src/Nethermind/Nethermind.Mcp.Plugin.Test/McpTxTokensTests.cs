@@ -310,7 +310,7 @@ public class McpTxTokensTests
             .AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
         await McpPriceIsolationTests.Deposit(node);
         IEthRpcModule eth = SlowToken(out _);
-        eth.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(Task.FromResult(ResultWrapper<UInt256?>.Success(UInt256.Zero)));
+        eth.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(ResultWrapper<UInt256?>.Success(UInt256.Zero));
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
             .Returns(call =>
             {

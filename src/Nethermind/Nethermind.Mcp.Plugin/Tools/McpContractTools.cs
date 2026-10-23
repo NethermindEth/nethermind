@@ -377,7 +377,7 @@ internal sealed class McpContractTools(
                 return failure;
             }
 
-            using ResultWrapper<UInt256?> balance = await eth.eth_getBalance(holder, pinned);
+            using ResultWrapper<UInt256?> balance = eth.eth_getBalance(holder, pinned);
             if (balance.Result.ResultType != ResultType.Success)
             {
                 return executor.Failure("token_balances", balance);
@@ -667,13 +667,13 @@ internal sealed class McpContractTools(
                 return executor.Failure("lookup_address", codeResult);
             }
 
-            using ResultWrapper<UInt256?> balanceResult = await eth.eth_getBalance(account, pinned);
+            using ResultWrapper<UInt256?> balanceResult = eth.eth_getBalance(account, pinned);
             if (balanceResult.Result.ResultType != ResultType.Success)
             {
                 return executor.Failure("lookup_address", balanceResult);
             }
 
-            using ResultWrapper<UInt256> nonceResult = await eth.eth_getTransactionCount(account, pinned);
+            using ResultWrapper<UInt256> nonceResult = eth.eth_getTransactionCount(account, pinned);
             if (nonceResult.Result.ResultType != ResultType.Success)
             {
                 return executor.Failure("lookup_address", nonceResult);

@@ -1060,7 +1060,7 @@ public class McpTransactionToolsTests
         ulong pending = latest;
         while (transactions.Any(tx => tx.Nonce == pending)) pending++;
         eth.eth_getTransactionCount(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(info =>
-            Task.FromResult(ResultWrapper<UInt256>.Success(info.ArgAt<BlockParameter>(1).Type == BlockParameterType.Latest ? latest : pending)));
+            ResultWrapper<UInt256>.Success(info.ArgAt<BlockParameter>(1).Type == BlockParameterType.Latest ? latest : pending));
         eth.eth_feeHistory(Arg.Any<ulong>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>())
             .Returns(_ => ResultWrapper<FeeHistoryResults>.Success(DiagnosisHistory()));
         eth.eth_baseFee().Returns(ResultWrapper<UInt256?>.Success(1));

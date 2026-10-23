@@ -232,7 +232,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         json["gas"] = frame.Gas;
         json["gasUsed"] = frame.GasUsed;
 
-        ReadOnlySpan<byte> input = frame.Input is null ? default : frame.Input.AsSpan();
+        ReadOnlySpan<byte> input = frame.Input.Span;
         bool isCreate = frame.Type is Instruction.CREATE or Instruction.CREATE2;
         if (!isCreate && input.Length >= 4)
         {
@@ -246,7 +246,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             json["input"] = McpTxFormat.HexPrefix(input, MaxInputBytes);
         }
 
-        ReadOnlySpan<byte> output = frame.Output is null ? default : frame.Output.AsSpan();
+        ReadOnlySpan<byte> output = frame.Output.Span;
         if (output.Length > 0 && !isCreate)
         {
             json["output"] = McpTxFormat.HexPrefix(output, includeInput ? MaxInputBytes : McpTxCallTree.DefaultOutputBytes);
@@ -294,8 +294,8 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
     private static long EstimateFrameSize(NativeCallTracerCallFrame frame, bool includeInput)
     {
         const int fixedFields = 400;
-        int inputLength = frame.Input?.Count ?? 0;
-        int outputLength = frame.Output?.Count ?? 0;
+        int inputLength = frame.Input.Length;
+        int outputLength = frame.Output.Length;
         int outputBytes = Math.Min(outputLength, includeInput ? MaxInputBytes : McpTxCallTree.DefaultOutputBytes);
         int inputBytes = includeInput ? Math.Min(inputLength, MaxInputBytes) : 0;
         return fixedFields + 2L * (inputBytes + outputBytes);

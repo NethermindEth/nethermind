@@ -159,7 +159,7 @@ internal static class McpTxCallTree
             depth++;
         }
 
-        ReadOnlySpan<byte> input = frame.Input is null ? default : frame.Input.AsSpan();
+        ReadOnlySpan<byte> input = frame.Input.Span;
         bool isCreate = frame.Type is Instruction.CREATE or Instruction.CREATE2;
         string? selector = !isCreate && input.Length >= 4 ? McpTxFormat.HexPrefix(input, 4) : null;
         return new McpFailingFrame(
@@ -176,7 +176,7 @@ internal static class McpTxCallTree
     /// <summary>Decodes a failed frame's revert data, or returns <see langword="null"/> if it did not revert.</summary>
     public static McpDecodedRevert? DecodeRevert(NativeCallTracerCallFrame frame) =>
         frame.Error == EvmExceptionType.Revert.GetEvmExceptionDescription()
-            ? McpKnownAbi.DecodeRevert(frame.Output is null ? default : frame.Output.AsSpan())
+            ? McpKnownAbi.DecodeRevert(frame.Output.Span)
             : null;
 
     /// <summary>Converts a decoded revert into JSON: <c>{"kind", "message", "selector"?}</c>.</summary>
@@ -200,8 +200,8 @@ internal static class McpTxCallTree
             return false;
         }
 
-        ReadOnlySpan<byte> parentOutput = parent.Output is null ? default : parent.Output.AsSpan();
-        ReadOnlySpan<byte> childOutput = child.Output is null ? default : child.Output.AsSpan();
+        ReadOnlySpan<byte> parentOutput = parent.Output.Span;
+        ReadOnlySpan<byte> childOutput = child.Output.Span;
         // Contracts usually re-throw the callee's revert data verbatim; an empty parent revert after a failed child
         // (require(success)) also points at the child.
         return parentOutput.SequenceEqual(childOutput) || parentOutput.IsEmpty;

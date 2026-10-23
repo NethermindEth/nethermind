@@ -499,7 +499,7 @@ public class McpLimitsTests
     {
         IEthRpcModule module = Substitute.For<IEthRpcModule>();
         module.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())
-            .Returns<Task<ResultWrapper<UInt256?>>>(_ => throw new InvalidOperationException(Secret));
+            .Returns<ResultWrapper<UInt256?>>(_ => throw new InvalidOperationException(Secret));
         await using McpTestNode node = await CreateWithFaults();
         FaultInjectingRpcModuleProvider provider = Faults(node);
         provider.Override(nameof(IEthRpcModule.eth_getBalance), module);
@@ -516,7 +516,7 @@ public class McpLimitsTests
     {
         IEthRpcModule module = Substitute.For<IEthRpcModule>();
         module.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())
-            .Returns(Task.FromResult(ResultWrapper<UInt256?>.Fail("bad\nthing\u0000happened", ErrorCodes.InternalError)));
+            .Returns(ResultWrapper<UInt256?>.Fail("bad\nthing\u0000happened", ErrorCodes.InternalError));
         await using McpTestNode node = await CreateWithFaults();
         FaultInjectingRpcModuleProvider provider = Faults(node);
         provider.Override(nameof(IEthRpcModule.eth_getBalance), module);
@@ -593,10 +593,10 @@ public class McpLimitsTests
         public BlockingEthModule()
         {
             Module = Substitute.For<IEthRpcModule>();
-            Module.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(async _ =>
+            Module.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(_ =>
             {
                 _entered.TrySetResult();
-                await _gate.Task;
+                _gate.Task.GetAwaiter().GetResult();
                 return ResultWrapper<UInt256?>.Success(Balance);
             });
         }

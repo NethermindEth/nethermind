@@ -131,9 +131,9 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
             }
 
             Address sender = transaction?.From ?? new Address(address!);
-            using ResultWrapper<UInt256> latestResult = await eth.eth_getTransactionCount(sender, BlockParameter.Latest);
+            using ResultWrapper<UInt256> latestResult = eth.eth_getTransactionCount(sender, BlockParameter.Latest);
             if (latestResult.Result.ResultType != ResultType.Success) return executor.Failure(ToolName, latestResult);
-            using ResultWrapper<UInt256> pendingResult = await eth.eth_getTransactionCount(sender, BlockParameter.Pending);
+            using ResultWrapper<UInt256> pendingResult = eth.eth_getTransactionCount(sender, BlockParameter.Pending);
             if (pendingResult.Result.ResultType != ResultType.Success) return executor.Failure(ToolName, pendingResult);
             ulong latest = (ulong)latestResult.Data;
             JsonObject result = NewResult(address is null ? "pending_ready" : "address", string.Empty);
