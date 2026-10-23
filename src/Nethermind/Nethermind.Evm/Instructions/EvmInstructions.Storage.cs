@@ -573,8 +573,9 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // EIP-8037 deferred settlement: a cold new slot takes the pre-EIP-8037 COLD_SLOAD + GAS_STORAGE_SET.
-        bool slotWasCold = TEip8037.IsActive && Eip8038.IsActive && vmState.AccessTracker.IsCold(in storageCell);
+        // EIP-8037 deferred settlement gives a new slot its pre-EIP-8037 charge: COLD_SLOAD + GAS_STORAGE_SET when cold.
+        bool deferredStateGas = TEip8037.IsActive && TGasPolicy.IsStateGasDeferred(in gas);
+        bool slotWasCold = deferredStateGas && Eip8038.IsActive && vmState.AccessTracker.IsCold(in storageCell);
 
         // Charge gas based on whether this is a cold or warm storage access before reading
         // the slot; BAL records the read only once the access cost is covered.
@@ -620,7 +621,8 @@ public static partial class EvmInstructions
             if (currentSameAsOriginal)
             {
                 traceExecutionCost = traceStorageAccessCost + (currentIsZero
-                    ? TEip8037.IsActive && Eip8038.IsActive ? GasCostOf.SSet - GasCostOf.WarmStateRead + (slotWasCold ? GasCostOf.WarmStateRead : 0) : GasCostOf.SSet
+                    ? deferredStateGas ? Eip8038.IsActive ? GasCostOf.SSet - GasCostOf.WarmStateRead + (slotWasCold ? GasCostOf.WarmStateRead : 0) : GasCostOf.SSet
+                    : TEip8037.IsActive ? Eip8038.IsActive ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution : GasCostOf.SSet
                     : Eip8038.IsActive ? Eip8038Constants.StorageWrite : gasCosts.SStoreResetCost);
                 if (currentIsZero)
                 {
@@ -682,9 +684,10 @@ public static partial class EvmInstructions
                             if (newIsZero) attemptedRefund += sClearRefunds;
                         }
                         if (originalValue == newValue)
-                            attemptedRefund += TEip8037.IsActive && originalIsZero
-                                ? (long)(GasCostOf.SSet - GasCostOf.WarmStateRead)
-                                : Eip8038.IsActive ? (long)Eip8038Constants.StorageWrite : (long)gasCosts.RefundFromReversal(originalIsZero);
+                            attemptedRefund += deferredStateGas && originalIsZero ? (long)(GasCostOf.SSet - GasCostOf.WarmStateRead)
+                                : Eip8038.IsActive ? (long)Eip8038Constants.StorageWrite
+                                : TEip8037.IsActive && originalIsZero ? (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead)
+                                : (long)gasCosts.RefundFromReversal(originalIsZero);
                         vm.TraceStorageRefund(attemptedRefund);
                         vm.TraceOperationReady(traceExecutionCost, "out of gas");
                     }
@@ -733,8 +736,11 @@ public static partial class EvmInstructions
                         {
                             vm.CreditStateGasRefund<TEip8037>(ref gas, stateGasCost);
                         }
-                        // As before EIP-8037: GAS_STORAGE_SET - WARM_ACCESS.
-                        refundFromReversal = (long)(GasCostOf.SSet - GasCostOf.WarmStateRead);
+                        // Deferred settlement refunds GAS_STORAGE_SET - WARM_ACCESS, as before EIP-8037.
+                        if (deferredStateGas)
+                            refundFromReversal = (long)(GasCostOf.SSet - GasCostOf.WarmStateRead);
+                        else if (!Eip8038.IsActive)
+                            refundFromReversal = (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead);
                     }
 
                     vmState.Refund += refundFromReversal;

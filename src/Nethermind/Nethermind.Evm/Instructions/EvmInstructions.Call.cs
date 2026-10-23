@@ -191,7 +191,8 @@ public static partial class EvmInstructions
             goto OutOfGasTraced;
         }
 
-        bool targetWasCold = TEip8037.IsActive && hasValueTransfer && TSpec.UseHotAndColdStorage
+        bool deferredStateGas = TEip8037.IsActive && TGasPolicy.IsStateGasDeferred(in gas);
+        bool targetWasCold = deferredStateGas && hasValueTransfer && TSpec.UseHotAndColdStorage
             && vm.VmState.AccessTracker.IsCold(codeSource) && !spec.IsPrecompile(codeSource);
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
@@ -218,7 +219,7 @@ public static partial class EvmInstructions
         bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
 
         traceNewAccountCharge = chargesNewAccount;
-        bool newAccountOutOfGas = chargesNewAccount && (TEip8037.IsActive
+        bool newAccountOutOfGas = chargesNewAccount && (deferredStateGas
             ? !TGasPolicy.TryConsumeStateAndExecutionGas(ref gas, TGasPolicy.GetNewAccountStateCost(), LegacyNewAccountCallTopUp<TGasPolicy, TSpec>(spec, targetWasCold))
             : !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas));
 

@@ -2607,6 +2607,114 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>
+    /// A nested create frame that cannot pay the execution part of its code deposit (hashing) fails the deposit; the
+    /// create frame halts and its parent's account-creation state gas is refunded.
+    /// </summary>
+    [Test]
+    public void Eip8037_nested_create_code_deposit_hashing_out_of_gas_refunds_create_state()
+    {
+        // Burns gas while GAS > 7,975, then returns 32,000 zero bytes: the RETURN memory expansion (4,953) leaves
+        // about 3,000 gas, below the 6,000 hashing cost of the deposit, while the allowance covers its state gas.
+        byte[] initCode = Bytes.FromHexString("0x5b5a611f271060005761" + "7d00" + "6000f3");
+        byte[] code = Prepare.EvmCode.Create(initCode, UInt256.Zero).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 20_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        }
+    }
+
+    public enum AuthorizationOutcome
+    {
+        PreExecutionFailure,
+        Success,
+        SettlementFailure
+    }
+
+    /// <summary>
+    /// Authorizations are charged one at a time. With 110,000 gas after intrinsic gas, three existing authorities without
+    /// delegation need 3 * 9,000 execution gas and 3 * 35,190 state gas: each fits alone, but the third fails, so all
+    /// three roll back and the sender pays all of <c>tx.gas</c>. Two authorities fit; with a new slot in the code, the
+    /// state-gas limit left after them fails the settlement, which keeps the authorizations.
+    /// </summary>
+    [TestCase(3, false, AuthorizationOutcome.PreExecutionFailure)]
+    [TestCase(2, false, AuthorizationOutcome.Success)]
+    [TestCase(2, true, AuthorizationOutcome.SettlementFailure)]
+    public void Eip8037_authorizations_are_charged_one_at_a_time(int authorityCount, bool createsSlot, AuthorizationOutcome outcome)
+    {
+        const ulong authorizationExecutionGas = Eip8038Constants.AccountWrite;
+        const long authorizationStateGas = Eip8037Constants.StateBytesPerAuthBase * GasCostOf.CostPerStateByte;
+        PrivateKey[] authorities = [TestItem.PrivateKeyC, TestItem.PrivateKeyE, TestItem.PrivateKeyF];
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        AuthorizationTuple[] authorizations = new AuthorizationTuple[authorityCount];
+        for (int i = 0; i < authorityCount; i++)
+        {
+            TestState.CreateAccount(authorities[i].Address, 1);
+            authorizations[i] = ecdsa.Sign(authorities[i], 0, TestItem.AddressD, 0);
+        }
+
+        byte[] code = createsSlot
+            ? Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done;
+        TestState.CreateAccount(Recipient, 0);
+        TestState.InsertCode(Recipient, code, SpecProvider.GenesisSpec);
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(authorizations)
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec).Standard;
+        transaction.GasLimit = intrinsicGas + 110_000;
+        (Block block, _) = PrepareTx(Activation, transaction.GasLimit, null, value: 0, blockGasLimit: DynamicStatePricingBlockGasLimit, transaction: transaction);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        ulong preExecutionGas = (ulong)authorityCount * authorizationExecutionGas;
+        ulong committedStateGas = (ulong)(authorityCount * authorizationStateGas);
+        GasConsumed gas = tracer.GasConsumedResult;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(outcome == AuthorizationOutcome.Success ? StatusCode.Success : StatusCode.Failure));
+            switch (outcome)
+            {
+                case AuthorizationOutcome.PreExecutionFailure:
+                    // tx_gas_paid = intrinsic + min(evm_gas, execution_budget); tx_state_gas = 0.
+                    Assert.That(gas.SpentGas, Is.EqualTo(transaction.GasLimit));
+                    Assert.That(gas.BlockGas, Is.EqualTo(transaction.GasLimit));
+                    Assert.That(gas.BlockStateGas, Is.Zero);
+                    break;
+                case AuthorizationOutcome.Success:
+                    // tx_gas_paid = intrinsic + pre_execution + exec_used (0) + committed_state_gas.
+                    Assert.That(gas.SpentGas, Is.EqualTo(intrinsicGas + preExecutionGas + committedStateGas));
+                    Assert.That(gas.BlockGas, Is.EqualTo(intrinsicGas + preExecutionGas));
+                    Assert.That(gas.BlockStateGas, Is.EqualTo(committedStateGas));
+                    break;
+                default:
+                    // tx_gas_paid = intrinsic + pre_execution + committed_state_gas + gas_left_initial = tx.gas.
+                    Assert.That(gas.SpentGas, Is.EqualTo(transaction.GasLimit));
+                    Assert.That(gas.BlockGas, Is.EqualTo(transaction.GasLimit - committedStateGas));
+                    Assert.That(gas.BlockStateGas, Is.EqualTo(committedStateGas));
+                    break;
+            }
+
+            foreach (PrivateKey authority in authorities[..authorityCount])
+            {
+                bool delegated = outcome != AuthorizationOutcome.PreExecutionFailure;
+                Assert.That(TestState.GetCode(authority.Address).Length, Is.EqualTo(delegated ? Eip7702Constants.DelegationHeader.Length + Address.Size : 0));
+                Assert.That(TestState.GetNonce(authority.Address), Is.EqualTo(delegated ? 1UL : 0UL));
+            }
+        }
+    }
+
     public enum Blake2FInput
     {
         Empty,

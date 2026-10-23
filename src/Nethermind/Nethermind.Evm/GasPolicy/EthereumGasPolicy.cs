@@ -237,6 +237,9 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         !gas.DeferStateGas || gas.StateGasAllowanceLeft >= stateGasCost;
 
     /// <inheritdoc/>
+    public static bool IsStateGasDeferred(in EthereumGasPolicy gas) => gas.DeferStateGas;
+
+    /// <inheritdoc/>
     public static long GetExecutionStateGasUsed(in EthereumGasPolicy gas) =>
         gas.DeferStateGas ? gas.StateReservoirAtStart - gas.StateReservoir : 0;
 
@@ -424,7 +427,10 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         where Eip3860 : struct, IFlag
         where Eip8038 : struct, IFlag
     {
-        ulong baseCost = CreateGasCost.Base<TOpCreate>(Eip8038.IsActive, Eip8037.IsActive);
+        // EIP-8037 deferred settlement: creation takes exactly the pre-EIP-8037 GAS_CREATE, whether or not the address exists.
+        ulong baseCost = Eip8037.IsActive && gas.DeferStateGas && !TOpCreate.IsTransient
+            ? GasCostOf.Create
+            : CreateGasCost.Base<TOpCreate>(Eip8038.IsActive, Eip8037.IsActive);
         ulong initCodeWordCost = Eip3860.IsActive ? GasCostOf.InitCodeWord * initCodeWords : 0;
         return UpdateGas(ref gas, baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
     }
@@ -560,7 +566,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         // EIP-8037 deferred settlement: a new slot takes exactly its pre-EIP-8037 charge from gas_left. EIP-8038 already
         // charged the warm access, so the write is GAS_STORAGE_SET minus it; a cold slot adds the rest in the SSTORE.
-        ulong executionWriteCost = TEip8037.IsActive
+        ulong executionWriteCost = TEip8037.IsActive && gas.DeferStateGas
             ? TMode.IsEip8038Enabled(spec) ? GasCostOf.SSet - GasCostOf.WarmStateRead : GasCostOf.SSet
             : TMode.IsEip8038Enabled(spec) ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution;
         return TEip8037.IsActive switch
@@ -767,8 +773,10 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
     {
-        // A new account never costs less execution gas than its pre-EIP-8037 GAS_NEW_ACCOUNT.
-        true => TryConsumeStateAndExecutionGas(ref gas, GasCostOf.NewAccountState, GasCostOf.NewAccount),
+        // EIP-8037 deferred settlement: a new account never costs less execution gas than its pre-EIP-8037 GAS_NEW_ACCOUNT.
+        true => gas.DeferStateGas
+            ? TryConsumeStateAndExecutionGas(ref gas, GasCostOf.NewAccountState, GasCostOf.NewAccount)
+            : TryConsumeStateGas(ref gas, GasCostOf.NewAccountState),
         false => UpdateGas(ref gas, GasCostOf.NewAccount)
     };
 

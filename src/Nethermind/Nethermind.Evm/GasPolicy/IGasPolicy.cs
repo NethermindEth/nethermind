@@ -208,6 +208,10 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool HasStateGasAllowance(in TSelf gas, long stateGasCost) => true;
 
+    /// <summary>Whether state gas is settled at the end of the transaction, which gives state creation its pre-EIP-8037 charges.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool IsStateGasDeferred(in TSelf gas) => false;
+
     /// <summary>The transaction's net state gas since execution started, as <c>STATEGAS</c> reports it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual long GetExecutionStateGasUsed(in TSelf gas) => 0;

@@ -69,7 +69,7 @@ public class HostMemoryFastPathTests
     private const long InitialStateReservoir = GasCostOf.SSetState + 17;
     private const ulong BoundaryGasCost = 2 * GasCostOf.Base + 2 * GasCostOf.VeryLow;
     private const ulong StatePoolOogGas = GasCostOf.Base + GasCostOf.VeryLow
-        + Eip8038Constants.ColdStorageAccess + GasCostOf.SSet + 1; // a new slot costs at least the pre-EIP-8037 GAS_STORAGE_SET
+        + Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite + 1;
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
     private static readonly IReleaseSpec StateGasSpec = Amsterdam.Instance;

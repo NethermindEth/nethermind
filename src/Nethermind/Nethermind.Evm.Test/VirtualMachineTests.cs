@@ -1247,7 +1247,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         AssertCallbacksPaired(tracer, 5);
         Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
         {
-            999_997, 999_994, 999_991, 967_991, 967_991
+            999_997, 999_994, 999_991, 987_991, 987_991
         }));
     }
 

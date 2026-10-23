@@ -14,16 +14,12 @@ namespace Nethermind.Evm.GasPolicy;
 internal static class CreateGasCost
 {
     /// <summary>The base charge, before init-code words and memory.</summary>
-    /// <remarks>
-    /// EIP-8360: <c>TCREATE</c> pays <c>BASE_OPCODE_COST</c> instead of the account-creation charge.
-    /// With EIP-8037 state gas settled at the end of the transaction, creation takes exactly the pre-EIP-8037
-    /// <c>GAS_CREATE</c>, whether or not the address exists.
-    /// </remarks>
+    /// <remarks>EIP-8360: <c>TCREATE</c> pays <c>BASE_OPCODE_COST</c> instead of the account-creation charge.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Base<TOpCreate>(bool eip8038, bool eip8037) where TOpCreate : struct, EvmInstructions.IOpCreate =>
         TOpCreate.IsTransient ? GasCostOf.TCreate
-        : eip8037 ? GasCostOf.Create
         : eip8038 ? Eip8038Constants.CreateAccess
+        : eip8037 ? GasCostOf.CreateExecution
         : GasCostOf.Create;
 
     /// <summary>The EIP-1014 init-code hashing charge, paid by the salted variants only.</summary>
