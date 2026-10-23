@@ -459,10 +459,10 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCall_state_override_is_not_replaced_by_the_block_system_calls()
+    public async Task Debug_traceCall_state_override_is_not_replaced_by_the_block_system_calls([Values] bool blockAccessLists)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { AllowTestChainOverride = false }));
         Block block = await chain.AddBlock();
         UInt256 parentNumber = (UInt256)(block.Number - 1);
         UInt256 slot = (UInt256)((block.Number - 1) % Eip2935Constants.RingBufferSize);

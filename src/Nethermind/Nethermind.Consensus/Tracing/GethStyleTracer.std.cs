@@ -411,7 +411,8 @@ public class GethStyleTracer(
         }
 
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : txHash };
-        long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        long destroyRefund = (long)spec.GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
@@ -423,9 +424,8 @@ public class GethStyleTracer(
             if (useBlockAsBase && options.StateOverrides is { } stateOverrides)
             {
                 IWorldState state = scope.Component.WorldState;
-                IReleaseSpec callSpec = specProvider.GetSpec(block.Header);
                 traced = overridesTracer = new CallAtIndexBlockTracer(traced, block.Header, block.Transactions[0],
-                    _ => ApplyCallStateOverrides(state, stateOverrides, callSpec));
+                    _ => ApplyCallStateOverrides(state, stateOverrides, spec));
             }
 
             // A seed skips the prefix, whose logs a traced prefix is there to count.
