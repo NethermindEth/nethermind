@@ -30,7 +30,6 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
