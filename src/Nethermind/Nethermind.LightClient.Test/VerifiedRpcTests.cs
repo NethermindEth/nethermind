@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -758,13 +760,174 @@ public class VerifiedRpcTests
         }
     }
 
-    private static void AssertRangeLogs(JsonElement logs, LogRangeSource source, ulong first, ulong last)
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Parallel_log_prefetch_keeps_canonical_coordinates_and_four_payload_limit(
+        [Values] bool sparse, CancellationToken token)
+    {
+        ulong last = sparse ? 315UL : 307UL;
+        bool Includes(ulong number) => !sparse || number % 2 == 0;
+        ulong[] candidates = Enumerable.Range(300, checked((int)(last - 299))).Select(number => (ulong)number).Where(Includes).ToArray();
+        Dictionary<ulong, TaskCompletionSource> gates = Enumerable.Range(300, checked((int)(last - 299)))
+            .ToDictionary(number => (ulong)number, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        Channel<(ulong Number, int Active)> started = Channel.CreateUnbounded<(ulong, int)>();
+        ConcurrentQueue<int> concurrency = new();
+        int active = 0;
+        LogRangeSource source = new(300, last, includeLogs: Includes)
+        {
+            BeforeReceiptRead = async (number, requestToken) =>
+            {
+                int pending = Interlocked.Increment(ref active);
+                concurrency.Enqueue(pending);
+                started.Writer.TryWrite((number, pending));
+                try { await gates[number].Task.WaitAsync(requestToken); }
+                finally { Interlocked.Decrement(ref active); }
+            },
+        };
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using VerifiedRpc rpc = new(source, () => source.Head(last), 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(last));
+        Task<object> request = rpc.InvokeAsync("eth_getLogs", Parameters(new
+        {
+            fromBlock = VerifiedRpc.Quantity(300),
+            toBlock = "finalized",
+            address = AccountAddress.ToString(),
+        }), caller.Token);
+        try
+        {
+            for (int offset = 0; offset < candidates.Length; offset += 4)
+            {
+                List<ulong> batch = [];
+                for (int i = 0; i < 4; i++)
+                {
+                    (ulong number, int pending) = await started.Reader.ReadAsync(token);
+                    batch.Add(number);
+                    Assert.That(pending, Is.InRange(1, 4));
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(batch, Is.EqualTo(candidates.Skip(offset).Take(4)));
+                    Assert.That(source.BodyNumbers.Count, Is.EqualTo(offset + 4), "prefetch must not issue a fifth payload while four are pending");
+                    Assert.That(request.IsCompleted, Is.False);
+                }
+                for (int i = batch.Count - 1; i >= 0; i--)
+                {
+                    gates[batch[i]].SetResult();
+                    Assert.That(await source.ReceiptsCompleted.Reader.ReadAsync(token), Is.EqualTo(batch[i]));
+                }
+            }
+            JsonElement logs = (JsonElement)await request.WaitAsync(token);
+            AssertRangeLogs(logs, source, 300, last, Includes);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(source.BodyNumbers, Is.EqualTo(candidates), "bloom-negative headers must never request block bodies");
+                Assert.That(source.ReceiptReads, Is.EqualTo(candidates.Length));
+                Assert.That(concurrency.Max(), Is.EqualTo(4));
+                Assert.That(active, Is.Zero);
+            }
+        }
+        finally
+        {
+            await caller.CancelAsync();
+            foreach (TaskCompletionSource gate in gates.Values) gate.TrySetResult();
+            await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Failed_or_canceled_log_prefetch_drains_siblings_without_partial_success(
+        [Values] bool receipts, [Values] bool cancel, CancellationToken token)
+    {
+        Channel<ulong> started = Channel.CreateUnbounded<ulong>();
+        TaskCompletionSource fail = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int canceling = 0;
+        int drained = 0;
+        async Task WaitForPayloadAsync(ulong number, CancellationToken requestToken)
+        {
+            started.Writer.TryWrite(number);
+            if (number == 300) return;
+            try
+            {
+                if (number == 302)
+                {
+                    await fail.Task.WaitAsync(requestToken);
+                    throw new InvalidDataException("Invalid payload from a controlled peer.");
+                }
+                await Task.Delay(Timeout.InfiniteTimeSpan, requestToken);
+            }
+            catch (OperationCanceledException) when (requestToken.IsCancellationRequested && number is 301 or 303)
+            {
+                if (Interlocked.Increment(ref canceling) == 2) canceled.TrySetResult();
+                await release.Task;
+                Interlocked.Increment(ref drained);
+                throw;
+            }
+        }
+        LogRangeSource source = new(300, 307)
+        {
+            BeforeBlockRead = receipts ? null : WaitForPayloadAsync,
+            BeforeReceiptRead = receipts ? WaitForPayloadAsync : null,
+        };
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using VerifiedRpc rpc = new(source, () => source.Head(307), 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(307));
+        Task<object> request = rpc.InvokeAsync("eth_getLogs", Parameters(new
+        {
+            fromBlock = VerifiedRpc.Quantity(300),
+            toBlock = "finalized",
+            address = AccountAddress.ToString(),
+        }), caller.Token);
+        try
+        {
+            for (ulong number = 300; number < 304; number++)
+                Assert.That(await started.Reader.ReadAsync(token), Is.EqualTo(number));
+            Assert.That(await source.ReceiptsCompleted.Reader.ReadAsync(token), Is.EqualTo(300), "one verified block is available before the later failure");
+            if (cancel) await caller.CancelAsync();
+            else fail.SetResult();
+            await canceled.Task.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(request.IsCompleted, Is.False, "the RPC must wait for both sibling requests to drain");
+                Assert.That(drained, Is.Zero);
+                Assert.That(source.BodyNumbers.Count, Is.EqualTo(4));
+            }
+            release.SetResult();
+            if (cancel)
+                Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
+            else
+            {
+                RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await request);
+                Assert.That(error!.Code, Is.EqualTo(-32000));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(drained, Is.EqualTo(2));
+                Assert.That(source.BodyNumbers.Count, Is.EqualTo(4), "a failed batch must not start the next payloads");
+            }
+        }
+        finally
+        {
+            await caller.CancelAsync();
+            release.TrySetResult();
+            fail.TrySetResult();
+            await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    private static void AssertRangeLogs(JsonElement logs, LogRangeSource source, ulong first, ulong last,
+        Func<ulong, bool>? includeBlock = null)
     {
         List<(string Number, string Hash, string Transaction, string TransactionIndex, string LogIndex, string Data)> expected = [];
         for (ulong number = first; number <= last; number++)
+        {
+            if (includeBlock is not null && !includeBlock(number)) continue;
             for (int transaction = 0; transaction < 2; transaction++)
                 expected.Add((VerifiedRpc.Quantity(number), source[number].Hash!.ToString(), source[number].Transactions[transaction].Hash!.ToString(),
                     VerifiedRpc.Quantity((ulong)transaction), VerifiedRpc.Quantity((ulong)(2 * transaction + 1)), $"0x{number % 256:x2}{transaction:x2}"));
+        }
         Assert.That(logs.EnumerateArray().Select(log => (
             log.GetProperty("blockNumber").GetString(), log.GetProperty("blockHash").GetString(), log.GetProperty("transactionHash").GetString(),
             log.GetProperty("transactionIndex").GetString(), log.GetProperty("logIndex").GetString(), log.GetProperty("data").GetString())), Is.EqualTo(expected));
@@ -1488,12 +1651,18 @@ public class VerifiedRpcTests
         internal TaskCompletionSource? AncestorGate { get; init; }
         internal Func<BlockHeader, BlockHeader>? TransformHeader { get; set; }
         internal Func<Hash256[], Hash256[]>? TransformAncestors { get; set; }
+        internal Func<ulong, CancellationToken, Task>? BeforeBlockRead { get; init; }
+        internal Func<ulong, CancellationToken, Task>? BeforeReceiptRead { get; init; }
+        internal readonly ConcurrentQueue<ulong> BodyNumbers = new();
+        internal readonly Channel<ulong> ReceiptsCompleted = Channel.CreateUnbounded<ulong>();
         internal bool TamperReceipts { get; set; }
         internal int HeaderReads { get; private set; }
-        internal int ReceiptReads { get; private set; }
+        private int _receiptReads;
+        internal int ReceiptReads => Volatile.Read(ref _receiptReads);
         internal Block this[ulong number] => _blocks[number];
 
-        internal LogRangeSource(ulong first = 300, ulong last = 325, bool signTransactions = false)
+        internal LogRangeSource(ulong first = 300, ulong last = 325, bool signTransactions = false,
+            Func<ulong, bool>? includeLogs = null)
         {
             using PrivateKey? key = signTransactions ? new("0x0000000000000000000000000000000000000000000000000000000000000001") : null;
             EthereumEcdsa signer = new(1);
@@ -1513,7 +1682,8 @@ public class VerifiedRpcTests
                         TxType = transaction.Type,
                         StatusCode = 1,
                         GasUsedTotal = (ulong)((index + 1) * 21_000),
-                        Logs = [new LogEntry(Address.Zero, [0xfe], [Topic]), new LogEntry(AccountAddress, [(byte)(number % 256), (byte)index], [Topic])],
+                        Logs = includeLogs is not null && !includeLogs(number) ? []
+                            : [new LogEntry(Address.Zero, [0xfe], [Topic]), new LogEntry(AccountAddress, [(byte)(number % 256), (byte)index], [Topic])],
                     };
                 }
                 BlockHeader header = Provider.CreateHeader(number, Keccak.Zero, Keccak.Compute("range state"));
@@ -1564,25 +1734,29 @@ public class VerifiedRpcTests
             return TransformAncestors?.Invoke(hashes) ?? hashes;
         }
 
-        public Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken)
+        public async Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            BodyNumbers.Enqueue(header.Number);
+            if (BeforeBlockRead is not null) await BeforeBlockRead(header.Number, cancellationToken);
             Block block = _byHash[header.Hash!];
             ExecutionPeerTransport.VerifyBlockBody(header, block.Body);
-            return Task.FromResult(block);
+            return block;
         }
 
-        public Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken)
+        public async Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ReceiptReads++;
+            Interlocked.Increment(ref _receiptReads);
+            if (BeforeReceiptRead is not null) await BeforeReceiptRead(block.Number, cancellationToken);
             TxReceipt[] receipts = _receipts[block.Hash!];
             if (TamperReceipts)
             {
                 receipts = [new TxReceipt(receipts[0]) { Logs = [new LogEntry(AccountAddress, [0xff], [Topic])] }, receipts[1]];
             }
             ExecutionPeerTransport.VerifyReceipts(block.Header, receipts, MainnetSpecProvider.Instance);
-            return Task.FromResult(receipts);
+            ReceiptsCompleted.Writer.TryWrite(block.Number);
+            return receipts;
         }
 
         public Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken) => throw new NotSupportedException();

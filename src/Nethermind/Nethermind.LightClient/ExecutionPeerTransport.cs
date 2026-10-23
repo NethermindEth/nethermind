@@ -54,12 +54,16 @@ namespace Nethermind.LightClient;
 internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisposable
 {
     private const int ExecutionRequestLimit = 4;
+    private const int ExecutionBulkLimit = ExecutionRequestLimit - 1;
     private const int SnapRequestLimit = 8;
     private readonly IContainer _services;
     private readonly ILogManager _logManager;
     private readonly Nethermind.Logging.ILogger _logger;
     private readonly CancellationTokenSource _stop = new();
+    private readonly VerifiedPayloadCache<Block> _bodies;
+    private readonly VerifiedPayloadCache<TxReceipt[]> _receipts;
     private readonly SemaphoreSlim _executionDataRequests = new(ExecutionRequestLimit, ExecutionRequestLimit);
+    private readonly SemaphoreSlim _executionBulkRequests = new(ExecutionBulkLimit, ExecutionBulkLimit);
     private readonly MemoryCache _peerCooldowns = new(new MemoryCacheOptions { SizeLimit = 256 });
     private readonly ConcurrentDictionary<AllocationContexts, PeerInfo> _preferredPeers = new();
     private readonly ConcurrentDictionary<AllocationContexts, PeerInfo> _lastPeers = new();
@@ -97,6 +101,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         TimeProvider? clock = null)
     {
         _clock = clock ?? TimeProvider.System;
+        _bodies = new(BodySize, _stop.Token);
+        _receipts = new(ReceiptsSize, _stop.Token);
         _logManager = logManager;
         _logger = logManager.GetClassLogger<ExecutionPeerTransport>();
         if (hostedAccounts is { Length: > 0 })
@@ -570,7 +576,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             VerifyBlockBody(header, empty);
             return Task.FromResult(new Block(header, empty));
         }
-        return RequestExecutionAsync(AllocationContexts.Bodies, async (peer, token) =>
+        return _bodies.GetAsync(header.Hash!, stopping => RequestExecutionAsync(AllocationContexts.Bodies, async (peer, token) =>
         {
             using OwnedBlockBodies bodies = await peer.GetBlockBodies([header.Hash!], token);
             if (bodies.Count != 1 || bodies[0] is not { } body)
@@ -578,7 +584,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             VerifyBlockBody(header, body);
             bodies.Disown();
             return new Block(header, body);
-        }, cancellationToken);
+        }, stopping), cancellationToken);
     }
 
     internal static void VerifyBlockBody(BlockHeader header, BlockBody body)
@@ -589,14 +595,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             throw new InvalidDataException("Execution peer returned a block body inconsistent with the verified header.");
     }
 
-    public Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken)
+    public async Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken)
     {
         if (block.Transactions.Length == 0)
         {
             VerifyReceipts(block.Header, [], SpecProvider);
-            return Task.FromResult(Array.Empty<TxReceipt>());
+            return Array.Empty<TxReceipt>();
         }
-        return RequestExecutionAsync(AllocationContexts.Receipts, async (peer, token) =>
+        TxReceipt[] cached = await _receipts.GetAsync(block.Hash!, stopping => RequestExecutionAsync(AllocationContexts.Receipts, async (peer, token) =>
         {
             int count = block.Transactions.Length;
             using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts([block.Hash!], new[] { count }, token);
@@ -606,7 +612,30 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             TxReceipt[] result = new TxReceipt[count];
             for (int i = 0; i < count; i++) result[i] = new TxReceipt(receipts[i]);
             return result;
-        }, cancellationToken);
+        }, stopping), cancellationToken);
+        TxReceipt[] copy = new TxReceipt[cached.Length];
+        for (int i = 0; i < copy.Length; i++) copy[i] = new TxReceipt(cached[i]);
+        return copy;
+    }
+
+    private static long BodySize(Block block)
+    {
+        long size = 2048 + block.Uncles.LongLength * 512 + (block.Withdrawals?.LongLength ?? 0) * 128;
+        foreach (Transaction transaction in block.Transactions)
+            size += 1024 + 4L * TxDecoder.Instance.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
+        return size;
+    }
+
+    private static long ReceiptsSize(TxReceipt[] receipts)
+    {
+        long size = 1024;
+        foreach (TxReceipt receipt in receipts)
+        {
+            size += 512 + (receipt.FrameReceipts?.LongLength ?? 0) * 128;
+            foreach (LogEntry log in receipt.Logs ?? [])
+                size += 128 + log.Data.LongLength + log.Topics.LongLength * 64;
+        }
+        return size;
     }
 
     internal static void VerifyReceipts(BlockHeader header, TxReceipt[] receipts, ISpecProvider specProvider)
@@ -630,17 +659,30 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         Func<ISyncPeer, bool>? canServe, string failureMessage) where TPeer : class
     {
         SemaphoreSlim requests = context == AllocationContexts.Snap ? _snapRequests : _executionDataRequests;
+        bool bulk = context is not (AllocationContexts.Headers or AllocationContexts.Snap);
+        bool bulkAcquired = false;
+        bool requestAcquired = false;
         CancellationToken stopToken = _stop.Token;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30), _clock);
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stopToken, timeout.Token);
         try
         {
+            if (bulk)
+            {
+                await _executionBulkRequests.WaitAsync(deadline.Token);
+                bulkAcquired = true;
+            }
             await requests.WaitAsync(deadline.Token);
+            requestAcquired = true;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !stopToken.IsCancellationRequested)
         {
             string kind = context == AllocationContexts.Snap ? "SNAP" : "execution data";
             throw new RpcException(-32000, $"Timed out waiting for an available {kind} request slot.");
+        }
+        finally
+        {
+            if (!requestAcquired && bulkAcquired) _executionBulkRequests.Release();
         }
         try
         {
@@ -712,6 +754,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         finally
         {
             requests.Release();
+            if (bulkAcquired) _executionBulkRequests.Release();
         }
     }
 
@@ -800,8 +843,11 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             history = _logHistory.IsValueCreated ? _logHistory.Value : null;
         }
         await _stop.CancelAsync();
+        await _bodies.DisposeAsync();
+        await _receipts.DisposeAsync();
         // Callers must leave the selector before its cooldown cache and services are disposed.
         for (int i = 0; i < ExecutionRequestLimit; i++) await _executionDataRequests.WaitAsync();
+        for (int i = 0; i < ExecutionBulkLimit; i++) await _executionBulkRequests.WaitAsync();
         for (int i = 0; i < SnapRequestLimit; i++) await _snapRequests.WaitAsync();
         if (history is not null) await history.DisposeAsync();
         if (_snapCapacityTask is not null)

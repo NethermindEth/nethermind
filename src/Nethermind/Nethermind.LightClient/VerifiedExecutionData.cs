@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Consensus.Validators;
@@ -21,6 +22,7 @@ namespace Nethermind.LightClient;
 
 internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecProvider specProvider, ulong chainId) : IDisposable
 {
+    private const int LogPrefetchLimit = 4;
     private readonly EthereumEcdsa _ecdsa = new(chainId);
     private readonly MemoryCache _transactionIndex = new(new MemoryCacheOptions { SizeLimit = 32_768 });
 
@@ -110,13 +112,54 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
     {
         List<LogEntryForRpc> result = [];
         long payloadBytes = 2;
-        foreach (BlockHeader header in headers)
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using ArrayPoolList<Task<(BlockHeader Header, Block Block, TxReceipt[] Receipts)>> pending = new(LogPrefetchLimit);
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!MayContainLogs(header.Bloom, addresses, topics)) continue;
-            Block block = await source.GetBlockAsync(header, cancellationToken);
-            Index(block);
-            TxReceipt[] receipts = await source.GetReceiptsAsync(block, cancellationToken);
+            int next = 0;
+            while (next < headers.Length)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                while (next < headers.Length && pending.Count < LogPrefetchLimit)
+                {
+                    if (stop.IsCancellationRequested) break;
+                    BlockHeader header = headers[next++];
+                    if (MayContainLogs(header.Bloom, addresses, topics)) pending.Add(FetchAsync(header));
+                }
+                await Task.WhenAll(pending);
+                foreach (Task<(BlockHeader Header, Block Block, TxReceipt[] Receipts)> fetch in pending)
+                {
+                    (BlockHeader header, Block block, TxReceipt[] receipts) = await fetch;
+                    Append(header, block, receipts);
+                }
+                pending.Clear();
+            }
+            return BoundedJson.ToElement(result);
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await ((Task)Task.WhenAll(pending)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+
+        async Task<(BlockHeader, Block, TxReceipt[])> FetchAsync(BlockHeader header)
+        {
+            try
+            {
+                Block block = await source.GetBlockAsync(header, stop.Token);
+                Index(block);
+                TxReceipt[] receipts = await source.GetReceiptsAsync(block, stop.Token);
+                return (header, block, receipts);
+            }
+            catch
+            {
+                await stop.CancelAsync();
+                throw;
+            }
+        }
+
+        void Append(BlockHeader header, Block block, TxReceipt[] receipts)
+        {
             if (receipts.Length != block.Transactions.Length)
                 throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
             ulong previousGas = 0;
@@ -155,7 +198,6 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
                 }
             }
         }
-        return BoundedJson.ToElement(result);
     }
 
     internal bool TryLocateTransaction(Hash256 hash, out BlockHeader? header) =>

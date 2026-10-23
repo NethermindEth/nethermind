@@ -56,6 +56,369 @@ namespace Nethermind.LightClient.Test;
 
 public class TransportTests
 {
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_downloads_are_shared_without_sharing_caller_cancellation([Values] bool cancelLeader, CancellationToken token)
+    {
+        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        using CancellationTokenSource leader = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using CancellationTokenSource follower = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource<int> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken ownerToken = default;
+        int fetched = 0;
+        Task<int> Fetch(CancellationToken cancellation)
+        {
+            Interlocked.Increment(ref fetched);
+            ownerToken = cancellation;
+            return release.Task.WaitAsync(cancellation);
+        }
+        Hash256 hash = Keccak.Compute("shared verified payload");
+        Task<int> first = cache.GetAsync(hash, Fetch, leader.Token);
+        Task<int> second = cache.GetAsync(hash, Fetch, follower.Token);
+        try
+        {
+            (cancelLeader ? leader : follower).Cancel();
+            await Assert.CatchAsync<OperationCanceledException>(async () => await (cancelLeader ? first : second));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(fetched, Is.EqualTo(1));
+                Assert.That(ownerToken.IsCancellationRequested, Is.False);
+                Assert.That((cancelLeader ? second : first).IsCompleted, Is.False);
+            }
+            release.SetResult(42);
+            Assert.That(await (cancelLeader ? second : first), Is.EqualTo(42));
+            Assert.That(await cache.GetAsync(hash, Fetch, token), Is.EqualTo(42));
+            Assert.That(fetched, Is.EqualTo(1));
+        }
+        finally { release.TrySetResult(42); }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_cache_does_not_retain_failed_downloads([Values] bool canceled, CancellationToken token)
+    {
+        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        int fetched = 0;
+        Task<int> Fetch(CancellationToken _) => ++fetched == 1
+            ? canceled ? Task.FromCanceled<int>(new CancellationToken(true)) : Task.FromException<int>(new InvalidDataException("Invalid payload."))
+            : Task.FromResult(42);
+        Hash256 hash = Keccak.Compute("retry verified payload");
+
+        if (canceled) await Assert.CatchAsync<OperationCanceledException>(async () => await cache.GetAsync(hash, Fetch, token));
+        else await Assert.ThrowsAsync<InvalidDataException>(async () => await cache.GetAsync(hash, Fetch, token));
+
+        Assert.That(await cache.GetAsync(hash, Fetch, token), Is.EqualTo(42));
+        Assert.That(await cache.GetAsync(hash, Fetch, token), Is.EqualTo(42));
+        Assert.That(fetched, Is.EqualTo(2));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_cache_returns_oversized_values_without_retaining_them(
+        [Values(VerifiedPayloadCache<int>.Capacity, VerifiedPayloadCache<int>.Capacity + 1)] long bytes, CancellationToken token)
+    {
+        await using VerifiedPayloadCache<int> cache = new(_ => bytes, token);
+        int fetched = 0;
+        Task<int> Fetch(CancellationToken _) => Task.FromResult(++fetched);
+        Hash256 hash = Keccak.Compute("bounded verified payload");
+
+        Assert.That(await cache.GetAsync(hash, Fetch, token), Is.EqualTo(1));
+        Assert.That(await cache.GetAsync(hash, Fetch, token), Is.EqualTo(bytes > VerifiedPayloadCache<int>.Capacity ? 2 : 1));
+        Assert.That(fetched, Is.EqualTo(bytes > VerifiedPayloadCache<int>.Capacity ? 2 : 1));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_download_capacity_bounds_distinct_hashes_and_allows_shared_waiters([Values] bool cancelQueued, CancellationToken token)
+    {
+        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource<int> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int fetched = 0;
+        Task<int> Fetch(CancellationToken cancellation)
+        {
+            Interlocked.Increment(ref fetched);
+            return release.Task.WaitAsync(cancellation);
+        }
+        Task<int>[] active = Enumerable.Range(0, VerifiedPayloadCache<int>.MaxDownloads)
+            .Select(i => cache.GetAsync(Keccak.Compute($"payload {i}"), Fetch, token)).ToArray();
+        Task<int> queued = cache.GetAsync(Keccak.Compute("queued payload"), Fetch, caller.Token);
+        Task<int> shared = cache.GetAsync(Keccak.Compute("payload 0"), Fetch, token);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(fetched, Is.EqualTo(VerifiedPayloadCache<int>.MaxDownloads));
+                Assert.That(queued.IsCompleted, Is.False);
+                Assert.That(shared.IsCompleted, Is.False);
+            }
+            if (cancelQueued)
+            {
+                caller.Cancel();
+                await Assert.CatchAsync<OperationCanceledException>(async () => await queued);
+            }
+            release.SetResult(42);
+            Assert.That(await Task.WhenAll(active), Is.All.EqualTo(42));
+            Assert.That(await shared, Is.EqualTo(42));
+            if (!cancelQueued) Assert.That(await queued, Is.EqualTo(42));
+            Assert.That(fetched, Is.EqualTo(VerifiedPayloadCache<int>.MaxDownloads + (cancelQueued ? 0 : 1)));
+        }
+        finally { release.TrySetResult(42); }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_shutdown_cancels_waiters_and_joins_unwinding_owners([Values] bool externalStop, CancellationToken token)
+    {
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        VerifiedPayloadCache<int> cache = new(static _ => 1024, stopping.Token);
+        TaskCompletionSource<int> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<int> Fetch(CancellationToken cancellation)
+        {
+            using CancellationTokenRegistration registration = cancellation.Register(() => canceled.TrySetResult());
+            return await release.Task;
+        }
+        Task<int>[] active = Enumerable.Range(0, VerifiedPayloadCache<int>.MaxDownloads)
+            .Select(i => cache.GetAsync(Keccak.Compute($"stopping payload {i}"), Fetch, token)).ToArray();
+        Task<int> queued = cache.GetAsync(Keccak.Compute("stopping queued payload"), Fetch, token);
+        try
+        {
+            if (externalStop) await stopping.CancelAsync();
+            Task shutdown = cache.DisposeAsync().AsTask();
+            await canceled.Task.WaitAsync(token);
+            Assert.That(shutdown.IsCompleted, Is.False, "owners retain their data until they finish unwinding");
+            await Assert.CatchAsync<OperationCanceledException>(async () => await queued);
+            foreach (Task<int> caller in active)
+                await Assert.CatchAsync<OperationCanceledException>(async () => await caller);
+
+            release.SetResult(42);
+            await shutdown;
+            await Assert.ThrowsAsync<ObjectDisposedException>(async () => await cache.GetAsync(Keccak.Compute("after disposal"), Fetch, token));
+        }
+        finally
+        {
+            release.TrySetResult(42);
+            await cache.DisposeAsync();
+            await Task.WhenAll(active.Cast<Task>().Append(queued)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Transport_payload_cache_merges_downloads_and_isolates_caller_cancellation(
+        [Values(AllocationContexts.Bodies, AllocationContexts.Receipts)] AllocationContexts context, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken ownerToken = default;
+        peers.Ordered[0].BeforeResponse = (_, cancellation) =>
+        {
+            ownerToken = cancellation;
+            return release.Task.WaitAsync(cancellation);
+        };
+        Task first = peers.Request(context, caller.Token);
+        await peers.Started.Reader.ReadAsync(token);
+        Task second = peers.Request(context, token);
+        try
+        {
+            caller.Cancel();
+            await Assert.CatchAsync<OperationCanceledException>(async () => await first);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ownerToken.IsCancellationRequested, Is.False);
+                Assert.That(peers.Counts(context), Is.EqualTo(new[] { 1 }));
+            }
+            release.SetResult();
+            await second;
+            await peers.Request(context, token);
+            Assert.That(peers.Counts(context), Is.EqualTo(new[] { 1 }));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(first, second).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Cached_receipts_do_not_share_mutable_rpc_metadata(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        Block block = new(peers.Header, peers.Body);
+        TxReceipt[] first = await peers.Transport.GetReceiptsAsync(block, token);
+        first[0].BlockNumber = 123;
+        first[0].BlockHash = Keccak.Compute("another block");
+        first[0].TxHash = Keccak.Compute("another transaction");
+        first[0].Index = 9;
+        first[0].GasUsed = 77;
+
+        TxReceipt[] second = await peers.Transport.GetReceiptsAsync(block, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second[0], Is.Not.SameAs(first[0]));
+            Assert.That(second[0].BlockNumber, Is.EqualTo(peers.Receipts[0].BlockNumber));
+            Assert.That(second[0].BlockHash, Is.EqualTo(peers.Receipts[0].BlockHash));
+            Assert.That(second[0].TxHash, Is.EqualTo(peers.Receipts[0].TxHash));
+            Assert.That(second[0].Index, Is.EqualTo(peers.Receipts[0].Index));
+            Assert.That(second[0].GasUsed, Is.EqualTo(peers.Receipts[0].GasUsed));
+            Assert.That(peers.Counts(AllocationContexts.Receipts), Is.EqualTo(new[] { 1 }));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_prefetch_reserves_a_request_slot_for_authenticated_headers([Values] bool mixed, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = (context, cancellation) => context == AllocationContexts.Headers
+            ? Task.CompletedTask : release.Task.WaitAsync(cancellation);
+        Task[] active = await StartBulkRequestsAsync(peers, mixed, token);
+        Task queued = peers.RequestPayload(AllocationContexts.Bodies, 4, token);
+        try
+        {
+            Task header = peers.Request(AllocationContexts.Headers, token);
+            Assert.That(header.IsCompleted, Is.True, "a responsive header peer must not queue behind the four slow payloads");
+            await header;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peers.BulkRequests, Is.EqualTo(3));
+                Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1 }));
+                Assert.That(queued.IsCompleted, Is.False);
+                Assert.That(active.All(task => !task.IsCompleted), Is.True);
+            }
+            release.SetResult();
+            await Task.WhenAll(active.Append(queued));
+            Assert.That(peers.BulkRequests, Is.EqualTo(4));
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Queued_payload_caller_cancellation_preserves_header_capacity_and_releases_budget(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = (context, cancellation) => context == AllocationContexts.Headers
+            ? Task.CompletedTask : release.Task.WaitAsync(cancellation);
+        Task[] active = await StartBulkRequestsAsync(peers, mixed: true, token);
+        Task queued = peers.RequestPayload(AllocationContexts.Bodies, 4, caller.Token);
+        try
+        {
+            caller.Cancel();
+            await Assert.CatchAsync<OperationCanceledException>(async () => await queued);
+            await peers.Request(AllocationContexts.Headers, token);
+            Assert.That(peers.BulkRequests, Is.EqualTo(3));
+
+            release.SetResult();
+            await Task.WhenAll(active);
+            await peers.RequestPayload(AllocationContexts.Bodies, 4, token);
+            await peers.RequestPayload(AllocationContexts.Bodies, 5, token);
+            Assert.That(peers.BulkRequests, Is.EqualTo(5));
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Queued_payload_deadline_does_not_leak_bulk_request_budget(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = (context, _) => context == AllocationContexts.Headers
+            ? Task.CompletedTask : release.Task;
+        Task[] active = [];
+        Task? queued = null;
+        try
+        {
+            active = await StartBulkRequestsAsync(peers, mixed: false, token);
+            queued = peers.RequestPayload(AllocationContexts.Bodies, 4, token);
+            peers.Clock.Advance(TimeSpan.FromSeconds(30));
+            RpcException error = (await Assert.ThrowsAsync<RpcException>(async () => await queued))!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error.Code, Is.EqualTo(-32000));
+                Assert.That(peers.BulkRequests, Is.EqualTo(3));
+                Assert.That(active.All(task => !task.IsCompleted), Is.True);
+            }
+            await peers.Request(AllocationContexts.Headers, token);
+
+            release.SetResult();
+            await Task.WhenAll(active).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            await peers.RequestPayload(AllocationContexts.Bodies, 4, token);
+            Assert.That(peers.BulkRequests, Is.EqualTo(4));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(queued is null ? active : active.Append(queued)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bulk_reservation_shutdown_cancels_queued_payloads_and_joins_active_owners(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = async (_, cancellation) =>
+        {
+            using CancellationTokenRegistration registration = cancellation.Register(() => canceled.TrySetResult());
+            await release.Task;
+        };
+        Task[] active = [];
+        Task? queued = null;
+        Task? shutdown = null;
+        try
+        {
+            active = await StartBulkRequestsAsync(peers, mixed: false, token);
+            queued = peers.RequestPayload(AllocationContexts.Bodies, 4, token);
+            shutdown = peers.DisposeAsync().AsTask();
+            await canceled.Task.WaitAsync(token);
+            Assert.That(shutdown.IsCompleted, Is.False, "the three bulk owners must release their reservations before disposal completes");
+            await Assert.CatchAsync<OperationCanceledException>(async () => await queued);
+            foreach (Task request in active)
+                await Assert.CatchAsync<OperationCanceledException>(async () => await request);
+
+            release.SetResult();
+            await shutdown;
+            Assert.That(peers.BulkRequests, Is.EqualTo(3));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(queued is null ? active : active.Append(queued)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (shutdown is not null) await shutdown;
+        }
+    }
+
+    private static async Task<Task[]> StartBulkRequestsAsync(ExecutionPeers peers, bool mixed, CancellationToken token)
+    {
+        Task[] requests = new Task[3];
+        for (int i = 0; i < requests.Length; i++)
+        {
+            AllocationContexts context = mixed ? i switch
+            {
+                0 => AllocationContexts.Bodies,
+                1 => AllocationContexts.Receipts,
+                _ => AllocationContexts.BlockAccessLists,
+            } : AllocationContexts.Bodies;
+            requests[i] = context == AllocationContexts.BlockAccessLists
+                ? peers.Request(context, token) : peers.RequestPayload(context, i + 1, token);
+            await peers.Started.Reader.ReadAsync(token);
+        }
+        return requests;
+    }
+
     [TestCase(13, 3, false, -1)]
     [TestCase(14, 4, false, -1)]
     [TestCase(14, 3, false, 3)]
@@ -208,6 +571,11 @@ public class TransportTests
         await peers.Request(context, token);
         await peers.Request(context, token);
 
+        if (context is AllocationContexts.Bodies or AllocationContexts.Receipts)
+        {
+            Assert.That(peers.Counts(context), Is.EqualTo(new[] { 1, 1, 1 }));
+            await peers.RequestPayload(context, 1, token);
+        }
         Assert.That(peers.Counts(context), Is.EqualTo(new[] { 1, 1, 2 }));
     }
 
@@ -445,7 +813,7 @@ public class TransportTests
             await cancelled.Task.WaitAsync(token);
             Assert.That(shutdown.IsCompleted, Is.False, "the request still owns the execution permit");
             release.SetResult();
-            if (returnsResponse) await request;
+            if (returnsResponse && context != AllocationContexts.Bodies) await request;
             else Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
             await shutdown;
             Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(returnsResponse ? 1 : 0));
@@ -516,6 +884,11 @@ public class TransportTests
         await peers.Request(context, token);
         await peers.Request(context, token);
 
+        if (context is AllocationContexts.Bodies or AllocationContexts.Receipts)
+        {
+            Assert.That(peers.Counts(context), Is.EqualTo(new[] { 1, 1 }));
+            await peers.RequestPayload(context, 1, token);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(peers.Counts(context), Is.EqualTo(new[] { 1, 2 }));
@@ -1388,6 +1761,8 @@ public class TransportTests
         }
 
         internal int[] Counts(AllocationContexts context) => Ordered.Select(peer => peer.Calls.GetValueOrDefault(context)).ToArray();
+        internal int BulkRequests => Counts(AllocationContexts.Bodies).Sum() + Counts(AllocationContexts.Receipts).Sum()
+            + Counts(AllocationContexts.BlockAccessLists).Sum();
 
         internal async Task Request(AllocationContexts context, CancellationToken token)
         {
@@ -1436,6 +1811,18 @@ public class TransportTests
                 default:
                     throw new ArgumentOutOfRangeException(nameof(operation));
             }
+        }
+
+        internal async Task RequestPayload(AllocationContexts context, int identity, CancellationToken token)
+        {
+            BlockHeader different = Header.Clone();
+            different.ExtraData = [(byte)identity];
+            different.Hash = different.CalculateHash();
+            if (context == AllocationContexts.Bodies)
+                Assert.That((await Transport.GetBlockAsync(different, token)).Transactions, Is.EqualTo(Body.Transactions));
+            else if (context == AllocationContexts.Receipts)
+                Assert.That(await Transport.GetReceiptsAsync(new Block(different, Body), token), Has.Length.EqualTo(Receipts.Length));
+            else throw new ArgumentOutOfRangeException(nameof(context));
         }
 
         public async ValueTask DisposeAsync()
