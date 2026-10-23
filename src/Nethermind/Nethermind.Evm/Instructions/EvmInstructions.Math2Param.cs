@@ -456,7 +456,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         WriteSmallWordToSlot(ref slot, value);
-        if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(value == 0 ? Bytes.ZeroByteSpan : Bytes.OneByteSpan);
+        if (TTracingInst.IsActive && EvmStack.TracesPushes(vm.TxTracer)) vm.TxTracer.ReportStackPush(value == 0 ? Bytes.ZeroByteSpan : Bytes.OneByteSpan);
         return EvmExceptionType.None;
     }
 }

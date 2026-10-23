@@ -33,7 +33,7 @@ public ref partial struct EvmStack
     {
         Head = head;
         _tracer = txTracer;
-        _tracesPushes = txTracer is not IInstructionTracingFilter { ObservesStackPushes: false };
+        _tracesPushes = TracesPushes(txTracer);
         _codeInfo = codeInfo;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
@@ -56,6 +56,9 @@ public ref partial struct EvmStack
     private readonly ITxTracer _tracer;
     // A traced run still skips push reports for a tracer that reads the stack only from instruction snapshots.
     private readonly bool _tracesPushes;
+
+    /// <summary>Whether a traced run reports stack pushes to <paramref name="tracer"/>.</summary>
+    internal static bool TracesPushes(ITxTracer tracer) => tracer is not IInstructionTracingFilter { ObservesStackPushes: false };
     private readonly ref byte _stack;
     internal readonly ref byte Code;
     /// <summary>The index of the next free stack slot.</summary>
@@ -509,8 +512,14 @@ public ref partial struct EvmStack
     /// Reports the raw 32-byte word at the given stack slot to the tracer as a stack push
     /// (also used to trace in-place top-of-stack updates).
     /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly void ReportPushWord(ref byte slot)
+    {
+        if (_tracesPushes) ReportPushWordCore(ref slot);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly void ReportPushWordCore(ref byte slot)
     {
         EvmWord bigEndian = Unsafe.ReadUnaligned<EvmWord>(ref slot).ByteSwap();
         _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref bigEndian), WordSize));
