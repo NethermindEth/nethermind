@@ -47,7 +47,8 @@ internal static unsafe class ZiskArithmetic
     }
 
     /// <summary>Computes the quotient <c>a / b</c> into <paramref name="quotient"/>, which may alias an operand; a zero divisor gives zero.</summary>
-    /// <remarks>The ZisK library routine behind the little-endian U256 ABI, reached through its call thunk in the runtime.</remarks>
+    /// <remarks>The ZisK library routine behind the little-endian U256 ABI, reached through its call thunk in the runtime.
+    /// It reads both operands before it writes the quotient (<c>ziskasm/zisklib/zkvm/u256_le.zisk</c>), so aliasing is safe.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Divide(ulong* a, ulong* b, ulong* quotient) => zkvm_u256_le_div(a, b, quotient);
 

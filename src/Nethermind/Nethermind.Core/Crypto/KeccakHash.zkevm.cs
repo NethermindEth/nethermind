@@ -128,6 +128,9 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>ZisK's keccak256 library routine, a call thunk in the runtime.</summary>
+    /// <remarks>Callers may pass an unpinned <paramref name="output"/>: nothing between taking the pointer and the
+    /// call returning can reach a GC safepoint, as the import suppresses the GC transition and the guest is
+    /// single-threaded.</remarks>
     [DllImport("__Internal", EntryPoint = "zisklib_keccak256", ExactSpelling = true), SuppressGCTransition]
     private static extern unsafe int ZiskKeccak256(byte* data, nuint length, byte* output);
 
