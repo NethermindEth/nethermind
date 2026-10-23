@@ -1242,6 +1242,89 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Prestate_reads_a_called_account_code_once_per_transaction([Values] bool disableCode)
+    {
+        Address target = new("0x0000000000000000000000000000000000001003");
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("ef0100" + target.ToString(false, false)), Spec);
+        TestState.CreateAccount(target, 1.Ether);
+        TestState.InsertCode(target, new byte[] { 0x00 }, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Call(TestItem.AddressC, 50000)
+            .Call(TestItem.AddressC, 50000)
+            .Done;
+
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts = TracePrague(code, disableCode, out CodeReadCountingWorldState state);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.ContainsKey(target), Is.True);
+            Assert.That(state.CodeReads(TestItem.AddressC), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Prestate_follows_a_delegation_the_transaction_authorizes([Values] bool disableCode)
+    {
+        Address previous = new("0x0000000000000000000000000000000000001003");
+        Address target = new("0x0000000000000000000000000000000000001004");
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
+        TestState.InsertCode(TestItem.AddressD, Bytes.FromHexString("ef0100" + previous.ToString(false, false)), Spec);
+        foreach (Address account in new[] { previous, target })
+        {
+            TestState.CreateAccount(account, 1.Ether);
+            TestState.InsertCode(account, new byte[] { 0x00 }, Spec);
+        }
+
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode(ecdsa.Sign(TestItem.PrivateKeyD, SpecProvider.ChainId, target, 0))
+            .WithGasLimit(500000)
+            .WithMaxFeePerGas(1)
+            .WithMaxPriorityFeePerGas(1)
+            .To(Recipient)
+            .SignedAndResolved(ecdsa, SenderKey)
+            .TestObject;
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressD, 50000).Call(TestItem.AddressD, 50000).Done;
+
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts = TracePrague(code, disableCode, out _, transaction);
+
+        // The authority's prestate code is the old delegation; the calls run after the authorization replaced it.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.ContainsKey(target), Is.True);
+            Assert.That(accounts.ContainsKey(previous), Is.False);
+        }
+    }
+
+    private Dictionary<AddressAsKey, NativePrestateTracerAccount> TracePrague(byte[] code, bool disableCode,
+        out CodeReadCountingWorldState state, Transaction? transaction = null)
+    {
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.PragueActivation, 500000, code, transaction: transaction);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        state = new CodeReadCountingWorldState(TestState);
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GetGethTraceOptions(JsonSerializer.Serialize(new { disableCode })), block, tx, state, spec);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        return (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+    }
+
+    private sealed class CodeReadCountingWorldState(IWorldState state) : WorldStateDecorator(state)
+    {
+        private readonly Dictionary<AddressAsKey, int> _codeReads = [];
+
+        public int CodeReads(Address address) => _codeReads.GetValueOrDefault(address);
+
+        public override ReadOnlyMemory<byte> GetCode(Address address)
+        {
+            _codeReads[address] = CodeReads(address) + 1;
+            return base.GetCode(address);
+        }
+    }
+
+    [Test]
     public void Diff_selfdestruct_tracks_the_source_under_the_active_fork([Values] bool cancun, [Values] bool revert)
     {
         Address target = new("0x0000000000000000000000000000000000001003");
