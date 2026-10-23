@@ -51,7 +51,7 @@ public class WebSocketOriginFilterTests
             Assert.That(nonBrowser.State, Is.EqualTo(WebSocketState.Open));
         }
 
-        WebSocketException? refused = Assert.ThrowsAsync<WebSocketException>(() => ConnectAsync(uri, OtherOrigin));
+        WebSocketException? refused = await Assert.ThrowsAsync<WebSocketException>(() => ConnectAsync(uri, OtherOrigin));
         Assert.That(refused!.Message, Does.Contain("403"));
     }
 
