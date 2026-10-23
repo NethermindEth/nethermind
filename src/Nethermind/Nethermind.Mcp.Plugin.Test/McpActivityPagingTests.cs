@@ -243,10 +243,11 @@ public class McpActivityPagingTests
         (McpTxScenario scenario, Block last, _) = await Seed(node, 1, 0, 0, 0, 0, 0);
         index.MaxBlockNumber.Returns((int)last.Number);
         McpPriceIsolationTests.PriceRpcProvider provider = (McpPriceIsolationTests.PriceRpcProvider)node.Chain.Container.Resolve<IRpcModuleProvider>();
+        ManualTimeProvider time = node.UseManualClock();
         int reads = 0;
         provider.BeforeCall = (method, _) =>
         {
-            if (method == nameof(IEthRpcModule.eth_getLogs) && Interlocked.Increment(ref reads) == 1) Thread.Sleep(1900);
+            if (method == nameof(IEthRpcModule.eth_getLogs) && Interlocked.Increment(ref reads) == 1) time.Advance(TimeSpan.FromMilliseconds(1900));
         };
         await using McpClient client = await node.CreateClient();
 

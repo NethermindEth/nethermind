@@ -87,6 +87,8 @@ internal sealed class McpToolExecutor(
 
     internal Func<Task>? BeforeBodyStart { get; set; }
 
+    internal Action? BeforeSlotWait { get; set; }
+
     /// <summary>The clock behind <see cref="RemainingTime"/> and the soft deadlines of <c>address_activity</c>.</summary>
     internal TimeProvider Time { get; set; } = TimeProvider.System;
 
@@ -152,6 +154,7 @@ internal sealed class McpToolExecutor(
             return ShuttingDownError();
         }
 
+        BeforeSlotWait?.Invoke();
         if (!await slots.WaitAsync(SlotWait, cancellationToken))
         {
             return Error(McpToolErrorCodes.ResourceExhausted, $"Too many concurrent tool calls (limit {limit}); retry later.");

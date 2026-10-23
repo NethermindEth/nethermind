@@ -89,7 +89,7 @@ public static class McpKnownAbi
     /// <param name="budget">The allowance shared by every log of one result; a log that would exceed it is not decoded.</param>
     internal static McpDecodedLog? TryDecodeLog(LogEntry log, Address? wrappedNativeToken, McpAbiCodec.DecodeBudget budget)
     {
-        if (log?.Topics is not { Length: > 0 } topics || topics[0] is null || !Events.TryGetValue(topics[0], out KnownEvent[]? candidates))
+        if (log.Topics.Length == 0 || !Events.TryGetValue(log.Topics[0], out KnownEvent[]? candidates))
         {
             return null;
         }

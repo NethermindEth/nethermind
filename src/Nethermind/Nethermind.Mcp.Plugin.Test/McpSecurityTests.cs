@@ -21,11 +21,8 @@ public class McpSecurityTests
     private const string AllowedOrigin = "http://localhost:6274";
     private const string Token = McpTestNode.TestToken;
 
-    [TestCase("127.0.0.1:8555")]
-    [TestCase("localhost:8555")]
-    [TestCase("LOCALHOST:8555")]
-    [TestCase("[::1]:8555")]
-    public void Loopback_host_header_is_allowed(string host) =>
+    [Test]
+    public void Loopback_host_header_is_allowed([Values("127.0.0.1:8555", "localhost:8555", "LOCALHOST:8555", "[::1]:8555")] string host) =>
         Assert.That(McpSecurityMiddleware.IsAllowedHost(host, Port), Is.True);
 
     [TestCase("evil.com")]

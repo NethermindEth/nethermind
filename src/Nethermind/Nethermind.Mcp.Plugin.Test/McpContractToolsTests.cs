@@ -573,8 +573,11 @@ public class McpContractToolsTests
     public async Task Resolve_ens_reports_unregistered_names_invalid_names_and_chains_without_ens()
     {
         JsonElement unregistered = await Success("resolve_ens", ("name", "nobody.eth"));
-        Assert.That(unregistered.GetProperty("address").ValueKind, Is.EqualTo(JsonValueKind.Null));
-        Assert.That(unregistered.GetProperty("message").GetString(), Does.Contain("not registered"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unregistered.GetProperty("address").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(unregistered.GetProperty("message").GetString(), Does.Contain("not registered"));
+        }
 
         McpAssert.Error(await Call(_client, "resolve_ens", ("name", "bad..eth")), McpAssert.InvalidInput);
         JsonElement error = McpAssert.Error(await Call(_gnosisClient, "resolve_ens", ("name", "alice.eth")), McpAssert.Unavailable);

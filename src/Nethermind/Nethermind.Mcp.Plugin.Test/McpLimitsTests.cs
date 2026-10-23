@@ -220,6 +220,12 @@ public class McpLimitsTests
         FaultInjectingRpcModuleProvider provider = Faults(node);
         provider.Override(nameof(IEthRpcModule.eth_getBalance), blocking.Module);
         await using McpClient client = await node.CreateClient();
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int slotRequests = 0;
+        node.Chain.Container.Resolve<McpToolExecutor>().BeforeSlotWait = () =>
+        {
+            if (Interlocked.Increment(ref slotRequests) == 2) waiting.TrySetResult();
+        };
 
         Task<CallToolResult> inFlight = GetBalance(client);
         Task<CallToolResult>? queued = null;
@@ -227,7 +233,7 @@ public class McpLimitsTests
         {
             await blocking.Entered.WaitAsync(WaitLimit);
             queued = McpToolCalls.Call(client, "chain_info", []);
-            await Task.Delay(300);
+            await waiting.Task.WaitAsync(WaitLimit);
         }
         finally
         {
