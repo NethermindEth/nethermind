@@ -17,6 +17,12 @@ public class JsonConfigSource : IConfigSource
 
     public JsonConfigSource(string configFilePath) => LoadJsonConfig(configFilePath);
 
+    public JsonConfigSource(Stream stream)
+    {
+        using StreamReader reader = new(stream);
+        ApplyJsonConfig(reader.ReadToEnd());
+    }
+
     private void ApplyJsonConfig(string jsonContent)
     {
         try

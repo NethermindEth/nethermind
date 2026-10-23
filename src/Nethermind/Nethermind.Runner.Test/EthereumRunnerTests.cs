@@ -710,12 +710,12 @@ public class EthereumRunnerTests
 
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
-        Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
+        Parallel.ForEach(BuiltInConfigs.Names, name =>
         {
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource(configFile));
+            configProvider.AddSource(BuiltInConfig(name));
             configProvider.Initialize();
-            resultQueue.Enqueue((configFile, configProvider));
+            resultQueue.Enqueue(($"{name}.json", configProvider));
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
@@ -725,7 +725,7 @@ public class EthereumRunnerTests
         {
             // Special case for verify trie on state sync finished
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.AddSource(BuiltInConfig("mainnet"));
             configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
             result.Add(("mainnet-verify-trie-starter", configProvider));
@@ -734,7 +734,7 @@ public class EthereumRunnerTests
         {
             // Flashbots
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.AddSource(BuiltInConfig("mainnet"));
             configProvider.Initialize();
             configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
             result.Add(("flashbots", configProvider));
@@ -743,7 +743,7 @@ public class EthereumRunnerTests
         {
             // Censorship detector
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.AddSource(BuiltInConfig("mainnet"));
             configProvider.Initialize();
             configProvider.GetConfig<ICensorshipDetectorConfig>().Enabled = true;
             result.Add(("censorship-detector", configProvider));
@@ -817,7 +817,7 @@ public class EthereumRunnerTests
         Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
 
         ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+        configProvider.AddSource(BuiltInConfig("mainnet"));
         configProvider.Initialize();
 
         PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
@@ -934,10 +934,16 @@ public class EthereumRunnerTests
         EraEExport
     }
 
+    private static JsonConfigSource BuiltInConfig(string name)
+    {
+        using Stream stream = BuiltInConfigs.Open(name)!;
+        return new JsonConfigSource(stream);
+    }
+
     private static async Task<EthereumRunner> CreateRunner(string network, Action<ConfigProvider>? configure = null)
     {
         ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
+        configProvider.AddSource(BuiltInConfig(network));
         configProvider.Initialize();
         configure?.Invoke(configProvider);
         PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
