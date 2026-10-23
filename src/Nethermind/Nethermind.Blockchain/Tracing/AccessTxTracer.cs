@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -26,7 +25,8 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 
     public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
-        Dictionary<Address, HashSet<UInt256>?> dictionary = [];
+        // Geth orders the list by address and each address's keys ascending; execution-apis leaves the order open.
+        SortedDictionary<Address, SortedSet<UInt256>?> dictionary = new(new AddressComparer());
         foreach (Address address in accessedAddresses)
         {
             dictionary.Add(address, null);
@@ -34,22 +34,25 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 
         foreach (StorageCell storageCell in accessedStorageCells)
         {
-            ref HashSet<UInt256>? set = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, storageCell.Address, out _);
-            set ??= [];
+            if (!dictionary.TryGetValue(storageCell.Address, out SortedSet<UInt256>? set) || set is null)
+            {
+                dictionary[storageCell.Address] = set = [];
+            }
+
             set.Add(storageCell.Index);
         }
 
         for (int i = 0; i < addressesToOptimize.Length; i++)
         {
             Address address = addressesToOptimize[i];
-            if (dictionary.TryGetValue(address, out HashSet<UInt256>? set) && set is null)
+            if (dictionary.TryGetValue(address, out SortedSet<UInt256>? set) && set is null)
             {
                 dictionary.Remove(address);
             }
         }
 
         AccessList.Builder builder = new();
-        foreach ((Address address, HashSet<UInt256>? storageKeys) in dictionary)
+        foreach ((Address address, SortedSet<UInt256>? storageKeys) in dictionary)
         {
             builder.AddAddress(address);
             if (storageKeys is not null)
