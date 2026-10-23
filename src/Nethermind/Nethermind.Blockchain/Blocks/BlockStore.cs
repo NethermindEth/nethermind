@@ -92,7 +92,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // solely on header/txs/uncles/withdrawals (none mutated after processing), so encoding defers to the consumer.
         // Carry the pre-encoded transactions (populated when built from an ExecutionPayload) so the consumer reuses
         // them instead of re-encoding every tx; the arrays are immutable encoded bytes, so sharing the reference is safe.
-        _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions });
+        _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions, EncodedSize = block.EncodedSize });
     }
 
     private void WriteBlock(ulong blockNumber, Hash256 blockHash, Block block)
@@ -186,7 +186,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // Bytes are needed here, so encode the snapshot on demand - paid only on a rare read of a still-pending block.
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
-            return _blockDecoder.EncodeAsBytes(pendingBlock);
+            return _blockDecoder.Encode(pendingBlock).Bytes;
         }
 
         Span<byte> dbKey = stackalloc byte[40];
@@ -235,7 +235,7 @@ public class BlockStore : IBlockStore, IClearableCache
             ? pendingBlock
             // Cache a sanitized copy to avoid retaining large BAL/account-change structures without mutating
             // the original block, which downstream consumers may still use and dispose.
-            : new Block(block.Header, block.Body);
+            : new Block(block.Header, block.Body) { EncodedSize = block.EncodedSize };
 
         _blockCache.Set(in cacheKey, cachedBlock);
     }

@@ -39,6 +39,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -621,6 +622,28 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getStorageValues", requests, "latest");
         Assert.That(serialized, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Eth_get_storage_values_match_the_per_slot_reads([Values] bool useFlatDb)
+    {
+        using Context ctx = await Context.Create(useFlatDb: useFlatDb);
+        BlockHeader head = ctx.Test.BlockTree.Head!.Header;
+        Dictionary<Address, UInt256[]> requests = new()
+        {
+            [TestItem.AddressA] = [UInt256.One, 2, UInt256.One],
+            [TestItem.AddressF] = [UInt256.One, 3],
+        };
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageValues", requests, "latest");
+
+        string expected = string.Join(",", requests.Select(entry =>
+            $"\"{entry.Key.Bytes.ToHexString(true)}\":[" + string.Join(",", entry.Value.Select(slot =>
+            {
+                ctx.Test.StateReader.GetStorage(head, entry.Key, in slot, out UInt256 value);
+                return $"\"{value.ToBigEndian().ToHexString(true)}\"";
+            })) + "]"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{" + expected + "},\"id\":67}"));
     }
 
     [Test]
@@ -1266,7 +1289,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_logs_envelope_preserves_body_limit([Values] bool isBatch, [Values(1, 100)] int allowedLogs)
+    public async Task Eth_get_logs_envelope_preserves_body_limit([Values] bool isBatch, [Values(1, 100)] int allowedLogs, [Values] bool observed)
     {
         string logJson = JsonSerializer.Serialize(CreateTestFilterLog(), EthereumJsonSerializer.JsonOptions);
         int logBytes = Encoding.UTF8.GetByteCount(logJson);
@@ -1277,6 +1300,8 @@ public partial class EthRpcModuleTests
             maxLogsResponseBodySize: isBatch ? long.MaxValue : limit,
             maxBatchResponseBodySize: isBatch ? limit : null);
         using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(67L), Result = result };
+        JsonRpcResponseWriterStreamingIdTests.RecordingObserver observer = new();
+        if (observed) response.ObserveStreamedResult(observer, NullLogger.Instance);
         using MemoryStream stream = new();
         CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)), priorBytes);
 
@@ -1287,6 +1312,7 @@ public partial class EthRpcModuleTests
         {
             Assert.That(document.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(allowedLogs));
             Assert.That(document.RootElement.GetProperty("_streamStatus").GetString(), Is.EqualTo("truncated"));
+            if (observed) Assert.That(observer.Succeeded, Is.False);
         }
     }
 
