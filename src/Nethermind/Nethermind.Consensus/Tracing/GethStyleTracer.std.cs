@@ -387,7 +387,7 @@ public class GethStyleTracer(
         {
             // A seed skips the prefix, whose logs a traced prefix is there to count.
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered && !tracePreceding ? prefixSeeds : null);
+                tracer.WithCancellation(cancellationToken), txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
         }
