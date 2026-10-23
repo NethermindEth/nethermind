@@ -79,6 +79,17 @@ public class VerifiedCallTests
             Assert.That(source.Broadcasts, Is.EqualTo(1));
             Assert.That(source.StorageFetches, Is.GreaterThan(0));
             Assert.That(source.CodeFetches, Is.EqualTo(1));
+            int storageFetches = source.StorageFetches;
+            source.Head = new(source.Head.Slot + 1, source.Head.Number + 1, Keccak.Compute("next frame block"), Keccak.Compute("next frame state"));
+
+            Assert.That(await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None), Is.EqualTo(transaction.CalculateHash().ToString()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(source.Broadcasts, Is.EqualTo(2));
+                Assert.That(source.CodeFetches, Is.EqualTo(1));
+                Assert.That(source.StorageFetches, Is.EqualTo(storageFetches));
+                Assert.That(source.ContractAccountFetches, Is.EqualTo(2));
+            }
         }
         else
         {
@@ -204,8 +215,9 @@ public class VerifiedCallTests
     }
 
     [Test]
-    public async Task Execution_reuses_code_by_hash_across_authenticated_state_roots(
-        [Values("eth_call", "eth_estimateGas")] string method)
+    public async Task Execution_reuses_only_unchanged_authenticated_commitments(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values("world", "storage", "empty-storage", "code", "deleted")] string change)
     {
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
         using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
@@ -214,14 +226,57 @@ public class VerifiedCallTests
 
         object first = await rpc.InvokeAsync(method, parameters, CancellationToken.None);
         source.Head = new(source.Head.Slot + 1, source.Head.Number + 1, Keccak.Compute("new block"), Keccak.Compute("new state"));
+        if (change == "storage")
+        {
+            source.ContractAccount = source.ContractAccount.WithChangedStorageRoot(Keccak.Compute("new storage"));
+            source.StorageResponse = (_, _) => Task.FromResult((UInt256)84);
+        }
+        else if (change == "empty-storage") source.ContractAccount = source.ContractAccount.WithChangedStorageRoot(Keccak.EmptyTreeHash);
+        else if (change == "code")
+        {
+            source.ContractCode = [0x60, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
+            source.ContractAccount = source.ContractAccount.WithChangedCodeHash(Keccak.Compute(source.ContractCode));
+        }
+        else if (change == "deleted") source.ContractAccount = Account.TotallyEmpty;
         object second = await rpc.InvokeAsync(method, parameters, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(second, Is.EqualTo(first));
-            Assert.That(source.CodeFetches, Is.EqualTo(1));
-            Assert.That(source.StorageFetches, Is.EqualTo(2));
+            if (change == "world") Assert.That(second, Is.EqualTo(first));
+            else if (method == "eth_call")
+                Assert.That(second, Is.EqualTo(change switch
+                {
+                    "deleted" => "0x",
+                    "empty-storage" => "0x" + new string('0', 64),
+                    _ => "0x" + new string('0', 62) + "54",
+                }));
+            else Assert.That(Convert.ToUInt64(((string)second)[2..], 16), Is.InRange(21_000, 30_000));
+            Assert.That(source.CodeFetches, Is.EqualTo(change == "code" ? 2 : 1));
+            Assert.That(source.StorageFetches, Is.EqualTo(change == "storage" ? 2 : 1));
+            Assert.That(source.ContractAccountFetches, Is.EqualTo(2));
             Assert.That(source.LastQueriedHead, Is.EqualTo(source.Head));
+        }
+    }
+
+    [Test]
+    public async Task Cached_commitments_do_not_skip_account_authentication_at_a_new_root(
+        [Values("eth_call", "eth_estimateGas")] string method)
+    {
+        FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" });
+        await rpc.InvokeAsync(method, parameters, CancellationToken.None);
+        source.Head = new(source.Head.Slot + 1, source.Head.Number + 1, Keccak.Compute("unproven block"), Keccak.Compute("unproven state"));
+        source.ContractAccountResponse = _ => throw new InvalidDataException("Account proof failed.");
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await rpc.InvokeAsync(method, parameters, CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.ContractAccountFetches, Is.EqualTo(2));
+            Assert.That(source.StorageFetches, Is.EqualTo(1));
+            Assert.That(source.CodeFetches, Is.EqualTo(1));
         }
     }
 
@@ -231,6 +286,7 @@ public class VerifiedCallTests
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
         VerifiedHead firstHead = source.Head;
         VerifiedHead secondHead = new(firstHead.Slot + 1, firstHead.Number + 1, Keccak.Compute("parallel block"), Keccak.Compute("parallel state"));
+        source.ContractAccountResponse = head => source.ContractAccount.WithChangedStorageRoot(head.StateRoot);
         TaskCompletionSource firstEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -470,12 +526,14 @@ public class VerifiedCallTests
 
     private sealed class FakeSource(byte[] code, UInt256 contractBalance = default) : IExecutionStateSource
     {
-        private readonly Account _contract = new(1, contractBalance, Keccak.Compute("storage root"), Keccak.Compute(code));
+        public Account ContractAccount { get; set; } = new(1, contractBalance, Keccak.Compute("storage root"), Keccak.Compute(code));
+        public byte[] ContractCode { get; set; } = code;
         public VerifiedHead Head { get; set; } = new(100, 26_000_000, Keccak.Compute("block"), Keccak.Compute("state"));
         public int Fetches { get; private set; }
         public int CodeFetches { get; private set; }
         public int StorageFetches { get; private set; }
         public int AncestorFetches { get; private set; }
+        public int ContractAccountFetches { get; private set; }
         public bool WrongHeaderRoot { get; init; }
         public UInt256 BaseFee { get; init; } = 1;
         public BlockHeader? LastHeader { get; private set; }
@@ -486,6 +544,7 @@ public class VerifiedCallTests
         public UInt256 LastStorageKey { get; private set; }
         public VerifiedHead? CanonicalHistoricalHead { get; set; }
         public Func<VerifiedHead, CancellationToken, Task<UInt256>>? StorageResponse { get; set; }
+        public Func<VerifiedHead, Account>? ContractAccountResponse { get; set; }
         public int Broadcasts { get; private set; }
         public Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken)
         {
@@ -519,7 +578,9 @@ public class VerifiedCallTests
                 return Task.FromResult(new Account(1, 0, Keccak.Compute("nonce root"), Keccak.OfAnEmptyString));
             if (address == Eip2935Constants.BlockHashHistoryAddress)
                 return Task.FromResult(new Account(1, 0, Keccak.Compute("history root"), Keccak.OfAnEmptyString));
-            return Task.FromResult(address == Contract ? _contract : Account.TotallyEmpty);
+            if (address != Contract) return Task.FromResult(Account.TotallyEmpty);
+            ContractAccountFetches++;
+            return Task.FromResult(ContractAccountResponse?.Invoke(head) ?? ContractAccount);
         }
 
         public Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key, CancellationToken cancellationToken)
@@ -535,7 +596,7 @@ public class VerifiedCallTests
         {
             Fetches++;
             CodeFetches++;
-            return Task.FromResult(code);
+            return Task.FromResult(ContractCode);
         }
 
         public Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken)

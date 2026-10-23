@@ -220,7 +220,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
                 if (!_cache.TryGetValue((head.StateRoot, missing.Address!), out Account? owner) || owner is null)
                     throw new RpcException(-32000, "Account proof is unavailable for storage.");
                 UInt256 slot = await execution.GetStorageAsync(head, missing.Address!, owner, missing.Slot, token);
-                _cache.Set((head.StateRoot, missing.Address!, missing.Slot), slot, new MemoryCacheEntryOptions().SetSize(64));
+                _cache.Set((owner.StorageRoot, missing.Address!, missing.Slot), slot, new MemoryCacheEntryOptions().SetSize(64));
                 break;
             case MissingKind.Code:
                 Account? codeOwner = null;
@@ -235,7 +235,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
                 }
                 if (codeOwner is null) throw new RpcException(-32000, "Code hash has no authenticated account.");
                 byte[] code = await execution.GetCodeAsync(codeOwner, token);
-                _cache.Set((head.StateRoot, missing.CodeHash), code, new MemoryCacheEntryOptions().SetSize(Math.Max(1, code.Length)));
+                _cache.Set(missing.CodeHash, code, new MemoryCacheEntryOptions().SetSize(Math.Max(1, code.Length)));
                 break;
             case MissingKind.Blockhash:
                 Hash256[] hashes = await execution.GetAncestorHashesAsync(head, missing.BlockNumber, token);
@@ -295,12 +295,12 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
             {
                 Account? account = Get(address);
-                return new Storage(head, address, account?.StorageRoot ?? Keccak.EmptyTreeHash, cache);
+                return new Storage(address, account?.StorageRoot ?? Keccak.EmptyTreeHash, cache);
             }
             public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
             {
                 if (_newCode.TryGetValue(codeHash, out byte[]? staged)) return staged;
-                if (cache.TryGetValue((head.StateRoot, codeHash), out byte[]? code)) return code!;
+                if (cache.TryGetValue(codeHash, out byte[]? code)) return code!;
                 throw new MissingCallState(MissingKind.Code) { CodeHash = codeHash, KnownAccounts = [.. _accounts] };
             }
             public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(_newCode);
@@ -312,13 +312,13 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             public void Dispose() { }
         }
 
-        private sealed class Storage(VerifiedHead head, Address address, Hash256 root, MemoryCache cache) : IWorldStateScopeProvider.IStorageTree
+        private sealed class Storage(Address address, Hash256 root, MemoryCache cache) : IWorldStateScopeProvider.IStorageTree
         {
             public Hash256 RootHash => root;
             public void Get(in UInt256 index, out UInt256 value)
             {
                 if (root == Keccak.EmptyTreeHash) { value = UInt256.Zero; return; }
-                if (!cache.TryGetValue((head.StateRoot, address, index), out value))
+                if (!cache.TryGetValue((root, address, index), out value))
                     throw new MissingCallState(MissingKind.Storage) { Address = address, Slot = index };
             }
             public void HintSet(in UInt256 index) { }
