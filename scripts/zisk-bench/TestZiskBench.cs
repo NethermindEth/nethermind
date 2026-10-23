@@ -16,7 +16,7 @@ try
     var workflow = File.ReadAllText(Path.Combine(root, ".github/workflows/stateless-benchmarks.yml")).Replace("\r\n", "\n", StringComparison.Ordinal);
     const string guest = "src/Nethermind/Nethermind.Stateless.ZiskGuest";
     const string log = "STEPS 437561208\nMAIN 29754162144 59.88%\nOPCODES 6287492347 12.65%\nPRECOMPILES 8023714093 16.15%\nMEMORY 5334595573 10.74%\nTOTAL 49687273981 100.00%\n";
-    const string grouped = "STEPS 406,243,606\nMAIN 27,624,565,208 61.34%\nOPCODES 6,223,986,843 13.82%\nPRECOMPILES 6,875,247,706 15.27%\nMEMORY 4,027,415,979 8.94%\nTOTAL 45,038,525,560 100.00%\nFROPS 4,877,143,744 10.90%\nOP keccak 165,632 0.04% 6,369,212,928 14.23%\n";
+    const string grouped = "STEPS 406,243,606\nMAIN 27,624,565,208 61.34%\nOPCODES 6,223,986,843 13.82%\nPRECOMPILES 6,875,247,706 15.27%\nMEMORY 4,027,415,979 8.94%\nTOTAL 45,038,525,560 100.00%\nFLOPS 4,877,143,744 10.90%\nOP keccak 165,632 0.04% 6,369,212,928 14.23%\n";
     JsonObject Row(string name = "a.ssz", long steps = 100, long total = 1000, long main = 1, long opcodes = 1, long precompiles = 1, long memory = 1) => new()
     { ["input"] = name, ["steps"] = steps, ["total"] = total, ["main"] = main, ["opcodes"] = opcodes, ["precompiles"] = precompiles, ["memory"] = memory };
     Dictionary<string, JsonObject> Rows(params JsonObject[] rows) => rows.ToDictionary(row => row["input"]!.GetValue<string>());
@@ -125,6 +125,21 @@ try
     {
         Contains(workflow, "global-json-file: global.json", "fetch-depth: 2", "filter: blob:none", "git fetch --depth=1 --filter=blob:none origin \"$BASE_SHA\"");
         Require(!workflow.Contains("DOTNET_VERSION", StringComparison.Ordinal), "SDK override added");
+    });
+    Case("fixture workers use one prebuilt parser", () =>
+    {
+        var measure = Step("Measure", File.ReadAllText(Path.Combine(root, ".github/workflows/stateless-benchmark-fixtures.yml")).Replace("\r\n", "\n", StringComparison.Ordinal));
+        Contains(measure, "dotnet build", "dotnet \"$RUNNER_TEMP/parse-stats/ParseStats.dll\"");
+        Require(measure.IndexOf("dotnet build", StringComparison.Ordinal) < measure.IndexOf("xargs", StringComparison.Ordinal) && !measure.Contains("dotnet run", StringComparison.Ordinal), "workers can rebuild the parser");
+        var directory = Path.Combine(temporary, "parser");
+        var build = Run("dotnet", ["build", Path.Combine(root, "scripts/zisk-bench/ParseStats.cs"), "--output", directory]);
+        Require(build.Code == 0, build.Error);
+        var input = Write("parallel.log", log);
+        Parallel.For(0, 4, index =>
+        {
+            var result = Run("dotnet", [Path.Combine(directory, "ParseStats.dll"), "--input", $"{index}.ssz", "--log", input, "--into", Path.Combine(temporary, $"parallel-{index}.json")]);
+            Require(result.Code == 0, result.Error);
+        });
     });
     var correctness = File.ReadAllText(Path.Combine(root, ".github/workflows/stateless-tests.yml")).Replace("\r\n", "\n", StringComparison.Ordinal);
     Case("matrix comes from pinned file", () => { Contains(correctness, guest + "/inputs.json", "block: ${{ fromJSON(needs.blocks.outputs.blocks) }}"); Require(!correctness.Contains("- input:", StringComparison.Ordinal), "matrix duplicates pins"); });
