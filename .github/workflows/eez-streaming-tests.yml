@@ -1,0 +1,126 @@
+name: EEZ streaming session tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/Nethermind/Nethermind.Eez*/**'
+      - 'src/Nethermind/Nethermind.Consensus*/**'
+      - 'src/Nethermind/Nethermind.Core*/**'
+      - 'src/Nethermind/Nethermind.Evm*/**'
+      - 'src/Nethermind/Nethermind.Blockchain*/**'
+      - 'src/Nethermind/Nethermind.Specs*/**'
+      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
+      - 'src/Nethermind/Directory.*'
+      - 'Directory.*'
+      - 'global.json'
+      - 'scripts/eez/devnet/upstream.py'
+      - 'scripts/eez/devnet/test_*.py'
+      - '.github/workflows/eez-streaming-tests.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/Nethermind/Nethermind.Eez*/**'
+      - 'src/Nethermind/Nethermind.Consensus*/**'
+      - 'src/Nethermind/Nethermind.Core*/**'
+      - 'src/Nethermind/Nethermind.Evm*/**'
+      - 'src/Nethermind/Nethermind.Blockchain*/**'
+      - 'src/Nethermind/Nethermind.Specs*/**'
+      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
+      - 'src/Nethermind/Directory.*'
+      - 'Directory.*'
+      - 'global.json'
+      - 'scripts/eez/devnet/upstream.py'
+      - 'scripts/eez/devnet/test_*.py'
+      - '.github/workflows/eez-streaming-tests.yml'
+  schedule:
+    - cron: '43 3 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_revision:
+        description: 'Replay a public upstream main commit; empty selects current main'
+        type: string
+        default: ''
+      rollupx_revision:
+        description: 'Replay a public RollupX main commit; empty selects current main'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eez-streaming-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Select upstream execution data
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Resolve current upstream vector data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REVISION: ${{ inputs.upstream_revision }}
+        run: |
+          python3 -m unittest discover -s scripts/eez/devnet -p 'test_*.py'
+          python3 scripts/eez/devnet/upstream.py vectors --revision "$UPSTREAM_REVISION" --directory "$RUNNER_TEMP/eez-vectors" --output "$RUNNER_TEMP/eez-vectors/upstream.json"
+      - name: Resolve current RollupX streaming and execution data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REVISION: ${{ inputs.rollupx_revision }}
+        run: python3 scripts/eez/devnet/upstream.py rollupx-execution --revision "$UPSTREAM_REVISION" --directory "$RUNNER_TEMP/eez-rollupx-vectors" --output "$RUNNER_TEMP/eez-rollupx-vectors/upstream.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eez-selected-vectors
+          path: |
+            ${{ runner.temp }}/eez-vectors
+            ${{ runner.temp }}/eez-rollupx-vectors
+          if-no-files-found: error
+          retention-days: 14
+
+  tests:
+    name: Session execution (${{ matrix.runner }})
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    env:
+      EEZ_REQUIRE_UPSTREAM_VECTORS: 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: eez-selected-vectors
+          path: ${{ runner.temp }}
+      - uses: actions/setup-dotnet@v5
+      - name: Restore
+        run: dotnet restore src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj --locked-mode
+      - name: Compile
+        run: dotnet build src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj -c Release --no-restore
+      - name: Execution requests and witness tests
+        run: |
+          dotnet test --project src/Nethermind/Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj -c Release \
+            -- --filter 'FullyQualifiedName~Nethermind.Consensus.Test.Stateless.WitnessTests|FullyQualifiedName~Nethermind.Consensus.Test.ExecutionProcessorTests'
+      - name: Test
+        env:
+          EEZ_CONFORMANCE_VECTOR_DIR: ${{ runner.temp }}/eez-vectors
+          EEZ_ROLLUPX_EXECUTION_VECTOR_DIR: ${{ runner.temp }}/eez-rollupx-vectors
+        run: |
+          dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
+            --hangdump --hangdump-timeout 5m --hangdump-type Mini \
+            --crashdump --crashdump-type Mini
+      - name: Retain vector provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eez-vector-provenance-${{ matrix.runner }}
+          path: |
+            ${{ runner.temp }}/eez-vectors/upstream.json
+            ${{ runner.temp }}/eez-rollupx-vectors/upstream.json
+          if-no-files-found: warn
+          retention-days: 14

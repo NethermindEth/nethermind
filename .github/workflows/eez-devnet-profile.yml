@@ -1,0 +1,92 @@
+name: Test EEZ profile
+
+on:
+  workflow_call:
+    inputs:
+      profile:
+        required: true
+        type: string
+      suites:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: ${{ inputs.profile }} / ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(inputs.suites) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.profile == 'rollupx' && matrix.suite == 'protocol' && 20 || 15 }}
+    env:
+      EEZ_PROFILE: ${{ inputs.profile }}
+      EEZ_SUITE: ${{ matrix.suite }}
+      EEZ_UPSTREAM: ${{ github.workspace }}/upstream
+      EEZ_CI_RESULT_DIR: ${{ github.workspace }}/artifacts/eez-live-${{ inputs.profile }}-${{ matrix.suite }}
+      EEZ_RUNTIME_DIR: ${{ github.workspace }}/artifacts/eez-live-${{ inputs.profile }}-${{ matrix.suite }}/runtime
+      EEZ_NETHERMIND_BASE_IMAGE: nethermind:eez-${{ github.run_id }}
+      EEZ_NETHERMIND_PROVER_BASE_IMAGE: nethermind-eez-attester:eez-${{ github.run_id }}
+      EEZ_PROTOCOL_MAX_PARALLEL: '8'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: eez-inputs-${{ inputs.profile }}-${{ github.run_id }}
+          path: ${{ env.EEZ_CI_RESULT_DIR }}
+      - uses: actions/download-artifact@v4
+        if: matrix.suite != 'contracts'
+        with:
+          name: eez-candidate-${{ github.run_id }}
+          path: artifacts/eez-candidate
+      - name: Load prepared sources and images
+        run: |
+          mkdir -p "$EEZ_UPSTREAM"
+          tar -I zstd -xf "$EEZ_CI_RESULT_DIR/sources.tar.zst" -C "$EEZ_UPSTREAM"
+          tar -I zstd -xf "$EEZ_CI_RESULT_DIR/runtime.tar.zst" -C "$EEZ_CI_RESULT_DIR"
+          python3 scripts/eez/devnet/partitions.py plan --upstream "$EEZ_UPSTREAM" \
+            --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/partitions.json"
+          if [[ "$EEZ_SUITE" != contracts ]]; then
+            zstd -dc artifacts/eez-candidate/images.tar.zst | docker load
+            zstd -dc "$EEZ_CI_RESULT_DIR/upstream-images.tar.zst" | docker load
+          fi
+          echo "$EEZ_RUNTIME_DIR" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$EEZ_RUNTIME_DIR/lib" >> "$GITHUB_ENV"
+          echo 'RUST_MIN_STACK=16777216' >> "$GITHUB_ENV"
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a
+        with:
+          version: v1.7.1
+      - name: Install Kurtosis
+        if: matrix.suite != 'contracts' && !startsWith(matrix.suite, 'embedded-')
+        run: |
+          echo 'deb [trusted=yes] https://sdk.kurtosis.com/kurtosis-cli-release-artifacts/ /' | sudo tee /etc/apt/sources.list.d/kurtosis.list
+          sudo apt-get update
+          sudo apt-get install -y bc kurtosis-cli jq openssl
+          DOCKER_API_VERSION="$(docker version --format '{{.Server.APIVersion}}')"
+          export DOCKER_API_VERSION
+          echo "DOCKER_API_VERSION=$DOCKER_API_VERSION" >> "$GITHUB_ENV"
+          kurtosis_config="$(kurtosis config path)"
+          mkdir -p "$(dirname "$kurtosis_config")"
+          cp scripts/eez/devnet/kurtosis-config.yml "$kurtosis_config"
+          kurtosis engine start
+      - name: Run upstream test partition
+        run: bash scripts/eez/devnet/test-partition.sh
+      - name: Upload partition results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eez-live-${{ inputs.profile }}-${{ matrix.suite }}
+          path: |
+            artifacts/eez-live-${{ inputs.profile }}-${{ matrix.suite }}/**/*.json
+            artifacts/eez-live-${{ inputs.profile }}-${{ matrix.suite }}/**/*.jsonl
+            artifacts/eez-live-${{ inputs.profile }}-${{ matrix.suite }}/**/*.log
+            artifacts/eez-live-${{ inputs.profile }}-${{ matrix.suite }}/**/*.txt
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true

@@ -1,0 +1,126 @@
+name: Prepare EEZ profile
+
+on:
+  workflow_call:
+    inputs:
+      profile:
+        required: true
+        type: string
+      revision:
+        required: false
+        type: string
+        default: ''
+    outputs:
+      suites:
+        value: ${{ jobs.prepare.outputs.suites }}
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Build ${{ inputs.profile }} inputs once
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    outputs:
+      suites: ${{ steps.suites.outputs.suites }}
+    env:
+      EEZ_PROFILE: ${{ inputs.profile }}
+      EEZ_UPSTREAM: ${{ github.workspace }}/upstream
+      EEZ_CI_RESULT_DIR: ${{ github.workspace }}/artifacts/eez-inputs-${{ inputs.profile }}
+      EEZ_RUNTIME_DIR: ${{ github.workspace }}/artifacts/eez-inputs-${{ inputs.profile }}/runtime
+      EEZ_RESOLUTION_DIR: ${{ github.workspace }}/artifacts/eez-resolution-${{ inputs.profile }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Freeze upstream and Core revisions
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REVISION: ${{ inputs.revision }}
+        run: |
+          mkdir -p "$EEZ_CI_RESULT_DIR" "$EEZ_RESOLUTION_DIR"
+          flags=()
+          if [[ "$EEZ_PROFILE" == rollup0 ]]; then flags=(--streaming); fi
+          python3 scripts/eez/devnet/upstream.py resolve --profile "$EEZ_PROFILE" "${flags[@]}" --revision "$UPSTREAM_REVISION" --output "$EEZ_RESOLUTION_DIR/upstream.json"
+          python3 scripts/eez/devnet/upstream.py cache-identity --manifest "$EEZ_RESOLUTION_DIR/upstream.json" --output "$EEZ_RESOLUTION_DIR/build-identity.json"
+          cp "$EEZ_RESOLUTION_DIR/upstream.json" "$EEZ_CI_RESULT_DIR/upstream.json"
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.profile == 'rollup0' && 'eez-association/eez-rollup0' || 'eez-association/eez-rollupX' }}
+          ref: ${{ steps.resolve.outputs.revision }}
+          path: upstream
+          submodules: recursive
+          persist-credentials: false
+      - name: Script regression checks
+        run: |
+          python3 -m unittest discover -s scripts/eez/devnet -p 'test_*.py'
+          for script in scripts/eez/devnet/*.sh; do bash -n "$script"; done
+      - name: Select profile test suites
+        id: suites
+        run: |
+          suites="$(python3 scripts/eez/devnet/partitions.py suites --profile "$EEZ_PROFILE")"
+          echo "suites=$suites" >> "$GITHUB_OUTPUT"
+      - name: Reuse prepared inputs for the exact source and adapters
+        id: prepared
+        uses: actions/cache@v4
+        with:
+          path: artifacts/eez-inputs-${{ inputs.profile }}
+          key: eez-inputs-v2-ubuntu24-${{ inputs.profile }}-${{ hashFiles('artifacts/eez-resolution-*/build-identity.json', 'scripts/eez/devnet/embedded.*', 'scripts/eez/devnet/controls.*', 'scripts/eez/devnet/build-*.sh', 'scripts/eez/devnet/Dockerfile.fixtures', 'scripts/eez/devnet/bundle.py', 'scripts/eez/devnet/upstream.py', 'scripts/eez/devnet/Dockerfile.upstream') }}
+      - name: Refresh cached resolution metadata
+        if: steps.prepared.outputs.cache-hit == 'true'
+        run: python3 scripts/eez/devnet/upstream.py refresh-resolution --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --resolution "$EEZ_RESOLUTION_DIR/upstream.json"
+      - name: Fetch matching trusted runtime
+        if: steps.prepared.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/eez/devnet/upstream.py runtime --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_RUNTIME_DIR" --checkout "$EEZ_UPSTREAM"
+      - name: Install upstream integration test toolchain
+        if: inputs.profile == 'rollup0' && steps.prepared.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev pkg-config libssl-dev cmake protobuf-compiler
+          sudo bash "$EEZ_UPSTREAM/scripts/ci/install-llvm.sh"
+          echo 'LLVM_SYS_221_PREFIX=/usr/lib/llvm-22' >> "$GITHUB_ENV"
+          echo 'RUST_MIN_STACK=16777216' >> "$GITHUB_ENV"
+          echo '/usr/lib/llvm-22/bin' >> "$GITHUB_PATH"
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Reuse compiled Rust dependencies
+        if: inputs.profile == 'rollup0' && steps.prepared.outputs.cache-hit != 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          workspaces: upstream -> target
+          shared-key: eez-rollup0-ubuntu24-ci-e2e
+          env-vars: LLVM_SYS
+          cache-bin: false
+      - name: Build matching runtime and test executables
+        if: steps.prepared.outputs.cache-hit != 'true'
+        run: bash scripts/eez/devnet/build-runtime.sh
+      - name: Install Foundry
+        if: steps.prepared.outputs.cache-hit != 'true'
+        uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a
+        with:
+          version: v1.7.1
+      - name: Reuse Solidity compiler outputs
+        if: steps.prepared.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            upstream/contracts/out
+            upstream/contracts/cache
+            upstream/eez-core-protocol/out
+            upstream/eez-core-protocol/cache
+          key: eez-solidity-v1-ubuntu24-${{ inputs.profile }}-foundry1.7.1-${{ steps.resolve.outputs.revision }}
+          restore-keys: eez-solidity-v1-ubuntu24-${{ inputs.profile }}-foundry1.7.1-
+      - name: Build contracts and deploy image
+        if: steps.prepared.outputs.cache-hit != 'true'
+        run: bash scripts/eez/devnet/build-fixtures.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eez-inputs-${{ inputs.profile }}-${{ github.run_id }}
+          path: artifacts/eez-inputs-${{ inputs.profile }}
+          compression-level: 0
+          overwrite: true
+          retention-days: 1

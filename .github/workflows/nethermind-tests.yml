@@ -55,6 +55,7 @@ jobs:
         # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.sh);
         # each pack takes about 6 minutes, sized from the job times of a master run.
         project:
+          - Nethermind.Eez.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
