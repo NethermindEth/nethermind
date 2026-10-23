@@ -6,12 +6,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Test.Mocks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync;
@@ -214,7 +214,9 @@ public class SyncDispatcherTests
         Exception failure = peerFault
             ? new SubprotocolException("Receipt count mismatch with block transactions count")
             : new InvalidOperationException("node fault");
-        TestLogger logger = new() { IsDebug = false, IsTrace = false };
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        logger.IsWarn.Returns(true);
         TestSyncFeed syncFeed = new(max: 8);
         await using TestSyncPeerPool peerPool = new();
         await using SyncDispatcher<TestBatch> dispatcher = new(
@@ -228,11 +230,9 @@ public class SyncDispatcherTests
         syncFeed.Activate();
         await dispatcher.Start(cancellationToken).WaitAsync(cancellationToken);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(syncFeed._results, Has.Count.EqualTo(syncFeed.Max), "the failed request must be retried");
-            Assert.That(logger.LogList.Exists(l => l.Contains(failure.Message)), Is.EqualTo(!peerFault));
-        }
+        Assert.That(syncFeed._results, Has.Count.EqualTo(syncFeed.Max), "the failed request must be retried");
+        logger.Received(peerFault ? 1 : 0).Debug(Arg.Is<string>(s => s.Contains(failure.Message) && !s.Contains("   at ")));
+        logger.Received(peerFault ? 0 : 1).Warn(Arg.Is<string>(s => s.Contains(failure.Message)));
     }
 
     // [NonParallelizable]: this test relies on the dispatcher's Task.Run reaching HandleResponse
