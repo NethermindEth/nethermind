@@ -2513,9 +2513,18 @@ public partial class BlockProcessorTests
         Assert.That(accountChanges!.Select(static address => address.Value), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressC }));
     }
 
+    // One method per case: the assertion reads the process-wide Evm.Metrics.GasPriceMax, which any other block
+    // processed in the assembly sets, and a [NonParallelizable] on a parameterized method does not isolate it
+    // (nunit/nunit#3371).
     [Test]
     [NonParallelizable]
-    public void ProcessOne_OnOrOffTheMainProcessingThread_PublishesBlockGasPricesOnlyOnIt([Values] bool isBlockProcessingThread)
+    public void ProcessOne_OnTheMainProcessingThread_PublishesBlockGasPrices() => AssertProcessOnePublishesBlockGasPricesOnlyOnTheMainThread(true);
+
+    [Test]
+    [NonParallelizable]
+    public void ProcessOne_OffTheMainProcessingThread_DoesNotPublishBlockGasPrices() => AssertProcessOnePublishesBlockGasPricesOnlyOnTheMainThread(false);
+
+    private void AssertProcessOnePublishesBlockGasPricesOnlyOnTheMainThread(bool isBlockProcessingThread)
     {
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
         transactionsExecutor.ProcessTransactions(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<BlockReceiptsTracer>(), Arg.Any<CancellationToken>())

@@ -138,7 +138,6 @@ public partial class FrameTxFloodMeasurement
     public async Task Producer_delay_at_fixed_declared_gas_rate(ulong ceiling, string shape)
     {
         SkipUnlessSingleCore();
-        if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling);
 
         using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, [FrameTx(0, ceiling, shape)], BlockGasLimit);
@@ -220,7 +219,6 @@ public partial class FrameTxFloodMeasurement
     private async Task MeasureImport(ulong ceiling, string shape, string path, string rowCase, TimeSpan window)
     {
         SkipUnlessSingleCore();
-        if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling, computeVictim: true);
         AssertComputeBlockDoesRealWork();
         WarmComputePath();
@@ -276,7 +274,6 @@ public partial class FrameTxFloodMeasurement
     public async Task Honest_frame_tx_admission_under_spam(ulong ceiling)
     {
         SkipUnlessSingleCore();
-        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling, shedding: true, honestSenders: HonestSenderCount);
         ulong declaredGasPerTx = FrameTxValidation.ValidationWorkGas(FloodFrameTx(0));
 

@@ -71,6 +71,7 @@ public class GuestLeafKeyTests
     }
 
     [Test]
+    [NonParallelizable]
     public void Raw_key_read_finds_every_value_and_no_other()
     {
         PatriciaTree tree = new();
