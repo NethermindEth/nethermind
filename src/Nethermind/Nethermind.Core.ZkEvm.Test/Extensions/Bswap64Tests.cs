@@ -72,4 +72,8 @@ public class Bswap64Tests
 
         Assert.That(Bytes.ReadUInt256BigEndian(word), Is.EqualTo(new UInt256(word, isBigEndian: true)));
     }
+
+    [Test]
+    public void Rejects_a_uint256_span_that_is_not_32_bytes([Values(0, 31, 33)] int length) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => Bytes.ReadUInt256BigEndian(new byte[length]));
 }

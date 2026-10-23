@@ -52,8 +52,13 @@ public static unsafe partial class Bytes
 
     /// <summary>Reads the 32 big-endian bytes of <paramref name="word"/> as a <see cref="UInt256"/>.</summary>
     /// <remarks>The constructor on the host. See <c>Bytes.zkevm.cs</c> for the guest form.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="word"/> is not 32 bytes long.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static UInt256 ReadUInt256BigEndian(ReadOnlySpan<byte> word) => new(word, isBigEndian: true);
+    internal static UInt256 ReadUInt256BigEndian(ReadOnlySpan<byte> word)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(word.Length, 32);
+        return new(word, isBigEndian: true);
+    }
 
     /// <summary>Copies <paramref name="source"/> to the start of <paramref name="destination"/>.</summary>
     /// <remarks>
