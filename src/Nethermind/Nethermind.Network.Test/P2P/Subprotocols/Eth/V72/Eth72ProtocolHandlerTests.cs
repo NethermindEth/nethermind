@@ -70,6 +70,7 @@ public class Eth72ProtocolHandlerTests
     private CompositeDisposable _disposables = null!;
     private BlobCustodyTracker _blobCustodyTracker = null!;
     private SparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = null!;
+    private TestSparseBlobPeer _idlePeer = null!;
     private List<P2PMessage> _deliveredMessages = null!;
 
     [SetUp]
@@ -110,6 +111,9 @@ public class Eth72ProtocolHandlerTests
         _blobCustodyTracker = new BlobCustodyTracker();
         _blobCustodyTracker.Update(BlobCellMask.Full);
         _sparseBlobPoolPeerRegistry = new SparseBlobPoolPeerRegistry(_transactionPool, _blobCustodyTracker, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        // Sampling needs at least two peers; tests that need fewer remove this one.
+        _idlePeer = new TestSparseBlobPeer(TestItem.PublicKeyF);
+        _sparseBlobPoolPeerRegistry.AddPeer(_idlePeer);
         _handler = new Eth72ProtocolHandler(
             _session,
             _svc,
@@ -924,6 +928,31 @@ public class Eth72ProtocolHandlerTests
             .TestObject;
 
         _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
+        _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        using NewPooledTransactionHashesMessage72 message = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [tx.Hash!],
+            BlobCellMask.Full.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.Hashes[0] == tx.Hash &&
+            m.CellMask.SequenceEqual(BlobCellMask.Full.ToBytes())));
+    }
+
+    [Test]
+    public void normal_mode_should_request_full_cells_when_too_few_peers_to_sample()
+    {
+        RecreateHandler();
+        _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
+        Transaction tx = BuildSamplerBlobTransaction();
+        _sparseBlobPoolPeerRegistry.RemovePeer(_idlePeer);
         _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
 
