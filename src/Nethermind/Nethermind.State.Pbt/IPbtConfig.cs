@@ -169,7 +169,7 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Minimum number of leaf operations per worker when the buckets a worker takes hold at least FoldLargeSubtreeBytes below them.", DefaultValue = "16")]
     int FoldLargeSubtreeMinOperationsPerWorker { get; set; }
 
-    [ConfigItem(Description = "Number of tree leaves buffered per window during the preimage-flat and snapshot imports before it is folded into the tree and committed. 0 uses the built-in default (2000000). Larger windows fold in fewer passes at the cost of memory.", DefaultValue = "0")]
+    [ConfigItem(Description = "Number of tree leaves buffered per window during the preimage-flat and snapshot imports before it is folded into the tree and committed. 0 uses the built-in default (2000000). Larger windows fold in fewer passes at the cost of memory.", DefaultValue = "100000")]
     int ImportWindowSize { get; set; }
 
     [ConfigItem(Description = "Report persisted PBT record counts, sizes and node-group shape, then exit. Scans ranges within each column in parallel with bounded memory and periodic progress logging, without temporary files or hash, reference and reachability verification.", DefaultValue = "false")]
