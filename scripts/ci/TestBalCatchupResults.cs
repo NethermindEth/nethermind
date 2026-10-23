@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#:include ../CheckBalCatchupResults.Helpers.cs
+#:include ScriptProcess.Helpers.cs
 
 var measured = "[{\"Statistics\":{\"Mean\":1}}]";
 var cases = new (string Name, string? Measurements, string Log, bool Valid)[]
@@ -33,6 +33,10 @@ var passed = 0;
 var directory = Directory.CreateTempSubdirectory("bal catchup tests ");
 try
 {
+    var root = new DirectoryInfo(Environment.CurrentDirectory);
+    while (root is not null && !File.Exists(Path.Combine(root.FullName, "scripts/CheckBalCatchupResults.cs"))) root = root.Parent;
+    var build = await ScriptProcess.Run("dotnet", ["build", Path.Combine(root!.FullName, "scripts/CheckBalCatchupResults.cs"), "--output", directory.FullName], CancellationToken.None);
+    if (build.Code != 0) throw new InvalidOperationException(build.Output + build.Error);
     var results = Directory.CreateDirectory(Path.Combine(directory.FullName, "results"));
     var report = Path.Combine(results.FullName, "test-report-full-compressed.json");
     foreach (var item in cases)
@@ -41,32 +45,32 @@ try
         File.Delete(report);
         if (item.Measurements is not null)
             File.WriteAllText(report, "{\"Benchmarks\":" + item.Measurements + "}");
-        Verify(item.Name, 1, item.Valid);
-        Verify(item.Name + " with wrong count", 2, false);
+        await Verify(item.Name, 1, item.Valid);
+        await Verify(item.Name + " with wrong count", 2, false);
     }
 
     File.WriteAllText(Path.Combine(directory.FullName, "run.log"), "");
     foreach (var malformed in new[] { "{", "{}", "{\"Benchmarks\":null}", "{\"Benchmarks\":{}}" })
     {
         File.WriteAllText(report, malformed);
-        Verify("malformed report " + malformed, 1, false);
+        await Verify("malformed report " + malformed, 1, false);
     }
 
     File.WriteAllText(report, "{\"Benchmarks\":" + measured + "}");
     var second = Path.Combine(results.FullName, "second-report-full-compressed.json");
     File.Copy(report, second);
-    Verify("multiple reports", 2, true);
-    Verify("multiple reports wrong count", 1, false, "Expected 1 benchmark cases, got 2");
+    await Verify("multiple reports", 2, true);
+    await Verify("multiple reports wrong count", 1, false, "Expected 1 benchmark cases, got 2");
     File.WriteAllText(second, "{\"Benchmarks\":[]}");
-    Verify("empty second report", 1, false, $"Missing measurements in {second}");
+    await Verify("empty second report", 1, false, $"Missing measurements in {second}");
     File.Delete(report);
     File.Delete(second);
     Directory.Delete(results.FullName);
-    Verify("missing results directory", 1, false, "No BenchmarkDotNet JSON report was produced");
+    await Verify("missing results directory", 1, false, "No BenchmarkDotNet JSON report was produced");
     File.WriteAllText(Path.Combine(directory.FullName, "run.log"), "Invalid Block");
-    Verify("log failure precedes report failure", 1, false, "Benchmark log contains an exception or invalid block");
+    await Verify("log failure precedes report failure", 1, false, "Benchmark log contains an exception or invalid block");
     File.Delete(Path.Combine(directory.FullName, "run.log"));
-    Verify("missing log", 1, false);
+    await Verify("missing log", 1, false);
     Console.WriteLine($"Passed {passed} tests.");
 }
 finally
@@ -74,21 +78,13 @@ finally
     directory.Delete(recursive: true);
 }
 
-void Verify(string name, int expectedCases, bool valid, string? expectedMessage = null)
+async Task Verify(string name, int expectedCases, bool valid, string? expectedMessage = null)
 {
-    Exception? failure = null;
-    try
-    {
-        BalCatchupResults.Check(directory.FullName, expectedCases);
-    }
-    catch (Exception exception)
-    {
-        failure = exception;
-    }
-    if (valid != (failure is null))
-        throw new InvalidOperationException($"{name}: expected valid={valid}", failure);
-    if (expectedMessage is not null && failure?.Message != expectedMessage)
-        throw new InvalidOperationException($"{name}: expected diagnostic '{expectedMessage}'", failure);
+    var result = await ScriptProcess.Run("dotnet", [Path.Combine(directory.FullName, "CheckBalCatchupResults.dll"), directory.FullName, expectedCases.ToString(System.Globalization.CultureInfo.InvariantCulture)], CancellationToken.None);
+    if (valid != (result.Code == 0))
+        throw new InvalidOperationException($"{name}: expected valid={valid}: {result.Error}");
+    if (expectedMessage is not null && result.Error.TrimEnd('\r', '\n') != expectedMessage)
+        throw new InvalidOperationException($"{name}: expected diagnostic '{expectedMessage}', got '{result.Error}'");
     Console.WriteLine($"PASS {name}");
     passed++;
 }
