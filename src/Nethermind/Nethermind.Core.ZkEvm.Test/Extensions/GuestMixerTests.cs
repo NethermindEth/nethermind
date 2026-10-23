@@ -242,7 +242,7 @@ public class GuestMixerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(UInt256Comparer.GetOptimized(), Is.SameAs(UInt256Comparer.Instance));
-            ulong hash = SpanExtensions.MixSlotIndex(ref Unsafe.As<UInt256, byte>(ref slot));
+            ulong hash = SpanExtensions.MixSlotIndex(slot.u0, slot.u1, slot.u2, slot.u3);
             Assert.That(UInt256Comparer.Instance.GetHashCode(slot), Is.EqualTo((int)(hash ^ (hash >> 32))));
         }
     }
