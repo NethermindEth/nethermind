@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -90,12 +91,17 @@ namespace Ethereum.Test.Base
             configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
             // Some registered services (e.g. the main processing context) are IAsyncDisposable only;
             // disposing the container synchronously makes Autofac block on them and trace a warning per test.
-            await using IContainer container = new ContainerBuilder()
+            ContainerBuilder containerBuilder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
                 .AddSingleton(specProvider)
-                .AddSingleton(_logManager)
-                .Build();
+                .AddSingleton(_logManager);
+            if (test.Fork.IsEip7906Enabled && test.Fork.BlockLevelAccessListsEnabled)
+            {
+                containerBuilder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
+            }
+
+            await using IContainer container = containerBuilder.Build();
 
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
