@@ -64,6 +64,8 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         ? filter.InstructionMask
         : UInt256.MaxValue;
 
+    public bool ObservesUnmaskedMutations => innerTracer is not IInstructionTracingFilter filter || filter.ObservesUnmaskedMutations;
+
     public bool IsCancelable => true;
     public bool IsCancelled => token.IsCancellationRequested;
 

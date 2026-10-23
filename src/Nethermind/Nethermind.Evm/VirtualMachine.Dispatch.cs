@@ -100,7 +100,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             UInt256 mask = filter.InstructionMask;
             if (mask != UInt256.MaxValue)
-                PrepareFilteredOpcodes(mask, table.GetHandlers<SilentInstructionFlag, TCancelable>(spec));
+                PrepareFilteredOpcodes(mask, filter.ObservesUnmaskedMutations
+                    ? table.GetHandlers<SilentInstructionFlag, TCancelable>(spec)
+                    : table.GetHandlers<OffFlag, TCancelable>(spec));
         }
     }
 

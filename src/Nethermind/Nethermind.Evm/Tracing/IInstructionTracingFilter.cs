@@ -19,4 +19,13 @@ public interface IInstructionTracingFilter
     /// callbacks and opcodes requested by sibling composite tracers can also be delivered.
     /// </summary>
     UInt256 InstructionMask { get; }
+
+    /// <summary>
+    /// Whether opcodes outside <see cref="InstructionMask"/> still report their stack, memory and gas mutations.
+    /// </summary>
+    /// <remarks>
+    /// A tracer that reads state only at the instructions it requests returns <c>false</c>; dispatch then runs the other
+    /// opcodes untraced. Applies only when the mask is partial.
+    /// </remarks>
+    bool ObservesUnmaskedMutations => true;
 }
