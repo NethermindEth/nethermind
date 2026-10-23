@@ -36,7 +36,7 @@ public sealed class SortedSpool : IDisposable
     /// <summary>Most segments held by sorts rather than by producers, whatever the producer count.</summary>
     private const int MaxSpareSegments = 4;
 
-    /// <summary>Runs merged at once. Bounds the simultaneously mapped runs, not the record count.</summary>
+    /// <summary>Runs merged at once. Bounds the simultaneously open runs, not the record count.</summary>
     internal int MaxFanIn { get; init; } = 128;
 
     /// <summary>Runs of one merge level that accrue before one background round folds them into a single run of the next level.</summary>
@@ -437,8 +437,8 @@ public sealed class SortedSpool : IDisposable
     /// </remarks>
     public sealed class Cursor : IDisposable
     {
-        private readonly MappedByteFile[] _files;
-        private readonly SortedTableEnumerator<WholeReadSessionReader, NoOpPin>[] _sources;
+        private readonly BlockBufferedFile[] _files;
+        private readonly SortedTableEnumerator<BlockBufferedFile, NoOpPin>[] _sources;
         private readonly bool[] _exhausted;
         private readonly int[] _tree;
         private readonly int _k;
@@ -453,21 +453,20 @@ public sealed class SortedSpool : IDisposable
         {
             _cancellationToken = cancellationToken;
             _k = runs.Count;
-            _files = new MappedByteFile[_k];
-            _sources = new SortedTableEnumerator<WholeReadSessionReader, NoOpPin>[_k];
+            _files = new BlockBufferedFile[_k];
+            _sources = new SortedTableEnumerator<BlockBufferedFile, NoOpPin>[_k];
             _exhausted = new bool[_k];
             _tree = new int[_k];
             try
             {
                 for (int index = 0; index < _k; index++)
                 {
-                    MappedByteFile file = new(runs[index]);
+                    BlockBufferedFile file = new(runs[index]);
                     _files[index] = file;
-                    WholeReadSessionReader reader = file.CreateReader();
-                    _sources[index] = new SortedTableEnumerator<WholeReadSessionReader, NoOpPin>(in reader, new Bound(0, file.Length));
+                    _sources[index] = new SortedTableEnumerator<BlockBufferedFile, NoOpPin>(in file, new Bound(0, file.Length));
                     // Only counted once the enumerator owns its buffer, so Dispose never frees a default one.
                     _opened = index + 1;
-                    _exhausted[index] = !_sources[index].MoveNext(in reader);
+                    _exhausted[index] = !_sources[index].MoveNext(in file);
                 }
                 for (int index = 0; index < _k; index++) _tree[index] = _k;
                 for (int index = _k - 1; index >= 0; index--) Adjust(index);
@@ -515,7 +514,7 @@ public sealed class SortedSpool : IDisposable
         {
             Bound value = _sources[source].CurrentValue;
             int length = checked((int)value.Length);
-            if (!_files[source].CreateReader().TryRead(value.Offset, destination.AsSpan(0, length)))
+            if (!_files[source].TryRead(value.Offset, destination.AsSpan(0, length)))
                 throw new InvalidDataException("Truncated spool run value.");
             return length;
         }
@@ -523,8 +522,7 @@ public sealed class SortedSpool : IDisposable
         /// <summary>Advance one run, then replay its leaf's path so the tree names the next winner.</summary>
         private void Advance(int source)
         {
-            WholeReadSessionReader reader = _files[source].CreateReader();
-            if (!_sources[source].MoveNext(in reader)) _exhausted[source] = true;
+            if (!_sources[source].MoveNext(in _files[source])) _exhausted[source] = true;
             Adjust(source);
         }
 
