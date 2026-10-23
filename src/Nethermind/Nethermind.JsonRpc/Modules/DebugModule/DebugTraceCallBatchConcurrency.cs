@@ -31,25 +31,23 @@ public sealed class DebugTraceCallBatchConcurrency(IJsonRpcConfig jsonRpcConfig)
             return false;
         }
 
-        JsonElement? tracer = null;
-        foreach (JsonProperty property in options.EnumerateObject())
-        {
-            bool exact = property.NameEquals("tracer"u8);
-            if (!exact && !property.Name.Equals("tracer", StringComparison.OrdinalIgnoreCase)) continue;
-            // The options binder matches names case-insensitively, so another spelling could select a different tracer.
-            if (!exact || tracer is not null) return false;
-            tracer = property.Value;
-        }
-
-        if (tracer is not { ValueKind: JsonValueKind.String } name) return false;
-
         try
         {
-            return GethLikeNativeTracerFactory.IsNativeTracer(name.GetString()!);
+            JsonElement? tracer = null;
+            foreach (JsonProperty property in options.EnumerateObject())
+            {
+                bool exact = property.NameEquals("tracer"u8);
+                if (!exact && !property.Name.Equals("tracer", StringComparison.OrdinalIgnoreCase)) continue;
+                // The options binder matches names case-insensitively, so another spelling could select a different tracer.
+                if (!exact || tracer is not null) return false;
+                tracer = property.Value;
+            }
+
+            return tracer is { ValueKind: JsonValueKind.String } name && GethLikeNativeTracerFactory.IsNativeTracer(name.GetString()!);
         }
         catch (InvalidOperationException)
         {
-            // An invalid escape fails this item when it executes, not the whole batch here.
+            // An invalid escape in a name or value fails this item when it executes, not the whole batch here.
             return false;
         }
     }

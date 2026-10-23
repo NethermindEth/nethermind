@@ -20,6 +20,7 @@ public class DebugTraceCallBatchConcurrencyTests
     [TestCase("""[{},"latest",{"Tracer":"callTracer"}]""", ExpectedResult = false, TestName = "Case alias only")]
     [TestCase("""[{},"latest",{"tracer":"callTracer","tracer":"callTracer"}]""", ExpectedResult = false, TestName = "Repeated tracer")]
     [TestCase("""[{},"latest",{"tracer":"\uD800"}]""", ExpectedResult = false, TestName = "Unreadable tracer name")]
+    [TestCase("""[{},"latest",{"tracer":"callTracer","\uD800":null}]""", ExpectedResult = false, TestName = "Unreadable property name")]
     [TestCase("""[{},"latest",{"tracer":1}]""", ExpectedResult = false, TestName = "Tracer that is not a string")]
     [TestCase("""{"tracer":"callTracer"}""", ExpectedResult = false, TestName = "Params that are not an array")]
     public bool Runs_concurrently_only_with_one_native_tracer(string parameters) =>

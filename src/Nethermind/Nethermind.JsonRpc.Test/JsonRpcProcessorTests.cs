@@ -501,6 +501,21 @@ public class JsonRpcProcessorTests
     }
 
     [Test]
+    public async Task Batch_keeps_answering_after_a_trace_call_with_an_unreadable_option_name()
+    {
+        IJsonRpcService service = CreateEchoService();
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 4 }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"callTracer","\uD800":null}]"""),
+                CreateRequest("2", "eth_call")),
+            CreateHttpContext());
+
+        Assert.That(AssertBatchResponse(responses, 2).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2" }));
+        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    [Test]
     public async Task Batch_answers_concurrent_calls_after_stop_with_limit_error()
     {
         IJsonRpcService service = CreateEchoService();
