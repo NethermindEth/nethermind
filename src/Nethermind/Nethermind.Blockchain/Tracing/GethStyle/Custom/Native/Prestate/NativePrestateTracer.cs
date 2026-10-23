@@ -345,32 +345,38 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     protected void LookupAccount(Address addr)
     {
-        if (!_prestate.ContainsKey(addr))
+        ref NativePrestateTracerAccount? entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_prestate, addr, out bool exists);
+        if (exists) return;
+
+        NativePrestateTracerAccount snapshot;
+        try
         {
             if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
-                UInt256 nonce = account.Nonce;
                 ReadOnlyMemory<byte> code = _disableCode ? default : _worldState.GetCode(addr);
-                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code)
+                snapshot = new NativePrestateTracerAccount(account.Balance, account.Nonce, code)
                 {
                     CodeHash = account.CodeHash != default(ValueHash256) && account.CodeHash != Keccak.OfAnEmptyString.ValueHash256
                         ? account.CodeHash : (ValueHash256?)null
-                });
+                };
             }
             else
             {
-                _prestate.Add(addr, new NativePrestateTracerAccount
-                {
-                    Balance = UInt256.Zero
-                });
+                snapshot = new NativePrestateTracerAccount { Balance = UInt256.Zero };
                 if (_diffMode && !_worldState.AccountExists(addr))
                     (_nonexistentAccounts ??= []).Add(addr);
             }
-            NativePrestateTracerAccount snapshot = _prestate[addr];
-            if (!_includeEmpty && snapshot.Balance.GetValueOrDefault().IsZero
-                && snapshot.Nonce.GetValueOrDefault().IsZero && snapshot.CodeHash is null)
-                (_initiallyEmptyAccounts ??= []).Add(addr);
         }
+        catch
+        {
+            _prestate.Remove(addr);
+            throw;
+        }
+
+        entry = snapshot;
+        if (!_includeEmpty && snapshot.Balance.GetValueOrDefault().IsZero
+            && snapshot.Nonce.GetValueOrDefault().IsZero && snapshot.CodeHash is null)
+            (_initiallyEmptyAccounts ??= []).Add(addr);
     }
 
     protected void LookupStorage(Address addr, UInt256 index)
