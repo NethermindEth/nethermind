@@ -1035,7 +1035,11 @@ jobs:
             # silently partial matrix. Keep them, split out of tool_config.clients exactly the way the sweep splits them.
             sweep_keep=""
             while IFS= read -r entry; do
-              sweep_keep+="$(dotnet run --file scripts/rpc-bench/RunRpcSweep.cs -- --arm-image "${entry}")"$'\n'
+              if ! image="$(dotnet run --file scripts/rpc-bench/RunRpcSweep.cs -- --arm-image "${entry}")"; then
+                echo "::error::Cannot resolve sweep image; refusing stale-image reclamation"
+                exit 1
+              fi
+              sweep_keep+="${image}"$'\n'
             done < <(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null | tr ' ' '\n')
             keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
             echo "Reclaiming stale images (keeping: ${keep_re:-none})"

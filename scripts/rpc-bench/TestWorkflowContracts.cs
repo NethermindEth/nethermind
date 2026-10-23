@@ -105,6 +105,16 @@ tests.Case("all migrated workflow commands have preceding SDK setup", () =>
 });
 if (!OperatingSystem.IsLinux()) { Console.WriteLine("SKIP Linux workflow execution harness"); tests.Complete(); return; }
 
+tests.Case("failed sweep image resolution aborts reclamation without errexit", () =>
+{
+    var step = StepText("Reclaim root disk before pulling");
+    var start = step.IndexOf("sweep_keep=\"\"", StringComparison.Ordinal);
+    var end = step.IndexOf("keep_re=", start, StringComparison.Ordinal);
+    var result = workflow.Run("set +e\ndotnet() { return 81; }\n" + step[start..end] + "\necho UNSAFE_RECLAIM\n",
+        new() { ["KEEP_TOOL_CONFIG"] = "{\"clients\":\"nethermind@local-arm+--Flag\"}" }, tests.DirectoryPath);
+    RpcScriptTests.Assert(result.Code == 1 && result.Output.Contains("refusing stale-image reclamation", StringComparison.Ordinal) && !result.Output.Contains("UNSAFE_RECLAIM", StringComparison.Ordinal), result.ToString());
+});
+
 Dictionary<string, string> Input(string tool = "jsonbench", string config = "{}") => new()
 {
     ["IN_TOOL"] = tool, ["IN_CLIENT"] = "nethermind", ["IN_REFERENCE_CLIENT"] = "none", ["IN_ARCH"] = "amd64", ["IN_DOCKER_IMAGE"] = "", ["IN_BASELINE_IMAGE"] = "cache",

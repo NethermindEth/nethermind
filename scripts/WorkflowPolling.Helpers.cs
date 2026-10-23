@@ -46,7 +46,7 @@ internal static class WorkflowPolling
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 output.WriteLine("⏳ Waiting for the workflow to be triggered...");
-                using var response = await request($"repos/{organization}/{repository}/actions/workflows/{workflow}/runs", cancellationToken);
+                using var response = await Poll($"repos/{organization}/{repository}/actions/workflows/{workflow}/runs");
                 if (response.RootElement.TryGetProperty("message", out var message))
                 {
                     var text = message.GetString() ?? "";
@@ -64,7 +64,7 @@ internal static class WorkflowPolling
         {
             cancellationToken.ThrowIfCancellationRequested();
             output.WriteLine("⌛ Waiting for the workflow to complete...");
-            using var response = await request($"repos/{organization}/{repository}/actions/runs/{runId}", cancellationToken);
+            using var response = await Poll($"repos/{organization}/{repository}/actions/runs/{runId}");
             if (response.RootElement.TryGetProperty("status", out var status) && status.GetString() == "completed")
             {
                 if (!response.RootElement.TryGetProperty("conclusion", out var conclusion) || conclusion.GetString() != "success")
@@ -77,6 +77,22 @@ internal static class WorkflowPolling
             }
             if (++polls * interval >= timeout * 60) { error.WriteLine("❌ Timeout waiting for the workflow to complete. Exiting."); return 1; }
             await delay(TimeSpan.FromSeconds(interval), cancellationToken);
+        }
+
+        async Task<JsonDocument> Poll(string path)
+        {
+            try
+            {
+                var response = await request(path, cancellationToken);
+                if (response.RootElement.ValueKind == JsonValueKind.Object) return response;
+                response.Dispose();
+                throw new JsonException("Workflow response is not an object");
+            }
+            catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException || exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                error.WriteLine($"Workflow status unavailable; retrying: {exception.Message}");
+                return JsonDocument.Parse("{}");
+            }
         }
     }
 }
