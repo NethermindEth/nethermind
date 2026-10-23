@@ -581,6 +581,39 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
+    public async Task Execution_late_success_retains_an_eligible_preferred_peer(
+        [Values(AllocationContexts.Headers, AllocationContexts.Bodies, AllocationContexts.Receipts, AllocationContexts.BlockAccessLists, AllocationContexts.Snap)] AllocationContexts context,
+        [Values] bool uninitialized, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: context == AllocationContexts.Snap);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = (_, cancellation) => release.Task.WaitAsync(cancellation);
+        Task Request(int identity) => context is AllocationContexts.Bodies or AllocationContexts.Receipts
+            ? peers.RequestPayload(context, identity, token) : peers.Request(context, token);
+        Task earlier = Request(1);
+        try
+        {
+            Assert.That(await peers.Started.Reader.ReadAsync(token), Is.SameAs(peers.Ordered[0]));
+            await Request(2);
+            Assert.That(await peers.Started.Reader.ReadAsync(token), Is.SameAs(peers.Ordered[1]));
+            if (uninitialized) peers.Ordered[1].SyncPeer.IsInitialized = false;
+            release.SetResult();
+            await earlier;
+            if (uninitialized) peers.Ordered[1].SyncPeer.IsInitialized = true;
+
+            await Request(3);
+
+            Assert.That(peers.Counts(context), Is.EqualTo(uninitialized ? new[] { 2, 1 } : new[] { 1, 2 }));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await earlier.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
     public async Task Execution_requests_reach_a_healthy_peer_across_overall_deadlines(
         [Values(3, 7, 15)] int slowPeers, [Values(AllocationContexts.Headers, AllocationContexts.Snap)] AllocationContexts context, CancellationToken token)
     {
@@ -692,18 +725,30 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task Execution_cooldown_expires_and_removed_preferred_peers_are_not_reused(CancellationToken token)
+    public async Task Execution_cooldown_expires_and_removed_preferred_peers_are_replaced(
+        [Values(AllocationContexts.Headers, AllocationContexts.Bodies, AllocationContexts.Receipts, AllocationContexts.BlockAccessLists, AllocationContexts.Snap)] AllocationContexts context,
+        [Values] bool reconnect, CancellationToken token)
     {
-        await using ExecutionPeers peers = new(2);
+        await using ExecutionPeers peers = new(3, snap1: context == AllocationContexts.Snap);
         peers.Ordered[0].BeforeResponse = static (_, _) => Task.FromException(new IOException("Temporarily unavailable."));
-        await peers.Request(AllocationContexts.Headers, token);
+        await peers.Request(context, token);
         peers.Pool.RemovePeer(peers.Ordered[1].SyncPeer);
+        if (reconnect) peers.Pool.AddPeer(peers.Ordered[1].SyncPeer);
         peers.Ordered[0].BeforeResponse = null;
         peers.Clock.Advance(TimeSpan.FromSeconds(60));
 
-        await peers.Request(AllocationContexts.Headers, token);
+        if (context is AllocationContexts.Bodies or AllocationContexts.Receipts)
+        {
+            await peers.RequestPayload(context, 1, token);
+            await peers.RequestPayload(context, 2, token);
+        }
+        else
+        {
+            await peers.Request(context, token);
+            await peers.Request(context, token);
+        }
 
-        Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 2, 1 }));
+        Assert.That(peers.Counts(context), Is.EqualTo(new[] { 3, 1, 0 }));
     }
 
     [Test]

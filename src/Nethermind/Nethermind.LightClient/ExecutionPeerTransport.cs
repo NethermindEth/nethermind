@@ -687,6 +687,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         try
         {
             ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
+            bool IsCurrent(PeerInfo peer) => peer.IsInitialized && ReferenceEquals(pool.GetPeer(peer.SyncPeer.Node), peer);
+            bool CanPrefer(PeerInfo peer) => IsCurrent(peer) && (canServe is null || canServe(peer.SyncPeer))
+                && selectPeer(peer.SyncPeer) is not null && !IsCooling(peer, context);
             while (!deadline.IsCancellationRequested)
             {
                 bool hasCapablePeer = false;
@@ -707,6 +710,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     if (offset >= 0 && index == preferredIndex) continue;
                     PeerInfo peer = peers[index];
                     if (deadline.IsCancellationRequested) break;
+                    if (!IsCurrent(peer)) continue;
                     if (canServe is not null && !canServe(peer.SyncPeer)) continue;
                     TPeer? protocolPeer = selectPeer(peer.SyncPeer);
                     if (protocolPeer is null) continue;
@@ -719,7 +723,12 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         using CancellationTokenSource peerTimeout = new(TimeSpan.FromSeconds(10), _clock);
                         using CancellationTokenSource peerAttempt = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, peerTimeout.Token);
                         T result = await request(protocolPeer, peerAttempt.Token);
-                        _preferredPeers[context] = peer;
+                        while (CanPrefer(peer))
+                        {
+                            if (_preferredPeers.TryAdd(context, peer)) break;
+                            if (_preferredPeers.TryGetValue(context, out PeerInfo? current)
+                                && (CanPrefer(current) || _preferredPeers.TryUpdate(context, peer, current))) break;
+                        }
                         return result;
                     }
                     catch (Exception) when (cancellationToken.IsCancellationRequested || stopToken.IsCancellationRequested || timeout.IsCancellationRequested) { break; }
