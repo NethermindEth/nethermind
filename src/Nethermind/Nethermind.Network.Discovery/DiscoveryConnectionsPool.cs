@@ -170,7 +170,7 @@ internal sealed class DiscoveryConnectionsPool(
 
         try
         {
-            await listener.ReceiveTask.WaitAsync(TimeSpan.FromMilliseconds(_discoveryConfig.UdpChannelCloseTimeout));
+            await listener.Stopped.WaitAsync(TimeSpan.FromMilliseconds(_discoveryConfig.UdpChannelCloseTimeout));
         }
         catch (TimeoutException)
         {
@@ -178,5 +178,5 @@ internal sealed class DiscoveryConnectionsPool(
         }
     }
 
-    private sealed record Listener(IDatagramSocket Socket, Task ReceiveTask);
+    private sealed record Listener(IDatagramSocket Socket, Task Stopped);
 }
