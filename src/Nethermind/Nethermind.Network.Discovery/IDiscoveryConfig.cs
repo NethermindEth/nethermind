@@ -110,6 +110,9 @@ public interface IDiscoveryConfig : IConfig
     [Obsolete]
     int DiscoveryNewCycleWaitTime { get; }
 
+    [ConfigItem(Description = "Deprecated. Use `Network.Bootnodes` instead. Merged into `Network.Bootnodes` at startup.", DefaultValue = "[]", HiddenFromDocs = true)]
+    NetworkNode[] Bootnodes { get; set; }
+
     /// <summary>
     /// Timeout for closing the UDP channels, in milliseconds
     /// </summary>

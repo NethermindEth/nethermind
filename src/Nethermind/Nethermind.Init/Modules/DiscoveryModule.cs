@@ -79,7 +79,14 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                     networkConfig.DiscoveryDns = $"enrtree://{EthDiscoTreeSigner}@all.{chainName}.ethdisco.net";
                 }
 
-                networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. chainSpec.Bootnodes];
+                IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
+                if (discoveryConfig.Bootnodes.Length > 0)
+                {
+                    ILogger logger = ctx.Resolve<ILogManager>().GetClassLogger<DiscoveryModule>();
+                    if (logger.IsWarn) logger.Warn($"Discovery.{nameof(IDiscoveryConfig.Bootnodes)} is deprecated and will be removed. Use Network.{nameof(INetworkConfig.Bootnodes)} instead.");
+                }
+
+                networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. discoveryConfig.Bootnodes, .. chainSpec.Bootnodes];
 
                 return networkConfig;
             })

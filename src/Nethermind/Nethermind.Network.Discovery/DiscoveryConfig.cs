@@ -45,6 +45,8 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public int MaxOutgoingMessagePerSecond { get; set; } = 500;
 
+    public NetworkNode[] Bootnodes { get; set; } = [];
+
     public bool UseDefaultDiscv5Bootnodes { get; set; } = true;
 
     public DiscoveryVersion DiscoveryVersion { get; set; } = DiscoveryVersion.V4;
