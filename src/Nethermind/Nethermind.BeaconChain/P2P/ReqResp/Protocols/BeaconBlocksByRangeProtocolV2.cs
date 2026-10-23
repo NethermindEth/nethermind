@@ -78,7 +78,7 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
             ChargeRequest(context, Math.Min(request.Count, MaxRequestBlocks), MaxRequestBlocks);
 
             // BeaconBlocksByRange: a peer unable to reply SHOULD answer ResourceUnavailable; an empty reply would claim the slots are empty.
-            if (!store.TryGetEarliestBlockSlot(out ulong earliestSlot) || request.StartSlot < Math.Min(earliestSlot, store.BackfilledBlockFloor ?? earliestSlot))
+            if (!store.TryGetEarliestBlockSlot(out ulong earliestSlot) || request.StartSlot < earliestSlot)
             {
                 throw new Eth2ReqRespException("Requested range predates the earliest stored block", ReqRespFraming.ResponseCode.ResourceUnavailable);
             }

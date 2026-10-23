@@ -35,7 +35,7 @@ public class BeaconChainStoreBlockSummaryTests
     public void DisposeStore() => _db.Dispose();
 
     [Test]
-    public void Canonical_retention_preserves_the_request_window_and_replay_anchor([Values] bool gloas, [Values] bool replayBehind)
+    public void Canonical_retention_preserves_the_request_window_and_replay_anchor([Values] bool gloas, [Values] bool replayBehind, [Values] bool legacyFloor)
     {
         BeaconChainSpec spec = Sepolia with { GloasForkEpoch = gloas ? 128UL : ulong.MaxValue };
         BeaconChainStore store = new(_db, spec);
@@ -45,6 +45,7 @@ public class BeaconChainStoreBlockSummaryTests
         Hash256 before = StoreBlock(store, "before boundary", boundary - 1, canonical: true);
         Hash256 retained = StoreBlock(store, "boundary", boundary, canonical: true);
         store.SetAnchor(old, first);
+        if (legacyFloor) store.PutMetadata(BeaconChainMetadataKeys.EarliestBlockSlot, []);
         store.SetAnchor(retained, replayBehind ? boundary : 128);
         ulong retention = gloas ? BeaconChainStore.MinEpochsForBlockRequests : Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
 
@@ -80,6 +81,33 @@ public class BeaconChainStoreBlockSummaryTests
         restarted.PruneCanonicalBlocks(epoch, anchorSlot);
         Assert.That(restarted.TryGetEarliestBlockSlot(out floor), Is.True);
         Assert.That(floor, Is.EqualTo(anchorSlot));
+        Assert.That(restarted.TryGetBlockSummary(anchor, out _), Is.True);
+    }
+
+    [Test]
+    public void Canonical_retention_prunes_backfill_below_the_first_anchor([Values] bool emptyPrefix)
+    {
+        BeaconChainSpec spec = Sepolia with { GloasForkEpoch = 128 };
+        BeaconChainStore store = new(_db, spec);
+        Hash256 anchor = StoreBlock(store, "anchor", 128, canonical: true);
+        store.SetAnchor(anchor, 128);
+        Hash256 old = StoreBlock(store, "backfill", 32, canonical: true);
+        store.BackfilledBlockFloor = emptyPrefix ? 0UL : 32UL;
+        Assert.That(store.TryGetEarliestBlockSlot(out ulong floor), Is.True);
+        Assert.That(floor, Is.EqualTo(emptyPrefix ? 0UL : 32UL));
+
+        BeaconChainStore restarted = new(_db, spec);
+        restarted.PruneCanonicalBlocks(BeaconChainStore.MinEpochsForBlockRequests + 3, 128);
+        restarted = new(_db, spec);
+        restarted.BackfilledBlockFloor = 0;
+        StoreBlock(restarted, "late backfill", 32, canonical: true);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(restarted.TryGetBlockSummary(old, out _), Is.False);
+        Assert.That(restarted.TryGetCanonicalRoot(32, out _), Is.False);
+        Assert.That(restarted.TryGetEarliestBlockSlot(out floor), Is.True);
+        Assert.That(floor, Is.EqualTo(96UL));
+        Assert.That(restarted.TryGetBlockSummary(Keccak.Compute("late backfill"), out _), Is.False);
         Assert.That(restarted.TryGetBlockSummary(anchor, out _), Is.True);
     }
 

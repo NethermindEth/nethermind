@@ -105,6 +105,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
 
     private async Task<DataColumnSidecar[]> GetLocalColumnsCore(SignedBeaconBlock block)
     {
+        if (custody.Current is not { } localCustody) return [];
         SszKzgCommitment[] commitments = block.Message!.Body!.BlobKzgCommitments!;
         if (commitments.Length == 0) return [];
         byte[][] hashes = new byte[commitments.Length][];
@@ -117,7 +118,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         {
             ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await detector.InnerEngine.engine_getBlobsV2(hashes);
             using IDisposable? response = result.Data as IDisposable;
-            return result.Result.ResultType == ResultType.Success && result.Data is { } blobs ? LocalBlobColumns.Create(block, blobs) : [];
+            return result.Result.ResultType == ResultType.Success && result.Data is { } blobs ? LocalBlobColumns.Create(block, blobs, localCustody.SampledColumns) : [];
         }
         catch (Exception e) when (e is not OutOfMemoryException and not OperationCanceledException)
         {

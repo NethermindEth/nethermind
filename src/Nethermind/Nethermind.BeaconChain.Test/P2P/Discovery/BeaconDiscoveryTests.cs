@@ -29,6 +29,24 @@ namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 public class BeaconDiscoveryTests
 {
     [Test]
+    public void Metadata_sequence_survives_restart_and_increments_when_custody_changes([Values(4UL, 128UL)] ulong initialCount)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        LocalMetadataSource first = new(new BeaconChainConfig { CustodyGroupCount = initialCount }, new BeaconChainStore(db));
+        LocalMetadataSource same = new(new BeaconChainConfig { CustodyGroupCount = initialCount }, new BeaconChainStore(db));
+        ulong nextCount = initialCount == 4 ? 128UL : 4UL;
+        LocalMetadataSource changed = new(new BeaconChainConfig { CustodyGroupCount = nextCount }, new BeaconChainStore(db));
+        LocalMetadataSource restarted = new(new BeaconChainConfig { CustodyGroupCount = nextCount }, new BeaconChainStore(db));
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(first.Current.SeqNumber, Is.GreaterThan(1UL), "supersede the formerly fixed metadata sequence");
+        Assert.That(same.Current.SeqNumber, Is.EqualTo(first.Current.SeqNumber));
+        Assert.That(changed.Current.SeqNumber, Is.EqualTo(first.Current.SeqNumber + 1));
+        Assert.That(changed.Current.CustodyGroupCount, Is.EqualTo(nextCount));
+        Assert.That(restarted.Current.SeqNumber, Is.EqualTo(changed.Current.SeqNumber));
+    }
+
+    [Test]
     public async Task Configured_custody_is_used_for_discovery_metadata_and_sampling([Values(4UL, 64UL, 128UL)] ulong groups)
     {
         await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { CustodyGroupCount = groups }).Build();

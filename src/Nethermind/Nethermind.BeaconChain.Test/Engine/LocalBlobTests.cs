@@ -12,6 +12,7 @@ using Nethermind.BeaconChain.Test.DataAvailability;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -38,7 +39,8 @@ public class LocalBlobTests
         await using BeaconDiscovery discovery = new(config, chain.Spec, store, new RangeSyncTests.FixedIPResolver(System.Net.IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
         discovery.CreateDiscv5Services(System.Net.IPAddress.Loopback);
         DataColumnSidecarPool pool = new();
-        BlockImporterFactory factory = new(chain.Spec, store, chain.Pubkeys, TestEngineDriver.Create(EngineTests.CreateDetector(engine, out _)),
+        NodeColumnCustody custody = new(discovery.LocalCustody.NodeId, config.CustodyGroupCount);
+        BlockImporterFactory factory = new(chain.Spec, store, chain.Pubkeys, TestEngineDriver.Create(EngineTests.CreateDetector(engine, out _), custody: custody),
             config, LimboLogs.Instance, pool, chain.ClockAtSlot(1), discovery);
         IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
         if (!validSignature) chain.Block.Signature = default;
@@ -47,11 +49,12 @@ public class LocalBlobTests
 
         Assert.That(result, Is.EqualTo(validSignature ? BlockImportResult.Imported : BlockImportResult.Invalid));
         await engine.Received(validSignature ? 1 : 0).engine_getBlobsV2(Arg.Any<byte[][]>());
-        for (ulong column = 0; column < 128; column++) Assert.That(pool.TryGet(chain.BlockRoot, column, out _), Is.EqualTo(validSignature));
+        for (ulong column = 0; column < 128; column++)
+            Assert.That(pool.TryGet(chain.BlockRoot, column, out _), Is.EqualTo(validSignature && custody.SampledColumns.Contains(column)));
     }
 
     [Test]
-    public async Task Local_blobs_become_verified_columns_and_release_the_engine_response([Values(0, 1, 2, 3)] int fault)
+    public async Task Local_blobs_become_verified_columns_and_release_the_engine_response([Values(0, 1, 2, 3)] int fault, [Values(4UL, 128UL)] ulong groups)
     {
         ImportableBlobBlock block = ImportableBlobBlock.Create(blobCount: 1);
         byte seed = fault == 1 ? (byte)0x20 : (byte)0x10;
@@ -64,14 +67,15 @@ public class LocalBlobTests
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         engine.engine_getBlobsV2(Arg.Any<byte[][]>()).Returns(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(response));
         ExternalClDetector detector = EngineTests.CreateDetector(engine, out _);
-        EngineDriver driver = TestEngineDriver.Create(detector);
+        NodeColumnCustody custody = new(Hash256.Zero, groups);
+        EngineDriver driver = TestEngineDriver.Create(detector, custody: custody);
 
         DataColumnSidecar[] columns = await driver.GetLocalColumns(block.Block);
 
         using IDisposable assertions = Assert.EnterMultipleScope();
         Assert.That(response.Disposed, Is.True);
         Assert.That(detector.IsExternalClDetected, Is.False);
-        Assert.That(columns, Has.Length.EqualTo(fault == 0 ? 128 : 0));
+        Assert.That(columns.Select(column => column.Index), Is.EqualTo(fault == 0 ? custody.SampledColumns : []));
         foreach (DataColumnSidecar column in columns)
         {
             Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(column), Is.True);
@@ -93,7 +97,7 @@ public class LocalBlobTests
             return blocksSynchronously ? Task.FromResult(completion.Task.GetAwaiter().GetResult()) : completion.Task;
         });
         ExternalClDetector detector = EngineTests.CreateDetector(engine, out _);
-        EngineDriver driver = TestEngineDriver.Create(detector, localColumnsTimeout: TimeSpan.Zero);
+        EngineDriver driver = TestEngineDriver.Create(detector, custody: new NodeColumnCustody(Hash256.Zero, 4), localColumnsTimeout: TimeSpan.Zero);
         Task<DataColumnSidecar[]> lookup = Task.Run(() => driver.GetLocalColumns(block.Block));
         try
         {
