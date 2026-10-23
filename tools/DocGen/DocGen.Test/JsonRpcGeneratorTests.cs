@@ -37,7 +37,8 @@ public class JsonRpcGeneratorTests
     [TestCase("trace", "trace_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("debug", "debug_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("eth", "eth_simulateV1", "- `calls`:", "- `traces`:")]
-    [TestCase("eth", "eth_getBlockByHash", "- `transactions`: array of _string_ (hash), or array of _object_ (transaction) when full transactions are requested", "- `hashes`:")]
+    [TestCase("eth", "eth_getBlockByHash", "- `transactions`: array of _string_ (hash), or array of _object_ (transaction, same as `result` in `eth_getTransactionByHash`) when full transactions are requested", "- `hashes`:")]
+    [TestCase("debug", "debug_getBadBlocks", "Each `block` carries full transaction objects.", "- `hashes`:")]
     public void Response_documents_wire_shape(string ns, string method, string documented, string notDocumented)
     {
         string response = ReadResponse(ns, method);
