@@ -12,6 +12,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 ## Coding guidelines and style
 
 - Follow [CONTRIBUTING.md](./CONTRIBUTING.md) and [.editorconfig](./.editorconfig)
+- For new CI automation and script tests, prefer C# file-based apps over Python, shell, or PowerShell. Use top-level statements, `var`, and `using var`; follow [CI scripting guidance](./.agents/rules/ci-scripts.md).
 - An agent's primary concern is correctness. Next after that is reviewer fatigue.
 - Keep changes minimal and focused — don't touch unrelated code. Try to minimise the diff from the base branch, for example, not reordering code or making stylistic changes unless they improve code clarity.
 - On unrelated code, be even more conservative: do not rephrase comments, and do not even fix typos. That is the responsibility of a linter. Keep the code unchanged verbatim.
