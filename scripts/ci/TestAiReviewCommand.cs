@@ -23,9 +23,9 @@ void Check(bool condition, string name)
     Console.WriteLine($"PASS {name}");
     passed++;
 }
-string Extract(string text, string pattern)
+string Extract(string text, Regex pattern)
 {
-    var match = Regex.Match(text, pattern, RegexOptions.Singleline);
+    var match = pattern.Match(text);
     if (!match.Success) throw new InvalidOperationException($"Workflow block not found: {pattern}");
     return match.Groups[1].Value;
 }
@@ -53,13 +53,13 @@ var targetScript = """
     const run = async () => { WORKFLOW_SCRIPT };
     run().then(() => process.stdout.write(JSON.stringify({output})),
         error => process.stdout.write(JSON.stringify({error: error.message})));
-    """.Replace("WORKFLOW_SCRIPT", Extract(instructions, @"          script: \|\n(.*?)\n\n      - name:"), StringComparison.Ordinal);
+    """.Replace("WORKFLOW_SCRIPT", Extract(instructions, TargetScriptRegex()), StringComparison.Ordinal);
 JsonObject Fixture(int count, JsonArray files, string? sha = null, string repo = "test/repo") => new()
 {
     ["pr"] = new JsonObject { ["base"] = new JsonObject { ["repo"] = new JsonObject { ["full_name"] = repo }, ["sha"] = sha ?? new string('a', 40) }, ["head"] = new JsonObject { ["sha"] = new string('b', 40) }, ["changed_files"] = count },
     ["files"] = files.DeepClone()
 };
-var pythonBlock = Extract(instructions, @"        run: \|\n(.*)").TrimEnd('\n').Split('\n');
+var pythonBlock = Extract(instructions, PrepareInstructionsRegex()).TrimEnd('\n').Split('\n');
 var python = string.Join('\n', pythonBlock.Skip(1).SkipLast(1).Select(line => line.Length >= 10 ? line[10..] : line));
 async Task<(int Code, string Output, string Error)> Prepare(string checkout, string[] paths, bool all = false)
 {
@@ -79,9 +79,8 @@ async Task<string> Prompt(string checkout, string[] paths, bool all = false)
 try
 {
     Environment.SetEnvironmentVariable("PR_NUMBER", "1");
-    Check(!Regex.IsMatch(command, @"(?m)^concurrency:") && Regex.IsMatch(command,
-        @"(?m)^  command:\n(?:    (?!concurrency:).*\n)*    concurrency:\n      group: ai-pr-review-command-\$\{\{ github\.event\.issue\.number \}\}\n      cancel-in-progress: false$"), "only authorized command enters PR concurrency group");
-    var supported = Extract(command, @"(            const supported = .*?;)");
+    Check(!GlobalConcurrencyRegex().IsMatch(command) && CommandConcurrencyRegex().IsMatch(command), "only authorized command enters PR concurrency group");
+    var supported = Extract(command, SupportedCommandRegex());
     foreach (var (body, expected) in new[]
     {
         ("/review", true), ("/REVIEW", true), ("/ask", false), ("/ask   ", false), ("/review\nextra", false),
@@ -109,7 +108,7 @@ try
         const run = async () => { WORKFLOW_SCRIPT };
         run().then(() => process.stdout.write(JSON.stringify({called, allowed, error: null})),
             error => process.stdout.write(JSON.stringify({called, allowed, error: error.status})));
-        """.Replace("WORKFLOW_SCRIPT", Extract(command, @"          script: \|\n(.*?)\n\n  instructions:"), StringComparison.Ordinal);
+        """.Replace("WORKFLOW_SCRIPT", Extract(command, AuthorizationScriptRegex()), StringComparison.Ordinal);
     foreach (var (text, type, permission, apiError, allowed, called, error) in new (string, string, string?, int?, bool, bool, int?)[]
     {
         ("/review", "User", "write", null, true, true, null), ("/REVIEW ", "User", "maintain", null, true, true, null),
@@ -124,7 +123,7 @@ try
         Check(JsonNode.DeepEquals(actual, new JsonObject { ["called"] = called, ["allowed"] = allowed, ["error"] = JsonValue.Create(error) }), $"authorization {text}/{type}/{permission}/{apiError}");
     }
     foreach (var workflow in new[] { command, Read(".github/workflows/ai-review.yml") })
-        Check(workflow.Contains("uses: ./.github/workflows/ai-review-instructions.yml", StringComparison.Ordinal) && workflow.Contains("extra_instructions: ${{ needs.instructions.outputs.instructions }}", StringComparison.Ordinal) && !Regex.IsMatch(workflow, @"(?m)^      model:"), "trusted prepared instructions without model override");
+        Check(workflow.Contains("uses: ./.github/workflows/ai-review-instructions.yml", StringComparison.Ordinal) && workflow.Contains("extra_instructions: ${{ needs.instructions.outputs.instructions }}", StringComparison.Ordinal) && !ModelOverrideRegex().IsMatch(workflow), "trusted prepared instructions without model override");
     Check(new[] { "ref: ${{ steps.target.outputs.base_sha }}", "persist-credentials: false", "ALL_SCOPES: ${{ steps.target.outputs.all_scopes }}" }.All(text => instructions.Contains(text, StringComparison.Ordinal)) && !instructions.Contains("secrets:", StringComparison.Ordinal) && !instructions.Split("jobs:")[0].Contains("write", StringComparison.Ordinal), "read-only trusted rules checkout");
     var renamed = new JsonArray(new JsonObject { ["filename"] = "renamed.txt", ["previous_filename"] = "old/Test/File.cs" });
     var resolved = await Node(targetScript, Fixture(1, renamed));
@@ -219,4 +218,23 @@ finally
 {
     foreach (var (key, value) in saved) Environment.SetEnvironmentVariable(key, value);
     temporary.Delete(recursive: true);
+}
+
+partial class Program
+{
+    [GeneratedRegex(@"          script: \|\n(.*?)\n\n      - name:", RegexOptions.Singleline)]
+    private static partial Regex TargetScriptRegex();
+    [GeneratedRegex(@"        run: \|\n(.*)", RegexOptions.Singleline)]
+    private static partial Regex PrepareInstructionsRegex();
+    [GeneratedRegex(@"(            const supported = .*?;)", RegexOptions.Singleline)]
+    private static partial Regex SupportedCommandRegex();
+    [GeneratedRegex(@"          script: \|\n(.*?)\n\n  instructions:", RegexOptions.Singleline)]
+    private static partial Regex AuthorizationScriptRegex();
+
+    [GeneratedRegex(@"(?m)^      model:")]
+    private static partial Regex ModelOverrideRegex();
+    [GeneratedRegex(@"(?m)^  command:\n(?:    (?!concurrency:).*\n)*    concurrency:\n      group: ai-pr-review-command-\$\{\{ github\.event\.issue\.number \}\}\n      cancel-in-progress: false$")]
+    private static partial Regex CommandConcurrencyRegex();
+    [GeneratedRegex(@"(?m)^concurrency:")]
+    private static partial Regex GlobalConcurrencyRegex();
 }
