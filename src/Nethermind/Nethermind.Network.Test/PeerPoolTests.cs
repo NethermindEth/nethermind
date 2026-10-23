@@ -356,6 +356,40 @@ public class PeerPoolTests
     }
 
     [Test]
+    public async Task StaticHostPeer_WithoutHandshakeAfterDial_IsDemotedUntilItCompletesOne()
+    {
+        INodeStats stats = Substitute.For<INodeStats>();
+        INodeStatsManager statsManager = Substitute.For<INodeStatsManager>();
+        statsManager.GetOrAdd(Arg.Any<Node>()).Returns(stats);
+        StaticHostFilter filter = new("1.2.3.0/24", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+        PeerPool pool = new(new TestNodeSource(), statsManager, new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig { PeersPersistenceInterval = 10 }, LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), filter);
+
+        Peer hostPeer = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+        Peer configuredPeer = pool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 30303) { IsStatic = true });
+        Assert.That(hostPeer.Node.IsStatic, Is.True);
+
+        stats.DidEventHappen(NodeStatsEventType.Connecting).Returns(true);
+        pool.Start();
+        try
+        {
+            Assert.That(() => hostPeer.Node.IsStatic, Is.False.After(5000, 10));
+            Assert.That(configuredPeer.Node.IsStatic, Is.True);
+
+            pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+            Assert.That(hostPeer.Node.IsStatic, Is.False, "rediscovery of an unproven node does not promote it again");
+
+            stats.DidEventHappen(NodeStatsEventType.HandshakeCompleted).Returns(true);
+            pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+            Assert.That(hostPeer.Node.IsStatic, Is.True);
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
     public void GetOrAdd_MergesVerifiedEnrStateIntoPersistedPeer()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();

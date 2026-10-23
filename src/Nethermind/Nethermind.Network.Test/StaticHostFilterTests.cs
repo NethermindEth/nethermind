@@ -6,7 +6,10 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -91,5 +94,48 @@ public class StaticHostFilterTests
         Assert.That(changed, Is.EqualTo(2));
         Assert.That(filter.IsMatch(IPAddress.Parse("5.6.7.8")), Is.False);
         Assert.That(filter.IsMatch(IPAddress.Parse("5.6.7.9")), Is.True);
+    }
+
+    [Test]
+    public async Task Refresh_demotes_only_promoted_nodes_at_dropped_addresses()
+    {
+        IPAddress[] result = [IPAddress.Parse("5.6.7.8"), IPAddress.Parse("5.6.7.9")];
+        StaticHostFilter filter = Create("my-node.example", (_, _) => Task.FromResult(result));
+        await filter.RefreshAsync(CancellationToken.None);
+
+        Node dropped = new(TestItem.PublicKeyA, "5.6.7.8", 30303);
+        Node kept = new(TestItem.PublicKeyB, "5.6.7.9", 30303);
+        Node configured = new(TestItem.PublicKeyC, "5.6.7.8", 30304) { IsStatic = true };
+        Assert.That(filter.TryPromote(dropped, matchPort: true), Is.True);
+        Assert.That(filter.TryPromote(kept, matchPort: true), Is.True);
+        Assert.That(filter.TryPromote(configured, matchPort: true), Is.False);
+
+        result = [IPAddress.Parse("5.6.7.9")];
+        await filter.RefreshAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dropped.IsStatic, Is.False);
+            Assert.That(kept.IsStatic, Is.True);
+            Assert.That(configured.IsStatic, Is.True);
+        }
+    }
+
+    [Test]
+    public void Refresh_survives_a_throwing_changed_handler()
+    {
+        StaticHostFilter filter = Create("my-node.example", static (_, _) => Task.FromResult(new[] { IPAddress.Parse("5.6.7.8") }));
+        filter.Changed += static (_, _) => throw new InvalidOperationException();
+
+        Assert.That(() => filter.RefreshAsync(CancellationToken.None), Throws.Nothing);
+        Assert.That(filter.IsMatch(IPAddress.Parse("5.6.7.8")), Is.True);
+    }
+
+    [Test]
+    public void Dispose_can_be_called_twice()
+    {
+        StaticHostFilter filter = new(new NetworkConfig { StaticPeerHosts = "my-node.example" }, LimboLogs.Instance);
+        filter.Dispose();
+        Assert.That(filter.Dispose, Throws.Nothing);
     }
 }

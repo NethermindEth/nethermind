@@ -110,12 +110,16 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(Node node)
         {
-            PromoteIfStaticHost(node);
+            // The host match is applied to the pooled instance before the merge, so the instance that
+            // stays in the pool is the one the filter tracks and can demote.
             if (Peers.TryGetValue(node.Id, out Peer? existing))
             {
+                PromoteIfStaticHost(existing.Node);
                 MergeNodeState(node, existing.Node);
                 return existing;
             }
+
+            PromoteIfStaticHost(node);
 
             // ConcurrentDictionary may run the factory on a losing thread; only the thread whose value is
             // actually inserted (reference-equal) fires PeerAdded.
@@ -128,6 +132,8 @@ namespace Nethermind.Network
             }
             else
             {
+                _staticHostFilter.Demote(node);
+                PromoteIfStaticHost(peer.Node);
                 MergeNodeState(node, peer.Node);
             }
 
@@ -171,10 +177,33 @@ namespace Nethermind.Network
 
         private void PromoteIfStaticHost(Node node)
         {
-            if (!node.IsStatic && _staticHostFilter.IsMatch(node.Address))
+            if (IsStaticHostCandidate(node) && _staticHostFilter.TryPromote(node, matchPort: true))
             {
-                node.IsStatic = true;
                 if (_logger.IsDebug) DebugStaticHostMatch(node);
+            }
+        }
+
+        private bool IsStaticHostCandidate(Node node) =>
+            !node.IsStatic && _staticHostFilter.IsMatch(node.Address) && !FailedToProveKey(node);
+
+        // A discovery record can claim any address, so a host match alone does not prove that the node
+        // runs there. A node we dialed that never completed a handshake is a spoofed record or a stale key.
+        private bool FailedToProveKey(Node node)
+        {
+            INodeStats stats = _stats.GetOrAdd(node);
+            return stats.DidEventHappen(NodeStatsEventType.Connecting) && !stats.DidEventHappen(NodeStatsEventType.HandshakeCompleted);
+        }
+
+        private void DemoteUnprovenStaticHosts()
+        {
+            foreach (KeyValuePair<PublicKeyAsKey, Peer> kvp in Peers)
+            {
+                Peer peer = kvp.Value;
+                if (peer.Node.IsStatic && peer.InSession is null && peer.OutSession is null && !peer.IsAwaitingConnection
+                    && FailedToProveKey(peer.Node))
+                {
+                    _staticHostFilter.Demote(peer.Node);
+                }
             }
         }
 
@@ -279,6 +308,7 @@ namespace Nethermind.Network
             {
                 try
                 {
+                    DemoteUnprovenStaticHosts();
                     UpdateReputationAndMaxPeersCount();
 
                     if (!_peerStorage.AnyPendingChange())
@@ -376,12 +406,12 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
-                PromoteIfStaticHost(node);
+                bool isStaticHost = IsStaticHostCandidate(node);
 
                 // Static and trusted nodes bypass throttling so they are always registered (static to stay
                 // dialable, trusted so inbound connections are recognized and counted even at capacity).
                 bool throttlingLogged = false;
-                while (!node.IsStatic && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
+                while (!node.IsStatic && !isStaticHost && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
                 {
                     if (!throttlingLogged)
                     {

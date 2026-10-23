@@ -975,7 +975,8 @@ namespace Nethermind.Network
 
         private void ProcessIncomingConnection(ISession session)
         {
-            if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
+            bool isPooled = _peerPool.TryGet(session.Node.Id, out Peer existingPeer);
+            if (isPooled)
             {
                 // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
                 session.Node.IsStatic = existingPeer.Node.IsStatic;
@@ -983,9 +984,9 @@ namespace Nethermind.Network
             }
 
             // The remote port of an inbound session is ephemeral, so only the IP can be matched.
-            if (!session.Node.IsStatic && _staticHostFilter.IsMatch(session.Node.Address.Address))
+            if (_staticHostFilter.TryPromote(session.Node, matchPort: false) && isPooled)
             {
-                session.Node.IsStatic = true;
+                _staticHostFilter.TryPromote(existingPeer.Node, matchPort: false);
             }
 
             if (_logger.IsTrace) TraceProcessingIncoming();

@@ -6,10 +6,12 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
 
@@ -30,7 +32,9 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
     private readonly Func<string, CancellationToken, Task<IPAddress[]>> _resolve;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts = new();
+    private readonly ConditionalWeakTable<Node, object> _promoted = [];
     private volatile Rule[] _rules;
+    private int _disposed;
 
     public event EventHandler? Changed;
 
@@ -39,7 +43,8 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
     {
         if (_hosts.Length > 0)
         {
-            _ = Task.Run(RefreshLoopAsync);
+            CancellationToken token = _cts.Token;
+            _ = Task.Run(() => RefreshLoopAsync(token));
         }
     }
 
@@ -70,6 +75,23 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
         }
 
         return false;
+    }
+
+    public bool TryPromote(Node node, bool matchPort)
+    {
+        if (node.IsStatic || !(matchPort ? IsMatch(node.Address) : IsMatch(node.Address.Address))) return false;
+
+        node.IsStatic = true;
+        _promoted.AddOrUpdate(node, node);
+        return true;
+    }
+
+    public void Demote(Node node)
+    {
+        if (_promoted.Remove(node))
+        {
+            node.IsStatic = false;
+        }
     }
 
     internal async Task RefreshAsync(CancellationToken token)
@@ -106,12 +128,31 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
         }
 
         _rules = rules.ToArray();
-        Changed?.Invoke(this, EventArgs.Empty);
+
+        // The port of a promoted node cannot stop matching, as the port of a host entry is fixed config.
+        List<Node> stale = [];
+        foreach (KeyValuePair<Node, object> promoted in _promoted)
+        {
+            if (!IsMatch(promoted.Key.Address.Address)) stale.Add(promoted.Key);
+        }
+
+        foreach (Node node in stale)
+        {
+            Demote(node);
+        }
+
+        try
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Static peer host change handler failed.", e);
+        }
     }
 
-    private async Task RefreshLoopAsync()
+    private async Task RefreshLoopAsync(CancellationToken token)
     {
-        CancellationToken token = _cts.Token;
         try
         {
             using PeriodicTimer timer = new(RefreshInterval);
@@ -207,6 +248,8 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
         _cts.Cancel();
         _cts.Dispose();
     }
