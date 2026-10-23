@@ -54,7 +54,7 @@ public static partial class IpMasker
         (?<enode>enode://[0-9A-Fa-f]*(?:@(?:\[[^\]\s]*\]|[\w.-]*))?)
         |(?<enr>enr:-[\w-]+)
         |(?<![\w.])\d{1,3}(?:\.\d{1,3}){3}(?!\.?\w)
-        |(?<![\w.])(?:[0-9A-Fa-f]{1,4})?(?::[0-9A-Fa-f]{0,4}){2,7}(?:(?:\.\d{1,3}){3})?(?:%\w+)?(?![\w.])
+        |(?<![\w.])(?:[0-9A-Fa-f]{1,4})?(?::[0-9A-Fa-f]{0,4}){2,7}(?:(?:\.\d{1,3}){3})?(?:%\w+)?(?!\.?\w)
         """, RegexOptions.IgnorePatternWhitespace | RegexOptions.ExplicitCapture | RegexOptions.CultureInvariant)]
     private static partial Regex SensitiveData();
 }

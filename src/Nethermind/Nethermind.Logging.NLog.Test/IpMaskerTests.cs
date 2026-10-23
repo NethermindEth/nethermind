@@ -26,6 +26,8 @@ public class IpMaskerTests
     [TestCase("Peer fe80::1%12 left", "Peer x::x left")]
     [TestCase("Peer fe80::1: timeout", "Peer x::x: timeout")]
     [TestCase("Peer ::ffff:94.130.12.34 left", "Peer x::x left")]
+    [TestCase("Peer 2001:db8::1.", "Peer x::x.")]
+    [TestCase("Peer ::ffff:94.130.12.34.", "Peer x::x.")]
     [TestCase("This node : enode://" + NodeKey + "@94.130.12.34:30303 ", "This node : enode://***@***:30303 ")]
     [TestCase("enode://" + NodeKey + "@[2001:db8::1]:30303?discport=30301", "enode://***@***:30303?discport=30301")]
     [TestCase("enode://" + NodeKey + "@node.example.com:30303|0x1234", "enode://***@***:30303|0x1234")]
