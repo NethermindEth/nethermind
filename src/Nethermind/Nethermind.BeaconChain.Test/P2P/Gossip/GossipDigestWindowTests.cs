@@ -5,6 +5,7 @@ using Autofac;
 using Google.Protobuf;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Test.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -29,7 +30,7 @@ public class GossipDigestWindowTests
     [TestCaseSource(nameof(Boundaries))]
     public void Next_digest_is_joined_one_epoch_early_and_the_previous_one_kept_until_two_epochs_after(ulong chainId, ulong boundary)
     {
-        BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
+        BeaconChainSpec spec = ExecutionSchedules.SpecForChainId(chainId);
         (byte[] Digest, bool Gloas) previous = (ForkDigest.Compute(spec, boundary - 1), boundary - 1 >= spec.GloasForkEpoch);
         (byte[] Digest, bool Gloas) next = (ForkDigest.Compute(spec, boundary), boundary >= spec.GloasForkEpoch);
 
@@ -48,7 +49,7 @@ public class GossipDigestWindowTests
     [TestCaseSource(nameof(Boundaries))]
     public void Validator_accepts_exactly_the_digests_the_orchestrator_subscribes(ulong chainId, ulong boundary)
     {
-        BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
+        BeaconChainSpec spec = ExecutionSchedules.SpecForChainId(chainId);
         ManualTimestamper timestamper = new(EpochStart(spec, boundary - 3));
         using IContainer container = BeaconChainTestContainer.Builder(chainId).AddSingleton<ITimestamper>(timestamper).Build();
         GossipRouter router = container.Resolve<GossipRouter>();

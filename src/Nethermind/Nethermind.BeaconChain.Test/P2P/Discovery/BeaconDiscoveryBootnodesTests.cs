@@ -10,6 +10,7 @@ using Nethermind.Network;
 using NSubstitute;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Test.Spec;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 
@@ -36,7 +37,7 @@ public class BeaconDiscoveryBootnodesTests
     public void Discovery_dials_the_networks_own_bootnodes_when_the_config_does_not_override_them(
         [Values(BlockchainIds.Mainnet, BlockchainIds.Hoodi, BlockchainIds.Sepolia)] ulong chainId)
     {
-        BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
+        BeaconChainSpec spec = ExecutionSchedules.SpecForChainId(chainId);
         PublicKey[] own = [.. Discovery(spec).CreateBootNodes().Select(static n => n.Id)];
         // The same records listed explicitly, so only the network's own list can match.
         PublicKey[] listed = [.. Discovery(BeaconChainSpec.Mainnet, string.Join(',', spec.Bootnodes)).CreateBootNodes().Select(static n => n.Id)];

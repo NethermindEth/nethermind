@@ -7,6 +7,7 @@ using Autofac.Core.Resolving.Pipeline;
 using Nethermind.Core;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Test.Spec;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -49,27 +50,14 @@ internal static class BeaconChainTestContainer
         ulong chainId = BlockchainIds.Mainnet,
         ILogManager? logManager = null,
         IEngineRpcModule? engine = null,
-        IBeaconChainConfig? config = null)
+        IBeaconChainConfig? config = null,
+        ISpecProvider? execution = null)
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>(); // registered by NetworkModule in production
         ipResolver.Resolve(Arg.Any<CancellationToken>())
             .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)));
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>(); // registered by NethermindModule in production
-        specProvider.ChainId.Returns(chainId);
-        // Resolved on first use so an unsupported chain id fails where production fails: resolving BeaconChainSpec.
-        Lazy<ulong> gloasActivation = new(() =>
-        {
-            BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
-            if (config?.GloasForkEpoch is { } epoch && epoch >= spec.FuluForkEpoch)
-                spec = spec with { GloasForkEpoch = epoch };
-            return spec.GloasForkEpoch == Presets.FarFutureEpoch
-                ? ulong.MaxValue
-                : spec.GenesisTime + spec.GloasForkEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot;
-        });
-        IReleaseSpec beforeGloas = Substitute.For<IReleaseSpec>();
-        IReleaseSpec afterGloas = Substitute.For<IReleaseSpec>();
-        afterGloas.BlockLevelAccessListsEnabled.Returns(true);
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().Timestamp >= gloasActivation.Value ? afterGloas : beforeGloas);
+        // Registered by NethermindModule in production; an unsupported chain id fails where production fails: resolving BeaconChainSpec.
+        ISpecProvider specProvider = execution ?? ExecutionSchedules.ForChainId(chainId);
         return new ContainerBuilder()
             .AddModule(new BeaconChainModule())
             .AddSingleton<IBeaconApiConfig>(new BeaconApiConfig())

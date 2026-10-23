@@ -32,7 +32,6 @@ public class BeaconChainConfig : IBeaconChainConfig
     public int MaxConcurrentOutboundDials { get; set; } = 8;
     public int FaultDisconnectsBeforeBan { get; set; } = 3;
     public int PeerBanMinutes { get; set; } = 30;
-    public ulong? GloasForkEpoch { get; set; }
     public string? GloasForkVersion { get; set; }
     public bool DisableOnExternalCl { get; set; } = true;
 }

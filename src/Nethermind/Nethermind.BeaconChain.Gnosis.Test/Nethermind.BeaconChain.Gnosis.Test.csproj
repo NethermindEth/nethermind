@@ -7,6 +7,7 @@
     <PackageReference Include="NSubstitute" />
     <ProjectReference Include="../Nethermind.BeaconChain/Nethermind.BeaconChain.csproj" />
     <Compile Include="../Nethermind.BeaconChain.Test/BeaconChainTestContainer.cs" Link="BeaconChainTestContainer.cs" />
+    <Compile Include="../Nethermind.BeaconChain.Test/Spec/ExecutionSchedules.cs" Link="ExecutionSchedules.cs" />
     <Compile Include="../Nethermind.BeaconChain.Test/GlobalUsings.cs" Link="GlobalUsings.cs" />
   </ItemGroup>
 </Project>

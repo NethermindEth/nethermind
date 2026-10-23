@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Test.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
@@ -58,7 +59,7 @@ public partial class BeaconSyncOrchestratorTests
     [TestCaseSource(typeof(GossipDigestWindowTests), nameof(GossipDigestWindowTests.Boundaries))]
     public async Task Production_wiring_subscribes_both_routers_across_the_transition_window(ulong chainId, ulong boundary)
     {
-        BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
+        BeaconChainSpec spec = ExecutionSchedules.SpecForChainId(chainId);
         await using IContainer container = BuildGossipContainer(chainId, spec, boundary - 1, out BeaconSyncOrchestrator orchestrator, out BeaconDiscovery discovery);
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         string[] sampledSubnets = SampledSubnetNames(discovery);

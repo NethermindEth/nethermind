@@ -59,7 +59,7 @@ public class BeaconChainStoreDataColumnScanTests
     public void A_Gloas_block_needs_its_columns_only_once_its_payload_envelope_is_stored([Values] bool envelopeStored)
     {
         const ulong gloasEpoch = 500_000;
-        BeaconChainSpec spec = Spec.WithGloasForkOverride(gloasEpoch, "0x07000000");
+        BeaconChainSpec spec = Spec with { GloasForkEpoch = gloasEpoch };
         MemColumnsDb<BeaconChainDbColumns> db = new();
         BeaconChainStore store = new(db, spec);
         ulong slot = gloasEpoch * spec.SlotsPerEpoch + 5;

@@ -47,20 +47,6 @@ public class BeaconChainModule : Module
             throw new InvalidConfigurationException("The beacon chain slot timing does not match the selected consensus preset.", ExitCodes.ConflictingConfigurations);
     }
 
-    internal static void ValidateGloasSchedule(BeaconChainSpec spec, ISpecProvider execution)
-    {
-        if (spec.GloasForkEpoch == ulong.MaxValue)
-        {
-            if (execution.GetFinalSpec().IsAmsterdamEnabled)
-                throw new InvalidConfigurationException("The execution layer schedules Amsterdam but the beacon chain does not schedule Gloas.", ExitCodes.ConflictingConfigurations);
-            return;
-        }
-        ulong timestamp = checked(spec.GenesisTime + spec.GloasForkEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot);
-        if (!execution.GetSpec(long.MaxValue - 1, timestamp).IsAmsterdamEnabled
-            || (timestamp > 0 && execution.GetSpec(long.MaxValue - 1, timestamp - 1).IsAmsterdamEnabled))
-            throw new InvalidConfigurationException($"Gloas must activate with execution-layer Amsterdam at timestamp {timestamp}; align both fork schedules.", ExitCodes.ConflictingConfigurations);
-    }
-
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -68,14 +54,12 @@ public class BeaconChainModule : Module
         builder
             .AddSingleton<BeaconChainService>()
             .AddSingleton<ProcessStallWatchdog>()
-            // The network comes from the execution layer's chain id so both sides follow the same chain;
-            // only the Gloas schedule can be overridden by config.
+            // The network and its fork timing come from the execution layer's chainspec, so both sides follow the same schedule.
             .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig>((specProvider, chainConfig) =>
             {
                 BeaconPresetSelection.Initialize(specProvider.ChainId);
-                BeaconChainSpec spec = BeaconChainSpec.ForChainId(specProvider.ChainId).WithGloasForkOverride(chainConfig.GloasForkEpoch, chainConfig.GloasForkVersion);
+                BeaconChainSpec spec = BeaconChainSpec.ForExecution(specProvider, chainConfig.GloasForkVersion);
                 ValidatePreset(spec);
-                ValidateGloasSchedule(spec, specProvider);
                 return spec;
             })
             .AddSingleton<BeaconChainStore>()

@@ -7,32 +7,19 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.BeaconChain.Spec;
 
-public partial record BeaconChainSpec
+internal sealed partial record BeaconNetwork
 {
     // https://github.com/gnosischain/configs/tree/2dd5746292ca298ae0695f1ee221098074574e04
-    public static BeaconChainSpec Gnosis { get; } = new()
+    public static BeaconNetwork Gnosis { get; } = new()
     {
         ChainId = BlockchainIds.Gnosis,
         CheckpointSyncUrl = "https://checkpoint.gnosischain.com",
         SecondsPerSlot = 5,
         SlotsPerEpoch = 16,
-        GenesisTime = 1638993340,
         GenesisValidatorsRoot = new Hash256(Bytes.FromHexString("0xf5dcb5564e829aab27264b9becd5dfaa017085611224cb3036f573368dbb9d47")),
-        Forks =
-        [
-            new(Bytes.FromHexString("0x00000064"), 0),
-            new(Bytes.FromHexString("0x01000064"), 512),
-            new(Bytes.FromHexString("0x02000064"), 385536),
-            new(Bytes.FromHexString("0x03000064"), 648704),
-            new(Bytes.FromHexString("0x04000064"), 889856),
-            new(Bytes.FromHexString("0x05000064"), 1337856),
-            new(Bytes.FromHexString("0x06000064"), 1714688),
-        ],
-        BlobSchedule = [],
-        ElectraForkEpoch = 1337856,
-        FuluForkEpoch = 1714688,
-        MaxBlobsPerBlockElectra = 2,
-        GloasForkEpoch = Presets.FarFutureEpoch,
+        ForkVersions = Versions("0x00000064", "0x01000064", "0x02000064", "0x03000064", "0x04000064", "0x05000064", "0x06000064"),
+        AltairForkEpoch = 512,
+        BellatrixForkEpoch = 385536,
         GloasForkVersion = new byte[4],
         Bootnodes =
         [
@@ -46,29 +33,16 @@ public partial record BeaconChainSpec
             "enr:-LK4QIJUAxX9uNgW4ACkq8AixjnSTcs9sClbEtWRq9F8Uy9OEExsr4ecpBTYpxX66cMk6pUHejCSX3wZkK2pOCCHWHEBh2F0dG5ldHOIAAAAAAAAAACEZXRoMpA-v9SEBAAAZP__________gmlkgnY0gmlwhCPSnDuJc2VjcDI1NmsxoQNuaAjFE-ANkH3pbeBdPiEIwjR5kxFuKaBWxHkqFuPz5IN0Y3CCIyiDdWRwgiMo",
         ],
     };
-    public static BeaconChainSpec Chiado { get; } = new()
+    public static BeaconNetwork Chiado { get; } = new()
     {
         ChainId = BlockchainIds.Chiado,
         CheckpointSyncUrl = "https://checkpoint.chiadochain.net",
         SecondsPerSlot = 5,
         SlotsPerEpoch = 16,
-        GenesisTime = 1665396300,
         GenesisValidatorsRoot = new Hash256(Bytes.FromHexString("0x9d642dac73058fbf39c0ae41ab1e34e4d889043cb199851ded7095bc99eb4c1e")),
-        Forks =
-        [
-            new(Bytes.FromHexString("0x0000006f"), 0),
-            new(Bytes.FromHexString("0x0100006f"), 90),
-            new(Bytes.FromHexString("0x0200006f"), 180),
-            new(Bytes.FromHexString("0x0300006f"), 244224),
-            new(Bytes.FromHexString("0x0400006f"), 516608),
-            new(Bytes.FromHexString("0x0500006f"), 948224),
-            new(Bytes.FromHexString("0x0600006f"), 1353216),
-        ],
-        BlobSchedule = [],
-        ElectraForkEpoch = 948224,
-        FuluForkEpoch = 1353216,
-        MaxBlobsPerBlockElectra = 2,
-        GloasForkEpoch = Presets.FarFutureEpoch,
+        ForkVersions = Versions("0x0000006f", "0x0100006f", "0x0200006f", "0x0300006f", "0x0400006f", "0x0500006f", "0x0600006f"),
+        AltairForkEpoch = 90,
+        BellatrixForkEpoch = 180,
         GloasForkVersion = new byte[4],
         Bootnodes =
         [
