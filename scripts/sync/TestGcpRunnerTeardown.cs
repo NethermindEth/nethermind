@@ -1,4 +1,7 @@
 #!/usr/bin/env dotnet
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 #:include SyncTests.Helpers.cs
 #:include LifecycleTests.Helpers.cs
 #:include ../../.github/actions/gcp-runner/Gcp.Helpers.cs
@@ -26,5 +29,21 @@ foreach (var scenario in new[] { "lookup-failed", "already-deleted", "deleted-by
         Cases.Equal(scenario, fixture.Outputs["terminated_by"]);
         Cases.Equal("false", fixture.Outputs["preempted"]);
         Cases.Equal("0", fixture.Outputs["preempted_at"]);
+        if (scenario is "unknown" or "terminated") Cases.True(fixture.Transcript.Contains("::warning title=GCP runner::", StringComparison.Ordinal), "missing-instance warning");
+        if (scenario == "unknown") Cases.True(fixture.Transcript.Contains("vanished with no operations recorded", StringComparison.Ordinal), "unknown diagnostic");
+        if (scenario == "terminated") Cases.True(fixture.Transcript.Contains("was terminated externally", StringComparison.Ordinal), "external termination diagnostic");
+        if (scenario == "creation-failed") Cases.True(fixture.Transcript.Contains("creation did not complete", StringComparison.Ordinal), "creation failure diagnostic");
     });
+await Cases.Test("concurrent deletion and leftover registration diagnostics", async () =>
+{
+    using var fixture = new LifecycleFixture { IsDestroy = true };
+    var lookups = 0;
+    fixture.Handler = (command, arguments) => command == "gh"
+        ? new CommandResult(0, arguments.Contains("DELETE") ? "" : "42\n")
+        : arguments.Contains("list") ? new CommandResult(0, ++lookups == 1 ? "europe-west1-b" : "") : new CommandResult(1);
+    Cases.Equal(0, await fixture.Execute());
+    Cases.Equal("deleted-concurrently", fixture.Outputs["terminated_by"]);
+    Cases.True(fixture.Transcript.Contains("was already being deleted and is now gone", StringComparison.Ordinal), "concurrent deletion diagnostic");
+    Cases.True(fixture.Transcript.Contains("removing leftover runner registration 42", StringComparison.Ordinal), "registration cleanup diagnostic");
+});
 Cases.Finish();

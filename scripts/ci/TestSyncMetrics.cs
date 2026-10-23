@@ -1,4 +1,7 @@
 #!/usr/bin/env dotnet
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 #:include ../sync/SyncTests.Helpers.cs
 #:include ../sync/Sync.Helpers.cs
 #:include ../sync-metrics/Metrics.Helpers.cs
@@ -7,6 +10,20 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 string Line(int minute, string text, string prefix = "") => $"{prefix}2026-09-16T12:{minute:00}:00.123456789Z {text}";
+foreach (var (seconds, expected) in new[] { (3d, 0.1), (9d, 0.1), (15d, 0.2), (21d, 0.3), (27d, 0.5), (33d, 0.6), (39d, 0.7), (45d, 0.8), (51d, 0.8), (57d, 0.9), (63d, 1.1), (3.000001, 0.1), (2.999999, 0d), (9.000001, 0.2), (8.999999, 0.1) })
+    Cases.Test($"Python-compatible minutes rounding {seconds}", () =>
+    {
+        Cases.Equal(expected, Metrics.RoundMinutes(seconds));
+        var found = new Dictionary<string, DateTimeOffset> { ["start"] = DateTimeOffset.UnixEpoch, ["end"] = DateTimeOffset.UnixEpoch.AddSeconds(seconds) };
+        Cases.Equal(expected, Metrics.Minutes(found, "start", "end"));
+    });
+Cases.Test("leading-zero and arbitrary-size counters", () =>
+{
+    var counters = new JsonObject();
+    Metrics.ParseLine(Line(0, "Verification complete. Accounts=0004, Slots=000123456789012345678901234567890"), [], counters);
+    Cases.Equal("4", counters["accounts"]!.ToJsonString());
+    Cases.Equal("123456789012345678901234567890", counters["slots"]!.ToJsonString());
+});
 foreach (var prefix in new[] { "", "job\tstep\t" })
     Cases.Test($"log markers counters duplicates {prefix}", () =>
     {
@@ -42,7 +59,7 @@ foreach (var (mode, ending, verify) in new[] { ("Flat", "Verification complete. 
     });
 foreach (var (network, expected) in new[] { ("base-mainnet", "sedge-execution-op-l2-client"), ("op-mainnet", "sedge-execution-op-l2-client"), ("world-sepolia", "sedge-execution-op-l2-client"), ("taiko-hoodi", "sedge-execution-taiko-client"), ("mainnet", "sedge-execution-client") })
     Cases.Test($"container mapping {network}", () => Cases.Equal(expected, Sync.Container(network)));
-foreach (var scenario in new[] { "legacy", "reusable", "trigger", "paginate", "failure", "incomplete", "reversed", "retry", "empty", "invalid" })
+foreach (var scenario in new[] { "legacy", "reusable", "trigger", "paginate", "failure", "incomplete", "reversed", "retry", "empty", "invalid", "midpoint", "fractional" })
     await Cases.Test($"publish {scenario}", async () =>
     {
         var temporary = Directory.CreateTempSubdirectory("sync-metrics-");
@@ -56,6 +73,8 @@ foreach (var scenario in new[] { "legacy", "reusable", "trigger", "paginate", "f
             var run = new JsonObject { ["created_at"] = "2026-09-16T12:00:00Z", ["event"] = "workflow_run", ["head_sha"] = new string('a', 40), ["run_attempt"] = 2 };
             var job = new JsonObject { ["name"] = scenario == "legacy" ? "Sync mainnet (Flat)" : "Sync mainnet (Flat) / sync", ["conclusion"] = scenario == "failure" ? "failure" : "success", ["started_at"] = "2026-09-16T12:00:00Z", ["completed_at"] = scenario == "incomplete" ? null : scenario == "reversed" ? "2026-09-16T11:00:00Z" : "2026-09-16T12:20:00Z" };
             var lifecycle = (JsonObject)job.DeepClone();
+            if (scenario == "midpoint") job["completed_at"] = "2026-09-16T12:00:09Z";
+            if (scenario == "fractional") job["completed_at"] = "2026-09-16T12:00:03.000001Z";
             lifecycle["name"] = "Sync mainnet (Flat) / destroy_runner";
             lifecycle["completed_at"] = "2026-09-16T12:59:00Z";
             var calls = new List<string>();
@@ -89,7 +108,7 @@ foreach (var scenario in new[] { "legacy", "reusable", "trigger", "paginate", "f
             Cases.Equal(new string(scenario == "trigger" ? 'b' : 'a', 10), record["commit"]!.ToString());
             Cases.Equal(2, record["run_attempt"]!.GetValue<int>());
             if (scenario is "failure" or "incomplete" or "reversed") Cases.True(record["job_min"] is null, "unsuccessful job omitted");
-            else Cases.Equal(20d, record["job_min"]!.GetValue<double>());
+            else Cases.Equal(scenario is "midpoint" or "fractional" ? 0.1 : 20d, record["job_min"]!.GetValue<double>());
             if (scenario == "paginate")
             {
                 Cases.True(calls[1].EndsWith("/attempts/2/jobs?per_page=100&page=1", StringComparison.Ordinal), "attempt scoped");

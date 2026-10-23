@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Text.Json.Nodes;
 
 sealed class LifecycleFixture : IDisposable
@@ -24,6 +27,7 @@ sealed class LifecycleFixture : IDisposable
     internal int DeleteStatus { get; set; }
     internal string OnlineStatus = "online";
     internal int HttpStatus = 200;
+    internal string Transcript = "";
     internal LifecycleFixture()
     {
         Environment["RUNNER_TEMP"] = Directory;
@@ -32,10 +36,14 @@ sealed class LifecycleFixture : IDisposable
     }
     internal Dictionary<string, string> Outputs => File.Exists(Environment["GITHUB_OUTPUT"]) ? File.ReadAllLines(Environment["GITHUB_OUTPUT"]).Select(line => line.Split('=', 2)).ToDictionary(parts => parts[0], parts => parts[1]) : [];
     internal string Summary => File.Exists(Environment["GITHUB_STEP_SUMMARY"]) ? File.ReadAllText(Environment["GITHUB_STEP_SUMMARY"]) : "";
-    internal Task<int> Execute(CancellationToken token = default)
+    internal async Task<int> Execute(CancellationToken token = default)
     {
         var lifecycle = new Lifecycle(Run, key => Environment.GetValueOrDefault(key), (_, _) => Task.CompletedTask);
-        return IsDestroy ? lifecycle.Destroy(token) : lifecycle.Create(Path.Combine(Cases.Root(), ".github/actions/gcp-runner"), token);
+        var original = Console.Out;
+        using var output = new StringWriter();
+        Console.SetOut(output);
+        try { return IsDestroy ? await lifecycle.Destroy(token) : await lifecycle.Create(Path.Combine(Cases.Root(), ".github/actions/gcp-runner"), token); }
+        finally { Transcript = output.ToString(); Console.SetOut(original); }
     }
     private Task<CommandResult> Run(string executable, string[] arguments, string? input, CancellationToken token)
     {

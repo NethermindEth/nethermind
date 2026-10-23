@@ -1,4 +1,7 @@
 #!/usr/bin/env dotnet
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 #:include Gcp.Helpers.cs
 #:include StartupProvision.Helpers.cs
 using System.Runtime.InteropServices;

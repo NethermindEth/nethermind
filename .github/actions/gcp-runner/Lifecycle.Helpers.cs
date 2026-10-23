@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -49,6 +52,7 @@ sealed class Lifecycle(Func<string, string[], string?, CancellationToken, Task<C
                 terminated = present == "no" ? "deleted-concurrently" : present == "yes" ? "delete-failed" : "lookup-failed";
                 failed = present != "no";
                 if (failed) Console.WriteLine($"::error title=GCP runner::could not confirm deletion of {Name}; --max-run-duration will reap it");
+                else Console.WriteLine($"{Name} was already being deleted and is now gone");
             }
         }
         else
@@ -65,15 +69,32 @@ sealed class Lifecycle(Func<string, string[], string?, CancellationToken, Task<C
                 Console.WriteLine($"::warning title=GCP runner::{Env("RUNNER_LABEL")} was preempted — infrastructure reclaim, not a sync failure");
                 Summary($"⚠️ `{Env("RUNNER_LABEL")}` was preempted — infrastructure reclaim, not a sync failure");
             }
-            else if (Env("EXPECT_INSTANCE", "true") != "true") terminated = "creation-failed";
-            else if (ops.Split('\n').Contains("delete")) terminated = "already-deleted";
-            else terminated = ops.Length == 0 ? "unknown" : "terminated";
+            else if (Env("EXPECT_INSTANCE", "true") != "true")
+            {
+                terminated = "creation-failed";
+                Console.WriteLine($"{Name}: creation did not complete ({(ops.Length == 0 ? "no operations recorded" : ops)})");
+            }
+            else if (ops.Split('\n').Contains("delete"))
+            {
+                terminated = "already-deleted";
+                Console.WriteLine($"{Name} had already been deleted");
+            }
+            else
+            {
+                terminated = ops.Length == 0 ? "unknown" : "terminated";
+                Console.WriteLine(ops.Length == 0 ? $"::warning title=GCP runner::{Name} vanished with no operations recorded"
+                    : $"::warning title=GCP runner::{Name} was terminated externally ({ops.Replace("\n", ", ", StringComparison.Ordinal)})");
+            }
         }
         if (!lookupFailedInitially && Env("GH_TOKEN").Length > 0)
         {
             var result = await run("gh", ["api", "--paginate", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners", "-q", $".runners[] | select(.name == \"{Name}\") | .id"], null, token);
             var id = result.Output.Split('\n')[0].Trim();
-            if (id.Length > 0) await run("gh", ["api", "--method", "DELETE", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners/{id}"], null, token);
+            if (id.Length > 0)
+            {
+                Console.WriteLine($"removing leftover runner registration {id}");
+                await run("gh", ["api", "--method", "DELETE", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners/{id}"], null, token);
+            }
         }
         Output($"instance_name={Name}", $"zone={zone}", $"preempted={preempted.ToString().ToLowerInvariant()}", $"preempted_at={timestamp}", $"terminated_by={terminated}");
         return failed ? 1 : 0;

@@ -1,4 +1,8 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Globalization;
+using System.Numerics;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
@@ -23,15 +27,34 @@ static class Metrics
             var count = Regex.Match(line, @"Accounts=(\d+), Slots=(\d+)");
             if (key == "verify_end_flat" && count.Success)
             {
-                counters["accounts"] = JsonNode.Parse(count.Groups[1].Value);
-                counters["slots"] = JsonNode.Parse(count.Groups[2].Value);
+                counters["accounts"] = JsonNode.Parse(BigInteger.Parse(count.Groups[1].Value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture));
+                counters["slots"] = JsonNode.Parse(BigInteger.Parse(count.Groups[2].Value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture));
             }
         }
     }
 
     internal static double? Minutes(Dictionary<string, DateTimeOffset> found, string start, string end) =>
         found.TryGetValue(start, out var first) && found.TryGetValue(end, out var last) && last >= first
-            ? Math.Round((last - first).TotalMinutes, 1) : null;
+            ? RoundMinutes((last - first).TotalSeconds) : null;
+
+    internal static double RoundMinutes(double seconds)
+    {
+        // Python rounds the exact binary value to decimal digits; Math.Round first scales the double,
+        // which can turn values just above/below a midpoint into an exact tie (for example 0.05).
+        var bits = BitConverter.DoubleToUInt64Bits(seconds / 60);
+        var exponent = (int)((bits >> 52) & 0x7ff);
+        var mantissa = new BigInteger(bits & 0x000fffffffffffff);
+        if (exponent != 0) mantissa += BigInteger.One << 52;
+        var shift = exponent == 0 ? -1074 : exponent - 1075;
+        var numerator = mantissa * 10;
+        var denominator = BigInteger.One;
+        if (shift >= 0) numerator <<= shift;
+        else denominator <<= -shift;
+        var rounded = BigInteger.DivRem(numerator, denominator, out var remainder);
+        var comparison = (remainder * 2).CompareTo(denominator);
+        if (comparison > 0 || comparison == 0 && !rounded.IsEven) rounded++;
+        return (double)rounded / 10;
+    }
 
     internal static JsonObject Record(string network, string mode, string? image, Dictionary<string, DateTimeOffset> found, JsonObject counters)
     {
@@ -62,7 +85,7 @@ static class Metrics
                 else if (name.Contains(" / ", StringComparison.Ordinal)) continue;
                 if (!name.StartsWith("Sync ", StringComparison.Ordinal) || job["conclusion"]?.ToString() != "success" || job["completed_at"] is null) continue;
                 var elapsed = DateTimeOffset.Parse(job["completed_at"]!.ToString(), CultureInfo.InvariantCulture) - DateTimeOffset.Parse(job["started_at"]!.ToString(), CultureInfo.InvariantCulture);
-                if (elapsed >= TimeSpan.Zero) durations[name] = Math.Round(elapsed.TotalMinutes, 1);
+                if (elapsed >= TimeSpan.Zero) durations[name] = RoundMinutes(elapsed.TotalSeconds);
             }
             if (jobs.Count < 100) break;
         }

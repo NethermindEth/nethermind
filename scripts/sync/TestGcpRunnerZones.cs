@@ -1,4 +1,7 @@
 #!/usr/bin/env dotnet
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 #:include SyncTests.Helpers.cs
 #:include LifecycleTests.Helpers.cs
 #:include ../../.github/actions/gcp-runner/Gcp.Helpers.cs
@@ -53,6 +56,12 @@ foreach (var scenario in new[] { "quota", "capacity", "not-offered", "nowhere", 
         {
             Cases.Equal("1.2.3.4", fixture.Outputs["instance_ip"]);
             Cases.True(fixture.Summary.Contains($"{fixture.Models[^1]} in europe-west4-a", StringComparison.Ordinal), "summary model");
+            if (scenario == "spot") Cases.True(!fixture.Transcript.Contains("::warning", StringComparison.Ordinal), "SPOT success has no warning");
+            else
+            {
+                Cases.True(fixture.Transcript.Contains("::warning title=GCP runner::", StringComparison.Ordinal), "STANDARD warning");
+                Cases.True(fixture.Transcript.Contains(scenario == "fallback-success" ? "fell back to STANDARD" : "requested explicitly", StringComparison.Ordinal), "STANDARD requested/fallback distinction");
+            }
         }
         else Cases.True(fixture.Commands.Any(command => command[0] == "gh" && command.Contains("DELETE")), "runner cleanup");
     });
