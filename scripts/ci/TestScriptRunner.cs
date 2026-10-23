@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
@@ -12,7 +11,10 @@ Console.CancelKeyPress += (_, e) =>
     cancellation.Cancel();
 };
 
-var runner = Path.Combine(Path.GetDirectoryName(SourcePath())!, "RunScriptTests.cs");
+var repository = new DirectoryInfo(Directory.GetCurrentDirectory());
+while (repository is not null && !File.Exists(Path.Combine(repository.FullName, "scripts", "ci", "RunScriptTests.cs")))
+    repository = repository.Parent;
+var runner = Path.Combine(repository?.FullName ?? throw new InvalidOperationException("Run from the repository or one of its subdirectories."), "scripts", "ci", "RunScriptTests.cs");
 var temporary = Path.Combine(Path.GetTempPath(), $"nethermind runner tests {Guid.NewGuid():N}");
 Directory.CreateDirectory(temporary);
 var count = 0;
@@ -48,6 +50,19 @@ try
     }
     File.Delete(pythonTest);
 
+    if (!OperatingSystem.IsWindows())
+    {
+        var shellTest = Path.Combine(temporary, "test-probe.sh");
+        File.WriteAllText(shellTest, "printf 'shell fixture passed\\n'\n");
+        await Check(cancellation.Token, "shell discovery", true, "shell fixture passed", temporary);
+        File.WriteAllText(test, "Console.WriteLine(\"Passed 1 tests.\");");
+        await Check(cancellation.Token, "mixed shell and C# discovery", true, "Passed 2 test file(s).", temporary);
+        File.Delete(test);
+        File.WriteAllText(shellTest, "exit 7\n");
+        await Check(cancellation.Token, "shell failure", false, "exited with code 7", temporary);
+        File.Delete(shellTest);
+    }
+
     var helper = Path.Combine(temporary, "Probe.Helpers.cs");
     File.WriteAllText(test, "#:include Probe.Helpers.cs\nConsole.WriteLine(Probe.Value);\n");
     File.WriteAllText(helper, "static class Probe { internal const int Value = 1; }\n");
@@ -56,7 +71,7 @@ try
     File.WriteAllText(helper, "using System.Text;\nstatic class Probe { internal const int Value = 1; }\n");
     await Check(cancellation.Token, "unused import in included helper", false, "IDE0005", "--check", temporary);
     File.Delete(helper);
-    await Check(cancellation.Token, "missing included helper", false, "error", "--check", temporary);
+    await Check(cancellation.Token, "missing included helper", false, "Probe.Helpers.cs", "--check", temporary);
 
     Console.WriteLine($"Passed {count} tests.");
     return 0;
@@ -103,5 +118,3 @@ async Task Check(CancellationToken cancellationToken, string name, bool success,
     Console.WriteLine($"PASS: {name}");
     count++;
 }
-
-static string SourcePath([CallerFilePath] string path = "") => path;

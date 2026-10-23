@@ -50,12 +50,11 @@ try
     var pythonFiles = Directory.GetFiles(path, "test*.py").Order(StringComparer.Ordinal).ToArray();
     var csharpFiles = Directory.GetFiles(path, "Test*.cs")
         .Where(file => !file.EndsWith(".Helpers.cs", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray();
-    var shellTest = Path.Combine(path, "test-fetch-artifacts.sh");
-    var runShellTest = !File.Exists(Path.Combine(path, "TestFetchArtifacts.cs")) && File.Exists(shellTest);
-    if (pythonFiles.Length + csharpFiles.Length == 0 && !runShellTest)
+    var shellFiles = Directory.GetFiles(path, "test-*.sh").Order(StringComparer.Ordinal).ToArray();
+    if (pythonFiles.Length + csharpFiles.Length + shellFiles.Length == 0)
         throw new InvalidOperationException($"No test suites found in {path}.");
 
-    Console.WriteLine($"Discovered {pythonFiles.Length} Python test file(s), {csharpFiles.Length} C# suite(s), {(runShellTest ? 1 : 0)} shell suite(s).");
+    Console.WriteLine($"Discovered {pythonFiles.Length} Python test file(s), {csharpFiles.Length} C# suite(s), {shellFiles.Length} shell suite(s).");
     if (pythonFiles.Length > 0)
     {
         var output = await Run(OperatingSystem.IsWindows() ? "python" : "python3",
@@ -70,10 +69,10 @@ try
         if (!Regex.IsMatch(output, @"(?m)^Passed [1-9][0-9]* tests?\.\r?$"))
             throw new InvalidOperationException($"{file} did not report a positive 'Passed N tests.' summary.");
     }
-    if (runShellTest)
-        await Run("bash", [shellTest], cancellation.Token);
+    foreach (var file in shellFiles)
+        await Run("bash", [file], cancellation.Token);
 
-    Console.WriteLine($"Passed {pythonFiles.Length + csharpFiles.Length + (runShellTest ? 1 : 0)} test file(s).");
+    Console.WriteLine($"Passed {pythonFiles.Length + csharpFiles.Length + shellFiles.Length} test file(s).");
     return 0;
 }
 catch (OperationCanceledException)
