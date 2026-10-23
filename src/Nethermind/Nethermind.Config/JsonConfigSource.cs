@@ -19,7 +19,7 @@ public class JsonConfigSource : IConfigSource
 
     public JsonConfigSource(Stream stream)
     {
-        using StreamReader reader = new(stream);
+        using StreamReader reader = new(stream, leaveOpen: true);
         ApplyJsonConfig(reader.ReadToEnd());
     }
 

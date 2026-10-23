@@ -32,8 +32,6 @@ public static class BuiltInConfigs
             ? ResourceAssembly.GetManifestResourceStream(resourceName)
             : null;
 
-    public static bool Exists(string name) => Resources.ContainsKey(TrimExtension(name));
-
     private static string TrimExtension(string name) =>
         name.EndsWith(Extension, StringComparison.OrdinalIgnoreCase) ? name[..^Extension.Length] : name;
 

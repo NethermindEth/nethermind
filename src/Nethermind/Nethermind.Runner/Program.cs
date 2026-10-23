@@ -410,7 +410,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
 
 JsonConfigSource CreateConfigSource(string config, string? configsDir)
 {
-    string? configFile = FindConfigFile(config, configsDir);
+    string? configFile = ConfigFileLocator.Find(config, configsDir);
 
     if (configFile is not null)
     {
@@ -419,27 +419,10 @@ JsonConfigSource CreateConfigSource(string config, string? configsDir)
     }
 
     using Stream stream = BuiltInConfigs.Open(config)
-        ?? throw new FileNotFoundException(
-            $"Configuration '{config}' is neither a file nor a built-in configuration. Built-in configurations: {string.Join(", ", BuiltInConfigs.Names)}",
-            config);
+        ?? throw new FileNotFoundException(ConfigFileLocator.NotFoundMessage(config), config);
 
     logger.Info($"Loading built-in configuration {config}");
     return new JsonConfigSource(stream);
-}
-
-static string? FindConfigFile(string config, string? configsDir)
-{
-    if (File.Exists(config))
-        return Path.GetFullPath(config);
-
-    if (configsDir is null || !string.IsNullOrEmpty(Path.GetDirectoryName(config)))
-        return null;
-
-    string path = Path.GetFullPath(Path.Join(configsDir, config));
-
-    return File.Exists(path) ? path
-        : File.Exists($"{path}.json") ? $"{path}.json"
-        : null;
 }
 
 RootCommand CreateRootCommand()

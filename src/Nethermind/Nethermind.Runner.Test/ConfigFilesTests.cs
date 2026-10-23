@@ -50,7 +50,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
     {
         foreach (string configFile in Resolve(configWildcard))
         {
-            Assert.That(BuiltInConfigs.Exists(configFile), Is.True, configFile);
+            using Stream stream = BuiltInConfigs.Open(configFile);
+            Assert.That(stream, Is.Not.Null, configFile);
         }
     }
 

@@ -28,6 +28,7 @@ public class BuiltInConfigsTests
         Assert.That(stream, Is.Not.Null);
 
         JsonConfigSource source = new(stream!);
+        Assert.That(stream!.CanRead, Is.True, "the caller owns the stream");
         Assert.That(source.GetRawValue("InitConfig", "ChainSpecPath").Value, Is.EqualTo("chainspec/foundation.json"));
     }
 
