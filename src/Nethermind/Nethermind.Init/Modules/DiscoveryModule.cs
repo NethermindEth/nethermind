@@ -72,7 +72,6 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddDecorator<INetworkConfig>((ctx, networkConfig) =>
             {
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
-                IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
 
                 if (networkConfig.DiscoveryDns == null)
                 {
@@ -80,7 +79,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                     networkConfig.DiscoveryDns = $"enrtree://{EthDiscoTreeSigner}@all.{chainName}.ethdisco.net";
                 }
 
-                networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. discoveryConfig.Bootnodes, .. chainSpec.Bootnodes];
+                networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. chainSpec.Bootnodes];
 
                 return networkConfig;
             })

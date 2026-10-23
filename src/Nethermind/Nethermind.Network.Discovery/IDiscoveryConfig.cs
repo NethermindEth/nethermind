@@ -111,11 +111,6 @@ public interface IDiscoveryConfig : IConfig
     int DiscoveryNewCycleWaitTime { get; }
 
     /// <summary>
-    /// Boot nodes connection details
-    /// </summary>
-    NetworkNode[] Bootnodes { get; set; }
-
-    /// <summary>
     /// Timeout for closing the UDP channels, in milliseconds
     /// </summary>
     [ConfigItem(DefaultValue = "5000")]
