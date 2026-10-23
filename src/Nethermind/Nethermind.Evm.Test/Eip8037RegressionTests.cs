@@ -123,7 +123,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8037_soft_failed_call_refunds_spilled_new_account_state_gas_to_gas_left()
+    public void Eip8037_soft_failed_call_refunds_spilled_new_account_state_gas_to_reservoir()
     {
         byte[] code = Prepare.EvmCode
             .CallWithValue(TestItem.AddressF, long.MaxValue, 101.Ether)
@@ -151,7 +151,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(foundPrecompileCall, Is.True);
-            Assert.That(precompileCallGas, Is.EqualTo(951_749));
+            // The refunded NEW_ACCOUNT charge stays out of gas_left, so 63/64 of it is not forwarded.
+            Assert.That(precompileCallGas, Is.EqualTo(951_749 - GasCostOf.NewAccountState * 63 / 64));
         }
     }
 
@@ -1445,7 +1446,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8037_successful_child_merge_repays_parent_spill_into_gas_left()
+    public void Eip8037_child_refill_of_parent_slot_does_not_raise_parent_gas_left()
     {
         byte[] childCode = Prepare.EvmCode
             .PushData(0)
@@ -1481,7 +1482,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
-            AssertStorage(new StorageCell(Recipient, 1), UInt256.One);
+            // Slot 1 stores GAS after the call > GAS before it; spent gas must not come back.
+            AssertStorage(new StorageCell(Recipient, 1), UInt256.Zero);
         }
     }
 
@@ -2232,6 +2234,102 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             AssertStorage(new StorageCell(Recipient, UInt256.One), UInt256.One);
             AssertStorage(new StorageCell(Recipient, (UInt256)2), UInt256.Zero);
             AssertStorage(new StorageCell(Recipient, (UInt256)3), UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_clearing_a_new_slot_does_not_raise_gas_left()
+    {
+        // Slot 1 stores GAS after clearing slot 0 > GAS before it.
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.GAS)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.GAS)
+            .Op(Instruction.GT)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 1), UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_reverting_intermediary_does_not_return_spent_state_gas()
+    {
+        const long budget = 300_000;
+        TestState.CreateAccount(TestItem.AddressE, 0);
+        TestState.InsertCode(TestItem.AddressE, Prepare.EvmCode.Op(Instruction.INVALID).Done, SpecProvider.GenesisSpec);
+
+        // The intermediary pays a new slot from gas_left, its callee runs out of gas, and it reverts.
+        byte[] intermediaryCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Call(TestItem.AddressE, long.MaxValue)
+            .Op(Instruction.POP)
+            .Revert(0, 0)
+            .Done;
+        TestState.CreateAccount(TestItem.AddressD, 0);
+        TestState.InsertCode(TestItem.AddressD, intermediaryCode, SpecProvider.GenesisSpec);
+
+        // Slot 0 stores whether the call cost more than budget - SSetState, i.e. the slot's state gas stayed spent.
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.GAS)
+            .Call(TestItem.AddressD, budget)
+            .Op(Instruction.POP)
+            .Op(Instruction.GAS)
+            .Op(Instruction.SWAP1)
+            .Op(Instruction.SUB)
+            .PushData(budget - GasCostOf.SSetState)
+            .Op(Instruction.LT)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+            AssertStorage(new StorageCell(TestItem.AddressD, 0), UInt256.Zero);
+        }
+    }
+
+    [TestCase(15_000, false, TestName = "Eip8037_reservoir_does_not_fund_new_slot_below_legacy_cost")]
+    [TestCase(25_000, true, TestName = "Eip8037_reservoir_funds_new_slot_above_legacy_cost")]
+    public void Eip8037_new_slot_takes_legacy_cost_from_gas_left_with_a_reservoir(long childGas, bool expectedSuccess)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, childGas)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        // Above TX_MAX_GAS_LIMIT, so the transaction carries a reservoir that could pay all state gas.
+        TestAllTracerWithOutput tracer = Execute(Activation, 20_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), expectedSuccess ? UInt256.One : UInt256.Zero);
         }
     }
 }
