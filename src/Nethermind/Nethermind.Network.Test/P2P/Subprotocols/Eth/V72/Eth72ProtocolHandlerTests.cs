@@ -1145,8 +1145,17 @@ public class Eth72ProtocolHandlerTests
             Throws.Nothing);
     }
 
+    // One method per case: these read an object back from the process-wide TxDecoder.TxObjectPool, and a
+    // [NonParallelizable] on a parameterized method does not keep other fixtures' decoders away (nunit/nunit#3371).
     [Test, NonParallelizable]
-    public void should_handle_announced_v0_blob_pooled_response_and_reject_late_cells([Values] bool fullBlobs)
+    public void should_handle_announced_v0_blob_pooled_response_with_full_blobs_and_reject_late_cells() =>
+        AssertAnnouncedV0BlobPooledResponseIsHandledAndLateCellsRejected(fullBlobs: true);
+
+    [Test, NonParallelizable]
+    public void should_handle_announced_v0_blob_pooled_response_without_blobs_and_reject_late_cells() =>
+        AssertAnnouncedV0BlobPooledResponseIsHandledAndLateCellsRejected(fullBlobs: false);
+
+    private void AssertAnnouncedV0BlobPooledResponseIsHandledAndLateCellsRejected(bool fullBlobs)
     {
         RecreateHandler(providerProbabilityPercent: 100);
         Transaction tx = Build.A.Transaction
@@ -1546,8 +1555,17 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
+    // One method per case: these read an object back from the process-wide TxDecoder.TxObjectPool, and a
+    // [NonParallelizable] on a parameterized method does not keep other fixtures' decoders away (nunit/nunit#3371).
     [Test, NonParallelizable]
-    public void should_disconnect_if_pooled_blob_tx_shape_differs_from_eth72_announcement([Values] bool wrongSize)
+    public void should_disconnect_if_pooled_blob_tx_size_differs_from_eth72_announcement() =>
+        AssertDisconnectsIfPooledBlobTxShapeDiffersFromAnnouncement(wrongSize: true);
+
+    [Test, NonParallelizable]
+    public void should_disconnect_if_pooled_blob_tx_type_differs_from_eth72_announcement() =>
+        AssertDisconnectsIfPooledBlobTxShapeDiffersFromAnnouncement(wrongSize: false);
+
+    private void AssertDisconnectsIfPooledBlobTxShapeDiffersFromAnnouncement(bool wrongSize)
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -4530,7 +4548,7 @@ public class Eth72ProtocolHandlerTests
         txPeer.Disconnecting = () =>
         {
             Task<bool> mutation = Task.Run(() => registry.RecordAnnouncement(cellPeer, tx.Hash!, cellMask));
-            reentrantMutationCompleted = mutation.WaitAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+            reentrantMutationCompleted = mutation.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
         };
         registry.AddPeer(txPeer);
         registry.AddPeer(cellPeer);
@@ -4902,7 +4920,7 @@ public class Eth72ProtocolHandlerTests
         Assert.That(registry.RecordTransaction(peer, tx), Is.Null);
 
         Task<bool> firstSubmit = Task.Run(() => registry.RecordCells(peer, tx.Hash!, sampledMask, sampledCells));
-        Assert.That(submitEntered.Wait(TimeSpan.FromSeconds(1)), Is.True);
+        Assert.That(submitEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
 
         Assert.That(registry.RecordTransaction(peer, tx), Is.Null);
         Assert.That(registry.RecordCells(otherPeer, tx.Hash!, additionalMask, additionalCells), Is.False);

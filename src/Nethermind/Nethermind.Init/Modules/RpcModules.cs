@@ -63,6 +63,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
         builder
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()
             .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
+            // Resolved by StartRpc so plugins can decorate it. A decorator sees a request before its method is checked
+            // against the endpoint and authentication; one that answers by itself must check with IRpcModuleProvider first.
+            .AddSingleton<IJsonRpcService, JsonRpcService>()
             .AddSingleton<IJsonRpcLocalStats, JsonRpcLocalStats>()
             .AddSingleton<IWebSocketsManager, WebSocketsManager>()
 
