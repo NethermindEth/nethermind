@@ -249,22 +249,16 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             parentProcessedNow: () => parentCommitted,
             logManager: new OneLoggerLogManager(new ILogger(logger)));
 
-        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
-        await parentWaitRequested.Task.WaitAsync(AnswerWait);
-        await logger.FirstReceived.WaitAsync(AnswerWait);
-        Assert.That(request.IsCompleted, Is.False, "the line is written while the request still waits for the parent");
-
-        parentCommitted = true;
-        parentRemoved.SetResult();
-        await enqueued.Task.WaitAsync(AnswerWait);
-        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
-        }
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: parentWaitRequested.Task, waitsFor: "the parent",
+            release: async () =>
+            {
+                parentCommitted = true;
+                parentRemoved.SetResult();
+                await enqueued.Task.WaitAsync(AnswerWait);
+                processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+            });
     }
 
     [Test]
@@ -292,20 +286,15 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessedNow: () => committed,
             logManager: new OneLoggerLogManager(new ILogger(logger)));
 
-        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
-        await waitRequested.Task.WaitAsync(AnswerWait);
-        await logger.FirstReceived.WaitAsync(AnswerWait);
-        Assert.That(request.IsCompleted, Is.False, "the line is written while the request still waits for the first copy");
-
-        committed = true;
-        firstCopyRemoved.SetResult();
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
-        }
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: waitRequested.Task, waitsFor: "the first copy",
+            release: () =>
+            {
+                committed = true;
+                firstCopyRemoved.SetResult();
+                return Task.CompletedTask;
+            });
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
@@ -342,21 +331,15 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                 }),
             logManager: new OneLoggerLogManager(new ILogger(logger)));
 
-        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
-        await suggestRequested.Task.WaitAsync(AnswerWait);
-        await logger.FirstReceived.WaitAsync(AnswerWait);
-        Assert.That(request.IsCompleted, Is.False, "the line is written while the suggest is still pending");
-
-        suggest.SetResult(AddBlockResult.Added);
-        await enqueued.Task.WaitAsync(AnswerWait);
-        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
-        }
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: suggestRequested.Task, waitsFor: "the suggest",
+            release: async () =>
+            {
+                suggest.SetResult(AddBlockResult.Added);
+                await enqueued.Task.WaitAsync(AnswerWait);
+                processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+            });
     }
 
     /// <summary>A canonical payload behind the head whose re-executed copy is still committing.</summary>
@@ -390,21 +373,44 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             },
             logManager: new OneLoggerLogManager(new ILogger(logger)));
 
-        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
-        await waitRequested.Task.WaitAsync(AnswerWait);
-        await logger.FirstReceived.WaitAsync(AnswerWait);
-        Assert.That(request.IsCompleted, Is.False, "the line is written while the request still waits for the commit");
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: waitRequested.Task, waitsFor: "the commit",
+            release: () =>
+            {
+                committed = true;
+                executedCopyRemoved.SetResult();
+                return Task.CompletedTask;
+            });
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
 
-        committed = true;
-        executedCopyRemoved.SetResult();
+    /// <summary>
+    /// Drives a request held at a wait before the hand-off: once it has reached the wait, its Received line must be
+    /// written while it is still held there; <paramref name="release"/> then lets it go on, and it must end VALID with
+    /// that one line and no other.
+    /// </summary>
+    private static async Task AssertReceivedWrittenWhileHeld(
+        Task<ResultWrapper<PayloadStatusV1>> request,
+        ReceivedLineLogger logger,
+        Task reachedWait,
+        string waitsFor,
+        Func<Task> release)
+    {
+        // Awaited first, so the checks below see the request on the wait rather than at an earlier step.
+        await reachedWait.WaitAsync(AnswerWait);
+        Assert.That(await Task.WhenAny(logger.FirstReceived, Task.Delay(AnswerWait)), Is.SameAs(logger.FirstReceived),
+            $"no Received line while the request waits for {waitsFor}");
+        Assert.That(request.IsCompleted, Is.False, $"the line is written while the request still waits for {waitsFor}");
+
+        await release();
         ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1), "exactly one Received line for the request");
         }
-        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
     /// <summary>Counts the handler's Received lines; the request writes them from whichever thread it is on.</summary>
