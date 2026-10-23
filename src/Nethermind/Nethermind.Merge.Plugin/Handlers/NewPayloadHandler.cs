@@ -190,9 +190,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
             // A queued ancestor can still fail execution and move latestValidHash backwards.
+            // Let an ancestor already answered VALID finish committing within this request's budget.
             if (lastValidHash is not null && !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
             {
-                return NewPayloadV1Result.Syncing;
+                bool hasExecutedCopy = await _processingQueue.WaitForExecutedCopyAsync(lastValidHash, RemainingBudget(deadline), _timeProvider);
+                if (!hasExecutedCopy || !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
+                    return NewPayloadV1Result.Syncing;
             }
 
             // Queue removal publishes invalidation before completing, so refresh the earlier snapshot.
