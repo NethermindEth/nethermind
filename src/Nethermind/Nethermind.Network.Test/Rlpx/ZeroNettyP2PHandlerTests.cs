@@ -4,11 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Handlers.Timeout;
+using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -48,6 +52,7 @@ public class ZeroNettyP2PHandlerTests
     {
         yield return new TestCaseData(new Exception(), DisconnectReason.Exception).SetName("Generic_exception_uses_generic_reason");
         yield return new TestCaseData(new CorruptedFrameException("malformed frame"), DisconnectReason.Exception).SetName("Corrupted_frame_uses_generic_reason");
+        yield return new TestCaseData(new SocketException((int)SocketError.ConnectionReset), DisconnectReason.ConnectionReset).SetName("Connection_reset_uses_connection_reset_reason");
     }
 
     [TestCaseSource(nameof(ExpectedCommunicationExceptions))]
@@ -71,13 +76,7 @@ public class ZeroNettyP2PHandlerTests
     [Test]
     public void When_corrupted_frame_is_received_from_privileged_peer_then_keep_session([Values] bool isStatic)
     {
-        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
-        {
-            IsStatic = isStatic,
-            IsTrusted = !isStatic
-        };
-        ISession session = Substitute.For<ISession>();
-        session.Node.Returns(node);
+        ISession session = CreatePrivilegedSession(isStatic);
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         CorruptedFrameException exception = new("malformed frame");
@@ -86,6 +85,67 @@ public class ZeroNettyP2PHandlerTests
 
         session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         channelHandlerContext.Received().FireExceptionCaught(exception);
+    }
+
+    [Test]
+    public void When_unknown_socket_exception_is_received_from_privileged_peer_then_forward_exception([Values] bool isStatic)
+    {
+        ISession session = CreatePrivilegedSession(isStatic);
+        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        SocketException exception = new((int)SocketError.ConnectionAborted);
+
+        handler.ExceptionCaught(channelHandlerContext, exception);
+
+        using (Assert.EnterMultipleScope())
+        {
+            session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            channelHandlerContext.Received().FireExceptionCaught(exception);
+            channelHandlerContext.DidNotReceive().CloseAsync();
+        }
+    }
+
+    [Test]
+    public async Task When_transport_resets_with_handler_active_but_without_crypto_handshake_then_close_transport([Values] bool isStatic)
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int listeningPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+        ISession session = CreatePrivilegedSession(isStatic);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        IEventLoopGroup group = new MultithreadEventLoopGroup(1);
+        IChannel? channel = null;
+
+        try
+        {
+            Task<Socket> acceptTask = listener.AcceptSocketAsync();
+            channel = await new Bootstrap()
+                .Group(group)
+                .Channel<TcpSocketChannel>()
+                .Handler(new P2PHandlerInitializer(handler))
+                .ConnectAsync(new IPEndPoint(IPAddress.Loopback, listeningPort));
+
+            using Socket accepted = await acceptTask.WaitAsync(TimeSpan.FromSeconds(5));
+            accepted.LingerState = new LingerOption(true, 0);
+            accepted.Dispose();
+
+            await channel.CloseCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(channel.Open, Is.False);
+                session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+        }
+        finally
+        {
+            if (channel is not null)
+            {
+                await channel.CloseAsync();
+            }
+
+            await group.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        }
     }
 
     [Test]
@@ -682,6 +742,23 @@ public class ZeroNettyP2PHandlerTests
         packet.Content.GetBytes(packet.Content.ReaderIndex, actual);
         Assert.That(actual, Is.EqualTo(payload));
         Assert.That(packet.PacketType, Is.EqualTo(packetType));
+    }
+
+    private static ISession CreatePrivilegedSession(bool isStatic)
+    {
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
+        {
+            IsStatic = isStatic,
+            IsTrusted = !isStatic
+        };
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(node);
+        return session;
+    }
+
+    private sealed class P2PHandlerInitializer(ZeroNettyP2PHandler handler) : ChannelInitializer<IChannel>
+    {
+        protected override void InitChannel(IChannel channel) => channel.Pipeline.AddLast(handler);
     }
 
     private class TestInternalNethermindException : Exception, IInternalNethermindException

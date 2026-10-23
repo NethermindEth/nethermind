@@ -538,6 +538,27 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    // A streamed trace reports a failure inside `result`, so only non-empty structLogs prove that the trace ran.
+    [Test]
+    public async Task Debug_traceTransaction_without_options_streams_struct_logs()
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", block.Transactions[^1].Hash!);
+
+        AssertStructLogsTraced(JToken.Parse(response)["result"]!, response);
+    }
+
+    private static void AssertStructLogsTraced(JToken trace, string response)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace["error"], Is.Null, response);
+            Assert.That((JArray?)trace["structLogs"], Is.Not.Null.And.Not.Empty, response);
+        }
+    }
+
     private static async Task<Transaction> AddBlockWithTransfer(Context context)
     {
         Transaction transaction = Build.A.Transaction
