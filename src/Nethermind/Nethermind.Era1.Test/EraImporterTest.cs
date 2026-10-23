@@ -542,20 +542,24 @@ public class EraImporterTest
     }
 
     [Test]
-    public void EnsureHeaderlessHeightsLinkToKnownHeaders_HeadersCoverRange_DoesNotLoadEveryLevel()
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_HeadersCoverRange_DoesNotLoadEveryLevel()
     {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.BestKnownNumber.Returns(1_000_000UL);
-        blockTree.BestKnownBeaconNumber.Returns(0UL);
-        blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
-        blockTree.LowestInsertedBeaconHeader.Returns((BlockHeader?)null);
-        blockTree.FindLevel(Arg.Any<ulong>()).Returns(new ChainLevelInfo(true, new BlockInfo(Keccak.Zero, 0)));
+        const int chainLength = 200;
+        await using IContainer sourceCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer ctx = EraTestModule.BuildContainerBuilder()
+            .AddDecorator<IBlockTree, FindLevelCountingBlockTree>()
+            .Build();
+        FindLevelCountingBlockTree blockTree = (FindLevelCountingBlockTree)ctx.Resolve<IBlockTree>();
+        blockTree.SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        for (ulong i = 1; i < chainLength; i++)
+            blockTree.Insert(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        blockTree.LowestInsertedHeader = sourceTree.FindHeader(1, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        blockTree.ResetCalls();
 
-        Assert.That(
-            () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(blockTree, 1, 1_000, _ => Task.FromResult<Block?>(null), CancellationToken.None),
-            Throws.Nothing);
+        await KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(blockTree, 1, chainLength - 1, _ => Task.FromResult<Block?>(null), CancellationToken.None);
 
-        Assert.That(blockTree.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IBlockTree.FindLevel)), Is.LessThan(10));
+        Assert.That(blockTree.FindLevelCalls, Is.LessThan(10));
     }
 
     [Test]
@@ -593,5 +597,18 @@ public class EraImporterTest
             KnownHeaders.EnsureMatch(blockTree, block);
 
         Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(1_000));
+    }
+
+    private sealed class FindLevelCountingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+    {
+        public int FindLevelCalls { get; private set; }
+
+        public void ResetCalls() => FindLevelCalls = 0;
+
+        public override ChainLevelInfo? FindLevel(ulong number)
+        {
+            FindLevelCalls++;
+            return base.FindLevel(number);
+        }
     }
 }
