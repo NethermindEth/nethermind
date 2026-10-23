@@ -489,28 +489,51 @@ namespace Nethermind.Facade
             // and tx, neither of which change between iterations. Compute once and reuse.
             IReleaseSpec spec = specProvider.GetSpec(header);
             FrozenSet<AddressAsKey> precompiles = spec.Precompiles;
-            int bufferSize = (optimize ? 3 : 1) + precompiles.Count;
+            int bufferSize = (optimize ? 3 + (tx.AuthorizationList?.Length ?? 0) : 1) + precompiles.Count;
             Address[] addressBuffer = new Address[bufferSize];
-            FillAddressesToOptimize(addressBuffer, nonceSource, header, tx, optimize, precompiles);
+            int addressCount = FillAddressesToOptimize(addressBuffer, nonceSource, header, tx, optimize, precompiles);
+            if (addressCount < addressBuffer.Length) Array.Resize(ref addressBuffer, addressCount);
 
             AccessList? previousAccessList = tx.AccessList;
             AccessTxTracer accessTracer = new(addressBuffer);
+            // The EVM also warms addresses no opcode names, such as delegation targets and created contracts;
+            // Geth leaves those out, so the optimized list keeps only the addresses its tracer would record.
+            ReferencedAddressTracer? referencedTracer = optimize ? new() : null;
             CallOutputTracer outputTracer = new();
-            CancellationTxTracer tracer = new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken);
+            CompositeTxTracer compositeTracer = referencedTracer is null
+                ? new CompositeTxTracer(outputTracer, accessTracer)
+                : new CompositeTxTracer(outputTracer, accessTracer, referencedTracer);
+            CancellationTxTracer tracer = compositeTracer.WithCancellation(cancellationToken);
             TransactionResult result;
             bool stop;
+            bool droppedWarmAddresses;
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 accessTracer.Reset();
+                referencedTracer?.Addresses.Clear();
                 outputTracer.Reset();
                 tx.AccessList = previousAccessList;
                 result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap: true);
-                stop = !result.TransactionExecuted || HasConverged(previousAccessList, accessTracer.AccessList);
-                previousAccessList = accessTracer.AccessList;
+                AccessList? discovered = referencedTracer is null
+                    ? accessTracer.AccessList
+                    : KeepReferencedAddresses(accessTracer.AccessList, referencedTracer.Addresses, previousAccessList);
+                droppedWarmAddresses = discovered?.Count.AddressesCount != accessTracer.AccessList?.Count.AddressesCount;
+                stop = !result.TransactionExecuted || HasConverged(previousAccessList, discovered);
+                previousAccessList = discovered;
             } while (!stop);
 
-            return BuildCallOutput(result, outputTracer, accessTracer.AccessList);
+            // Tracing access charges every account a run touches as warm, as if it were listed. When the list leaves
+            // one out, such as a delegation target, a transaction carrying the list pays cold for it, so the gas and
+            // outcome come from a run with the list alone.
+            if (droppedWarmAddresses && result.TransactionExecuted)
+            {
+                outputTracer.Reset();
+                tx.AccessList = previousAccessList;
+                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, outputTracer.WithCancellation(cancellationToken), rejectsTipAboveFeeCap: true);
+            }
+
+            return BuildCallOutput(result, outputTracer, previousAccessList);
         }
 
         private static CallOutput BuildCallOutput(TransactionResult result, CallOutputTracer outputTracer, AccessList? accessList)
@@ -534,7 +557,7 @@ namespace Nethermind.Facade
             };
         }
 
-        private void FillAddressesToOptimize(Span<Address> buffer, IWorldState nonceSource, BlockHeader header, Transaction tx, bool optimize, FrozenSet<AddressAsKey> precompiles)
+        private int FillAddressesToOptimize(Span<Address> buffer, IWorldState nonceSource, BlockHeader header, Transaction tx, bool optimize, FrozenSet<AddressAsKey> precompiles)
         {
             int idx;
             if (!optimize)
@@ -554,10 +577,84 @@ namespace Nethermind.Facade
                 buffer[1] = tx.GetRecipient(senderNonce);
                 buffer[2] = header.GasBeneficiary;
                 idx = 3;
+
+                // Geth also excludes the authority of every EIP-7702 authorization it does not skip outright.
+                foreach (AuthorizationTuple authorization in tx.AuthorizationList ?? [])
+                {
+                    if ((!authorization.ChainId.IsZero && authorization.ChainId != specProvider.ChainId) || authorization.Nonce == ulong.MaxValue)
+                        continue;
+
+                    if ((authorization.Authority ??= ecdsa.RecoverAddress(authorization)) is { } authority)
+                        buffer[idx++] = authority;
+                }
             }
 
             foreach (AddressAsKey p in precompiles)
                 buffer[idx++] = p.Value;
+
+            return idx;
+        }
+
+        /// <summary>Drops the addresses Geth's access-list tracer would not record.</summary>
+        /// <returns>
+        /// <paramref name="discovered"/> without the addresses that hold no storage key, were named by no opcode
+        /// in <paramref name="referenced"/>, and were not in the run's own <paramref name="requested"/> list.
+        /// </returns>
+        private static AccessList? KeepReferencedAddresses(AccessList? discovered, HashSet<Address> referenced, AccessList? requested)
+        {
+            if (discovered is null) return null;
+
+            AccessList.Builder builder = new();
+            foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in discovered)
+            {
+                if (storageKeys.Count == 0 && !referenced.Contains(address) && !IsListed(requested, address))
+                    continue;
+
+                builder.AddAddress(address);
+                foreach (UInt256 storageKey in storageKeys)
+                    builder.AddStorage(storageKey);
+            }
+
+            return builder.Build();
+        }
+
+        private static bool IsListed(AccessList? accessList, Address address)
+        {
+            if (accessList is null) return false;
+
+            foreach ((Address listed, _) in accessList)
+            {
+                if (listed == address) return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>Records the addresses Geth's access-list tracer adds: the target of a call and the account an account-reading opcode names.</summary>
+        private sealed class ReferencedAddressTracer : TxTracer
+        {
+            private Instruction _opcode;
+
+            public override bool IsTracingInstructions => true;
+            public override bool IsTracingStack => true;
+
+            public HashSet<Address> Addresses { get; } = [];
+
+            public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) => _opcode = opcode;
+
+            public override void SetOperationStack(TraceStack stack)
+            {
+                switch (_opcode)
+                {
+                    // Geth requires five items for every call variant, although DELEGATECALL and STATICCALL take six.
+                    case Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL when stack.Count >= 5:
+                        Addresses.Add(stack.PeekAddress(1));
+                        break;
+                    case Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.SELFDESTRUCT when stack.Count >= 1:
+                        Addresses.Add(stack.PeekAddress(0));
+                        break;
+                }
+            }
         }
 
         private static bool HasConverged(AccessList? previous, AccessList? discovered)
