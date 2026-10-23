@@ -21,8 +21,12 @@ public interface IInstructionTracingFilter
     UInt256 InstructionMask { get; }
 
     /// <summary>
-    /// Whether the tracer receives <see cref="ITxTracer.ReportStackPush(in System.ReadOnlySpan{byte})"/> for each stack push.
+    /// Whether the tracer needs <see cref="ITxTracer.ReportStackPush(in System.ReadOnlySpan{byte})"/> for each stack push.
     /// </summary>
-    /// <remarks>A tracer that reads the stack only through instruction snapshots returns <c>false</c>, and pushes are not reported.</remarks>
+    /// <remarks>
+    /// A tracer that reads the stack only through instruction snapshots returns <c>false</c>. Pushes are then skipped
+    /// unless another tracer in the chain observes them, in which case this tracer receives them too. The value is read
+    /// once per transaction, so implementations must keep it stable for the transaction.
+    /// </remarks>
     bool ObservesStackPushes => true;
 }

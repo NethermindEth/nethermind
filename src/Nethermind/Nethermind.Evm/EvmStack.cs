@@ -29,11 +29,10 @@ public ref partial struct EvmStack
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
-    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo)
+    public EvmStack(int head, ITxTracer? txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo)
     {
         Head = head;
         _tracer = txTracer;
-        TracesPushes = txTracer is not IInstructionTracingFilter { ObservesStackPushes: false };
         _codeInfo = codeInfo;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
@@ -52,10 +51,12 @@ public ref partial struct EvmStack
         InitializeJumpDestinations();
     }
 
-    // Null only for stacks whose compile-time tracing flag eliminates every tracer read.
-    private readonly ITxTracer _tracer;
-    /// <summary>Whether a traced run reports stack pushes; false for a tracer that reads the stack only from instruction snapshots.</summary>
-    internal readonly bool TracesPushes;
+    // Null for stacks whose compile-time tracing flag eliminates every tracer read, and for traced stacks whose
+    // tracers read the stack only from instruction snapshots.
+    private readonly ITxTracer? _tracer;
+    /// <summary>Whether a traced run reports stack pushes.</summary>
+    [MemberNotNullWhen(true, nameof(_tracer))]
+    internal readonly bool TracesPushes => _tracer is not null;
     private readonly ref byte _stack;
     internal readonly ref byte Code;
     /// <summary>The index of the next free stack slot.</summary>
@@ -519,7 +520,7 @@ public ref partial struct EvmStack
     private readonly void ReportPushWordCore(ref byte slot)
     {
         EvmWord bigEndian = Unsafe.ReadUnaligned<EvmWord>(ref slot).ByteSwap();
-        _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref bigEndian), WordSize));
+        _tracer!.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref bigEndian), WordSize));
     }
 
     /// <summary>
