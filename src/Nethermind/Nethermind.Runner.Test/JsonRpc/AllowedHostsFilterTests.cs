@@ -59,11 +59,37 @@ public class AllowedHostsFilterTests
     }
 
     [Test]
-    public async Task Application_accepts_any_host_by_default([Values(RpcPort, EnginePort)] int port) =>
-        Assert.That(await SendAsync(CreateConfig(), port, "evil.com"), Is.EqualTo(StatusCodes.Status204NoContent));
+    public async Task Application_accepts_any_host_by_default_or_when_null([Values(RpcPort, EnginePort)] int port, [Values] bool hostsAreNull)
+    {
+        JsonRpcConfig config = CreateConfig();
+        if (hostsAreNull)
+        {
+            config.AllowedHosts = null!;
+            config.EngineAllowedHosts = null!;
+        }
+
+        Assert.That(await SendAsync(config, port, "evil.com"), Is.EqualTo(StatusCodes.Status204NoContent));
+    }
+
+    [TestCase("xn--bcher-kva.example", "xn--bcher-kva.example", StatusCodes.Status204NoContent)]
+    [TestCase("bücher.example", "xn--bcher-kva.example", StatusCodes.Status204NoContent)]
+    [TestCase("*.bücher.example", "www.xn--bcher-kva.example:8545", StatusCodes.Status204NoContent)]
+    [TestCase("bücher.example", "xn--zz-", StatusCodes.Status403Forbidden, TestName = "Rejects an invalid punycode label")]
+    public async Task Application_matches_punycode_hosts(string allowedHost, string host, int expectedStatusCode)
+    {
+        JsonRpcConfig config = CreateConfig();
+        config.AllowedHosts = [allowedHost];
+
+        Assert.That(await SendAsync(config, RpcPort, host), Is.EqualTo(expectedStatusCode));
+    }
 
     [TestCase("localhost:8551", ExpectedResult = true)]
     [TestCase("http://localhost", ExpectedResult = true)]
+    [TestCase("", ExpectedResult = true)]
+    [TestCase("*example.com", ExpectedResult = true)]
+    [TestCase("a.*.com", ExpectedResult = true)]
+    [TestCase("bücher..example", ExpectedResult = true)]
+    [TestCase("*.example.com", ExpectedResult = false)]
     [TestCase("localhost", ExpectedResult = false)]
     public bool UseAllowedHosts_warns_about_entries_that_never_match(string host)
     {

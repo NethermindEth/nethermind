@@ -39,7 +39,8 @@ internal static class AllowedHostsFilter
                 ? engineAllowedHosts
                 : allowedHosts;
 
-            if (IsAllowed(ctx.Request.Host, patterns)) return next(ctx);
+            // The raw header, because HttpRequest.Host decodes punycode and throws on an invalid label.
+            if (IsAllowed(new HostString(ctx.Request.Headers.Host.ToString()), patterns)) return next(ctx);
 
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
             return ctx.Response.WriteAsync(RejectionMessage);
@@ -53,16 +54,39 @@ internal static class AllowedHostsFilter
         HostString.MatchesAny(host.Value, patterns) ||
         IPAddress.TryParse(host.Host, out _);
 
-    private static StringSegment[]? ToPatterns(string[] hosts, string settingName, ILogger logger)
+    private static StringSegment[]? ToPatterns(string[]? hosts, string settingName, ILogger logger)
     {
-        if (Array.IndexOf(hosts, AnyHost) >= 0) return null;
+        if (hosts is null || Array.IndexOf(hosts, AnyHost) >= 0) return null;
 
-        foreach (string host in hosts)
+        StringSegment[] patterns = new StringSegment[hosts.Length];
+        for (int i = 0; i < hosts.Length; i++)
         {
-            if (host.AsSpan().IndexOfAny(':', '/') >= 0 && logger.IsWarn)
-                logger.Warn($"JsonRpc.{settingName} entry '{host}' never matches. Use a host name without a port or scheme. IP addresses are always accepted.");
+            string host = hosts[i];
+            string? pattern = ToAscii(host);
+            if ((pattern is null || NeverMatches(pattern)) && logger.IsWarn)
+                logger.Warn($"JsonRpc.{settingName} entry '{host}' never matches. Use a host name without a port or scheme, optionally with a leading '*.'. IP addresses are always accepted.");
+
+            patterns[i] = new StringSegment(pattern ?? host);
         }
 
-        return Array.ConvertAll(hosts, static h => new StringSegment(h));
+        return patterns;
     }
+
+    /// <summary>Converts an internationalized host name to punycode, the form that clients send in the <c>Host</c> header.</summary>
+    private static string? ToAscii(string host)
+    {
+        try
+        {
+            return new HostString(host).ToUriComponent();
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static bool NeverMatches(string pattern) =>
+        pattern.Length == 0 ||
+        pattern.AsSpan().IndexOfAny(':', '/') >= 0 ||
+        pattern.IndexOf('*', pattern.StartsWith("*.", StringComparison.Ordinal) ? 1 : 0) >= 0;
 }
