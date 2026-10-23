@@ -64,6 +64,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     // IBlocksConfig.PreWarmInFlightReadAhead; each block applies it through BlockState.ReadsAhead.
     private readonly bool _readAhead;
     private readonly int _readAheadColdReads;
+    // IBlocksConfig.PreWarmReservedCoordinator: whether a block's pass may start on a reserved thread.
+    private readonly bool _reservedCoordinator;
     private BlockFootprints? _footprints;
 
     private const int MaxDiscoveryCandidates = 16;
@@ -127,7 +129,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         senderRecovery,
         handoff: envFactory.RecordsFootprints,
         readAhead: blocksConfig.PreWarmInFlightReadAhead,
-        readAheadColdReads: blocksConfig.PreWarmInFlightReadAheadColdReads)
+        readAheadColdReads: blocksConfig.PreWarmInFlightReadAheadColdReads,
+        reservedCoordinator: blocksConfig.PreWarmReservedCoordinator)
     {
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
         _blockCodeCache = blockCodeCache;
@@ -147,12 +150,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         ISenderRecoveryTracker? senderRecovery = null,
         bool handoff = false,
         bool readAhead = false,
-        int readAheadColdReads = DefaultReadAheadColdReads)
+        int readAheadColdReads = DefaultReadAheadColdReads,
+        bool reservedCoordinator = true)
     {
         _senderRecovery = senderRecovery;
         _handoff = handoff;
         _readAhead = readAhead;
         _readAheadColdReads = Math.Max(0, readAheadColdReads);
+        _reservedCoordinator = reservedCoordinator;
         _concurrencyLevel = concurrency == 0 ? Environment.ProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -307,7 +312,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     }
                 }
             }, readAhead is null ? addressWarmer : new ReadAheadResources(readAhead, addressWarmer),
-                footprints is null ? null : footprints.StopWaitingForBlockProcessing);
+                footprints is null ? null : footprints.StopWaitingForBlockProcessing, _reservedCoordinator);
             // Only once the session owns it: the session's end is what closes it and joins its runs.
             if (readAhead is not null) _preBlockCaches!.ColdReadObserver = readAhead;
             return session;

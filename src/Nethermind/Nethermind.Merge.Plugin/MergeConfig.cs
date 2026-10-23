@@ -44,5 +44,6 @@ namespace Nethermind.Merge.Plugin
         public int? PostBlockGcDelayMs { get; set; } = null;
         public bool NewPayloadTxRootFirst { get; set; } = true;
         public bool NewPayloadLogAfterEnqueue { get; set; } = true;
+        public int NewPayloadSenderRecoveryWorkers { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
     }
 }

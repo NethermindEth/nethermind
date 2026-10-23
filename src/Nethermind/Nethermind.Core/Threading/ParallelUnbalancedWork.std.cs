@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -505,6 +506,20 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             return !_joined && _scheduler is not null && _scheduler.TryExecute(_queue!);
         }
 
+        internal partial bool StartOnReservedThread()
+        {
+            // Nothing queued, a continuation that starts with its dependency, or a part that belongs to a parent's runners.
+            if (_workers < 2 || _dependency is not null || _scheduler is { Parent: not null }) return false;
+            return ReservedRunners.Post(this);
+        }
+
+        /// <summary>Runs on a reserved thread: takes the queued part as a runner of the scheduler, or registers beside the pool's items without one.</summary>
+        internal void RunReserved()
+        {
+            if (_scheduler is null) Execute();
+            else _scheduler.TryExecuteAsRunner(_queue!);
+        }
+
         private WorkerScope? EnterGroup() => _scheduler?.EnterForJoin();
 
         public partial void WaitForCompletion()
@@ -761,6 +776,72 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             // Reuse the finishing worker, reserving one slot for the eventual joiner.
             QueueWorker(_workers - 2);
             Run();
+        }
+    }
+
+    /// <summary>
+    /// Threads kept for stages that must start without waiting for a free runner (<see cref="BackgroundWork.StartOnReservedThread"/>).
+    /// </summary>
+    /// <remarks>
+    /// A thread is added only when more stages are posted than threads wait, and one that waits <see cref="IdleTimeout"/>
+    /// for nothing ends unless it is the last, so the count follows the stages in flight at once rather than growing.
+    /// Started without the poster's execution context: the first post comes from block processing.
+    /// </remarks>
+    private static class ReservedRunners
+    {
+        private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
+        private static readonly Queue<BackgroundWork> Posted = new();
+        private static int _threads;
+        private static int _idle;
+
+        internal static bool Post(BackgroundWork work)
+        {
+            lock (Posted)
+            {
+                Posted.Enqueue(work);
+                if (Posted.Count <= _idle)
+                {
+                    Monitor.Pulse(Posted);
+                    return true;
+                }
+                _threads++;
+            }
+
+            try
+            {
+                new Thread(Run) { IsBackground = true, Name = "Reserved runner" }.UnsafeStart();
+                return true;
+            }
+            catch (Exception)
+            {
+                // The part stays queued for its runners and the joiner; a thread started later finds it taken.
+                lock (Posted) _threads--;
+                return false;
+            }
+        }
+
+        private static void Run()
+        {
+            while (true)
+            {
+                BackgroundWork? work;
+                lock (Posted)
+                {
+                    while (!Posted.TryDequeue(out work))
+                    {
+                        _idle++;
+                        bool woken = Monitor.Wait(Posted, IdleTimeout);
+                        _idle--;
+                        if (!woken && Posted.Count == 0 && _threads > 1)
+                        {
+                            _threads--;
+                            return;
+                        }
+                    }
+                }
+
+                work.RunReserved();
+            }
         }
     }
 }

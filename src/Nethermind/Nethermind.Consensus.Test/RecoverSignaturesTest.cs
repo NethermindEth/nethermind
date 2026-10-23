@@ -210,6 +210,35 @@ public class RecoverSignaturesTest
     }
 
     /// <summary>
+    /// A capped background recovery takes no more threads than its cap, its nested work included, however many the
+    /// group has, and recovers the senders an uncapped one does.
+    /// </summary>
+    [Test]
+    public void StartRecovery_Capped_TakesNoMoreThreadsThanTheCap([Values(0, 1, 2, 6, 7)] int cap)
+    {
+        const int groupConcurrency = 6;
+        PrivateKey[] signers = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD];
+        Transaction[] txs = Enumerable.Range(0, 8 * groupConcurrency)
+            .Select(i => Signed(signers[i % signers.Length], (ulong)i)).ToArray();
+        CountingEcdsa ecdsa = new(_ecdsa);
+        RecoverSignatures sut = new(ecdsa, Substitute.For<ISpecProvider>(), Substitute.For<ILogManager>());
+        ParallelUnbalancedWork.WorkerGroup group = new(groupConcurrency);
+
+        using (group.Enter()) sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create(), maxConcurrency: cap);
+
+        Assert.That(() => sut.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+        // A cap of zero, or one the group cannot exceed anyway, leaves the recovery the group's budget.
+        int budget = cap is > 0 and < groupConcurrency ? cap : groupConcurrency;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ecdsa.Budgets, Has.Count.EqualTo(txs.Length));
+            Assert.That(ecdsa.Budgets, Is.All.EqualTo(budget), "every recovering thread works within the cap");
+            Assert.That(ecdsa.MostInside, Is.InRange(1, budget));
+            Assert.That(txs.Select(static tx => tx.SenderAddress), Is.EqualTo(Enumerable.Range(0, txs.Length).Select(i => signers[i % signers.Length].Address)));
+        }
+    }
+
+    /// <summary>
     /// Block warming looks a block's transactions up by hash on its own threads, the mempool runs' takeover among them;
     /// background recovery hashes each transaction it recovers as it goes, so none of them is hashed there.
     /// </summary>
@@ -455,6 +484,39 @@ public class RecoverSignaturesTest
             }
 
             return inner.RecoverAddress(signature, in message);
+        }
+
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => inner.Sign(privateKey, in message);
+        public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverPublicKey(signature, in message);
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverCompressedPublicKey(signature, in message);
+    }
+
+    /// <summary>Delegates to a real ecdsa, recording the worker budget of every recovering thread and how many recover at once.</summary>
+    private sealed class CountingEcdsa(IEthereumEcdsa inner) : IEthereumEcdsa
+    {
+        private int _inside;
+        private int _mostInside;
+
+        public ConcurrentBag<int> Budgets { get; } = [];
+        public int MostInside => Volatile.Read(ref _mostInside);
+        public ulong ChainId => inner.ChainId;
+
+        public Address? RecoverAddress(Signature signature, in ValueHash256 message)
+        {
+            Budgets.Add(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0);
+            int inside = Interlocked.Increment(ref _inside);
+            for (int most = Volatile.Read(ref _mostInside); inside > most; most = Volatile.Read(ref _mostInside))
+                Interlocked.CompareExchange(ref _mostInside, inside, most);
+            try
+            {
+                // Long enough for every thread the recovery may take to be inside at once.
+                Thread.Sleep(2);
+                return inner.RecoverAddress(signature, in message);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _inside);
+            }
         }
 
         public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => inner.Sign(privateKey, in message);

@@ -95,6 +95,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The reads past the pre-block caches within one transaction after which PreWarmInFlightReadAhead starts. `0` starts it at the first.", DefaultValue = "32", HiddenFromDocs = true)]
     int PreWarmInFlightReadAheadColdReads { get; set; }
 
+    [ConfigItem(Description = "[TECHNICAL] Whether a block's pre-warm pass starts on a reserved thread instead of waiting for a free worker, such as one held by sender recovery. Requires PreWarming.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmReservedCoordinator { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

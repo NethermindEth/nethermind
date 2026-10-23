@@ -151,6 +151,21 @@ public partial class ParallelUnbalancedWork
             return true;
         }
 
+        /// <summary>Takes one of <paramref name="queue"/>'s callbacks on the calling thread as one of this scheduler's runners, outside its runner budget.</summary>
+        internal bool TryExecuteAsRunner(WorkQueue queue)
+        {
+            ref WorkerContext context = ref _context;
+            WorkerContext previous = context;
+            context = new()
+            {
+                Scheduler = this,
+                Runner = this,
+                GroupRunner = IsGroup ? this : previous.GroupRunner
+            };
+            try { return TryExecute(queue); }
+            finally { context = previous; }
+        }
+
         internal bool HasReadyWork(WorkQueue queue)
             => queue.Count != 0 || Volatile.Read(ref queue.ReadyDescendants) != 0;
 

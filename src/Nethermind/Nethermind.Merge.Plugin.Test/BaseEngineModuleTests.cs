@@ -222,6 +222,9 @@ public abstract partial class BaseEngineModuleTests
 
         public bool? ParallelExecutionOverride { get; set; }
 
+        /// <summary>When set, <see cref="IBlocksConfig.PreWarmReservedCoordinator"/> for this chain.</summary>
+        public bool? PreWarmReservedCoordinatorOverride { get; set; }
+
         private const double CiSafeSingleBlockImprovementOfSlot = 5;
 
         /// <summary>
@@ -264,6 +267,7 @@ public abstract partial class BaseEngineModuleTests
             {
                 if (config is not IBlocksConfig blocksConfig) continue;
                 blocksConfig.SingleBlockImprovementOfSlot = SingleBlockImprovementOfSlotOverride ?? CiSafeSingleBlockImprovementOfSlot;
+                if (PreWarmReservedCoordinatorOverride is { } reservedCoordinator) blocksConfig.PreWarmReservedCoordinator = reservedCoordinator;
             }
             return materialized;
         }

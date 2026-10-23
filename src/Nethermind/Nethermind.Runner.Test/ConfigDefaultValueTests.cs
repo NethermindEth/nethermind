@@ -35,6 +35,7 @@ public class ConfigDefaultValueTests
         "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 2, 1)
         "ILogIndexConfig.CompressionAlgorithm",       // depends on the CPU instruction sets
         "IBlocksConfig.GasToken",                     // backed by the static GasTokenTicker, so any config that set it earlier (e.g. XDAI) wins
+        "IMergeConfig.NewPayloadSenderRecoveryWorkers", // Max(ProcessorCount / 2, 1)
     ];
 
     /// <remarks>

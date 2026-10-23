@@ -81,6 +81,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly bool _simulateBlockProduction;
     private readonly bool _txRootFirst;
     private readonly bool _logAfterEnqueue;
+    private readonly int _senderRecoveryWorkers;
 
     public NewPayloadHandler(
         IPayloadPreparationService payloadPreparationService,
@@ -127,6 +128,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
         _txRootFirst = mergeConfig.NewPayloadTxRootFirst;
         _logAfterEnqueue = mergeConfig.NewPayloadLogAfterEnqueue;
+        _senderRecoveryWorkers = Math.Max(0, mergeConfig.NewPayloadSenderRecoveryWorkers);
         _processingQueue.BlockExecuted += GetProcessingQueueOnBlockExecuted;
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
@@ -719,7 +721,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
         try
         {
-            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec, request.Transactions, cancellationToken, request.Diag);
+            // Capped, recovery leaves the rest of the payload's workers to the transactions root and the prewarm pass,
+            // which would otherwise queue behind it: its loop holds every worker it gets until the last sender.
+            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec, request.Transactions, cancellationToken, request.Diag, _senderRecoveryWorkers);
             request.Diag?.Stamp(BlockDiag.P.HRecovery);
         }
         catch (Exception e)

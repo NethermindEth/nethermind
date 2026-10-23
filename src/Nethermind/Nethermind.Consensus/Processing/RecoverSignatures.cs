@@ -111,7 +111,11 @@ namespace Nethermind.Consensus.Processing
         /// </param>
         /// <param name="cancellationToken">Stops recovering the remaining transactions, for a block rejected before processing.</param>
         /// <param name="diag">Bench-only: the request's diagnostics, stamped when the first sender is recovered and when the last one is.</param>
-        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, byte[][]? encodedTransactions = null, CancellationToken cancellationToken = default, BlockDiag? diag = null)
+        /// <param name="maxConcurrency">
+        /// The most threads the recovery takes, its own included, nested work too; <c>0</c>, or a cap at or above the
+        /// group's, takes as many as the group has. Each one the recovery holds it keeps until the block's last sender.
+        /// </param>
+        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, byte[][]? encodedTransactions = null, CancellationToken cancellationToken = default, BlockDiag? diag = null, int maxConcurrency = 0)
         {
             ParallelUnbalancedWork.WorkerGroup? group = ParallelUnbalancedWork.GetCurrentGroup();
             if (group?.Concurrency == 1) return;
@@ -123,7 +127,9 @@ namespace Nethermind.Consensus.Processing
             if (current is not null && !current.IsCompleted && current.BlockHash == blockHash)
                 return;
 
-            Recovery recovery = new(this, blockHash, txs, AlignedEncodings(txs, encodedTransactions), releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2), cancellationToken, diag);
+            int concurrency = group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2);
+            bool limited = maxConcurrency > 0 && maxConcurrency < concurrency;
+            Recovery recovery = new(this, blockHash, txs, AlignedEncodings(txs, encodedTransactions), releaseSpec, limited ? maxConcurrency : concurrency, limited, cancellationToken, diag);
             Volatile.Write(ref _current, recovery);
             try
             {
@@ -276,7 +282,8 @@ namespace Nethermind.Consensus.Processing
         /// touched a few times per worker rather than once per transaction; completion is pulsed under the gate the
         /// waiters wait on.
         /// </summary>
-        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, int concurrency, CancellationToken cancellationToken, BlockDiag? diag) : IThreadPoolWorkItem, ISenderRecoveryProgress
+        /// <param name="limitConcurrency">Whether <paramref name="concurrency"/> is a cap below the enclosing group's, which the recovery must not exceed.</param>
+        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, int concurrency, bool limitConcurrency, CancellationToken cancellationToken, BlockDiag? diag) : IThreadPoolWorkItem, ISenderRecoveryProgress
         {
             private readonly object _gate = new();
             private readonly int _progressBatch = Math.Max(1, txs.Length / (concurrency * ProgressPublicationsPerWorker));
@@ -301,7 +308,11 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
+                    // A cap opens a scope of its own under the group: its helpers still come from the group's workers, but
+                    // no more of them than the cap. Uncapped, the recovery shares the group's scope and takes what it has.
+                    using ParallelUnbalancedWork.WorkerScope workers = limitConcurrency
+                        ? ParallelUnbalancedWork.BeginLimitedWorkerScope(concurrency)
+                        : ParallelUnbalancedWork.BeginWorkerScope(concurrency);
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)

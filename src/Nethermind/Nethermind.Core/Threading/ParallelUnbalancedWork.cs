@@ -216,6 +216,17 @@ public partial class ParallelUnbalancedWork
         /// <returns><see langword="true"/> if a queued part was taken and run.</returns>
         public partial bool TryHelp();
 
+        /// <summary>Hands this stage's queued part to a reserved thread, so it starts without waiting for a free runner.</summary>
+        /// <remarks>
+        /// The reserved thread runs the part as one of the scheduler's runners but outside its runner budget, so the stage
+        /// starts even while every runner is held by work that does not yield. Whichever of the reserved thread and a runner
+        /// takes the part first runs it; the other finds nothing. A stage with nothing queued (a limit of one), a continuation
+        /// and a stage of a nested limited scope are left as they are. The zkEVM implementation hands nothing over.
+        /// Call from the owner, right after starting the stage.
+        /// </remarks>
+        /// <returns><see langword="true"/> if the part was handed over.</returns>
+        internal partial bool StartOnReservedThread();
+
         /// <summary>Helps execute outstanding iterations, waits for completion, and reports faults or cancellation.</summary>
         public partial void WaitForCompletion();
 

@@ -145,6 +145,118 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     }
 
     /// <summary>
+    /// The prewarm pass that block processing starts on the payload's workers while sender recovery still holds them
+    /// gets going at once with either scheduling variant: a capped recovery leaves workers free, and a pass on a reserved
+    /// thread needs none. With both off it waits for the workers the recovery holds until its last sender, as it always
+    /// did. An ECDSA that blocks until released holds the recovery mid-flight. The answer is the same in every case.
+    /// </summary>
+    [Test]
+    public async Task Prewarm_pass_starts_while_sender_recovery_is_in_flight([Values] bool capped, [Values] bool reservedThread)
+    {
+        const int cap = 2;
+        int processors = Nethermind.Core.Cpu.RuntimeInformation.ProcessorCount;
+        // The payload's group has a runner fewer than processors; a capped recovery leaves one free only beyond the cap.
+        Assume.That(processors, Is.GreaterThan(cap + 1), "needs a worker group with a runner beyond the cap");
+        using ManualResetEventSlim finishRecovery = new();
+        int recovering = 0;
+        int mostRecovering = 0;
+        IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
+        ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<ValueHash256>()).Returns(_ =>
+        {
+            int inside = Interlocked.Increment(ref recovering);
+            for (int most = Volatile.Read(ref mostRecovering); inside > most; most = Volatile.Read(ref mostRecovering))
+                Interlocked.CompareExchange(ref mostRecovering, inside, most);
+            try
+            {
+                if (!finishRecovery.Wait(AnswerWait)) throw new TimeoutException("Recovery was not released");
+            }
+            finally
+            {
+                Interlocked.Decrement(ref recovering);
+            }
+            return TestItem.AddressA;
+        });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IEthereumEcdsa>(ecdsa)
+            .Build();
+        RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
+        // More transactions than workers, so an uncapped recovery asks for every runner the group has.
+        Transaction[] signed = new Transaction[4 * processors];
+        for (int i = 0; i < signed.Length; i++)
+            signed[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+        Block block = Build.A.Block.WithParentHash(TestItem.KeccakC).WithNumber(1)
+            .WithDifficulty(0).WithNonce(0).WithTransactions(signed).TestObject;
+        block.Header.IsPostMerge = true;
+        ExecutionPayload payload = ExecutionPayload.Create(block);
+        Transaction[] transactions = payload.TryGetTransactions().Data!;
+        // Uncapped, recovery holds every runner of the payload's group: the one it was queued to and its helpers'.
+        int heldByRecovery = capped ? cap : processors - 1;
+
+        bool held = false;
+        bool inFlightAtStart = false;
+        bool startedWhileRecovering = false;
+        PrewarmingSession? session = null;
+        using ManualResetEventSlim passStarted = new();
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                try
+                {
+                    // Called on the payload's workers, where block processing starts its pass.
+                    held = SpinWait.SpinUntil(() => Volatile.Read(ref recovering) == heldByRecovery, TimeSpan.FromSeconds(10));
+                    inFlightAtStart = recovery.GetInFlight(transactions) is not null;
+                    session = new PrewarmingSession(CancellationToken.None, LimboLogs.Instance.GetClassLogger<PrewarmingSession>());
+                    session.Start(passStarted.Set, Substitute.For<IDisposable>(), reservedThread: reservedThread);
+                    startedWhileRecovering = passStarted.Wait(capped || reservedThread ? TimeSpan.FromSeconds(10) : TimeSpan.FromMilliseconds(500))
+                        && recovery.GetInFlight(transactions) is not null;
+                }
+                finally
+                {
+                    enqueued.TrySetResult();
+                }
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.Added, wasProcessed: false, validateSuggestedBlock: true,
+            processingQueue: processingQueue, timeoutMs: LongRequestBudgetMs, senderRecovery: recovery,
+            specProvider: container.Resolve<ISpecProvider>(), senderRecoveryWorkers: capped ? cap : 0);
+        ResultWrapper<PayloadStatusV1>? result = null;
+        bool startedAfterRelease = false;
+        try
+        {
+            Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
+            await enqueued.Task.WaitAsync(AnswerWait);
+            finishRecovery.Set();
+            startedAfterRelease = passStarted.Wait(AnswerWait);
+            processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+            result = await request.WaitAsync(AnswerWait);
+        }
+        finally
+        {
+            finishRecovery.Set();
+            ISenderRecoveryProgress? progress = recovery.GetInFlight(transactions);
+            if (progress is not null) Assert.That(progress.WaitForCompletion(10_000), Is.True);
+            session?.Dispose();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(held, Is.True, "precondition: recovery holds every runner it may take");
+            Assert.That(inFlightAtStart, Is.True, "precondition: the pass starts while recovery is in flight");
+            Assert.That(startedWhileRecovering, Is.EqualTo(capped || reservedThread),
+                "the pass starts while recovery holds its runners exactly when recovery is capped or the pass may take a reserved thread");
+            Assert.That(startedAfterRelease, Is.True, "the pass starts once recovery lets its runners go");
+            Assert.That(result?.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            if (capped) Assert.That(mostRecovering, Is.InRange(1, cap), "a capped recovery never recovers on more threads than its cap");
+            Assert.That(transactions.Select(static tx => tx.SenderAddress), Is.All.EqualTo(TestItem.AddressA));
+        }
+    }
+
+    /// <summary>
     /// The Received line is written once per payload: deferred, after the block is handed to the processing queue
     /// and before the verdict; otherwise before the block-hash check, as it always was.
     /// </summary>
@@ -1371,7 +1483,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ISpecProvider? specProvider = null,
         bool txRootFirst = true,
         bool logAfterEnqueue = true,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        int? senderRecoveryWorkers = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -1391,6 +1504,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             NewPayloadTxRootFirst = txRootFirst,
             NewPayloadLogAfterEnqueue = logAfterEnqueue
         };
+        if (senderRecoveryWorkers is { } workers) mergeConfig.NewPayloadSenderRecoveryWorkers = workers;
         IReceiptConfig receiptConfig = new ReceiptConfig();
 
         BlockHeader parent = Build.A.BlockHeader

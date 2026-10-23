@@ -25,11 +25,15 @@ internal sealed class PrewarmingSession(CancellationToken cancellationToken, ILo
     /// <param name="warm">The pass.</param>
     /// <param name="resources">Released once the pass is drained.</param>
     /// <param name="stopWaiting">Lets the work of the pass that waits for block processing end once it has nothing left.</param>
-    internal void Start(Action warm, IDisposable resources, Action? stopWaiting = null)
+    /// <param name="reservedThread">Whether a reserved thread may take the pass rather than leave it waiting for a free worker.</param>
+    internal void Start(Action warm, IDisposable resources, Action? stopWaiting = null, bool reservedThread = false)
     {
         _resources = resources;
         _stopWaiting = stopWaiting;
         _work = ParallelUnbalancedWork.BackgroundFor(0, 1, CoordinatorOptions, _ => Warm(warm));
+        // The pass queues behind whatever holds the workers, and a sender recovery in flight holds all of them until it
+        // ends; a reserved thread starts it at once, unless a worker takes it first.
+        if (reservedThread) _work.StartOnReservedThread();
     }
 
     // Disposal does not report faults, so a pass that escapes its own handling is logged instead of lost.

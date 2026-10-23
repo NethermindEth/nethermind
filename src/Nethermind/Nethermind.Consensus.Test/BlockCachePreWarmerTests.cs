@@ -3173,6 +3173,165 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    /// <summary>
+    /// With every runner of the processing group held by work that does not give it back, as a sender recovery in
+    /// flight holds them, a block's pass starts at once only when it may take a reserved thread; otherwise it waits for
+    /// a runner. Either way it ends once the runners are let go.
+    /// </summary>
+    [Test]
+    [CancelAfter(90_000)]
+    public void PreWarmCaches_StartsThePassWhileEveryRunnerIsHeld_OnlyOnAReservedThread([Values] bool reservedCoordinator, CancellationToken testToken)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = new(
+            new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(_processingScope.Resolve<PrewarmerEnvFactory>(), preBlockCaches),
+            minPoolSize: 4, concurrency: 2, parallelExecutionBatchRead: true, _processingScope.Resolve<NodeStorageCache>(), preBlockCaches,
+            LimboLogs.Instance, reservedCoordinator: reservedCoordinator);
+        using ManualResetEventSlim passStarted = new(false);
+        preWarmer.BeforeTransactionWorkers = passStarted.Set;
+        // A group of three has two runners; its third slot is the caller's, as block processing's thread holds it.
+        ParallelUnbalancedWork.WorkerGroup group = new(3);
+        using CountdownEvent held = new(2);
+        using ManualResetEventSlim release = new(false);
+        Block block = BuildReactiveWarmBlock();
+        BlockHeader parent = BuildParentHeader();
+        bool allHeld = false;
+        bool startedWhileHeld = false;
+        bool ended;
+        using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
+        {
+            IDisposable? session = null;
+            try
+            {
+                using (group.Enter())
+                {
+                    group.Queue(new HeldRunner(held, release));
+                    group.Queue(new HeldRunner(held, release));
+                    allHeld = held.Wait(TimeSpan.FromSeconds(10), testToken);
+                    session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+                }
+
+                startedWhileHeld = passStarted.Wait(reservedCoordinator ? TimeSpan.FromSeconds(10) : PendingProbe, testToken);
+            }
+            finally
+            {
+                release.Set();
+            }
+
+            Task completion = Task.Run(() =>
+            {
+                using (session)
+                using (group.Enter())
+                    ((PrewarmingSession?)session)?.WaitForCompletion();
+            });
+            ended = completion.Wait(DiscoveryTimeout);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allHeld, Is.True, "precondition: both runners are held");
+            Assert.That(startedWhileHeld, Is.EqualTo(reservedCoordinator), "the pass starts while the runners are held exactly when it may take a reserved thread");
+            Assert.That(passStarted.IsSet, Is.True, "the pass starts once the runners are let go");
+            Assert.That(ended, Is.True);
+        }
+    }
+
+    /// <summary>
+    /// A sender recovery capped to a single thread while the block's pass waits on it for every sender still finishes,
+    /// and so does the pass, with every transaction given the sender its signature names. The pass cannot hold up the
+    /// recovery: it waits in bounded steps, and the recovery runs on the runner it was queued to ahead of the pass.
+    /// </summary>
+    [Test]
+    [CancelAfter(90_000)]
+    public void PreWarmCaches_WaitingOnACappedSenderRecovery_EndsWithEverySenderRecovered([Values] bool reservedCoordinator, CancellationToken testToken)
+    {
+        PrivateKey[] signers = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD, TestItem.PrivateKeyE, TestItem.PrivateKeyF];
+        Transaction[] txs = new Transaction[signers.Length];
+        Address[] expectedSenders = new Address[signers.Length];
+        for (int i = 0; i < signers.Length; i++)
+        {
+            txs[i] = GroupingTx(signers[i], nonce: 0, gasLimit: 100_000);
+            txs[i].SenderAddress = null;
+            expectedSenders[i] = signers[i].Address;
+        }
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+        BlockHeader parent = BuildParentHeader();
+        using ManualResetEventSlim gate = new(false);
+        RecoverSignatures recovery = new(new GatedEcdsa(new EthereumEcdsa(BlockchainIds.GenericNonRealNetwork), gate),
+            Substitute.For<ISpecProvider>(), LimboLogs.Instance);
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = new(
+            new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(_processingScope.Resolve<PrewarmerEnvFactory>(), preBlockCaches),
+            minPoolSize: 4, concurrency: 3, parallelExecutionBatchRead: true, _processingScope.Resolve<NodeStorageCache>(), preBlockCaches,
+            LimboLogs.Instance, senderRecovery: recovery, reservedCoordinator: reservedCoordinator);
+        using ManualResetEventSlim passStarted = new(false);
+        preWarmer.BeforeTransactionWorkers = passStarted.Set;
+        ParallelUnbalancedWork.WorkerGroup group = new(4);
+        bool started;
+        bool ended;
+        using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
+        {
+            IDisposable? session;
+            using (group.Enter())
+            {
+                recovery.StartRecovery(block.Hash!, block.Transactions, ReleaseSpecSubstitute.Create(), maxConcurrency: 1);
+                session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            }
+
+            try
+            {
+                // Nothing has a sender yet, so the pass, once started, can only wait on the parked recovery.
+                started = passStarted.Wait(DiscoveryTimeout, testToken);
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            Task completion = Task.Run(() =>
+            {
+                using (session)
+                using (group.Enter())
+                    ((PrewarmingSession?)session)?.WaitForCompletion();
+            });
+            ended = completion.Wait(DiscoveryTimeout);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(started, Is.True);
+            Assert.That(ended, Is.True, "the pass waiting on a capped recovery must end once the recovery has");
+            Assert.That(() => recovery.IsRecoveryInFlight(block.Transactions), Is.False.After(10_000, 5));
+            Assert.That(Array.ConvertAll(block.Transactions, static tx => tx.SenderAddress), Is.EqualTo(expectedSenders));
+        }
+    }
+
+    /// <summary>Holds the runner it is given until released, as a recovery's loop holds its runners until the last sender.</summary>
+    private sealed class HeldRunner(CountdownEvent held, ManualResetEventSlim release) : IThreadPoolWorkItem
+    {
+        public void Execute()
+        {
+            held.Signal();
+            release.Wait(DiscoveryTimeout);
+        }
+    }
+
+    /// <summary>Delegates to a real ecdsa once the gate is open.</summary>
+    private sealed class GatedEcdsa(IEthereumEcdsa inner, ManualResetEventSlim gate) : IEthereumEcdsa
+    {
+        public ulong ChainId => inner.ChainId;
+
+        public Address? RecoverAddress(Signature signature, in ValueHash256 message)
+        {
+            gate.Wait(DiscoveryTimeout);
+            return inner.RecoverAddress(signature, in message);
+        }
+
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => inner.Sign(privateKey, in message);
+        public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverPublicKey(signature, in message);
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverCompressedPublicKey(signature, in message);
+    }
+
     private sealed class SessionResources : IDisposable
     {
         public int DisposeCount;

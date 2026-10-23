@@ -386,6 +386,35 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Simulating_block_production_on_every_slot_is_always_disabled(string configWildcard) => Test<IMergeConfig, bool>(configWildcard, static c => c.SimulateBlockProduction, false);
 
+    /// <summary>No shipped config sets the newPayload scheduling flags, so an A/B sets each one on the command line.</summary>
+    [TestCase("*")]
+    public void NewPayload_scheduling_flags_keep_their_defaults(string configWildcard)
+    {
+        Test<IMergeConfig, int>(configWildcard, static c => c.NewPayloadSenderRecoveryWorkers, Math.Max(Environment.ProcessorCount / 2, 1));
+        Test<IBlocksConfig, bool>(configWildcard, static c => c.PreWarmReservedCoordinator, true);
+    }
+
+    [TestCase("0", "false", 0, false)]
+    [TestCase("3", "true", 3, true)]
+    public void NewPayload_scheduling_flags_are_set_from_the_command_line(string recoveryWorkers, string reservedCoordinator,
+        int expectedRecoveryWorkers, bool expectedReservedCoordinator)
+    {
+        // The first source that sets a value wins, and the runner puts the command line ahead of the config file.
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new ArgsConfigSource(new Dictionary<string, string>
+        {
+            { "Merge.NewPayloadSenderRecoveryWorkers", recoveryWorkers },
+            { "Blocks.PreWarmReservedCoordinator", reservedCoordinator }
+        }));
+        configProvider.AddSource(new JsonConfigSource(Path.Combine(ConfigDirectory, "mainnet.json")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(configProvider.GetConfig<IMergeConfig>().NewPayloadSenderRecoveryWorkers, Is.EqualTo(expectedRecoveryWorkers));
+            Assert.That(configProvider.GetConfig<IBlocksConfig>().PreWarmReservedCoordinator, Is.EqualTo(expectedReservedCoordinator));
+        }
+    }
+
     [TestCase("sepolia", BlobsSupportMode.StorageWithReorgs)]
     [TestCase("hoodi", BlobsSupportMode.StorageWithReorgs)]
     [TestCase("chiado", BlobsSupportMode.StorageWithReorgs)]

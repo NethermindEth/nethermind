@@ -105,4 +105,7 @@ public interface IMergeConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Whether `newPayload` writes its `Received` line once the block is handed to the processing queue rather than before the block hash check.", DefaultValue = "true", HiddenFromDocs = true)]
     bool NewPayloadLogAfterEnqueue { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] The most threads the early sender recovery of `newPayload` takes from the payload's workers, its own included, so the rest stay free for the transactions root and pre-warming. `0` lets it take all of them.", DefaultValue = "Max(ProcessorCount / 2, 1)", HiddenFromDocs = true)]
+    int NewPayloadSenderRecoveryWorkers { get; set; }
 }

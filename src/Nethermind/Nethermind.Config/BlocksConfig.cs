@@ -80,6 +80,8 @@ namespace Nethermind.Config
 
         public int PreWarmInFlightReadAheadColdReads { get; set; } = 32;
 
+        public bool PreWarmReservedCoordinator { get; set; } = true;
+
         public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
 
         public bool PreWarmCoreSplit { get; set; } = true;

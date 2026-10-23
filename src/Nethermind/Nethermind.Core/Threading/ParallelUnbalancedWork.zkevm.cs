@@ -103,6 +103,8 @@ public partial class ParallelUnbalancedWork
 
         public partial bool TryHelp() => false;
 
+        internal partial bool StartOnReservedThread() => false;
+
         public partial void WaitForCompletion()
         {
             ObjectDisposedException.ThrowIf(_abandoned, this);
