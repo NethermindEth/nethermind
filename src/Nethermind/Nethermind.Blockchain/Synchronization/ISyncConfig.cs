@@ -41,10 +41,10 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to download the old block headers in the Fast sync mode. If `false`, Nethermind downloads only recent blocks headers.", DefaultValue = "true")]
     bool DownloadHeadersInFastSync { get; set; }
 
-    [ConfigItem(Description = "Whether to download the block bodies in the Fast sync mode. Must stay enabled if the chain schedules EIP-8304: otherwise the node does not start, also before activation.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to download the block bodies in the Fast sync mode. Must stay enabled in fast sync mode if the chain schedules EIP-8304: otherwise the node does not start, also before activation.", DefaultValue = "true")]
     bool DownloadBodiesInFastSync { get; set; }
 
-    [ConfigItem(Description = "Whether to download receipts in the Fast sync mode. This slows down the process by a few hours but allows to interact with dApps that perform extensive historical logs searches. Must stay enabled if the chain schedules EIP-8304: otherwise the node does not start, also before activation.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to download receipts in the Fast sync mode. This slows down the process by a few hours but allows to interact with dApps that perform extensive historical logs searches. Must stay enabled in fast sync mode if the chain schedules EIP-8304: otherwise the node does not start, also before activation.", DefaultValue = "true")]
     bool DownloadReceiptsInFastSync { get; set; }
 
     [ConfigItem(Description = "Whether to download block access lists in the Fast sync mode.", DefaultValue = "true")]
