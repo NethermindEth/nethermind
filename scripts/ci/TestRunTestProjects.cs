@@ -35,116 +35,97 @@ foreach (var (name, os, firstExit, secondExit, retry, hang, coverage, report, bu
     ("coverage written", "Linux", 0, 0, true, false, true, true, false, 0)
 })
 {
-    var root = Directory.CreateTempSubdirectory("test project runner ");
-    try
+    using var root = new TestDirectory();
+    var environment = new Dictionary<string, string>
     {
-        var environment = new Dictionary<string, string>
+        ["PROJECTS"] = "First Second", ["RUNNER_OS"] = os, ["CRASH_RETRY"] = retry ? "true" : "false",
+        ["COVERAGE"] = coverage ? "true" : "false", ["GITHUB_WORKSPACE"] = root.FullName,
+        ["GITHUB_OUTPUT"] = Path.Combine(root.FullName, "output")
+    };
+    foreach (var project in new[] { "First", "Second" })
+        Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind", project, "TestResults"));
+    var calls = new List<(string Directory, string Command, string[] Args)>();
+    var attempts = 0;
+    using var output = new StringWriter();
+    var result = await TestProjects.Run(root.FullName, key => environment.GetValueOrDefault(key),
+        (directory, command, arguments, token) =>
         {
-            ["PROJECTS"] = "First Second", ["RUNNER_OS"] = os, ["CRASH_RETRY"] = retry ? "true" : "false",
-            ["COVERAGE"] = coverage ? "true" : "false", ["GITHUB_WORKSPACE"] = root.FullName,
-            ["GITHUB_OUTPUT"] = Path.Combine(root.FullName, "output")
-        };
-        foreach (var project in new[] { "First", "Second" })
-            Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind", project, "TestResults"));
-        var calls = new List<(string Directory, string Command, string[] Args)>();
-        var attempts = 0;
-        using var output = new StringWriter();
-        var result = await TestProjects.Run(root.FullName, key => environment.GetValueOrDefault(key),
-            (directory, command, arguments, token) =>
-            {
-                calls.Add((directory, command, arguments));
-                if (arguments[0] == "build")
-                    return Task.FromResult(buildFails && directory.EndsWith("First") ? 1 : 0);
-                if (arguments[0] == "build-server")
-                    return Task.FromResult(5);
-                if (directory.EndsWith("Second"))
-                {
-                    if (report)
-                        File.WriteAllText(Path.Combine(directory, "TestResults/report.cobertura.xml"), "");
-                    return Task.FromResult(0);
-                }
-                attempts++;
-                if (hang)
-                    File.WriteAllText(Path.Combine(directory, "TestResults/test_hang.dmp"), "");
-                if (report)
-                    File.WriteAllText(Path.Combine(directory, "TestResults/report.cobertura.xml"), "");
-                return Task.FromResult(attempts == 1 ? firstExit : secondExit);
-            }, output, CancellationToken.None);
-        var retried = !buildFails && firstExit is not (0 or 1 or 2) && retry && !hang;
-        if (result != expected || attempts != (buildFails ? 0 : retried ? 2 : 1) || !calls.Any(call => call.Directory.EndsWith("Second")))
-            throw new Exception($"{name}: result/attempt count/continue-after-failure mismatch");
-        if (File.Exists(environment["GITHUB_OUTPUT"]) != retried)
-            throw new Exception($"{name}: crash marker mismatch");
-        foreach (var call in calls.Where(call => call.Args[0] is not ("build" or "build-server")))
-        {
-            var project = Path.GetFileName(call.Directory);
-            if (!call.Args.Contains(os == "Linux" ? "8m" : "4m") || call.Command != (os == "Linux" ? Path.Combine(root.FullName, "src", "Nethermind", "artifacts", "bin", project, "release", project) : "dotnet"))
-                throw new Exception($"{name}: command/timeout mismatch");
-            if (coverage && !call.Args.Contains(Path.Combine(root.FullName, "src/Nethermind/codecoverage.json")))
-                throw new Exception($"{name}: coverage path is not absolute");
-        }
-        Console.WriteLine($"PASS: {name}");
-        passed++;
-    }
-    finally
+            calls.Add((directory, command, arguments));
+            if (arguments[0] == "build")
+                return Task.FromResult(buildFails && directory.EndsWith("First") ? 1 : 0);
+            if (arguments[0] == "build-server")
+                return Task.FromResult(5);
+            if (report)
+                File.WriteAllText(Path.Combine(directory, "TestResults/report.cobertura.xml"), "");
+            if (directory.EndsWith("Second"))
+                return Task.FromResult(0);
+            attempts++;
+            if (hang)
+                File.WriteAllText(Path.Combine(directory, "TestResults/test_hang.dmp"), "");
+            return Task.FromResult(attempts == 1 ? firstExit : secondExit);
+        }, output, CancellationToken.None);
+    var retried = !buildFails && firstExit is not (0 or 1 or 2) && retry && !hang;
+    if (result != expected || attempts != (buildFails ? 0 : retried ? 2 : 1) || !calls.Any(call => call.Directory.EndsWith("Second")))
+        throw new Exception($"{name}: result/attempt count/continue-after-failure mismatch");
+    if (File.Exists(environment["GITHUB_OUTPUT"]) != retried)
+        throw new Exception($"{name}: crash marker mismatch");
+    foreach (var call in calls.Where(call => call.Args[0] is not ("build" or "build-server")))
     {
-        root.Delete(recursive: true);
+        var project = Path.GetFileName(call.Directory);
+        if (!call.Args.Contains(os == "Linux" ? "8m" : "4m") || call.Command != (os == "Linux" ? Path.Combine(root.FullName, "src", "Nethermind", "artifacts", "bin", project, "release", project) : "dotnet"))
+            throw new Exception($"{name}: command/timeout mismatch");
+        if (coverage && !call.Args.Contains(Path.Combine(root.FullName, "src/Nethermind/codecoverage.json")))
+            throw new Exception($"{name}: coverage path is not absolute");
     }
+    Console.WriteLine($"PASS: {name}");
+    passed++;
 }
 
 foreach (var cancel in new[] { false, true })
 {
-    var root = Directory.CreateTempSubdirectory("real test process ");
-    try
+    using var root = new TestDirectory();
+    var pipeName = $"test-project-{Guid.NewGuid():N}";
+    using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+    var execution = TestProjects.Execute(root.FullName, Environment.ProcessPath!,
+        ["--child", pipeName, "argument with spaces", cancel ? "wait" : "7"], cancellation.Token);
+    await pipe.WaitForConnectionAsync(timeout.Token);
+    using var reader = new StreamReader(pipe);
+    var pid = int.Parse((await reader.ReadLineAsync(timeout.Token))!);
+    var cwd = await reader.ReadLineAsync(timeout.Token);
+    var argument = await reader.ReadLineAsync(timeout.Token);
+    if (cwd != root.FullName || argument != "argument with spaces")
+        throw new Exception("Real child lost its working directory or argument boundary.");
+    if (cancel)
     {
-        var pipeName = $"test-project-{Guid.NewGuid():N}";
-        using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
-        var execution = TestProjects.Execute(root.FullName, Environment.ProcessPath!,
-            ["--child", pipeName, "argument with spaces", cancel ? "wait" : "7"], cancellation.Token);
-        await pipe.WaitForConnectionAsync(timeout.Token);
-        using var reader = new StreamReader(pipe);
-        var pid = int.Parse((await reader.ReadLineAsync(timeout.Token))!);
-        var cwd = await reader.ReadLineAsync(timeout.Token);
-        var argument = await reader.ReadLineAsync(timeout.Token);
-        if (cwd != root.FullName || argument != "argument with spaces")
-            throw new Exception("Real child lost its working directory or argument boundary.");
-        if (cancel)
+        cancellation.Cancel();
+        try
         {
-            cancellation.Cancel();
-            try
-            {
-                await execution;
-                throw new Exception("Cancellation must abort execution.");
-            }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-            {
-            }
-            try
-            {
-                using var child = Process.GetProcessById(pid);
-                if (!child.HasExited)
-                    throw new Exception("Cancelled child is still running.");
-            }
-            catch (ArgumentException)
-            {
-                // The process can already have been reaped after WaitForExitAsync.
-            }
+            await execution;
+            throw new Exception("Cancellation must abort execution.");
         }
-        else if (await execution != 7)
-            throw new Exception("Real child exit code was not propagated.");
-        Console.WriteLine($"PASS: real child arguments, working directory and {(cancel ? "cancellation" : "exit code")}");
-        passed++;
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        try
+        {
+            using var child = Process.GetProcessById(pid);
+            if (!child.HasExited)
+                throw new Exception("Cancelled child is still running.");
+        }
+        catch (ArgumentException)
+        {
+            // The process can already have been reaped after WaitForExitAsync.
+        }
     }
-    finally
-    {
-        root.Delete(recursive: true);
-    }
+    else if (await execution != 7)
+        throw new Exception("Real child exit code was not propagated.");
+    Console.WriteLine($"PASS: real child arguments, working directory and {(cancel ? "cancellation" : "exit code")}");
+    passed++;
 }
 
-var cancelledRoot = Directory.CreateTempSubdirectory("cancelled projects ");
-try
+using (var cancelledRoot = new TestDirectory())
 {
     foreach (var name in new[] { "First", "Second" })
         Directory.CreateDirectory(Path.Combine(cancelledRoot.FullName, "src/Nethermind", name));
@@ -169,48 +150,42 @@ try
     Console.WriteLine("PASS: cancellation prevents subsequent projects");
     passed++;
 }
-finally
-{
-    cancelledRoot.Delete(recursive: true);
-}
 foreach (var missingDirectory in new[] { true, false })
 {
-    var root = Directory.CreateTempSubdirectory("missing project inputs ");
-    try
-    {
-        Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/Second"));
-        if (!missingDirectory) Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/First"));
-        var secondRan = false;
-        using var output = new StringWriter();
-        var result = await TestProjects.Run(root.FullName, key => key switch { "PROJECTS" => "First Second", "RUNNER_OS" => "Linux", _ => null },
-            (directory, command, arguments, token) =>
-            {
-                secondRan |= directory.EndsWith("Second");
-                return Task.FromResult(arguments[0] == "build-server" || directory.EndsWith("Second") ? 0 : 7);
-            }, output, CancellationToken.None);
-        if (result != 1 || !secondRan || !output.ToString().Contains(missingDirectory ? "Project directory does not exist" : "GITHUB_OUTPUT is required", StringComparison.Ordinal) || !output.ToString().Contains("Failed: First", StringComparison.Ordinal))
-            throw new Exception("Missing inputs must report the failed project and continue.");
-        Console.WriteLine($"PASS: missing {(missingDirectory ? "project directory" : "GITHUB_OUTPUT")} reports failure and continues");
-        passed++;
-    }
-    finally { root.Delete(recursive: true); }
+    using var root = new TestDirectory();
+    Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/Second"));
+    if (!missingDirectory) Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/First"));
+    var secondRan = false;
+    using var output = new StringWriter();
+    var result = await TestProjects.Run(root.FullName, key => key switch { "PROJECTS" => "First Second", "RUNNER_OS" => "Linux", _ => null },
+        (directory, command, arguments, token) =>
+        {
+            secondRan |= directory.EndsWith("Second");
+            return Task.FromResult(arguments[0] == "build-server" || directory.EndsWith("Second") ? 0 : 7);
+        }, output, CancellationToken.None);
+    if (result != 1 || !secondRan || !output.ToString().Contains(missingDirectory ? "Project directory does not exist" : "GITHUB_OUTPUT is required", StringComparison.Ordinal) || !output.ToString().Contains("Failed: First", StringComparison.Ordinal))
+        throw new Exception("Missing inputs must report the failed project and continue.");
+    Console.WriteLine($"PASS: missing {(missingDirectory ? "project directory" : "GITHUB_OUTPUT")} reports failure and continues");
+    passed++;
 }
 if (OperatingSystem.IsLinux())
 {
-    var root = Directory.CreateTempSubdirectory("real artifact host ");
-    try
-    {
-        Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/First"));
-        var artifacts = Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/artifacts/bin/First/release"));
-        File.CreateSymbolicLink(Path.Combine(artifacts.FullName, "First"), "/usr/bin/true");
-        var result = await TestProjects.Run(root.FullName, key => key switch { "PROJECTS" => "First", "RUNNER_OS" => "Linux", _ => null },
-            (directory, command, arguments, token) => arguments[0] == "build-server" ? Task.FromResult(0) : TestProjects.Execute(directory, command, arguments, token),
-            TextWriter.Null, CancellationToken.None);
-        if (result != 0) throw new Exception("Artifact host failed to launch from a different parent working directory.");
-        Console.WriteLine("PASS: real Linux artifact host launches from project directory");
-        passed++;
-    }
-    finally { root.Delete(recursive: true); }
+    using var root = new TestDirectory();
+    Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/First"));
+    var artifacts = Directory.CreateDirectory(Path.Combine(root.FullName, "src/Nethermind/artifacts/bin/First/release"));
+    File.CreateSymbolicLink(Path.Combine(artifacts.FullName, "First"), "/usr/bin/true");
+    var result = await TestProjects.Run(root.FullName, key => key switch { "PROJECTS" => "First", "RUNNER_OS" => "Linux", _ => null },
+        (directory, command, arguments, token) => arguments[0] == "build-server" ? Task.FromResult(0) : TestProjects.Execute(directory, command, arguments, token),
+        TextWriter.Null, CancellationToken.None);
+    if (result != 0) throw new Exception("Artifact host failed to launch from a different parent working directory.");
+    Console.WriteLine("PASS: real Linux artifact host launches from project directory");
+    passed++;
 }
 Console.WriteLine($"Passed {passed} tests.");
 return 0;
+
+sealed class TestDirectory : IDisposable
+{
+    internal string FullName { get; } = Directory.CreateTempSubdirectory("test projects ").FullName;
+    public void Dispose() => Directory.Delete(FullName, recursive: true);
+}
