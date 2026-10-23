@@ -110,6 +110,27 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
+        public void ReportAccess_orders_addresses_and_storage_keys_ascending()
+        {
+            Address[] accessed = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+            JournalSet<Address> accessedAddresses = new(Address.EqualityComparer) { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC };
+            JournalSet<StorageCell> accessedStorageCells = new(StorageCell.EqualityComparer)
+            {
+                new StorageCell(TestItem.AddressA, 7), new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressA, 3)
+            };
+            Assert.That(accessed, Is.Not.EqualTo(accessed.Order()), "precondition: the addresses are accessed out of order");
+            AccessTxTracer sut = new();
+
+            sut.ReportAccess(accessedAddresses, accessedStorageCells);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sut.AccessList!.Select(static x => x.Address), Is.EqualTo(accessed.Order()));
+                Assert.That(sut.AccessList!.Single(static x => x.Address == TestItem.AddressA).StorageKeys, Is.EqualTo(new UInt256[] { 1, 3, 7 }));
+            }
+        }
+
+        [Test]
         public void Reverted_call_target_address_is_still_captured_in_access_list()
         {
             // Code deployed at recipient: CALL AddressC, then REVERT
