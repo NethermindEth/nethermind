@@ -58,7 +58,7 @@ public static class Extensions
             // Kestrel aborts open connections at shutdown, so a failure on an aborted connection is not a node error.
             catch (Exception ex) when (context.RequestAborted.IsCancellationRequested)
             {
-                if (logger.IsDebug) logger.Debug($"WebSockets connection aborted: {ex.Message}");
+                if (logger.IsDebug) logger.Debug($"WebSockets connection aborted: {ex.GetType().Name}: {ex.Message}");
             }
             catch (WebSocketException ex)
             {
