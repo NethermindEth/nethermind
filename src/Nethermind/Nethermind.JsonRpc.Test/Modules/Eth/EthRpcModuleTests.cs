@@ -39,6 +39,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -1266,7 +1267,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_logs_envelope_preserves_body_limit([Values] bool isBatch, [Values(1, 100)] int allowedLogs)
+    public async Task Eth_get_logs_envelope_preserves_body_limit([Values] bool isBatch, [Values(1, 100)] int allowedLogs, [Values] bool observed)
     {
         string logJson = JsonSerializer.Serialize(CreateTestFilterLog(), EthereumJsonSerializer.JsonOptions);
         int logBytes = Encoding.UTF8.GetByteCount(logJson);
@@ -1277,6 +1278,8 @@ public partial class EthRpcModuleTests
             maxLogsResponseBodySize: isBatch ? long.MaxValue : limit,
             maxBatchResponseBodySize: isBatch ? limit : null);
         using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(67L), Result = result };
+        JsonRpcResponseWriterStreamingIdTests.RecordingObserver observer = new();
+        if (observed) response.ObserveStreamedResult(observer, NullLogger.Instance);
         using MemoryStream stream = new();
         CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)), priorBytes);
 
@@ -1287,6 +1290,7 @@ public partial class EthRpcModuleTests
         {
             Assert.That(document.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(allowedLogs));
             Assert.That(document.RootElement.GetProperty("_streamStatus").GetString(), Is.EqualTo("truncated"));
+            if (observed) Assert.That(observer.Succeeded, Is.False);
         }
     }
 
