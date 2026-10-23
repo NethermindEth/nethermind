@@ -185,17 +185,18 @@ public static class KnownHeaders
 
     private static async Task<ICollection<Hash256>> EnsureAncestors(ulong anchorNumber, ICollection<Hash256> expectedHashes, ulong lowest, Func<ulong, Task<Block?>> readArchiveBlock, CancellationToken cancellation)
     {
+        Hash256? expected = null;
         for (ulong number = anchorNumber - 1; number >= lowest; number--)
         {
             cancellation.ThrowIfCancellationRequested();
 
             Block block = await ReadBlock(readArchiveBlock, number);
-            if (!expectedHashes.Contains(block.Hash!))
+            if (expected is null ? !expectedHashes.Contains(block.Hash!) : block.Hash != expected)
                 throw new EraVerificationException($"Block {number} hash {block.Hash} in archive is not an ancestor of the header already known at {anchorNumber}.");
-            expectedHashes = [block.ParentHash!];
+            expected = block.ParentHash!;
         }
 
-        return expectedHashes;
+        return expected is null ? expectedHashes : [expected];
     }
 
     private static async Task<Block> ReadBlock(Func<ulong, Task<Block?>> readArchiveBlock, ulong number)
