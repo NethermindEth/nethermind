@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#:include FetchDevnetGenesis.Helpers.cs
+#:property DefineConstants=SCRIPT_TEST
+#:include FetchDevnetGenesis.cs
 
 var tests = 0;
 foreach (var scenario in new[]
@@ -42,20 +43,20 @@ foreach (var scenario in new[]
         Console.WriteLine($"PASS: {name}");
         tests++;
 
-        Task<DevnetGenesis.CommandResult> Execute(string command, string[] arguments, CancellationToken cancellationToken)
+        Task<(int ExitCode, string Output)> Execute(string command, string[] arguments, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (command == "gh")
             {
                 var commit = arguments[1].Contains("/commits/", StringComparison.Ordinal);
                 if ((commit && name == "commit lookup failure") || (!commit && name == "directory lookup failure"))
-                    return Task.FromResult(new DevnetGenesis.CommandResult(9, ""));
-                if (commit) return Task.FromResult(new DevnetGenesis.CommandResult(0, "pinned-sha\n"));
+                    return Task.FromResult((9, ""));
+                if (commit) return Task.FromResult((0, "pinned-sha\n"));
                 Assert(arguments[1].EndsWith("?ref=pinned-sha", StringComparison.Ordinal), "Listing not SHA pinned");
                 var listing = name == "no valid directories" ? "devnet-../bad\nother\n" :
                     arguments[1].Contains("/first/", StringComparison.Ordinal) ?
                     (name == "numeric sorting" ? "devnet-10\ndevnet-1\ndevnet-2\nother\ndevnet-../bad\n" : "devnet-1\ndevnet-2\n") : "devnet-1\n";
-                return Task.FromResult(new DevnetGenesis.CommandResult(0, listing));
+                return Task.FromResult((0, listing));
             }
             Assert(command == "curl", "Unexpected command");
             Assert(arguments.Contains("Authorization: Bearer test-token"), "Missing authentication");
@@ -70,7 +71,7 @@ foreach (var scenario in new[]
             downloads.Add($"{repo}/{devnet}");
             var response = repo == "second" ? secondStatus : devnet == "devnet-1" ? 200 : status;
             File.WriteAllText(arguments[Array.IndexOf(arguments, "--output") + 1], "{}");
-            return Task.FromResult(new DevnetGenesis.CommandResult(response == 0 ? 7 : 0, response.ToString()));
+            return Task.FromResult((response == 0 ? 7 : 0, response.ToString()));
         }
     }
     finally { temp.Delete(recursive: true); }
