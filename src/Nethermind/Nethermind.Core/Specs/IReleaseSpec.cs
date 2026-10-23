@@ -520,7 +520,7 @@ namespace Nethermind.Core.Specs
         /// </remarks>
         public bool IsEip8253Enabled { get; }
 
-        /// <summary>The accounts the EIP-8253 transition sets to nonce 1, from the chain configuration; empty when none are listed.</summary>
+        /// <summary>The accounts the EIP-8253 transition sets to nonce 1, from the chain configuration; empty while EIP-8253 is disabled and when none are listed.</summary>
         IReadOnlyList<Address> Eip8253Accounts { get; }
 
         /// <summary>
