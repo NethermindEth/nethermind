@@ -58,6 +58,7 @@ public sealed class BlockDiag
         EarlyAdoptedSlots, EarlyAbandonedSlots, LateAccounts, PostTxAccounts,
         ParStorageLoops, ParStorageMain, ParStorageHelper, ParBulkSetLoops, ParBulkSetMain, ParBulkSetHelper,
         ParHashCalls, ParHashLoops, ParHashMain, ParHashHelper,
+        FusedLoops, FusedMain, FusedHelper, FusedFallback,
         ShRan, ShSettled, ShRest, ShOk, ShXFirst, ShErr,
         Count
     }
@@ -97,6 +98,7 @@ public sealed class BlockDiag
         "early_adopted_slots", "early_abandoned_slots", "late_accounts", "post_tx_accounts",
         "par_storage_loops", "par_storage_main", "par_storage_helper", "par_bulkset_loops", "par_bulkset_main", "par_bulkset_helper",
         "par_hash_calls", "par_hash_loops", "par_hash_main", "par_hash_helper",
+        "fused_loops", "fused_main", "fused_helper", "fused_fallback",
         "sh_ran", "sh_settled", "sh_rest", "sh_ok", "sh_x_first", "sh_err",
     ];
 

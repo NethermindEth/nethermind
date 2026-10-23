@@ -151,6 +151,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Bench-only. After a block that carries newPayload diagnostics is reported valid, redo its account-trie update on two throw-away state tries: all changed accounts at once, and split into the accounts settled before the storage roots and the rest. The timings go to the block's diagnostics. Never changes what is committed.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ShadowAccountSplit { get; set; }
 
+    [ConfigItem(Description = "Bench-only. At the end of a block, update the account trie in one parallel pass, one job per top nibble that encodes its accounts, writes them and hashes its subtree, in place of a parallel write followed by a parallel hash; the state root then hashes only the root. `false` keeps the two passes.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool FusedAccountTrieUpdate { get; set; }
+
+    [ConfigItem(Description = "Bench-only. Fewest changed accounts in a block-end account-trie update that take the fused pass of FusedAccountTrieUpdate; a smaller update keeps the two passes. 1 sends every update through the fused pass.", DefaultValue = "128", HiddenFromDocs = true)]
+    int FusedAccountTrieMinAccounts { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 

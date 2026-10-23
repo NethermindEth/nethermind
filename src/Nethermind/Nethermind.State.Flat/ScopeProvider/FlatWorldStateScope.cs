@@ -971,12 +971,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 // The per-account flat writes above already carry intra-block state for subsequent txs; only a
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
+                // Bench (FlatDb.FusedAccountTrieUpdate): the fused pass also hashes below the root here, so this section
+                // then holds what state_root held below the root, and state_root holds the root node.
                 using (BlockDiag.Measure(diag, BlockDiag.F.WsAccountTrie))
                 {
                     if (diag is not null) diag.CurrentPhase = BlockDiag.Phase.AccountTrie;
                     try
                     {
-                        if (!_scope._trieless) _scope.StateTree.WriteAccounts(_dirtyAccounts);
+                        if (!_scope._trieless)
+                        {
+                            if (!_scope._configuration.FusedAccountTrieUpdate)
+                                _scope.StateTree.WriteAccounts(_dirtyAccounts);
+                            else if (!_scope.StateTree.WriteAccountsFused(_dirtyAccounts, _scope._configuration.FusedAccountTrieMinAccounts))
+                                diag?.Add(BlockDiag.C.FusedFallback, 1);
+                        }
                     }
                     finally
                     {

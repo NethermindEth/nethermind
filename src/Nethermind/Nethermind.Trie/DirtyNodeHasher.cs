@@ -143,6 +143,17 @@ internal static class DirtyNodeHasher
         return true;
     }
 
+    /// <summary>Bench (B'): hashes the subtree of the root's child <paramref name="childIndex" /> as <see cref="HashBelowRoot" />
+    /// hashes each of them, from the job that has just written it.</summary>
+    /// <remarks>Needs AVX2, as <see cref="HashBelowRoot" /> does. What this leaves unhashed <see cref="HashBelowRoot" />
+    /// still hashes.</remarks>
+    internal static void HashRootChildSubtree(TrieNode child, int childIndex, ITrieNodeResolver resolver, ICappedArrayPool? pool)
+    {
+        TreePath childPath = TreePath.Empty;
+        childPath.AppendMut(childIndex);
+        HashSubtree(child, in childPath, resolver, pool, MaxCollectedNodes);
+    }
+
     private static void HashSubtree(TrieNode subtreeRoot, in TreePath subtreeRootPath, ITrieNodeResolver resolver, ICappedArrayPool? pool, int maxCollectedNodes)
     {
         using ArrayPoolList<PendingNode> pending = new(64);

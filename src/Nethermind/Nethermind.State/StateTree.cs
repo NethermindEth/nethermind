@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -105,6 +106,82 @@ namespace Nethermind.State
 
         /// <summary>Writes the changed accounts into the tree.</summary>
         internal partial void WriteAccounts(Dictionary<AddressAsKey, Account?> accounts);
+
+        /// <summary>
+        /// Bench (B', <c>FlatDb.FusedAccountTrieUpdate</c>): writes the changed accounts and hashes what they changed below
+        /// the root in one parallel pass, one job per top nibble that encodes its own accounts, writes them and hashes its
+        /// subtree (<see cref="PatriciaTree.BulkSetAndHashByTopNibble"/>). Only the address hashing, which decides the
+        /// nibble, and the grouping stay on this thread. <see cref="UpdateRootHash()"/> is then left the root.
+        /// </summary>
+        /// <param name="minAccounts">Fewest accounts that take the fused pass; fewer, or a tree that cannot take it
+        /// (<see cref="PatriciaTree.CanFuseBulkSetAndHash"/>), go to <see cref="WriteAccounts"/>.</param>
+        /// <returns>Whether the fused pass ran.</returns>
+        [SkipLocalsInit]
+        internal bool WriteAccountsFused(Dictionary<AddressAsKey, Account?> accounts, int minAccounts)
+        {
+            const int Nibbles = 16;
+            int count = accounts.Count;
+            if (count < Math.Max(minAccounts, 1) || !CanFuseBulkSetAndHash)
+            {
+                WriteAccounts(accounts);
+                return false;
+            }
+
+            BulkSetEntry[] hashed = ArrayPool<BulkSetEntry>.Shared.Rent(count);
+            Account?[] hashedAccounts = ArrayPool<Account?>.Shared.Rent(count);
+            BulkSetEntry[] grouped = ArrayPool<BulkSetEntry>.Shared.Rent(count);
+            Account?[] groupedAccounts = ArrayPool<Account?>.Shared.Rent(count);
+            try
+            {
+                Unsafe.SkipInit(out KeyHashBatch batch);
+                batch.Initialize(Address.Size);
+                int index = 0;
+                foreach (KeyValuePair<AddressAsKey, Account?> entry in accounts)
+                {
+                    batch.Add(entry.Key.Value.Bytes, index, out ValueHash256 hash);
+                    hashed[index] = new(in hash, null);
+                    hashedAccounts[index++] = entry.Value;
+                    if (batch.IsFull) batch.Flush(hashed);
+                }
+                batch.Flush(hashed);
+
+                // Counting sort on the top nibble: starts[n] is where nibble n's accounts begin, starts[16] the count.
+                Span<int> starts = stackalloc int[Nibbles + 1];
+                starts.Clear();
+                for (int i = 0; i < count; i++) starts[hashed[i].GetPathNibble(0) + 1]++;
+                for (int nib = 0; nib < Nibbles; nib++) starts[nib + 1] += starts[nib];
+
+                Span<int> next = stackalloc int[Nibbles];
+                starts[..Nibbles].CopyTo(next);
+                for (int i = 0; i < count; i++)
+                {
+                    int to = next[hashed[i].GetPathNibble(0)]++;
+                    grouped[to] = hashed[i];
+                    groupedAccounts[to] = hashedAccounts[i];
+                }
+
+                // Read here so no job races the lazy initialisation.
+                byte[] emptyAccountRlp = EmptyAccountRlp.Bytes;
+                BulkSetAndHashByTopNibble(grouped, starts, (start, length) =>
+                {
+                    for (int i = start; i < start + length; i++)
+                    {
+                        Account? account = groupedAccounts[i];
+                        byte[]? encoded = account is null ? null : account.IsTotallyEmpty ? emptyAccountRlp : _decoder.EncodeAsBytes(account);
+                        grouped[i] = new(in grouped[i].Path, encoded);
+                    }
+                });
+
+                return true;
+            }
+            finally
+            {
+                ArrayPool<BulkSetEntry>.Shared.Return(hashed, clearArray: true);
+                ArrayPool<Account?>.Shared.Return(hashedAccounts, clearArray: true);
+                ArrayPool<BulkSetEntry>.Shared.Return(grouped, clearArray: true);
+                ArrayPool<Account?>.Shared.Return(groupedAccounts, clearArray: true);
+            }
+        }
 
         public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);
 
