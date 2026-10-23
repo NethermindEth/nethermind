@@ -55,7 +55,10 @@ public partial class StatelessBlockProcessingEnv(
 
     public IWorldState WorldState => _worldState ??= RequireWitnessedBytecode(
         new WorldState(
-            new WitnessTrieStoreScopeProvider(witness, logManager),
+            new TrieStoreScopeProvider(
+                // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
+                WitnessNodeStorage.CreateTrieStore(witness.State), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
+            ),
             logManager
         )
     );
