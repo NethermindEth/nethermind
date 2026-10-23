@@ -49,7 +49,9 @@ internal sealed class DiscoveryConnectionsPool(
         Task receiveTask = Task.Run(() => ReceiveAsync(socket, onReceive));
         if (socket.LocalEndpoint is { } endpoint)
         {
-            _ = _listenerState.TrackDiscoveryAddress(endpoint.Address, receiveTask);
+            // A completed receive task can be observed before its continuations run, so stopping waits for the listener
+            // state to be cleared instead.
+            receiveTask = _listenerState.TrackDiscoveryAddress(endpoint.Address, receiveTask);
         }
 
         _byPort.Add(port, new Listener(socket, receiveTask));
