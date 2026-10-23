@@ -1093,6 +1093,8 @@ public partial class EthRpcModule(
         // because of lazy evaluation of enumerable, we need to do the validation here first
         CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         bool timeoutTransferred = false;
+        BlockHeader? fromBlockHeader = null;
+        BlockHeader? toBlockHeader = null;
         try
         {
             CancellationToken cancellationToken = timeout.Token;
@@ -1130,8 +1132,8 @@ public partial class EthRpcModule(
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            BlockHeader fromBlockHeader = fromResult.Object!;
-            BlockHeader toBlockHeader = toResult.Object!;
+            fromBlockHeader = fromResult.Object!;
+            toBlockHeader = toResult.Object!;
 
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
@@ -1142,6 +1144,11 @@ public partial class EthRpcModule(
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
+        }
+        catch (ResourceNotFoundException) when (FindNotPrunedHeader(fromBlockHeader, toBlockHeader) is { } header)
+        {
+            // A block that is not processed yet has no receipts, which is not pruning: a retry can succeed. Geth answers the same.
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"failed to get logs for block #{header.Number}", ErrorCodes.ResourceNotFound);
         }
         catch (ResourceNotFoundException)
         {
@@ -1155,6 +1162,11 @@ public partial class EthRpcModule(
             }
         }
     }
+
+    private BlockHeader? FindNotPrunedHeader(BlockHeader? fromBlockHeader, BlockHeader? toBlockHeader) =>
+        fromBlockHeader is not null && !WasPruned(fromBlockHeader) ? fromBlockHeader
+        : toBlockHeader is not null && !WasPruned(toBlockHeader) ? toBlockHeader
+        : null;
 
     // https://github.com/ethereum/EIPs/issues/1186
     public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
@@ -1176,7 +1188,7 @@ public partial class EthRpcModule(
 
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet() || !WasStatePruned(header)
+            return _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet() || !WasPruned(header)
                 ? GetStateFailureResult<AccountProof>(header)
                 : ResultWrapper<AccountProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
         }
@@ -1363,7 +1375,7 @@ public partial class EthRpcModule(
     /// <remarks>
     /// Blocks ahead of the processed head and side-chain blocks may simply never have been processed.
     /// </remarks>
-    private bool WasStatePruned(BlockHeader header) =>
+    private bool WasPruned(BlockHeader header) =>
         _blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header);
 
     private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>

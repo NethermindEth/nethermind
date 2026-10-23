@@ -1454,6 +1454,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_logs_unprocessed_block_is_not_reported_as_pruned([Values] bool aheadOfHead)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Block head = chain.BlockTree.Head!;
+        Block parent = aheadOfHead ? head : chain.BlockTree.FindBlock(head.ParentHash!)!;
+        Block unprocessed = Build.A.Block.WithParent(parent).WithReceiptsRoot(TestItem.KeccakA).WithExtraData([1]).TestObject;
+        chain.BlockTree.SuggestBlock(unprocessed, BlockTreeSuggestOptions.ForceDontSetAsMain);
+
+        string serialized = await chain.TestEthRpc("eth_getLogs", $"{{\"blockHash\":\"{unprocessed.Hash}\"}}");
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.ResourceNotFound},\"message\":\"failed to get logs for block #{unprocessed.Number}\"}},\"id\":67}}"));
+    }
+
+    [Test]
     public async Task Eth_get_filter_logs_with_resourceNotFound()
     {
         using Context ctx = await Context.Create();
