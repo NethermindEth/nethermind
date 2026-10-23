@@ -338,10 +338,12 @@ public static partial class Merkle
 
         int nodeCount = (count + 1) / 2;
         UInt256[]? rented = null;
-        // One node beyond the first level's lets a lone last node pair with a zero hash in place.
-        Span<UInt256> nodes = nodeCount < StackNodeLimit
+        // An odd first level needs one node more, so its lone last node can pair with a zero hash in place;
+        // later levels are smaller and fit.
+        int nodeCapacity = nodeCount + (nodeCount & 1);
+        Span<UInt256> nodes = nodeCapacity <= StackNodeLimit
             ? stackalloc UInt256[StackNodeLimit]
-            : rented = ArrayPool<UInt256>.Shared.Rent(nodeCount + 1);
+            : rented = ArrayPool<UInt256>.Shared.Rent(nodeCapacity);
 
         int pairs = value.Length / 2;
         if (value.Length % 2 == 1)

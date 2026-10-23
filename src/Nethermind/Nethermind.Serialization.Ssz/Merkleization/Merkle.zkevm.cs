@@ -80,7 +80,7 @@ public static partial class Merkle
     /// One loop owns the state and parameter block for the whole tree, so a pair costs its two compressions, the state
     /// reset and the digest, without the per-pair call, setup and spills of <see cref="HashNodes"/>. A parent never
     /// overwrites a node the level has yet to read, as parent <c>i</c> lies at or before child <c>2i</c>; and a lone last
-    /// node pairs with the zero hash written after it, so <paramref name="nodes"/> must hold one node more than
+    /// node pairs with the zero hash written after it, so <paramref name="nodes"/> must hold one node more than an odd
     /// <paramref name="nodeCount"/>.
     /// </remarks>
     [SkipLocalsInit]
@@ -89,8 +89,8 @@ public static partial class Merkle
         if (!ZiskSha256FFlag.IsActive)
             return false;
 
-        // ZisK's collector never moves objects, so the nodes need no pinning: pinned locals would stay on the stack
-        // and spill around every compression.
+        // Nothing below allocates and the guest is single-threaded, so no GC can move the buffers: pinned locals
+        // would stay on the stack and spill around every compression.
         UInt256* firstLeaf = (UInt256*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(leaves));
         UInt256* firstNode = (UInt256*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(nodes));
 
