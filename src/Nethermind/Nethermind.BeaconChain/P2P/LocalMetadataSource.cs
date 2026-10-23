@@ -16,13 +16,19 @@ namespace Nethermind.BeaconChain.P2P;
 /// </remarks>
 public class LocalMetadataSource(IBeaconChainConfig? config = null, BeaconChainStore? store = null)
 {
-    public MetaDataV3 Current { get; set; } = new()
+    private readonly Lazy<MetaDataV3> _initial = new(() => new()
     {
         SeqNumber = Sequence(config?.CustodyGroupCount ?? Eip7594DasConstants.CustodyRequirement, store),
         Attnets = new BitArray(64),
         Syncnets = new BitArray(4),
         CustodyGroupCount = config?.CustodyGroupCount ?? Eip7594DasConstants.CustodyRequirement,
-    };
+    });
+
+    public MetaDataV3 Current
+    {
+        get => field ?? _initial.Value;
+        set;
+    }
 
     private static ulong Sequence(ulong count, BeaconChainStore? store)
     {

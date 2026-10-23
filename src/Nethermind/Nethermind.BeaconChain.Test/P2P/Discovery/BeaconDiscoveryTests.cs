@@ -29,6 +29,19 @@ namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 public class BeaconDiscoveryTests
 {
     [Test]
+    public void Resolving_metadata_leaves_a_fresh_database_empty_until_schema_validation()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        LocalMetadataSource metadata = new(store: store);
+
+        Assert.That(store.GetMetadata("p2pMetadata"), Is.Null);
+        Assert.DoesNotThrow(store.EnsureSchemaVersion);
+        Assert.That(metadata.Current.SeqNumber, Is.EqualTo(2UL));
+        Assert.That(store.GetMetadata("p2pMetadata"), Is.Not.Null);
+    }
+
+    [Test]
     public void Metadata_sequence_survives_restart_and_increments_when_custody_changes([Values(4UL, 128UL)] ulong initialCount)
     {
         using MemColumnsDb<BeaconChainDbColumns> db = new();
