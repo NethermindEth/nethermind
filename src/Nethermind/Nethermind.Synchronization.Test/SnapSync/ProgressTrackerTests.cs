@@ -160,6 +160,33 @@ public class ProgressTrackerTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void Will_publish_covered_account_key_space()
+    {
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 4, snapTrieFactory: snapTrieFactory);
+        Assert.That(Metrics.SnapRangesProgress, Is.Zero);
+
+        progressTracker.IsFinished(out SnapSyncBatch? request);
+        using (request)
+        {
+            ValueHash256 limit = request!.AccountRangeRequest!.LimitHash!.Value;
+            progressTracker.UpdateAccountRangePartitionProgress(limit, new Hash256("0x2000000000000000000000000000000000000000000000000000000000000000"), true);
+            Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(1250));
+
+            progressTracker.UpdateAccountRangePartitionProgress(limit, limit, false);
+            Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(2500));
+        }
+
+        snapTrieFactory.IsRangePhaseFinished().Returns(true);
+        progressTracker.LoadProgress();
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
+
+        progressTracker.Reset();
+        Assert.That(Metrics.SnapRangesProgress, Is.Zero);
+    }
+
+    [Test]
     public void Will_skip_account_ranges_when_range_phase_already_finished()
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
