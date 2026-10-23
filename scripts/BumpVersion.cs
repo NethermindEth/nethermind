@@ -20,6 +20,7 @@ try
     if (!branch.Success) throw new InvalidOperationException("error: Invalid branch name format. Expected: refs/heads/release/X.Y.0");
     if (!File.Exists(args[1])) throw new InvalidOperationException($"error: Directory.Build.props not found at {args[1]}");
     var minor = branch.Groups[2].Value;
+    // Preserve Bash arithmetic: a leading zero makes the minor version octal.
     var next = checked(Convert.ToInt64(minor, minor.StartsWith('0') ? 8 : 10) + 1);
     var version = $"{branch.Groups[1].Value}.{next.ToString(CultureInfo.InvariantCulture)}.0";
     var text = File.ReadAllText(args[1]);
