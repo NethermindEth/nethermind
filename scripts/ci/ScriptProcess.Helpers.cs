@@ -6,7 +6,7 @@ using System.Text;
 
 static class ScriptProcess
 {
-    internal static async Task<(int Code, string Output, string Error)> Run(string executable, string[] arguments, CancellationToken cancellationToken, bool echo = false, string? workingDirectory = null)
+    internal static async Task<(int Code, string Output, string Error)> Run(string executable, string[] arguments, CancellationToken cancellationToken, bool echo = false, string? workingDirectory = null, bool capture = true)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var start = new ProcessStartInfo(executable)
@@ -18,8 +18,8 @@ static class ScriptProcess
         };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start)!;
-        var stdout = Drain(process.StandardOutput, echo ? Console.Out : null, cancellationToken);
-        var stderr = Drain(process.StandardError, echo ? Console.Error : null, cancellationToken);
+        var stdout = Drain(process.StandardOutput, echo ? Console.Out : null, capture, cancellationToken);
+        var stderr = Drain(process.StandardError, echo ? Console.Error : null, capture, cancellationToken);
         try
         {
             await process.WaitForExitAsync(cancellationToken);
@@ -37,15 +37,15 @@ static class ScriptProcess
         }
     }
 
-    private static async Task<string> Drain(StreamReader reader, TextWriter? writer, CancellationToken cancellationToken)
+    private static async Task<string> Drain(StreamReader reader, TextWriter? writer, bool capture, CancellationToken cancellationToken)
     {
-        var output = new StringBuilder();
+        var output = capture ? new StringBuilder() : null;
         var buffer = new char[8192];
         while (await reader.ReadAsync(buffer, cancellationToken) is var count && count > 0)
         {
             if (writer is not null) await writer.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
-            output.Append(buffer, 0, count);
+            output?.Append(buffer, 0, count);
         }
-        return output.ToString();
+        return output?.ToString() ?? "";
     }
 }

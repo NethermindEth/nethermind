@@ -36,7 +36,7 @@ try
         {
             foreach (var file in files)
                 await Run("dotnet", ["build", file, "--no-incremental", "--artifacts-path", artifacts.FullName,
-                    "-p:EnforceCodeStyleInBuild=true", "-p:GenerateDocumentationFile=true", "-p:WarningsAsErrors=IDE0005"], cancellation.Token);
+                    "-p:EnforceCodeStyleInBuild=true", "-p:GenerateDocumentationFile=true", "-p:WarningsAsErrors=IDE0005"], cancellation.Token, capture: false);
         }
         finally
         {
@@ -70,7 +70,7 @@ try
             throw new InvalidOperationException($"{file} did not report a positive 'Passed N tests.' summary.");
     }
     foreach (var file in shellFiles)
-        await Run("bash", [file], cancellation.Token);
+        await Run("bash", [file], cancellation.Token, capture: false);
 
     Console.WriteLine($"Passed {pythonFiles.Length + csharpFiles.Length + shellFiles.Length} test file(s).");
     return 0;
@@ -86,10 +86,10 @@ catch (Exception exception)
     return 1;
 }
 
-static async Task<string> Run(string executable, string[] arguments, CancellationToken cancellationToken)
+static async Task<string> Run(string executable, string[] arguments, CancellationToken cancellationToken, bool capture = true)
 {
     Console.WriteLine($"> {executable} {string.Join(' ', arguments)}");
-    var result = await ScriptProcess.Run(executable, arguments, cancellationToken, echo: true);
+    var result = await ScriptProcess.Run(executable, arguments, cancellationToken, echo: true, capture: capture);
     if (result.Code != 0)
         throw new InvalidOperationException($"{executable} exited with code {result.Code}.");
     return result.Output + result.Error;
