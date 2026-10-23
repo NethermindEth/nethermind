@@ -232,7 +232,7 @@ public class WebSocketExtensionsTests
         manager.GetModule("ws").Returns(module);
 
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsDebug.Returns(true);
+        logger.IsTrace.Returns(true);
         logger.IsError.Returns(true);
         ServiceCollection services = new();
         services.AddSingleton(manager);
