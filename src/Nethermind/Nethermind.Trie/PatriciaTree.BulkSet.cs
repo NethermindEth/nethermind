@@ -162,11 +162,14 @@ public partial class PatriciaTree
         }
 
         long loopStart = diag?.LoopStarted(BlockDiag.F.PlAccountFirst) ?? 0;
+        // Bench-only: inside a storage-root item, the loop and its items count for that item.
+        BlockDiag.NestedLoop nested = BlockDiag.BeginNestedLoop(BlockDiag.NestedKind.BulkSet);
         ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
             GetTraverseStack,
             (i, workerTraverseStack) =>
             {
                 diag?.CountWorkItem(BlockDiag.C.ParBulkSetMain, BlockDiag.C.ParBulkSetHelper, BlockDiag.F.PlAccountFirst, loopStart);
+                using BlockDiag.NestedItem nestedItem = nested.RunItem();
                 (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
 
                 Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
@@ -188,6 +191,7 @@ public partial class PatriciaTree
             },
             ReturnTraverseStack
         );
+        nested.End();
     }
 
     /// <param name="ctx">Just to reduce the param count</param>

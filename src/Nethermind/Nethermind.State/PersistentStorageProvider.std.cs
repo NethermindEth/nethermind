@@ -210,16 +210,21 @@ internal sealed partial class PersistentStorageProvider
         using BlockDiag.Section loop = BlockDiag.Measure(diag, BlockDiag.F.WsfLoop);
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         long loopStart = diag?.LoopStarted(BlockDiag.F.PlStorageFirst) ?? 0;
+        // Item 0 of the block's first loop is its largest storage-root item, stamped wherever it runs.
+        bool firstLoop = diag?.StorageLoopStarted() ?? false;
         ParallelUnbalancedWork.For(
             0,
             storages.Count,
             RuntimeInformation.ParallelOptionsLogicalCores,
-            (storages, writes: 0, skips: 0, diag, loopStart),
+            (storages, writes: 0, skips: 0, diag, loopStart, firstLoop),
             static (i, state) =>
             {
                 state.diag?.CountWorkItem(BlockDiag.C.ParStorageMain, BlockDiag.C.ParStorageHelper, BlockDiag.F.PlStorageFirst, state.loopStart);
                 ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
+                using BlockDiag.StorageItem item = BlockDiag.EnterStorageItem(state.diag, i, state.firstLoop);
+                int estimated = item.IsLargest ? kvp.ContractState.EstimatedChanges : 0;
                 (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
+                if (item.IsLargest) state.diag!.SetLargestItem(estimated, writes, kvp.ContractState.LastDeletes, skipped);
                 state.writes += writes;
                 state.skips += skipped;
 
@@ -231,6 +236,9 @@ internal sealed partial class PersistentStorageProvider
 
     private sealed partial class PerContractState
     {
+        /// <summary>Bench-only: the slots the last <see cref="WriteChanges"/> cleared.</summary>
+        internal int LastDeletes;
+
         [SkipLocalsInit]
         private partial (int writes, int skipped) WriteChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
@@ -256,6 +264,7 @@ internal sealed partial class PersistentStorageProvider
                 }
             }
 
+            LastDeletes = deferredDeletes.Count;
             writes += WriteDeletes(deferredDeletes.AsSpan(), storageWriteBatch);
             return (writes, skipped);
         }

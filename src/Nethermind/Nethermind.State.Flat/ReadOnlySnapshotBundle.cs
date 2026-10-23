@@ -298,6 +298,15 @@ public sealed class ReadOnlySnapshotBundle(
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
+        // Bench-only: the loads of the block's largest storage-root item are counted and timed on the threads doing it.
+        long diagRead = BlockDiag.TrieReadStart();
+        byte[]? rlp = TryLoadStorageRlpCore(address, in path, flags);
+        if (diagRead != 0) BlockDiag.TrieReadEnd(diagRead);
+        return rlp;
+    }
+
+    private byte[]? TryLoadStorageRlpCore(Hash256 address, in TreePath path, ReadFlags flags)
+    {
         GuardDispose();
 
         if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in path, out byte[]? persistedRlp))

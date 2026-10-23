@@ -46,6 +46,13 @@ public sealed class BlockDiag
         ShFull, ShP1, ShP2, WsfPrologue, WsfLoop,
         // When the first helper of the block's first loop of a kind started its first item, after the loop started; no CPU.
         PlStorageFirst, PlAccountFirst, PlHashFirst,
+        // The storage-root step's nested loops on the block-processing thread: the outermost BulkSet and hash loops it
+        // ran inside storage-root items, the join waits after its own last item of each of its nested loops at any
+        // depth (no CPU), and the first helper of its first loop of each kind in the block (no CPU).
+        SrNestedBs, SrNestedHash, SrNestedWait, SrNestedBsFirst, SrNestedHashFirst,
+        // The block's largest storage-root item (index 0 of its first parallel loop) on the thread that ran it, and the
+        // trie-node loads from persistence inside it, on that thread and on the helpers of its nested loops (no CPU).
+        SrItem0, SrItem0ReadsOwn, SrItem0ReadsNested,
         Count
     }
 
@@ -62,6 +69,17 @@ public sealed class BlockDiag
         ParHashCalls, ParHashLoops, ParHashMain, ParHashHelper,
         FusedLoops, FusedMain, FusedHelper, FusedFallback,
         ShRan, ShSettled, ShRest, ShOk, ShXFirst, ShErr,
+        // Nested loops of the storage-root step: those the block-processing thread started, with their items by runner,
+        // and those another thread started, with all their items.
+        SrNestedBsLoops, SrNestedBsMain, SrNestedBsHelper, SrNestedHashLoops, SrNestedHashMain, SrNestedHashHelper,
+        SrNestedOffLoops, SrNestedOffItems,
+        // The items the block-processing thread ran in the block's first parallel storage-root loop: how many, and their
+        // first, last and summed indices in the sorted list.
+        SrMainItems, SrMainIdxFirst, SrMainIdxLast, SrMainIdxSum,
+        // The largest item: its estimated changes, what it applied, whether the block-processing thread ran it, the
+        // context switches, major faults and blocks read of its thread, and its trie-node loads from persistence.
+        SrItem0Est, SrItem0Writes, SrItem0Deletes, SrItem0Skipped, SrItem0Main,
+        SrItem0Vcsw, SrItem0Ivcsw, SrItem0Majflt, SrItem0Inblock, SrItem0ReadsOwn, SrItem0ReadsNested,
         Count
     }
 
@@ -89,6 +107,8 @@ public sealed class BlockDiag
         "pw_drain", "precommit", "pc_storage_trees", "pc_state_tree", "pc_snapshot",
         "sh_full", "sh_p1", "sh_p2", "wsf_prologue", "wsf_loop",
         "pl_storage_first", "pl_account_first", "pl_hash_first",
+        "sr_nested_bs", "sr_nested_hash", "sr_nested_wait", "sr_nested_bs_first", "sr_nested_hash_first",
+        "sr_item0", "sr_item0_reads_own", "sr_item0_reads_nested",
     ];
 
     private static readonly string[] CNames =
@@ -103,6 +123,11 @@ public sealed class BlockDiag
         "par_hash_calls", "par_hash_loops", "par_hash_main", "par_hash_helper",
         "fused_loops", "fused_main", "fused_helper", "fused_fallback",
         "sh_ran", "sh_settled", "sh_rest", "sh_ok", "sh_x_first", "sh_err",
+        "sr_nested_bs_loops", "sr_nested_bs_main", "sr_nested_bs_helper", "sr_nested_hash_loops", "sr_nested_hash_main", "sr_nested_hash_helper",
+        "sr_nested_off_loops", "sr_nested_off_items",
+        "sr_main_items", "sr_main_idx_first", "sr_main_idx_last", "sr_main_idx_sum",
+        "sr_item0_est", "sr_item0_writes", "sr_item0_deletes", "sr_item0_skipped", "sr_item0_main",
+        "sr_item0_vcsw", "sr_item0_ivcsw", "sr_item0_majflt", "sr_item0_inblock", "sr_item0_reads_own", "sr_item0_reads_nested",
     ];
 
     private readonly long[] _t = new long[(int)P.Count];
@@ -156,6 +181,253 @@ public sealed class BlockDiag
         if (_loopStart[(int)firstHelper] != 0) return 0;
         return _loopStart[(int)firstHelper] = Stopwatch.GetTimestamp();
     }
+
+    /// <summary>The parallel loops that can run inside a storage-root item, below its storage-trie write batch.</summary>
+    public enum NestedKind { BulkSet, Hash }
+
+    // What the current thread does for the storage-root step: set for the length of a storage-root item, and of each
+    // nested item another thread runs for one, so nested loops and trie-node loads count for the item they work for.
+    private struct ItemContext
+    {
+        public BlockDiag? Diag;
+        // The work is for the block's largest item, whose trie-node loads are timed.
+        public bool Largest;
+        // Nested loops the thread has begun and not yet ended inside the context.
+        public int Depth;
+        // The block-processing thread: when it last ended an item of one of its nested loops; reset as it begins one.
+        public long LastItemEnd;
+        // Loads accumulated on the thread until the context ends.
+        public long Reads;
+        public long ReadTicks;
+    }
+
+    [ThreadStatic] private static ItemContext _item;
+
+    private bool _storageLoopSeen;
+
+    /// <summary>Marks the block's first parallel storage-root loop; called by the block-processing thread before it.</summary>
+    /// <returns>Whether this is that loop, whose item 0 is the block's largest storage-root item.</returns>
+    public bool StorageLoopStarted()
+    {
+        if (_storageLoopSeen) return false;
+        _storageLoopSeen = true;
+        return true;
+    }
+
+    /// <summary>Starts a storage-root item on the current thread; dispose it when the item ends.</summary>
+    /// <param name="index">The item's index in the loop's list, sorted largest first.</param>
+    /// <param name="firstLoop">What <see cref="StorageLoopStarted"/> returned for the loop.</param>
+    public static StorageItem EnterStorageItem(BlockDiag? diag, int index, bool firstLoop) =>
+        diag is null ? default : new StorageItem(diag, index, firstLoop);
+
+    /// <summary>Records what the block's largest storage-root item applied; called by the thread that ran it.</summary>
+    /// <param name="writes">The slots it wrote, deletes included.</param>
+    public void SetLargestItem(int estimated, int writes, int deletes, int skipped)
+    {
+        _c[(int)C.SrItem0Est] = estimated;
+        _c[(int)C.SrItem0Writes] = writes - deletes;
+        _c[(int)C.SrItem0Deletes] = deletes;
+        _c[(int)C.SrItem0Skipped] = skipped;
+    }
+
+    // The block-processing thread only, in the block's first parallel storage-root loop.
+    private void CountMainItem(int index)
+    {
+        if (_c[(int)C.SrMainItems]++ == 0) _c[(int)C.SrMainIdxFirst] = index;
+        _c[(int)C.SrMainIdxLast] = index;
+        _c[(int)C.SrMainIdxSum] += index;
+    }
+
+    private void AddReads(C count, F section, long reads, long ticks)
+    {
+        if (reads == 0) return;
+        Interlocked.Add(ref _c[(int)count], reads);
+        Interlocked.Add(ref _wall[(int)section], ticks);
+    }
+
+    /// <summary>A storage-root item on the thread that runs it.</summary>
+    public readonly ref struct StorageItem
+    {
+        private readonly BlockDiag? _diag;
+        private readonly ItemContext _previous;
+        private readonly bool _largest;
+        private readonly bool _main;
+        private readonly long _wall0;
+        private readonly long _cpu0;
+        private readonly ThreadUsage _usage0;
+
+        internal StorageItem(BlockDiag diag, int index, bool firstLoop)
+        {
+            _diag = diag;
+            _previous = _item;
+            _largest = firstLoop && index == 0;
+            _main = ReferenceEquals(Current, diag);
+            if (firstLoop && _main) diag.CountMainItem(index);
+            _item = new ItemContext { Diag = diag, Largest = _largest };
+            if (!_largest) return;
+            _usage0 = ThreadUsage.Read();
+            _cpu0 = ThreadCpuNs();
+            _wall0 = Stopwatch.GetTimestamp();
+        }
+
+        /// <summary>Whether this is the block's largest item, index 0 of its first parallel storage-root loop.</summary>
+        public bool IsLargest => _largest;
+
+        public void Dispose()
+        {
+            if (_diag is not { } diag) return;
+            if (_largest)
+            {
+                long wall = Stopwatch.GetTimestamp() - _wall0;
+                diag.AddSection(F.SrItem0, wall, ThreadCpuNs() - _cpu0);
+                ThreadUsage usage = ThreadUsage.Read();
+                diag._c[(int)C.SrItem0Main] = _main ? 1 : 0;
+                diag._c[(int)C.SrItem0Vcsw] = usage.Vcsw - _usage0.Vcsw;
+                diag._c[(int)C.SrItem0Ivcsw] = usage.Ivcsw - _usage0.Ivcsw;
+                diag._c[(int)C.SrItem0Majflt] = usage.Majflt - _usage0.Majflt;
+                diag._c[(int)C.SrItem0Inblock] = usage.Inblock - _usage0.Inblock;
+                diag.AddReads(C.SrItem0ReadsOwn, F.SrItem0ReadsOwn, _item.Reads, _item.ReadTicks);
+            }
+
+            _item = _previous;
+        }
+    }
+
+    /// <summary>
+    /// Begins a parallel loop on the current thread. Inside a storage-root item it is counted, by who started it; on the
+    /// block-processing thread its join wait is added up and, for the outermost loop, its time. Call
+    /// <see cref="NestedLoop.End"/> on the same thread once the loop has returned.
+    /// </summary>
+    public static NestedLoop BeginNestedLoop(NestedKind kind)
+    {
+        ref ItemContext item = ref _item;
+        if (item.Diag is not { } diag) return default;
+        item.Depth++;
+        int owner = Environment.CurrentManagedThreadId;
+        if (!ReferenceEquals(Current, diag))
+        {
+            Interlocked.Increment(ref diag._c[(int)C.SrNestedOffLoops]);
+            return new NestedLoop(diag, kind, item.Largest, byMain: false, outermost: false, owner, 0, 0, 0);
+        }
+
+        bool bulkSet = kind == NestedKind.BulkSet;
+        diag._c[(int)(bulkSet ? C.SrNestedBsLoops : C.SrNestedHashLoops)]++;
+        long firstStart = diag.LoopStarted(bulkSet ? F.SrNestedBsFirst : F.SrNestedHashFirst);
+        // An inner loop runs inside an item of the outer one, which records its own end after it.
+        item.LastItemEnd = 0;
+        bool outermost = item.Depth == 1;
+        long cpu0 = outermost ? ThreadCpuNs() : 0;
+        return new NestedLoop(diag, kind, item.Largest, byMain: true, outermost, owner, firstStart, Stopwatch.GetTimestamp(), cpu0);
+    }
+
+    /// <summary>A parallel loop begun inside a storage-root item; <see langword="default"/> outside one.</summary>
+    public readonly struct NestedLoop
+    {
+        private readonly BlockDiag? _diag;
+        private readonly NestedKind _kind;
+        private readonly bool _largest;
+        private readonly bool _byMain;
+        private readonly bool _outermost;
+        private readonly int _owner;
+        private readonly long _firstStart;
+        private readonly long _start;
+        private readonly long _cpu0;
+
+        internal NestedLoop(BlockDiag diag, NestedKind kind, bool largest, bool byMain, bool outermost, int owner, long firstStart, long start, long cpu0)
+        {
+            _diag = diag;
+            _kind = kind;
+            _largest = largest;
+            _byMain = byMain;
+            _outermost = outermost;
+            _owner = owner;
+            _firstStart = firstStart;
+            _start = start;
+            _cpu0 = cpu0;
+        }
+
+        /// <summary>Starts one of the loop's items on the current thread; dispose it when the item ends.</summary>
+        public NestedItem RunItem()
+        {
+            if (_diag is not { } diag) return default;
+            if (_byMain)
+            {
+                bool bulkSet = _kind == NestedKind.BulkSet;
+                diag.CountWorkItem(bulkSet ? C.SrNestedBsMain : C.SrNestedHashMain, bulkSet ? C.SrNestedBsHelper : C.SrNestedHashHelper,
+                    bulkSet ? F.SrNestedBsFirst : F.SrNestedHashFirst, _firstStart);
+            }
+            else
+            {
+                Interlocked.Increment(ref diag._c[(int)C.SrNestedOffItems]);
+            }
+
+            // The thread that began the loop already works in the item's context.
+            if (Environment.CurrentManagedThreadId == _owner) return _byMain ? new NestedItem(diag) : default;
+            return new NestedItem(diag, _largest);
+        }
+
+        /// <summary>Ends the loop on the thread that began it, right after the loop has returned.</summary>
+        public void End()
+        {
+            if (_diag is not { } diag) return;
+            ref ItemContext item = ref _item;
+            item.Depth--;
+            if (!_byMain) return;
+
+            long now = Stopwatch.GetTimestamp();
+            // The waits of loops at every depth add up: an inner loop's wait falls inside an item of the outer loop,
+            // before that loop's own last item ends. Without an item of its own the thread waited for the whole loop.
+            diag.AddSection(F.SrNestedWait, now - (item.LastItemEnd != 0 ? item.LastItemEnd : _start), 0);
+            // An inner loop's time is inside an item of the outer one, so only the outermost is timed.
+            if (_outermost) diag.AddSection(_kind == NestedKind.BulkSet ? F.SrNestedBs : F.SrNestedHash, now - _start, ThreadCpuNs() - _cpu0);
+        }
+    }
+
+    /// <summary>One item of a nested loop on the thread that runs it.</summary>
+    public readonly ref struct NestedItem
+    {
+        private readonly BlockDiag? _diag;
+        private readonly bool _helper;
+        private readonly ItemContext _previous;
+
+        // An item of a nested loop of the block-processing thread, run by that thread.
+        internal NestedItem(BlockDiag diag) => _diag = diag;
+
+        // An item another thread runs for the storage-root item: it takes the item's context meanwhile.
+        internal NestedItem(BlockDiag diag, bool largest)
+        {
+            _diag = diag;
+            _helper = true;
+            _previous = _item;
+            _item = new ItemContext { Diag = diag, Largest = largest };
+        }
+
+        public void Dispose()
+        {
+            if (_diag is not { } diag) return;
+            if (!_helper)
+            {
+                _item.LastItemEnd = Stopwatch.GetTimestamp();
+                return;
+            }
+
+            if (_item.Largest) diag.AddReads(C.SrItem0ReadsNested, F.SrItem0ReadsNested, _item.Reads, _item.ReadTicks);
+            _item = _previous;
+        }
+    }
+
+    /// <summary>Starts timing a trie-node load from persistence: 0 unless the current thread works for the block's
+    /// largest storage-root item.</summary>
+    public static long TrieReadStart() => _item.Largest ? Stopwatch.GetTimestamp() : 0;
+
+    /// <summary>Accumulates on the current thread a load that <see cref="TrieReadStart"/> started.</summary>
+    public static void TrieReadEnd(long start)
+    {
+        ref ItemContext item = ref _item;
+        item.Reads++;
+        item.ReadTicks += Stopwatch.GetTimestamp() - start;
+    }
+
     public ulong BlockNumber { get; set; }
 
     /// <summary>The request of the block the current thread is processing, if any; set by the block-processing thread.</summary>
@@ -236,6 +508,34 @@ public sealed class BlockDiag
     {
         if (!HasThreadCpuClock) return 0;
         return ClockGetTime(ClockThreadCpuTimeId, out Timespec ts) == 0 ? ts.Sec * 1_000_000_000L + ts.Nsec : 0;
+    }
+
+    // Linux struct rusage on 64-bit: two timevals, then fourteen longs.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RUsage
+    {
+        public long UtimeSec, UtimeUsec, StimeSec, StimeUsec;
+        public long MaxRss, IxRss, IdRss, IsRss, MinFlt, MajFlt, NSwap, InBlock, OuBlock, MsgSnd, MsgRcv, NSignals, NVcsw, NIvcsw;
+    }
+
+    private const int RUsageThread = 1;
+
+    [DllImport("libc", EntryPoint = "getrusage")]
+    private static extern int GetRUsage(int who, out RUsage usage);
+
+    /// <summary>The calling thread's voluntary and involuntary context switches, major faults and 512-byte blocks read
+    /// from storage; zeros where they cannot be read.</summary>
+    private readonly struct ThreadUsage(long vcsw, long ivcsw, long majflt, long inblock)
+    {
+        public readonly long Vcsw = vcsw;
+        public readonly long Ivcsw = ivcsw;
+        public readonly long Majflt = majflt;
+        public readonly long Inblock = inblock;
+
+        public static ThreadUsage Read() =>
+            HasThreadCpuClock && GetRUsage(RUsageThread, out RUsage usage) == 0
+                ? new ThreadUsage(usage.NVcsw, usage.NIvcsw, usage.MajFlt, usage.InBlock)
+                : default;
     }
 
     private long Anchor => _t[(int)P.HttpEntry] != 0 ? _t[(int)P.HttpEntry] : _t[(int)P.ModEntry];

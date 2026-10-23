@@ -125,11 +125,14 @@ internal static class DirtyNodeHasher
         diag?.Add(BlockDiag.C.ParHashLoops, 1);
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
         long loopStart = diag?.LoopStarted(BlockDiag.F.PlHashFirst) ?? 0;
+        // Bench-only: inside a storage-root item, the loop and its items count for that item.
+        BlockDiag.NestedLoop nested = BlockDiag.BeginNestedLoop(BlockDiag.NestedKind.Hash);
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
-            (dirtyChildren, root, resolver, pool, maxCollectedNodes, diag, loopStart),
+            (dirtyChildren, root, resolver, pool, maxCollectedNodes, diag, loopStart, nested),
             static (i, state) =>
             {
                 state.diag?.CountWorkItem(BlockDiag.C.ParHashMain, BlockDiag.C.ParHashHelper, BlockDiag.F.PlHashFirst, state.loopStart);
+                using BlockDiag.NestedItem nestedItem = state.nested.RunItem();
                 // The i-th set bit of the mask.
                 uint remaining = state.dirtyChildren;
                 for (int skipped = 0; skipped < i; skipped++) remaining &= remaining - 1;
@@ -140,6 +143,7 @@ internal static class DirtyNodeHasher
                 HashSubtree(child!, in childPath, state.resolver, state.pool, state.maxCollectedNodes);
                 return state;
             });
+        nested.End();
 
         return true;
     }
