@@ -229,17 +229,7 @@ public class Startup : IStartup
 
         if (initConfig.WebSocketsEnabled)
         {
-            CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
-            app.UseWebSockets(new WebSocketOptions());
-            app.UseWhen(ctx =>
-                ctx.WebSockets.IsWebSocketRequest &&
-                jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
-                jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-            builder =>
-            {
-                builder.UseWebSocketOriginFilter(corsPolicy);
-                builder.UseWebSocketsModules();
-            });
+            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection);
         }
 
         IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
@@ -284,6 +274,25 @@ public class Startup : IStartup
                     builder.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
                 });
         }
+    }
+
+    /// <summary>
+    /// Serves WebSockets on the ports that enable them. Browsers from origins that <see cref="IJsonRpcConfig.CorsOrigins"/>
+    /// does not allow are turned away before a socket is accepted.
+    /// </summary>
+    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection)
+    {
+        CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
+        app.UseWebSockets(new WebSocketOptions());
+        app.UseWhen(ctx =>
+            ctx.WebSockets.IsWebSocketRequest &&
+            jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+            jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
+        builder =>
+        {
+            builder.UseWebSocketOriginFilter(corsPolicy);
+            builder.UseWebSocketsModules();
+        });
     }
 
     private static bool IsLocalhost(IPAddress remoteIp)

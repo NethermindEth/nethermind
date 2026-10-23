@@ -3,6 +3,7 @@
 
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.WebSockets;
@@ -12,9 +13,13 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Runner.JsonRpc;
+using Nethermind.Sockets;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.JsonRpc;
@@ -55,34 +60,43 @@ public class WebSocketOriginFilterTests
         Assert.That(refused!.Message, Does.Contain("403"));
     }
 
-    /// <summary>Serves WebSockets the way <see cref="Startup"/> does: the origin filter runs ahead of the socket handler.</summary>
+    /// <summary>
+    /// Serves WebSockets through <see cref="Startup.UseJsonRpcWebSockets"/>, the pipeline <see cref="Startup"/> builds,
+    /// with a module that accepts every socket.
+    /// </summary>
     private static async Task<WebApplication> StartAsync(IJsonRpcConfig config)
     {
         WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
         builder.Services.AddLogging();
+        builder.Services.AddSingleton(AcceptingWebSocketsManager());
         builder.WebHost.UseKestrelCore().ConfigureKestrel(static options => options.Listen(IPAddress.Loopback, 0));
 
         WebApplication app = builder.Build();
-        app.UseWebSockets(new WebSocketOptions());
-        app.UseWhen(static ctx => ctx.WebSockets.IsWebSocketRequest, branch =>
-        {
-            branch.UseWebSocketOriginFilter(Startup.CreateCorsPolicy(config));
-            branch.Run(static async ctx =>
-            {
-                using WebSocket socket = await ctx.WebSockets.AcceptWebSocketAsync();
-                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
-            });
-        });
+        WebSocketUrls urls = new();
+        Startup.UseJsonRpcWebSockets(app, config, urls);
 
         await app.StartAsync();
+        // The port is known only once Kestrel has bound it; the pipeline looks it up per request.
+        int port = HttpUri(app).Port;
+        urls.Add(port, new JsonRpcUrl(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), port, RpcEndpoint.Ws, false, [ModuleType.Eth]));
         return app;
     }
 
-    private static Uri WebSocketUri(WebApplication app)
+    private static IWebSocketsManager AcceptingWebSocketsManager()
     {
-        Uri http = new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First());
-        return new UriBuilder(http) { Scheme = "ws" }.Uri;
+        ISocketsClient client = Substitute.For<ISocketsClient>();
+        client.Id.Returns("test");
+        IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
+        module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(ValueTask.FromResult(client));
+        IWebSocketsManager manager = Substitute.For<IWebSocketsManager>();
+        manager.GetModule(Arg.Any<string>()).Returns(module);
+        return manager;
     }
+
+    private static Uri HttpUri(WebApplication app) =>
+        new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First());
+
+    private static Uri WebSocketUri(WebApplication app) => new UriBuilder(HttpUri(app)) { Scheme = "ws" }.Uri;
 
     private static async Task<ClientWebSocket> ConnectAsync(Uri uri, string? origin)
     {
@@ -99,5 +113,10 @@ public class WebSocketOriginFilterTests
             socket.Dispose();
             throw;
         }
+    }
+
+    private sealed class WebSocketUrls : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection
+    {
+        public string[] Urls => Values.Select(static url => url.ToString()).ToArray();
     }
 }
