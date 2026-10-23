@@ -918,6 +918,9 @@ namespace Nethermind.Network.Test
         }
 
         private readonly int _delay = 500;
+        // Connections go through the update loop and several thread-pool hops while the fixture's other managers run;
+        // the poll returns as soon as the count is reached.
+        private readonly int _connectWait = 10_000;
 
         private readonly int _delayLong = 1000;
         private readonly int _delayLonger = 3000;
@@ -1051,7 +1054,7 @@ namespace Nethermind.Network.Test
                 ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, node.Host, node.Port));
             }
 
-            Assert.That(() => ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic), Is.EqualTo(nodesCount).After(_delay, 10));
+            Assert.That(() => ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic), Is.EqualTo(nodesCount).After(_connectWait, 10));
         }
 
         [Test]
@@ -1292,7 +1295,12 @@ namespace Nethermind.Network.Test
                 return enode;
             }
 
-            public async ValueTask DisposeAsync() => await PeerManager.StopAsync();
+            public async ValueTask DisposeAsync()
+            {
+                await PeerManager.StopAsync();
+                // Its timers would otherwise keep queueing work for the rest of the run.
+                await PeerPool.StopAsync();
+            }
         }
 
         private class RlpxMock(List<Session> sessions) : IRlpxHost

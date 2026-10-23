@@ -28,6 +28,7 @@ public class TaikoOntakeReleaseSpec : Shanghai, ITaikoReleaseSpec
     public ReadOnlyMemory<ushort> UnzenOpcodeZkGasMultipliers { get; set; }
     public FrozenDictionary<AddressAsKey, ushort> UnzenPrecompileZkGasMultipliers { get; set; } = FrozenDictionary<AddressAsKey, ushort>.Empty;
     public bool UseSurgeGasPriceOracle { get; set; }
+    public bool IsAnchorV4WithSignalSlotsEnabled { get; set; }
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
     public bool IsRip7728Enabled { get; set; }
     public bool IsL1StaticCallEnabled { get; set; }
@@ -72,6 +73,7 @@ public class TaikoUnzenReleaseSpec : Osaka, ITaikoReleaseSpec
     public ReadOnlyMemory<ushort> UnzenOpcodeZkGasMultipliers { get; set; }
     public FrozenDictionary<AddressAsKey, ushort> UnzenPrecompileZkGasMultipliers { get; set; } = FrozenDictionary<AddressAsKey, ushort>.Empty;
     public bool UseSurgeGasPriceOracle { get; set; }
+    public bool IsAnchorV4WithSignalSlotsEnabled { get; set; }
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
     public bool IsRip7728Enabled { get; set; }
     public bool IsL1StaticCallEnabled { get; set; }
