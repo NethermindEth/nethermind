@@ -4,8 +4,8 @@
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
-/// <summary>Every scalar key of <c>configs/mainnet.yaml</c> and of the consensus-specs v1.7.0-beta.3 mainnet presets of the forks this node runs (phase0 to gloas), with its mainnet value.</summary>
-/// <remarks>The schedules (<c>BLOB_SCHEDULE</c>, <c>GAS_LIMIT_SCHEDULE</c>, <c>SLOT_DURATION_SCHEDULE</c>) are built from the network spec, not listed here.</remarks>
+/// <summary>Every scalar key of <c>configs/mainnet.yaml</c> and of the consensus-specs v1.7.0-beta.4 mainnet presets of the forks this node runs (phase0 to gloas), with its mainnet value.</summary>
+/// <remarks>The schedules (<c>BLOB_SCHEDULE</c>, <c>GAS_LIMIT_SCHEDULE</c>) are built from the network spec, not listed here.</remarks>
 internal static class SpecValues
 {
     public static readonly IReadOnlyDictionary<string, string> Mainnet = new Dictionary<string, string>
@@ -138,6 +138,7 @@ internal static class SpecValues
         ["PAYLOAD_DUE_BPS"] = "5000",
         ["PAYLOAD_ATTESTATION_DUE_BPS"] = "7500",
         ["INCLUSION_LIST_DUE_BPS"] = "6667",
+        ["SLOT_DURATION_MS_EIP8198"] = "10000",
         ["INACTIVITY_SCORE_BIAS"] = "4",
         ["INACTIVITY_SCORE_RECOVERY_RATE"] = "16",
         ["EJECTION_BALANCE"] = "16000000000",

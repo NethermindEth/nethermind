@@ -3,7 +3,7 @@
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>The consensus-specs v1.7.0-beta.3 mainnet presets of phase0 to gloas and <c>configs/mainnet.yaml</c>, with upstream commentary omitted, one section per file.</summary>
+/// <summary>The consensus-specs v1.7.0-beta.4 mainnet presets of phase0 to gloas and <c>configs/mainnet.yaml</c>, with upstream commentary omitted, one section per file.</summary>
 internal static class PinnedMainnetSpec
 {
     public const string Yaml = """
@@ -142,6 +142,7 @@ CONTRIBUTION_DUE_BPS_GLOAS: 5000
 PAYLOAD_DUE_BPS: 5000
 PAYLOAD_ATTESTATION_DUE_BPS: 7500
 INCLUSION_LIST_DUE_BPS: 6667
+SLOT_DURATION_MS_EIP8198: 10000
 INACTIVITY_SCORE_BIAS: 4
 INACTIVITY_SCORE_RECOVERY_RATE: 16
 EJECTION_BALANCE: 16000000000
@@ -194,9 +195,6 @@ BLOB_SCHEDULE:
   - EPOCH: 419072  # January 7, 2026, 01:01:11am UTC
     MAX_BLOBS_PER_BLOCK: 21
 GAS_LIMIT_SCHEDULE: []
-SLOT_DURATION_SCHEDULE:
-  - EPOCH: 0
-    SLOT_DURATION_MS: 12000
 CONFIRMATION_BYZANTINE_THRESHOLD: 25
 """;
 }
