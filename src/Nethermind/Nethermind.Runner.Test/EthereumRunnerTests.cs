@@ -338,6 +338,20 @@ public class EthereumRunnerTests
         }
     }
 
+    [Test]
+    public async Task Startup_pipeline_warmup_authenticates_after_slow_start()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        ManualTimestamper timestamper = new();
+        IRpcAuthentication authentication = JwtAuthentication.FromSecret(new string('a', 64), Timestamper.Default, NullLogger.Instance);
+
+        // Outlasts the 60-second token lifetime before the first Engine API request.
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), new ConfigProvider(new InitConfig { BaseDbPath = directory.Path }), false,
+            cancellation.Token, authentication, timestamper: timestamper,
+            configureContainer: builder => builder.RegisterBuildCallback(_ => timestamper.Add(TimeSpan.FromMinutes(2))));
+    }
+
     private static string WarmupToken(JwtAuthentication authentication) =>
         (string)typeof(JwtAuthentication).GetMethod("CreateWarmupToken", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(authentication, null)!;
 
