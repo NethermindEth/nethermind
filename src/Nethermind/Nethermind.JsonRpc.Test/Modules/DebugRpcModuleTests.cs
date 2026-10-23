@@ -458,6 +458,44 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_traceCall_state_override_is_not_replaced_by_the_block_system_calls()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
+        Block block = await chain.AddBlock();
+        UInt256 parentNumber = (UInt256)(block.Number - 1);
+        UInt256 slot = (UInt256)((block.Number - 1) % Eip2935Constants.RingBufferSize);
+        Hash256 overridden = TestItem.KeccakA;
+
+        object call = new
+        {
+            from = TestItem.AddressA.ToString(),
+            to = Eip2935Constants.BlockHashHistoryAddress.ToString(),
+            gas = "0x186a0",
+            input = parentNumber.ToBigEndian().ToHexString(true)
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new
+        {
+            tracer = "callTracer",
+            stateOverrides = new Dictionary<string, object>
+            {
+                [Eip2935Constants.BlockHashHistoryAddress.ToString()] = new
+                {
+                    stateDiff = new Dictionary<string, string> { [slot.ToBigEndian().ToHexString(true)] = overridden.ToString() }
+                }
+            }
+        });
+
+        // The block's EIP-2935 system call writes this slot before the call runs; as in eth_call, the override wins.
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"]?["output"], Is.EqualTo(overridden.ToString()), response);
+        }
+    }
+
     private sealed class CountingExecutionRequestsProcessor(IExecutionRequestsProcessor inner, Action onProcess) : IExecutionRequestsProcessor
     {
         public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
