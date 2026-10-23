@@ -24,9 +24,10 @@ foreach (var scenario in new[] { "lookup-failed", "already-deleted", "deleted-by
         if (scenario == "terminated") fixture.Operations = "compute.instances.terminateOnHostMaintenance";
         if (scenario == "creation-failed") fixture.Environment["EXPECT_INSTANCE"] = "false";
         if (scenario is "deleted-by-action" or "delete-failed") fixture.InstanceZone = "europe-west1-b";
-        if (scenario == "delete-failed") fixture.DeleteStatus = 1;
+        if (scenario == "delete-failed") { fixture.DeleteStatus = 1; fixture.DeleteError = "Permission denied deleting instance\n"; }
         Cases.Equal(scenario is "lookup-failed" or "delete-failed" ? 1 : 0, await fixture.Execute());
         Cases.Equal(scenario, fixture.Outputs["terminated_by"]);
+        if (scenario == "delete-failed") Cases.True(fixture.Transcript.Contains(fixture.DeleteError, StringComparison.Ordinal), "gcloud deletion error retained");
         Cases.Equal("false", fixture.Outputs["preempted"]);
         Cases.Equal("0", fixture.Outputs["preempted_at"]);
         if (scenario is "unknown" or "terminated") Cases.True(fixture.Transcript.Contains("::warning title=GCP runner::", StringComparison.Ordinal), "missing-instance warning");

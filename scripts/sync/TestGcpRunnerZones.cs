@@ -46,6 +46,11 @@ foreach (var scenario in new[] { "quota", "capacity", "not-offered", "nowhere", 
         if (scenario is "quota" or "spot-quota" or "standard") Cases.Equal("europe-west1-b,europe-west4-a", attempts);
         if (scenario is "capacity" or "spot-capacity" or "nowhere" or "spot") Cases.Equal(fixture.Environment["ZONES"], attempts);
         if (scenario == "not-offered") Cases.Equal(fixture.Environment["ZONES"], attempts);
+        if (scenario is "not-offered" or "quota" or "capacity")
+        {
+            var notice = scenario == "not-offered" ? "does not offer" : scenario == "quota" ? "at quota" : "no capacity, trying next";
+            Cases.True(fixture.Transcript.Contains("::notice title=GCP runner::", StringComparison.Ordinal) && fixture.Transcript.Contains(notice, StringComparison.Ordinal), "zone retry diagnostic");
+        }
         if (scenario == "global") Cases.Equal("europe-west1-b", attempts);
         if (scenario == "rotate") Cases.True(fixture.Attempts[0] != "europe-west1-b", "rotated first zone");
         if (scenario == "fallback-exhausted") Cases.Equal(fixture.Environment["ZONES"] + "," + fixture.Environment["ZONES"], attempts);
@@ -71,4 +76,14 @@ Cases.Test("no implicit standard fallback", () =>
     var block = text[text.IndexOf("  spot_fallback_to_standard:", StringComparison.Ordinal)..];
     Cases.True(System.Text.RegularExpressions.Regex.Match(block, @"\A  spot_fallback_to_standard:\n(?:    .*\n)*").Value.Contains("default: \"false\"", StringComparison.Ordinal), "default false");
 });
+foreach (var response in new[] { "{broken", "[]", "null", "{\"status\":\"offline\"}" })
+    await Cases.Test($"poll past invalid or offline runner response {response}", async () =>
+    {
+        using var fixture = new LifecycleFixture { SucceedZone = "europe-west1-b" };
+        fixture.Environment["BOOT_TIMEOUT"] = "5";
+        fixture.RunnerResponses.Enqueue(response);
+        Cases.Equal(0, await fixture.Execute());
+        Cases.Equal(2, fixture.Commands.Count(command => command[0] == "curl"));
+        Cases.True(!fixture.Commands.Any(command => command.Contains("delete") || command.Contains("DELETE")), "retry leaves live runner intact");
+    });
 Cases.Finish();

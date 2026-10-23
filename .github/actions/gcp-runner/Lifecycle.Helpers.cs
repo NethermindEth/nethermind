@@ -17,7 +17,12 @@ sealed class Lifecycle(Func<string, string[], string?, CancellationToken, Task<C
     }
     private Task<CommandResult> Cloud(string[] args, CancellationToken token) => run("gcloud", args, null, token);
     private Task<CommandResult> Resolve(CancellationToken token) => Cloud(["compute", "instances", "list", Project, $"--filter=name={Name}", "--format=value(zone.basename())", "--limit=1"], token);
-    private Task<CommandResult> Delete(string zone, CancellationToken token, bool asynchronous = false) => Cloud(["compute", "instances", "delete", Name, Project, $"--zone={zone}", "--quiet", "--delete-disks=all", .. asynchronous ? new[] { "--async" } : []], token);
+    private async Task<CommandResult> Delete(string zone, CancellationToken token, bool asynchronous = false)
+    {
+        var result = await Cloud(["compute", "instances", "delete", Name, Project, $"--zone={zone}", "--quiet", "--delete-disks=all", .. asynchronous ? new[] { "--async" } : []], token);
+        if (result.Code != 0) Console.Error.Write(result.Error);
+        return result;
+    }
 
     internal async Task<int> Destroy(CancellationToken token)
     {
@@ -149,7 +154,14 @@ sealed class Lifecycle(Func<string, string[], string?, CancellationToken, Task<C
                     var kind = Gcp.Classify(result.Error);
                     if (kind != "not-offered") offered = true;
                     if (kind == "quota") { blocked.Add(Gcp.Region(zone)); quotas.Add($"{model}/{Gcp.Region(zone)}"); }
-                    if (kind is "not-offered" or "quota" or "retryable") { await Delete(zone, token); continue; }
+                    if (kind is "not-offered" or "quota" or "retryable")
+                    {
+                        var reason = kind == "not-offered" ? $"{zone} does not offer {Env("MACHINE_TYPE")}, trying next zone"
+                            : kind == "quota" ? $"{Gcp.Region(zone)} at quota, trying next region" : $"{zone}: no capacity, trying next zone";
+                        Console.WriteLine($"::notice title=GCP runner::{reason}");
+                        await Delete(zone, token);
+                        continue;
+                    }
                     Console.WriteLine($"::error title=GCP runner::{kind} create failure in {zone}: {result.Error}");
                     return 1;
                 }
@@ -179,7 +191,13 @@ sealed class Lifecycle(Func<string, string[], string?, CancellationToken, Task<C
             {
                 var runnerFile = Path.Combine(Env("RUNNER_TEMP"), "runner.json");
                 var status = await run("curl", ["-sS", "-o", runnerFile, "-w", "%{http_code}", "-H", $"Authorization: Bearer {Env("GH_TOKEN")}", "-H", "Accept: application/vnd.github+json", "-H", "X-GitHub-Api-Version: 2022-11-28", $"https://api.github.com/repos/{Env("GITHUB_REPOSITORY")}/actions/runners/{runnerId}"], null, token);
-                if (status.Code == 0 && status.Output.Trim() == "200" && JsonNode.Parse(await File.ReadAllTextAsync(runnerFile, token))?["status"]?.ToString() == "online")
+                var online = false;
+                if (status.Code == 0 && status.Output.Trim() == "200")
+                {
+                    try { online = JsonNode.Parse(await File.ReadAllTextAsync(runnerFile, token)) is JsonObject responseObject && responseObject["status"]?.ToString() == "online"; }
+                    catch (System.Text.Json.JsonException) { Console.WriteLine("::notice title=GCP runner::invalid runner status response, polling again"); }
+                }
+                if (online)
                 {
                     Console.WriteLine($"runner {Env("RUNNER_LABEL")} is online");
                     success = true;
@@ -192,7 +210,7 @@ sealed class Lifecycle(Func<string, string[], string?, CancellationToken, Task<C
                     var vm = await Cloud(["compute", "instances", "describe", Name, Project, $"--zone={chosen}", "--format=value(status)"], token);
                     if (vm.Code != 0 || vm.Output.Trim() != "RUNNING") throw new InvalidOperationException($"VM entered {vm.Output.Trim()} before the runner registered");
                     var stage = await Cloud(["compute", "instances", "get-guest-attributes", Name, Project, $"--zone={chosen}", "--query-path=gh-runner/stage", "--format=value(value)"], token);
-                    Console.WriteLine($"startup stage: {stage.Output.Trim()}");
+                    Console.WriteLine($"startup stage: {(stage.Output.Trim().Length == 0 ? "<none yet>" : stage.Output.Trim())}");
                     if (stage.Output.Trim() == "failed")
                     {
                         var error = await Cloud(["compute", "instances", "get-guest-attributes", Name, Project, $"--zone={chosen}", "--query-path=gh-runner/error", "--format=value(value)"], token);

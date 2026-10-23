@@ -25,6 +25,8 @@ sealed class LifecycleFixture : IDisposable
     internal string Operations = "compute.instances.preempted";
     internal string InsertTime = "";
     internal int DeleteStatus { get; set; }
+    internal string DeleteError = "";
+    internal readonly Queue<string> RunnerResponses = [];
     internal string OnlineStatus = "online";
     internal int HttpStatus = 200;
     internal string Transcript = "";
@@ -40,10 +42,12 @@ sealed class LifecycleFixture : IDisposable
     {
         var lifecycle = new Lifecycle(Run, key => Environment.GetValueOrDefault(key), (_, _) => Task.CompletedTask);
         var original = Console.Out;
+        var originalError = Console.Error;
         using var output = new StringWriter();
         Console.SetOut(output);
+        Console.SetError(output);
         try { return IsDestroy ? await lifecycle.Destroy(token) : await lifecycle.Create(Path.Combine(Cases.Root(), ".github/actions/gcp-runner"), token); }
-        finally { Transcript = output.ToString(); Console.SetOut(original); }
+        finally { Transcript = output.ToString(); Console.SetOut(original); Console.SetError(originalError); }
     }
     private Task<CommandResult> Run(string executable, string[] arguments, string? input, CancellationToken token)
     {
@@ -62,11 +66,11 @@ sealed class LifecycleFixture : IDisposable
         }
         if (executable == "curl")
         {
-            File.WriteAllText(Path.Combine(Directory, "runner.json"), new JsonObject { ["status"] = OnlineStatus }.ToJsonString());
+            File.WriteAllText(Path.Combine(Directory, "runner.json"), RunnerResponses.Count > 0 ? RunnerResponses.Dequeue() : new JsonObject { ["status"] = OnlineStatus }.ToJsonString());
             return Task.FromResult(new CommandResult(0, HttpStatus.ToString()));
         }
         if (arguments.Contains("instances") && arguments.Contains("list")) return Task.FromResult(new CommandResult(LookupStatus, InstanceZone));
-        if (arguments.Contains("delete")) return Task.FromResult(new CommandResult(DeleteStatus));
+        if (arguments.Contains("delete")) return Task.FromResult(new CommandResult(DeleteStatus, Error: DeleteError));
         if (arguments.Contains("operations")) return Task.FromResult(new CommandResult(0, arguments.Contains("--format=value(insertTime)") ? InsertTime : Operations));
         if (!arguments.Contains("create")) return Task.FromResult(new CommandResult(0));
         var zone = arguments.First(arg => arg.StartsWith("--zone=", StringComparison.Ordinal))[7..];

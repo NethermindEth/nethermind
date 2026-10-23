@@ -5,6 +5,7 @@
 #:include SyncTests.Helpers.cs
 #:include ../../.github/actions/gcp-runner/Gcp.Helpers.cs
 #:include ../../.github/actions/gcp-runner/StartupProvision.Helpers.cs
+using System.Diagnostics;
 
 foreach (var scenario in new[] { "zero", "single", "raid", "mismatch", "docker-root", "apt-failure", "runner-failure", "metadata-failure" })
     await Cases.Test($"startup {scenario}", async () =>
@@ -61,7 +62,9 @@ foreach (var scenario in new[] { "zero", "single", "raid", "mismatch", "docker-r
                 Cases.Equal("fake-jit" + Environment.NewLine, File.ReadAllText(At("etc/gh-runner.jitconfig")));
                 if (!OperatingSystem.IsWindows()) Cases.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(At("etc/gh-runner.jitconfig")));
                 var service = File.ReadAllText(At("etc/systemd/system/gh-runner.service"));
-                Cases.True(service.Contains("-- --run-runner", StringComparison.Ordinal), "C# service entrypoint");
+                Cases.True(service.Contains("app/Startup.dll --run-runner", StringComparison.Ordinal), "compiled C# service entrypoint");
+                Cases.True(!service.Contains("dotnet run", StringComparison.Ordinal), "service does not restore or compile");
+                Cases.True(service.Contains("KillMode=control-group", StringComparison.Ordinal), "service stops runner descendants");
                 Cases.True(!service.Contains("fake-jit", StringComparison.Ordinal), "credential not embedded in unit");
             }
         }
@@ -81,4 +84,91 @@ Cases.Test("bootstrap pins SDK digest and transports included source", () =>
     foreach (var file in new[] { "Startup.cs", "Gcp.Helpers.cs", "StartupProvision.Helpers.cs" }) Cases.True(bootstrap.Contains("-o " + file, StringComparison.Ordinal), "source delivery " + file);
     Cases.True(bootstrap.Contains("set -euo pipefail", StringComparison.Ordinal), "bootstrap fail-fast");
 });
+if (OperatingSystem.IsLinux())
+{
+    var actionDirectory = Path.Combine(Cases.Root(), ".github/actions/gcp-runner");
+    foreach (var scenario in new[] { "success", "publish-failure", "runtime-failure" })
+        await Cases.Test($"bootstrap without HOME {scenario}", async () =>
+        {
+            var temporary = Directory.CreateTempSubdirectory("bootstrap fixtures ");
+            try
+            {
+                var bin = Directory.CreateDirectory(Path.Combine(temporary.FullName, "bin"));
+                var bootstrap = Path.Combine(temporary.FullName, "bootstrap");
+                var calls = Path.Combine(temporary.FullName, "calls");
+                void Tool(string name, string body)
+                {
+                    var path = Path.Combine(bin.FullName, name);
+                    File.WriteAllText(path, "#!/bin/bash\nset -eu\n" + body + "\n");
+                    if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                }
+                Tool("curl", "printf '%s\\n' \"$@\" >> \"$FIXTURE_CALLS\"; while (($#)); do if [[ $1 == -o ]]; then shift; touch \"$1\"; fi; shift; done");
+                Tool("sha512sum", "cat >/dev/null");
+                Tool("tar", "cp \"$FIXTURE_BIN/dotnet-stub\" dotnet/dotnet");
+                Tool("dotnet-stub", """
+                    test -d "$HOME"
+                    test "$DOTNET_CLI_HOME" = "$BOOTSTRAP_DIR"
+                    printf 'dotnet %s\n' "$*" >> "$FIXTURE_CALLS"
+                    if [[ $1 == publish ]]; then
+                      [[ $FIXTURE_SCENARIO != publish-failure ]] || exit 43
+                    else
+                      [[ $1 == app/Startup.dll ]]
+                      [[ $FIXTURE_SCENARIO != runtime-failure ]] || exit 44
+                    fi
+                    """);
+                var start = new ProcessStartInfo("bash") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+                start.ArgumentList.Add(Path.Combine(actionDirectory, "startup-script.sh"));
+                start.Environment.Remove("HOME");
+                start.Environment.Remove("DOTNET_CLI_HOME");
+                start.Environment["PATH"] = bin.FullName + ":" + Environment.GetEnvironmentVariable("PATH");
+                start.Environment["BOOTSTRAP_DIR"] = bootstrap;
+                start.Environment["FIXTURE_BIN"] = bin.FullName;
+                start.Environment["FIXTURE_CALLS"] = calls;
+                start.Environment["FIXTURE_SCENARIO"] = scenario;
+                using var process = Process.Start(start)!;
+                var stdout = process.StandardOutput.ReadToEndAsync();
+                var stderr = process.StandardError.ReadToEndAsync();
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                try { await process.WaitForExitAsync(timeout.Token); }
+                finally { if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); } }
+                var output = await stdout + await stderr;
+                Cases.True(process.ExitCode == (scenario == "success" ? 0 : scenario == "publish-failure" ? 43 : 44), output);
+                var transcript = File.ReadAllText(calls);
+                Cases.Equal(scenario != "success", transcript.Contains("/guest-attributes/gh-runner/error", StringComparison.Ordinal));
+                Cases.Equal(scenario != "success", transcript.Contains("/guest-attributes/gh-runner/stage", StringComparison.Ordinal));
+                if (scenario != "success")
+                {
+                    Cases.True(transcript.Contains("bootstrap line", StringComparison.Ordinal) && transcript.Contains("failed", StringComparison.Ordinal), "bootstrap failure diagnosis");
+                    Cases.True(!transcript.Contains("set -eu", StringComparison.Ordinal), "failure does not expose source or credentials");
+                }
+            }
+            finally { temporary.Delete(recursive: true); }
+        });
+    await Cases.Test("publish startup offline with explicit CLI home", async () =>
+    {
+        var temporary = Directory.CreateTempSubdirectory("startup publish ");
+        var originalDirectory = Environment.CurrentDirectory;
+        var home = Environment.GetEnvironmentVariable("HOME");
+        var cliHome = Environment.GetEnvironmentVariable("DOTNET_CLI_HOME");
+        try
+        {
+            foreach (var file in new[] { "Startup.cs", "Gcp.Helpers.cs", "StartupProvision.Helpers.cs" }) File.Copy(Path.Combine(actionDirectory, file), Path.Combine(temporary.FullName, file));
+            Environment.CurrentDirectory = temporary.FullName;
+            Environment.SetEnvironmentVariable("HOME", null);
+            Environment.SetEnvironmentVariable("DOTNET_CLI_HOME", temporary.FullName);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+            var result = await Gcp.Run("dotnet", ["publish", "Startup.cs", "--no-self-contained", "-p:PublishAot=false", "-p:NuGetAudit=false", "-p:RestoreSources=" + temporary.FullName, "-o", "app"], null, timeout.Token);
+            Cases.True(result.Code == 0, result.Output + result.Error);
+            Cases.True(File.Exists(Path.Combine(temporary.FullName, "app/Startup.dll")), "published service DLL location");
+            Cases.True(File.Exists(Path.Combine(temporary.FullName, "app/Startup.runtimeconfig.json")), "published runtime configuration");
+        }
+        finally
+        {
+            Environment.CurrentDirectory = originalDirectory;
+            Environment.SetEnvironmentVariable("HOME", home);
+            Environment.SetEnvironmentVariable("DOTNET_CLI_HOME", cliHome);
+            temporary.Delete(recursive: true);
+        }
+    });
+}
 Cases.Finish();

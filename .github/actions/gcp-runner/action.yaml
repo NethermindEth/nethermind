@@ -212,4 +212,4 @@ runs:
         ZONES: ${{ inputs.zones }}
         PROJECT_ID: ${{ inputs.project_id }}
         EXPECT_INSTANCE: ${{ inputs.expect_instance }}
-      run: dotnet run --file "${GITHUB_ACTION_PATH}/Destroy.cs"
+      run: dotnet run --file "${GITHUB_ACTION_PATH}/Destroy.cs" -p:NuGetAudit=false -p:RestoreSources="${GITHUB_ACTION_PATH}"

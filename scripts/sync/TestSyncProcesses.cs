@@ -33,6 +33,19 @@ try
     Set("FIXTURE_CALLS", calls);
     Set("FIXTURE_STATUS", "0");
     Set("FIXTURE_STDERR", "");
+    await Cases.Test("destroy restores only from local sources", async () =>
+    {
+        Executable(Path.Combine(bin, "gcloud"), "exit 0");
+        Set("GH_TOKEN", "");
+        Set("EXPECT_INSTANCE", "false");
+        Set("RUNNER_LABEL", "fixture-runner");
+        var output = Path.Combine(temporary.FullName, "destroy-output");
+        Set("GITHUB_OUTPUT", output);
+        var action = Path.Combine(root, ".github/actions/gcp-runner");
+        var result = await Gcp.Run("dotnet", ["run", "--file", Path.Combine(action, "Destroy.cs"), "-p:NuGetAudit=false", "-p:RestoreSources=" + action], null, CancellationToken.None);
+        Cases.True(result.Code == 0, result.Output + result.Error);
+        Cases.True(File.ReadAllText(output).Contains("terminated_by=creation-failed", StringComparison.Ordinal), "teardown runs with local restore sources");
+    });
     Executable(Path.Combine(bin, "docker"), "printf '%s\\n' \"$@\" > \"$FIXTURE_CALLS\"\nprintf '%s\\n' \"$FIXTURE_STDERR\" >&2\ncat \"$FIXTURE_LOG\"\nexit \"$FIXTURE_STATUS\"");
     foreach (var (mode, network, scenario) in new[] { ("Flat", "mainnet", "success"), ("HalfPath", "op-sepolia", "success"), ("Flat", "world-mainnet", "success"), ("HalfPath", "taiko-hoodi", "success"), ("HalfPath", "volta", "success"), ("Flat", "mainnet", "bad"), ("HalfPath", "mainnet", "short"), ("Flat", "mainnet", "exit"), ("invalid", "mainnet", "mode") })
         await Cases.Test($"poller {mode} {network} {scenario}", async () =>
@@ -77,7 +90,7 @@ try
         await Cases.Test($"sedge {network}", async () =>
         {
             Set("NETWORK", network); Set("SYNC_MODE", "Flat"); Set("FIXTURE_STATUS", "0");
-    Set("FIXTURE_STDERR", "");
+            Set("FIXTURE_STDERR", "");
             File.WriteAllText(Path.Combine(temporary.FullName, "tests/predefined_configs/customNLog.config"), "config");
             File.Delete(calls);
             var result = await Script(".github/actions/sync-chain/RunSedge.cs");

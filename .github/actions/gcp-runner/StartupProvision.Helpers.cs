@@ -121,9 +121,9 @@ static class StartupProvision
                 Environment=HOME={home}
                 Environment=RUNNER_ALLOW_RUNASROOT=1
                 Environment=DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-                ExecStart=/opt/gh-runner-bootstrap/dotnet/dotnet run --file /opt/gh-runner-bootstrap/Startup.cs -- --run-runner
+                ExecStart=/opt/gh-runner-bootstrap/dotnet/dotnet /opt/gh-runner-bootstrap/app/Startup.dll --run-runner
                 Restart=no
-                KillMode=process
+                KillMode=control-group
                 TimeoutStopSec=60
 
                 [Install]
