@@ -399,7 +399,8 @@ public class PersistedSnapshotCompactor(
             {
                 reservation.Dispose();
                 // Recorded only once the snapshot is built, and rolled back if indexing it fails: the enclosing
-                // using frees its region, which no row may still point at.
+                // using frees its region, which no row may still point at. The Add replaced the row of any snapshot
+                // already at (to, tier), so the rollback leaves that one unrecorded: missing after a restart, not stale.
                 _catalog.Add(new CatalogEntry(from, to, location, tier));
                 try
                 {

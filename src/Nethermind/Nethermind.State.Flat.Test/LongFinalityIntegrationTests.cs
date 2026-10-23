@@ -370,13 +370,16 @@ public class LongFinalityIntegrationTests
     // replaced snapshot's catalog row must not survive it: the next restart reloaded its reclaimed (zeroed)
     // region, and the empty bloom rebuilt from it was shared across its range, hiding every snapshot inside.
     [Test]
-    public void Large_recompaction_after_restart_keeps_persisted_tier_readable()
+    public void Large_recompaction_after_restart_keeps_persisted_tier_readable([Values] bool upgradeFromLegacyCatalog)
     {
         const ulong largeBoundary = 256;
         MemDb catalogDb = new();
+        CatalogEntry[] LargeCompactedRowsAtBoundary() => [.. new SnapshotCatalog(catalogDb).Load()
+            .Where(e => e.To == BlockState(largeBoundary) && e.Tier == SnapshotTier.PersistedLargeCompacted)];
 
         using (FlatTestContainer session = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb))
             ConvertAndCompact(session, 65, largeBoundary, persistedBlock: 64);
+        CatalogEntry replaced = LargeCompactedRowsAtBoundary().Single();
 
         using (FlatTestContainer session = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb))
         {
@@ -385,9 +388,17 @@ public class LongFinalityIntegrationTests
             session.Repository.RemovePersistedStatesUntil(129);
         }
 
-        Assert.That(new SnapshotCatalog(catalogDb).Load()
-            .Where(e => e.To == BlockState(largeBoundary) && e.Tier == SnapshotTier.PersistedLargeCompacted)
-            .Select(e => e.From), Is.EqualTo(new[] { BlockState(96) }));
+        Assert.That(LargeCompactedRowsAtBoundary().Select(e => e.From), Is.EqualTo(new[] { BlockState(96) }));
+
+        if (upgradeFromLegacyCatalog)
+        {
+            // The depth-keyed catalog once the replacement is pruned: the replaced snapshot's row is the only one
+            // left at its To, while the other snapshots keep its arena file alive.
+            CatalogEntry[] rows = [.. new SnapshotCatalog(catalogDb).Load().Except(LargeCompactedRowsAtBoundary())];
+            catalogDb.Clear();
+            foreach (CatalogEntry row in rows.Append(replaced))
+                FlatTestHelpers.PutLegacyCatalogRow(catalogDb, row);
+        }
 
         // Which row the load keeps is order-dependent, so the reads below catch a stray row only some of the time.
         using FlatTestContainer restarted = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb);

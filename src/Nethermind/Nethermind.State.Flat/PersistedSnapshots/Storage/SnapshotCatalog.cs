@@ -17,8 +17,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// snapshots by, so a bucket overwrite also overwrites the row and no row outlives its snapshot.
 /// </summary>
 /// <remarks>
-/// Rows of the earlier 48-byte <c>(To.BlockNumber, To.StateRoot, depth)</c> layout are re-keyed on
-/// <see cref="Load"/>; see <see cref="MigrateLegacyRows"/>.
+/// Rows of the earlier 48-byte <c>(To.BlockNumber, To.StateRoot, depth)</c> layout are migrated on
+/// <see cref="Load"/>.
 /// </remarks>
 public sealed class SnapshotCatalog([KeyFilter(DbNames.PersistedSnapshotCatalog)] IDb db) : ISnapshotCatalog
 {
@@ -67,55 +67,56 @@ public sealed class SnapshotCatalog([KeyFilter(DbNames.PersistedSnapshotCatalog)
     /// Streams catalog entries lazily (unordered). The catalog carries no version of its own; the on-disk
     /// format is identified by each snapshot's last byte and validated by the loader.
     /// </summary>
+    /// <remarks>
+    /// Rows of the legacy <c>(To, depth)</c> layout are migrated in the same pass, committed in one batch once
+    /// the enumeration ends. That key let a recompaction to a different depth leave the replaced snapshot's row
+    /// behind, pointing at its reclaimed region, and a lone legacy row may be such a leftover. Only
+    /// <see cref="SnapshotTier.PersistedSmallCompacted"/> and <see cref="SnapshotTier.PersistedLargeCompacted"/>
+    /// snapshots vary in depth, so their legacy rows are dropped (their state is served by the base and
+    /// <c>CompactSize</c>-wide snapshots beneath them); the fixed-depth tiers are re-keyed.
+    /// </remarks>
     public IEnumerable<CatalogEntry> Load()
     {
-        MigrateLegacyRows();
-
-        foreach (KeyValuePair<byte[], byte[]> kv in _db.GetAll(ordered: false))
+        List<KeyValuePair<byte[], byte[]>>? legacyRows = null;
+        try
         {
-            // Entry keys are exactly KeySize; skip any other key (e.g. a legacy version word).
-            if (kv.Key.Length != KeySize) continue;
-            if (kv.Value.Length != EntrySize) continue;
-            yield return ReadEntry(kv.Value);
+            foreach (KeyValuePair<byte[], byte[]> kv in _db.GetAll(ordered: false))
+            {
+                // Entry keys are exactly KeySize, or LegacyKeySize until migrated; skip any other key (e.g. a legacy version word).
+                if (kv.Value.Length != EntrySize) continue;
+                if (kv.Key.Length == KeySize)
+                {
+                    yield return ReadEntry(kv.Value);
+                }
+                else if (kv.Key.Length == LegacyKeySize)
+                {
+                    (legacyRows ??= []).Add(kv);
+                    CatalogEntry entry = ReadEntry(kv.Value);
+                    if (IsMigrated(entry.Tier)) yield return entry;
+                }
+            }
+        }
+        finally
+        {
+            // Written once the scan is done, so the enumeration cannot meet a re-keyed row.
+            if (legacyRows is not null) MigrateLegacyRows(legacyRows);
         }
     }
 
-    /// <summary>
-    /// Re-keys every row of the legacy <c>(To, depth)</c> layout to <c>(To, tier)</c> in one atomic batch.
-    /// </summary>
-    /// <remarks>
-    /// The legacy key let several rows share one bucket slot: a recompaction to a different depth replaced
-    /// the bucket's snapshot, reclaiming its region, but left its row behind. The rows do not tell the live
-    /// one from the stale ones, so a <c>(To, tier)</c> with more than one legacy row is dropped whole; its
-    /// state is rebuilt by re-execution like any other missing persisted snapshot.
-    /// </remarks>
-    private void MigrateLegacyRows()
+    private static bool IsMigrated(SnapshotTier tier) =>
+        tier is not (SnapshotTier.PersistedSmallCompacted or SnapshotTier.PersistedLargeCompacted);
+
+    private void MigrateLegacyRows(List<KeyValuePair<byte[], byte[]>> legacyRows)
     {
-        Dictionary<(StateId To, SnapshotTier Tier), List<KeyValuePair<byte[], byte[]>>> legacyRows = [];
-        foreach (KeyValuePair<byte[], byte[]> kv in _db.GetAll(ordered: false))
-        {
-            if (kv.Key.Length != LegacyKeySize || kv.Value.Length != EntrySize) continue;
-            CatalogEntry entry = ReadEntry(kv.Value);
-            (StateId, SnapshotTier) slot = (entry.To, entry.Tier);
-            if (!legacyRows.TryGetValue(slot, out List<KeyValuePair<byte[], byte[]>>? rows))
-                legacyRows[slot] = rows = [];
-            rows.Add(kv);
-        }
-
-        if (legacyRows.Count == 0) return;
-
         using IWriteBatch batch = _db.StartWriteBatch();
         Span<byte> key = stackalloc byte[KeySize];
-        foreach (KeyValuePair<(StateId To, SnapshotTier Tier), List<KeyValuePair<byte[], byte[]>>> slot in legacyRows)
+        foreach (KeyValuePair<byte[], byte[]> row in legacyRows)
         {
-            if (slot.Value.Count == 1)
-            {
-                WriteKey(key, slot.Key.To, slot.Key.Tier);
-                batch.PutSpan(key, slot.Value[0].Value);
-            }
-
-            foreach (KeyValuePair<byte[], byte[]> row in slot.Value)
-                batch.Remove(row.Key);
+            batch.Remove(row.Key);
+            CatalogEntry entry = ReadEntry(row.Value);
+            if (!IsMigrated(entry.Tier)) continue;
+            WriteKey(key, entry.To, entry.Tier);
+            batch.PutSpan(key, row.Value);
         }
     }
 

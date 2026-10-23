@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
@@ -142,43 +141,35 @@ public class StorageLayerTests
     }
 
     [Test]
-    public void SnapshotCatalog_Load_MigratesUniqueLegacyRowsAndDropsAmbiguousOnes()
+    public void SnapshotCatalog_Load_MigratesFixedDepthLegacyRowsAndDropsCompactedOnes()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
+        StateId s2 = new(2, Keccak.Compute("2"));
         StateId s3 = new(3, Keccak.Compute("3"));
         StateId s4 = new(4, Keccak.Compute("4"));
-        CatalogEntry unique = new(s3, s4, new(0, 0, 100), SnapshotTier.PersistedBase);
-        CatalogEntry stale = new(s0, s4, new(0, 100, 100), SnapshotTier.PersistedSmallCompacted);
-        CatalogEntry live = new(s1, s4, new(0, 200, 100), SnapshotTier.PersistedSmallCompacted);
+        StateId s5 = new(5, Keccak.Compute("5"));
+        CatalogEntry legacyBase = new(s3, s4, new(0, 0, 100), SnapshotTier.PersistedBase);
+        CatalogEntry legacyCompactSized = new(s0, s4, new(0, 100, 100), SnapshotTier.PersistedCompactSized);
+        // A lone compacted row may be the leftover of a replaced snapshot, so neither compacted tier is kept.
+        CatalogEntry legacySmallCompacted = new(s1, s4, new(0, 200, 100), SnapshotTier.PersistedSmallCompacted);
+        CatalogEntry legacyLargeCompacted = new(s2, s4, new(0, 300, 100), SnapshotTier.PersistedLargeCompacted);
+        CatalogEntry current = new(s4, s5, new(0, 400, 100), SnapshotTier.PersistedBase);
 
-        MemDb catalogDb = new();
-        foreach (CatalogEntry entry in new[] { unique, stale, live })
-            catalogDb[LegacyKey(entry)] = EntryValue(entry);
-
+        using MemDb catalogDb = new();
+        foreach (CatalogEntry entry in new[] { legacyBase, legacyCompactSized, legacySmallCompacted, legacyLargeCompacted })
+            FlatTestHelpers.PutLegacyCatalogRow(catalogDb, entry);
         SnapshotCatalog catalog = new(catalogDb);
+        catalog.Add(current);
 
-        Assert.That(catalog.Load(), Is.EquivalentTo(new[] { unique }));
-        Assert.That(catalogDb.GetAllKeys().Select(key => key.Length), Is.EquivalentTo(new[] { 41 }));
-        Assert.That(catalog.Load(), Is.EquivalentTo(new[] { unique }));
-    }
+        CatalogEntry[] loaded = [.. catalog.Load()];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loaded, Is.EquivalentTo(new[] { legacyBase, legacyCompactSized, current }));
+            Assert.That(catalogDb.GetAllKeys().Select(key => key.Length), Is.All.EqualTo(41));
+        }
 
-    // The pre-(To, tier) catalog key: big-endian To block, To root, big-endian depth.
-    private static byte[] LegacyKey(CatalogEntry entry)
-    {
-        byte[] key = new byte[48];
-        BinaryPrimitives.WriteInt64BigEndian(key, (long)entry.To.BlockNumber);
-        entry.To.StateRoot.Bytes.CopyTo(key.AsSpan(8));
-        BinaryPrimitives.WriteInt64BigEndian(key.AsSpan(40), (long)(entry.To.BlockNumber - entry.From.BlockNumber));
-        return key;
-    }
-
-    // The row value layout is unchanged by the re-key, so the current catalog produces it.
-    private static byte[] EntryValue(CatalogEntry entry)
-    {
-        MemDb scratch = new();
-        new SnapshotCatalog(scratch).Add(entry);
-        return scratch.GetAllValues().Single();
+        Assert.That(catalog.Load(), Is.EquivalentTo(new[] { legacyBase, legacyCompactSized, current }));
     }
 
 

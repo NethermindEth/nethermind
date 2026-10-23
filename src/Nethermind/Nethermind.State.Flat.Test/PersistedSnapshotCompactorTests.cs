@@ -6,16 +6,14 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Config;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Db;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -918,35 +916,27 @@ public class PersistedSnapshotCompactorTests
             prev = to;
         }
 
-        if (failRegistration)
+        await using (ILifetimeScope scope = tier.BeginScope(builder =>
         {
-            ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
-            repository.PersistedSnapshotCount.Returns(_ => tier.Repository.PersistedSnapshotCount);
-            repository.AssemblePersistedSnapshotsForCompaction(Arg.Any<StateId>(), Arg.Any<ulong>())
-                .Returns(call => tier.Repository.AssemblePersistedSnapshotsForCompaction(call.ArgAt<StateId>(0), call.ArgAt<ulong>(1)));
-            repository.When(r => r.AddPersistedSnapshot(Arg.Any<PersistedSnapshot>(), Arg.Any<SnapshotTier>()))
-                .Do(_ => throw new InvalidOperationException());
-            await using PersistedSnapshotCompactor compactor = new(repository, tier.Resolve<IArenaManager>(), tier.Blobs, tier.Resolve<ISnapshotCatalog>(),
-                tier.Config, tier.Resolve<ICompactionSchedule>(), tier.Loader, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
-
-            Assert.That(() => compactor.DoCompactSnapshot(prev), Throws.InvalidOperationException);
-        }
-        else
+            builder.AddSingleton<PersistedSnapshotCompactor>();
+            if (failRegistration)
+            {
+                ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+                repository.PersistedSnapshotCount.Returns(_ => tier.Repository.PersistedSnapshotCount);
+                repository.AssemblePersistedSnapshotsForCompaction(Arg.Any<StateId>(), Arg.Any<ulong>())
+                    .Returns(call => tier.Repository.AssemblePersistedSnapshotsForCompaction(call.ArgAt<StateId>(0), call.ArgAt<ulong>(1)));
+                repository.When(r => r.AddPersistedSnapshot(Arg.Any<PersistedSnapshot>(), Arg.Any<SnapshotTier>()))
+                    .Do(_ => throw new InvalidOperationException());
+                builder.AddSingleton(repository);
+            }
+            else
+            {
+                // Without the bases' blob arena, the compacted snapshot fails to lease it.
+                builder.AddSingleton(new BlobArenaManager(Path.Combine(_memArenaDir, "blob"), 4 * 1024 * 1024));
+            }
+        }))
         {
-            // The compacted snapshot leases the bases' blob arena; hide it from the manager for the compaction only,
-            // so the bases can still release it on teardown.
-            BlobArenaFile?[] blobFiles = (BlobArenaFile?[])typeof(BlobArenaManager)
-                .GetField("_files", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(tier.Blobs)!;
-            BlobArenaFile? blobFile = blobFiles[0];
-            blobFiles[0] = null;
-            try
-            {
-                Assert.That(() => tier.Compactor.DoCompactSnapshot(prev), Throws.InvalidOperationException);
-            }
-            finally
-            {
-                blobFiles[0] = blobFile;
-            }
+            Assert.That(() => scope.Resolve<PersistedSnapshotCompactor>().DoCompactSnapshot(prev), Throws.InvalidOperationException);
         }
 
         Assert.That(tier.Resolve<ISnapshotCatalog>().Load().Select(e => e.Tier), Is.All.EqualTo(SnapshotTier.PersistedBase));
