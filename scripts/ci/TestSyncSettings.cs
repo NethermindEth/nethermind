@@ -21,8 +21,11 @@ foreach (var (failures, nullDifficulty) in new[] { (1, false), (5, false), (1, t
         using var http = new HttpClient(handler);
         var delays = new List<double>();
         var output = Console.Out;
+        var error = Console.Error;
         using var captured = new StringWriter();
+        using var capturedError = new StringWriter();
         Console.SetOut(captured);
+        Console.SetError(capturedError);
         var code = -1;
         try
         {
@@ -30,13 +33,14 @@ foreach (var (failures, nullDifficulty) in new[] { (1, false), (5, false), (1, t
             if (failures == 0) throw new InvalidOperationException("broken follower accepted");
         }
         catch (JsonException) when (failures == 0) { code = 2; }
-        finally { Console.SetOut(output); }
+        finally { Console.SetOut(output); Console.SetError(error); }
         if (failures == 0)
             Require(code == 2 && File.ReadAllText(Path.Combine(directory.FullName, "mainnet.json")) == original, "leader changed before follower validation");
         else
         {
             Require(handler.Failures == failures && delays.SequenceEqual(failures == 1 ? new double[] { 10 } : [10, 20, 30, 40]), "retry backoff changed");
             Require(code == (failures == 5 ? 1 : 0), "exit code changed");
+            Require(capturedError.ToString().Trim() == (failures == 5 ? "Failed to update: gnosis" : ""), "failure summary changed");
             var gnosis = File.ReadAllText(Path.Combine(directory.FullName, "gnosis.json"));
             Require(failures == 5 ? gnosis == original : JsonNode.Parse(gnosis)!["Sync"]!["PivotNumber"]!.GetValue<long>() == 50000, "failed chain mutation or wrong pivot");
             Require(JsonNode.Parse(File.ReadAllText(Path.Combine(directory.FullName, "chiado.json")))!["Sync"]!["PivotNumber"]!.GetValue<long>() == 50000, "later chain not updated");

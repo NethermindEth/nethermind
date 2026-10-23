@@ -103,6 +103,8 @@ static JsonNode? Lookup(JsonNode root, params string[] path)
 
 static string? Hex(JsonNode? value) => value is null ? null : "0x" + value.GetValue<long>().ToString("x", CultureInfo.InvariantCulture);
 
+static string RequiredHex(JsonNode? value) => Hex(value) ?? throw new FormatException("Missing required numeric chain value");
+
 static JsonObject WithoutNulls(JsonObject value)
 {
     foreach (var key in value.Where(pair => pair.Value is null).Select(pair => pair.Key).ToArray()) value.Remove(key);
@@ -155,7 +157,7 @@ static JsonObject Chainspec(string chainName, string l1, JsonNode superchain, Js
                 ["params"] = WithoutNulls(new JsonObject
                 {
                     ["regolithTimestamp"] = "0x0",
-                    ["bedrockBlockNumber"] = Hex(Lookup(config, "genesis", "l2", "number")),
+                    ["bedrockBlockNumber"] = RequiredHex(Lookup(config, "genesis", "l2", "number")),
                     ["canyonTimestamp"] = Hex(Lookup(config, "hardforks", "canyon_time")),
                     ["deltaTimestamp"] = Hex(Lookup(config, "hardforks", "delta_time")),
                     ["ecotoneTimestamp"] = Hex(Lookup(config, "hardforks", "ecotone_time")),
@@ -213,7 +215,7 @@ static JsonObject Chainspec(string chainName, string l1, JsonNode superchain, Js
         },
         ["params"] = WithoutNulls(new JsonObject
         {
-            ["chainId"] = Hex(Lookup(config, "chain_id")),
+            ["chainId"] = RequiredHex(Lookup(config, "chain_id")),
             ["gasLimitBoundDivisor"] = "0x400",
             ["accountStartNonce"] = "0x0",
             ["maximumExtraDataSize"] = "0x20",
@@ -245,14 +247,14 @@ static JsonObject Chainspec(string chainName, string l1, JsonNode superchain, Js
             ["eip2718Transition"] = "0x0",
             ["eip2929Transition"] = "0x0",
             ["eip2930Transition"] = "0x0",
-            ["eip1559Transition"] = Hex(Lookup(config, "genesis", "l2", "number")),
-            ["eip1559FeeCollectorTransition"] = Hex(Lookup(config, "genesis", "l2", "number")),
+            ["eip1559Transition"] = RequiredHex(Lookup(config, "genesis", "l2", "number")),
+            ["eip1559FeeCollectorTransition"] = RequiredHex(Lookup(config, "genesis", "l2", "number")),
             ["feeCollector"] = "0x4200000000000000000000000000000000000019",
-            ["eip1559ElasticityMultiplier"] = Hex(Lookup(config, "optimism", "eip1559_elasticity")),
-            ["eip1559BaseFeeMaxChangeDenominator"] = Hex(Lookup(config, "optimism", "eip1559_denominator")),
-            ["eip3198Transition"] = Hex(Lookup(config, "genesis", "l2", "number")),
-            ["eip3529Transition"] = Hex(Lookup(config, "genesis", "l2", "number")),
-            ["eip3541Transition"] = Hex(Lookup(config, "genesis", "l2", "number")),
+            ["eip1559ElasticityMultiplier"] = RequiredHex(Lookup(config, "optimism", "eip1559_elasticity")),
+            ["eip1559BaseFeeMaxChangeDenominator"] = RequiredHex(Lookup(config, "optimism", "eip1559_denominator")),
+            ["eip3198Transition"] = RequiredHex(Lookup(config, "genesis", "l2", "number")),
+            ["eip3529Transition"] = RequiredHex(Lookup(config, "genesis", "l2", "number")),
+            ["eip3541Transition"] = RequiredHex(Lookup(config, "genesis", "l2", "number")),
             ["eip4895TransitionTimestamp"] = Hex(Lookup(config, "hardforks", "canyon_time")),
             ["eip3651TransitionTimestamp"] = Hex(Lookup(config, "hardforks", "canyon_time")),
             ["eip3855TransitionTimestamp"] = Hex(Lookup(config, "hardforks", "canyon_time")),
