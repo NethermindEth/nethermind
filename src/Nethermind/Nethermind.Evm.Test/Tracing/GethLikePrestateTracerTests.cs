@@ -31,6 +31,33 @@ namespace Nethermind.Evm.Test.Tracing;
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
     [Test]
+    public void Write_WhenAccountPrimitivesArePresent_WritesHexBalanceAndDecimalNonce([Values] bool includeValues)
+    {
+        NativePrestateTracerAccount account = new()
+        {
+            Balance = includeValues ? (UInt256)255 : null,
+            Nonce = includeValues ? (UInt256)300 : null
+        };
+        NumberConversion previousValue = ForcedNumberConversion.Value;
+        try
+        {
+            ForcedNumberConversion.Value = NumberConversion.Raw;
+
+            string json = JsonSerializer.Serialize(account, new JsonSerializerOptions(SerializerOptions) { WriteIndented = false });
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json, Is.EqualTo(includeValues ? """{"balance":"0xff","nonce":300}""" : "{}"));
+                Assert.That(ForcedNumberConversion.Value, Is.EqualTo(NumberConversion.Raw), "serialization must restore the caller's format");
+            }
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = previousValue;
+        }
+    }
+
+    [Test]
     public void SetOperationStack_WhenStorageIsRepeated_KeepsFirstSnapshot([Values] bool disableStorage)
     {
         StorageReadCounter reads = new();
