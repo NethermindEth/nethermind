@@ -97,6 +97,7 @@ public partial class BlockProcessor(
             // positive on a valid block must stand out from ordinary invalid blocks.
             Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
             if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+            if (HasFrameTransaction(suggestedBlock)) throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
             throw;
         }
         finally
@@ -111,6 +112,16 @@ public partial class BlockProcessor(
         }
 
         return (block, receipts);
+    }
+
+    private static bool HasFrameTransaction(Block block)
+    {
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.Type == TxType.FrameTx) return true;
+        }
+
+        return false;
     }
 
     private static bool IsBlockAccessListFailure(InvalidBlockException e) =>
