@@ -105,8 +105,8 @@ jobs:
           [ -s "$RUNNER_TEMP/claude/pr.md" ] || pr=false
           if [ "$diff" = false ] && [ "$pr" = false ]; then echo "No flaky test to fix"; exit 0; fi
           if [ "$diff" != "$pr" ]; then echo "::warning::Claude left a change without pr.md or pr.md without a change"; exit 0; fi
-          if git -c core.quotePath=false diff --cached --no-renames --name-only |
-            grep -iE "$PROTECTED"; then
+          if git diff --cached --no-renames --name-only -z |
+            grep -izE "$PROTECTED"; then
             echo "::error::Protected paths changed"
             exit 1
           fi
@@ -156,7 +156,7 @@ jobs:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
           git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
-          if git -c core.quotePath=false diff --cached --no-renames --name-only | grep -iE "$PROTECTED"; then
+          if git diff --cached --no-renames --name-only -z | grep -izE "$PROTECTED"; then
             echo "::error::Protected paths changed"
             exit 1
           fi
