@@ -72,7 +72,7 @@ public class JsonRpcProcessorTests
     private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null)
     {
         config ??= new JsonRpcConfig();
-        return new(service, config, fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, BatchConcurrencyStrategies(config), processExitSource);
+        return new(service, config, fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource, BatchConcurrencyStrategies(config));
     }
 
     private static IBatchConcurrencyStrategy[] BatchConcurrencyStrategies(IJsonRpcConfig config) =>
@@ -84,7 +84,7 @@ public class JsonRpcProcessorTests
         new(RpcEndpoint.Http, url: new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http, isAuthenticated: true, [ModuleType.Engine]));
 
     private static JsonRpcProcessor CreateProcessorWithLogger(IJsonRpcService service, TestLogger logger) =>
-        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), BatchConcurrencyStrategies(new JsonRpcConfig()), null);
+        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null, BatchConcurrencyStrategies(new JsonRpcConfig()));
 
     // #13156: the JSON-RPC 2.0 request-error codes (-32700..-32600 and -32601/-32602) are the caller's fault and are
     // triggered by one unauthenticated request each, so they must not reach WARN; server-side codes keep their level.
@@ -1770,7 +1770,7 @@ public class JsonRpcProcessorTests
 
     [Test]
     public void Cannot_accept_null_file_system() =>
-        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(), Substitute.For<IJsonRpcConfig>(), null!, LimboLogs.Instance, []));
+        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(), Substitute.For<IJsonRpcConfig>(), null!, LimboLogs.Instance));
 
     [Test]
     public async Task Can_process_multiple_large_requests_arriving_in_chunks()

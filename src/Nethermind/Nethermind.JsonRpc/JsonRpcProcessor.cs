@@ -39,7 +39,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private readonly FrozenDictionary<string, IBatchConcurrencyStrategy> _batchConcurrency;
 
     public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager,
-        IEnumerable<IBatchConcurrencyStrategy> batchConcurrencyStrategies, IProcessExitSource? processExitSource = null)
+        IProcessExitSource? processExitSource = null, IEnumerable<IBatchConcurrencyStrategy>? batchConcurrencyStrategies = null)
     {
         _logger = logManager?.GetClassLogger<JsonRpcProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
         ArgumentNullException.ThrowIfNull(fileSystem);
@@ -48,7 +48,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
 
         _processExitSource = processExitSource;
-        _batchConcurrency = batchConcurrencyStrategies
+        _batchConcurrency = (batchConcurrencyStrategies ?? [])
             .SelectMany(static strategy => strategy.Methods, static (strategy, method) => (method, strategy))
             .ToFrozenDictionary(static entry => entry.method, static entry => entry.strategy);
         _diagnostics = new JsonRpcDiagnostics(_jsonRpcConfig, fileSystem, _logger);

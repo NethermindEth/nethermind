@@ -79,8 +79,8 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
             jsonRpcConfig,
             api.FileSystem,
             api.LogManager,
-            batchConcurrencyStrategies,
-            api.ProcessExit);
+            api.ProcessExit,
+            batchConcurrencyStrategies);
 
         if (initConfig.WebSocketsEnabled)
         {

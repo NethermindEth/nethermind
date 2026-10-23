@@ -194,7 +194,7 @@ public class WebSocketExtensionsTests
         service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<string>()).Returns(new JsonRpcErrorResponse { Error = new Error() });
         JsonRpcConfig config = new() { Enabled = true };
         JsonRpcWebSocketsModule module = new(
-            new JsonRpcProcessor(service, config, Substitute.For<IFileSystem>(), new OneLoggerLogManager(new ILogger(logger)), []),
+            new JsonRpcProcessor(service, config, Substitute.For<IFileSystem>(), new OneLoggerLogManager(new ILogger(logger))),
             service,
             Substitute.For<IJsonRpcLocalStats>(),
             LimboLogs.Instance,
