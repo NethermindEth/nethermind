@@ -15,7 +15,9 @@ internal static class HiveResults
 
         try
         {
-            var scripts = Path.Combine(workingDirectory, "nethermind", "scripts");
+            var scripts = Path.Combine(workingDirectory, "scripts");
+            if (!Directory.Exists(scripts)) scripts = Path.Combine(workingDirectory, "nethermind", "scripts");
+            var launchTest = "client launch (nethermind)";
             var knownFails = File.ReadAllLines(Path.Combine(scripts, "known-failing-hive-tests.txt")).ToHashSet(StringComparer.Ordinal);
             var knownFlaky = File.ReadAllLines(Path.Combine(scripts, "known-flaky-hive-tests.txt")).ToHashSet(StringComparer.Ordinal);
             var results = new List<(string Name, bool Passed)>();
@@ -28,20 +30,28 @@ internal static class HiveResults
                     : Enumerable.Empty<string>();
                 foreach (var file in files)
                 {
-                    using var document = JsonDocument.Parse(File.ReadAllText(file));
-                    var suite = document.RootElement.GetProperty("name").GetString();
-                    var cases = document.RootElement.GetProperty("testCases");
-                    var entries = cases.ValueKind == JsonValueKind.Array
-                        ? cases.EnumerateArray().ToArray()
-                        : cases.EnumerateObject().Select(property => property.Value).ToArray();
-                    foreach (var test in entries)
+                    try
                     {
-                        if (!test.TryGetProperty("summaryResult", out var summary) || summary.ValueKind == JsonValueKind.Null ||
-                            !summary.TryGetProperty("pass", out var passed) ||
-                            passed.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                            continue;
-                        var name = test.GetProperty("name").GetString() ?? throw new JsonException("Missing test name.");
-                        results.Add((suite is "snapsync" or "sync" ? $"{suite}/{name}" : name, passed.GetBoolean()));
+                        using var document = JsonDocument.Parse(File.ReadAllText(file));
+                        var suite = document.RootElement.GetProperty("name").GetString();
+                        var cases = document.RootElement.GetProperty("testCases");
+                        var entries = cases.ValueKind == JsonValueKind.Array
+                            ? cases.EnumerateArray().ToArray()
+                            : cases.EnumerateObject().Select(property => property.Value).ToArray();
+                        foreach (var test in entries)
+                        {
+                            if (!test.TryGetProperty("summaryResult", out var summary) || summary.ValueKind == JsonValueKind.Null ||
+                                !summary.TryGetProperty("pass", out var passed) ||
+                                passed.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                                continue;
+                            var name = test.GetProperty("name").GetString() ?? throw new JsonException("Missing test name.");
+                            // Sync suites reuse case names, so retain their suite prefix to distinguish failures.
+                            results.Add((suite is "snapsync" or "sync" ? $"{suite}/{name}" : name, passed.GetBoolean()));
+                        }
+                    }
+                    catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException)
+                    {
+                        throw new InvalidOperationException($"Cannot process '{file}': {exception.Message}", exception);
                     }
                 }
             }
@@ -58,12 +68,12 @@ internal static class HiveResults
                     var symbol = passed ? "✔" : "✖";
                     if (knownFlaky.Contains(name))
                         output.WriteLine($"\u001b[33m{symbol} {name} (flaky)\u001b[0m");
-                    else if (knownFails.Contains(name) && name != "client launch (nethermind)" && passed)
+                    else if (knownFails.Contains(name) && name != launchTest && passed)
                     {
                         unexpectedPasses++;
                         output.WriteLine($"\u001b[90m{symbol} {name}\u001b[0m");
                     }
-                    else if (!knownFails.Contains(name) && name != "client launch (nethermind)" && !passed)
+                    else if (!knownFails.Contains(name) && name != launchTest && !passed)
                     {
                         unexpectedFails++;
                         output.WriteLine($"\u001b[31m{symbol}\u001b[0m {name}");
@@ -73,7 +83,8 @@ internal static class HiveResults
                 }
             }
 
-            if (!results.Any(result => result.Name != "client launch (nethermind)"))
+            // A simulator can launch the client and stop before running any real cases.
+            if (!results.Any(result => result.Name != launchTest))
             {
                 output.WriteLine("Hive ran no test cases.");
                 return 1;

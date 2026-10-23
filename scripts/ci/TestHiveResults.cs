@@ -34,7 +34,8 @@ foreach (var scenario in new[]
     ("missing_pass_ignored", "engine", Array.Empty<(string, bool)>(), 1, "Hive ran no test cases."),
     ("malformed_json", "engine", new[] { ("test_a", true) }, 1, ""),
     ("missing_known_file", "engine", new[] { ("test_a", true) }, 1, ""),
-    ("cli_working_directory", "engine", new[] { ("test_a", true) }, 0, "Unexpected fails: 0")
+    ("cli_working_directory", "engine", new[] { ("test_a", true) }, 0, "Unexpected fails: 0"),
+    ("cli_checkout_directory", "engine", new[] { ("test_a", true) }, 0, "Unexpected fails: 0")
 })
 {
     var (name, suite, cases, expectedCode, expectedOutput) = scenario;
@@ -84,13 +85,19 @@ foreach (var scenario in new[]
             ? new[] { "hive/workspace/logs/first.json", "hive/workspace/logs/second.json" }
             : ["hive/workspace/logs/*.json"];
         var code = HiveResults.Run(arguments, directory.FullName, output, error);
-        if (name == "cli_working_directory")
+        if (name is "cli_working_directory" or "cli_checkout_directory")
         {
-            using var process = new Process { StartInfo = new ProcessStartInfo("dotnet")
+            using var process = new Process
             {
-                WorkingDirectory = directory.FullName, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false
-            } };
-            foreach (var argument in new[] { "run", "--file", FindEntryPoint(), "--", arguments[0] })
+                StartInfo = new ProcessStartInfo("dotnet")
+                {
+                    WorkingDirectory = name == "cli_checkout_directory" ? Path.Combine(directory.FullName, "nethermind") : directory.FullName,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false
+                }
+            };
+            foreach (var argument in new[] { "run", "--file", FindEntryPoint(), "--", name == "cli_checkout_directory" ? "../" + arguments[0] : arguments[0] })
                 process.StartInfo.ArgumentList.Add(argument);
             process.Start();
             var stdout = process.StandardOutput.ReadToEndAsync();
@@ -106,6 +113,8 @@ foreach (var scenario in new[]
         if (code != expectedCode || !output.ToString().Replace("\r\n", "\n").Contains(expectedOutput, StringComparison.Ordinal) ||
             (name is "malformed_json" or "missing_known_file" && error.ToString().Length == 0))
             throw new InvalidOperationException($"{name}: expected exit {expectedCode} and '{expectedOutput}', got {code}\n{output}\n{error}");
+        if (name == "malformed_json" && !error.ToString().Contains("broken.json", StringComparison.Ordinal))
+            throw new InvalidOperationException("Malformed JSON must identify its source file.");
         Console.WriteLine($"PASS {name}");
         tests++;
     }
