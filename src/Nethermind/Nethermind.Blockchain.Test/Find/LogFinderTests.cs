@@ -195,10 +195,19 @@ public class LogFinderTests
 
     // Everything the receipt path lets escape must leave the parallel scan unwrapped: the RPC layer maps the bare
     // types onto error codes. A single-block range takes the sequential path and cannot cover this.
+    // One method per case: the parallel path needs the process-wide parallel-scan slot, which any other scan in
+    // the assembly can hold, and a [NonParallelizable] on a parameterized method does not isolate it (nunit/nunit#3371).
     [Test]
     [MaxTime(Timeout.MaxTestTime)]
     [NonParallelizable]
-    public void throw_unwrapped_exception_on_the_parallel_path([Values(typeof(ResourceNotFoundException), typeof(ConcurrencyLimitReachedException))] Type exceptionType)
+    public void throw_unwrapped_resource_not_found_on_the_parallel_path() => AssertUnwrappedExceptionOnTheParallelPath(typeof(ResourceNotFoundException));
+
+    [Test]
+    [MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
+    public void throw_unwrapped_concurrency_limit_reached_on_the_parallel_path() => AssertUnwrappedExceptionOnTheParallelPath(typeof(ConcurrencyLimitReachedException));
+
+    private void AssertUnwrappedExceptionOnTheParallelPath(Type exceptionType)
     {
         int chainLength = Math.Max(64, Environment.ProcessorCount + 2);
         SetUp(allowReceiptIterator: true, chainLength: chainLength);
@@ -213,10 +222,18 @@ public class LogFinderTests
             "the scan must have taken the parallel path, or this test cannot cover the unwrap");
     }
 
+    // One method per case, for the same reason as above.
     [Test]
     [MaxTime(Timeout.MaxTestTime)]
     [NonParallelizable]
-    public void Parallel_scan_yields_logs_in_block_order_and_stops_when_abandoned([Values(int.MaxValue, 1)] int logsTaken)
+    public void Parallel_scan_yields_logs_in_block_order() => AssertParallelScanYieldsLogsInBlockOrderAndStopsWhenAbandoned(int.MaxValue);
+
+    [Test]
+    [MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
+    public void Parallel_scan_stops_when_abandoned() => AssertParallelScanYieldsLogsInBlockOrderAndStopsWhenAbandoned(1);
+
+    private void AssertParallelScanYieldsLogsInBlockOrderAndStopsWhenAbandoned(int logsTaken)
     {
         const int chainLength = 600;
         _receiptStorage = new InMemoryReceiptStorage();

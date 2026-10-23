@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
@@ -407,6 +408,7 @@ public partial class BlockAccessListManager
         public readonly TracedAccessWorldState WorldState;
         public readonly ITransactionProcessor TxProcessor;
         public readonly ITransactionProcessorAdapter TxProcessorAdapter;
+        public ExecutionRequestsProcessor ExecutionRequests => field ??= new ExecutionRequestsProcessor(TxProcessor);
         private readonly IDisposable _virtualMachine;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
