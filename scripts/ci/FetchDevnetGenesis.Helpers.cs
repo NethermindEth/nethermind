@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
+#:include ScriptProcess.Helpers.cs
 using System.Globalization;
 using System.Numerics;
 using System.Text;
@@ -80,24 +80,8 @@ static class DevnetGenesis
 
     internal static async Task<CommandResult> Execute(string command, string[] arguments, CancellationToken cancellationToken)
     {
-        var start = new ProcessStartInfo(command) { UseShellExecute = false, RedirectStandardOutput = true };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
-        using var process = new Process { StartInfo = start };
-        cancellationToken.ThrowIfCancellationRequested();
-        process.Start();
-        var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
-            return new(process.ExitCode, await stdout);
-        }
-        catch (OperationCanceledException)
-        {
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(CancellationToken.None);
-            try { await stdout; }
-            catch (OperationCanceledException) { /* The canceled read must be observed before disposing the pipe. */ }
-            throw;
-        }
+        var result = await ScriptProcess.Run(command, arguments, cancellationToken);
+        Console.Error.Write(result.Error);
+        return new(result.Code, result.Output);
     }
 }
