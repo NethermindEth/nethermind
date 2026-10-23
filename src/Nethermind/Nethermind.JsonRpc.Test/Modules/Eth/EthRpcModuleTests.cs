@@ -1454,23 +1454,23 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_logs_unprocessed_block_is_not_reported_as_pruned([Values] bool aheadOfHead, [Values] bool viaFilter, [Values] bool bloomMatches)
+    public async Task Eth_get_logs_unprocessed_block_is_not_reported_as_pruned([Values] bool aheadOfHead, [Values] bool viaFilter, [Values] bool bloomMatches, [Values] bool range)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Block head = chain.BlockTree.Head!;
         Block parent = aheadOfHead ? head : chain.BlockTree.FindBlock(head.ParentHash!)!;
         Block unprocessed = Build.A.Block.WithParent(parent).WithReceiptsRoot(TestItem.KeccakA).WithExtraData([1]).TestObject;
         chain.BlockTree.SuggestBlock(unprocessed, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        string blocks = range ? $"\"fromBlock\":\"0x1\",\"toBlock\":\"{unprocessed.Hash}\"" : $"\"blockHash\":\"{unprocessed.Hash}\"";
         // An empty header bloom matches only a filter that does not name an address.
-        string filter = bloomMatches
-            ? $"{{\"blockHash\":\"{unprocessed.Hash}\"}}"
-            : $"{{\"blockHash\":\"{unprocessed.Hash}\",\"address\":\"{TestItem.AddressA}\"}}";
+        string filter = bloomMatches ? $"{{{blocks}}}" : $"{{{blocks},\"address\":\"{TestItem.AddressA}\"}}";
 
         string serialized = viaFilter
             ? await chain.TestEthRpc("eth_getFilterLogs", JsonDocument.Parse(await chain.TestEthRpc("eth_newFilter", filter)).RootElement.GetProperty("result").GetString()!)
             : await chain.TestEthRpc("eth_getLogs", filter);
 
-        Assert.That(serialized, Is.EqualTo(bloomMatches
+        // A range cannot be served until its end block is processed, whatever the bloom.
+        Assert.That(serialized, Is.EqualTo(bloomMatches || range
             ? $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.ResourceNotFound},\"message\":\"failed to get logs for block #{unprocessed.Number}\"}},\"id\":67}}"
             : """{"jsonrpc":"2.0","result":[],"id":67}"""));
     }

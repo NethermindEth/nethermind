@@ -92,17 +92,24 @@ namespace Nethermind.Facade.Find
                 cancellationToken.ThrowIfCancellationRequested();
                 bool toMissing = toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!);
 
-                fromMissing = fromMissing && NeedsReceipts(filter, fromBlock);
-                toMissing = toMissing && NeedsReceipts(filter, toBlock);
+                if (fromMissing && !WasPruned(fromBlock))
+                {
+                    // As in geth, a single block whose header bloom misses the filter has no logs to read.
+                    if (fromBlock.Hash == toBlock.Hash && !filter.Matches(fromBlock.Bloom!))
+                    {
+                        return new FoundLogs([], []);
+                    }
+
+                    throw new BlockNotProcessedException(fromBlock.Number);
+                }
+
+                if (toMissing && !WasPruned(toBlock))
+                {
+                    throw new BlockNotProcessedException(toBlock.Number);
+                }
 
                 if ((fromMissing || toMissing) && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
                 {
-                    BlockHeader missing = fromMissing ? fromBlock : toBlock;
-                    if (!WasPruned(missing))
-                    {
-                        throw new BlockNotProcessedException(missing.Number);
-                    }
-
                     throw new ResourceNotFoundException(fromMissing
                         ? $"Receipt not available for From block {fromBlock.Number}."
                         : $"Receipt not available for To block {toBlock.Number}.");
@@ -117,10 +124,8 @@ namespace Nethermind.Facade.Find
 
         /// <remarks>
         /// A block ahead of the processed head or off the main chain may not be processed yet, so its receipts can
-        /// still appear. Such a block needs its receipts only when its header bloom matches the filter, as in geth.
+        /// still appear.
         /// </remarks>
-        private bool NeedsReceipts(LogFilter filter, BlockHeader header) => WasPruned(header) || filter.Matches(header.Bloom!);
-
         private bool WasPruned(BlockHeader header) =>
             _blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header);
 
