@@ -914,7 +914,7 @@ public class DebugModuleTests
 
     [Test]
     public void DebugDiagnosticReplay_WhenParentUnavailable_DoesNotTrace(
-        [Values("roots", "file", "badFile")] string method, [Values] bool parentHeaderAvailable)
+        [Values("roots", "file", "badFile", "badTrace")] string method, [Values] bool parentHeaderAvailable)
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithNumber(2).TestObject;
@@ -926,9 +926,12 @@ public class DebugModuleTests
         _debugBridge.GetBadBlocks().Returns([new Block(header)]);
         DebugRpcModule module = CreateModule();
 
-        IResultWrapper actual = method == "roots"
-            ? module.debug_intermediateRoots(header.Hash!)
-            : StandardTraceToFile(module, method == "badFile", header.Hash!);
+        IResultWrapper actual = method switch
+        {
+            "roots" => module.debug_intermediateRoots(header.Hash!),
+            "badTrace" => module.debug_traceBadBlock(header.Hash!),
+            _ => StandardTraceToFile(module, method == "badFile", header.Hash!)
+        };
 
         using (Assert.EnterMultipleScope())
         {
@@ -939,6 +942,8 @@ public class DebugModuleTests
         _debugBridge.DidNotReceive().GetBlockIntermediateRoots(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
         _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
         _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        _debugBridge.DidNotReceive().GetBlockTrace(Arg.Any<Block>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
+            Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
     }
 
     [Test]
@@ -954,6 +959,40 @@ public class DebugModuleTests
         Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
         _debugBridge.DidNotReceive().GetBadBlocks();
         _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+    }
+
+    [Test]
+    public void DebugTraceBadBlock_WhenNotInBadStore_ReturnsGethNotFoundError([Values] bool inTree)
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        if (inTree)
+        {
+            _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+            _blockFinder.FindBlock(block.Hash!).Returns(block);
+        }
+
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> actual = CreateModule().debug_traceBadBlock(block.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(actual.Result.Error, Is.EqualTo($"bad block {block.Hash} not found"));
+        }
+    }
+
+    [Test]
+    public void DebugTraceBadBlock_ForGenesis_ReturnsNotTraceable()
+    {
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        _debugBridge.GetBadBlocks().Returns([genesis]);
+
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> actual = CreateModule().debug_traceBadBlock(genesis.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(actual.Result.Error, Is.EqualTo("genesis is not traceable"));
+        }
     }
 
     [Test]
@@ -1570,6 +1609,22 @@ public class DebugModuleTests
             (
                 "ByTransactionHashStreaming",
                 static (module, _) => module.debug_traceTransaction(TestItem.KeccakA),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHashMalformedTimeout",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA, new GethTraceOptions
+                {
+                    Tracer = "noopTracer", ParsedTimeout = CustomTimeDurationConverter.Parse("bad")
+                }),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHashStreamingMalformedTimeout",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA, new GethTraceOptions
+                {
+                    ParsedTimeout = CustomTimeDurationConverter.Parse("bad")
+                }),
                 static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
             )
         ];

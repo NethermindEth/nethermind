@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -147,6 +148,17 @@ public class ProofRpcModuleMetaTests
             "descending into the storage trie reaches deeper than the account trie alone");
         Assert.That(withStorage.Meta.NodeLookups, Is.GreaterThan(withoutStorage.Meta.NodeLookups),
             "storage-trie traversal triggers additional node lookups");
+    }
+
+    [Test]
+    public void Returns_one_storage_proof_per_key_in_request_order()
+    {
+        StorageKeys storageKeys = [2, 1, 1];
+
+        AccountProofWithMeta result = _proofRpcModule.proof_getProofWithMeta(
+            TestItem.AddressB, storageKeys, BlockParameter.Earliest).Data;
+
+        Assert.That(result.Proof.StorageProofs.Select(static p => p.Key), Is.EqualTo(new byte[][] { [2], [1], [1] }));
     }
 
     [Test]
