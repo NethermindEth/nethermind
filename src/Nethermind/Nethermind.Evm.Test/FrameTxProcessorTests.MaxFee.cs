@@ -137,14 +137,11 @@ public partial class FrameTxProcessorTests
     [TestCase((byte)0x04, TestName = "Execute_MaxFee_TxParam_MaxFee")]
     [TestCase((byte)0x05, TestName = "Execute_MaxFee_TxParam_MaxBlobFeeHalts")]
     [TestCase((byte)0x06, TestName = "Execute_MaxFee_TxParam_MaxCostHalts")]
-    [TestCase((byte)Instruction.GASPRICE, TestName = "Execute_MaxFee_GasPrice_IsTheEscrowedPerGasPrice")]
     public void Execute_MaxFee_Introspection(byte param)
     {
         const ulong tip = 100;
-        Instruction read = param == (byte)Instruction.GASPRICE ? Instruction.GASPRICE : Instruction.TXPARAM;
-        Prepare code = read == Instruction.TXPARAM ? Prepare.EvmCode.PushData(param).Op(read) : Prepare.EvmCode.Op(read);
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, code.PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Observer, Prepare.EvmCode.PushData(param).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
         // Preset so a halting read, which never stores, is told apart from one that stores zero.
         _stateProvider.Set(new StorageCell(Observer, 0), (UInt256)1);
         _stateProvider.Commit(Spec);
@@ -157,19 +154,46 @@ public partial class FrameTxProcessorTests
         TransactionResult result = Process(tx, baseFeePerGas: BudgetBaseFee);
 
         Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
-        UInt256 maxCost = maxFee;
-        UInt256 gasPrice = maxCost / maxGas;
-        if (param == (byte)Instruction.GASPRICE)
-        {
-            Assert.That(gasPrice, Is.Not.EqualTo(UInt256.Min(tx.DecodedMaxFeePerGas, BudgetBaseFee + tip)), "a per-gas reading must differ, or this pins nothing");
-        }
+        AssertStorage(Observer, 0, param == 0x04 ? maxFee : UInt256.One);
+    }
 
-        AssertStorage(Observer, 0, param switch
+    // GASPRICE is base_fee_per_gas + max_priority_fee // max_gas: the tip max_cost escrows, spread over max_gas, with
+    // blob fees left out. Two frames read it, as every frame reads the same value.
+    [TestCase(false, false, TestName = "Execute_GasPrice_TipCovered_IsTheBaseFeePlusTheTip")]
+    [TestCase(true, false, TestName = "Execute_GasPrice_TipCappedByTheBudget_IsTheBaseFeePlusTheBudgetedTipPerGas")]
+    [TestCase(false, true, TestName = "Execute_GasPrice_LeavesOutTheBlobFee")]
+    public void Execute_GasPrice_IsTheBaseFeePlusTheMaxPriorityFeePerMaxGas(bool tipCapped, bool blobs)
+    {
+        const ulong tip = 100;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        byte[] readGasPrice = Prepare.EvmCode.Op(Instruction.GASPRICE).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        DeployContract(Observer, readGasPrice);
+        DeployContract(Recipient, readGasPrice);
+        // Preset, so the reads overwrite a slot rather than create one.
+        _stateProvider.Set(new StorageCell(Observer, 0), (UInt256)1);
+        _stateProvider.Set(new StorageCell(Recipient, 0), (UInt256)1);
+        _stateProvider.Commit(Spec);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(FrameMode.Default, target: Observer, stateGasLimit: 0), Frame(FrameMode.Default, target: Recipient, stateGasLimit: 0));
+        if (blobs) tx.BlobVersionedHashes = [new byte[32]];
+        ulong maxGas = MaxGas(tx);
+        UInt256 blobFee = blobs ? ExpectedBlobFee(excessBlobGas: 0, blobCount: 1) : UInt256.Zero;
+        UInt256 requiredMaxFee = (UInt256)maxGas * BudgetBaseFee + blobFee;
+        // Capped: 3.5 wei of headroom per gas, so max_priority_fee // max_gas is 3 where the tip asks for 100.
+        UInt256 maxFee = requiredMaxFee + (tipCapped ? (UInt256)maxGas * 3 + maxGas / 2 : (UInt256)maxGas * tip);
+        WithMaxFee(tx, maxFee, tip);
+
+        TransactionResult result = blobs
+            ? ProcessWithBlobHeader(tx, excessBlobGas: 0, baseFeePerGas: BudgetBaseFee)
+            : Process(tx, baseFeePerGas: BudgetBaseFee);
+
+        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+        UInt256 expected = BudgetBaseFee + (tipCapped ? 3ul : tip);
+        using (Assert.EnterMultipleScope())
         {
-            0x04 => maxFee,
-            0x05 or 0x06 => UInt256.One,
-            _ => gasPrice
-        });
+            AssertStorage(Observer, 0, expected);
+            AssertStorage(Recipient, 0, expected);
+        }
     }
 
     // As for max_fee_per_gas, a simulation that names no fee is not held to the base fee, and one that names any is.

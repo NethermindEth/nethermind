@@ -64,12 +64,13 @@ public static class FrameTxFeeBudget
         return remaining - priorityFeePaid;
     }
 
-    /// <summary>The uniform per-gas price <paramref name="maxCost"/> escrows for execution and state gas.</summary>
-    /// <remarks>What <c>GASPRICE</c> reads: <c>base_fee_per_gas</c> plus the escrowed tip spread over <c>max_gas</c>.
-    /// EIP-8141 defines no per-gas price for the budget, so this is the price at which the escrow is spent in full.</remarks>
-    public static UInt256 EffectiveGasPrice(in UInt256 maxCost, ulong maxGas, in UInt256 blobFee)
-    {
-        UInt256 gasCost = maxCost > blobFee ? maxCost - blobFee : UInt256.Zero;
-        return maxGas == 0 ? gasCost : gasCost / maxGas;
-    }
+    /// <summary>What <c>GASPRICE</c> reads in a frame: <c>base_fee_per_gas + max_priority_fee // max_gas</c>.</summary>
+    /// <param name="baseFee">The block's EIP-1559 base fee.</param>
+    /// <param name="maxPriorityFee">The tip <paramref name="maxCost"/> escrows above <c>required_max_fee</c>.</param>
+    /// <param name="maxGas">The transaction's <c>max_gas</c>.</param>
+    /// <remarks>A lower bound on what the payer pays per unit of <c>gas_used</c>, blob fees excluded, and exact when
+    /// <c>max_fee</c> covers the full tip. It depends only on the transaction and the block's base fees, so every
+    /// frame reads the same value.</remarks>
+    public static UInt256 GasPrice(in UInt256 baseFee, in UInt256 maxPriorityFee, ulong maxGas) =>
+        baseFee + (maxGas == 0 ? maxPriorityFee : maxPriorityFee / maxGas);
 }

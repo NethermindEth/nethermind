@@ -426,7 +426,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>Prices the <c>max_fee</c> budget at <paramref name="header"/>'s base fees.</summary>
     /// <param name="maxGas">The transaction's <c>max_gas</c>.</param>
     /// <param name="maxCost">The escrow the payer's approval collects.</param>
-    /// <param name="effectiveGasPrice">The per-gas price <c>GASPRICE</c> reads; see <see cref="FrameTxFeeBudget.EffectiveGasPrice"/>.</param>
+    /// <param name="effectiveGasPrice">The per-gas price <c>GASPRICE</c> reads; see <see cref="FrameTxFeeBudget.GasPrice"/>.</param>
     /// <returns>An error when <c>max_fee</c> is below <c>required_max_fee</c>, unless a fee-less simulation skips the check.</returns>
     private TransactionResult PriceFeeBudget(Transaction tx, ExecutionOptions opts, BlockHeader header, ulong maxGas,
         in UInt256 blobFee, out UInt256 maxCost, out UInt256 effectiveGasPrice)
@@ -451,7 +451,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 $"max fee less than required max fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFee: {maxFee}, requiredMaxFee: {requiredMaxFee}");
         }
 
-        effectiveGasPrice = FrameTxFeeBudget.EffectiveGasPrice(in maxCost, maxGas, in blobFee);
+        // max_cost is required_max_fee plus max_priority_fee, unless an unchecked simulation left it short of the former.
+        UInt256 maxPriorityFee = maxCost > requiredMaxFee ? maxCost - requiredMaxFee : UInt256.Zero;
+        effectiveGasPrice = FrameTxFeeBudget.GasPrice(header.BaseFeePerGas, in maxPriorityFee, maxGas);
         return TransactionResult.Ok;
     }
 
