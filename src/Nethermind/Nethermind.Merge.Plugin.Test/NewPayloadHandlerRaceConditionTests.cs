@@ -131,6 +131,115 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         }
     }
 
+    /// <summary>
+    /// The Received line is written once per payload, after the block is handed to the processing queue and before
+    /// the verdict.
+    /// </summary>
+    [Test]
+    public async Task Received_line_is_written_once_on_the_normal_path()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        int receivedBeforeHandOff = -1;
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            // The suggest is the request's last step on its own thread before the hand-off.
+            configure: (blockTree, stateReader) => blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(_ =>
+                {
+                    receivedBeforeHandOff = logger.ReceivedCount;
+                    return ValueTask.FromResult(AddBlockResult.Added);
+                }),
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await enqueued.Task.WaitAsync(AnswerWait);
+        // The line must not wait for the verdict, which lands only once it is written.
+        await logger.FirstReceived.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(receivedBeforeHandOff, Is.EqualTo(0));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>
+    /// A request that ends before the hand-off still writes its Received line, once: on an invalid hash, or when the
+    /// block validator turns the block down.
+    /// </summary>
+    [Test]
+    public async Task Received_line_is_written_once_when_the_request_ends_before_the_hand_off([Values] bool invalidHash)
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: invalidHash,
+            processingQueue: processingQueue,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+        ExecutionPayload payload = ExecutionPayload.Create(block);
+        if (invalidHash) payload.BlockHash = TestItem.KeccakB;
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload).WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    /// <summary>Counts the handler's Received lines; the request writes them from whichever thread it is on.</summary>
+    private sealed class ReceivedLineLogger : InterfaceLogger
+    {
+        private int _receivedCount;
+
+        public int ReceivedCount => Volatile.Read(ref _receivedCount);
+        public Task FirstReceived => _firstReceived.Task;
+        private readonly TaskCompletionSource _firstReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Info(string text)
+        {
+            if (!text.StartsWith("Received ", StringComparison.Ordinal)) return;
+            Interlocked.Increment(ref _receivedCount);
+            _firstReceived.TrySetResult();
+        }
+
+        public void Warn(string text) { }
+        public void Debug(string text) { }
+        public void Trace(string text) { }
+        public void Error(string text, Exception? ex = null) { }
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => false;
+        public bool IsTrace => false;
+        public bool IsError => true;
+    }
+
     [Test]
     public async Task Canonical_payload_far_behind_head_does_not_walk_the_full_ancestry()
     {
@@ -1244,7 +1353,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Func<bool>? parentProcessedNow = null,
         Action<IBlockTree, IStateReader>? configure = null,
         RecoverSignatures? senderRecovery = null,
-        ISpecProvider? specProvider = null)
+        ISpecProvider? specProvider = null,
+        ILogManager? logManager = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -1323,6 +1433,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             senderRecovery ?? new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
             specProvider ?? Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
     }
 }

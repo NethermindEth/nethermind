@@ -134,6 +134,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _ => "  "
     };
 
+    private void LogReceived(string requestStr, Block block)
+    {
+        _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
+        _lastBlockNumber = block.Number;
+        _lastBlockGasLimit = block.Header.GasLimit;
+    }
+
+    /// <summary>A payload's <c>Received</c> line held back until its block is handed to the processing queue.</summary>
+    /// <remarks>Written at most once: by <see cref="Write"/> after the hand-off, or on dispose by a request that ends before it.</remarks>
+    private sealed class ReceivedLine(NewPayloadHandler handler, string requestStr, Block block) : IDisposable
+    {
+        private bool _written;
+
+        public void Write()
+        {
+            if (_written) return;
+            _written = true;
+            handler.LogReceived(requestStr, block);
+        }
+
+        public void Dispose() => Write();
+    }
+
     /// <summary>
     /// Processes the execution payload and returns the <see cref="PayloadStatusV1"/>
     /// and the hash of the last valid block.
@@ -164,12 +187,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
         string requestStr = $"New Block:  {request}";
-        if (_logger.IsInfo)
-        {
-            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
-            _lastBlockNumber = block.Number;
-            _lastBlockGasLimit = block.Header.GasLimit;
-        }
+        // Written once the block is handed to the processing queue, off the path to the hash check; disposing
+        // writes it on every path that returns or throws before that hand-off.
+        using ReceivedLine? receivedLine = _logger.IsInfo ? new ReceivedLine(this, requestStr, block) : null;
 
         // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
         // below come from TryGetBlock, which derives them from the payload's own body, so a matching header hash
@@ -366,7 +386,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers, receivedLine);
 
         switch (result)
         {
@@ -705,7 +725,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers, ReceivedLine? receivedLine)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
@@ -825,6 +845,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
                 TrackQueuedCopy(block.Hash!, ilDigest, Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers)));
+                // The block is on its way to the queue, so the line costs the verdict nothing from here.
+                receivedLine?.Write();
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
