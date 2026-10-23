@@ -9,7 +9,7 @@ using System.Text.Json.Nodes;
 
 const string original = "{\"Sync\":{\"PivotNumber\":1,\"PivotHash\":\"old\"}}";
 var passed = 0;
-foreach (var (failures, nullDifficulty) in new[] { (1, false), (5, false), (1, true), (5, true), (0, false) })
+foreach (var (failures, invalidResult) in new[] { (1, "json"), (5, "json"), (1, "difficulty"), (5, "difficulty"), (1, "block"), (5, "block"), (1, "hash"), (5, "hash"), (1, "latest"), (5, "latest"), (0, "json") })
 {
     var directory = Directory.CreateTempSubdirectory("sync-settings-");
     try
@@ -17,7 +17,7 @@ foreach (var (failures, nullDifficulty) in new[] { (1, false), (5, false), (1, t
         foreach (var name in SyncSettings.Configs.Select(config => config.Name).Append("mainnet_aztec"))
             File.WriteAllText(Path.Combine(directory.FullName, name + ".json"), original);
         if (failures == 0) File.WriteAllText(Path.Combine(directory.FullName, "mainnet_aztec.json"), "{}");
-        using var handler = new Responses(failures, nullDifficulty);
+        using var handler = new Responses(failures, invalidResult);
         using var http = new HttpClient(handler);
         var delays = new List<double>();
         var output = Console.Out;
@@ -45,7 +45,7 @@ foreach (var (failures, nullDifficulty) in new[] { (1, false), (5, false), (1, t
             Require(failures == 5 ? gnosis == original : JsonNode.Parse(gnosis)!["Sync"]!["PivotNumber"]!.GetValue<long>() == 50000, "failed chain mutation or wrong pivot");
             Require(JsonNode.Parse(File.ReadAllText(Path.Combine(directory.FullName, "chiado.json")))!["Sync"]!["PivotNumber"]!.GetValue<long>() == 50000, "later chain not updated");
         }
-        Console.WriteLine($"PASS {(failures == 0 ? "broken follower preserves leader" : $"retry and continuation after {failures} failures, null difficulty={nullDifficulty}")}");
+        Console.WriteLine($"PASS {(failures == 0 ? "broken follower preserves leader" : $"retry and continuation after {failures} failures, invalid {invalidResult}")}");
         passed++;
     }
     finally { directory.Delete(recursive: true); }
@@ -57,7 +57,7 @@ static void Require(bool condition, string message)
     if (!condition) throw new InvalidOperationException(message);
 }
 
-sealed class Responses(int maximumFailures, bool nullDifficulty) : HttpMessageHandler
+sealed class Responses(int maximumFailures, string invalidResult) : HttpMessageHandler
 {
     internal int Failures { get; private set; }
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -65,10 +65,17 @@ sealed class Responses(int maximumFailures, bool nullDifficulty) : HttpMessageHa
         var method = request.Method == HttpMethod.Get
             ? request.RequestUri!.Query.Contains("action=eth_blockNumber", StringComparison.Ordinal) ? "eth_blockNumber" : "eth_getBlockByNumber"
             : JsonNode.Parse(await request.Content!.ReadAsStringAsync(cancellationToken))!["method"]!.GetValue<string>();
-        if (request.RequestUri!.Host == "rpc.gnosischain.com" && Failures < maximumFailures && (!nullDifficulty || method == "eth_getBlockByNumber"))
+        if (request.RequestUri!.Host == "rpc.gnosischain.com" && Failures < maximumFailures && (invalidResult is "json" or "latest" || method == "eth_getBlockByNumber"))
         {
             Failures++;
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(nullDifficulty ? "{\"result\":{\"hash\":\"0xab\",\"totalDifficulty\":null}}" : "not JSON") };
+            var response = invalidResult switch
+            {
+                "difficulty" => "{\"result\":{\"hash\":\"0xab\",\"totalDifficulty\":null}}",
+                "block" or "latest" => "{\"result\":null}",
+                "hash" => "{\"result\":{}}",
+                _ => "not JSON"
+            };
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(response) };
         }
         return new HttpResponseMessage(HttpStatusCode.OK)
         {

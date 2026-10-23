@@ -37,11 +37,12 @@ internal static class SyncSettings
             {
                 try
                 {
-                    var latest = long.Parse((await Request("eth_blockNumber", null))!.GetValue<string>()[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                    var latestResult = (await Request("eth_blockNumber", null))?.GetValue<string>() ?? throw new JsonException("Missing latest block number");
+                    var latest = long.Parse(latestResult[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
                     var number = latest - reduction;
                     number -= (number % multiple + multiple) % multiple;
-                    var block = await Request("eth_getBlockByNumber", "0x" + number.ToString("x", CultureInfo.InvariantCulture));
-                    var hash = block!["hash"]!.GetValue<string>();
+                    var block = await Request("eth_getBlockByNumber", "0x" + number.ToString("x", CultureInfo.InvariantCulture)) ?? throw new JsonException("Missing block");
+                    var hash = block["hash"]?.GetValue<string>() ?? throw new JsonException("Missing block hash");
                     var totalDifficulty = block.AsObject().TryGetPropertyValue("totalDifficulty", out var declaredDifficulty)
                         ? declaredDifficulty?.GetValue<string>() ?? throw new JsonException("Null totalDifficulty") : "0x0";
                     var difficulty = BigInteger.Parse("0" + totalDifficulty[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
@@ -49,7 +50,7 @@ internal static class SyncSettings
                     pivot = (number, hash, difficulty);
                     break;
                 }
-                catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException or JsonException or FormatException or OverflowException or InvalidOperationException or NullReferenceException or ArgumentOutOfRangeException)
+                catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException or JsonException or FormatException or OverflowException or InvalidOperationException or ArgumentOutOfRangeException)
                 {
                     Console.WriteLine($"{name} attempt {attempt}/5 failed: {exception.GetType().Name}");
                     if (attempt < 5) await delay(TimeSpan.FromSeconds(10 * attempt));
