@@ -49,19 +49,19 @@ public interface ILogIndexConfig : IConfig
     public int MaxSavingQueueSize { get; set; }
 
     [ConfigItem(
-        Description = "Maximum degree of parallelism for fetching receipts, per backfill direction. The forward and backward directions run at the same time until the forward direction reaches the head. Lower it to reduce the CPU load of the log index backfill, at the cost of a longer backfill.",
+        Description = "Maximum degree of parallelism for fetching receipts, per backfill direction. The forward and backward directions run at the same time until the forward direction reaches the head. Lower it to reduce the CPU load of the log index backfill, at the cost of a longer backfill. Minimum `1`.",
         DefaultValue = "Max(ProcessorCount / 4, 1)"
     )]
     public int MaxReceiptsParallelism { get; set; }
 
     [ConfigItem(
-        Description = "Maximum degree of parallelism for aggregating batches, per backfill direction. The forward and backward directions run at the same time until the forward direction reaches the head. Lower it to reduce the CPU load of the log index backfill, at the cost of a longer backfill.",
+        Description = "Maximum degree of parallelism for aggregating batches, per backfill direction. The forward and backward directions run at the same time until the forward direction reaches the head. Lower it to reduce the CPU load of the log index backfill, at the cost of a longer backfill. Minimum `1`. Values above `MaxAggregationQueueSize` (default `16`) have no effect.",
         DefaultValue = "Max(ProcessorCount / 4, 1)"
     )]
     public int MaxAggregationParallelism { get; set; }
 
     [ConfigItem(
-        Description = "Maximum degree of parallelism for compressing overgrown key values, shared by both backfill directions. Lower it to reduce the CPU load of the log index backfill, at the cost of a longer backfill.",
+        Description = "Maximum degree of parallelism for compressing overgrown key values, shared by both backfill directions. Lower it to reduce the CPU load of the log index backfill, at the cost of a longer backfill. Minimum `1`.",
         DefaultValue = "Max(ProcessorCount / 4, 1)"
     )]
     public int MaxCompressionParallelism { get; set; }
