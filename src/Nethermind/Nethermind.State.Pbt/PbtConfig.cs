@@ -19,6 +19,7 @@ public class PbtConfig : IPbtConfig
     public int ExportSortBufferBytes { get; set; } = (int)256UL.MiB;
     public bool ExportPreimages { get; set; } = true;
     public int ImportConcurrency { get; set; } = 1;
+    public int ImportSortBufferBytes { get; set; } = (int)128UL.MiB;
     public bool FakeMatchingStateRoot { get; set; }
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public int CompactSize { get; set; } = 32;

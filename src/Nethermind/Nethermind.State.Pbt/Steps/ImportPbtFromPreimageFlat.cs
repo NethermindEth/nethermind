@@ -63,7 +63,7 @@ public class ImportPbtFromPreimageFlat(
         Directory.CreateDirectory(directory);
         try
         {
-            using SortedSpool leaves = new(directory, config.ExportSortBufferBytes, workers, logManager, cancellationToken)
+            using SortedSpool leaves = new(directory, config.ImportSortBufferBytes, workers, logManager, cancellationToken)
             { MaxConcurrentPreMerges = workers };
             PbtOfflineSource.Spool("PBT import scan", reader, codeDb, leaves, rawKeys: null, workers, logManager, cancellationToken);
             // State is addressed by the source block header's root; the fold records its tree root beside it.

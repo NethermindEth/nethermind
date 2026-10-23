@@ -54,7 +54,7 @@ public sealed class PbtAnchorImport(
         ValueHash256 claimedRoot = PbtSnapshotCodec.ReadRoot(snapshot);
         if (!blockTree.IsMainChain(anchor.Header)) throw new InvalidOperationException("Migration anchor changed before the import.");
         RecoverStaging(anchor, cancellationToken);
-        using PbtImageVerifier? verifier = preimages is null ? null : new(scratchDirectory, config.ExportSortBufferBytes, logManager, cancellationToken);
+        using PbtImageVerifier? verifier = preimages is null ? null : new(scratchDirectory, config.ImportSortBufferBytes, logManager, cancellationToken);
         verifier?.SpoolPreimages(preimages!);
         (ValueHash256 root, ulong accounts, ulong slots) = await leafIngestion.Ingest(Leaves, new StateId(anchor.Header), claimedRoot, VerifyStaged, cancellationToken);
         Finish(anchor, root, accounts, slots, importing, cancellationToken);

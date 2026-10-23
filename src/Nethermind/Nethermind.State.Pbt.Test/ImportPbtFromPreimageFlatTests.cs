@@ -147,7 +147,7 @@ public class ImportPbtFromPreimageFlatTests
             ImportFromPreimageFlat = true,
             ImportConcurrency = importConcurrency,
             ExportConcurrency = importConcurrency == 1 ? 3 : 1,
-            ExportSortBufferBytes = SortBufferBytes,
+            ImportSortBufferBytes = SortBufferBytes,
             ImportWindowSize = 1
         };
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
@@ -237,7 +237,7 @@ public class ImportPbtFromPreimageFlatTests
     [TestCase(8000, 3, 0)]
     public async Task Imports_preimage_flat_state_into_pbt(int codeLength, int workers, int windowSize)
     {
-        PbtConfig config = new() { ExportConcurrency = workers, ExportSortBufferBytes = SortBufferBytes, ImportWindowSize = windowSize };
+        PbtConfig config = new() { ExportConcurrency = workers, ImportSortBufferBytes = SortBufferBytes, ImportWindowSize = windowSize };
 
         byte[] bigCode = new byte[codeLength];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
@@ -301,7 +301,7 @@ public class ImportPbtFromPreimageFlatTests
     [Test]
     public async Task Import_mode_recovers_an_interrupted_epoch_17_attempt()
     {
-        PbtConfig config = new() { ImportFromPreimageFlat = true, ExportSortBufferBytes = SortBufferBytes };
+        PbtConfig config = new() { ImportFromPreimageFlat = true, ImportSortBufferBytes = SortBufferBytes };
 
         Dictionary<string, byte[]> model = [];
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
@@ -624,7 +624,7 @@ public class ImportPbtFromPreimageFlatTests
     [Test]
     public async Task Importer_bypasses_cached_persistence_wrapper()
     {
-        PbtConfig config = new() { ExportSortBufferBytes = SortBufferBytes };
+        PbtConfig config = new() { ImportSortBufferBytes = SortBufferBytes };
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = CreateSource(flatDb, batch => batch.SetAccount(TestItem.AddressA, new Account(1, 100)));
 
@@ -701,7 +701,7 @@ public class ImportPbtFromPreimageFlatTests
         if (failure != "missing-code") codes[codeHash.Bytes] = code;
         // Recording from the start makes the fold's first window, not the final publication, the first group commit.
         using RecordingColumnsDb db = new() { Recording = true };
-        PbtConfig config = new() { ExportConcurrency = 1, ExportSortBufferBytes = SortBufferBytes, ImportWindowSize = 1, ImportFromPreimageFlat = true, ImportConcurrency = 3 };
+        PbtConfig config = new() { ExportConcurrency = 1, ImportSortBufferBytes = SortBufferBytes, ImportWindowSize = 1, ImportFromPreimageFlat = true, ImportConcurrency = 3 };
         PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
         using CancellationTokenSource cancellation = new();
         db.TrackCodeRebuild = failure.StartsWith("code-", StringComparison.Ordinal);

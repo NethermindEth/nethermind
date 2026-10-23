@@ -96,7 +96,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
         try
         {
             (ulong Accounts, ulong Slots) staged;
-            using PbtCodeReassembly codes = new(target, scratchDirectory, config.ExportSortBufferBytes, workers, logManager, cancellationToken);
+            using PbtCodeReassembly codes = new(target, scratchDirectory, config.ImportSortBufferBytes, workers, logManager, cancellationToken);
             using (LogicalBatch batch = new(target, workers, cancellationToken))
             {
                 staged = Stage(batch, leaves, codes, cancellationToken);
