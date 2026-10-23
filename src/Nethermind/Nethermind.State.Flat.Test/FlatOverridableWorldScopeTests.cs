@@ -15,6 +15,7 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -44,6 +45,7 @@ public class FlatOverridableWorldScopeTests
         public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
         public FlatOverridableWorldScope OverridableScope => field ??= Container.Resolve<FlatOverridableWorldScope>();
         public List<(Snapshot Snapshot, TransientResource Resource)> FlatDbManagerAddSnapshotCalls { get; } = [];
+        public ForwardingNodeRecordBuffer GlobalNodeRecordBuffer { get; } = new(FlatTestHelpers.NewTestBuffer());
 
         public TestContext(FlatDbConfig? config = null)
         {
@@ -52,6 +54,7 @@ public class FlatOverridableWorldScopeTests
 
             _containerBuilder = new ContainerBuilder()
                 .AddModule(new FlatWorldStateModule(config))
+                .AddSingleton<INodeRecordBuffer>(GlobalNodeRecordBuffer)
                 .AddSingleton<IPersistence.IPersistenceReader>(_ => persistenceReader)
                 .AddSingleton<IFlatDbManager>(ctx =>
                 {
@@ -68,7 +71,7 @@ public class FlatOverridableWorldScopeTests
                         .Returns(_ =>
                         {
                             SnapshotPooledList snapshotList = new(0);
-                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty());
+                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty(), bufferPin: null);
                         });
 
                     flatDbManager.HasStateForBlock(Arg.Any<StateId>())
@@ -81,7 +84,6 @@ public class FlatOverridableWorldScopeTests
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IFlatDbConfig>(config)
                 .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
-                .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
                 .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
 
             // Register keyed IDb for code database
@@ -192,6 +194,43 @@ public class FlatOverridableWorldScopeTests
         // The main FlatDbManager should NOT receive any AddSnapshot calls
         // because commits go to FlatOverridableWorldScope's local _snapshots dictionary
         Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
+    }
+
+    [Test]
+    public void CommitThroughOverridableScope_KeepsTrieNodesOutOfGlobalBuffer_AndReleasesItsPinOnReset()
+    {
+        using TestContext ctx = new();
+        FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
+        Account accountA = TestItem.GenerateRandomAccount();
+        Account accountB = TestItem.GenerateRandomAccount();
+
+        Hash256 Commit(BlockHeader? baseBlock, params (Address Address, Account Account)[] accounts)
+        {
+            using IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(baseBlock);
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accounts.Length))
+            {
+                foreach ((Address address, Account account) in accounts) writeBatch.Set(address, account);
+            }
+            scope.Commit((baseBlock?.Number ?? 0) + 1);
+            return scope.RootHash;
+        }
+
+        Hash256 rootA = Commit(null, (TestItem.AddressA, accountA));
+        // Builds on the trie nodes of the previous commit, which only the overlay holds.
+        Hash256 rootAB = Commit(Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootA).TestObject, (TestItem.AddressB, accountB));
+        int pinsBeforeReset = ctx.GlobalNodeRecordBuffer.OutstandingPins;
+        overridableScope.ResetOverrides();
+        int pinsAfterReset = ctx.GlobalNodeRecordBuffer.OutstandingPins;
+        Hash256 rootABInOneCommit = Commit(null, (TestItem.AddressA, accountA), (TestItem.AddressB, accountB));
+        overridableScope.ResetOverrides();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.GlobalNodeRecordBuffer.CompletedWrites, Is.Zero);
+            Assert.That(rootAB, Is.EqualTo(rootABInOneCommit));
+            Assert.That(pinsBeforeReset, Is.Positive);
+            Assert.That(pinsAfterReset, Is.Zero);
+        }
     }
 
     [Test]

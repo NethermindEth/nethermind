@@ -2048,7 +2048,7 @@ public class HistoryWriterTests
     {
         AssembledSnapshotResult assembled = _repository.AssembleSnapshots(StateAt(tip), StateAt(0), estimatedSize);
         assembled.Persisted.Dispose(); // in-memory tip bundle: no persisted tier
-        return new ReadOnlySnapshotBundle(assembled.InMemory, new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+        return new ReadOnlySnapshotBundle(assembled.InMemory, new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
     }
 
     private void AssertStorageAt(ulong readBlock, UInt256 slot, string? expectedHex)

@@ -10,11 +10,13 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -113,6 +115,8 @@ public class PersistenceManagerTests
         // AddStateId is needed for GetStatesAtBlockNumber to work
         _snapshotRepository.AddStateId(to);
 
+        // The repository owns the snapshot it holds, so the caller gets a lease of its own to dispose.
+        snapshot.AcquireLease();
         return snapshot;
     }
 
@@ -1372,7 +1376,8 @@ public class PersistenceManagerTests
         // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, buffer);
 
         // Add accounts
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
@@ -1384,8 +1389,7 @@ public class PersistenceManagerTests
 
         // Add trie nodes
         TreePath path = TreePath.Empty;
-        TrieNode node = new(NodeType.Leaf, Keccak.Zero);
-        snapshot.Content.StateNodes[path] = node;
+        snapshot.Content.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA);
 
         FakeWriteBatch writeBatch = new();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
@@ -1398,8 +1402,7 @@ public class PersistenceManagerTests
         Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressB));
         Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
         Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2));
-        Assert.That(writeBatch.SetStateTrieNodeCalls, Is.Not.Empty);
-        Assert.That(node.IsPersisted, Is.True);
+        Assert.That(writeBatch.SetStateTrieNodeCalls, Has.Some.Matches<(TreePath Path, byte[] Rlp)>(c => c.Path == path && c.Rlp.AsSpan().SequenceEqual(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))));
     }
 
     [Test]

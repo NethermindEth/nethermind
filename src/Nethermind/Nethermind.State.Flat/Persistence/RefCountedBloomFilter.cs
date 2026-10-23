@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Utils;
+using Nethermind.Core.Collections;
 
-namespace Nethermind.State.Flat.Persistence.BloomFilter;
+namespace Nethermind.State.Flat.Persistence;
 
 /// <summary>
 /// Ref-counted owner of a single <see cref="BloomFilter"/>. The wrapped native filter is disposed — and
