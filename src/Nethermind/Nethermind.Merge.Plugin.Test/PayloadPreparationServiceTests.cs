@@ -65,6 +65,7 @@ public class PayloadPreparationServiceTests
         IBoostRelay relay = Substitute.For<IBoostRelay>();
         using TestPayloadPreparationService service = CreateLateBuildService(boost, empty, build.Task, relay);
         string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        Assert.That(() => service.Stored(payloadId), Is.Not.Null.After(5000, 10));
         IBlockImprovementContext context = service.Stored(payloadId)!;
 
         using ManualResetEventSlim buildChecked = new(), firstPinning = new(), resumeBuild = new(), resumeFirst = new();
