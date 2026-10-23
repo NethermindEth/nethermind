@@ -33,6 +33,7 @@ public ref partial struct EvmStack
     {
         Head = head;
         _tracer = txTracer;
+        _tracesPushes = txTracer is not IInstructionTracingFilter { ObservesStackPushes: false };
         _codeInfo = codeInfo;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
@@ -53,6 +54,8 @@ public ref partial struct EvmStack
 
     // Null only for stacks whose compile-time tracing flag eliminates every tracer read.
     private readonly ITxTracer _tracer;
+    // A traced run still skips push reports for a tracer that reads the stack only from instruction snapshots.
+    private readonly bool _tracesPushes;
     private readonly ref byte _stack;
     internal readonly ref byte Code;
     /// <summary>The index of the next free stack slot.</summary>
@@ -281,7 +284,7 @@ public ref partial struct EvmStack
         ref byte dst = ref PushBytesRef();
         if (Unsafe.IsNullRef(ref dst)) return EvmExceptionType.StackOverflow;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
             _tracer.ReportStackPush(value);
 
         ref byte src = ref MemoryMarshal.GetReference(value);
@@ -400,7 +403,7 @@ public ref partial struct EvmStack
         }
 
         WriteWordFromBigEndianBytes(ref Unsafe.As<byte, EvmWord>(ref dst), ref src, WordSize);
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
             ReportPushWord(ref dst);
         return EvmExceptionType.None;
     }
@@ -431,7 +434,7 @@ public ref partial struct EvmStack
         {
             WriteUInt256ToSlot(ref dst, new UInt256(limb0, limb1, limb2, limb3));
         }
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
             ReportPushWord(ref dst);
         return EvmExceptionType.None;
     }
@@ -477,7 +480,7 @@ public ref partial struct EvmStack
         }
 
         Unsafe.WriteUnaligned(ref dst, Vector256.Create(lo, hi).AsByte().ByteSwap());
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
             ReportPushWord(ref dst);
         return EvmExceptionType.None;
     }
@@ -573,7 +576,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 10);
         }
@@ -597,7 +600,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 11);
         }
@@ -621,7 +624,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 12);
         }
@@ -645,7 +648,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 13);
         }
@@ -669,7 +672,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 14);
         }
@@ -693,7 +696,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 15);
         }
@@ -717,7 +720,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 16);
         }
@@ -741,7 +744,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 17);
         }
@@ -765,7 +768,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 18);
         }
@@ -789,7 +792,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 19);
         }
@@ -813,7 +816,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 20);
         }
@@ -837,7 +840,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 21);
         }
@@ -861,7 +864,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 22);
         }
@@ -885,7 +888,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 23);
         }
@@ -909,7 +912,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 24);
         }
@@ -933,7 +936,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 25);
         }
@@ -957,7 +960,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 26);
         }
@@ -981,7 +984,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 27);
         }
@@ -1005,7 +1008,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 28);
         }
@@ -1029,7 +1032,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 29);
         }
@@ -1053,7 +1056,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 2);
         }
@@ -1084,7 +1087,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 30);
         }
@@ -1108,7 +1111,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 31);
         }
@@ -1132,7 +1135,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 32);
         }
@@ -1156,7 +1159,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 3);
         }
@@ -1188,7 +1191,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 4);
         }
@@ -1217,7 +1220,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 5);
         }
@@ -1249,7 +1252,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 6);
         }
@@ -1281,7 +1284,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 7);
         }
@@ -1314,7 +1317,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 8);
         }
@@ -1343,7 +1346,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.TraceBytes(in value, 9);
         }
@@ -1367,7 +1370,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             _tracer.ReportStackPush(value);
         }
@@ -1440,7 +1443,7 @@ public ref partial struct EvmStack
             CopyUpTo32(ref Unsafe.Add(ref dst, WordSize - pushSize), ref start, (uint)used);
             SwapSlot(ref dst);
         }
-        if (TTracingInst.IsActive) ReportPushWord(ref dst);
+        if (TTracingInst.IsActive && _tracesPushes) ReportPushWord(ref dst);
         return EvmExceptionType.None;
     }
 
@@ -1501,7 +1504,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
             _tracer.ReportStackPush(Bytes.OneByteSpan);
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
@@ -1527,7 +1530,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
@@ -1560,7 +1563,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             uint bigEndian = BinaryPrimitives.ReverseEndianness(value);
             _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref bigEndian), sizeof(uint));
@@ -1587,7 +1590,7 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
         {
             ulong bigEndian = Bytes.Bswap64(value);
             _tracer.TraceBytes(in Unsafe.As<ulong, byte>(ref bigEndian), sizeof(ulong));
@@ -1627,7 +1630,7 @@ public ref partial struct EvmStack
         Head = newOffset;
 
         WriteUInt256ToSlot(ref Unsafe.As<EvmWord, byte>(ref head), in value);
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && _tracesPushes)
             ReportPushWord(ref Unsafe.As<EvmWord, byte>(ref head));
 
         return EvmExceptionType.None;
@@ -2106,7 +2109,7 @@ public ref partial struct EvmStack
         Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<EvmWord>(ref from));
 
         // Parity reports DUPn as the top n + 1 words after the copy.
-        if (TTracingInst.IsActive) Trace(depth + 1);
+        if (TTracingInst.IsActive && _tracesPushes) Trace(depth + 1);
 
         return EvmExceptionType.None;
     }
@@ -2137,7 +2140,7 @@ public ref partial struct EvmStack
 
         SwapWords(ref bottom, ref top);
 
-        if (TTracingInst.IsActive) Trace(depth);
+        if (TTracingInst.IsActive && _tracesPushes) Trace(depth);
 
         return EvmExceptionType.None;
     }
@@ -2164,7 +2167,7 @@ public ref partial struct EvmStack
         Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<EvmWord>(ref second));
         Unsafe.WriteUnaligned(ref second, buffer);
 
-        if (TTracingInst.IsActive) Trace(maxDepth);
+        if (TTracingInst.IsActive && _tracesPushes) Trace(maxDepth);
 
         return EvmExceptionType.None;
     }
