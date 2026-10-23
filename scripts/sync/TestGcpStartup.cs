@@ -5,7 +5,6 @@
 #:include SyncTests.Helpers.cs
 #:include ../../.github/actions/gcp-runner/Gcp.Helpers.cs
 #:include ../../.github/actions/gcp-runner/StartupProvision.Helpers.cs
-using System.Diagnostics;
 
 foreach (var scenario in new[] { "zero", "single", "raid", "mismatch", "docker-root", "apt-failure", "runner-failure", "metadata-failure" })
     await Cases.Test($"startup {scenario}", async () =>
@@ -116,23 +115,12 @@ if (OperatingSystem.IsLinux())
                       [[ $FIXTURE_SCENARIO != runtime-failure ]] || exit 44
                     fi
                     """);
-                var start = new ProcessStartInfo("bash") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
-                start.ArgumentList.Add(Path.Combine(actionDirectory, "startup-script.sh"));
-                start.Environment.Remove("HOME");
-                start.Environment.Remove("DOTNET_CLI_HOME");
-                start.Environment["PATH"] = bin.FullName + ":" + Environment.GetEnvironmentVariable("PATH");
-                start.Environment["BOOTSTRAP_DIR"] = bootstrap;
-                start.Environment["FIXTURE_BIN"] = bin.FullName;
-                start.Environment["FIXTURE_CALLS"] = calls;
-                start.Environment["FIXTURE_SCENARIO"] = scenario;
-                using var process = Process.Start(start)!;
-                var stdout = process.StandardOutput.ReadToEndAsync();
-                var stderr = process.StandardError.ReadToEndAsync();
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                try { await process.WaitForExitAsync(timeout.Token); }
-                finally { if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); } }
-                var output = await stdout + await stderr;
-                Cases.True(process.ExitCode == (scenario == "success" ? 0 : scenario == "publish-failure" ? 43 : 44), output);
+                var result = await Gcp.Run("env", ["-u", "HOME", "-u", "DOTNET_CLI_HOME",
+                    "PATH=" + bin.FullName + ":" + Environment.GetEnvironmentVariable("PATH"), "BOOTSTRAP_DIR=" + bootstrap,
+                    "FIXTURE_BIN=" + bin.FullName, "FIXTURE_CALLS=" + calls, "FIXTURE_SCENARIO=" + scenario,
+                    "bash", Path.Combine(actionDirectory, "startup-script.sh")], null, timeout.Token);
+                Cases.True(result.Code == (scenario == "success" ? 0 : scenario == "publish-failure" ? 43 : 44), result.Output + result.Error);
                 var transcript = File.ReadAllText(calls);
                 Cases.Equal(scenario != "success", transcript.Contains("/guest-attributes/gh-runner/error", StringComparison.Ordinal));
                 Cases.Equal(scenario != "success", transcript.Contains("/guest-attributes/gh-runner/stage", StringComparison.Ordinal));
