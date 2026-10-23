@@ -533,7 +533,12 @@ public partial class DebugRpcModuleTests
     [TestCase("javascript-valid", false)]
     [TestCase("native-null-config", false)]
     [TestCase("native-null-config-valid", false)]
-    public async Task Debug_traceBlockByNumber_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode)
+    [TestCase("native", false, "2562047.788015215502222222h")]
+    [TestCase("opcode", false, "2562047.788015215502222222h")]
+    [TestCase("opcode", true, "2562047.788015215502222222h")]
+    [TestCase("empty-native", false, "2562047.788015215502222222h")]
+    [TestCase("empty-opcode", true, "2562047.788015215502222222h")]
+    public async Task Debug_traceBlockByNumber_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode, string timeout = "bad")
     {
         using Context context = await Context.Create();
         bool empty = scenario.StartsWith("empty", StringComparison.Ordinal);
@@ -544,7 +549,7 @@ public partial class DebugRpcModuleTests
         bool valid = scenario.EndsWith("-valid", StringComparison.Ordinal);
         Dictionary<string, object> options = new()
         {
-            ["timeout"] = valid ? "5s" : "bad",
+            ["timeout"] = valid ? "5s" : timeout,
             ["streamMode"] = streamMode
         };
         if (unmatched) options["txHash"] = TestItem.KeccakD;
@@ -573,7 +578,7 @@ public partial class DebugRpcModuleTests
             JArray traces = (JArray)json["result"]!;
             Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
             foreach (JToken trace in traces)
-                Assert.That((string?)trace["error"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+                Assert.That((string?)trace["error"], Does.Contain($"Cannot parse '{timeout}' as a duration"), response);
         }
         else if (valid)
         {
@@ -585,7 +590,7 @@ public partial class DebugRpcModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain($"Cannot parse '{timeout}' as a duration"), response);
             }
         }
     }
