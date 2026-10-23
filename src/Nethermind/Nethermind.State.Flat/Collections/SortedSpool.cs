@@ -440,7 +440,6 @@ public sealed class SortedSpool : IDisposable
                 {
                     MappedByteFile file = new(runs[index]);
                     _files[index] = file;
-                    file.AdviseSequential();
                     WholeReadSessionReader reader = file.CreateReader();
                     _sources[index] = new SortedTableEnumerator<WholeReadSessionReader, NoOpPin>(in reader, new Bound(0, file.Length));
                     // Only counted once the enumerator owns its buffer, so Dispose never frees a default one.
