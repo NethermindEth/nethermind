@@ -125,10 +125,14 @@ public sealed partial class PrecompileCaches
     }
 
     /// <summary> Empties the per-block tier. Callers must join any concurrent warming first. </summary>
-    public void ClearBlockCache()
+    /// <param name="publishMetrics">
+    /// Whether to publish the tier's metrics before it is emptied. Pass <see langword="false"/> for a reset that does
+    /// not end a block, so the gauges keep reporting the last block instead of an already emptied cache.
+    /// </param>
+    public void ClearBlockCache(bool publishMetrics = true)
     {
         // published before clearing, so the occupancy gauges report each block's high point
-        PublishMetrics();
+        if (publishMetrics) PublishMetrics();
 
         foreach (KeyValuePair<AddressAsKey, Partition> partition in _partitions)
             partition.Value.Clear();

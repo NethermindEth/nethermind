@@ -619,6 +619,25 @@ public class PrecompileCachedCodeInfoRepositoryTests
         }
     }
 
+    [Test]
+    public void PrepareFor_AfterBlockEnd_KeepsTheLastBlockMetrics()
+    {
+        const string label = "TEST_RESET_METRIC_LABEL";
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, name: label));
+        PreBlockCaches preBlockCaches = new(new PreBlockCachesConfig(), caches);
+
+        resolved.Run(new byte[] { 1, 2, 3, 4 }, Prague.Instance);
+        preBlockCaches.ClearPrecompileCache();
+        preBlockCaches.PrepareFor(stateRoot: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.BlockCacheCount, Is.Zero, "precondition: the reset still empties the cache");
+            Assert.That(PrecompileCacheUsedBytes[label], Is.EqualTo(EntryCost), "a reset must not overwrite the last block's occupancy");
+            Assert.That(PrecompileCacheEntries[label], Is.EqualTo(1), "a reset must not overwrite the last block's entry count");
+        }
+    }
+
     private static long ProbeMetric(string result) => PrecompileCacheProbes.TryGetValue((MetricLabel, result), out long count) ? count : 0;
     private static long RejectedFullMetric() => PrecompileCacheRejectedFull.TryGetValue(MetricLabel, out long count) ? count : 0;
     private static long UsedBytesMetric() => PrecompileCacheUsedBytes.TryGetValue(MetricLabel, out long bytes) ? bytes : 0;

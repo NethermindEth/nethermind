@@ -11,18 +11,18 @@ public class Metrics
     [DetailedMetricOnFlag]
     public static bool DetailedMetricsEnabled { get; set; }
 
-    [GaugeMetric]
+    [CounterMetric]
     [Description("Number of precompile runs, by precompile, in every execution context including RPC and tracing. Excludes cache hits and precompiles that do not support caching.")]
     [KeyIsLabel("precompile")]
     public static NonBlocking.ConcurrentDictionary<string, long> PrecompileRuns { get; } = new();
 
-    [GaugeMetric]
+    [CounterMetric]
     [DetailedMetric]
     [Description("Precompile result cache probes, by precompile and probe result (block_hit, surviving_hit, miss). Counted only with detailed metrics enabled, since every probe pays for it.")]
     [KeyIsLabel("precompile", "result")]
     public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheProbes { get; } = new();
 
-    [GaugeMetric]
+    [CounterMetric]
     [Description("Results the per-block precompile result cache refused because the precompile's byte budget was exhausted, by precompile. Non-zero means a larger budget would hold more; zero means raising it changes nothing.")]
     [KeyIsLabel("precompile")]
     public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCacheRejectedFull { get; } = new();
