@@ -133,7 +133,7 @@ public static class T8nExecutor
             blockReceiptsTracer.EndTxTrace();
             if (fileTracer is not null)
             {
-                // As in geth, the file index counts only the transactions included before this one.
+                // EEST's collect_traces reads trace-{i}-{hash}.jsonl by receipt index, so rejected transactions do not move the index.
                 int includedIndex = transactionExecutionReport.SuccessfulTransactions.Count;
                 File.Move(fileTracer.FileNames.Last(), Path.Combine(arguments.OutputBaseDir, $"trace-{includedIndex}-{transaction.Hash}.jsonl"), overwrite: true);
             }

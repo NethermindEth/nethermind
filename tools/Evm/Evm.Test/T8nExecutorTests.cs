@@ -44,23 +44,25 @@ public class T8nExecutorTests
     }
 
     [Test]
-    public void Execute_records_parent_hash_in_history_contract()
+    public void Execute_records_parent_hash_in_history_contract_only_with_block_hashes([Values] bool withBlockHashes)
     {
         Address historyContract = Eip2935Constants.BlockHashHistoryAddress;
+        string blockHashes = withBlockHashes ? $$""", "blockHashes": { "0x0": "{{TestItem.KeccakA}}" }""" : "";
         T8nCommandArguments arguments = WriteInputs(
             fork: "Prague",
             alloc: $$"""
                 {
-                    "{{historyContract}}": { "balance": "0x0", "code": "0x00", "nonce": "0x1" },
+                    "{{historyContract}}": { "balance": "0x0", "code": "{{Eip2935Constants.Code.ToHexString(true)}}", "nonce": "0x1" },
                     "{{Eip7002Constants.WithdrawalRequestPredeployAddress}}": { "balance": "0x0", "code": "0x00", "nonce": "0x1" },
                     "{{Eip7251Constants.ConsolidationRequestPredeployAddress}}": { "balance": "0x0", "code": "0x00", "nonce": "0x1" }
                 }
                 """,
-            extraEnv: $$""", "parentBeaconBlockRoot": "{{Keccak.Zero}}", "blockHashes": { "0x0": "{{TestItem.KeccakA}}" }""");
+            extraEnv: $$""", "parentBeaconBlockRoot": "{{Keccak.Zero}}"{{blockHashes}}""");
 
         T8nExecutionResult result = T8nExecutor.Execute(arguments);
 
-        Assert.That(result.Accounts[historyContract].Storage[UInt256.Zero], Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+        Dictionary<UInt256, byte[]> expectedStorage = withBlockHashes ? new() { [UInt256.Zero] = TestItem.KeccakA.BytesToArray() } : [];
+        Assert.That(result.Accounts[historyContract].Storage, Is.EqualTo(expectedStorage));
     }
 
     [Test]
@@ -74,7 +76,60 @@ public class T8nExecutorTests
     }
 
     [Test]
-    public void Execute_names_trace_files_by_included_transaction_count()
+    public void Execute_rejects_transaction_that_needs_withdrawal_of_same_block()
+    {
+        string withdrawals = $$"""[{ "index": "0x0", "validatorIndex": "0x0", "address": "{{TestItem.AddressA}}", "amount": "0x3b9aca00" }]""";
+        T8nCommandArguments arguments = WriteInputs(
+            alloc: $$"""{ "{{TestItem.AddressC}}": { "balance": "0x1" } }""",
+            txs: $"[{SignedTx(TestItem.AddressB, nonce: 0, value: "0x1")}]",
+            withdrawals: withdrawals);
+
+        T8nExecutionResult result = T8nExecutor.Execute(arguments);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.PostState.Rejected!.Single().Error, Does.Contain("insufficient funds"));
+            Assert.That(result.Accounts[TestItem.AddressA].Balance, Is.EqualTo(1.Ether));
+        }
+    }
+
+    [Test]
+    public void Execute_rejects_blob_transaction_over_block_blob_gas_limit()
+    {
+        T8nCommandArguments arguments = WriteInputs(
+            fork: "Cancun",
+            txs: $"[{BlobTx(nonce: 0, blobCount: 6)}, {BlobTx(nonce: 1, blobCount: 1)}]",
+            extraEnv: $", \"parentBeaconBlockRoot\": \"{Keccak.Zero}\", \"currentExcessBlobGas\": \"0x0\"");
+
+        T8nExecutionResult result = T8nExecutor.Execute(arguments);
+
+        RejectedTx rejected = result.PostState.Rejected!.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected.Index, Is.EqualTo(1));
+            Assert.That(rejected.Error, Is.EqualTo("blob gas (917504) would exceed maximum allowance 786432"));
+        }
+    }
+
+    [Test]
+    public void Execute_does_not_dump_deleted_accounts()
+    {
+        T8nCommandArguments arguments = WriteInputs(
+            alloc: $$"""
+                {
+                    "{{TestItem.AddressA}}": { "balance": "{{AllocatedBalance}}" },
+                    "{{TestItem.AddressC}}": { "balance": "0x0" }
+                }
+                """,
+            txs: $"[{SignedTx(TestItem.AddressC, nonce: 0)}]");
+
+        T8nExecutionResult result = T8nExecutor.Execute(arguments);
+
+        Assert.That(result.Accounts, Does.Not.ContainKey(TestItem.AddressC));
+    }
+
+    [Test]
+    public void Execute_names_trace_files_by_receipt_index()
     {
         T8nCommandArguments arguments = WriteInputs(txs: $"[{SignedTx(TestItem.AddressB, nonce: 1)}, {SignedTx(TestItem.AddressB, nonce: 0)}]");
         arguments.Trace = true;
@@ -124,13 +179,24 @@ public class T8nExecutorTests
         }
     }
 
-    private static string SignedTx(Address to, ulong nonce, string gas = "0x10000") => $$"""
+    private static string BlobTx(ulong nonce, int blobCount)
+    {
+        string blobHash = $"\"0x01{new string('0', 62)}\"";
+        string blobFields = $$"""
+            "type": "0x3", "chainId": "0x1", "maxFeePerGas": "0x0", "maxPriorityFeePerGas": "0x0", "maxFeePerBlobGas": "0x1",
+            "blobVersionedHashes": [{{string.Join(", ", Enumerable.Repeat(blobHash, blobCount))}}],
+            """;
+        return SignedTx(TestItem.AddressB, nonce, extraFields: blobFields);
+    }
+
+    private static string SignedTx(Address to, ulong nonce, string gas = "0x10000", string value = "0x0", string extraFields = "") => $$"""
         {
+            {{extraFields}}
             "nonce": "{{nonce.ToHexString(skipLeadingZeros: true)}}",
             "gasPrice": "0x0",
             "gas": "{{gas}}",
             "to": "{{to}}",
-            "value": "0x0",
+            "value": "{{value}}",
             "input": "0x",
             "v": "0x0",
             "r": "0x0",
@@ -139,7 +205,7 @@ public class T8nExecutorTests
         }
         """;
 
-    private T8nCommandArguments WriteInputs(string fork = "Shanghai", string? alloc = null, string txs = "[]", string extraEnv = "", string reward = "0")
+    private T8nCommandArguments WriteInputs(string fork = "Shanghai", string? alloc = null, string txs = "[]", string extraEnv = "", string reward = "0", string withdrawals = "[]")
     {
         Write("alloc.json", alloc ?? $$"""
             {
@@ -155,7 +221,7 @@ public class T8nExecutorTests
                 "currentDifficulty": "0x0",
                 "currentBaseFee": "0x0",
                 "currentRandom": "0x0",
-                "withdrawals": []{{extraEnv}}
+                "withdrawals": {{withdrawals}}{{extraEnv}}
             }
             """);
         Write("txs.json", txs);
