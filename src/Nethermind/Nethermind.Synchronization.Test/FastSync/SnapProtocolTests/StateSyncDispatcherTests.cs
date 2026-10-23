@@ -19,6 +19,7 @@ using System.Net;
 using Nethermind.Core.Test;
 using Nethermind.Trie;
 using Nethermind.Core.Collections;
+using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests;
 
@@ -91,6 +92,15 @@ public class StateSyncDispatcherTests
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         peer.HeadNumber.Returns(ChainLength - 1);
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
+        byte[][] accountHashes = [];
+        snapPeer.GetTrieNodes(Arg.Do<GetTrieNodesRequest>(request =>
+        {
+            accountHashes =
+            [
+                request.AccountAndStoragePaths[2].Group[0],
+                request.AccountAndStoragePaths[3].Group[0]
+            ];
+        }), Arg.Any<CancellationToken>()).Returns(EmptyByteArrayList.Instance);
         peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>
             {
@@ -114,12 +124,17 @@ public class StateSyncDispatcherTests
         await _dispatcher.ExecuteDispatch(batch, 1);
 
         Assert.That(batch.RequestedNodes, Is.Not.Null);
-        Assert.That(batch.RequestedNodes!.Count, Is.EqualTo(6));
-        Assert.That(batch.RequestedNodes[0], Is.EqualTo(item01));
-        Assert.That(batch.RequestedNodes[1], Is.EqualTo(item03));
-        Assert.That(batch.RequestedNodes[2], Is.EqualTo(item02));
-        Assert.That(batch.RequestedNodes[3], Is.EqualTo(item05));
-        Assert.That(batch.RequestedNodes[4], Is.EqualTo(item04));
-        Assert.That(batch.RequestedNodes[5], Is.EqualTo(item06));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.RequestedNodes!.Count, Is.EqualTo(6));
+            Assert.That(batch.RequestedNodes[0], Is.EqualTo(item01));
+            Assert.That(batch.RequestedNodes[1], Is.EqualTo(item03));
+            Assert.That(batch.RequestedNodes[2], Is.EqualTo(item02));
+            Assert.That(batch.RequestedNodes[3], Is.EqualTo(item05));
+            Assert.That(batch.RequestedNodes[4], Is.EqualTo(item04));
+            Assert.That(batch.RequestedNodes[5], Is.EqualTo(item06));
+            Assert.That(accountHashes, Is.EqualTo(new[] { TestItem.KeccakA.Bytes.ToArray(), TestItem.KeccakB.Bytes.ToArray() }),
+                "Storage groups must contain the full account hashes in request order.");
+        }
     }
 }

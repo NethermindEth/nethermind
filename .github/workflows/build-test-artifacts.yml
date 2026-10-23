@@ -36,7 +36,7 @@ jobs:
           submodules: recursive
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Redirect build output to the large scratch disk (Linux)
         # Build on the ~70 GB /mnt; the multi-RID output overflows the ~21 GB root disk.
@@ -88,7 +88,7 @@ jobs:
         run: tar -C src/Nethermind -cf test-bin.tar artifacts/bin
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: test-bin-${{ matrix.variant }}-${{ matrix.rid }}
           path: test-bin.tar

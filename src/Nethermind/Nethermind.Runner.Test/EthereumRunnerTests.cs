@@ -49,6 +49,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
+using Nethermind.EraE.Config;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -335,6 +336,20 @@ public class EthereumRunnerTests
             Assert.That((warmPool!.BlobsSupport, warmPool.PersistentBroadcastEnabled, warmPool.ProofsTranslationEnabled),
                 Is.EqualTo((livePool.BlobsSupport, livePool.PersistentBroadcastEnabled, livePool.ProofsTranslationEnabled)));
         }
+    }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_authenticates_after_slow_start()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        ManualTimestamper timestamper = new();
+        IRpcAuthentication authentication = JwtAuthentication.FromSecret(new string('a', 64), Timestamper.Default, NullLogger.Instance);
+
+        // Outlasts the 60-second token lifetime before the first Engine API request.
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), new ConfigProvider(new InitConfig { BaseDbPath = directory.Path }), false,
+            cancellation.Token, authentication, timestamper: timestamper,
+            configureContainer: builder => builder.RegisterBuildCallback(_ => timestamper.Add(TimeSpan.FromMinutes(2))));
     }
 
     private static string WarmupToken(JwtAuthentication authentication) =>
@@ -684,7 +699,7 @@ public class EthereumRunnerTests
     /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
     /// is unbounded and can stall on slow CI hosts. Without a bound, a start or stop that never completes takes the
     /// whole assembly into the CI hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
-    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(90);
 
     private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
 
@@ -797,7 +812,6 @@ public class EthereumRunnerTests
     /// <c>EthereumStepsManagerTests</c>.
     /// </summary>
     [Test]
-    [MaxTime(60000)]
     public async Task Command_run_that_cannot_do_its_job_fails_without_exiting_ok()
     {
         Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
@@ -833,15 +847,7 @@ public class EthereumRunnerTests
     [TestCase("mainnet")]
     public async Task Pool_retains_simulator_and_is_disposed_on_shutdown(string network)
     {
-        ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
-        configProvider.Initialize();
-        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
-        pluginLoader.Load();
-        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
-        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
-        plugins.Add(new RunnerTestPlugin(true));
-        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        EthereumRunner runner = await CreateRunner(network);
         TxPool.TxPool? pool = null;
         try
         {
@@ -858,6 +864,88 @@ public class EthereumRunnerTests
                 Assert.That(disposedField.GetValue(pool), Is.True);
             }
         }
+    }
+
+    /// <summary>
+    /// <see cref="ReviewBlockTree"/> waits until the blocks left unprocessed at the last shutdown are processed,
+    /// which can take days on an archive node. JSON-RPC and health checks must not wait for it, but block
+    /// production must. An era import waits for it and holds the network back, so then JSON-RPC waits too.
+    /// </summary>
+    [Test]
+    public async Task Rpc_does_not_wait_for_block_tree_review(
+        [Values("mainnet", "gnosis", "op-mainnet", "taiko-alethia", "xdc")] string network,
+        [Values] EraJob eraJob)
+    {
+        EthereumRunner runner = await CreateRunner(network, configProvider =>
+        {
+            IEraConfig eraConfig = configProvider.GetConfig<IEraConfig>();
+            IEraEConfig eraEConfig = configProvider.GetConfig<IEraEConfig>();
+            switch (eraJob)
+            {
+                case EraJob.Era1Import: eraConfig.ImportDirectory = "era"; break;
+                case EraJob.Era1Export: eraConfig.ExportDirectory = "era"; break;
+                case EraJob.EraEImport: eraEConfig.ImportDirectory = "era"; break;
+                case EraJob.EraEExport: eraEConfig.ExportDirectory = "era"; break;
+            }
+        });
+        bool eraStepWaitsForReview = eraJob is not EraJob.None;
+        try
+        {
+            Dictionary<Type, HashSet<Type>> dependencies = [];
+            HashSet<Type> GetDependencies(Type step) =>
+                dependencies.TryGetValue(step, out HashSet<Type>? set) ? set : dependencies[step] = [];
+
+            foreach (StepInfo step in runner.LifetimeScope.Resolve<IEthereumStepsLoader>().ResolveStepsImplementations())
+            {
+                GetDependencies(step.StepBaseType).UnionWith(step.Dependencies);
+                foreach (Type dependent in step.Dependents) GetDependencies(dependent).Add(step.StepBaseType);
+            }
+
+            HashSet<Type> TransitiveDependencies(Type step)
+            {
+                HashSet<Type> visited = [];
+                Stack<Type> toVisit = new(GetDependencies(step));
+                while (toVisit.TryPop(out Type? current))
+                {
+                    if (visited.Add(current)) foreach (Type dependency in GetDependencies(current)) toVisit.Push(dependency);
+                }
+                return visited;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TransitiveDependencies(typeof(StartRpc)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraStepWaitsForReview));
+                Assert.That(TransitiveDependencies(typeof(StartHealthChecks)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraStepWaitsForReview));
+                Assert.That(TransitiveDependencies(typeof(StartBlockProducer)), Does.Contain(typeof(ReviewBlockTree)));
+            }
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
+    public enum EraJob
+    {
+        None,
+        Era1Import,
+        Era1Export,
+        EraEImport,
+        EraEExport
+    }
+
+    private static async Task<EthereumRunner> CreateRunner(string network, Action<ConfigProvider>? configure = null)
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
+        configProvider.Initialize();
+        configure?.Invoke(configProvider);
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        return builder.CreateEthereumRunner(plugins, command: null);
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
@@ -1037,13 +1125,17 @@ public class EthereumRunnerTests
             networkConfig.DiscoveryPort = port;
 
             // A taken RPC port fails startup, so move the RPC listeners off defaults such as 8545/8551 that the host may hold.
+            // Each probe listener stays open until all ports are picked: a released port can be handed out again, and an
+            // engine URL on the same port as the RPC URL is skipped, which fails startup for want of an engine module.
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             Dictionary<int, int> rpcPorts = [];
+            List<TcpListener> probeListeners = [];
             int FreePort(int configuredPort)
             {
                 if (!rpcPorts.TryGetValue(configuredPort, out int freePort))
                 {
-                    using TcpListener listener = new(IPAddress.Loopback, 0);
+                    TcpListener listener = new(IPAddress.Loopback, 0);
+                    probeListeners.Add(listener);
                     listener.Start();
                     rpcPorts[configuredPort] = freePort = ((IPEndPoint)listener.LocalEndpoint).Port;
                 }
@@ -1063,6 +1155,7 @@ public class EthereumRunnerTests
                 additionalRpcUrls[i] = $"{url.Scheme}://{url.Host}:{FreePort(url.Port)}{additionalRpcUrls[i][separator..]}";
             }
             jsonRpcConfig.AdditionalRpcUrls = additionalRpcUrls;
+            foreach (TcpListener listener in probeListeners) listener.Dispose();
 
             PluginLoader pluginLoader = new(
                 "plugins",

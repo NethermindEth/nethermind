@@ -101,7 +101,7 @@ namespace Nethermind.Core
 
         [JsonIgnore]
         internal bool IsHashCalculated => _hash is not null;
-        internal Hash256 CalculateHashInternal()
+        private Hash256 CalculateHashInternal()
         {
             Hash256? hash = _hash;
             if (hash is not null) return hash;
@@ -296,7 +296,7 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs || !MayHaveNetworkForm
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
 

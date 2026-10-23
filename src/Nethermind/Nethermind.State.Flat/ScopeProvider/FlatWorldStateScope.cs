@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -216,6 +217,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
 
+    /// <summary>A trie-less scope never rehashes storage, so an account it wrote storage to keeps its old root.</summary>
+    public bool StorageRootsAreAuthoritative => !_trieless;
+
     public void UpdateRootHash()
     {
         if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
@@ -271,6 +275,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
+                // First, on this task: the backend decides from a few cached probes, so a cached block costs only
+                // those, and a cold one has its reads in flight before phase 1 reads them one at a time.
+                // Skipped like the warmup below once the hint is cancelled, superseded or paused, so a block that
+                // no longer needs it never waits for its key collection and submission in CancelHintBal.
+                if (!token.IsCancellationRequested && _hintSequenceId == snapshot && !_pausePrewarmer && SupportsPrefetch)
+                    PrefetchBalSafely(accountChanges, token);
+
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
                 void WarmAccount(int i)
@@ -350,6 +361,141 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 accountChanges.Dispose();
             }
         });
+    }
+
+    /// <summary>
+    /// Starts asynchronous batched reads of every account and slot the access list names, so their blocks are in
+    /// the RocksDB block cache before the warmup and execution read them one at a time. The reads that follow are
+    /// unchanged; on a warm database the prefetch finds the blocks already cached.
+    /// </summary>
+    // A prefetch only warms caches; a failure must not cost the warmup that follows.
+    private void PrefetchBalSafely(ArrayPoolList<ReadOnlyAccountChanges> accountChanges, CancellationToken cancellationToken)
+    {
+        try
+        {
+            PrefetchBal(accountChanges, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+            if (logger.IsDebug) logger.Debug($"State prefetch failed: {ex}");
+        }
+    }
+
+    private void PrefetchBal(ArrayPoolList<ReadOnlyAccountChanges> accountChanges, CancellationToken cancellationToken)
+    {
+        int slotCount = 0;
+        foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
+            slotCount += changes.StorageChanges.Length + changes.StorageReads.Length;
+
+        // Planning may read sampled keys from disk, so a hint cancelled by now does not start it.
+        if (cancellationToken.IsCancellationRequested) return;
+
+        // Decided from a few keys before the rest are collected, so a block that needs no prefetch rents no arrays and
+        // copies no key beyond its samples.
+        SampleBuffers samples = default;
+        Span<Address> accountSamples = samples.Accounts;
+        Span<StorageCell> slotSamples = samples.Slots;
+        accountSamples = accountSamples[..SampleBalAccounts(accountChanges.AsSpan(), accountSamples)];
+        slotSamples = slotSamples[..SampleBalSlots(accountChanges.AsSpan(), slotCount, slotSamples)];
+        IPersistence.PrefetchColumns columns = _snapshotBundle.PlanPrefetch(accountSamples, slotSamples);
+        if (columns == IPersistence.PrefetchColumns.None) return;
+
+        // The one copy of the keys: the access list holds them per account, the batched read needs them contiguous.
+        // An account's slots stay adjacent, so its hash is computed once below.
+        Address[] accounts = ArrayPool<Address>.Shared.Rent((columns & IPersistence.PrefetchColumns.Accounts) != 0 ? accountChanges.Count : 0);
+        StorageCell[] slots = ArrayPool<StorageCell>.Shared.Rent((columns & IPersistence.PrefetchColumns.Slots) != 0 ? slotCount : 0);
+        if (CollectBalKeys(accountChanges, accounts, slots, cancellationToken, out int accountCount, out int collectedSlots, columns))
+            _snapshotBundle.Prefetch(columns, accounts.AsSpan(0, accountCount), slots.AsSpan(0, collectedSlots), cancellationToken);
+
+        ArrayPool<Address>.Shared.Return(accounts, clearArray: true);
+        ArrayPool<StorageCell>.Shared.Return(slots, clearArray: true);
+    }
+
+    // How many slots are copied between cancellation checks, so one account with a large slot list still stops soon.
+    private const int SlotsPerCancellationCheck = 1024;
+
+    /// <returns>False when <paramref name="cancellationToken"/> is cancelled before every key is copied.</returns>
+    internal static bool CollectBalKeys(ArrayPoolList<ReadOnlyAccountChanges> accountChanges, Address[] accounts, StorageCell[] slots,
+        CancellationToken cancellationToken, out int accountCount, out int slotCount, IPersistence.PrefetchColumns columns = IPersistence.PrefetchColumns.All)
+    {
+        bool collectAccounts = (columns & IPersistence.PrefetchColumns.Accounts) != 0;
+        bool collectSlots = (columns & IPersistence.PrefetchColumns.Slots) != 0;
+        accountCount = 0;
+        slotCount = 0;
+        foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
+        {
+            if (cancellationToken.IsCancellationRequested) return false;
+
+            Address address = changes.Address;
+            if (collectAccounts) accounts[accountCount++] = address;
+            if (!collectSlots) continue;
+            foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
+            {
+                if (++slotCount % SlotsPerCancellationCheck == 0 && cancellationToken.IsCancellationRequested) return false;
+                slots[slotCount - 1] = new StorageCell(address, slotChanges.Key);
+            }
+
+            foreach (UInt256 slot in changes.StorageReads)
+            {
+                if (++slotCount % SlotsPerCancellationCheck == 0 && cancellationToken.IsCancellationRequested) return false;
+                slots[slotCount - 1] = new StorageCell(address, slot);
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Up to <see cref="BasePersistence.PrefetchSamples"/> accounts and slots, on the stack.</summary>
+    private struct SampleBuffers
+    {
+        public AccountSamples Accounts;
+        public SlotSamples Slots;
+
+        [InlineArray(BasePersistence.PrefetchSamples)]
+        public struct AccountSamples
+        {
+            private Address _element;
+        }
+
+        [InlineArray(BasePersistence.PrefetchSamples)]
+        public struct SlotSamples
+        {
+            private StorageCell _element;
+        }
+    }
+
+    /// <summary>Copies accounts spread evenly over the access list into <paramref name="samples"/>.</summary>
+    private static int SampleBalAccounts(ReadOnlySpan<ReadOnlyAccountChanges> changes, Span<Address> samples)
+    {
+        int count = Math.Min(changes.Length, samples.Length);
+        for (int sample = 0; sample < count; sample++)
+            samples[sample] = changes[BasePersistence.SampleIndex(sample, count, changes.Length)].Address;
+        return count;
+    }
+
+    /// <summary>Makes the slots spread evenly over the access list's <paramref name="slotCount"/> slots, in collection order.</summary>
+    internal static int SampleBalSlots(ReadOnlySpan<ReadOnlyAccountChanges> changes, int slotCount, Span<StorageCell> samples)
+    {
+        int count = Math.Min(slotCount, samples.Length);
+        int sample = 0;
+        int offset = 0;
+        foreach (ReadOnlyAccountChanges account in changes)
+        {
+            int writes = account.StorageChanges.Length;
+            int end = offset + writes + account.StorageReads.Length;
+            for (int next; sample < count && (next = BasePersistence.SampleIndex(sample, count, slotCount)) < end; sample++)
+            {
+                int local = next - offset;
+                UInt256 key = local < writes ? account.StorageChanges[local].Key : account.StorageReads[local - writes];
+                samples[sample] = new StorageCell(account.Address, key);
+            }
+
+            if (sample == count) break;
+            offset = end;
+        }
+
+        return sample;
     }
 
     private void RunSinkSlotReads(
@@ -455,6 +601,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     internal int OutstandingWarmups => Volatile.Read(ref _outstandingWarmups);
 
     internal void DecrementOutstandingWarmups() => CompleteWarmup();
+
+    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+    {
+        // Planning may read sampled keys from disk, so a cancelled call does not start it.
+        if (cancellationToken.IsCancellationRequested) return;
+        SampleBuffers samples = default;
+        Span<Address> accountSamples = samples.Accounts;
+        Span<StorageCell> slotSamples = samples.Slots;
+        accountSamples = accountSamples[..BasePersistence.FillSamples<Address>(accounts, accountSamples)];
+        slotSamples = slotSamples[..BasePersistence.FillSamples<StorageCell>(slots, slotSamples)];
+        IPersistence.PrefetchColumns columns = _snapshotBundle.PlanPrefetch(accountSamples, slotSamples);
+        if (columns != IPersistence.PrefetchColumns.None) _snapshotBundle.Prefetch(columns, accounts, slots, cancellationToken);
+    }
+
+    public bool SupportsPrefetch => _snapshotBundle.SupportsPrefetch;
 
     public void HintWarmAccount(Address address)
     {
@@ -693,21 +854,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 // The per-account flat writes above already carry intra-block state for subsequent txs; only a
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
-                if (!_scope._trieless)
-                {
-                    if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
-                    {
-                        _scope.StateTree.SetAccounts(_dirtyAccounts);
-                    }
-                    else
-                    {
-                        using StateTree.StateTreeBulkSetter stateSetter = _scope.StateTree.BeginSet(_dirtyAccounts.Count);
-                        foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                        {
-                            stateSetter.Set(kv.Key, kv.Value);
-                        }
-                    }
-                }
+                if (!_scope._trieless) _scope.StateTree.WriteAccounts(_dirtyAccounts);
             }
             finally
             {

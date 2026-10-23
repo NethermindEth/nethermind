@@ -55,6 +55,11 @@ public sealed class NethermindKestrelMetricServer(KestrelMetricServerOptions opt
                 options.ConfigureExporter(settings);
         };
 
+    private readonly TaskCompletionSource _listening = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Completes once the server listens, or faults when it fails to start, e.g. its port is taken.</summary>
+    public Task Listening => _listening.Task;
+
     protected override Task StartServer(CancellationToken cancel)
     {
         string s = _certificate is null ? string.Empty : "s";
@@ -108,6 +113,25 @@ public sealed class NethermindKestrelMetricServer(KestrelMetricServerOptions opt
             })
             .Build();
 
-        return host.RunAsync(cancel);
+        return RunAsync(host, cancel);
+    }
+
+    private async Task RunAsync(IHost host, CancellationToken cancel)
+    {
+        using (host)
+        {
+            try
+            {
+                await host.StartAsync(cancel);
+            }
+            catch (Exception ex)
+            {
+                _listening.TrySetException(ex);
+                throw;
+            }
+
+            _listening.TrySetResult();
+            await host.WaitForShutdownAsync(cancel);
+        }
     }
 }

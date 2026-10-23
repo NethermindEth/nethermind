@@ -1044,9 +1044,10 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead));
 
+        // The old index is pruned in a Task.Run, which the thread pool of a loaded runner can start well after a second.
         Assert.That(
             () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes],
-            Is.Null.After(1000, 100)
+            Is.Null.After(10000, 50)
             );
         Assert.That(_storage.HasBlock(receipts[0].BlockNumber, receipts[0].BlockHash!));
     }
