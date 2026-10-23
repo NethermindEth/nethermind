@@ -5,10 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
@@ -17,6 +19,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -80,6 +83,88 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         {
             ForcedNumberConversion.Value = previousValue;
         }
+    }
+
+    [Test]
+    public void SetOperationStack_WhenStorageIsRepeated_KeepsFirstSnapshot([Values] bool disableStorage)
+    {
+        StorageReadCounter reads = new();
+        using IContainer container = CreateStorageReadContainer(reads);
+        using ILifetimeScope processingScope = CreateStorageProcessingScope(container);
+        IWorldState state = processingScope.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        StorageCell cell = SeedStorageSnapshot(state, 5);
+        using NativePrestateTracer tracer = new(state,
+            GetGethTraceOptions(JsonSerializer.Serialize(new { disableStorage })), Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
+        byte[] stack = cell.Index.ToBigEndian();
+
+        tracer.StartOperation(0, Instruction.SLOAD, 100, environment);
+        tracer.SetOperationStack(new TraceStack(stack));
+        state.Set(cell, (UInt256)9);
+        tracer.StartOperation(1, Instruction.SSTORE, 100, environment);
+        tracer.SetOperationStack(new TraceStack(stack));
+
+        NativePrestateTracerAccount account =
+            ((Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!)[TestItem.AddressB];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads.Count, Is.EqualTo(disableStorage ? 0 : 1), "repeated slots must not read state again");
+            if (disableStorage)
+                Assert.That(account.Storage, Is.Null, "disabled storage capture must not create slot entries");
+            else
+                Assert.That(account.Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256> { [7] = 5 }),
+                    "the prestate must keep the value from before the first access");
+        }
+    }
+
+    [Test]
+    public void SetOperationStack_WhenStorageReadThrows_RemovesPendingSnapshotAndAllowsRetry()
+    {
+        StorageReadCounter reads = new() { FailNextRead = true };
+        using IContainer container = CreateStorageReadContainer(reads);
+        using ILifetimeScope processingScope = CreateStorageProcessingScope(container);
+        IWorldState state = processingScope.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        StorageCell cell = SeedStorageSnapshot(state, 5);
+        using NativePrestateTracer tracer = new(state, GetGethTraceOptions(), Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
+        byte[] stack = cell.Index.ToBigEndian();
+        tracer.StartOperation(0, Instruction.SLOAD, 100, environment);
+
+        Assert.Throws<InvalidOperationException>(() => tracer.SetOperationStack(new TraceStack(stack)));
+
+        NativePrestateTracerAccount account =
+            ((Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!)[TestItem.AddressB];
+        Assert.That(account.Storage, Is.Empty, "a failed read must not appear as a zero-valued slot");
+
+        tracer.SetOperationStack(new TraceStack(stack));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads.Count, Is.EqualTo(2), "the failed slot must be read again on retry");
+            Assert.That(account.Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256> { [7] = 5 }),
+                "retry must capture the real storage value");
+        }
+    }
+
+    private static IContainer CreateStorageReadContainer(StorageReadCounter reads) => new ContainerBuilder()
+        .AddModule(new TestNethermindModule(Cancun.Instance))
+        .AddSingleton(reads)
+        .AddDecorator<IWorldState, RecordingStorageWorldState>()
+        .Build();
+
+    private static ILifetimeScope CreateStorageProcessingScope(IContainer container) => container.BeginLifetimeScope(builder =>
+        builder.AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
+
+    private static StorageCell SeedStorageSnapshot(IWorldState state, UInt256 value)
+    {
+        StorageCell cell = new(TestItem.AddressB, 7);
+        state.CreateAccount(cell.Address, UInt256.One);
+        state.Set(cell, value);
+        return cell;
     }
 
     private static IEnumerable<TestCaseData> AuthoritySignatureCases()
@@ -1334,5 +1419,25 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
         public override UInt256? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class StorageReadCounter
+    {
+        public int Count { get; set; }
+        public bool FailNextRead { get; set; }
+    }
+
+    private sealed class RecordingStorageWorldState(IWorldState state, StorageReadCounter reads) : WorldStateDecorator(state)
+    {
+        public override void Get(in StorageCell storageCell, out UInt256 value)
+        {
+            reads.Count++;
+            if (reads.FailNextRead)
+            {
+                reads.FailNextRead = false;
+                throw new InvalidOperationException("storage read failed");
+            }
+            base.Get(in storageCell, out value);
+        }
     }
 }
