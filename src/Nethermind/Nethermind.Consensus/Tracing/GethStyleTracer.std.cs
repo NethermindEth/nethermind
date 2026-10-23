@@ -367,7 +367,7 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(txHash);
 
         // For a synthetic tx trace (`debug_traceCall`), the base block must be the block itself rather than
-        // its parent, so that state overrides applied in `BuildAndOverride` bind to the correct state root.
+        // its parent, so that the call runs on the block's post-state.
         if (options.BlockOverrides is not null || options.NoBaseFee)
         {
             block = block.WithReplacedBodyCloned(block.Body);
@@ -375,8 +375,9 @@ public class GethStyleTracer(
 
         // The scope is opened before the block override lands on the header: the parent lookup keys on the
         // header's number, and an overridden number (zero included) would resolve the wrong state, or none.
+        // A synthetic call applies its state overrides when it starts, without merkleizing them, as an indexed call does.
         using Scope<BlockProcessingComponents> scope = useBlockAsBase
-            ? blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides, blockOverride: options.BlockOverrides)
+            ? blockProcessingEnv.BuildAndOverride(block.Header, stateOverride: null, blockOverride: options.BlockOverrides)
             : blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         if (!useBlockAsBase)
@@ -409,9 +410,21 @@ public class GethStyleTracer(
 
         try
         {
+            IBlockTracer traced = tracer.WithCancellation(cancellationToken);
+            if (useBlockAsBase && options.StateOverrides is { } stateOverrides)
+            {
+                IWorldState state = scope.Component.WorldState;
+                IReleaseSpec overrideSpec = specProvider.GetSpec(block.Header).WithoutEip158();
+                traced = new CallAtIndexBlockTracer(traced, block.Header, block.Transactions[0], _ =>
+                {
+                    state.ApplyStateOverridesNoCommit(codeInfoRepository, stateOverrides, overrideSpec);
+                    state.Commit(overrideSpec);
+                });
+            }
+
             // A seed skips the prefix, whose logs a traced prefix is there to count.
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                tracer.WithCancellation(cancellationToken), txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
+                traced, txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
         }
