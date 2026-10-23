@@ -76,7 +76,7 @@ public class Eth72ProtocolHandler(
     private const int RequestToAnnouncementRatioThreshold = 5;
     private const int MinCellRequestsBeforeRatioDisconnect = 5;
     private const int MaxCountedBlobAnnouncements = 4096;
-    private const int MaxUnansweredCellRequestRestores = 2;
+    internal const int MaxUnansweredCellRequestRestores = 2;
     private const int MaxPendingCellRequests = 1024;
     internal const int MaxSentCellRequests = 2048;
     private const int MaxPendingCellRequestWork = 4096;
@@ -813,7 +813,10 @@ public class Eth72ProtocolHandler(
 
         if (_unansweredCellRequests.IsValueCreated)
         {
-            _unansweredCellRequests.Value.Delete(key);
+            lock (_cellStateLock)
+            {
+                _unansweredCellRequests.Value.Delete(key);
+            }
         }
 
         bool applied = _sparseBlobPoolPeerRegistry.TryApplyRecordedCells(hash);
@@ -1332,9 +1335,12 @@ public class Eth72ProtocolHandler(
     private int CountUnansweredCellRequest(ValueHash256 hash)
     {
         ClockCache<ValueHash256, int> unanswered = _unansweredCellRequests.Value;
-        int count = unanswered.TryGet(hash, out int previous) ? previous + 1 : 1;
-        unanswered.Set(hash, count);
-        return count;
+        lock (_cellStateLock)
+        {
+            int count = unanswered.TryGet(hash, out int previous) ? previous + 1 : 1;
+            unanswered.Set(hash, count);
+            return count;
+        }
     }
 
     /// <summary>Holds cells back from the announcement re-request path until the retry falls due.</summary>
