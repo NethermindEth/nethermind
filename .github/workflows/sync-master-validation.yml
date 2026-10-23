@@ -86,6 +86,11 @@ jobs:
             scripts/sync
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
 
+      - name: Set up .NET for CI scripts
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.402
+
       - name: Set Matrix
         id: set-matrix
         env:
@@ -140,14 +145,14 @@ jobs:
                 })
               | . + { max_run_duration: (((.timeout + 60) | tostring) + "m") }]')
 
-          matrix=$(echo "$matrix" | scripts/sync/select-networks.sh "$CHAIN_FILTER")
+          matrix=$(echo "$matrix" | dotnet run --file scripts/sync/SelectNetworks.cs -- "$CHAIN_FILTER")
 
           if [ "$(echo "$matrix" | jq 'length')" -eq 0 ]; then
             echo "chain_filter '$CHAIN_FILTER' matched no networks"
             exit 1
           fi
 
-          matrix=$(echo "$matrix" | scripts/sync/check-runner-shapes.sh)
+          matrix=$(echo "$matrix" | dotnet run --file scripts/sync/CheckRunnerShapes.cs)
 
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 
@@ -238,6 +243,11 @@ jobs:
           path: metrics
           merge-multiple: true
 
+      - name: Set up .NET for CI scripts
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.402
+
       - name: Append records to sync-metrics branch
         id: append
         env:
@@ -256,10 +266,10 @@ jobs:
           git -C metrics-branch config user.name "github-actions[bot]"
           git -C metrics-branch config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # publish.py is idempotent, so on a push race we reset and re-apply
+          # Publish.cs is idempotent, so on a push race we reset and re-apply
           pushed=false
           for _ in 1 2 3; do
-            python scripts/sync-metrics/publish.py metrics metrics-branch/history.jsonl
+            dotnet run --file scripts/sync-metrics/Publish.cs -- metrics metrics-branch/history.jsonl
             git -C metrics-branch add history.jsonl
             if git -C metrics-branch diff --cached --quiet; then
               echo "No new records."

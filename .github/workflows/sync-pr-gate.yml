@@ -80,6 +80,11 @@ jobs:
           check-latest: true
           cache: true
 
+      - name: Set up .NET for CI scripts
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.402
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -163,7 +168,7 @@ jobs:
         env:
           NETWORK: hoodi
           SYNC_MODE: ${{ matrix.mode }}
-        run: python scripts/wait-for-sync.py
+        run: dotnet run --file scripts/WaitForSync.cs
 
       - name: Get Nethermind Debug Logs
         if: failure() || cancelled()
