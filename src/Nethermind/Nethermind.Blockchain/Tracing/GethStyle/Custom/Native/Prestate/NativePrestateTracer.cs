@@ -40,6 +40,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private HashSet<AddressAsKey>? _transientCreates;
     private List<AddressAsKey>? _nonexistentAccounts;
     private List<AddressAsKey>? _initiallyEmptyAccounts;
+    private HashSet<AddressAsKey>? _delegationsChecked;
+    private HashSet<AddressAsKey>? _authorities;
     private readonly bool _diffMode;
     // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
     private readonly bool _isEip5920Enabled;
@@ -105,7 +107,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             Address recipient = to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0);
             LookupAccount(recipient);
-            if (to is not null) LookupDelegation(to);
+            if (to is not null) LookupDelegation(to, duringExecution: false);
             // As in geth, a contract-creation transaction creates its recipient.
             if (_diffMode && to is null)
                 _createdAccounts.Add(recipient);
@@ -122,7 +124,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             {
                 if (HasValidAuthoritySignature(authorization.AuthoritySignature)
                     && (authorization.Authority ??= AuthorityRecovery.RecoverAddress(authorization)) is { } authority)
+                {
                     LookupAccount(authority);
+                    (_authorities ??= []).Add(authority);
+                }
             }
         }
     }
@@ -295,7 +300,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(1);
                     LookupAccount(address);
-                    LookupDelegation(address);
+                    LookupDelegation(address, duringExecution: true);
                 }
                 break;
             case Instruction.CREATE2:
@@ -337,9 +342,23 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         }
     }
 
-    private void LookupDelegation(Address address)
+    /// <remarks>
+    /// Only the authorization list sets a delegation, and it is applied after this tracer is created but before execution,
+    /// so during execution each account is checked once, reusing the code its prestate read unless the transaction
+    /// authorizes it; reading the code on every call into a contract dominated the trace. EIP-8298's SETCODEFROM can
+    /// change code during execution, so it keeps the per-call check.
+    /// </remarks>
+    private void LookupDelegation(Address address, bool duringExecution)
     {
-        if (_isEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(_worldState!.GetCode(address).Span, out Address? target))
+        if (!_isEip7702Enabled) return;
+        bool once = duringExecution && !_isEip8298Enabled;
+        if (once && !(_delegationsChecked ??= []).Add(address)) return;
+
+        ReadOnlyMemory<byte> code = once && _authorities?.Contains(address) != true
+            && _prestate.TryGetValue(address, out NativePrestateTracerAccount? account) && !account.Code.IsEmpty
+            ? account.Code
+            : _worldState!.GetCode(address);
+        if (ICodeInfoRepository.TryGetDelegatedAddress(code.Span, out Address? target))
             LookupAccount(target);
     }
 
