@@ -4,7 +4,6 @@
 #:include ../HiveResults.Helpers.cs
 
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 var launch = "client launch (nethermind)";
@@ -91,7 +90,7 @@ foreach (var scenario in new[]
             {
                 WorkingDirectory = directory.FullName, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false
             } };
-            foreach (var argument in new[] { "run", "--file", Path.GetFullPath(Path.Combine(SourceDirectory(), "..", "HiveResults.cs")), "--", arguments[0] })
+            foreach (var argument in new[] { "run", "--file", FindEntryPoint(), "--", arguments[0] })
                 process.StartInfo.ArgumentList.Add(argument);
             process.Start();
             var stdout = process.StandardOutput.ReadToEndAsync();
@@ -122,4 +121,13 @@ using (var error = new StringWriter())
 }
 Console.WriteLine($"Passed {tests} tests.");
 
-static string SourceDirectory([CallerFilePath] string file = "") => Path.GetDirectoryName(file)!;
+static string FindEntryPoint()
+{
+    for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)
+    {
+        var path = Path.Combine(directory.FullName, "scripts", "HiveResults.cs");
+        if (File.Exists(path))
+            return path;
+    }
+    throw new DirectoryNotFoundException("Run this test from within the Nethermind checkout.");
+}
