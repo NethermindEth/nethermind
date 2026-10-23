@@ -343,7 +343,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         {
             try
             {
-                await ConsensusSync.RunRepairLoopAsync(RepairConsensusAsync,
+                await ConsensusSync.RunRepairLoopsAsync(RepairConsensusAsync, PollOptimisticAsync,
                     () => Volatile.Read(ref persistedOptimistic).Beacon!.Slot, CurrentSlot,
                     TimeSpan.FromSeconds(spec.SecondsPerSlot), clock, cancellationToken);
             }
@@ -379,16 +379,6 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                await beacon.PollOptimisticAsync(ProcessOptimisticAsync, attempt.Token);
-            }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                logger.LogDebug(exception, "Optimistic poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
-            }
-            try
-            {
-                using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                attempt.CancelAfter(TimeSpan.FromSeconds(15));
                 await beacon.PollFinalityAsync(async (update, token) =>
                 {
                     await ProcessFinalityAsync(update, token);
@@ -398,6 +388,20 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
                 logger.LogDebug(exception, "Finality poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
+            }
+        }
+
+        async Task PollOptimisticAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                attempt.CancelAfter(TimeSpan.FromSeconds(15));
+                await beacon.PollOptimisticAsync(ProcessOptimisticAsync, attempt.Token);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogDebug(exception, "Optimistic poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
             }
         }
 

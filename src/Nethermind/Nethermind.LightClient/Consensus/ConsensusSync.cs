@@ -11,6 +11,24 @@ internal static class ConsensusSync
     private const ulong RepairHeadMaxAgeSlots = 2;
     private static readonly TimeSpan HealthyRepairInterval = TimeSpan.FromMinutes(1);
 
+    internal static async Task RunRepairLoopsAsync(Func<CancellationToken, Task> repair,
+        Func<CancellationToken, Task> pollOptimistic, Func<ulong> getOptimisticSlot, Func<ulong> currentSlot,
+        TimeSpan slotDuration, TimeProvider clock, CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task[] workers =
+        [
+            RunRepairLoopAsync(repair, getOptimisticSlot, currentSlot, slotDuration, clock, stop.Token),
+            RunRepairLoopAsync(pollOptimistic, getOptimisticSlot, currentSlot, slotDuration, clock, stop.Token),
+        ];
+        try { await Task.WhenAny(workers); }
+        finally
+        {
+            await stop.CancelAsync();
+            await Task.WhenAll(workers);
+        }
+    }
+
     internal static async Task RunRepairLoopAsync(Func<CancellationToken, Task> repair,
         Func<ulong> getOptimisticSlot, Func<ulong> currentSlot, TimeSpan slotDuration, TimeProvider clock,
         CancellationToken cancellationToken)

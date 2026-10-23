@@ -619,6 +619,205 @@ public class ConsensusTests
     }
 
     [Test]
+    public async Task A_stalled_committee_request_does_not_block_signed_optimistic_updates()
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        LightClientStore store = Store(Bootstrap(1, 1));
+        LightClientUpdate[] updates = [Update(2, 100, 101, 1), Update(2, 101, 102, 1)];
+        int committeeRequests = 0;
+        int optimisticRequests = 0;
+        Task loop = ConsensusSync.RunRepairLoopsAsync(token => ConsensusSync.CatchUpAsync(store, Spec,
+            async (_, _, requestToken) =>
+            {
+                committeeRequests++;
+                await Task.Delay(Timeout.InfiniteTimeSpan, requestToken);
+                return updates[0];
+            }, static () => 120, static (_, _) => Task.CompletedTask, token),
+            _ =>
+            {
+                LightClientUpdate update = updates[optimisticRequests++];
+                store.Process(new LightClientOptimisticUpdate
+                {
+                    AttestedHeader = update.AttestedHeader,
+                    SyncAggregate = update.SyncAggregate,
+                    SignatureSlot = update.SignatureSlot,
+                }, 120);
+                return Task.CompletedTask;
+            }, () => store.OptimisticHeader.Beacon!.Slot, static () => 120,
+            TimeSpan.FromSeconds(12), clock, stop.Token);
+        try
+        {
+            await clock.NextTimerAsync();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(committeeRequests, Is.EqualTo(1));
+                Assert.That(optimisticRequests, Is.EqualTo(1));
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(100));
+                Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+            }
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(12)), Is.True);
+            await clock.NextTimerAsync();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(committeeRequests, Is.EqualTo(1));
+                Assert.That(optimisticRequests, Is.EqualTo(2));
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(101));
+                Assert.That(store.SyncProgress, Is.EqualTo((0UL, false)));
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+        Assert.That(clock.ActiveTimers, Is.Zero);
+    }
+
+    [Test]
+    public async Task Independent_optimistic_recovery_keeps_one_pending_request_and_restarts_its_backoff()
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        TaskCompletionSource response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Channel<int> requests = Channel.CreateUnbounded<int>();
+        int optimisticRequests = 0;
+        int pending = 0;
+        Task loop = ConsensusSync.RunRepairLoopsAsync(token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+            async token =>
+            {
+                Assert.That(Interlocked.Increment(ref pending), Is.EqualTo(1));
+                requests.Writer.TryWrite(++optimisticRequests);
+                try { await response.Task.WaitAsync(token); }
+                finally { Interlocked.Decrement(ref pending); }
+            }, static () => 0, static () => 120, TimeSpan.FromSeconds(12), clock, stop.Token);
+        try
+        {
+            Assert.That(await requests.Reader.ReadAsync(), Is.EqualTo(1));
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(90)), Is.False);
+            Assert.That(optimisticRequests, Is.EqualTo(1));
+            response.SetResult();
+            await clock.NextTimerAsync();
+            Assert.That(optimisticRequests, Is.EqualTo(1));
+            Assert.That(clock.Advance(TimeSpan.FromSeconds(12)), Is.True);
+            Assert.That(await requests.Reader.ReadAsync(), Is.EqualTo(2));
+            await clock.NextTimerAsync();
+            Assert.That(optimisticRequests, Is.EqualTo(2), "completed requests do not replay missed slots");
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending, Is.Zero);
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Repair_failure_cancels_and_joins_the_other_request([Values] bool optimisticFails)
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        TaskCompletionSource fail = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool drained = false;
+        async Task FailAsync(CancellationToken token)
+        {
+            await fail.Task.WaitAsync(token);
+            throw new IOException("Repair request failed.");
+        }
+        async Task PendingAsync(CancellationToken token)
+        {
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            finally
+            {
+                canceled.SetResult();
+                await release.Task;
+                drained = true;
+            }
+        }
+        Task loop = ConsensusSync.RunRepairLoopsAsync(optimisticFails ? PendingAsync : FailAsync,
+            optimisticFails ? FailAsync : PendingAsync, static () => 0, static () => 120,
+            TimeSpan.FromSeconds(12), clock, stop.Token);
+        try
+        {
+            fail.SetResult();
+            await canceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(loop.IsCompleted, Is.False, "failure must await the other request's cancellation cleanup");
+                Assert.That(drained, Is.False);
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await stop.CancelAsync();
+            Assert.That(async () => await loop, Throws.TypeOf<IOException>());
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drained, Is.True);
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Independent_repair_cancellation_joins_both_owners([Values] bool requesting)
+    {
+        RepairClock clock = new();
+        using CancellationTokenSource stop = new();
+        TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int canceling = 0;
+        async Task PollAsync(CancellationToken token)
+        {
+            if (!requesting) return;
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            finally
+            {
+                if (Interlocked.Increment(ref canceling) == 2) canceled.SetResult();
+                await release.Task;
+            }
+        }
+        Task loop = ConsensusSync.RunRepairLoopsAsync(PollAsync, PollAsync,
+            static () => 0, static () => 120, TimeSpan.FromSeconds(12), clock, stop.Token);
+        try
+        {
+            if (!requesting)
+            {
+                await clock.NextTimerAsync();
+                await clock.NextTimerAsync();
+            }
+            await stop.CancelAsync();
+            if (requesting)
+            {
+                await canceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(loop.IsCompleted, Is.False, "shutdown must join both pending requests");
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await StopRepairLoopAsync(loop, stop);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(canceling, Is.EqualTo(requesting ? 2 : 0));
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Already_canceled_independent_repair_does_not_start_either_request()
+    {
+        using CancellationTokenSource stop = new();
+        stop.Cancel();
+        int requests = 0;
+        Task RequestAsync(CancellationToken _) { requests++; return Task.CompletedTask; }
+        Assert.That(async () => await ConsensusSync.RunRepairLoopsAsync(RequestAsync, RequestAsync,
+            static () => 0, static () => 120, TimeSpan.FromSeconds(12), new RepairClock(), stop.Token),
+            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(requests, Is.Zero);
+    }
+
+    [Test]
     public async Task Held_finalized_resolution_does_not_delay_a_persisted_optimistic_slot_at_the_same_execution_hash()
     {
         PublicationHarness harness = new();
