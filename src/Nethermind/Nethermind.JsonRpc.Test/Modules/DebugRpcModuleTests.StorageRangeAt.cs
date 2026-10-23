@@ -127,7 +127,7 @@ public partial class DebugRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_storageRangeAt", block.Hash!, txIndex, contract, "0x", 100);
 
-        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.MethodNotFound), response);
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
     }
 
     [Test]

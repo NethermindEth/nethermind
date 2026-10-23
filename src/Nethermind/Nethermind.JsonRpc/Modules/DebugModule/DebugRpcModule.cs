@@ -712,7 +712,7 @@ public class DebugRpcModule(
         }
         catch (NotSupportedException e)
         {
-            return ResultWrapper<StorageRangeResult>.Fail(e.Message, ErrorCodes.MethodNotFound);
+            return ResultWrapper<StorageRangeResult>.Fail(e.Message, ErrorCodes.InvalidInput);
         }
 
         return ResultWrapper<StorageRangeResult>.Success(new StorageRangeResult(range));
