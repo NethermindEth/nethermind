@@ -14,7 +14,7 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
     {
         var identity = await BenchmarkProcess.RunAsync("id", ["-u"], cancellationToken);
         if (identity.Code != 0 || identity.Output.Trim() != "0") throw new IOException("perf profiling requires the self-hosted runner to execute as root; do not wrap perf in sudo because teardown must retain the recorder PID");
-        _samplingEvent = Get("PERF_SAMPLING_EVENT");
+        if (_samplingEvent.Length == 0) _samplingEvent = Get("PERF_SAMPLING_EVENT");
         if (_samplingEvent.Length == 0)
             foreach (var candidate in new[] { "cycles:u", "cpu-clock:u" })
                 if ((await BenchmarkProcess.RunAsync("perf", ["stat", "--event", candidate, "--", "true"], cancellationToken)).Code == 0)
@@ -63,7 +63,7 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
         return null;
     }
 
-    private string ContainerPid(string hostPid)
+    internal string ContainerPid(string hostPid)
     {
         var proc = Get("RPC_BENCH_PROC_ROOT", "/proc");
         foreach (var line in File.ReadLines(Path.Combine(proc, hostPid, "status")))
@@ -75,7 +75,7 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
         throw new IOException($"could not resolve the container PID for client process {hostPid}");
     }
 
-    private async Task<string?> FindHostPidAsync(string container, bool collector, CancellationToken cancellationToken)
+    internal async Task<string?> FindHostPidAsync(string container, bool collector, CancellationToken cancellationToken)
     {
         var listing = await BenchmarkProcess.RunAsync("docker", ["top", container, "-eo", "pid,args"], cancellationToken);
         foreach (var line in listing.Output.Split('\n'))
@@ -144,12 +144,20 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
                     arguments.AddRange(["--duration", $"{seconds / 3600:D2}:{seconds % 3600 / 60:D2}:{seconds % 60:D2}"]);
                 }
                 using var process = StartRecorder("docker", arguments, log);
-                await Task.Delay(1000, cancellationToken);
-                if (process.HasExited) throw new IOException($"dotnet-trace did not start: {File.ReadAllText(log)}");
-                var host = await FindHostPidAsync(container, true, cancellationToken) ?? throw new IOException($"dotnet-trace is running but its process is not visible in {container}");
-                Record("DOTNET_TRACE_PID", process.Id.ToString(CultureInfo.InvariantCulture));
-                Record("DOTNET_TRACE_COLLECTOR_PID", ContainerPid(host));
-                BenchmarkProcess.Log($"dotnet-trace collecting gc+contention+threading+exception (verbose) from container pid {client}");
+                try
+                {
+                    await Task.Delay(1000, cancellationToken);
+                    if (process.HasExited) throw new IOException($"dotnet-trace did not start: {File.ReadAllText(log)}");
+                    var host = await FindHostPidAsync(container, true, cancellationToken) ?? throw new IOException($"dotnet-trace is running but its process is not visible in {container}");
+                    Record("DOTNET_TRACE_PID", process.Id.ToString(CultureInfo.InvariantCulture));
+                    Record("DOTNET_TRACE_COLLECTOR_PID", ContainerPid(host));
+                    BenchmarkProcess.Log($"dotnet-trace collecting gc+contention+threading+exception (verbose) from container pid {client}" + (maximum.Length > 0 ? $" (cap at {maximum}s)" : ""));
+                }
+                catch
+                {
+                    if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(CancellationToken.None); }
+                    throw;
+                }
             }
         }
         if (Get("PERF", "false") == "true")
@@ -160,13 +168,21 @@ internal sealed class BenchmarkProfiling(Dictionary<string, string> state)
             var frequency = Get("PERF_FREQUENCY", "99");
             var log = Path.Combine(diag, "perf", $"perf-record{suffix}.log");
             using var recorder = StartRecorder("perf", ["record", "--event", _samplingEvent, "--freq", frequency, "--call-graph", "fp", "--pid", node, "--output", Path.Combine(diag, "perf", $"perf{suffix}.data")], log);
-            await Task.Delay(1000, cancellationToken);
-            if (recorder.HasExited) throw new IOException($"perf did not start: {File.ReadAllText(log)}");
-            var pid = recorder.Id.ToString(CultureInfo.InvariantCulture);
-            var identity = Identity(pid, Get("RPC_BENCH_PROC_ROOT", "/proc")) ?? throw new IOException("could not record perf recorder identity");
-            Record("PERF_PID", pid); Record("PERF_NODE_PID", node); Record("PERF_CONTAINER_PID", client);
-            Record("PERF_RECORDER_START_TIME", identity.Start); Record("PERF_RECORDER_COMM", identity.Name); Record("PERF_RECORDER_EXE", identity.Executable);
-            BenchmarkProcess.Log($"perf recording pid {node} at {frequency}Hz");
+            try
+            {
+                await Task.Delay(1000, cancellationToken);
+                if (recorder.HasExited) throw new IOException($"perf did not start: {File.ReadAllText(log)}");
+                var pid = recorder.Id.ToString(CultureInfo.InvariantCulture);
+                var identity = Identity(pid, Get("RPC_BENCH_PROC_ROOT", "/proc")) ?? throw new IOException("could not record perf recorder identity");
+                Record("PERF_PID", pid); Record("PERF_NODE_PID", node); Record("PERF_CONTAINER_PID", client);
+                Record("PERF_RECORDER_START_TIME", identity.Start); Record("PERF_RECORDER_COMM", identity.Name); Record("PERF_RECORDER_EXE", identity.Executable);
+                BenchmarkProcess.Log($"perf recording pid {node} at {frequency}Hz");
+            }
+            catch
+            {
+                if (!recorder.HasExited) { recorder.Kill(true); await recorder.WaitForExitAsync(CancellationToken.None); }
+                throw;
+            }
         }
         Record("PROFILERS_STARTED_AT", DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture));
         void Record(string key, string value) { BenchmarkState.Append(statePath, key, value); state[key] = value; }

@@ -13,6 +13,11 @@ ConsoleCancelEventHandler cancel = (_, context) => { context.Cancel = true; canc
 Console.CancelKeyPress += cancel;
 try
 {
+    if (args.SequenceEqual(["--check-perf"]))
+    {
+        await new BenchmarkProfiling([]).RequirePerfAsync(cancellation.Token);
+        return 0;
+    }
     var directory = BenchmarkProcess.EnvironmentValue("STATE_DIR");
     if (directory.Length == 0) throw new ArgumentException("STATE_DIR: directory where StartNode persisted state");
     var path = BenchmarkProcess.EnvironmentValue("NODE_ENV_FILE", Path.Combine(directory, "node.env"));

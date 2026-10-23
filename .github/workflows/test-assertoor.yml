@@ -86,6 +86,11 @@ jobs:
             "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
             }'
 
+      - name: Set up .NET for CI scripts
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
       - name: Wait for Docker Build Action to complete
         if: steps.check_conditions.outputs.skip_docker_build != 'true'
         env:
@@ -98,8 +103,7 @@ jobs:
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ github.ref }}
         run: |
-          chmod +x main-repo/scripts/wait-for-workflow.sh
-          ./main-repo/scripts/wait-for-workflow.sh
+          dotnet run --file main-repo/scripts/WaitForWorkflow.cs
         working-directory: ${{ github.workspace }}
 
       - name: Replace Placeholders in YAML

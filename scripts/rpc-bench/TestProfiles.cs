@@ -73,4 +73,32 @@ tests.Case("dotTrace retains maximum own time per FQN and escaped generic names"
     var result = RpcScriptTests.Run("scripts/DotTraceReport.cs", "top", path, "1");
     RpcScriptTests.Assert(result.Code == 0 && result.Output.Contains("Generic&lt;T&gt;") && Regex.IsMatch(result.Output, @"7\s+90") && !result.Output.Contains("Other"), result.ToString());
 });
+tests.Case("profile comparison keeps distinct punctuation under UTF8 locale", () =>
+{
+    var colon = "instance void [Nethermind.Evm] Namespace.Type::Method(int32)";
+    var spaced = "instance void [Nethermind.Evm] Namespace Type Method(int32)";
+    var first = tests.Write("locale-before.folded", $"root;{colon} 50\nroot;{spaced} 50\n");
+    var second = tests.Write("locale-after.folded", $"root;{colon} 25\nroot;{spaced} 75\n");
+    var previous = Environment.GetEnvironmentVariable("LC_ALL");
+    try
+    {
+        Environment.SetEnvironmentVariable("LC_ALL", "en_US.utf8");
+        var result = RpcScriptTests.Run("scripts/PerfReport.cs", "compare", first, second, "2");
+        RpcScriptTests.Assert(result.Code == 0 && result.Output.Contains(colon, StringComparison.Ordinal) && result.Output.Contains(spaced, StringComparison.Ordinal), result.ToString());
+    }
+    finally { Environment.SetEnvironmentVariable("LC_ALL", previous); }
+});
+tests.Case("dotTrace comparison streams repeated large report rows", () =>
+{
+    var first = tests.Write("large-before.xml", ""); var second = tests.Write("large-after.xml", "");
+    using (var a = File.CreateText(first))
+    using (var b = File.CreateText(second))
+        for (var index = 0; index < 100_000; index++)
+        {
+            a.WriteLine("<Function FQN=\"Repeated\" TotalTime=\"100\" OwnTime=\"10\" />");
+            b.WriteLine("<Function FQN=\"Repeated\" TotalTime=\"100\" OwnTime=\"15\" />");
+        }
+    var result = RpcScriptTests.Run("scripts/DotTraceReport.cs", "compare", first, second, "1");
+    RpcScriptTests.Assert(result.Code == 0 && result.Output.Contains("+50.0%", StringComparison.Ordinal) && Regex.Matches(result.Output, "Repeated").Count == 2, result.ToString());
+});
 tests.Complete();
