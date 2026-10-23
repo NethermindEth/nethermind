@@ -49,7 +49,7 @@ public class MonitoringModule : Module
         })
         ;
 
-    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "Metrics types are discovered by reflection at startup.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "The runner is not trimmed, so the static members of discovered Metrics types are kept.")]
     private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, IPruningConfig pruningConfig, ISpecProvider specProvider)
     {
         // Need to be set here, or we cant start before blocktree, which is the one that set this normally.

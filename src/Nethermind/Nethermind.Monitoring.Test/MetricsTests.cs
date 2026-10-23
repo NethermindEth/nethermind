@@ -19,7 +19,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Init.Modules;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Specs;
 using NUnit.Framework;

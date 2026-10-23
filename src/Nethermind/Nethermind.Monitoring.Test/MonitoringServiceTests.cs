@@ -13,7 +13,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api.Monitoring;
 using Nethermind.Core;
-using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
