@@ -9,7 +9,6 @@ using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
@@ -30,11 +29,6 @@ public sealed class ConfigureMemoryAllocators(
 
     public Task Execute(CancellationToken _)
     {
-#pragma warning disable CS0612
-        if (initConfig.MemoryHint is not null && _logger.IsWarn)
-            _logger.Warn($"Init.{nameof(IInitConfig.MemoryHint)} is deprecated and ignored. Set Db.{nameof(IDbConfig.SharedBlockCacheSize)} to change the database cache size.");
-#pragma warning restore CS0612
-
         SetupMallocOpts();
         ConfigureNetty((uint)Environment.ProcessorCount);
 
