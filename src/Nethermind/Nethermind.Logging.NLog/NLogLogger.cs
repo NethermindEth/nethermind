@@ -58,7 +58,9 @@ namespace Nethermind.Logging.NLog
 
         public void Error(string text, Exception? ex = null)
         {
-            if (IsError) _logger.Error(ex, IpMasker.MaskIfEnabled(text));
+            if (!IsError) return;
+            (text, ex) = MaskIfEnabled(text, ex);
+            _logger.Error(ex, text);
         }
 
         public void Warn(string text, LogEventKind kind)
@@ -72,9 +74,19 @@ namespace Nethermind.Logging.NLog
         public void Error(string text, LogEventKind kind, Exception? ex = null)
         {
             if (!IsError) return;
-            LogEventInfo evt = LogEventInfo.Create(global::NLog.LogLevel.Error, _logger.Name, ex, null, IpMasker.MaskIfEnabled(text));
+            (text, ex) = MaskIfEnabled(text, ex);
+            LogEventInfo evt = LogEventInfo.Create(global::NLog.LogLevel.Error, _logger.Name, ex, null, text);
             evt.Properties["Kind"] = Enum.GetName(kind);
             _logger.Log(evt);
         }
+
+        /// <remarks>
+        /// Exception messages can carry addresses, e.g. a <see cref="System.Net.Sockets.SocketException"/> names the remote endpoint.
+        /// The exception cannot be changed, so its masked text moves into the message.
+        /// </remarks>
+        private static (string Text, Exception? Ex) MaskIfEnabled(string text, Exception? ex) =>
+            !IpMasker.Enabled ? (text, ex)
+            : ex is null ? (IpMasker.Mask(text), null)
+            : (IpMasker.Mask($"{text} {ex}"), null);
     }
 }

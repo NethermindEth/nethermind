@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
@@ -52,22 +54,31 @@ public class IpMaskerTests
     public void Keeps_data_that_is_not_sensitive(string text) =>
         Assert.That(IpMasker.Mask(text), Is.EqualTo(text));
 
-    [TestCase(true, "Peer x.x.x.x:30303")]
-    [TestCase(false, "Peer 94.130.12.34:30303")]
-    public void Logger_masks_only_when_enabled(bool enabled, string expected)
+    [TestCase(true, "Peer x.x.x.x:30303|")]
+    [TestCase(false, "Peer 94.130.12.34:30303|")]
+    public void Logger_masks_only_when_enabled(bool enabled, string expected) =>
+        Assert.That(Log(enabled, static logger => logger.Info("Peer 94.130.12.34:30303")), Is.EqualTo(expected));
+
+    [TestCase(true, "Failed: x.x.x.x:30303 System.Exception: Connection refused x.x.x.x:30303|")]
+    [TestCase(false, "Failed: 94.130.12.34:30303|System.Exception: Connection refused 94.130.12.34:30303")]
+    public void Logger_masks_exception_only_when_enabled(bool enabled, string expected) =>
+        Assert.That(
+            Log(enabled, static logger => logger.Error("Failed: 94.130.12.34:30303", new Exception("Connection refused 94.130.12.34:30303"))),
+            Is.EqualTo(expected));
+
+    private static string Log(bool enabled, Action<NLogLogger> log)
     {
         LoggingConfiguration previous = LogManager.Configuration;
         bool wasEnabled = IpMasker.Enabled;
-        MemoryTarget target = new() { Layout = "${message}" };
+        MemoryTarget target = new() { Layout = "${message}|${exception:format=toString}" };
         LoggingConfiguration configuration = new();
         configuration.AddRuleForAllLevels(target);
         LogManager.Configuration = configuration;
         try
         {
             IpMasker.Enabled = enabled;
-            new NLogLogger(nameof(Logger_masks_only_when_enabled)).Info("Peer 94.130.12.34:30303");
-
-            Assert.That(target.Logs, Is.EqualTo(new[] { expected }));
+            log(new NLogLogger(nameof(IpMaskerTests)));
+            return target.Logs.Single();
         }
         finally
         {
