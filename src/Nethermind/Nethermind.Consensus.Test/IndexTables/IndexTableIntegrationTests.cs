@@ -120,6 +120,71 @@ public class IndexTableIntegrationTests
         }
     }
 
+    // Block 8 starts a level-1 table but is inside a level-2 table; block 5 starts no table above level 0.
+    [Test]
+    public async Task BlockProcessing_publishes_every_level_on_schedule_after_activation([Values(5, 8)] int activationBlock, [Values] bool enableBal)
+    {
+        // The level-4 table of blocks 256-511 is the first one that starts after activation: 256 + 255 + 256 / 4.
+        const int lastBlock = 575;
+
+        OverridableReleaseSpec preSpec = new(Amsterdam.Instance) { IsEip8304Enabled = false, IsEip7928Enabled = enableBal };
+        OverridableReleaseSpec postSpec = new(Amsterdam.Instance)
+        {
+            IsEip8304Enabled = true,
+            Eip8304ContractAddress = IndexContract,
+            IsEip7928Enabled = enableBal
+        };
+
+        ulong activationTimestamp = ulong.MaxValue;
+        ISpecProvider specProvider = new OverridableSpecProvider(
+            new TestSpecProvider(Amsterdam.Instance),
+            (_, activation) => activation.Timestamp >= activationTimestamp ? postSpec : preSpec);
+
+        using BasicTestBlockchain chain = await CreateChain(specProvider: specProvider);
+
+        List<List<IndexEntry>> blockEntries = [GenerateBlockEntries(chain, 0)];
+        int[] published = new int[Eip8304Constants.TableSizes.Length];
+        byte[] empty = new byte[32];
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        for (int number = 1; number <= lastBlock; number++)
+        {
+            if (number == activationBlock) activationTimestamp = parent.Timestamp + 1;
+
+            await chain.BuildSomeBlocks(1);
+            BlockHeader head = chain.BlockTree.Head!.Header;
+            blockEntries.Add(GenerateBlockEntries(chain, number));
+
+            for (int level = 0; level < Eip8304Constants.TableSizes.Length; level++)
+            {
+                int size = Eip8304Constants.TableSizes[level];
+                int firstBlock = number - (size - 1) - size / 4;
+                if (firstBlock < 0 || firstBlock % size != 0) continue;
+
+                List<IndexEntry> table = [];
+                for (int block = firstBlock; block < firstBlock + size; block++) table.AddRange(blockEntries[block]);
+                table.Sort();
+
+                bool eligible = firstBlock >= activationBlock;
+                if (eligible) published[level]++;
+
+                Assert.That(GetStoredRoot(chain, parent, size, firstBlock), Is.EqualTo(empty), $"level-{level} root of blocks {firstBlock}+ before block {number}");
+                Assert.That(GetStoredRoot(chain, head, size, firstBlock), Is.EqualTo(eligible ? SszRoot(table) : empty), $"level-{level} root of blocks {firstBlock}+ at block {number}");
+            }
+
+            parent = head;
+        }
+
+        Assert.That(published, Is.All.Positive, "tables published per level");
+    }
+
+    private static List<IndexEntry> GenerateBlockEntries(BasicTestBlockchain chain, int number)
+    {
+        Block block = chain.BlockTree.FindBlock((ulong)number, BlockTreeLookupOptions.RequireCanonical)!;
+        List<IndexEntry> entries = [];
+        IndexEntryGenerator.GenerateEntries(block.Header, block.Transactions, chain.ReceiptStorage.Get(block), block.Header.ParentHash, entries);
+        return entries;
+    }
+
     [Test]
     public async Task BlockProcessing_without_index_contract_code_leaves_its_address_untouched([Values] bool enableBal)
     {
