@@ -142,6 +142,21 @@ public class MemoryPositionTests(bool tracing) : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Byte_store_reports_the_stored_byte([Values(0, 33, 4097)] int position)
+    {
+        byte[] code = Prepare.EvmCode.PushData(0x1234ab).PushData(position).Op(Instruction.MSTORE8).Done;
+
+        MemoryChangeTracer tracer = (MemoryChangeTracer)Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.ChangedOffset, Is.EqualTo(tracing ? (long?)position : null));
+            Assert.That(tracer.ChangedBytes, Is.EqualTo(tracing ? new byte[] { 0xab } : null));
+        }
+    }
+
     [TestCase(Instruction.MSTORE, HighLimb)]
     [TestCase(Instruction.MSTORE, MiddleLimb)]
     [TestCase(Instruction.MSTORE, LowerLimb)]

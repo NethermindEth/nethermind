@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -26,7 +25,7 @@ public interface IExecutionPayloadFactory<out TExecutionPayload> where TExecutio
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
+public class ExecutionPayload : IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
 {
     public UInt256 BaseFeePerGas { get; set => field = Bind(value, PayloadFields.BaseFeePerGas); }
 
@@ -244,7 +243,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
-        Block block = new(header, transactions.Data, Array.Empty<BlockHeader>(), Withdrawals)
+        Block block = new(header, new BlockBody(transactions.Data, [], Withdrawals))
         {
             EncodedTransactions = encodedTransactions
         };
@@ -313,12 +312,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         { Withdrawals: not null } => 2,
         _ => 1
     };
-
-    /// <inheritdoc/>
-    /// <remarks>Answers for the getPayloadV1 shape only. Not virtual: subclasses gate newPayload through
-    /// <see cref="ValidateForkOnNewPayload"/> instead.</remarks>
-    public bool ValidateFork(ISpecProvider specProvider) =>
-        !specProvider.GetSpec(BlockNumber, Timestamp).IsCancunEnabled;
 
     /// <summary>Whether this payload may arrive on the given <c>engine_newPayload</c> version.</summary>
     public virtual bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion) =>

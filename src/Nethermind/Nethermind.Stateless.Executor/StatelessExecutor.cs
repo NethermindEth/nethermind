@@ -28,6 +28,8 @@ public static partial class StatelessExecutor
         {
             // Also installs the run's hash seed, which every hash-keyed container below depends on.
             payload = InputDecoder.Decode(data);
+            // Nothing reads the input again but the witness codes, which move to its front; the rest is free to reuse.
+            KeccakHash.DonateConsumedInput(data[WitnessCode.PlaceInConsumedInput(payload.Witness.Codes, data)..]);
         }
         catch (Exception ex)
         {
@@ -165,14 +167,6 @@ public static partial class StatelessExecutor
     /// callback can access it.
     /// </remarks>
     public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
-
-    private static readonly StatelessValidationResult _defaultFailureResult = new()
-    {
-        NewPayloadRequestRoot = Hash256.Zero,
-        IsSuccess = false,
-        ChainId = 0,
-        SchemaId = 0
-    };
 
     private static bool TryRecoverSenders(
         Transaction[] transactions, byte[][] encodedTransactions, ISpecProvider specProvider, IReleaseSpec spec)

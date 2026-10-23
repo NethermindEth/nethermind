@@ -146,8 +146,15 @@ public class Block
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
 
+    // Kept in an int so that readers on other threads never see a torn value; -1 means unknown.
+    private int _encodedSize = -1;
+
     [JsonIgnore]
-    public int? EncodedSize { get; set; }
+    public int? EncodedSize
+    {
+        get => _encodedSize < 0 ? null : _encodedSize;
+        set => _encodedSize = value ?? -1;
+    }
 
     [JsonIgnore]
     public byte[]? EncodedBlockAccessList { get; set; }

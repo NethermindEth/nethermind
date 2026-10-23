@@ -8,8 +8,10 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -32,6 +34,14 @@ namespace Nethermind.Consensus.Processing
             : IBlockProductionTransactionsExecutor
         {
             private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
+            private IReleaseSpec? _spec;
+
+            // Items added to the end-of-block reserve after a build on _learnedItemReserveParent overshot the block access
+            // list item limit, for end-of-block work the reserve does not model (e.g. a withdrawal contract instead of
+            // balance credits). Scoped to that parent so one unusual block does not shrink the budget of later ones.
+            // Builds of one producer env are serialized, so the fields need no synchronization.
+            private long _learnedItemReserve;
+            private Hash256? _learnedItemReserveParent;
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -45,6 +55,14 @@ namespace Nethermind.Consensus.Processing
             {
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
                 balManager.SetBlockExecutionContext(blockExecutionContext);
+                _spec = blockExecutionContext.Spec;
+            }
+
+            public void ReportItemLimitExceeded(long excessItems)
+            {
+                if (excessItems <= 0) return;
+                _learnedItemReserve += excessItems;
+                if (_logger.IsWarn) _logger.Warn($"Produced block exceeded the block access list item limit by {excessItems} items; reserving {_learnedItemReserve} more items in later builds on parent {_learnedItemReserveParent}.");
             }
 
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
@@ -66,7 +84,7 @@ namespace Nethermind.Consensus.Processing
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
                 IReadOnlySet<Hash256AsKey>? claimable = blockToProduce?.InclusionListCandidates;
                 List<OmissionClaim>? claims = null;
-                int i = 0;
+                BlockAccessListItemBudget itemBudget = CreateItemBudget(block);
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
@@ -75,7 +93,7 @@ namespace Nethermind.Consensus.Processing
                     // EIP-7805: only the first attempt is where the builder tried; a later offer is a duplicate.
                     bool claimOnSkip = claimable is not null && currentTx.Hash is { } hash
                         && claimable.Contains(hash) && !consideredTx.Contains(currentTx);
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx, out bool invalidHere);
+                    TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool invalidHere);
                     if (action == TxAction.Stop) break;
                     // A claim binds the builder: the omission is judged at the claimed index alone, so claim only where the
                     // candidate is invalid there, never where it was skipped for a reason of the builder's own.
@@ -103,6 +121,28 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
+            /// <summary>
+            /// EIP-7928: the items transactions may add to the block access list, so that the end-of-block steps still fit
+            /// under <c>block_gas_limit / ITEM_COST</c>. Disabled when no block access list is built.
+            /// </summary>
+            private BlockAccessListItemBudget CreateItemBudget(Block block)
+            {
+                if (!balManager.Enabled || _spec is null) return default;
+
+                if (block.Header.ParentHash != _learnedItemReserveParent)
+                {
+                    _learnedItemReserveParent = block.Header.ParentHash;
+                    _learnedItemReserve = 0;
+                }
+
+                GeneratedBlockAccessList blockAccessList = balManager.GeneratedBlockAccessList;
+                long limit = (long)(block.Header.GasLimit / Eip7928Constants.ItemCost);
+                long reserve = BlockAccessListItemReserve.Calculate(block, _spec, stateProvider, blockAccessList)
+                    + _learnedItemReserve;
+                // Only the pre-execution system calls are merged at this point, so the count is cheap.
+                return new BlockAccessListItemBudget(limit - reserve - blockAccessList.ItemCount);
+            }
+
             private TxAction ProcessTransaction(
                 Block block,
                 Transaction currentTx,
@@ -110,6 +150,7 @@ namespace Nethermind.Consensus.Processing
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions,
                 HashSet<Transaction> transactionsInBlock,
+                ref BlockAccessListItemBudget itemBudget,
                 out bool invalidHere)
             {
                 AddingTxEventArgs args = txPicker.CanAddTransaction(
@@ -127,9 +168,20 @@ namespace Nethermind.Consensus.Processing
                 else
                 {
                     ITransactionProcessorAdapter processor = balManager.Enabled ? balManager.GetTxProcessor() : transactionProcessor;
+                    Snapshot snapshot = itemBudget.Enabled ? stateProvider.TakeSnapshot() : Snapshot.Empty;
+                    int receiptsSnapshot = receiptsTracer.TakeSnapshot();
                     TransactionResult result = processor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
-                    if (result)
+                    if (result && itemBudget.Enabled && !itemBudget.TryConsume(balManager.CountPendingTransactionItems()))
+                    {
+                        // Leave the executed transaction out: undo its state, its slice and its receipt.
+                        stateProvider.Restore(snapshot);
+                        balManager.Rollback();
+                        receiptsTracer.DiscardLastTx();
+                        args.Set(TxAction.Skip, "Block access list item limit reached");
+                        if (_logger.IsDebug) DebugSkipReason(currentTx, args);
+                    }
+                    else if (result)
                     {
                         _transactionProcessed?.Invoke(this,
                             new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
@@ -137,6 +189,9 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
+                        // Drop any receipt/header gas the failed tx left behind. The processor's own running block
+                        // gas is not reset here, but the next receipt rewrites the header's gas used from receipts kept.
+                        receiptsTracer.Restore(receiptsSnapshot);
                         balManager.Rollback();
                         args.SetInvalid(result.ErrorDescription!);
                         EvictUnpaidFrameTx(currentTx, result);
@@ -149,6 +204,20 @@ namespace Nethermind.Consensus.Processing
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
                     => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+            }
+
+            /// <summary>Block access list items left for transactions; a disabled budget admits everything.</summary>
+            private struct BlockAccessListItemBudget(long remaining)
+            {
+                public readonly bool Enabled = true;
+                private long _remaining = remaining;
+
+                public bool TryConsume(int items)
+                {
+                    if (items > _remaining) return false;
+                    _remaining -= items;
+                    return true;
+                }
             }
 
             /// <summary>Evicts a frame transaction whose frames approved no payment; nothing else evicts it, so every

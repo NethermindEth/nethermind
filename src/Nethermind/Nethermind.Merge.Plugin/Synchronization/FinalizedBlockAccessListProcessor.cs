@@ -20,16 +20,17 @@ public sealed class FinalizedBlockAccessListProcessor(
     FinalizedBlockAccessListPolicy policy,
     IWorldState state,
     IReceiptStorage receiptStorage,
+    IReceiptsRecovery receiptsRecovery,
     ILogManager logManager) : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FinalizedBlockAccessListProcessor>();
-    private event Action? _transactionsExecuted;
+    private event Action<Block>? _transactionsExecuted;
 
     /// <summary>The processor that executes blocks this decorator does not reconstruct.</summary>
     public IBlockProcessor Inner => inner;
 
     /// <inheritdoc/>
-    public event Action? TransactionsExecuted
+    public event Action<Block>? TransactionsExecuted
     {
         add { inner.TransactionsExecuted += value; _transactionsExecuted += value; }
         remove { inner.TransactionsExecuted -= value; _transactionsExecuted -= value; }
@@ -45,33 +46,46 @@ public sealed class FinalizedBlockAccessListProcessor(
             return inner.ProcessOne(block, options, blockTracer, spec, token);
 
         // Queued processing attaches a stored list only when it matches the header's commitment.
-        if (block.BlockAccessList is not { } list) return Execute("no verified block access list");
+        if (block.BlockAccessList is not { } list) return Execute(BalCatchUpFallbackReason.NoBlockAccessList);
+
+        // Applying the list skips the post-execution item limit check, so a list over the limit is executed instead.
+        if (Eip7928Constants.ExceedsItemLimit(list.ItemCount, block.GasLimit)) return Execute(BalCatchUpFallbackReason.ItemLimitExceeded);
 
         TxReceipt[] receipts = [];
         if (block.Transactions.Length > 0)
         {
             // The downloader stores receipts only after checking them against the receipts root.
-            if (!receiptStorage.HasBlock(block.Number, block.Hash!)) return Execute("no receipts");
+            if (!receiptStorage.HasBlock(block.Number, block.Hash!)) return Execute(BalCatchUpFallbackReason.NoReceipts);
             receipts = receiptStorage.Get(block);
+            // The downloader stored them before senders were recovered, and a cached copy is served as stored.
+            receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: true);
         }
 
         // No transactions run, so background work such as prewarming can stop before the writes are applied.
-        _transactionsExecuted?.Invoke();
+        _transactionsExecuted?.Invoke(block);
         token.ThrowIfCancellationRequested();
         state.Commit(spec);
         state.ApplyBal(list);
         state.RecalculateStateRoot();
         if (state.StateRoot != block.StateRoot)
+        {
+            CountFallback(BalCatchUpFallbackReason.StateRootMismatch);
             throw new BlockProcessor.BlockAccessListSequentialRetryException(block.Header,
                 $"BAL reconstruction mismatched state root for {block}; retrying execution.");
+        }
+
         block.AccountChanges = list.GetStateChangedAddresses();
         Metrics.BalCatchUpBlocks++;
         return (block, receipts);
 
-        (Block, TxReceipt[]) Execute(string reason)
+        (Block, TxReceipt[]) Execute(BalCatchUpFallbackReason reason)
         {
+            CountFallback(reason);
             if (_logger.IsDebug) _logger.Debug($"Executing finalized {block.ToString(Block.Format.Short)}: {reason}");
             return inner.ProcessOne(block, options, blockTracer, spec, token);
         }
     }
+
+    private static void CountFallback(BalCatchUpFallbackReason reason) =>
+        Metrics.BalCatchUpFallbacks.AddOrUpdate(reason, 1, static (_, count) => count + 1);
 }

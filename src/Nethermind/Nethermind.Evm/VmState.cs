@@ -20,9 +20,6 @@ namespace Nethermind.Evm;
 public partial class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new(
-        maxShared: VirtualMachineStatics.MaxCallDepth * 2);
-
     public byte[]? DataStack;
     public TGasPolicy Gas;
     public long InitialStateGasUsed;

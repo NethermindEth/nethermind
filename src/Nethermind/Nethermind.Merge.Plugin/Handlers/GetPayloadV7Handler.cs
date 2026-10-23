@@ -18,5 +18,7 @@ public class GetPayloadV7Handler(
     IBuilderOverridePolicy builderOverridePolicy)
     : GetPayloadHandlerBase<GetPayloadV7Result>(EngineApiVersions.GetPayload.V7, payloadPreparationService, specProvider, logManager, builderOverridePolicy)
 {
+    protected override bool ValidateFork(IReleaseSpec spec) => spec.IsEip7805Enabled;
+
     protected override GetPayloadV7Result GetPayloadResultFromBlock(IBlockProductionContext context) => new GetPayloadV7DirectResponse(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
 }

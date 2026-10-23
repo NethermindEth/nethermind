@@ -22,11 +22,6 @@ on:
         required: false
         type: string
         default: ''
-      raise_verify_gas_const:
-        description: Build with MaxVerifyGas raised to this value, e.g. 500000, so ceilings above 300k run. Empty is a stock build.
-        required: false
-        type: string
-        default: ''
       machine_type:
         description: >-
           GCE machine type of the runner created for this run, or reproducible-benchmarks for the shared bare-metal
@@ -182,7 +177,6 @@ jobs:
         working-directory: src/Nethermind
         env:
           SUITE: ${{ inputs.suite }}
-          RAISE_VERIFY_GAS: ${{ inputs.raise_verify_gas_const }}
           MACHINE_TYPE: ${{ inputs.machine_type }}
         run: |
           set -uo pipefail
@@ -201,9 +195,7 @@ jobs:
             echo "::error::taskset is not available, so the ${SUITE} suite cannot be confined to one CPU and its figures would describe an uncontended node."
             exit 1
           fi
-          # Safe to patch: this constant only gates the mempool's prefix simulator, never block validity.
           CONST_FILE=Nethermind.Core/Eip8141Constants.cs
-          STOCK_LITERAL='MaxVerifyGas = 300_000'
           {
             echo "ref=${GITHUB_REF_NAME}"
             echo "sha=${GITHUB_SHA}"
@@ -221,38 +213,15 @@ jobs:
               cat "${GROTH16_ARTIFACTS_SHA256SUMS}"
             } >> "${OUTPUT_DIR}/PROVENANCE.txt"
           fi
-          RAISE_VERIFY_GAS="${RAISE_VERIFY_GAS//[[:space:]]/}"
-          if [[ -n "${RAISE_VERIFY_GAS}" ]]; then
-            if [[ ! "${RAISE_VERIFY_GAS}" =~ ^[1-9][0-9]{5,8}$ ]]; then
-              echo "::error::raise_verify_gas_const '${RAISE_VERIFY_GAS}' is not a plain integer of 6 to 9 digits."
-              exit 1
-            fi
-            if (( RAISE_VERIFY_GAS < 400000 )); then
-              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} unlocks no sweep point: both harnesses skip a ceiling strictly greater than the constant, and the smallest declared point above stock 300000 is 400000."
-              exit 1
-            fi
-            if [[ ! -f "${CONST_FILE}" ]]; then
-              echo "::error::${CONST_FILE} is not present on ${GITHUB_REF_NAME}, so there is no constant to raise. Dispatch against a ref that carries EIP-8141."
-              exit 1
-            fi
-            hits=$(grep -c -- "${STOCK_LITERAL}" "${CONST_FILE}" || true)
-            if [[ "${hits}" != "1" ]]; then
-              echo "::error::expected exactly one '${STOCK_LITERAL}' in ${CONST_FILE}, found ${hits}. Refusing to patch."
-              exit 1
-            fi
-            sed -i "s/${STOCK_LITERAL}/MaxVerifyGas = ${RAISE_VERIFY_GAS}/" "${CONST_FILE}" || exit 1
-            {
-              echo "eip8141_max_verify_gas_patched_from=300000 to=${RAISE_VERIFY_GAS}"
-              echo "# Every RESULT row in this artifact came from a build carrying the diff below."
-              git --no-pager diff -- "${CONST_FILE}"
-            } >> "${OUTPUT_DIR}/PROVENANCE.txt"
-            echo "::warning::Eip8141Constants.MaxVerifyGas patched 300000 -> ${RAISE_VERIFY_GAS} for this run. These figures are not from a stock build; see PROVENANCE.txt in the artifact."
-          else
-            {
-              echo "eip8141_max_verify_gas=300000 (stock, unpatched)"
-              echo "# The 400k and 500k sweep points self-ignore on this build. Re-dispatch with raise_verify_gas_const=400000 or 500000 to measure them."
-            } >> "${OUTPUT_DIR}/PROVENANCE.txt"
+          compiled_verify_floor=$(sed -nE 's/.*public const ulong MaxVerifyGas = ([0-9_]+);/\1/p' "${CONST_FILE}" | tr -d '_')
+          if [[ ! "${compiled_verify_floor}" =~ ^[0-9]+$ ]]; then
+            echo "::error::could not read the shared verification floor from ${CONST_FILE}."
+            exit 1
           fi
+          {
+            echo "eip8141_max_verify_gas=${compiled_verify_floor} (stock, unpatched)"
+            echo "measurement_headroom=per-case TxPoolConfig.FrameTxMaxVerifyGas"
+          } >> "${OUTPUT_DIR}/PROVENANCE.txt"
 
           {
             echo
@@ -311,17 +280,16 @@ jobs:
           }
 
           # Named so a self-ignored case fails loudly instead of quietly shrinking the suite.
-          compiled_max_verify_gas=${RAISE_VERIFY_GAS:-300000}
           status=0
           case "${SUITE}" in
             cost)
               mempool_markers=('shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'case=signature_reject')
-              (( compiled_max_verify_gas >= 400000 )) && mempool_markers+=('verify_gas=400000' 'shape=groth16-400k')
-              (( compiled_max_verify_gas >= 500000 )) && mempool_markers+=('verify_gas=500000' 'shape=groth16-500k')
+              mempool_markers+=('verify_gas=400000' 'shape=groth16-400k')
+              mempool_markers+=('verify_gas=500000' 'shape=groth16-500k')
               run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement "FullyQualifiedName~FrameTxMempoolDosMeasurement" nopin "${mempool_markers[@]}" || status=1
               run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "FullyQualifiedName~FrameTxProducerRetryMeasurement" nopin 'case=k_retry_sweep' || status=1
               run_harness Nethermind.Blockchain.Test FrameTxShapeGuard "TestCategory=frame-tx-cost" nopin || status=1
-              run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement "FullyQualifiedName~FrameTxVerifyDosMeasurement" nopin 'case=burn_per_attempt' || status=1
+              run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement "FullyQualifiedName~FrameTxVerifyDosMeasurement" nopin 'case=burn_per_attempt budget=100000' 'case=burn_per_attempt budget=235800' 'case=burn_per_attempt budget=300000' || status=1
               run_harness Nethermind.TxPool.Test FrameTxPoolRetentionMeasurement "FullyQualifiedName~FrameTxPoolRetentionMeasurement" nopin 'case=retention_with_deadline' || status=1
               run_harness Nethermind.Network.Test FrameTxPeerFloodMeasurement "FullyQualifiedName~FrameTxPeerFloodMeasurement" nopin 'case=peer_flood' || status=1
               ;;
@@ -329,8 +297,7 @@ jobs:
               row_case="${SUITE//-/_}_level"
               run_harness Nethermind.Blockchain.Test "FrameTx-${SUITE}" "TestCategory=frame-tx-${SUITE}" pin "case=${row_case}" || status=1
               results="${OUTPUT_DIR}/FrameTx-${SUITE}-results.txt"
-              # Every cell the build can reach must have produced one row per level. EVM shapes self-ignore above
-              # the compiled constant; signature stuffing is refused before the cap and runs on every build.
+              # Every configured headroom must produce one row per level on an unpatched build.
               paths=('')
               case "${SUITE}" in
                 producer)            ceilings=(100000 235800 250000 300000 400000 500000); shapes=(keccak-wide signature-stuffed); levels=8 ;;
@@ -339,9 +306,6 @@ jobs:
               esac
               for shape in "${shapes[@]}"; do
                 for ceiling in "${ceilings[@]}"; do
-                  if [[ "${shape}" != signature-stuffed ]] && (( ceiling > compiled_max_verify_gas )); then
-                    continue
-                  fi
                   for path in "${paths[@]}"; do
                     cell="shape=${shape} ceiling=${ceiling}${path:+ gossip_path=${path}}"
                     cell_rows=$(grep -E "^RESULT case=${row_case} shape=${shape} ceiling=${ceiling} " "${results}" 2>/dev/null \

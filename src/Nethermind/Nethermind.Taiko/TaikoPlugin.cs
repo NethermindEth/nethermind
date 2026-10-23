@@ -104,6 +104,8 @@ public class TaikoModule : Module
             .AddSingleton<IBlockValidator, TaikoBlockValidator>()
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
+            // TaikoHeaderValidator does not bound the gas limit against the parent's.
+            .AddSingleton(PayloadTransactionCountGuard.Disabled)
 
             // Block processing
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()

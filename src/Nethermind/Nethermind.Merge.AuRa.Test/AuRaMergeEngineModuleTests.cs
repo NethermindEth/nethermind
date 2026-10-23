@@ -112,6 +112,11 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
     public override async Task GetPayloadV6_builds_block_with_BAL(string? customWithdrawalContractAddress) =>
         await base.GetPayloadV6_builds_block_with_BAL(customWithdrawalContractAddress);
 
+    [TestCase(true, _auraWithdrawalContractAddress, TestName = "GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(discarded first)")]
+    [TestCase(false, _auraWithdrawalContractAddress, TestName = "GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(discarded last)")]
+    public override Task GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(bool discardedFirst, string? customWithdrawalContractAddress) =>
+        base.GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(discardedFirst, customWithdrawalContractAddress);
+
     [Test]
     public override async Task GetPayloadBodiesHashV2_returns_correctly()
         => await base.GetPayloadBodiesHashV2_returns_correctly();

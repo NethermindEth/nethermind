@@ -5,7 +5,6 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 
@@ -18,8 +17,6 @@ public class GetPayloadV7Result(Block block, UInt256 blockFees, BlobsBundleV2 bl
     /// <summary>An omission claim for each admitted Profile 2 candidate the build found invalid where it tried to
     /// append it, at most <see cref="Eip8369Constants.MaxOmissionClaims"/>.</summary>
     public OmissionClaim[] OmissionClaims => Block.OmissionClaims ?? [];
-
-    public override bool ValidateFork(ISpecProvider specProvider) => specProvider.GetSpec(Block.Number, Block.Timestamp).IsEip7805Enabled;
 }
 
 public sealed class GetPayloadV7DirectResponse(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder)

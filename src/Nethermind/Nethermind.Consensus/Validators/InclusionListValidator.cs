@@ -9,7 +9,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -33,6 +32,7 @@ public static class InclusionListValidator
 
     /// <summary>Whether <paramref name="block"/> honours EIP-7805's separate inclusion lists under the builder's
     /// omission claims.</summary>
+    /// <remarks>Checks appendability against state after transactions, before withdrawals and request system calls.</remarks>
     /// <param name="inclusionLists">One decoded list per committee position, each in its original order with its
     /// duplicates; the per-IL VERIFY budget is filled over each independently.</param>
     /// <param name="maxVerifyGasPerTx">EIP-7805 <c>MAX_VERIFY_GAS_PER_TX</c>, above which a frame transaction is
@@ -116,8 +116,8 @@ public static class InclusionListValidator
             // Before Profile 2 is active a frame transaction is excused, as the end-of-payload rule cannot judge its
             // programmable validation.
             if (il[i].SupportsFrames) continue;
-            // EIP-7805: once Profile 2 is active, a blob transaction is in neither profile, so its omission is excused.
-            if (il[i].SupportsBlobs && profile2.Active) continue;
+            // EIP-7805 excludes blob transactions from the appendability check.
+            if (il[i].SupportsBlobs) continue;
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref accountCache)) return false;
         }
         return toReplay is null || !AnyUnjustified(block, toReplay, spec, in profile2);
@@ -193,11 +193,6 @@ public static class InclusionListValidator
         // Appendability must match normal execution, so reuse the full well-formedness check, not a subset.
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
-        if (tx.SupportsBlobs
-            && (BlobGasCalculator.CalculateBlobGas(tx) > spec.GasCosts.MaxBlobGasPerBlock - (block.Header.BlobGasUsed ?? 0)
-                || !BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee)
-                || (tx.MaxFeePerBlobGas ?? UInt256.Zero) < blobBaseFee))
-            return false;
 
         Address payer = tx.SenderAddress;
         accountCache ??= [];
@@ -206,20 +201,14 @@ public static class InclusionListValidator
         if (!cached) state.TryGetAccount(payer, out account);
 
         // EIP-3607: a sender with non-delegated code cannot send a tx.
-        if (account.HasCode && !state.IsDelegatedCode(payer)) return false;
+        if (account.HasCode && !state.IsDelegatedCode(account.CodeHash)) return false;
 
         // Overflow-checked like TransactionProcessor.BuyGas: an adversarial MaxFeePerGas must not wrap the cost.
         if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 txCost)
             || UInt256.AddOverflow(txCost, tx.Value, out txCost))
             return false;
 
-        // A blob tx must also cover maxFeePerBlobGas × blob gas up front, or it could never have executed.
-        if (tx.SupportsBlobs
-            && (!BlobGasCalculator.TryCalculateBlobMaxFee(tx.BlobVersionedHashes?.Length ?? 0, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
-                || UInt256.AddOverflow(txCost, blobFee, out txCost)))
-            return false;
-
-        return SpendableBalance(block, payer, in account) >= txCost && account.Nonce == tx.Nonce;
+        return account.Balance >= txCost && account.Nonce == tx.Nonce;
     }
 
     /// <summary>Whether an appended transaction's worst-case block gas still fits.</summary>
@@ -266,22 +255,5 @@ public static class InclusionListValidator
             state += receipts[i].StorageGasUsed;
         }
         return (execution, state) == total ? before : null;
-    }
-
-    /// <summary>Balance the sender would have had when an appended transaction executed.</summary>
-    /// <remarks>Withdrawals are the only post-merge credit applied after the block's transactions, so counting
-    /// them into the post-block balance would make an honest proposer look like a censor.</remarks>
-    private static UInt256 SpendableBalance(Block block, Address sender, ref readonly AccountStruct account)
-    {
-        UInt256 balance = account.Balance;
-        if (block.Withdrawals is not { Length: > 0 }) return balance;
-
-        foreach (Withdrawal withdrawal in block.Withdrawals)
-        {
-            if (withdrawal.Address != sender) continue;
-            if (UInt256.SubtractUnderflow(balance, withdrawal.AmountInWei, out balance)) return UInt256.Zero;
-        }
-
-        return balance;
     }
 }

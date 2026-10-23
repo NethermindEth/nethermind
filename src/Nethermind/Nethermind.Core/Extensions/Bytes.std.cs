@@ -11,6 +11,13 @@ namespace Nethermind.Core.Extensions;
 
 public static unsafe partial class Bytes
 {
+    // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
+    public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
+    public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
+    public static readonly ReadOnlyMemory<byte> TwoByte = new byte[] { 2 };
+
+    internal static readonly uint[] Lookup32 = CreateLookup32();
+
     /// <summary>
     /// Reverses the byte order of a 64-bit word.
     /// </summary>

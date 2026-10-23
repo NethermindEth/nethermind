@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Stateless;
 /// </remarks>
 internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
 {
-    private static readonly NodeKey EmptyRootKey = new(Keccak.EmptyTreeHash.ValueHash256);
+    private static readonly NodeKey EmptyRootKey = new(ValueKeccak.EmptyTreeHash);
 
     // Created by the first write, so a probe tests a reference rather than the map's count, two narrow loads in the guest.
     private OptimizedDictionary<NodeKey, byte[]?>? _nodes;
@@ -43,13 +43,16 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     private readonly NodeKey[] _keys;
     private readonly byte[][] _values;
     // The heads, links and mask are word-sized: the guest pays several times an aligned load for a narrow one.
-    // Per bucket, one past its newest entry's index: 0 when empty, Overflowed once it outgrew MaxBucketLength.
+    // Per bucket, one past its newest entry's index above LengthBits and the bucket's length below them:
+    // 0 when empty, Overflowed once it outgrew MaxBucketLength.
     private readonly nint[] _heads;
     // Per entry, one past the index of the next older entry in its bucket: 0 at the end of the chain.
     private readonly nint[] _next;
     private readonly nint _bucketMask;
     private const int MaxBucketLength = 8;
     private const int Overflowed = -1;
+    private const int LengthBits = 4;
+    private const nint LengthMask = (1 << LengthBits) - 1;
 
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
     public HashKeyedNodeStorage(ReadOnlySpan<byte[]> state)
@@ -68,31 +71,32 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         // Hashed in a method of its own so the bucketing loop keeps its locals in registers.
         HashNodes(values, state.Length, keys);
 
-        nint[] lengths = new nint[bucketCount];
         // Unchecked: the mask keeps a bucket below bucketCount and every array is count long, while the
         // bounds checks would load each array's 32-bit length, a narrow access, per node.
-        Debug.Assert(heads.Length == bucketMask + 1 && lengths.Length == bucketMask + 1 && next.Length == count && keys.Length == count,
+        Debug.Assert(heads.Length == bucketMask + 1 && next.Length == count && keys.Length == count,
             "The unchecked bucketing loop relies on these sizes");
+        Debug.Assert(MaxBucketLength < LengthMask, "A full bucket's length must stay below the bits Overflowed sets");
         ref NodeKey firstKey = ref MemoryMarshal.GetArrayDataReference(keys);
         ref nint firstHead = ref MemoryMarshal.GetArrayDataReference(heads);
         ref nint firstNext = ref MemoryMarshal.GetArrayDataReference(next);
-        ref nint firstLength = ref MemoryMarshal.GetArrayDataReference(lengths);
         for (nint i = 0; i < count; i++)
         {
             ref readonly NodeKey key = ref Unsafe.Add(ref firstKey, i);
             nint bucket = key.Bucket(bucketMask);
             ref nint headSlot = ref Unsafe.Add(ref firstHead, bucket);
             nint head = headSlot;
-            if (head != Overflowed && ++Unsafe.Add(ref firstLength, bucket) <= MaxBucketLength)
+            nint length = head & LengthMask;
+            // Overflowed has every length bit set, so it fails the length check too.
+            if (length < MaxBucketLength)
             {
-                Unsafe.Add(ref firstNext, i) = head;
-                headSlot = i + 1;
+                Unsafe.Add(ref firstNext, i) = (nint)((nuint)head >> LengthBits);
+                headSlot = ((i + 1) << LengthBits) + length + 1;
                 continue;
             }
 
             _overflow[key] = values[i];
             if (head == Overflowed) continue;
-            for (nint entry = head; entry != 0; entry = next[entry - 1])
+            for (nint entry = (nint)((nuint)head >> LengthBits); entry != 0; entry = next[entry - 1])
                 _overflow[keys[entry - 1]] = values[entry - 1];
             heads[bucket] = Overflowed;
         }
@@ -133,9 +137,9 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     {
         if (_nodes is not null && _nodes.TryGetValue(key, out byte[]? value)) return value;
         // Buckets are masked into the heads and chains only link stored entries, so the arrays are read unchecked.
-        nint entry = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_heads), key.Bucket(_bucketMask));
-        if (entry == Overflowed) return _overflow.TryGetValue(key, out byte[]? overflowed) ? overflowed : null;
-        for (; entry != 0; entry = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_next), entry - 1))
+        nint head = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_heads), key.Bucket(_bucketMask));
+        if (head == Overflowed) return _overflow.TryGetValue(key, out byte[]? overflowed) ? overflowed : null;
+        for (nint entry = (nint)((nuint)head >> LengthBits); entry != 0; entry = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_next), entry - 1))
             if (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_keys), entry - 1).Equals(key))
             {
                 KeccakHash.NoteWitnessNodeLoaded(entry);

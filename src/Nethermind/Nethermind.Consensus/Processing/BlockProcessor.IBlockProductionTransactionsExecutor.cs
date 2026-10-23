@@ -12,6 +12,13 @@ namespace Nethermind.Consensus.Processing
         public interface IBlockProductionTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
             public event EventHandler<AddingTxEventArgs> AddingTransaction;
+
+            /// <summary>
+            /// Reports that a block built by this executor ended <paramref name="excessItems"/> over the EIP-7928 block
+            /// access list item limit and was rejected, so later builds on the same parent can leave more room for the
+            /// end-of-block steps.
+            /// </summary>
+            void ReportItemLimitExceeded(long excessItems) { }
         }
 
         public class AddingTxEventArgs(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock) : TxEventArgs(index, transaction)

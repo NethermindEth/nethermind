@@ -544,17 +544,29 @@ public partial struct GetBlobsV4ResponseWire
     [SszList(SszRestLimits.MaxBlobsRequest)] public BlobV4EntryWire[]? Entries { get; set; }
 }
 [SszContainer(isCollectionItself: true)]
-public partial struct SszWitnessItem
+public partial struct SszWitnessNode
 {
-    [SszList(1048576)] public byte[]? Bytes { get; set; }
+    [SszList(SszRestLimits.MaxBytesPerWitnessNode)] public byte[]? Bytes { get; set; }
+}
+
+[SszContainer(isCollectionItself: true)]
+public partial struct SszWitnessCode
+{
+    [SszList(SszRestLimits.MaxBytesPerCode)] public byte[]? Bytes { get; set; }
+}
+
+[SszContainer(isCollectionItself: true)]
+public partial struct SszWitnessHeader
+{
+    [SszList(SszRestLimits.MaxBytesPerHeader)] public byte[]? Bytes { get; set; }
 }
 
 [SszContainer]
 public partial struct ExecutionWitnessV1Wire
 {
-    [SszList(1048576)] public SszWitnessItem[]? State { get; set; }
-    [SszList(1048576)] public SszWitnessItem[]? Codes { get; set; }
-    [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
+    [SszList(SszRestLimits.MaxWitnessItems)] public SszWitnessNode[]? State { get; set; }
+    [SszList(SszRestLimits.MaxWitnessItems)] public SszWitnessCode[]? Codes { get; set; }
+    [SszList(SszRestLimits.MaxWitnessHeaders)] public SszWitnessHeader[]? Headers { get; set; }
 }
 
 [SszContainer]
@@ -562,4 +574,11 @@ public partial struct PayloadStatusWithWitnessWire
 {
     public PayloadStatusWire PayloadStatus { get; set; }
     [SszList(1)] public ExecutionWitnessV1Wire[]? Witness { get; set; }
+}
+
+[SszContainer]
+public partial struct BuiltPayloadWithWitnessV6Wire
+{
+    public GetPayloadResponseV6Wire BuiltPayload { get; set; }
+    public ExecutionWitnessV1Wire Witness { get; set; }
 }

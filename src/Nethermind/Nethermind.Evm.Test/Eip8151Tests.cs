@@ -195,7 +195,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
             .PushData(OutputOffset)
             .PushData(ValidInput.Length)
             .PushData(0)
-            .PushData(PrecompiledAddresses.ECRecover.Value)
+            .PushData(PrecompiledAddresses.ECRecover)
             .PushData(PrecompileGasLimit)
             .Op(Instruction.STATICCALL)
             .Op(Instruction.POP);
@@ -280,7 +280,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         _spec.IsEip8151Enabled = eip8151Enabled;
         DeploySigner(ContractCode);
         Transaction tx = Build.A.Transaction
-            .To(PrecompiledAddresses.ECRecover.Value)
+            .To(PrecompiledAddresses.ECRecover)
             .WithData(ValidInput)
             .WithGasLimit(TxGasLimit)
             .WithNonce(TestState.GetNonce(Sender))
@@ -302,7 +302,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
     {
         _spec.IsEip8151Enabled = eip8151Enabled;
-        CreateProcessor(parallel: false, (PrecompiledAddresses.ECRecover.Value, MovedPrecompileTarget));
+        CreateProcessor(parallel: false, (PrecompiledAddresses.ECRecover, MovedPrecompileTarget));
         DeploySigner(ContractCode);
 
         Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, ValidInput, MovedPrecompileTarget).Done);
@@ -323,7 +323,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
     {
         _spec.IsEip8151Enabled = eip8151Enabled;
-        CreateProcessor(parallel: false, (Sha256Precompile.Address, PrecompiledAddresses.ECRecover.Value));
+        CreateProcessor(parallel: false, (Sha256Precompile.Address, PrecompiledAddresses.ECRecover));
 
         Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, ValidInput).Done);
 
@@ -373,8 +373,8 @@ public class Eip8151Tests : VirtualMachineTestsBase
     public void Prestate_tracer_follows_a_moved_ecrecover(bool ecRecoverMoved)
     {
         CreateProcessor(parallel: false, ecRecoverMoved
-            ? (PrecompiledAddresses.ECRecover.Value, MovedPrecompileTarget)
-            : (Sha256Precompile.Address, PrecompiledAddresses.ECRecover.Value));
+            ? (PrecompiledAddresses.ECRecover, MovedPrecompileTarget)
+            : (Sha256Precompile.Address, PrecompiledAddresses.ECRecover));
         DeploySigner(ContractCode);
         (Block Block, Transaction Tx) prepared = PrepareTx(Activation, TxGasLimit,
             MeasureEcRecover(Prepare.EvmCode, 0, Instruction.CALL, PrecompileGasLimit, ValidInput, ecRecoverMoved ? MovedPrecompileTarget : null).Done);
@@ -414,8 +414,8 @@ public class Eip8151Tests : VirtualMachineTestsBase
         NativeCallTracerCallFrame call = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value).Calls.Single();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(call.To, Is.EqualTo(PrecompiledAddresses.ECRecover.Value), "to");
-            Assert.That(call.Output!.ToArray(), Is.EqualTo(eip8151Enabled ? new byte[32] : AsWord(Signer).ToBigEndian()), "output");
+            Assert.That(call.To, Is.EqualTo(PrecompiledAddresses.ECRecover), "to");
+            Assert.That(call.Output.ToArray(), Is.EqualTo(eip8151Enabled ? new byte[32] : AsWord(Signer).ToBigEndian()), "output");
             Assert.That(call.GasUsed, Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + ColdAccountAccess : EcRecoverBaseCost), "gas used");
         }
     }
@@ -479,7 +479,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
             .PushData(input.Length)
             .PushData(0);
         if (HasValueArgument(callOpcode)) code.PushData(0);
-        code.PushData(target ?? PrecompiledAddresses.ECRecover.Value)
+        code.PushData(target ?? PrecompiledAddresses.ECRecover)
             .PushData(gasLimit)
             .Op(callOpcode)
             .Op(Instruction.GAS);

@@ -13,19 +13,18 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Memory;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Hive;
 using Nethermind.Init;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Sockets;
 using Nethermind.Specs.ChainSpecStyle;
@@ -33,7 +32,7 @@ using Nethermind.Specs.ChainSpecStyle;
 namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(HiveStep))]
-public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, GCKeeper gcKeeper,
+public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, Lazy<IJsonRpcService> lazyJsonRpcService,
     Lazy<FlatStateActivationPolicy> flatStateActivationPolicy, IRpcAuthentication? authentication = null) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
@@ -55,9 +54,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         IJsonRpcUrlCollection jsonRpcUrlCollection =
             new JsonRpcUrlCollection(api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
 
-        IRpcModuleProvider rpcModuleProvider = api.RpcModuleProvider!;
-
-        JsonRpcService jsonRpcService = new(rpcModuleProvider, api.LogManager, jsonRpcConfig, gcKeeper);
+        IJsonRpcService jsonRpcService = lazyJsonRpcService.Value;
         IRpcAuthentication auth = authentication ??
             (jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                 ? NoAuthentication.Instance
@@ -95,7 +92,8 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
                 jsonRpcUrlCollection,
                 auth,
                 jsonRpcConfig.MaxBatchResponseBodySize,
-                jsonRpcConfig.WebSocketsProcessingConcurrency);
+                jsonRpcConfig.WebSocketsProcessingConcurrency,
+                jsonRpcConfig.MaxRequestBodySize);
 
             webSocketsManager!.AddModule(webSocketsModule, true);
         }
@@ -113,7 +111,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.ConfigProvider,
             auth,
             api.LogManager,
-            serviceConfigurers,
+            serviceConfigurers.Value,
             api.TxPool,
             api.SpecProvider,
             api.ReceiptFinder,
@@ -126,7 +124,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         {
             await jsonRpcRunner.Start(cancellationToken);
         }
-        catch (Exception e) when (authentication is null && logger.IsError)
+        catch (Exception e) when (e is not ListenerBindException && authentication is null && logger.IsError)
         {
             if (logger.IsError) logger.Error("Error during jsonRpc runner start", e);
         }

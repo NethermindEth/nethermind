@@ -140,7 +140,7 @@ public class WalletTests
     }
 
     [Test]
-    public void Can_sign_on_networks_with_chain_id([ValueSource(nameof(WalletTypes))] WalletType walletType, [Values(0ul, 1ul, 40000ul, ulong.MaxValue / 3)] ulong chainId)
+    public void Can_sign_on_networks_with_chain_id([ValueSource(nameof(WalletTypes))] WalletType walletType, [Values(0ul, 1ul, 40000ul, ulong.MaxValue / 3, EthereumEcdsaExtensions.MaxEip155ChainId)] ulong chainId)
     {
         EthereumEcdsa ecdsa = new(chainId);
         Context ctx = _cachedWallets[walletType];
@@ -157,6 +157,15 @@ public class WalletTests
             Console.WriteLine(tx.Signature);
             Assert.That(tx.Signature.ChainId, Is.EqualTo(chainId), "chainId");
         }
+    }
+
+    [Test]
+    public void Legacy_v_throws_where_it_would_wrap([ValueSource(nameof(WalletTypes))] WalletType walletType)
+    {
+        Context ctx = _cachedWallets[walletType];
+        Transaction tx = new() { SenderAddress = ctx.Wallet.GetAccounts()[0] };
+
+        Assert.Throws<OverflowException>(() => ctx.Wallet.TrySignTransaction(tx, ulong.MaxValue));
     }
 
     [TestCase(WalletType.KeyStore, false, TestName = "KeyStore, locked")]

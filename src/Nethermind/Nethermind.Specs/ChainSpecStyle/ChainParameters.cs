@@ -190,6 +190,7 @@ public class ChainParameters
     public ulong? Eip8024TransitionTimestamp { get; set; }
     public ulong? Eip8246TransitionTimestamp { get; set; }
     public ulong? Eip8253TransitionTimestamp { get; set; }
+    public ulong? Eip7709TransitionTimestamp { get; set; }
     public ulong? Eip8038TransitionTimestamp { get; set; }
     public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip8141TransitionTimestamp { get; set; }
@@ -210,4 +211,6 @@ public class ChainParameters
     public ulong? Eip8279TransitionTimestamp { get; set; }
     public ulong? Eip7805TransitionTimestamp { get; set; }
     public ulong? Eip8298TransitionTimestamp { get; set; }
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? Eip4758TransitionTimestamp { get; set; }
 }

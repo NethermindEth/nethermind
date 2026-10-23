@@ -61,7 +61,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private static Prepare SStore(int key, int value) => Prepare.EvmCode.PushData(value).PushData(key).Op(Instruction.SSTORE);
 
     private static Prepare EcRecover() => Prepare.EvmCode
-        .DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover.Value, 50_000, Eip8151Tests.CreateInput(EcRecoverSigner));
+        .DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover, 50_000, Eip8151Tests.CreateInput(EcRecoverSigner));
 
     private static IEnumerable<TestCaseData> MeteredBytesCases()
     {

@@ -23,14 +23,17 @@ public class SimulateTxExecutor<TTrace>(
     IJsonRpcConfig rpcConfig,
     ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
-    ulong? secondsPerSlot = null)
-    : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
-    SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
+    ulong? secondsPerSlot = null,
+    bool readLoneBlobFeeCapAsAbsent = true,
+    bool callSemantics = false)
 {
+    private readonly IBlockchainBridge _blockchainBridge = blockchainBridge;
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
-    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
+    private Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
         List<BlockStateCall<TransactionWithSourceDetails>>? blockStateCalls = null;
 
@@ -52,7 +55,9 @@ public class SimulateTxExecutor<TTrace>(
 
                     for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
-                        TransactionForRpc callTransactionModel = blockStateCall.Calls[i];
+                        TransactionForRpc callTransactionModel = readLoneBlobFeeCapAsAbsent
+                            ? BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(blockStateCall.Calls[i])
+                            : blockStateCall.Calls[i];
                         LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
@@ -69,6 +74,8 @@ public class SimulateTxExecutor<TTrace>(
                         calls[i] = new TransactionWithSourceDetails
                         {
                             HadGasLimitInRequest = hadGasLimitInRequest,
+                            // The block checks the gas as requested, before the conversion clamped it to the RPC gas cap.
+                            GasLimitToFitBlock = !callSemantics && hadGasLimitInRequest ? asLegacy!.Gas : null,
                             HadNonceInRequest = hadNonceInRequest,
                             Transaction = tx
                         };
@@ -93,7 +100,7 @@ public class SimulateTxExecutor<TTrace>(
         };
     }
 
-    public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -205,7 +212,7 @@ public class SimulateTxExecutor<TTrace>(
         }
     }
 
-    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    private ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         BlockHeader header,
         SimulatePayload<TransactionWithSourceDetails> tx,
         Dictionary<Address, AccountOverride>? stateOverride,

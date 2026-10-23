@@ -211,15 +211,7 @@ public class BranchProcessorVerdictTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
 
-        IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
-        blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
-            .Returns((block, Array.Empty<TxReceipt>()));
-        IWorldState worldState = Substitute.For<IWorldState>();
-        worldState.TryBeginScopeAtTarget(Arg.Any<BlockHeader>(), out Arg.Any<IDisposable>())
-            .Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
-
-        BranchProcessor branchProcessor = new(blockProcessor, Substitute.For<ISpecProvider>(), worldState, Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance);
+        BranchProcessor branchProcessor = CreateBranchProcessor();
         branchProcessor.BlockExecuted += (_, e) => e.Answered = answered;
         branchProcessor.BlockProcessed += (_, _) => throw new InvalidBlockException(block, "failed after the verdict");
 
@@ -253,5 +245,39 @@ public class BranchProcessorVerdictTests
         branchProcessor.Process(parent, [suggested], ProcessingOptions.None, NullBlockTracer.Instance);
 
         Assert.That(suggested.GasUsedBeforeTransactions, profile2Active ? Is.EqualTo(new (ulong, ulong)[] { (0, 0), (21_000, 5_000) }) : Is.Null);
+    }
+
+    [TestCase(0UL, 0, TestName = "Process_BeforeEip7709_PrefetchesEveryBlock")]
+    [TestCase(1UL, 2, TestName = "Process_WithEip7709_SkipsBlockhashPrefetch")]
+    [TestCase(2UL, 1, TestName = "Process_BranchCrossingEip7709_PrefetchesOnlyBeforeTheFork")]
+    public void Process_prefetches_blockhashes_only_while_blockhash_reads_them(ulong eip7709Block, int expectedSkipped)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        Block first = Build.A.Block.WithParent(parent).TestObject;
+        Block second = Build.A.Block.WithParent(first).TestObject;
+        IReleaseSpec before = Substitute.For<IReleaseSpec>();
+        IReleaseSpec after = Substitute.For<IReleaseSpec>();
+        after.IsEip7709Enabled.Returns(true);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>())
+            .Returns(call => eip7709Block != 0 && call.ArgAt<ForkActivation>(0).BlockNumber >= eip7709Block ? after : before);
+        IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
+
+        CreateBranchProcessor(specProvider, blockhashProvider).Process(parent, [first, second], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+
+        blockhashProvider.Received(2 - expectedSkipped).Prefetch(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+    }
+
+    private static BranchProcessor CreateBranchProcessor(ISpecProvider specProvider = null, IBlockhashProvider blockhashProvider = null)
+    {
+        IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
+        blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns(call => (call.ArgAt<Block>(0), Array.Empty<TxReceipt>()));
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.TryBeginScopeAtTarget(Arg.Any<BlockHeader>(), out Arg.Any<IDisposable>())
+            .Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
+
+        return new BranchProcessor(blockProcessor, specProvider ?? Substitute.For<ISpecProvider>(), worldState, blockhashProvider ?? Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance);
     }
 }

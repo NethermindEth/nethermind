@@ -65,19 +65,13 @@ public sealed partial class TxDecoder : TxDecoder<Transaction>
     }
 
     private const int MaxRetainedTransactions = 2_048;
-    public static readonly ObjectPool<Transaction> TxObjectPool;
+    // Retain reusable gossip and owned block-body transactions across receive/processing threads. This caps lazy retention, not preallocation;
+    // PoolPolicy clears payload references before retaining a transaction.
+    public static ObjectPool<Transaction> TxObjectPool => field ??= CreateTxObjectPool(new Transaction.PoolPolicy(), MaxRetainedTransactions);
 
-    public static readonly TxDecoder Instance;
+    public static TxDecoder Instance => field ??= new TxDecoder(static () => TxObjectPool.Get());
 
     private TxDecoder(Func<Transaction> transactionFactory) : base(transactionFactory) { }
-
-    static TxDecoder()
-    {
-        // Retain reusable gossip and owned block-body transactions across receive/processing threads. This caps lazy retention, not preallocation;
-        // PoolPolicy clears payload references before retaining a transaction.
-        TxObjectPool = CreateTxObjectPool(new Transaction.PoolPolicy(), MaxRetainedTransactions);
-        Instance = new TxDecoder(static () => TxObjectPool.Get());
-    }
 
     private static partial ObjectPool<Transaction> CreateTxObjectPool(Transaction.PoolPolicy policy, int maxRetained);
 
@@ -145,6 +139,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         return transaction;
     }
 
+    [SkipLocalsInit]
     public void Decode(ref RlpReader decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position))

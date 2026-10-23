@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Blockchain.Headers;
@@ -10,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
@@ -70,8 +72,8 @@ public class WitnessGeneratingWorldState(
             codes.AsSpan().Sort(Bytes.Comparer);
 
             state = new ArrayPoolList<byte[]>(sink.Nodes.Count);
-            foreach (byte[] node in sink.Nodes.Values)
-                state.Add(node);
+            foreach (KeyValuePair<Hash256AsKey, byte[]> node in sink.Nodes)
+                state.Add(node.Value);
             state.AsSpan().Sort(Bytes.Comparer);
 
             int totalKeysCount = _storageSlots.Count;
@@ -118,7 +120,7 @@ public class WitnessGeneratingWorldState(
 
         if (_storageSlots.Count > 0)
         {
-            using ArrayPoolListRef<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
+            using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
             foreach (AddressAsKey address in _storageSlots.Keys)
             {
                 PatriciaTrieWitnessGenerator.AccessType access = base.AccountExists(address)
@@ -126,8 +128,11 @@ public class WitnessGeneratingWorldState(
                     : PatriciaTrieWitnessGenerator.AccessType.Delete;
                 accountEntries.Add(new(address.Value.ToAccountPath, access));
             }
-            PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(null), stateRoot, accountEntries.AsSpan(), sink);
 
+            // The world state is not thread-safe, so every storage trie's paths are gathered here and only the
+            // trie walks, which read the immutable pre-state, run in parallel.
+            using ArrayPoolList<StorageWalk> storageWalks = new(_storageSlots.Count);
+            using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> slotEntries = new(_storageSlots.Count);
             foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> kvp in _storageSlots)
             {
                 // Account touched only at the account level (e.g. self-destruct with no SLOAD): no slots to walk.
@@ -137,7 +142,7 @@ public class WitnessGeneratingWorldState(
                 ValueHash256 storageRoot = account.StorageRoot;
                 if (storageRoot == Keccak.EmptyTreeHash.ValueHash256) continue;
 
-                using ArrayPoolListRef<PatriciaTrieWitnessGenerator.PathEntry> slotEntries = new(kvp.Value.Count);
+                int start = slotEntries.Count;
                 foreach (UInt256 slot in kvp.Value)
                 {
                     ValueHash256 slotKey = default;
@@ -146,8 +151,24 @@ public class WitnessGeneratingWorldState(
                     bool deleted = storageValue.IsZero;
                     slotEntries.Add(new(slotKey, deleted ? PatriciaTrieWitnessGenerator.AccessType.Delete : PatriciaTrieWitnessGenerator.AccessType.Upsert));
                 }
-                PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(address), new Hash256(storageRoot), slotEntries.AsSpan(), sink);
+                storageWalks.Add(new StorageWalk(address, new Hash256(storageRoot), start, slotEntries.Count - start));
             }
+
+            // Index 0 is the account trie; the rest are storage tries. Each trie is walked independently, and a large
+            // one also fans out across its own branches; the scope makes those nested walks share one worker budget.
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount);
+            ParallelUnbalancedWork.For(0, storageWalks.Count + 1, ParallelUnbalancedWork.DefaultOptions, i =>
+            {
+                if (i == 0)
+                {
+                    PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(null), stateRoot, accountEntries.AsSpan(), sink, parallelize: true);
+                    return;
+                }
+
+                StorageWalk walk = storageWalks[i - 1];
+                PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(walk.Address), walk.StorageRoot,
+                    slotEntries.AsSpan().Slice(walk.Start, walk.Count), sink, parallelize: true);
+            });
         }
 
         // Nothing touched but a non-empty state root: anchor the witness with the root node.
@@ -161,12 +182,17 @@ public class WitnessGeneratingWorldState(
         }
     }
 
-    // Not thread-safe (plain dictionary), so the generator is always invoked with parallelize off.
+    private readonly record struct StorageWalk(Address Address, Hash256 StorageRoot, int Start, int Count);
+
     private sealed class CollectingSink : PatriciaTrieWitnessGenerator.ISink
     {
-        public Dictionary<Hash256AsKey, byte[]> Nodes { get; } = [];
+        public ConcurrentDictionary<Hash256AsKey, byte[]> Nodes { get; } = new();
 
-        public void Add(in TreePath path, TrieNode node) => Nodes[node.Keccak!] = node.FullRlp.ToArray();
+        // Storage tries often share subtrees, so look up first rather than copy a node that is already held.
+        public void Add(in TreePath path, TrieNode node)
+        {
+            if (!Nodes.ContainsKey(node.Keccak!)) Nodes.TryAdd(node.Keccak!, node.FullRlp.ToArray());
+        }
     }
 
     public override bool TryGetAccount(Address address, out AccountStruct account)

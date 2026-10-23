@@ -32,6 +32,9 @@ public sealed class FlatStorageTree(
     private readonly ILogManager _logManager = logManager;
     private readonly Hash256 _storageRoot = storageRoot;
     private Hash256? _addressHash;
+    // Whether the bundle has this address registered for its slot writes. The scope commit that drops every
+    // registration also drops its trees, so writes after it reach a new tree, and only ClearStorage resets this.
+    private bool _changedSlotsRegistered;
 
     private Trees? _trees;
 
@@ -56,9 +59,30 @@ public sealed class FlatStorageTree(
         public readonly TrieNode? PreBlockRoot = tree.RootRef;
     }
 
+    private const int SelfDestructIdxUnknown = int.MinValue;
+
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
-    private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
+    // Found on the first read, as trees that only warm the trie never read.
+    private int _selfDestructKnownStateIdx = SelfDestructIdxUnknown;
+
+    private int SelfDestructKnownStateIdx
+    {
+        get
+        {
+            int idx = Volatile.Read(ref _selfDestructKnownStateIdx);
+            return idx != SelfDestructIdxUnknown ? idx : FindSelfDestructKnownStateIdx();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int FindSelfDestructKnownStateIdx()
+    {
+        int idx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
+        // A ClearStorage that set it meanwhile is newer than what this read found.
+        int current = Interlocked.CompareExchange(ref _selfDestructKnownStateIdx, idx, SelfDestructIdxUnknown);
+        return current == SelfDestructIdxUnknown ? idx : current;
+    }
 
     private Hash256 AddressHash => _addressHash ??= _address.ToAccountPath.ToHash256();
 
@@ -84,7 +108,8 @@ public sealed class FlatStorageTree(
 
     public void Get(in UInt256 index, out UInt256 value)
     {
-        _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx, out UInt256? slotValue);
+        int selfDestructKnownStateIdx = SelfDestructKnownStateIdx;
+        _bundle.GetSlot(_address, index, selfDestructKnownStateIdx, out UInt256? slotValue);
         value = slotValue.GetValueOrDefault();
 
         // A trie-less (history-backed) scope has no storage trie to verify against — the reader throws on trie-node
@@ -95,7 +120,7 @@ public sealed class FlatStorageTree(
             tree.Get(in index, out UInt256 treeValue);
             if (treeValue != value)
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {tree.RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {tree.RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {selfDestructKnownStateIdx}");
             }
         }
     }
@@ -263,12 +288,23 @@ public sealed class FlatStorageTree(
         }
     }
 
-    private void Set(in UInt256 slot, in UInt256 value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(in UInt256 slot, in UInt256 value)
+    {
+        // The address is the same for every slot of the tree, so it is registered once instead of hashed per slot.
+        if (!_changedSlotsRegistered)
+        {
+            _bundle.RegisterAddressWithChangedSlots(_address);
+            _changedSlotsRegistered = true;
+        }
+
+        _bundle.SetChangedSlotValue(_address, slot, value);
+    }
 
     internal void ClearStorage()
     {
         _bundle.ClearStorage(_address, AddressHash);
-        _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
+        _changedSlotsRegistered = false;
+        Volatile.Write(ref _selfDestructKnownStateIdx, _bundle.DetermineSelfDestructSnapshotIdx(_address));
         // Trieless scopes too: IWorldState.GetStorageRoot still reads RootHash there.
         GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
     }

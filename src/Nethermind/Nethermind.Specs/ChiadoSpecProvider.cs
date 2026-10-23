@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -16,7 +17,8 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
     public const ulong PragueTimestamp = 0x67c96e4c;
     public const ulong OsakaTimestamp = 0x69b7ce4c;
 
-    public static readonly Address FeeCollector = new("0x1559000000000000000000000000000000000000");
+    // 0x1559000000000000000000000000000000000000
+    public static readonly Address FeeCollector = new((ReadOnlySpan<byte>)[0x15, 0x59, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
 
     private ChiadoSpecProvider() : this(new ForkSchedule
     {
@@ -39,7 +41,7 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
     public override ulong NetworkId => BlockchainIds.Chiado;
     public override ulong ChainId => BlockchainIds.Chiado;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    public string SealEngine => SealEngineType.AuRa;
+    public override string SealEngine => SealEngineType.AuRa;
 
-    public static ChiadoSpecProvider Instance { get; } = new();
+    public static ChiadoSpecProvider Instance => field ??= new();
 }

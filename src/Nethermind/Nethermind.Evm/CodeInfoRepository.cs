@@ -81,7 +81,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
 
-        delegationAddress = codeInfo.DelegatedAddress;
+        delegationAddress = codeInfo.DelegatedAddress is { } delegated && vmSpec.IsEip7702Enabled ? delegated : null;
         if (delegationAddress is not null)
         {
             if (followDelegation)
@@ -123,6 +123,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     protected virtual CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
         codeHash == ValueKeccak.OfAnEmptyString ? _emptyCodeInfo : GetCodeInfo(_worldState, address, in codeHash);
 
+    [SkipLocalsInit]
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
         // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.

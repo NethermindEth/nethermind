@@ -18,7 +18,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -435,7 +434,7 @@ public class MempoolStatePrewarmerTests
         public CancellationToken DeltaToken { get; init; }
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
-        public CacheType ClearCaches() => default;
+        public void ClearCaches() { }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
@@ -465,7 +464,7 @@ public class MempoolStatePrewarmerTests
         }
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
-        public CacheType ClearCaches() => default;
+        public void ClearCaches() { }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)

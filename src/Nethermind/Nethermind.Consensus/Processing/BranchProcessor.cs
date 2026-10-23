@@ -93,7 +93,7 @@ public class BranchProcessor(
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
+        void CancelBackgroundWork(Block _) => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
         try
@@ -104,7 +104,7 @@ public class BranchProcessor(
             {
                 // Start prewarming as early as possible.
                 prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-                prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                prefetchBlockhash = spec.IsEip7709Enabled ? null : blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
                 blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
                 BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
             }
@@ -129,7 +129,7 @@ public class BranchProcessor(
                 // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();
                 if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
-                prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                if (!spec.IsEip7709Enabled) prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
                 {
@@ -225,15 +225,6 @@ public class BranchProcessor(
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
-
-                // Calculate the transaction hashes in the background and release tx sequence memory
-                // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
-                // Though we still want to release the memory even if syncing rather than processing live
-                // Empty blocks have nothing to hash, so skip the ThreadPool dispatch entirely.
-                if (suggestedBlock.Transactions.Length > 0)
-                {
-                    TxHashCalculator.CalculateInBackground(suggestedBlock);
-                }
             }
 
             return processedBlocks;
@@ -284,29 +275,5 @@ public class BranchProcessor(
     {
         DisposableExtensions.DisposeAndNull(ref prewarming);
         preWarmer?.ClearCaches();
-    }
-
-    private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
-    {
-        public static void CalculateInBackground(Block suggestedBlock)
-        {
-            // Memory has been reserved on the transactions to delay calculate the hashes
-            // We calculate the hashes in the background to release that memory
-            TxHashCalculator work = new(suggestedBlock);
-            if (ParallelUnbalancedWork.GetCurrentGroup() is { } group) group.Queue(work);
-            else ThreadPool.UnsafeQueueUserWorkItem(work, preferLocal: false);
-        }
-
-        void IThreadPoolWorkItem.Execute()
-        {
-            // Hashes will be required for PersistentReceiptStorage in TryUpdateMainChain ForkchoiceUpdatedHandler
-            // Which occurs after the block has been processed; however the block is stored in cache and picked up
-            // from there so we can calculate the hashes now for that later use.
-            foreach (Transaction tx in suggestedBlock.Transactions)
-            {
-                // Calculate the hashes to release the memory from the transactionSequence
-                tx.CalculateHashInternal();
-            }
-        }
     }
 }

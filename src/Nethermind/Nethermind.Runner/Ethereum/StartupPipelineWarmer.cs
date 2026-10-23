@@ -71,7 +71,7 @@ internal static class StartupPipelineWarmer
     /// </remarks>
     internal static async Task WarmupAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, CancellationToken cancellationToken,
         IRpcAuthentication? authentication = null, ILogger logger = default, Action<ContainerBuilder>? configureContainer = null,
-        IBlockTree? liveBlockTree = null)
+        IBlockTree? liveBlockTree = null, ITimestamper? timestamper = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         DirectoryInfo directory = Directory.CreateDirectory(Path.Combine(liveConfig.GetConfig<IInitConfig>().BaseDbPath, "startup-warmup", Guid.NewGuid().ToString("N")));
@@ -83,10 +83,9 @@ internal static class StartupPipelineWarmer
         try
         {
             IRpcAuthentication warmAuthentication = authentication is JwtAuthentication
-                ? JwtAuthentication.FromSecret(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), Timestamper.Default, logger)
+                ? JwtAuthentication.FromSecret(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), timestamper ?? Timestamper.Default, logger)
                 : NoAuthentication.Instance;
-            string? token = (warmAuthentication as JwtAuthentication)?.CreateWarmupToken();
-            await RunAsync(source, liveConfig, flatState, directory.FullName, token, warmAuthentication, keys, configureContainer, warmMetrics, cancellationToken);
+            await RunAsync(source, liveConfig, flatState, directory.FullName, warmAuthentication, keys, configureContainer, warmMetrics, cancellationToken);
         }
         finally
         {
@@ -105,12 +104,12 @@ internal static class StartupPipelineWarmer
         }
     }
 
-    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, string? token, IRpcAuthentication authentication,
+    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, IRpcAuthentication authentication,
         PrivateKey[] keys, Action<ContainerBuilder>? configureContainer, WarmMetrics warmMetrics, CancellationToken cancellationToken)
     {
         ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         ChainSpec chainSpec = CreateChainSpec(source, liveConfig.GetConfig<IBlocksConfig>().MinGasPrice, keys);
-        ConfigProvider config = CreateConfig(liveConfig, flatState, directory, token is not null, keys[0]);
+        ConfigProvider config = CreateConfig(liveConfig, flatState, directory, authentication is JwtAuthentication, keys[0]);
         // A separate root prevents a fallback registration from reaching the live database or world state.
         ProcessExitSource exitSource = new(cancellationToken);
         ContainerBuilder builder = new ContainerBuilder()
@@ -130,7 +129,7 @@ internal static class StartupPipelineWarmer
             try
             {
                 await InitializeNodeAsync(container, config, cancellationToken);
-                await ExercisePipelineAsync(container, chainSpec.Genesis!.Header, timestamp, config.GetConfig<IJsonRpcConfig>().Port, token, keys, cancellationToken);
+                await ExercisePipelineAsync(container, chainSpec.Genesis!.Header, timestamp, config.GetConfig<IJsonRpcConfig>().Port, authentication as JwtAuthentication, keys, cancellationToken);
             }
             finally
             {
@@ -246,6 +245,8 @@ internal static class StartupPipelineWarmer
                 TerminalTotalDifficulty = "0",
                 PrioritizeBlockLatency = mergeConfig.PrioritizeBlockLatency,
                 CollectionsPerDecommit = mergeConfig.CollectionsPerDecommit,
+                DecommitMemoryLoadPercent = mergeConfig.DecommitMemoryLoadPercent,
+                CollectionsPerUnconditionalDecommit = mergeConfig.CollectionsPerUnconditionalDecommit,
                 SweepMemory = mergeConfig.SweepMemory,
                 CompactMemory = mergeConfig.CompactMemory,
                 PostBlockGcDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)(mergeConfig.SecondsPerSlot * 1000 / 8)
@@ -263,14 +264,13 @@ internal static class StartupPipelineWarmer
             throw new InvalidOperationException("Startup warmup did not reach the production no-GC-region strategy.");
     }
 
-    private static async Task ExercisePipelineAsync(IContainer container, BlockHeader genesisHeader, ulong timestamp, int port, string? token,
+    private static async Task ExercisePipelineAsync(IContainer container, BlockHeader genesisHeader, ulong timestamp, int port, JwtAuthentication? authentication,
         PrivateKey[] keys, CancellationToken cancellationToken)
     {
         IMainProcessingContext main = container.Resolve<IMainProcessingContext>();
         EthereumJsonSerializer serializer = container.Resolve<EthereumJsonSerializer>();
         string address = $"http://127.0.0.1:{port}";
-        using HttpClient client = new(new SocketsHttpHandler { UseProxy = false });
-        if (token is not null) client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using HttpClient client = new(new BearerTokenHandler(authentication));
         // Consensus clients check the chain id on connect, which creates the Eth module and its block subscribers.
         await PostAsync(client, serializer, address, "eth_chainId", [], cancellationToken);
         // The pool validates against the head's fork, so move the head off the source genesis before submitting typed transactions.
@@ -559,4 +559,15 @@ internal static class StartupPipelineWarmer
     }
 
     internal sealed record WarmupCall(Address From, Address To, string Gas, byte[] Input);
+
+    /// <summary>Signs each request with a fresh token, as a consensus client does.</summary>
+    /// <remarks>A token is accepted for 60 seconds after issue, and a slow node start can outlast that.</remarks>
+    private sealed class BearerTokenHandler(JwtAuthentication? authentication) : DelegatingHandler(new SocketsHttpHandler { UseProxy = false })
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (authentication is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authentication.CreateWarmupToken());
+            return base.SendAsync(request, cancellationToken);
+        }
+    }
 }

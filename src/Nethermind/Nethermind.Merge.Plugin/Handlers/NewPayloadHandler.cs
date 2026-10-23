@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -16,6 +17,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -30,6 +32,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -54,6 +57,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
+    private readonly IBlockAccessListStore? _blockAccessListStore;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
     private readonly ulong _focilProfile2MaxVerifyGas;
@@ -63,6 +67,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+    private readonly TimeProvider _timeProvider;
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
@@ -89,7 +94,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ITxValidator txValidator,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
-        IProfile2EligibilityReplayer? profile2Replayer = null)
+        IProfile2EligibilityReplayer? profile2Replayer = null,
+        TimeProvider? timeProvider = null,
+        IBlockAccessListStore? blockAccessListStore = null)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -102,6 +109,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _blockAccessListStore = blockAccessListStore;
         _specProvider = specProvider;
         _txValidator = txValidator;
         _focilProfile2MaxVerifyGas = blocksConfig.FocilProfile2MaxVerifyGas;
@@ -110,6 +118,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
+        _timeProvider = timeProvider ?? TimeProvider.System;
         if (mergeConfig.NewPayloadCacheSize > 0)
             _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
@@ -133,17 +142,20 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
         // Every wait this request takes comes out of one budget, taken here.
-        long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
+        long deadline = _timeProvider.GetTimestamp() + (long)(_timeout.TotalSeconds * _timeProvider.TimestampFrequency);
 
         using ExecutionPayloadPreparation preparation = new(request);
+        using CancellationTokenSource senderRecoveryCancellation = new();
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
+            // Started before TryGetBlock so recovery overlaps the background transactions-root job it waits for.
+            StartSenderRecovery(request, senderRecoveryCancellation.Token);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
-            if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {
+            senderRecoveryCancellation.Cancel();
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
@@ -164,6 +176,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // IBlockValidator.ValidateSuggestedBlock for payload types that take those roots off the wire instead.
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
+            senderRecoveryCancellation.Cancel();
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
             Nethermind.Blockchain.Metrics.BadBlocks++;
             if (block.IsByNethermindNode()) Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
@@ -175,6 +188,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
+            // A queued ancestor can still fail execution and move latestValidHash backwards.
+            // Let an ancestor already answered VALID finish committing within this request's budget.
+            if (lastValidHash is not null && !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
+            {
+                bool hasExecutedCopy = await _processingQueue.WaitForExecutedCopyAsync(lastValidHash, RemainingBudget(deadline), _timeProvider);
+                if (!hasExecutedCopy || !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
+                    return NewPayloadV1Result.Syncing;
+            }
+
+            // Queue removal publishes invalidation before completing, so refresh the earlier snapshot.
+            _invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out lastValidHash);
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $". The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
@@ -231,7 +255,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // A re-executed block is already marked processed, so it can become head before its restored state
             // commits; wait for that commit before reading the state again.
             if (IsVerdictServiceable(block)
-                || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && IsVerdictServiceable(block)))
+                || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider) && IsVerdictServiceable(block)))
             {
                 if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
                 return NewPayloadV1Result.Valid(block.Hash);
@@ -377,8 +401,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <inheritdoc/>
     /// <remarks>
     /// <c>VALID</c> is answered before the block's state commits, so the check first waits for its executed copy to
-    /// leave the processing queue. EIP-7805 judges appendability against the state the block committed, read at its
-    /// own state root, and fits omission claims against the gas its execution recorded.
+    /// leave the processing queue. EIP-7805 judges appendability at the transaction boundary: the state the block
+    /// committed, read at its own state root, with the validated BAL reversing finalization's account changes and a
+    /// field with no earlier BAL value read from the parent state. Omission claims are fit against the gas its
+    /// execution recorded. Null when the BAL or parent state is unavailable.
     /// </remarks>
     public async Task<bool?> EvaluateAsync(Block block, Transaction[][] inclusionLists, OmissionClaim[] claims, CancellationToken cancellationToken)
     {
@@ -406,12 +432,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         _senderRecovery.RecoverData(InclusionLists.Distinct(inclusionLists), spec, skipErrors: true);
 
-        IReadOnlyStateProvider state = new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header);
+        InclusionListCommittedState committed = new(new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header),
+            (uint)block.Transactions.Length + 1, ReadList, ReadParent);
+        IReadOnlyStateProvider state = committed;
         ulong transactionCount = (ulong)block.Transactions.Length;
         bool earlyClaims = Eip8369Profile2.IsActive(spec)
             && Array.Exists(claims, claim => claim.EvaluationIndex < transactionCount);
         if (earlyClaims && block.GasUsedBeforeTransactions is { } recorded && recorded.Length == block.Transactions.Length)
-            return Evaluate(block, inclusionLists, claims, state, spec, _profile2Replayer, recorded);
+            return Answer(Evaluate(block, inclusionLists, claims, state, spec, _profile2Replayer, recorded));
         IProfile2EligibilityReplayer? replayer = _profile2Replayer;
         if (earlyClaims)
         {
@@ -420,9 +448,34 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         bool? satisfied = Evaluate(block, inclusionLists, claims, state, spec, replayer, null);
-        if (satisfied is not true || !earlyClaims) return satisfied;
+        if (satisfied is not true || !earlyClaims) return Answer(satisfied);
 
-        return Evaluate(block, inclusionLists, claims, state, spec, replayer, new (ulong, ulong)[block.Transactions.Length]) is true ? true : null;
+        return Answer(Evaluate(block, inclusionLists, claims, state, spec, replayer, new (ulong, ulong)[block.Transactions.Length]) is true ? true : null);
+
+        bool? Answer(bool? verdict) => committed.Available ? verdict : null;
+
+        ReadOnlyBlockAccessList? ReadList()
+        {
+            if (block.Header.BlockAccessListHash is not { } commitment) return null;
+            if (block.BlockAccessList is { WireHash: { } own } carried && own == commitment) return carried;
+            try
+            {
+                ReadOnlyBlockAccessList? stored = _blockAccessListStore?.Get(block.Number, block.GetOrCalculateHash());
+                return stored?.WireHash == commitment ? stored : null;
+            }
+            catch (RlpException exception)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot recheck inclusion list for {block.Hash}: its BAL does not decode. {exception.Message}");
+                return null;
+            }
+        }
+
+        IReadOnlyStateProvider? ReadParent()
+        {
+            BlockHeader? parent = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return parent is not null && _stateReader.HasStateForBlock(parent)
+                ? new SpecificBlockReadOnlyStateProvider(_stateReader, parent) : null;
+        }
     }
 
     private bool? Evaluate(Block block, Transaction[][] inclusionLists, OmissionClaim[] claims, IReadOnlyStateProvider state, IReleaseSpec spec,
@@ -619,7 +672,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private void StartSenderRecovery(ExecutionPayload request)
+    private void StartSenderRecovery(ExecutionPayload request, CancellationToken cancellationToken)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
         // the senders; they recover in the processing queue as before.
@@ -634,7 +687,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
         try
         {
-            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec, request.Transactions, cancellationToken);
         }
         catch (Exception e)
         {
@@ -653,7 +706,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Hash256 parentHash = parent.GetOrCalculateHash();
         if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
 
-        bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline));
+        bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline), _timeProvider);
         if (!inTime && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
         return inTime;
     }
@@ -665,7 +718,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </remarks>
     private TimeSpan RemainingBudget(long deadline)
     {
-        TimeSpan left = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline);
+        TimeSpan left = _timeProvider.GetElapsedTime(_timeProvider.GetTimestamp(), deadline);
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
@@ -713,7 +766,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             using CancellationTokenSource cts = new();
-            Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
+            Task timeoutTask = Task.Delay(RemainingBudget(deadline), _timeProvider, cts.Token);
 
             Task<AddBlockResult> suggest = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask();
             AddBlockResult addResult;

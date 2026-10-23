@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Serialization.Json;
@@ -17,24 +18,28 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
         {
             writer.WriteStartObject();
 
-            ForcedNumberConversion.Value = NumberConversion.Hex;
-            if (value.Balance is not null)
+            if (value.Balance is { } balance)
             {
                 writer.WritePropertyName("balance"u8);
-                TypeInfoJsonSerializer.Serialize(writer, value.Balance, options);
+                HexWriter.WriteUInt256HexRawValue(writer, balance);
             }
 
-            ForcedNumberConversion.Value = NumberConversion.Decimal;
-            if (value.Nonce is not null)
+            if (value.Nonce is { } nonce)
             {
                 writer.WritePropertyName("nonce"u8);
-                TypeInfoJsonSerializer.Serialize(writer, value.Nonce, options);
+                writer.WriteRawValue(nonce.ToString(CultureInfo.InvariantCulture));
             }
 
-            if (!value.Code.IsEmpty)
+            if (!value.Code.IsEmpty || value.IncludeEmptyCode)
             {
                 writer.WritePropertyName("code"u8);
                 ByteArrayConverter.Convert(writer, value.Code.Span, skipLeadingZeros: false);
+            }
+
+            if (value.CodeHash is { } codeHash)
+            {
+                writer.WritePropertyName("codeHash"u8);
+                HexWriter.WriteFixed32HexRawValue(writer, codeHash.Bytes);
             }
 
             ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;

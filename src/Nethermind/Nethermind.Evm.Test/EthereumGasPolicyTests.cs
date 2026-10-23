@@ -542,6 +542,19 @@ public class EthereumGasPolicyTests
     }
 
     [Test]
+    public void CreateAvailableFromIntrinsic_moves_gas_above_the_execution_cap_to_the_reservoir_only_when_capped([Values] bool capExecutionGas)
+    {
+        EthereumGasPolicy intrinsic = new() { Value = 21_000 };
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2;
+
+        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, Amsterdam.Instance, out EthereumGasPolicy available, capExecutionGas), Is.True);
+
+        ulong expectedRemaining = capExecutionGas ? Eip7825Constants.DefaultTxGasLimitCap - 21_000 : gasLimit - 21_000;
+        Assert.That((EthereumGasPolicy.GetRemainingGas(in available), EthereumGasPolicy.GetStateReservoir(in available)),
+            Is.EqualTo((expectedRemaining, (long)(gasLimit - 21_000 - expectedRemaining))));
+    }
+
+    [Test]
     public void MinRequiredGasLimit_includes_state_reservoir_unlike_state_blind_minimal_gas()
     {
         EthereumGasPolicy standard = new() { Value = 30_000, StateReservoir = 183_600 };

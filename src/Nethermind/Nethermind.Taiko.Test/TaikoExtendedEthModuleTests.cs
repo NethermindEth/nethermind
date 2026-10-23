@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Taiko.Rpc;
 using NSubstitute;
@@ -30,7 +31,11 @@ public class TaikoExtendedEthModuleTests
             .Build();
 
         Func<ITaikoExtendedEthRpcModule> act = () => container.Resolve<ITaikoExtendedEthRpcModule>();
-        Assert.That(act, Throws.Nothing);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.Nothing);
+            Assert.That(container.Resolve<PayloadTransactionCountGuard>(), Is.SameAs(PayloadTransactionCountGuard.Disabled));
+        }
     }
 
     [TestCase(true, "snap")]
