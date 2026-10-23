@@ -92,11 +92,11 @@ public class JsonRpcIpcRunnerTests
     }
 
     [Test]
-    public async Task HandleIpcConnection_logs_disconnect_not_server_error_when_client_drops_mid_response()
+    public async Task HandleIpcConnection_logs_disconnect_not_server_error_when_client_drops_mid_response([Values] bool clientClosesBeforeResponse)
     {
         TestLogger testLogger = new();
 
-        await HandleSingleRequest(new JsonRpcConfig(), testLogger);
+        await HandleSingleRequest(new JsonRpcConfig(), testLogger, clientClosesBeforeResponse);
 
         using (Assert.EnterMultipleScope())
         {
@@ -124,11 +124,12 @@ public class JsonRpcIpcRunnerTests
 
     /// <summary>
     /// Sends one request over a Unix domain socket and returns the context the processor received.
-    /// The processor then fails as if the client dropped mid-response, which ends the connection.
+    /// The processor then fails as if the client dropped mid-response, or writes its response after the client has closed.
     /// </summary>
-    private static async Task<JsonRpcContext?> HandleSingleRequest(IJsonRpcConfig config, TestLogger testLogger)
+    private static async Task<JsonRpcContext?> HandleSingleRequest(IJsonRpcConfig config, TestLogger testLogger, bool clientClosesBeforeResponse = false)
     {
         JsonRpcContext? context = null;
+        using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
         processor
             .ProcessAsync(
@@ -140,7 +141,11 @@ public class JsonRpcIpcRunnerTests
             .Returns(callInfo =>
             {
                 context = callInfo.ArgAt<JsonRpcContext>(1);
-                return ValueTask.FromException(new ObjectDisposedException(typeof(IpcSocketMessageStream).FullName));
+                if (!clientClosesBeforeResponse)
+                    return ValueTask.FromException(new ObjectDisposedException(typeof(IpcSocketMessageStream).FullName));
+
+                client.Dispose();
+                return callInfo.Arg<IJsonRpcResponseSink>().WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), callInfo.Arg<CancellationToken>());
             });
 
         IConfigProvider configProvider = Substitute.For<IConfigProvider>();
@@ -160,7 +165,6 @@ public class JsonRpcIpcRunnerTests
         listener.Bind(endPoint);
         listener.Listen(1);
 
-        using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         await client.ConnectAsync(endPoint);
         using Socket server = await listener.AcceptAsync();
 

@@ -49,51 +49,55 @@ public class SocketClient<TStream>(
         const int standardBufferLength = 1024 * 4;
         int currentMessageLength = 0;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
-        ReceiveResult result = await _stream.ReceiveAsync(buffer, cancellationToken);
-        while (result is { IsNull: false, Closed: false })
+        try
         {
-            currentMessageLength += result.Read;
-
-            if (currentMessageLength >= maxRequestSize)
+            ReceiveResult result = await _stream.ReceiveAsync(buffer, cancellationToken);
+            while (result is { IsNull: false, Closed: false })
             {
-                ArrayPool<byte>.Shared.Return(buffer);
-                throw new InvalidOperationException("Message too long");
-            }
+                currentMessageLength += result.Read;
 
-            if (result.EndOfMessage)
-            {
-                if (currentMessageLength > 0)
+                if (currentMessageLength >= maxRequestSize)
                 {
-                    await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength), cancellationToken);
+                    throw new InvalidOperationException("Message too long");
                 }
 
-                currentMessageLength = 0; // reset message length
-
-                // if we grew the buffer too big lets reset it
-                if (buffer.Length > 2 * standardBufferLength)
+                if (result.EndOfMessage)
                 {
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
-                }
-            }
-            else if (buffer.Length - currentMessageLength < standardBufferLength) // there is little room in current buffer
-            {
-                // grow the buffer 4x, but not more than max
-                int newLength = Math.Min(buffer.Length * 4, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
-                if (newLength > buffer.Length)
-                {
-                    byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newLength);
-                    buffer.CopyTo(newBuffer, 0);
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    buffer = newBuffer;
-                }
-            }
+                    if (currentMessageLength > 0)
+                    {
+                        await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength), cancellationToken);
+                    }
 
-            // receive only new bytes, leave already filled buffer alone
-            result = await _stream.ReceiveAsync(new ArraySegment<byte>(buffer, currentMessageLength, buffer.Length - currentMessageLength), cancellationToken);
+                    currentMessageLength = 0; // reset message length
+
+                    // if we grew the buffer too big lets reset it
+                    if (buffer.Length > 2 * standardBufferLength)
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
+                    }
+                }
+                else if (buffer.Length - currentMessageLength < standardBufferLength) // there is little room in current buffer
+                {
+                    // grow the buffer 4x, but not more than max
+                    int newLength = Math.Min(buffer.Length * 4, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+                    if (newLength > buffer.Length)
+                    {
+                        byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newLength);
+                        buffer.CopyTo(newBuffer, 0);
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        buffer = newBuffer;
+                    }
+                }
+
+                // receive only new bytes, leave already filled buffer alone
+                result = await _stream.ReceiveAsync(new ArraySegment<byte>(buffer, currentMessageLength, buffer.Length - currentMessageLength), cancellationToken);
+            }
         }
-
-        ArrayPool<byte>.Shared.Return(buffer);
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     public virtual void Dispose() => _stream?.Dispose();

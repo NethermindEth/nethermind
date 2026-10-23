@@ -191,7 +191,7 @@ namespace Nethermind.Runner.JsonRpc
             {
                 if (_logger.IsDebug) _logger.Debug("Connection was cancelled.");
             }
-            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
+            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset or SocketError.Shutdown })
             {
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
