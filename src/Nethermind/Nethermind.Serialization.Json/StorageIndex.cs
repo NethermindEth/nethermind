@@ -43,7 +43,7 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
 
         if (length > MaxLength)
         {
-            ThrowInvalidKey("storage key too long (want at most 32 bytes)", ref reader);
+            ThrowInvalidKey("storage key too long (want at most 32 bytes)", ref reader, innerException: null);
         }
 
         try
@@ -57,16 +57,16 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
 
             return Parse(reader.ValueSpan);
         }
-        catch (FormatException)
+        catch (FormatException e)
         {
-            ThrowInvalidKey("invalid hex in storage key", ref reader);
+            ThrowInvalidKey("invalid hex in storage key", ref reader, e);
             return default;
         }
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowInvalidKey(string reason, ref Utf8JsonReader reader) =>
-        throw new SafePublicMessageFormatException($"{reason}: \"{reader.GetString()}\"", omitArgumentPosition: true);
+    private static void ThrowInvalidKey(string reason, ref Utf8JsonReader reader, Exception? innerException) =>
+        throw new SafePublicMessageFormatException($"{reason}: \"{reader.GetString()}\"", innerException, omitArgumentPosition: true);
 
     private static UInt256 Parse(ReadOnlySpan<byte> hex)
     {

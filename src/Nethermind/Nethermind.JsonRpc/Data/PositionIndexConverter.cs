@@ -24,7 +24,7 @@ internal sealed class PositionIndexConverter : JsonConverter<UInt256>
         catch (FormatException e)
         {
             string reason = e is IExceptionWithSafePublicMessage ? e.Message : "invalid hex string";
-            throw new SafePublicMessageFormatException($"json: cannot unmarshal {reason} into Go value of type hexutil.Uint");
+            throw new SafePublicMessageFormatException($"json: cannot unmarshal {reason} into Go value of type hexutil.Uint", e);
         }
     }
 

@@ -21,9 +21,9 @@ internal sealed class FullTransactionsFlagConverter : JsonConverter<bool>
         {
             return GetRegisteredConverter().Read(ref reader, typeToConvert, options);
         }
-        catch (JsonException) when (GetTokenKind(reader.TokenType) is { } kind)
+        catch (JsonException e) when (GetTokenKind(reader.TokenType) is { } kind)
         {
-            throw new SafePublicMessageFormatException($"json: cannot unmarshal {kind} into Go value of type bool");
+            throw new SafePublicMessageFormatException($"json: cannot unmarshal {kind} into Go value of type bool", e);
         }
     }
 

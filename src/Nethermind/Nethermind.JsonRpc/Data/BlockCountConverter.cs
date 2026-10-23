@@ -27,7 +27,7 @@ internal sealed class BlockCountConverter : JsonConverter<ulong>
             && reader.GetString() is { } value
             && !ulong.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out _))
         {
-            throw new SafePublicMessageFormatException($"invalid hex or decimal integer \"{value}\"");
+            throw new SafePublicMessageFormatException($"invalid hex or decimal integer \"{value}\"", e);
         }
     }
 
