@@ -68,6 +68,27 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Rpc_accepts_empty_account_override(
+        [Values("eth_call", "eth_estimateGas")] string method, [Values("null", "{}")] string accountOverride)
+    {
+        using Context ctx = await Context.Create();
+        const string address = "0x0000000000000000000000000000000000000004";
+        Dictionary<string, JsonElement> stateOverrides = new()
+        {
+            [address] = JsonSerializer.Deserialize<JsonElement>(accountOverride)
+        };
+
+        string response = await ctx.Test.TestEthRpc(method, new { to = address, data = "0x1234" }, "latest", stateOverrides);
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"], method == "eth_call" ? Is.EqualTo("0x") : Is.Not.Null.And.Not.Empty, response);
+        }
+    }
+
     public record ForkGatedField(string Name, string Fields, IReleaseSpec Before, IReleaseSpec At)
     {
         public override string ToString() => Name;

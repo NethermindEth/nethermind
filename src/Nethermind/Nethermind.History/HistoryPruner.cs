@@ -171,6 +171,7 @@ public class HistoryPruner : IHistoryPruner
         }
         else if (_balPruningOnly)
         {
+            if (historyConfig.BalRetentionEpochs is null && _logger.IsInfo) _logger.Info($"Pruning block access lists older than {_balRetentionEpochs} epochs. Set History.BalRetentionEpochs to {uint.MaxValue} to keep all of them.");
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
         }
