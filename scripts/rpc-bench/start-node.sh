@@ -295,6 +295,8 @@ if [[ "$PERF" == "true" ]]; then
   perf_client_env=(
     DOTNET_PerfMapEnabled=1
     DOTNET_PerfMapShowOptimizationTiers=1
+    # Frame-pointer unwinding drops the caller of each JIT method that has no RBP frame.
+    DOTNET_JitFramed=1
     DOTNET_EnableWriteXorExecute=0
   )
   assert_no_mounts_under "$DIAG_DIR/perf"
