@@ -394,7 +394,8 @@ public class HistoryPrunerTests
             RetentionEpochs = 1,
             PruningInterval = 0
         };
-        using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(historyConfig, blocks: 100, syncPivot: 100);
+        // Register the side branch while its height is inside the retained history window.
+        using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(historyConfig, blocks: 20);
 
         IBlockTree tree = chain.BlockTree;
         Block parent = tree.FindBlock(19UL, BlockTreeLookupOptions.None)!;
@@ -408,7 +409,9 @@ public class HistoryPrunerTests
             .WithExtraData([1])
             .TestObject;
 
-        Assert.That(tree.SuggestBlock(sideBlock), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(tree.SuggestBlock(sideBlock, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(tree.GetInfo(sideBlock.Number, sideBlock.Hash!).Info, Is.Not.Null,
+            "the side block must have chain-level metadata before it is marked processed");
         tree.MarkChainAsProcessed([sideBlock]);
         chain.ReceiptStorage.Insert(sideBlock, [Build.A.Receipt
             .WithLogs(log)
@@ -423,6 +426,10 @@ public class HistoryPrunerTests
             Assert.That(tree.IsMainChain(sideBlock.Header), Is.False);
             Assert.That(chain.ReceiptStorage.HasBlock(sideBlock.Number, sideBlock.Hash!), Is.True);
         }
+
+        // Move the head beyond the rolling-retention cutoff, then run the production pruner.
+        for (int i = 0; i < 80; i++) await chain.AddBlock();
+        tree.SyncPivot = (100UL, Hash256.Zero);
 
         // The production pruner reclaims the orphan receipts and body together, while preserving
         // the side-block header and WasProcessed metadata for block-hash lookups.
