@@ -37,8 +37,8 @@ internal static class ConfigFileLocator
     {
         string name = Path.GetFileNameWithoutExtension(config);
 
-        // Paths into the configs folder that used to ship with the node, such as configs/mainnet.json.
-        string hint = !string.IsNullOrEmpty(Path.GetDirectoryName(config)) && BuiltInConfigs.Names.Contains(name, StringComparer.OrdinalIgnoreCase)
+        // Removed forms of a built-in name, such as configs/mainnet.json or mainnet.cfg.
+        string hint = BuiltInConfigs.Names.Contains(name, StringComparer.OrdinalIgnoreCase)
             ? $" Did you mean '--config {name}'?"
             : string.Empty;
 

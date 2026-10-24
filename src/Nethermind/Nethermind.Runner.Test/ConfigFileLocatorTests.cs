@@ -52,8 +52,9 @@ public class ConfigFileLocatorTests
         Assert.That(ConfigFileLocator.Find(_name, _configsDir), Is.Null);
 
     [TestCase("configs/mainnet.json", true)]
+    [TestCase("mainnet.cfg", true)]
     [TestCase("nonexistent.json", false)]
-    public void Not_found_message_suggests_built_in_name_for_old_configs_path(string config, bool suggests)
+    public void Not_found_message_suggests_built_in_name_for_removed_forms(string config, bool suggests)
     {
         string message = ConfigFileLocator.NotFoundMessage(config);
 

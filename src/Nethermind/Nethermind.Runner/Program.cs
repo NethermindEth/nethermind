@@ -421,7 +421,17 @@ JsonConfigSource CreateConfigSource(string config, string? configsDir)
     using Stream stream = BuiltInConfigs.Open(config)
         ?? throw new FileNotFoundException(ConfigFileLocator.NotFoundMessage(config), config);
 
-    logger.Info($"Loading built-in configuration {config}");
+    if (configsDir is not null)
+        logger.Warn($"Configuration '{config}' not found in --configs-dir {configsDir}. Loading the built-in configuration.");
+    else
+        logger.Info($"Loading built-in configuration {config}");
+
+    // The node used to read configs/ next to the binary, so an edited or mounted file there is now ignored.
+    string oldConfigFile = Path.Join(AppContext.BaseDirectory, "configs", Path.ChangeExtension(config, ".json"));
+
+    if (File.Exists(oldConfigFile))
+        logger.Warn($"File {oldConfigFile} is ignored. To use it, set --config {oldConfigFile}.");
+
     return new JsonConfigSource(stream);
 }
 
