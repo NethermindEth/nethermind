@@ -109,7 +109,7 @@ internal static class JsonRpcGenerator
     private static readonly Dictionary<Type, string> _knownConverterObjectNames = new()
     {
         [typeof(AccessListForRpc.JsonConverter)] = "array of _object_",
-        [typeof(BlockTransactionsConverter)] = "array of _string_ (hash), or array of _object_ (transaction) when full transactions are requested",
+        [typeof(BlockTransactionsConverter)] = "array of _string_ (hash) or array of _object_ (transaction)",
         [typeof(GethLikeTxTraceCollectionConverter)] = "array of _object_ (`error` _string_ in place of `result` when a JavaScript tracer fails)",
         [typeof(GethLikeTxTraceConverter)] = "_object_ (the tracer's own result instead when `tracer` is set)",
         [typeof(SyncingResultJsonConverter)] = "`false` when not syncing, else _object_",

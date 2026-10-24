@@ -57,9 +57,9 @@ public class JsonRpcGeneratorTests
     [TestCase("debug", "debug_simulateV1", "- `traces`: array of _object_ (the tracer's own result instead when `tracer` is set)", "- `customTracerResult`:")]
     [TestCase("eth", "eth_getHeaderByNumber", "- `nonce`: _string_ (8-byte hex data) or `null`", "- `baseFeePerGas`: _string_ (hex integer) or `null`")]
     [TestCase("trace", "trace_get", "- `from`: _string_ (address)\n", "- `from`: _string_ (address) or `null`")]
-    [TestCase("eth", "eth_getBlockByHash", "array of _string_ (hash), or array of _object_ (transaction) when full transactions are requested\n    - `blockHash`:", "- `hashes`:")]
-    [TestCase("eth", "eth_getBlockByNumber", "array of _string_ (hash), or array of _object_ (transaction) when full transactions are requested\n    - `blockHash`:", "- `full`:")]
-    [TestCase("eth", "eth_simulateV1", "array of _string_ (hash), or array of _object_ (transaction) when full transactions are requested", "- `hashes`:")]
+    [TestCase("eth", "eth_getBlockByHash", "array of _string_ (hash) or array of _object_ (transaction)\n    - `blockHash`:", "- `hashes`:")]
+    [TestCase("eth", "eth_getBlockByNumber", "array of _string_ (hash) or array of _object_ (transaction)\n    - `blockHash`:", "- `full`:")]
+    [TestCase("eth", "eth_simulateV1", "array of _string_ (hash) or array of _object_ (transaction)", "- `hashes`:")]
     public void Response_documents_wire_shape(string ns, string method, string documented, string notDocumented)
     {
         string response = ReadResponse(ns, method);
