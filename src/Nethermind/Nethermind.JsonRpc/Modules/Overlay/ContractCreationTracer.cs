@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Overlay;
 
-/// <summary>Finds the transaction of a block that deployed <paramref name="address"/> and the frame that deployed it.</summary>
+/// <summary>Finds the transaction of a block that deployed the address and the frame that deployed it.</summary>
 internal sealed class ContractCreationTracer : TxTracer, IBlockTracer
 {
     private readonly Address _address;

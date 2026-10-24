@@ -16,6 +16,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Filters;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
@@ -40,16 +41,26 @@ public class OverlayRpcModule(
         if (!stateReader.HasStateForBlock(head)) return NoState<OverlayCreationCode?>(head);
         if (!HasCode(head, address)) return ResultWrapper<OverlayCreationCode?>.Fail($"no contract at {address}", ErrorCodes.ResourceNotFound);
 
+        // Search back from head first, so a recent deployment reads only recent state.
         ulong low = 0, high = head.Number;
+        for (ulong step = 1; high > 0; step <<= 1)
+        {
+            token.ThrowIfCancellationRequested();
+            ulong probe = high > step ? high - step : 0;
+            if (!HasCodeAt(probe, address))
+            {
+                low = probe + 1;
+                break;
+            }
+
+            high = probe;
+        }
+
         while (low < high)
         {
             token.ThrowIfCancellationRequested();
             ulong middle = low + (high - low) / 2;
-            BlockHeader? header = blockFinder.FindHeader(middle, BlockTreeLookupOptions.RequireCanonical);
-            if (header is null) return ResultWrapper<OverlayCreationCode?>.Fail($"block {middle} not found", ErrorCodes.ResourceNotFound);
-            if (!stateReader.HasStateForBlock(header)) return NoState<OverlayCreationCode?>(header);
-
-            if (HasCode(header, address)) high = middle;
+            if (HasCodeAt(middle, address)) high = middle;
             else low = middle + 1;
         }
 
@@ -79,7 +90,15 @@ public class OverlayRpcModule(
             else
             {
                 // A CREATE or CREATE2 in a contract cannot take other code, so the code runs as a call to its address.
-                stateOverride = new() { [address] = new AccountOverride { Code = code } };
+                stateOverride = new() { [address] = new AccountOverride { Code = code, Nonce = specProvider.GetSpec(block.Header).IsEip158Enabled ? 1UL : null } };
+                if (!creation.Value.IsZero)
+                {
+                    // The creator can get the value in the same transaction, so it must hold it before the call.
+                    BlockHeader? parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                    UInt256 balance = parent is not null && stateReader.TryGetAccount(parent, creation.Creator!, out AccountStruct creator) ? creator.Balance : UInt256.Zero;
+                    stateOverride[creation.Creator!] = new AccountOverride { Balance = balance + creation.Value };
+                }
+
                 Transaction call = new()
                 {
                     SenderAddress = creation.Creator,
@@ -110,6 +129,9 @@ public class OverlayRpcModule(
         using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
         CancellationToken token = timeout.Token;
 
+        if (filter.FromBlock.Type is BlockParameterType.Pending || filter.ToBlock.Type is BlockParameterType.Pending)
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail("pending logs are not supported", ErrorCodes.InvalidInput);
+
         if (blockFinder.IsRangeInFuture(filter.FromBlock, filter.ToBlock))
             return ResultWrapper<IEnumerable<FilterLog>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
 
@@ -118,8 +140,10 @@ public class OverlayRpcModule(
         SearchResult<BlockHeader> toResult = blockFinder.SearchForHeader(filter.ToBlock);
         if (toResult.IsError) return ResultWrapper<IEnumerable<FilterLog>>.Fail(toResult);
 
-        ulong from = fromResult.Object!.Number;
-        ulong to = toResult.Object!.Number;
+        BlockHeader fromHeader = fromResult.Object!;
+        BlockHeader toHeader = toResult.Object!;
+        ulong from = fromHeader.Number;
+        ulong to = toHeader.Number;
         if (from > to) return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
 
         int maxRange = jsonRpcConfig.OverlayMaxBlockRange;
@@ -136,7 +160,11 @@ public class OverlayRpcModule(
             for (ulong number = from; number <= to; number++)
             {
                 token.ThrowIfCancellationRequested();
-                Block? block = blockFinder.FindBlock(number, BlockTreeLookupOptions.RequireCanonical);
+                // A block-hash filter can target a block that is not canonical, so the range ends are loaded by hash.
+                BlockHeader? end = number == from ? fromHeader : number == to ? toHeader : null;
+                Block? block = end is null
+                    ? blockFinder.FindBlock(number, BlockTreeLookupOptions.RequireCanonical)
+                    : blockFinder.FindBlock(end.Hash!, BlockTreeLookupOptions.None, number);
                 if (block is null) return ResultWrapper<IEnumerable<FilterLog>>.Fail($"block {number} not found", ErrorCodes.ResourceNotFound);
                 if (block.Transactions.Length == 0) continue;
 
@@ -175,6 +203,10 @@ public class OverlayRpcModule(
         failure = null;
         return true;
     }
+
+    /// <summary>A block without state counts as one without the code: with pruned state, its creation block cannot be traced either.</summary>
+    private bool HasCodeAt(ulong number, Address address) =>
+        blockFinder.FindHeader(number, BlockTreeLookupOptions.RequireCanonical) is { } header && stateReader.HasStateForBlock(header) && HasCode(header, address);
 
     private bool HasCode(BlockHeader header, Address address) =>
         stateReader.TryGetAccount(header, address, out AccountStruct account) && account.HasCode;

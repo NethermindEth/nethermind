@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Overlay;
 
-/// <summary>Captures the runtime code that the transaction at <paramref name="txIndex"/> deploys at <paramref name="address"/>,
+/// <summary>Captures the runtime code that the target transaction deploys at the address,
 /// or returns when it runs the creation code as a call.</summary>
 internal sealed class ConstructorOutputTracer : TxTracer, IBlockTracer
 {

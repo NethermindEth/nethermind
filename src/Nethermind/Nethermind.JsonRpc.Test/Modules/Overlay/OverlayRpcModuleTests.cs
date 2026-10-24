@@ -8,14 +8,20 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Core.Container;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Overlay;
 using Nethermind.State;
@@ -34,6 +40,17 @@ public class OverlayRpcModuleTests
         .Op(Instruction.ADDRESS).PushData(0).Op(Instruction.MSTORE)
         .Op(Instruction.CALLER).PushData(32).Op(Instruction.MSTORE)
         .PushData(64).PushData(0).Op(Instruction.RETURN)
+        .Done;
+
+    private static readonly byte[] NestedCreateConstructor = Prepare.EvmCode
+        .PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE)
+        .PushData(0).Op(Instruction.MSTORE)
+        .PushData(20).PushData(12).Op(Instruction.RETURN)
+        .Done;
+
+    private static readonly byte[] CallValueConstructor = Prepare.EvmCode
+        .Op(Instruction.CALLVALUE).PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.RETURN)
         .Done;
 
     [Test]
@@ -66,6 +83,67 @@ public class OverlayRpcModuleTests
     }
 
     [Test]
+    public async Task CallConstructor_gives_nested_creations_the_addresses_of_the_deployment([Values] bool byFactory)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Deployment deployment = await Deploy(chain);
+        Address contract = byFactory ? await DeployByFactory(chain, deployment.Factory) : deployment.Contract;
+
+        using JsonDocument response = await Request(chain, "overlay_callConstructor", contract, NestedCreateConstructor);
+
+        Assert.That(Code(response), Is.EqualTo(ContractAddress.From(contract, 1).Bytes.ToArray()));
+    }
+
+    [Test]
+    public async Task CallConstructor_sends_the_value_that_the_factory_gets_in_the_same_transaction()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        ulong nonce = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Address factory = ContractAddress.From(TestItem.AddressA, nonce);
+        byte[] factoryRuntime = Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(Emitter(TopicA)).Done, 1).STOP().Done;
+        await chain.AddBlock(Build.A.Transaction.WithCode(Prepare.EvmCode.ForInitOf(factoryRuntime).Done).WithValue(0).WithNonce(nonce)
+            .WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+        Address child = ContractAddress.From(factory, chain.ReadOnlyState.GetNonce(factory));
+        await chain.AddBlock(Build.A.Transaction.WithTo(factory).WithValue(1).WithNonce(nonce + 1)
+            .WithGasLimit(200_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ReadOnlyState.GetBalance(child), Is.EqualTo(UInt256.One), "precondition: the factory sent the value to the child");
+            Assert.That(chain.ReadOnlyState.GetBalance(factory), Is.EqualTo(UInt256.Zero), "precondition: the factory had no balance of its own");
+        }
+
+        using JsonDocument response = await Request(chain, "overlay_callConstructor", child, CallValueConstructor);
+
+        Assert.That(new UInt256(Code(response), isBigEndian: true), Is.EqualTo(UInt256.One));
+    }
+
+    [Test]
+    public async Task CallConstructor_reads_only_state_from_the_creation_block_parent()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        for (int i = 0; i < 8; i++)
+        {
+            await chain.AddBlock();
+        }
+
+        Deployment deployment = await Deploy(chain);
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(c => c.ArgAt<BlockHeader?>(0) is { } header && header.Number + 1 >= deployment.First);
+        stateReader.TryGetAccount(Arg.Any<BlockHeader?>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(c =>
+        {
+            bool found = chain.StateReader.TryGetAccount(c.ArgAt<BlockHeader?>(0), c.ArgAt<Address>(1), out AccountStruct account);
+            c[2] = account;
+            return found;
+        });
+        await using ILifetimeScope scope = chain.Container.BeginLifetimeScope(b => b.AddSingleton(stateReader));
+        OverlayModuleFactory factory = new(scope, scope.Resolve<IOverridableEnvFactory>(), scope.Resolve<IReadOnlyList<IBlockValidationModule>>());
+
+        using JsonDocument response = JsonDocument.Parse(await RpcTest.TestSerializedRequest(factory.Create(), "overlay_callConstructor", deployment.Contract, ContextConstructor));
+
+        Assert.That(Code(response)[12..32], Is.EqualTo(deployment.Contract.Bytes.ToArray()));
+    }
+
+    [Test]
     public async Task CallConstructor_fails_without_contract()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
@@ -76,9 +154,10 @@ public class OverlayRpcModuleTests
     }
 
     [Test]
-    public async Task GetLogs_without_overrides_matches_eth_getLogs([Values] bool filterByAddress)
+    public async Task GetLogs_without_overrides_matches_eth_getLogs([Values] bool filterByAddress, [Values] bool eip8116)
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(new TestSpecProvider(new OverridableReleaseSpec(Osaka.Instance) { IsEip8116Enabled = eip8116 }));
         Deployment deployment = await Deploy(chain);
         object filter = filterByAddress
             ? new { fromBlock = deployment.First.ToHexString(true), toBlock = deployment.Last.ToHexString(true), address = deployment.Contract }
@@ -92,7 +171,42 @@ public class OverlayRpcModuleTests
         {
             Assert.That(result.GetArrayLength(), Is.EqualTo(deployment.Calls));
             Assert.That(result.GetRawText(), Is.EqualTo(eth.RootElement.GetProperty("result").GetRawText()));
+            Assert.That(LogIndex(result[deployment.Calls - 1]), Is.EqualTo(eip8116 ? 0 : 1), "the second call in the last block");
         }
+    }
+
+    [Test]
+    public async Task GetLogs_by_block_hash_replays_that_block_when_it_is_not_canonical()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Deployment deployment = await Deploy(chain);
+        Block head = chain.BlockTree.Head!;
+        BlockHeader header = head.Header.Clone();
+        header.ExtraData = [1];
+        header.Hash = header.CalculateHash();
+        Block sibling = new(header, new BlockBody([head.Transactions[0]], [], head.Withdrawals));
+        Assert.That(chain.BlockTree.SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+
+        using JsonDocument response = await Request(chain, "overlay_getLogs", new { blockHash = sibling.Hash }, Override(deployment.Contract, Emitter(TopicA, TopicB)));
+
+        JsonElement[] logs = [.. response.RootElement.GetProperty("result").EnumerateArray()];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.IsMainChain(sibling.Header), Is.False);
+            Assert.That(logs, Has.Length.EqualTo(2));
+            Assert.That(logs.Select(static l => l.GetProperty("blockHash").GetString()), Is.All.EqualTo(sibling.Hash!.ToString()));
+        }
+    }
+
+    [Test]
+    public async Task GetLogs_fails_for_pending([Values] bool from)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+
+        using JsonDocument response = await Request(chain, "overlay_getLogs",
+            from ? new { fromBlock = "pending", toBlock = "pending" } : new { fromBlock = "earliest", toBlock = "pending" });
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidInput));
     }
 
     [Test]
