@@ -268,8 +268,6 @@ public class HostMemoryFastPathTests
         // MLOAD is a host fast path on either side of SSTORE's state-charging slow body.
         byte[] code = [PUSH0, MLOAD, PUSH1, 1, PUSH0, SSTORE, PUSH0, MLOAD, STOP];
         EthereumGasPolicy initial = SentinelPolicy(ulong.MaxValue, outOfGas: false);
-        // The independent pool pays the new slot's state gas above its legacy share, which execution gas pays.
-        const long newSlotLegacyShare = 10_000;
 
         (Outcome fast, Outcome plain) = RunFastAndPlain(code, initial, withWorldState: true);
 
@@ -277,9 +275,9 @@ public class HostMemoryFastPathTests
         {
             Assert.That(fast, Is.EqualTo(plain));
             Assert.That(fast.Exception, Is.EqualTo(EvmExceptionType.Stop));
-            Assert.That(fast.Policy.StateReservoir, Is.EqualTo(InitialStateReservoir - (GasCostOf.SSetState - newSlotLegacyShare)));
+            Assert.That(fast.Policy.StateReservoir, Is.EqualTo(InitialStateReservoir - GasCostOf.SSetState));
             Assert.That(fast.Policy.StateGasUsed, Is.EqualTo(initial.StateGasUsed + (long)GasCostOf.SSetState));
-            Assert.That(fast.Policy.StateGasSpill, Is.EqualTo(initial.StateGasSpill + newSlotLegacyShare));
+            Assert.That(fast.Policy.StateGasSpill, Is.EqualTo(initial.StateGasSpill));
             Assert.That(fast.Policy.IndependentStatePool, Is.True);
             Assert.That(fast.Policy.OutOfGas, Is.False);
         }
