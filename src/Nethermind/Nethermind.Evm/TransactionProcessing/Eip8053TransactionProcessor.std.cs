@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
@@ -22,8 +23,11 @@ public sealed class Eip8053TransactionProcessor(ISpecProvider specProvider, ITra
 {
     private ITransactionProcessor? _current;
 
-    public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options) =>
-        (_current ?? legacy).Process(transaction, txTracer, options);
+    public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+    {
+        Debug.Assert(_current is not null, "SetBlockExecutionContext selects the processor before the first transaction.");
+        return (_current ?? legacy).Process(transaction, txTracer, options);
+    }
 
     public void SetBlockExecutionContext(BlockHeader blockHeader)
     {

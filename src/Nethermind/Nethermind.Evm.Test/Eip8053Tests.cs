@@ -282,8 +282,9 @@ public class Eip8053Tests(bool traceInstructions) : VirtualMachineTestsBase
 
     /// <remarks>
     /// EIP-8037: three <c>JUMPDEST</c>s leave 0.7 gas of fraction. The SSTORE then spills all its state gas into
-    /// <c>gas_left</c> (the reservoir is empty below the transaction gas cap), and a reverting child returns its spilled
-    /// state gas. Both state gas steps must keep the fraction: the legacy run differs only by the repriced opcodes.
+    /// <c>gas_left</c> (the reservoir is empty below the transaction gas cap), and a reverting child that also spilled
+    /// credits its state gas to the reservoir. The SSTORE step must keep the fraction: the legacy run differs only by
+    /// the repriced opcodes.
     /// </remarks>
     [Test]
     public void State_gas_spill_and_revert_credit_keep_the_milli_gas_fraction()
@@ -318,7 +319,7 @@ public class Eip8053Tests(bool traceInstructions) : VirtualMachineTestsBase
             // Two PUSH1 at 1.5 gas, the SSTORE's cold access and write, its whole state gas spill, then GAS.
             Assert.That(milliGas.Word(0) - milliGas.Word(1),
                 Is.EqualTo((UInt256)(3 + Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite + (ulong)GasCostOf.SSetState + 2)));
-            // PUSH20, PUSH3 and POP in the caller and two PUSH1 in the child save 7 gas; the child's spill comes back.
+            // PUSH20, PUSH3 and POP in the caller and two PUSH1 in the child save 7 gas.
             Assert.That(legacy.Word(1) - legacy.Word(2) - (milliGas.Word(1) - milliGas.Word(2)), Is.EqualTo((UInt256)7));
             // 22.6 gas of repriced opcodes in all, rounded once at the end. The last JUMPDEST leaves a fraction that a
             // dropped 0.7 gas would push over a whole gas unit.

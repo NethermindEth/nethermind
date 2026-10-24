@@ -9,6 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -23,6 +24,8 @@ namespace Nethermind.Evm.Test;
 [TestFixture(true)]
 public class Eip8053ScaledPricesTests(bool amsterdam) : VirtualMachineTestsBase
 {
+    private static readonly Address Factory = new("0x8053000000000000000000000000000000000001");
+
     private VirtualMachine<MilliGasPolicy<ScaledGasPrices>> _scaledMachine = null!;
     private ITransactionProcessor _legacyProcessor = null!;
     private ITransactionProcessor _scaledProcessor = null!;
@@ -38,6 +41,11 @@ public class Eip8053ScaledPricesTests(bool amsterdam) : VirtualMachineTestsBase
         _scaledMachine = new VirtualMachine<MilliGasPolicy<ScaledGasPrices>>(new TestBlockhashProvider(SpecProvider), SpecProvider, logManager);
         _legacyProcessor = _processor;
         _scaledProcessor = new TransactionProcessor<MilliGasPolicy<ScaledGasPrices>>(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, _scaledMachine, CodeInfoRepository, logManager);
+
+        // Creates a contract with 1,450 bytes of code, more than the EIP-8037 allowance of a 300,000-gas call covers.
+        TestState.CreateAccount(Factory, 0);
+        TestState.InsertCode(Factory, Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(new byte[1450]).Done, 0).Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
+        TestState.Commit(SpecProvider.GenesisSpec);
     }
 
     [TearDown]
@@ -61,6 +69,10 @@ public class Eip8053ScaledPricesTests(bool amsterdam) : VirtualMachineTestsBase
         [
             (byte)Instruction.JUMPDEST, (byte)Instruction.PUSH1, 0, (byte)Instruction.JUMP,
         ]);
+        yield return Program("new slot", 1_000_000,
+        [
+            (byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH1, 0, (byte)Instruction.SSTORE, (byte)Instruction.STOP,
+        ]);
         yield return Program("set and clear a slot", 1_000_000,
         [
             (byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH1, 0, (byte)Instruction.SSTORE,
@@ -79,13 +91,22 @@ public class Eip8053ScaledPricesTests(bool amsterdam) : VirtualMachineTestsBase
             Prepare.EvmCode.Create(
                 [(byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.REVERT],
                 0).Op(Instruction.STOP).Done);
+        yield return Program("create halting after a store", 1_000_000,
+            Prepare.EvmCode.Create(
+                [(byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE, (byte)Instruction.INVALID],
+                0).Op(Instruction.STOP).Done);
+        yield return Program("deposit beyond the allowance of a call", 1_000_000,
+            Prepare.EvmCode.Call(Factory, 300_000).Op(Instruction.STOP).Done);
         yield return Program("create running out of gas for the deposit", 60_000,
             Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(new byte[200]).Done, 0).Op(Instruction.STOP).Done);
     }
 
     private static TestCaseData Program(string name, ulong gasLimit, byte[] code) => new TestCaseData(gasLimit, code).SetArgDisplayNames(name);
 
-    /// <remarks>Under EIP-8037 each program runs a second time with 20M more gas, which goes to the state gas reservoir.</remarks>
+    /// <remarks>
+    /// Under EIP-8037 each program runs with an empty state gas reservoir and again with 20M more gas, which goes to the
+    /// reservoir.
+    /// </remarks>
     [TestCaseSource(nameof(Programs))]
     public void Receipt_and_trace_match_legacy_metering(ulong gasLimit, byte[] code)
     {

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -17,6 +19,15 @@ namespace Nethermind.Evm.Test;
 
 public partial class FrameTxProcessorTests
 {
+    private readonly List<IDisposable> _milliGasMachines = [];
+
+    [TearDown]
+    public void DisposeMilliGasMachines()
+    {
+        foreach (IDisposable machine in _milliGasMachines) machine.Dispose();
+        _milliGasMachines.Clear();
+    }
+
     /// <remarks>With every price at 1,000 milli-gas per gas unit, milli-gas metering must match legacy metering exactly.</remarks>
     [Test]
     public void Eip8053_scaled_prices_match_legacy_for_a_frame_targeting_a_delegated_account([Values] bool designatePrecompile, [Values] bool coverOnlyTargetAccess)
@@ -67,10 +78,13 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    private ITransactionProcessor BuildMilliGasProcessor<TPrices>() where TPrices : struct, IMilliGasPrices =>
-        new TransactionProcessor<MilliGasPolicy<TPrices>>(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider,
-            new VirtualMachine<MilliGasPolicy<TPrices>>(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance),
+    private ITransactionProcessor BuildMilliGasProcessor<TPrices>() where TPrices : struct, IMilliGasPrices
+    {
+        VirtualMachine<MilliGasPolicy<TPrices>> machine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _milliGasMachines.Add(machine);
+        return new TransactionProcessor<MilliGasPolicy<TPrices>>(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, machine,
             new EthereumCodeInfoRepository(_stateProvider), LimboLogs.Instance);
+    }
 
     private FrameReceiptTracer ProcessAndRestore(ITransactionProcessor processor, Transaction tx)
     {
