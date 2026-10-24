@@ -245,6 +245,19 @@ public class JsonRpcIpcRunnerTests
         await recorder.SlowAnswered.WaitAsync(cts.Token);
     }
 
+    [Test]
+    public async Task HandleIpcConnection_closes_the_connection_after_answering_a_half_closed_client()
+    {
+        PipelinedRequestRecorder recorder = new(slowGate: Task.CompletedTask);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+
+        await using IpcConnection connection = await IpcConnection.OpenAsync(recorder.Processor, [ModuleType.Eth], cts.Token);
+        await connection.SendAsync("fast"u8.ToArray(), cts.Token);
+        string received = await connection.CloseSendAndReadToEndAsync(cts.Token);
+
+        Assert.That(received, Does.Contain("\"result\""), "a half-closed client must get its response and then the end of the stream");
+    }
+
     private sealed class IpcConnection : IAsyncDisposable
     {
         private readonly TempPath _path;
@@ -253,6 +266,7 @@ public class JsonRpcIpcRunnerTests
         private readonly IpcSocketMessageStream _sendStream;
         private readonly JsonRpcIpcRunner _runner;
         private readonly Task _serving;
+        private bool _sendClosed;
 
         private IpcConnection(TempPath path, Socket listener, Socket client, JsonRpcIpcRunner runner, Task serving)
         {
@@ -305,11 +319,28 @@ public class JsonRpcIpcRunnerTests
             await _sendStream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
         }
 
+        public async Task<string> CloseSendAndReadToEndAsync(CancellationToken token)
+        {
+            _client.Shutdown(SocketShutdown.Send);
+            _sendClosed = true;
+            await _serving.WaitAsync(token);
+
+            byte[] buffer = new byte[1024];
+            StringBuilder received = new();
+            int read;
+            while ((read = await _client.ReceiveAsync(buffer, SocketFlags.None, token)) > 0)
+            {
+                received.Append(Encoding.UTF8.GetString(buffer, 0, read));
+            }
+
+            return received.ToString();
+        }
+
         public async ValueTask DisposeAsync()
         {
             try
             {
-                _client.Shutdown(SocketShutdown.Send);
+                if (!_sendClosed) _client.Shutdown(SocketShutdown.Send);
                 await _serving;
             }
             finally
