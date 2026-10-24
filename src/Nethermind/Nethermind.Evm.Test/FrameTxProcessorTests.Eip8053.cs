@@ -98,16 +98,28 @@ public partial class FrameTxProcessorTests
         FrameReceiptTracer scaled = ProcessAndRestore(BuildMilliGasProcessor<ScaledGasPrices>(), tx);
         FrameReceiptTracer fractional = ProcessAndRestore(BuildMilliGasProcessor<Eip8053IllustrativePrices>(), tx);
 
+        bool writes = stateLimit >= GasCostOf.SSetState;
+        // JUMPDEST at 0.1 and two PUSH1 at 1.5 save 3.9 gas, which the frame rounds up to 3; a halted frame uses its whole limit.
+        TxFrameReceipt legacyWriter = legacy.FrameReceipts![1];
+        TxFrameReceipt fractionalWriter = fractional.FrameReceipts![1];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scaled.GasSpent, Is.EqualTo(legacy.GasSpent));
             Assert.That(scaled.FrameReceipts!.Select(static receipt => (receipt.Status, receipt.ExecutionGasUsed, receipt.StateGasUsed)),
-                Is.EqualTo(legacy.FrameReceipts!.Select(static receipt => (receipt.Status, receipt.ExecutionGasUsed, receipt.StateGasUsed))));
+                Is.EqualTo(legacy.FrameReceipts.Select(static receipt => (receipt.Status, receipt.ExecutionGasUsed, receipt.StateGasUsed))));
             foreach (FrameReceiptTracer tracer in new[] { legacy, fractional })
             {
                 Assert.That(tracer.GasSpent, Is.LessThanOrEqualTo(maxGas));
-                Assert.That(tracer.FrameReceipts![1].StateGasUsed, Is.LessThanOrEqualTo((ulong)stateLimit));
             }
+
+            foreach (TxFrameReceipt writer in new[] { legacyWriter, fractionalWriter })
+            {
+                Assert.That(writer.Status, Is.EqualTo(writes ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure));
+                Assert.That(writer.StateGasUsed, Is.EqualTo(writes ? (ulong)GasCostOf.SSetState : 0UL));
+            }
+
+            Assert.That(fractionalWriter.ExecutionGasUsed, Is.EqualTo(writes ? legacyWriter.ExecutionGasUsed - 3 : 50_000UL));
+            Assert.That(legacyWriter.ExecutionGasUsed, writes ? Is.LessThan(50_000UL) : Is.EqualTo(50_000UL));
         }
     }
 
