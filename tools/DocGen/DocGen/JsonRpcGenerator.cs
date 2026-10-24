@@ -687,16 +687,18 @@ internal static class JsonRpcGenerator
 
     // A null member is omitted under WhenWritingNull (the serializer default) and only reaches the wire under Never or WhenReading
     private static bool IsWrittenWhenNull(MemberInfo? member) =>
-        (member?.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition ?? EthereumJsonSerializer.JsonOptions.DefaultIgnoreCondition)
-            is JsonIgnoreCondition.Never or JsonIgnoreCondition.WhenReading;
+        GetIgnoreCondition(member) is JsonIgnoreCondition.Never or JsonIgnoreCondition.WhenReading;
 
     private static bool IsOmitted(MemberInfo? member, bool isNullable) =>
-        (member?.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition ?? EthereumJsonSerializer.JsonOptions.DefaultIgnoreCondition) switch
+        GetIgnoreCondition(member) switch
         {
             JsonIgnoreCondition.WhenWritingDefault => true,
             JsonIgnoreCondition.WhenWritingNull => isNullable,
             _ => false
         };
+
+    private static JsonIgnoreCondition GetIgnoreCondition(MemberInfo? member) =>
+        member?.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition ?? EthereumJsonSerializer.JsonOptions.DefaultIgnoreCondition;
 
     // SimulateBlockResult<TTrace> returns null from one of these by its type argument, so the serializer never writes it
     private static bool IsNullForSpecialization(Type type, JsonPropertyInfo property) =>
