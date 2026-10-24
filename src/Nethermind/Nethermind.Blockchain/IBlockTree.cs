@@ -171,8 +171,6 @@ namespace Nethermind.Blockchain
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
-        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash);
-
         ChainLevelInfo? FindLevel(ulong number);
 
         BlockInfo? FindCanonicalBlockInfo(ulong blockNumber);

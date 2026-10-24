@@ -136,11 +136,12 @@ namespace Nethermind.Facade.Find
             header.Number != 0 && header.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(header.Number, header.Hash!);
 
         /// <remarks>
-        /// A block ahead of the processed head or off the main chain may not be processed yet, so its receipts can
-        /// still appear.
+        /// Missing receipts on an already processed non-canonical block are unavailable history, not proof that
+        /// the block still awaits execution. Reorgs change canonical membership without clearing WasProcessed.
         /// </remarks>
         private bool WasPruned(BlockHeader header) =>
-            _blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header);
+            (_blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header))
+            || _blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
 
         protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
             prunedLogsRetention is not null
