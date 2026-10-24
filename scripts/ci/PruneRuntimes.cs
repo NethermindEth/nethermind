@@ -24,6 +24,7 @@ try
     var candidates = Directory.GetDirectories(root, "*", options)
         .Where(path => Path.GetFileName(Path.GetDirectoryName(path)) == "runtimes")
         .Order(StringComparer.Ordinal).ToArray();
+    // Bare-OS folders hold managed assemblies used by the target RID's fallback graph.
     var foreign = candidates.Where(path => Path.GetFileName(path).Contains('-') && Path.GetFileName(path) != rid).ToArray();
     foreach (var path in foreign)
     {
