@@ -22,6 +22,7 @@ namespace Nethermind.Network.Config
 
         public string? LocalIp { get; set; }
         public string? StaticPeers { get; set; }
+        public string? StaticPeerHosts { get; set; }
         public string? DiscoveryDns { get; set; }
 
         public bool OnlyStaticPeers { get; set; }

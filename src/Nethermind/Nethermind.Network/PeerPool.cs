@@ -33,7 +33,11 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
         private readonly ITrustedNodesManager _trustedNodesManager;
+        private readonly IStaticHostFilter _staticHostFilter;
         private readonly TimeProvider _timeProvider;
+        private readonly ConditionalWeakTable<Node, StrongBox<long>> _unprovenSince = [];
+
+        internal static readonly TimeSpan UnprovenStaticHostTimeout = TimeSpan.FromMinutes(10);
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -52,8 +56,9 @@ namespace Nethermind.Network
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             INetworkConfig networkConfig,
             ILogManager logManager,
-            ITrustedNodesManager trustedNodesManager)
-            : this(nodeSource, nodeStatsManager, peerStorage, networkConfig, logManager, trustedNodesManager, TimeProvider.System)
+            ITrustedNodesManager trustedNodesManager,
+            IStaticHostFilter? staticHostFilter = null)
+            : this(nodeSource, nodeStatsManager, peerStorage, networkConfig, logManager, trustedNodesManager, TimeProvider.System, staticHostFilter)
         {
         }
 
@@ -64,7 +69,8 @@ namespace Nethermind.Network
             INetworkConfig networkConfig,
             ILogManager logManager,
             ITrustedNodesManager trustedNodesManager,
-            TimeProvider timeProvider)
+            TimeProvider timeProvider,
+            IStaticHostFilter? staticHostFilter = null)
         {
             _nodeSource = nodeSource ?? throw new ArgumentNullException(nameof(nodeSource));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -75,7 +81,10 @@ namespace Nethermind.Network
             _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
             _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
+            _staticHostFilter = staticHostFilter ?? StaticHostFilter.Empty;
+
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
+            _staticHostFilter.Changed += OnStaticHostsChanged;
         }
 
         private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
@@ -104,11 +113,16 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(Node node)
         {
+            // The host match is applied to the pooled instance before the merge, so the instance that
+            // stays in the pool is the one the filter tracks and can demote.
             if (Peers.TryGetValue(node.Id, out Peer? existing))
             {
+                PromoteIfStaticHost(existing.Node);
                 MergeNodeState(node, existing.Node);
                 return existing;
             }
+
+            PromoteIfStaticHost(node);
 
             // ConcurrentDictionary may run the factory on a losing thread; only the thread whose value is
             // actually inserted (reference-equal) fires PeerAdded.
@@ -121,6 +135,8 @@ namespace Nethermind.Network
             }
             else
             {
+                _staticHostFilter.Demote(node);
+                PromoteIfStaticHost(peer.Node);
                 MergeNodeState(node, peer.Node);
             }
 
@@ -143,10 +159,14 @@ namespace Nethermind.Network
         // peers db loses its static status for the whole session and is never redialed as one.
         private void PromoteFlags(Node incoming, Node pooled)
         {
-            if (incoming.IsStatic && !pooled.IsStatic)
+            if (incoming.IsStatic && !_staticHostFilter.IsPromoted(incoming))
             {
-                pooled.IsStatic = true;
-                if (_logger.IsDebug) DebugPromoted(pooled, "static");
+                _staticHostFilter.Untrack(pooled);
+                if (!pooled.IsStatic)
+                {
+                    pooled.IsStatic = true;
+                    if (_logger.IsDebug) DebugPromoted(pooled, "static");
+                }
             }
 
             if (incoming.IsTrusted && !pooled.IsTrusted)
@@ -159,6 +179,60 @@ namespace Nethermind.Network
             {
                 pooled.IsBootnode = true;
                 if (_logger.IsDebug) DebugPromoted(pooled, "bootnode");
+            }
+        }
+
+        private void PromoteIfStaticHost(Node node)
+        {
+            if (IsStaticHostCandidate(node) && _staticHostFilter.TryPromote(node, matchPort: true))
+            {
+                if (_logger.IsDebug) DebugStaticHostMatch(node);
+            }
+        }
+
+        private bool IsStaticHostCandidate(Node node) =>
+            !node.IsStatic && _staticHostFilter.IsMatch(node.Address) && !FailedToProveKey(node);
+
+        // A discovery record can claim any address, so a host match alone does not prove that the node
+        // runs there. Only an outbound handshake to that address proves it; an inbound one can come from anywhere.
+        private bool FailedToProveKey(Node node) =>
+            _stats.GetOrAdd(node).DidEventHappen(NodeStatsEventType.Connecting) && !_staticHostFilter.IsProven(node);
+
+        // The timeout lets a configured node that is offline at the first dial, for example during its restart, stay static.
+        private void DemoteUnprovenStaticHosts()
+        {
+            long now = _timeProvider.GetTimestamp();
+            foreach (KeyValuePair<PublicKeyAsKey, Peer> kvp in Peers)
+            {
+                Peer peer = kvp.Value;
+                Node node = peer.Node;
+                if (!node.IsStatic || !_staticHostFilter.IsPromoted(node) || peer.InSession is not null || peer.OutSession is not null
+                    || peer.IsAwaitingConnection || !FailedToProveKey(node))
+                {
+                    continue;
+                }
+
+                if (!_unprovenSince.TryGetValue(node, out StrongBox<long>? since))
+                {
+                    _unprovenSince.AddOrUpdate(node, new StrongBox<long>(now));
+                }
+                else if (_timeProvider.GetElapsedTime(since.Value, now) >= UnprovenStaticHostTimeout)
+                {
+                    _unprovenSince.Remove(node);
+                    _staticHostFilter.Demote(node);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void DebugStaticHostMatch(Node node)
+            => _logger.Debug($"Treating {node:s} as a static peer, its address matches {nameof(INetworkConfig.StaticPeerHosts)}");
+
+        private void OnStaticHostsChanged(object? sender, EventArgs e)
+        {
+            foreach (KeyValuePair<PublicKeyAsKey, Peer> kvp in Peers)
+            {
+                PromoteIfStaticHost(kvp.Value.Node);
             }
         }
 
@@ -251,6 +325,7 @@ namespace Nethermind.Network
             {
                 try
                 {
+                    DemoteUnprovenStaticHosts();
                     UpdateReputationAndMaxPeersCount();
 
                     if (!_peerStorage.AnyPendingChange())
@@ -348,10 +423,12 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
+                bool isStaticHost = IsStaticHostCandidate(node);
+
                 // Static and trusted nodes bypass throttling so they are always registered (static to stay
                 // dialable, trusted so inbound connections are recognized and counted even at capacity).
                 bool throttlingLogged = false;
-                while (!node.IsStatic && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
+                while (!node.IsStatic && !isStaticHost && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
                 {
                     if (!throttlingLogged)
                     {
@@ -368,6 +445,7 @@ namespace Nethermind.Network
         public async Task StopAsync()
         {
             _nodeSource.NodeRemoved -= NodeSourceOnNodeRemoved;
+            _staticHostFilter.Changed -= OnStaticHostsChanged;
             _cancellationTokenSource.Cancel();
 
             StopTimers();

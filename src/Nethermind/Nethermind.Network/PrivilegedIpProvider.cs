@@ -12,7 +12,7 @@ namespace Nethermind.Network;
 
 /// <summary>
 /// Privileged-IP provider covering the must-keep node sources: static nodes (the <c>Network.StaticPeers</c>
-/// config and <see cref="IStaticNodesManager"/>) and trusted nodes (<see cref="ITrustedNodesManager"/>).
+/// config, <see cref="IStaticNodesManager"/> and <see cref="IStaticHostFilter"/>) and trusted nodes (<see cref="ITrustedNodesManager"/>).
 /// </summary>
 /// <remarks>
 /// Their inbound connections bypass the recent-IP rate-limit filter so an operator-configured peer is never
@@ -31,13 +31,16 @@ public sealed class PrivilegedIpProvider : IPrivilegedIpProvider
     private readonly IStaticNodesManager _staticNodesManager;
     private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly HashSet<IPAddress> _configStaticIps;
+    private readonly IStaticHostFilter _staticHostFilter;
 
     public PrivilegedIpProvider(
         IStaticNodesManager staticNodesManager,
         ITrustedNodesManager trustedNodesManager,
         INetworkConfig networkConfig,
-        ILogManager logManager)
+        ILogManager logManager,
+        IStaticHostFilter? staticHostFilter = null)
     {
+        _staticHostFilter = staticHostFilter ?? StaticHostFilter.Empty;
         _staticNodesManager = staticNodesManager;
         _trustedNodesManager = trustedNodesManager;
         ILogger logger = logManager.GetClassLogger<PrivilegedIpProvider>();
@@ -51,5 +54,6 @@ public sealed class PrivilegedIpProvider : IPrivilegedIpProvider
     public bool IsPrivileged(IPAddress ip) =>
         _configStaticIps.Contains(ip)
         || _staticNodesManager.ContainsIp(ip)
-        || _trustedNodesManager.ContainsIp(ip);
+        || _trustedNodesManager.ContainsIp(ip)
+        || _staticHostFilter.IsMatch(ip);
 }
