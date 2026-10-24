@@ -416,6 +416,24 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    // PUSH1, PUSH1 and a cold new-slot SSTORE cost 22,106 in Osaka. The frame's state pool pays the state gas
+    // above the 10,000 legacy share, which still comes from the callee's execution gas.
+    [TestCase(22_105L, false)]
+    [TestCase(22_106L, true)]
+    public void Execute_FrameCallee_PaysTheLegacyShareOfANewSlotFromExecutionGas(long calleeGas, bool expectedWrite)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(TestItem.AddressD, Prepare.EvmCode.Call(Observer, calleeGas).Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: TestItem.AddressD));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Process(tx).TransactionExecuted, Is.True);
+            AssertStorage(Observer, 0, expectedWrite ? UInt256.One : UInt256.Zero);
+        }
+    }
+
     // The spec reserves max(standard_gas_limit, calldata_floor_gas) rather than invalidating.
     [Test]
     public void Execute_FramesReserveLessGasThanTheCalldataFloor_StillExecutes()
