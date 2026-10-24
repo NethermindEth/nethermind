@@ -151,8 +151,8 @@ public class DebugRpcModule(
 
         blockParameter = new BlockParameter(header!.Hash!);
 
-        if (options?.BlockOverrides?.BeaconRoot is not null)
-            return ResultWrapper<GethLikeTxTrace>.Fail("block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput);
+        if (BlockchainBridge.GetUnsupportedBlockOverrideError(options?.BlockOverrides) is { } overrideError)
+            return ResultWrapper<GethLikeTxTrace>.Fail(overrideError, ErrorCodes.InvalidInput);
 
         // The call converts against the fork it runs in, which a block override can change.
         IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);

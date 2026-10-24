@@ -149,6 +149,83 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Rpc_rejects_unsupported_call_block_overrides(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values("beaconRoot", "withdrawals", "nonemptyWithdrawals", "both", "null")] string field)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString() };
+        object blockOverride = JsonSerializer.Deserialize<object>(field switch
+        {
+            "beaconRoot" => $"{{\"beaconRoot\":\"{Hash256.Zero}\"}}",
+            "withdrawals" => """{"withdrawals": []}""",
+            "nonemptyWithdrawals" => $$"""{"withdrawals":[{"index":"0x0","validatorIndex":"0x0","address":"{{TestItem.AddressB}}","amount":"0x1"}]}""",
+            "both" => $"{{\"beaconRoot\":\"{TestItem.KeccakA}\",\"withdrawals\":[]}}",
+            _ => """{"beaconRoot":null,"withdrawals":null}"""
+        })!;
+
+        string response = await ctx.Test.TestEthRpc(method, call, "latest", null, blockOverride);
+        JToken? error = JToken.Parse(response)["error"];
+        if (field == "null")
+        {
+            Assert.That(error, Is.Null, response);
+            return;
+        }
+        string rejectedField = field switch { "both" => "beaconRoot", "nonemptyWithdrawals" => "withdrawals", _ => field };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(-32000), response);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo($"block override \"{rejectedField}\" is not supported for this RPC method"), response);
+        }
+    }
+
+    [Test]
+    public async Task Simulation_block_overrides_are_not_rejected_by_call_validation()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object payload = new
+        {
+            blockStateCalls = new[]
+            {
+                new
+                {
+                    blockOverrides = new { withdrawals = Array.Empty<object>() },
+                    calls = new[] { new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString() } }
+                }
+            }
+        };
+
+        string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload, "latest");
+        JToken result = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null, response);
+            Assert.That(result["result"]?[0]?["calls"]?[0]?["status"]?.Value<string>(), Is.EqualTo("0x1"), response);
+        }
+    }
+
+    [Test]
+    public async Task Unsupported_block_overrides_precede_transaction_and_state_override_validation(
+        [Values("eth_call", "eth_estimateGas")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), maxFeePerGas = "0x1", maxPriorityFeePerGas = "0x2" };
+        object stateOverride = new Dictionary<string, object>
+        {
+            [TestItem.AddressA.ToString()] = new { state = new { }, stateDiff = new { } }
+        };
+        object blockOverride = new { withdrawals = Array.Empty<object>() };
+
+        string response = await ctx.Test.TestEthRpc(method, call, "latest", stateOverride, blockOverride);
+        JToken? error = JToken.Parse(response)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(-32000), response);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo("block override \"withdrawals\" is not supported for this RPC method"), response);
+        }
+    }
+
+    [Test]
     public async Task Rpc_resolves_a_call_against_its_block_override(
         [Values("eth_call", "eth_estimateGas")] string method,
         [Values] bool dynamicFees)
@@ -1851,7 +1928,7 @@ public partial class EthRpcModuleTests
         JToken error = JToken.Parse(serialized)["error"]!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
             Assert.That(error["message"]!.Value<string>(), Is.EqualTo(BlockOverride.WithdrawalsNotSupported));
         }
     }
