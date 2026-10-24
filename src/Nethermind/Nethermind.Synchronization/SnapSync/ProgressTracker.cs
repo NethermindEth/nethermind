@@ -243,6 +243,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     _logger.Info("Snap - State Ranges (Phase 1 of 2) finished.");
                     _snapTrieFactory.MarkRangePhaseFinished();
+                    PublishCoveredAccountKeySpace(AccountKeySpace);
                 }
 
                 LogRequest(NO_REQUEST);
@@ -504,7 +505,8 @@ namespace Nethermind.Synchronization.SnapSync
                 : partition.KeySpaceWidth;
             long delta = covered - partition.CoveredKeySpace;
             partition.CoveredKeySpace = covered;
-            PublishCoveredAccountKeySpace(Interlocked.Add(ref _coveredAccountKeySpace, delta));
+            // Storage, code and refresh requests can run after the last account range; only the range phase end publishes the full scale.
+            PublishCoveredAccountKeySpace(Math.Min(Interlocked.Add(ref _coveredAccountKeySpace, delta), AccountKeySpace - 1));
         }
 
         private void SetCoveredAccountKeySpace(long covered)

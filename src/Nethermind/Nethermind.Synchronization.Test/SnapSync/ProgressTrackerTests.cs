@@ -137,6 +137,7 @@ public class ProgressTrackerTests
     }
 
     [Test]
+    [NonParallelizable]
     public void Will_mark_range_phase_finished_when_ranges_drain()
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
@@ -148,8 +149,11 @@ public class ProgressTrackerTests
         progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
         progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
         request.Dispose();
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale - 1));
+
         bool finished = progressTracker.IsFinished(out _);
         Assert.That(finished, Is.True);
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
 
         snapTrieFactory.Received(1).MarkRangePhaseFinished();
         using (Assert.EnterMultipleScope())
