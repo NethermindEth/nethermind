@@ -1775,6 +1775,7 @@ public partial class EthRpcModuleTests
         Address target = Eip8253Constants.MainnetAccounts[0];
         TestSpecProvider specProvider = new(Bogota.Instance)
         {
+            Eip8198SlotDurationMs = 12_000,
             NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
             ForkOnBlockNumber = ulong.MaxValue,
             ChainId = BlockchainIds.Mainnet,
@@ -2866,7 +2867,8 @@ public partial class EthRpcModuleTests
     public async Task Eth_createAccessList_keeps_entries_that_only_raise_the_eip8131_content_floor()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(
-            new OverridableReleaseSpec(Bogota.Instance) { IsEip7981Enabled = false, IsEip8131Enabled = true }));
+            new OverridableReleaseSpec(Bogota.Instance) { IsEip7981Enabled = false, IsEip8131Enabled = true })
+        { Eip8198SlotDurationMs = 12_000 });
         const string contractAddr = "0xc200000000000000000000000000000000000000";
         const string accessedAccount = "0x00000000000000000000000000000000deadbeef";
         const int calldataBytes = 1000;

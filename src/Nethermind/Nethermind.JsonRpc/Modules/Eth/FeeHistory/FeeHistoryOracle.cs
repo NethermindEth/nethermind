@@ -140,7 +140,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
-                    BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
+                    BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpec(b.Number + 1, b.Timestamp)),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     nextFeePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
@@ -200,7 +200,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 : null;
 
             ulong oldestBlockNumber = info.BlockNumber;
-            baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
+            baseFeePerGas[effectiveBlockCount] = GetNextBaseFee(info);
             baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGasEst;
 
             while (historyInfo is not null && effectiveBlockCount-- > 0)
@@ -241,6 +241,19 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             TryRunCleanup();
 
             return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas, gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
+        }
+
+        /// <summary>
+        /// Returns the base fee of the block after <paramref name="info"/>: the canonical child's actual value when
+        /// the child exists, otherwise the estimate.
+        /// </summary>
+        /// <remarks>
+        /// The estimate picks the next block's spec from the block's own timestamp, so at a timestamp fork it is one block off.
+        /// </remarks>
+        private UInt256 GetNextBaseFee(in BlockFeeHistorySearchInfo info)
+        {
+            BlockHeader? child = _blockTree.FindHeader(info.BlockNumber + 1, BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return child is not null && child.ParentHash == info.BlockHash ? child.BaseFeePerGas : info.BaseFeePerGasEst;
         }
 
         private static void DropLeading<T>(ArrayPoolList<T> list, int count)

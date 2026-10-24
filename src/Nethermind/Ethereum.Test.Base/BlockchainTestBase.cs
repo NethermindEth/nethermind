@@ -105,8 +105,11 @@ public abstract class BlockchainTestBase
         if (test.NetworkAfterTransition is not null)
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
 
-        return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+        // Fixtures omit slot duration; the Heze release uses twelve-second slots.
+        return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray()) { Eip8198SlotDurationMs = FixtureEip8198SlotDurationMs };
     }
+
+    private const ulong FixtureEip8198SlotDurationMs = 12_000;
 
     protected async Task<EthereumTestResult> RunTest(
         BlockchainTest test,
@@ -492,7 +495,7 @@ public abstract class BlockchainTestBase
 
                     using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
                     PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
-                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
+                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, executionPayload: enginePayload.Params[0]);
                     lastStatus = payloadStatus.Status;
                     if (payloadStatus.ValidationError is not null)
                         lastValidationError = payloadStatus.ValidationError;
@@ -515,7 +518,7 @@ public abstract class BlockchainTestBase
                 else
                 {
                     PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
-                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.InclusionListSatisfied);
+                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.InclusionListSatisfied, enginePayload.Params[0]);
                     lastStatus = payloadStatus.Status;
                     if (payloadStatus.ValidationError is not null)
                         lastValidationError = payloadStatus.ValidationError;
@@ -609,7 +612,7 @@ public abstract class BlockchainTestBase
     private static void AssertPayloadWasNotExpectedToError(int? expectedErrorCode, string? validationError, int payloadVersion) =>
         Assert.That(DescribeMissingRpcError(expectedErrorCode, validationError, payloadVersion), Is.Null);
 
-    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, bool? expectedInclusionListSatisfied = null)
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, bool? expectedInclusionListSatisfied = null, JsonElement? executionPayload = null)
     {
         string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
         Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
@@ -620,7 +623,7 @@ public abstract class BlockchainTestBase
                 $"engine_newPayloadV{payloadVersion} reported inclusionListSatisfied={(payloadStatus as PayloadStatusV2)?.InclusionListSatisfied}, expected {expectedIlSatisfied}");
 
         if (expectedValidationError is not null)
-            AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
+            AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion, executionPayload);
     }
 
     /// <summary>
@@ -652,11 +655,11 @@ public abstract class BlockchainTestBase
     private static void AssertFcuInclusionListSatisfied(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion) =>
         Assert.That(DescribeFcuInclusionListMismatch(response, enginePayload, fcuVersion), Is.Null);
 
-    private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
+    private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion, JsonElement? executionPayload)
     {
         Assert.That(actualError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} returned INVALID without validation error. Expected: {expectedError}");
 
-        string[] mapped = MapValidationErrorsToEestExceptions(actualError!);
+        string[] mapped = MapValidationErrorsToEestExceptions(actualError!, executionPayload);
         string[] expected = expectedError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         bool matches = expected.Any(e => mapped.Contains(e) || actualError!.Contains(e, StringComparison.Ordinal));
 
@@ -775,7 +778,7 @@ public abstract class BlockchainTestBase
         ("BlockException.INVALID_BAL_MISSING_ACCOUNT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
     ];
 
-    private static string[] MapValidationErrorsToEestExceptions(string validationError) =>
+    internal static string[] MapValidationErrorsToEestExceptions(string validationError, JsonElement? executionPayload = null) =>
     [
         .. ValidationErrorSubstringMappings
             .Where(m => validationError.Contains(m.Substring, StringComparison.Ordinal))
@@ -783,8 +786,51 @@ public abstract class BlockchainTestBase
             .Concat(ValidationErrorRegexMappings
                 .Where(m => m.Pattern.IsMatch(validationError))
                 .Select(m => m.ExpectedError))
-            .Distinct()
+            .Distinct(),
+        .. executionPayload is { } payload && MapLegacySignatureOverflow(validationError, payload) is { } signatureError
+            ? [signatureError]
+            : Array.Empty<string>()
     ];
+
+    private static readonly Regex TransactionIntegerOverflow = ValidationErrorRegex(@"^Transaction (\d+) is not valid: (Unexpected length of integer value \d+ at position \d+)$");
+
+    private static string? MapLegacySignatureOverflow(string validationError, JsonElement payload)
+    {
+        Match match = TransactionIntegerOverflow.Match(validationError);
+        if (!match.Success || !int.TryParse(match.Groups[1].Value, out int index)
+            || !payload.TryGetProperty("transactions", out JsonElement transactions)
+            || index >= transactions.GetArrayLength()) return null;
+
+        byte[] bytes = Bytes.FromHexString(transactions[index].GetString()!);
+        if (bytes.Length == 0 || bytes[0] < 0xc0) return null;
+
+        try
+        {
+            RlpReader reader = new(bytes);
+            reader.ReadSequenceLength();
+            reader.SkipItems(6);
+            try
+            {
+                reader.DecodeULong();
+            }
+            catch (RlpException exception)
+            {
+                // Legacy EIP-155 v can overflow before signature or chain-id validation.
+                if (exception.Message != match.Groups[2].Value) return null;
+                ReadOnlySpan<byte> encodedV = reader.DecodeByteArraySpan();
+                UInt256 largestV = (UInt256)ulong.MaxValue * 2 + 36;
+                return encodedV.Length > 32 || new UInt256(encodedV, isBigEndian: true) > largestV
+                    ? "TransactionException.INVALID_SIGNATURE_VRS"
+                    : "TransactionException.INVALID_CHAINID";
+            }
+        }
+        catch (RlpException)
+        {
+            return null;
+        }
+
+        return null;
+    }
 
     private static Regex ValidationErrorRegex(string pattern) => new(pattern, ValidationErrorRegexOptions);
 

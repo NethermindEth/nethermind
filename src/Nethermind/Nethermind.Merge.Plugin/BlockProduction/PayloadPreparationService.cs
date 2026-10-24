@@ -13,6 +13,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
@@ -49,6 +50,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     private readonly TimeSpan _cleanupOldPayloadDelay;
     private readonly TimeSpan _timePerSlot;
+    private readonly SlotSchedule? _slots;
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
@@ -59,13 +61,15 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
-        IBlocksConfig blockConfig) : this(
+        IBlocksConfig blockConfig,
+        ISpecProvider? specProvider = null) : this(
         blockProducer,
         txPool,
         blockImprovementContextFactory,
         timerFactory,
         logManager,
-        TimeSpan.FromSeconds(blockConfig.SecondsPerSlot))
+        TimeSpan.FromSeconds(blockConfig.SecondsPerSlot),
+        slots: specProvider?.GetSlotSchedule(blockConfig.SecondsPerSlot))
     {
     }
 
@@ -77,8 +81,10 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null)
+        TimeSpan? improvementDelay = null,
+        SlotSchedule? slots = null)
     {
+        _slots = slots;
         _blockProducer = blockProducer;
         _txPool = txPool;
         _blockImprovementContextFactory = blockImprovementContextFactory;
@@ -205,6 +211,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         long startTimestamp = Stopwatch.GetTimestamp();
         CancellationToken token = cts.Token;
         long added = _txPool.PendingTransactionsAdded;
+        TimeSpan timePerSlot = GetTimePerSlot(payloadAttributes.Timestamp);
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
         blockImprovementContext.ImprovementTask.ContinueWith(
             b =>
@@ -225,7 +232,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     return;
                 }
 
-                TimeSpan dynamicDelay = CalculateImprovementDelay(startDateTime, startTimestamp);
+                TimeSpan dynamicDelay = CalculateImprovementDelay(startDateTime, startTimestamp, timePerSlot);
                 if (dynamicDelay == Timeout.InfiniteTimeSpan)
                 {
                     // If we can't finish before that cutoff, skip the improvement
@@ -254,7 +261,11 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         return blockImprovementContext;
     }
 
-    private TimeSpan CalculateImprovementDelay(DateTimeOffset startDateTime, long startTimestamp)
+    /// <summary>The length of the slot the payload is built for: EIP-8198's from its fork, else the configured one.</summary>
+    internal TimeSpan GetTimePerSlot(ulong payloadTimestamp) =>
+        _slots is null ? _timePerSlot : TimeSpan.FromSeconds(_slots.GetSecondsPerSlot(payloadTimestamp));
+
+    private TimeSpan CalculateImprovementDelay(DateTimeOffset startDateTime, long startTimestamp, TimeSpan timePerSlot)
     {
         // We want to keep building better blocks throughout this slot so that when
         // the consensus client requests the block, we have the best version ready.
@@ -273,7 +284,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             // Calculate how much time is left in the slot:
             TimeSpan timeUsedInSlot = DateTimeOffset.UtcNow - startDateTime;
-            TimeSpan timeRemainingInSlot = _timePerSlot - timeUsedInSlot;
+            TimeSpan timeRemainingInSlot = timePerSlot - timeUsedInSlot;
 
             // Ensure we always have at least a tiny delay to avoid spinning too fast.
             TimeSpan minDelay = TimeSpan.FromMilliseconds(1);
@@ -284,7 +295,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
             // progress = 0  => at the very start of the slot
             // progress = 1  => at the very end of the slot
-            double progress = timeUsedInSlot.TotalSeconds / _timePerSlot.TotalSeconds;
+            double progress = timeUsedInSlot.TotalSeconds / timePerSlot.TotalSeconds;
 
             // Clamp progress to [0, 1] just in case:
             progress = Math.Clamp(progress, 0.0, 1.0);
@@ -332,7 +343,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         // We don't want to keep improving a block too far beyond the slot duration.
         // Specifically, we allow ourselves at most 30% extra of the nominal slot time.
         // This is just a break in case the improvement is never cancelled.
-        DateTimeOffset slotPlusThirdFinishTime = startDateTime + _timePerSlot * 1.3;
+        DateTimeOffset slotPlusThirdFinishTime = startDateTime + timePerSlot * 1.3;
         if (whenWeCouldFinishNextProduction > slotPlusThirdFinishTime)
         {
             // If we can't finish before that cutoff, skip the improvement

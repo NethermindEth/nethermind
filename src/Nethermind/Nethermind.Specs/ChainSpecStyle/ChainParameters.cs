@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -206,6 +207,20 @@ public class ChainParameters
     public ulong? Eip5920TransitionTimestamp { get; set; }
     public ulong? Eip8116TransitionTimestamp { get; set; }
     public ulong? Eip8360TransitionTimestamp { get; set; }
+    public ulong? Eip8198TransitionTimestamp { get; set; }
+
+    /// <summary>
+    /// Slot length from the EIP-8198 fork, in milliseconds; <c>null</c> keeps <c>Blocks.SecondsPerSlot</c>. See
+    /// <see cref="ISpecProvider.Eip8198SlotDurationMs"/>.
+    /// </summary>
+    public ulong? Eip8198SlotDurationMs { get; set; }
+
+    /// <summary>Checks that <see cref="Eip8198SlotDurationMs"/>, when set, is a positive whole number of seconds.</summary>
+    internal void ValidateEip8198SlotDuration()
+    {
+        if (Eip8198SlotDurationMs is { } slotDurationMs) SlotSchedule.ValidateSlotDurationMs(slotDurationMs);
+    }
+
     public ulong? Eip3298TransitionTimestamp { get; set; }
     public ulong? Eip8131TransitionTimestamp { get; set; }
     public ulong? Eip8279TransitionTimestamp { get; set; }

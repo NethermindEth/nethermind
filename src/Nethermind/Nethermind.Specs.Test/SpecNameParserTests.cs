@@ -22,6 +22,7 @@ public class SpecNameParserTests
             Assert.That(spec, Is.SameAs(Bogota.Instance));
             Assert.That(spec.IsEip8037Enabled, Is.True);
             Assert.That(spec.IsEip7805Enabled, Is.True);
+            Assert.That(spec.IsEip8198Enabled, Is.True);
             Assert.That(spec.IsEip8141Enabled, Is.False);
         }
     }

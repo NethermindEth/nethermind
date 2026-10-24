@@ -17,6 +17,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -64,6 +65,41 @@ public partial class EthRpcModuleTests
 
         Assert.That(result.ErrorCode, Is.Zero);
         return (result.Data.BaseFeePerBlobGas.ToArray(), result.Data.BlobGasUsedRatio.ToArray());
+    }
+
+    // A block at or after the fork timestamp predicts with EIP-8198. A block just before it predicts with 1/8 while
+    // it is the head; once its canonical child is known, the child's actual base fee is reported.
+    [TestCase(0UL, false, 1_104_166_666UL, TestName = "Eth_feeHistory_Eip8198_newest_after_fork")]
+    [TestCase(1UL, false, 1_125_000_000UL, TestName = "Eth_feeHistory_Eip8198_newest_before_fork_without_child")]
+    [TestCase(1UL, true, 1_104_166_666UL, TestName = "Eth_feeHistory_Eip8198_newest_before_fork_with_child_after_fork")]
+    public void Eth_feeHistory_next_base_fee_uses_timestamp_activated_eip8198(ulong secondsBeforeFork, bool childKnown, ulong expectedNextBaseFee)
+    {
+        const ulong forkTimestamp = 1_000;
+        Block block = Build.A.Block.WithNumber(0).WithTimestamp(forkTimestamp - secondsBeforeFork).WithBaseFeePerGas(1_000_000_000)
+            .WithGasLimit(30_000_000).WithGasUsed(30_000_000).TestObject;
+        BlockHeader child = Build.A.BlockHeader.WithParent(block.Header).WithNumber(1).WithTimestamp(forkTimestamp).WithBaseFee(1_104_166_666).TestObject;
+
+        IBlockTree blockFinder = Substitute.For<IBlockTree>();
+        blockFinder.Head.Returns(block);
+        blockFinder.FindBlock(Arg.Any<BlockParameter>(), Arg.Any<bool>()).Returns(block);
+        blockFinder.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(block);
+        if (childKnown) blockFinder.FindHeader(1UL, Arg.Any<BlockTreeLookupOptions>()).Returns(child);
+
+        ISpecProvider specProvider = new CustomSpecProvider(
+            ((ForkActivation)0, London.Instance),
+            (new ForkActivation(0, forkTimestamp), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))
+        {
+            Eip8198SlotDurationMs = 10_000
+        };
+        FeeHistoryOracle oracle = new(blockFinder, Substitute.For<IReceiptStorage>(), specProvider);
+
+        using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(0UL), []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.Zero);
+            Assert.That(result.Data.BaseFeePerGas.ToArray(), Is.EqualTo(new UInt256[] { 1_000_000_000, expectedNextBaseFee }));
+        }
     }
 
     public static IEnumerable<TestCaseData> FeeHistoryBlobTestCases

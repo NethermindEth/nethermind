@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using NSubstitute;
 
 namespace Nethermind.Core.Test;
@@ -16,6 +17,8 @@ public static class ReleaseSpecSubstitute
     public static T Configure<T>(T sub) where T : class, IReleaseSpec
     {
         sub.GasCosts.Returns(_ => new SpecGasCosts(sub));
+        // EIP-1559's maximum base fee change is 1/denominator; a substitute would answer a zero numerator.
+        sub.BaseFeeMaxChangeNumerator.Returns(UInt256.One);
         // A substitute intercepts IsPrecompile rather than running the interface's default body, so route
         // it back through Precompiles: a test that arranges the set still gets the membership it arranged.
         // The read goes through the substitute, so a Received() assertion on Precompiles counts it too.

@@ -389,19 +389,22 @@ namespace Nethermind.Facade
         /// <summary>Whether the request left the blob fee cap to be filled, and the blob base fee override it carried.</summary>
         private readonly record struct BlobFeeCapFill(bool IsFilled, UInt256? BlobBaseFeeOverride);
 
+        private SlotSchedule? _slots;
+
         /// <summary>
         /// A failure without standard text names the gas the next block's rules fund, run with the blob fee cap
         /// filled from the next block's blob base fee when the request left it out.
         /// </summary>
         private FundedRunContext CreateFundedRunContext(BlockHeader header, BlobFeeCapFill blobFeeCapFill)
         {
-            IReleaseSpec fundingSpec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
+            ulong nextTimestamp = (_slots ??= specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot)).GetNextSlotTimestamp(header.Timestamp);
+            IReleaseSpec fundingSpec = specProvider.GetSpec(header.Number + 1, nextTimestamp);
             if (!blobFeeCapFill.IsFilled)
                 return new FundedRunContext(fundingSpec, null);
 
             BlockHeader nextHeader = header.Clone();
             nextHeader.Number += 1;
-            nextHeader.Timestamp = Math.Max(header.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds);
+            nextHeader.Timestamp = Math.Max(nextTimestamp, timestamper.UnixTime.Seconds);
             IReleaseSpec nextSpec = specProvider.GetSpec(nextHeader);
             if (!nextSpec.IsEip4844Enabled)
                 return new FundedRunContext(fundingSpec, null);

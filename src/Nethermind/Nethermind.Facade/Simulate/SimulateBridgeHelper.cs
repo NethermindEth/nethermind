@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -25,6 +26,11 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider)
 {
+    // Rebuilt only when a request brings a different spec provider.
+    private SlotScheduleCache? _slots;
+
+    private sealed record SlotScheduleCache(ISpecProvider SpecProvider, SlotSchedule Slots);
+
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
         | ProcessingOptions.IgnoreParentNotOnMainChain
@@ -317,7 +323,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     /// Post-fork it is the beacon chain slot containing <paramref name="timestamp"/> where that can be derived, else
     /// <paramref name="childSlot"/>, else a synthetic 0 so SLOTNUM stays executable.
     /// <para>
-    /// <c>slot = (timestamp - beacon genesis) / seconds per slot</c>, exact because every post-merge block sits on that grid.
+    /// The slot comes from the beacon slot grid (<see cref="SlotSchedule"/>: the configured length from beacon genesis, then
+    /// EIP-8198's from its fork), exact because every post-merge block sits on that grid.
     /// A slotless parent (normally the real base block) off the grid means the configured slot length or genesis is not this
     /// chain's, so derivation falls back. A parent carrying a slot may be a simulated block whose time override fell between
     /// slots and was advanced, so its grid slot is only a floor. The result stays above the parent's slot (its grid slot
@@ -335,27 +342,32 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         }
 
         ulong fallbackSlot = childSlot ?? 0;
-        ulong secondsPerSlot = blocksConfig.SecondsPerSlot;
-        if (specProvider.BeaconChainGenesisTimestamp is not { } genesis
-            || secondsPerSlot == 0
-            || parent.Timestamp < genesis
-            || timestamp < genesis)
+        if (blocksConfig.SecondsPerSlot == 0)
         {
             return fallbackSlot;
         }
 
-        ulong parentOffset = parent.Timestamp - genesis;
-        ulong parentGridSlot = parentOffset / secondsPerSlot;
+        SlotScheduleCache? cache = _slots;
+        if (cache is null || !ReferenceEquals(cache.SpecProvider, specProvider))
+        {
+            _slots = cache = new SlotScheduleCache(specProvider, specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot));
+        }
+
+        SlotSchedule slots = cache.Slots;
+        if (!slots.TryGetSlot(parent.Timestamp, out ulong parentGridSlot) || !slots.TryGetSlot(timestamp, out ulong slot))
+        {
+            return fallbackSlot;
+        }
+
         bool parentFitsGrid = parent.SlotNumber is { } parentSlot
             ? parentSlot >= parentGridSlot
-            : parentOffset % secondsPerSlot == 0;
+            : slots.IsSlotStart(parent.Timestamp);
         if (!parentFitsGrid)
         {
             return fallbackSlot;
         }
 
         ulong previousSlot = parent.SlotNumber ?? parentGridSlot;
-        ulong slot = (timestamp - genesis) / secondsPerSlot;
         return slot <= previousSlot ? previousSlot + 1 : slot;
     }
 

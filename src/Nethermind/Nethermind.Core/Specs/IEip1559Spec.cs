@@ -19,6 +19,10 @@ namespace Nethermind.Core.Specs
         public Address? FeeCollector => null;
         public UInt256? Eip1559BaseFeeMinValue => null;
         public UInt256 ForkBaseFee { get; }
+        /// <summary>Numerator of the maximum per-block base fee change, <c>numerator / denominator</c>; 1 before EIP-8198.</summary>
+        public UInt256 BaseFeeMaxChangeNumerator { get; }
+
+        /// <summary>Denominator of the maximum per-block base fee change, <c>numerator / denominator</c>.</summary>
         public UInt256 BaseFeeMaxChangeDenominator { get; }
         public ulong ElasticityMultiplier { get; }
         public IBaseFeeCalculator BaseFeeCalculator { get; }
@@ -31,6 +35,7 @@ namespace Nethermind.Core.Specs
         public Address? FeeCollector { get; init; } = spec.FeeCollector;
         public UInt256? Eip1559BaseFeeMinValue { get; init; } = spec.Eip1559BaseFeeMinValue;
         public UInt256 ForkBaseFee { get; init; } = spec.ForkBaseFee;
+        public UInt256 BaseFeeMaxChangeNumerator { get; init; } = spec.BaseFeeMaxChangeNumerator;
         public UInt256 BaseFeeMaxChangeDenominator { get; init; } = spec.BaseFeeMaxChangeDenominator;
         public ulong ElasticityMultiplier { get; init; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; init; } = spec.BaseFeeCalculator;

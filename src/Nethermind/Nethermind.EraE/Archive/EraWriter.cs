@@ -9,6 +9,7 @@ using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Era1;
@@ -18,7 +19,6 @@ using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Snappier;
-using Timestamper = Nethermind.Core.Timestamper;
 
 namespace Nethermind.EraE.Archive;
 
@@ -33,8 +33,7 @@ public sealed class EraWriter : IDisposable
 {
     public const int MaxEraSize = 8192;
 
-    private const long MillisecondsPerSecond = 1000;
-    private const int BeaconSlotSeconds = 12;
+    private const ulong BeaconSlotSeconds = 12;
     private const int IndexFieldSize = 8; // sizeof(long) — each ComponentIndex field is a little-endian int64
 
     private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
@@ -42,7 +41,7 @@ public sealed class EraWriter : IDisposable
     private readonly E2StoreWriter _e2StoreWriter;
     private readonly ISpecProvider _specProvider;
     private readonly IBeaconRootsProvider? _beaconRootsProvider;
-    private readonly SlotTime? _slotTime;
+    private readonly SlotSchedule? _slots;
 
     // Buffered per-block RLP payloads. These are written in section order during Finalize().
     private readonly ArrayPoolList<ArrayPoolSpan<byte>> _headers = new(MaxEraSize);
@@ -84,11 +83,7 @@ public sealed class EraWriter : IDisposable
 
         if (beaconRootsProvider is not null && specProvider.BeaconChainGenesisTimestamp.HasValue)
         {
-            _slotTime = new SlotTime(
-                specProvider.BeaconChainGenesisTimestamp.Value * MillisecondsPerSecond,
-                new Timestamper(),
-                TimeSpan.FromSeconds(BeaconSlotSeconds),
-                TimeSpan.Zero);
+            _slots = specProvider.GetSlotSchedule(BeaconSlotSeconds);
         }
     }
 
@@ -133,9 +128,11 @@ public sealed class EraWriter : IDisposable
 
         AddEncodedPayloads(block, receipts, rlpBehaviors, spec.IsEip658Enabled);
 
-        if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
+        if (isPostMerge && _beaconRootsProvider is not null && _slots is not null)
         {
-            long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * MillisecondsPerSecond);
+            long slot = _slots.TryGetSlot(block.Header.Timestamp, out ulong beaconSlot)
+                ? (long)beaconSlot
+                : throw new EraException($"Block {block.Number} timestamp {block.Header.Timestamp} is before the beacon chain genesis.");
             (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots =
                 await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
             _blocksRootContext!.ProcessBlock(block, roots?.BeaconBlockRoot, roots?.StateRoot);

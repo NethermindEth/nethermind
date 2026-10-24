@@ -11,6 +11,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -432,7 +433,7 @@ public class GethGenesisLoaderTests
     [TestCase("eip8141PrototypeTime", false, true)]
     public void Genesis_fork_label_picks_one_of_the_two_amsterdam_successors(string label, bool eip7805, bool eip8141)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15, \"eip8198SlotDurationMs\": 6000");
 
         using (Assert.EnterMultipleScope())
         {
@@ -565,6 +566,32 @@ public class GethGenesisLoaderTests
             Assert.That(blobScheduleList[1].Timestamp, Is.EqualTo(1800000000));
             Assert.That(blobScheduleList[1].Target, Is.EqualTo(6));
             Assert.That(blobScheduleList[1].Max, Is.EqualTo(9));
+        }
+    }
+
+    [Test]
+    public void Can_load_bogota_blob_schedule([Values(0UL, 100UL)] ulong bogotaTimestamp)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $$"""
+            "cancunTime": 0,
+            "amsterdamTime": 0,
+            "bogotaTime": {{bogotaTimestamp}},
+            "eip8198SlotDurationMs": 12000,
+            "blobSchedule": {
+                "amsterdam": { "target": 14, "max": 21, "baseFeeUpdateFraction": 11684671 },
+                "bogota": { "target": 12, "max": 18, "baseFeeUpdateFraction": 12018519 }
+            }
+            """);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec spec = provider.GetSpec(ForkActivation.TimestampOnly(bogotaTimestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.TargetBlobCount, Is.EqualTo(12));
+            Assert.That(spec.MaxBlobCount, Is.EqualTo(18));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(12018519));
+            if (bogotaTimestamp != 0)
+                Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(bogotaTimestamp - 1)).MaxBlobCount, Is.EqualTo(21));
         }
     }
 
@@ -799,6 +826,195 @@ public class GethGenesisLoaderTests
         Assert.That(chainSpec.Parameters.BeaconChainGenesisTimestamp, Is.EqualTo(expected));
     }
 
+    [TestCase("\"eip8198SlotDurationMs\": 6000", 6_000UL)]
+    [TestCase("\"eip8198SlotDurationMs\": 12000", 12_000UL)]
+    [TestCase("", null)]
+    public void Loads_eip8198_slot_duration(string configExtra, ulong? expected)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.EqualTo(expected));
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).Eip8198SlotDurationMs, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Unscheduled_eip8198_needs_no_slot_duration()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 0");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.Null);
+            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.Null);
+        }
+    }
+
+    /// <summary>
+    /// The Heze devnet genesis (ethpandaops heze-devnets devnet-1 config with the devnet-2 Bogota time and blob parameters):
+    /// <c>bogotaTime</c> alone turns on EIP-7805 and EIP-8198, with nothing else required.
+    /// </summary>
+    [Test]
+    public void Heze_devnet_genesis_activates_focil_and_eip8198_at_bogota_time()
+    {
+        const ulong bogotaTime = 1_792_416_379;
+        ChainSpec chainSpec = LoadFromString($$"""
+            {
+              "config": {
+                "chainId": 7084864608,
+                "homesteadBlock": 0,
+                "eip150Block": 0,
+                "eip155Block": 0,
+                "eip158Block": 0,
+                "byzantiumBlock": 0,
+                "constantinopleBlock": 0,
+                "petersburgBlock": 0,
+                "istanbulBlock": 0,
+                "berlinBlock": 0,
+                "londonBlock": 0,
+                "mergeNetsplitBlock": 0,
+                "terminalTotalDifficulty": 0,
+                "terminalTotalDifficultyPassed": true,
+                "shanghaiTime": 0,
+                "cancunTime": 0,
+                "blobSchedule": {
+                  "cancun": { "target": 3, "max": 6, "baseFeeUpdateFraction": 3338477 },
+                  "prague": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 },
+                  "bpo1": { "target": 10, "max": 15, "baseFeeUpdateFraction": 8346193 },
+                  "bpo2": { "target": 14, "max": 21, "baseFeeUpdateFraction": 11684671 },
+                  "bogota": { "target": 12, "max": 18, "baseFeeUpdateFraction": 12018519 }
+                },
+                "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
+                "pragueTime": 0,
+                "osakaTime": 0,
+                "bpo1Time": 0,
+                "bpo2Time": 0,
+                "amsterdamTime": 0,
+                "bogotaTime": {{bogotaTime}}
+              },
+              "alloc": {},
+              "coinbase": "0x0000000000000000000000000000000000000000",
+              "difficulty": "0x0",
+              "extraData": "",
+              "gasLimit": "0xbebc200",
+              "nonce": "0x1234",
+              "mixhash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "timestamp": "1791290722"
+            }
+            """);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(ForkActivation.TimestampOnly(bogotaTime - 1));
+        IReleaseSpec after = provider.GetSpec(ForkActivation.TimestampOnly(bogotaTime));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.IsEip7805Enabled, Is.False);
+            Assert.That(before.IsEip8198Enabled, Is.False);
+            Assert.That(before.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
+            Assert.That(before.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
+            Assert.That(before.MaxBlobCount, Is.EqualTo(21));
+            Assert.That(after.IsEip7805Enabled, Is.True);
+            Assert.That(after.IsEip8198Enabled, Is.True);
+            Assert.That(after.BaseFeeMaxChangeNumerator, Is.EqualTo((UInt256)5));
+            Assert.That(after.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)48));
+            Assert.That(after.TargetBlobCount, Is.EqualTo(12));
+            Assert.That(after.MaxBlobCount, Is.EqualTo(18));
+            Assert.That(after.BlobBaseFeeUpdateFraction, Is.EqualTo(12018519));
+            Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
+            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(bogotaTime), Is.EqualTo(12UL));
+        }
+    }
+
+    private static string ChainFile(string name) => Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains", name);
+
+    [TestCase("foundation.json")]
+    [TestCase("sepolia.json")]
+    public void Mainnet_and_sepolia_genesis_leave_eip8198_off(string file)
+    {
+        ChainSpec chainSpec = LoadChainSpec(ChainFile(file));
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec final = provider.GetFinalSpec();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.Null);
+            Assert.That(final.IsEip8198Enabled, Is.False);
+            Assert.That(final.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
+            Assert.That(final.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
+            Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
+            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp), Is.EqualTo(12UL));
+        }
+    }
+
+    [TestCase("foundation.json")]
+    [TestCase("sepolia.json")]
+    public void Mainnet_and_sepolia_genesis_load_an_eip8198_slot_duration(string file)
+    {
+        System.Text.Json.Nodes.JsonNode genesis = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(ChainFile(file)))!;
+        genesis["config"]!["eip8198SlotDurationMs"] = 10_000;
+        ChainSpecBasedSpecProvider provider = new(LoadAutoDetecting(genesis.ToJsonString()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(10_000UL));
+            // EIP-8198 is not scheduled, so the slot length stays Blocks.SecondsPerSlot.
+            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp), Is.EqualTo(12UL));
+        }
+    }
+
+    [Test]
+    public void Bogota_time_alone_loads() =>
+        Assert.That(() => LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 1792416379"), Throws.Nothing);
+
+    // The base fee fraction is EIP-8198's 5/48 whatever slot length the chain sets.
+    [TestCase(null, 12UL, TestName = "Bogota_without_a_slot_duration_keeps_12s_slots_and_five_forty_eighths")]
+    [TestCase(6_000UL, 6UL, TestName = "Bogota_with_a_6s_slot_duration_keeps_five_forty_eighths")]
+    [TestCase(10_000UL, 10UL, TestName = "Bogota_with_a_10s_slot_duration_keeps_five_forty_eighths")]
+    [TestCase(12_000UL, 12UL, TestName = "Bogota_with_a_12s_slot_duration_keeps_five_forty_eighths")]
+    public void Bogota_activates_eip8198_at_the_configured_timestamp(ulong? slotDurationMs, ulong expectedSecondsPerSlot)
+    {
+        const ulong bogotaTimestamp = 1_792_416_379;
+        string slotDuration = slotDurationMs is null ? "" : $",\n\"eip8198SlotDurationMs\": {slotDurationMs}";
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $$"""
+            "londonBlock": 0,
+            "amsterdamTime": 0,
+            "bogotaTime": {{bogotaTimestamp}},
+            "beaconChainGenesisTimestamp": {{bogotaTimestamp - 120}}{{slotDuration}}
+            """);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        BlockHeader parent = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 10, 30_000_000, bogotaTimestamp - 1, [])
+        {
+            GasUsed = 30_000_000,
+            BaseFeePerGas = 1_000_000_000
+        };
+        IReleaseSpec before = provider.GetSpec(new ForkActivation(11, bogotaTimestamp - 1));
+        IReleaseSpec after = provider.GetSpec(new ForkActivation(11, bogotaTimestamp));
+        SlotSchedule slots = provider.GetSlotSchedule(12);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.EqualTo(bogotaTimestamp));
+            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(slotDurationMs));
+            Assert.That(slots.GetSecondsPerSlot(bogotaTimestamp - 1), Is.EqualTo(12UL));
+            Assert.That(slots.GetSecondsPerSlot(bogotaTimestamp), Is.EqualTo(expectedSecondsPerSlot));
+            Assert.That(before.IsEip8198Enabled, Is.False);
+            Assert.That(after.IsEip8198Enabled, Is.True);
+            Assert.That(BaseFeeCalculator.Calculate(parent, before), Is.EqualTo((UInt256)1_125_000_000));
+            Assert.That(BaseFeeCalculator.Calculate(parent, after), Is.EqualTo((UInt256)1_104_166_666));
+        }
+    }
+
+    [TestCase(0UL)]
+    [TestCase(500UL)]
+    [TestCase(10_500UL)]
+    public void Rejects_eip8198_slot_duration_that_is_not_whole_seconds(ulong slotDurationMs) =>
+        Assert.That(
+            () => LoadStandardGethGenesis(configExtra: $"\"eip8198SlotDurationMs\": {slotDurationMs}"),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("positive multiple of 1000 ms"));
+
     [TestCase("", HistoryRetentionConstants.MinEpochsForBlockRequests)]
     [TestCase("\"minHistoryRetentionEpochs\": null", HistoryRetentionConstants.MinEpochsForBlockRequests)]
     [TestCase("\"minHistoryRetentionEpochs\": 14299", HistoryRetentionConstants.HistoryPruneEpochs)]
@@ -980,6 +1196,7 @@ public class GethGenesisLoaderTests
               "config": {
                 "chainId": 1,
                 {{configEntries}},
+                "eip8198SlotDurationMs": 6000,
                 "terminalTotalDifficulty": "0x0"
               },
               "difficulty": "0x1",

@@ -1102,12 +1102,13 @@ public class DebugRpcModule(
         HashSet<ulong> bundleBlockNumbers = new(bundles.Length);
         ulong lastBlockNumber = header.Number;
         ulong lastBlockTime = header.Timestamp;
+        SlotSchedule slots = specProvider.GetSlotSchedule(_secondsPerSlot);
         foreach (TransactionBundle bundle in bundles)
         {
             ulong number = bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
             // SimulateTxExecutor's clock: each filler and the bundle's own block advance one slot. Out-of-order
             // numbers make this meaningless, but SimulateTxExecutor rejects those before anything runs.
-            ulong time = bundle.BlockOverride?.Time ?? lastBlockTime + (number - lastBlockNumber) * _secondsPerSlot;
+            ulong time = bundle.BlockOverride?.Time ?? slots.AddSlots(lastBlockTime, number - lastBlockNumber);
             bundleBlockNumbers.Add(number);
             FillOmittedGas(bundle, specProvider.GetSpec(number, time));
             lastBlockNumber = number;

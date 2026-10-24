@@ -11,6 +11,8 @@ using System.Text.RegularExpressions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -77,7 +79,8 @@ public class ChainSpecHardforkLabelTests
     [TestCaseSource(nameof(AllLabels))]
     public void Label_expands_to_all_constituent_transition_fields(IHardforkLabel label)
     {
-        ChainSpec spec = Load($"\"{ToCamelCase(label.LabelName)}\": \"0x{ActivationValue:x}\"");
+        string slotDuration = label.Eips.Contains(8198) ? ", \"eip8198SlotDurationMs\": 6000" : "";
+        ChainSpec spec = Load($"\"{ToCamelCase(label.LabelName)}\": \"0x{ActivationValue:x}\"{slotDuration}");
 
         foreach (string propName in label.EipPropertyNames)
         {
@@ -136,6 +139,35 @@ public class ChainSpecHardforkLabelTests
 
             Assert.That(labelEips, Does.Contain(eip),
                 $"{fork.Name} introduces EIP-{eip} over {parent.Name} — label '{label.LabelName}' should expand it");
+        }
+    }
+
+    [Test]
+    public void Bogota_label_activates_eip8198_at_its_timestamp()
+    {
+        ChainSpec chainSpec = Load("\"bogota\": 1792416379, \"eip8198SlotDurationMs\": 6000");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.EqualTo(1_792_416_379UL));
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(1_792_416_378)).IsEip8198Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(1_792_416_379)).IsEip8198Enabled, Is.True);
+            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(6_000UL));
+        }
+    }
+
+    [Test]
+    public void Bogota_label_without_a_slot_duration_keeps_the_configured_slot_length()
+    {
+        ChainSpecBasedSpecProvider provider = new(Load("\"bogota\": 1792416379"));
+        SlotSchedule slots = provider.GetSlotSchedule(12);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
+            Assert.That(slots.GetSecondsPerSlot(1_792_416_378), Is.EqualTo(12UL));
+            Assert.That(slots.GetSecondsPerSlot(1_792_416_379), Is.EqualTo(12UL));
         }
     }
 
