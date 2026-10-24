@@ -93,7 +93,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.CreateState), Is.True);
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.SSetState), Is.True);
         EthereumGasPolicy.RefundStateGas(ref gas, GasCostOf.SSetState, stateGasFloor: 0);
-        Assert.That(gas.StateGasSpill - gas.StateGasSpillRefunded, Is.EqualTo(GasCostOf.CreateState - reservoir));
+        Assert.That(gas.StateGasSpill, Is.EqualTo(GasCostOf.CreateState + GasCostOf.SSetState - reservoir));
 
         if (executionGasAlreadyCleared)
             EthereumGasPolicy.ClearExecutionGas(ref gas);
@@ -109,7 +109,6 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             Assert.That(gas.StateReservoir, Is.EqualTo(reservoir));
             Assert.That(gas.StateGasUsed, Is.Zero);
             Assert.That(gas.StateGasSpill, Is.Zero);
-            Assert.That(gas.StateGasSpillRefunded, Is.EqualTo(GasCostOf.CreateState + GasCostOf.SSetState - reservoir));
             Assert.That(consumed.SpentGas, Is.EqualTo(gasLimit - (ulong)reservoir - executionRefund));
             Assert.That(consumed.BlockGas, Is.EqualTo(gasLimit - (ulong)reservoir - (eip7778Enabled ? 0 : executionRefund)));
             Assert.That(consumed.BlockStateGas, Is.Zero);

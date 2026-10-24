@@ -1785,7 +1785,9 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
         int inputs = opcode == Instruction.DELEGATECALL ? 6 : 7;
         ulong entryGas = available - reservoir - (ulong)(inputs * 3) - warmup - clearingCost;
         bool createsAccount = opcode == Instruction.CALL && newAccount && (!spec.ClearEmptyAccountWhenTouched || value != 0);
-        ulong stateSpill = createsAccount && spec.IsEip8037Enabled ? (ulong)Math.Max(0, GasCostOf.NewAccountState - (long)reservoir) : 0;
+        ulong stateSpill = createsAccount && spec.IsEip8037Enabled
+            ? (ulong)(Eip8037Constants.NewAccountLegacyShare + Math.Max(0, GasCostOf.NewAccountState - Eip8037Constants.NewAccountLegacyShare - (long)reservoir))
+            : 0;
         ulong extra = access + (ulong)(memoryLength / 32 * 3) + (value != 0 ? spec.IsEip8038Enabled ? 11300UL : 9000UL : 0)
             + (createsAccount && !spec.IsEip8037Enabled ? 25000UL : 0);
         ulong forwarded = maximumForwarding ? entryGas - extra - stateSpill - (entryGas - extra - stateSpill) / 64 : 10000;

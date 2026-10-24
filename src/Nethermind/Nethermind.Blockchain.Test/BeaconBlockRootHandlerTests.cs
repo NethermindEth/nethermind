@@ -204,9 +204,10 @@ public class BeaconBlockRootHandlerTests
             Assert.That(vm.Before.Value, Is.EqualTo(spec.IsEip8037Enabled ? 30_000_000UL : 29_976_088UL));
             Assert.That(vm.Before.StateReservoir, Is.EqualTo(spec.IsEip8037Enabled ? 1_566_720L : 0L));
             Assert.That(vm.Before.StateGasUsed, Is.Zero);
-            Assert.That(vm.After.StateReservoir, Is.EqualTo(spec.IsEip8037Enabled ? 1_370_880L : 0L));
+            Assert.That(vm.After.StateReservoir, Is.EqualTo(spec.IsEip8037Enabled ? 1_390_880L : 0L));
             Assert.That(vm.After.StateGasUsed, Is.EqualTo(spec.IsEip8037Enabled ? 195_840L : 0L));
-            Assert.That(vm.After.StateGasSpill, Is.Zero);
+            // Each new slot takes its legacy share from gas_left, even with a reservoir.
+            Assert.That(vm.After.StateGasSpill, Is.EqualTo(spec.IsEip8037Enabled ? 20_000L : 0L));
             Assert.That(timestamp, Is.EqualTo((UInt256)12345));
             Assert.That(root, Is.EqualTo(new UInt256(BeaconRoot.Bytes, isBigEndian: true)));
             Assert.That(block.GasUsed, Is.Zero);

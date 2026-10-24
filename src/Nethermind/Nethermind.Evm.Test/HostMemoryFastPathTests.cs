@@ -278,7 +278,6 @@ public class HostMemoryFastPathTests
             Assert.That(fast.Policy.StateReservoir, Is.EqualTo(InitialStateReservoir - GasCostOf.SSetState));
             Assert.That(fast.Policy.StateGasUsed, Is.EqualTo(initial.StateGasUsed + (long)GasCostOf.SSetState));
             Assert.That(fast.Policy.StateGasSpill, Is.EqualTo(initial.StateGasSpill));
-            Assert.That(fast.Policy.StateGasSpillRefunded, Is.EqualTo(initial.StateGasSpillRefunded));
             Assert.That(fast.Policy.IndependentStatePool, Is.True);
             Assert.That(fast.Policy.OutOfGas, Is.False);
         }
@@ -323,7 +322,6 @@ public class HostMemoryFastPathTests
         StateReservoir = InitialStateReservoir,
         StateGasUsed = 23,
         StateGasSpill = 31,
-        StateGasSpillRefunded = 7,
         IndependentStatePool = true,
         OutOfGas = outOfGas,
     };

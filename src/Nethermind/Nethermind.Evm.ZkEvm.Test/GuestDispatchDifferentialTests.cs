@@ -113,7 +113,6 @@ public class GuestDispatchDifferentialTests
             StateReservoir = 13,
             StateGasUsed = 23,
             StateGasSpill = 31,
-            StateGasSpillRefunded = 7,
             IndependentStatePool = true,
         };
 
