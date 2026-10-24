@@ -613,22 +613,32 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
         if ((transactionCount ?? GetReceiptCountLimit(header, SpecProvider.GetSpec(header))) is not { } maximum)
         {
+            header = header.Clone();
             maximum = (await GetBlockAsync(header, cancellationToken)).Transactions.Length;
             transactionCount = maximum;
         }
-        TxReceipt[] cached = await _receipts.GetAsync(header.Hash!, stopping => RequestExecutionAsync(AllocationContexts.Receipts, async (peer, token) =>
+        TxReceipt[] cached = await _receipts.GetAsync(header.Hash!, stopping =>
         {
-            ReadOnlyMemory<int> counts = transactionCount is { } count ? new[] { count } : ReadOnlyMemory<int>.Empty;
-            ReadOnlyMemory<int>? limits = transactionCount is null ? new ReadOnlyMemory<int>(new[] { maximum }) : null;
-            using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts([header.Hash!], counts, token, limits);
-            if (batches.Count != 1 || batches[0] is not { } receipts || receipts.Length > maximum ||
-                transactionCount is { } exact && receipts.Length != exact)
-                throw new InvalidDataException("Execution peer did not supply the complete receipt list.");
-            VerifyReceipts(header, receipts, SpecProvider);
-            TxReceipt[] result = new TxReceipt[receipts.Length];
-            for (int i = 0; i < result.Length; i++) result[i] = new TxReceipt(receipts[i]);
-            return result;
-        }, stopping), cancellationToken);
+            BlockHeader requestHeader = header.Clone();
+            return RequestExecutionAsync(AllocationContexts.Receipts, async (peer, token) =>
+            {
+                _syncServer.AddReceiptHeader(requestHeader);
+                try
+                {
+                    ReadOnlyMemory<int> counts = transactionCount is { } count ? new[] { count } : ReadOnlyMemory<int>.Empty;
+                    ReadOnlyMemory<int>? limits = transactionCount is null ? new ReadOnlyMemory<int>(new[] { maximum }) : null;
+                    using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts([requestHeader.Hash!], counts, token, limits);
+                    if (batches.Count != 1 || batches[0] is not { } receipts || receipts.Length > maximum ||
+                        transactionCount is { } exact && receipts.Length != exact)
+                        throw new InvalidDataException("Execution peer did not supply the complete receipt list.");
+                    VerifyReceipts(requestHeader, receipts, SpecProvider);
+                    TxReceipt[] result = new TxReceipt[receipts.Length];
+                    for (int i = 0; i < result.Length; i++) result[i] = new TxReceipt(receipts[i]);
+                    return result;
+                }
+                finally { _syncServer.RemoveReceiptHeader(requestHeader); }
+            }, stopping);
+        }, cancellationToken);
         if (cached.Length > maximum || transactionCount is { } expected && cached.Length != expected)
             throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
         TxReceipt[] copy = new TxReceipt[cached.Length];
@@ -1006,6 +1016,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     internal sealed class LightSyncServer : ISyncServer
     {
         private readonly ChainSpec _chainSpec;
+        private readonly Lock _receiptHeadersLock = new();
+        private readonly Dictionary<Hash256, BlockHeader> _receiptHeaders = new(ExecutionBulkLimit);
         private BlockHeader _head;
 
         internal LightSyncServer(ChainSpec chainSpec, VerifiedHead head, ulong timestamp)
@@ -1023,6 +1035,18 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
 
         internal void UpdateHead(VerifiedHead head, ulong timestamp) => Volatile.Write(ref _head, CreateHead(head, timestamp));
+
+        internal void AddReceiptHeader(BlockHeader header)
+        {
+            lock (_receiptHeadersLock) _receiptHeaders.Add(header.Hash!, header);
+        }
+
+        internal void RemoveReceiptHeader(BlockHeader header)
+        {
+            lock (_receiptHeadersLock)
+                if (_receiptHeaders.TryGetValue(header.Hash!, out BlockHeader? current) && ReferenceEquals(current, header))
+                    _receiptHeaders.Remove(header.Hash!);
+        }
 
         private BlockHeader CreateHead(VerifiedHead head, ulong timestamp) => new(
             Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero,
@@ -1043,7 +1067,11 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         public TxReceipt[]? GetReceipts(Hash256 blockHashes) => null;
         public System.Buffers.MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash) => null;
         public Block? Find(Hash256 hash) => hash == Genesis.Hash ? _chainSpec.Genesis : null;
-        public BlockHeader? FindHeader(Hash256 hash) => hash == Genesis.Hash ? Genesis : null;
+        public BlockHeader? FindHeader(Hash256 hash)
+        {
+            if (hash == Genesis.Hash) return Genesis;
+            lock (_receiptHeadersLock) return _receiptHeaders.GetValueOrDefault(hash);
+        }
         public Hash256? FindHash(ulong number) => number == 0 ? Genesis.Hash : null;
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => IOwnedReadOnlyList<BlockHeader>.Empty;
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken,

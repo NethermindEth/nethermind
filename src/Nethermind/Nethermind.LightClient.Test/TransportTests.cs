@@ -35,6 +35,9 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
@@ -47,11 +50,14 @@ using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
 using ISession = Nethermind.Network.P2P.ISession;
+using Eth62Messages = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Eth66Messages = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using ReferenceCountUtil = DotNetty.Common.Utilities.ReferenceCountUtil;
 
 namespace Nethermind.LightClient.Test;
@@ -330,6 +336,223 @@ public class TransportTests
         Assert.That(peers.Counts(AllocationContexts.Receipts), Is.EqualTo(new[] { 1, 1 }));
         Assert.That(peers.Counts(AllocationContexts.Bodies), Is.EqualTo(new[] { 0, 0 }));
         Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(1));
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Receipt_requests_use_authenticated_context_for_eth70_paging(
+        [Values] bool paged, [Values] bool exactCount, CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(paged);
+        BlockHeader header = peers.AddBlock(100);
+
+        TxReceipt[] receipts = await peers.Transport.GetReceiptsAsync(header, token, exactCount ? 2 : null);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(receipts.Select(receipt => receipt.GasUsedTotal), Is.EqualTo(new ulong[] { 21_000, 42_000 }));
+        Assert.That(receipts.Select(receipt => receipt.Logs![0].Data[0]), Is.EqualTo(new byte[] { 1, 2 }));
+        Assert.That(peers.Primary.Requests.Select(request => request.Offset), Is.EqualTo(paged ? new long[] { 0, 1 } : new long[] { 0 }));
+        Assert.That(peers.Fallback.Requests, Is.Empty, "a complete fallback makes missing paging context fail without a timeout");
+        Assert.That(peers.Server.FindHeader(header.Hash!), Is.Null);
+        Assert.That(peers.Sessions.Sum(peer => peer.BodyRequests), Is.Zero);
+        Assert.That(peers.Sessions.All(peer => peer.BuffersReleased), Is.True);
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Paged_receipts_reject_invalid_data_and_retry_without_retaining_context(
+        [Values("root", "count", "size")] string invalid, CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(true);
+        BlockHeader header = peers.AddBlock(100);
+        TxReceipt[] valid = peers.Blocks[header.Hash!].Receipts;
+        peers.Primary.Respond = request =>
+        {
+            if (invalid == "root")
+            {
+                TxReceipt[] forged = [new(valid[0]) { Logs = [new LogEntry(Address.Zero, [0xff], [])] }, valid[1]];
+                peers.Reply(request, forged);
+            }
+            else
+            {
+                TxReceipt[] oversized = invalid == "count"
+                    ? Enumerable.Repeat(valid[0], ExecutionPeerTransport.GetReceiptCountLimit(header, peers.Transport.SpecProvider.GetSpec(header))!.Value + 1).ToArray()
+                    : [new(valid[0]) { Logs = [new LogEntry(Address.Zero, new byte[checked((int)(header.GasLimit / 8 + 1))], [])] }];
+                try { request.Peer.Reply(request, oversized, invalid == "size"); }
+                catch (SubprotocolException exception)
+                {
+                    request.Peer.WireErrors.Enqueue(exception);
+                    request.Peer.Reply(request, [], false);
+                }
+            }
+        };
+
+        TxReceipt[] receipts = await peers.Transport.GetReceiptsAsync(header, token);
+        TxReceipt[] cached = await peers.Transport.GetReceiptsAsync(header, token, 2);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(receipts.Select(receipt => receipt.Logs![0].Data[0]), Is.EqualTo(new byte[] { 1, 2 }));
+        Assert.That(cached.Select(receipt => receipt.Logs![0].Data[0]), Is.EqualTo(new byte[] { 1, 2 }));
+        Assert.That(peers.Fallback.Requests, Has.Count.EqualTo(1));
+        Assert.That(peers.Primary.Requests, Has.Count.EqualTo(invalid == "root" ? 2 : 1));
+        Assert.That(peers.Primary.WireErrors.Select(error => error.Message),
+            invalid == "count" ? Has.Some.Contains("exceeds the request") : Is.Empty);
+        Assert.That(peers.Server.FindHeader(header.Hash!), Is.Null);
+        Assert.That(peers.Sessions.All(peer => peer.BuffersReleased), Is.True);
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Canceling_a_receipt_waiter_preserves_the_shared_paging_owner(CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(true);
+        peers.Primary.Respond = null;
+        BlockHeader header = peers.AddBlock(100);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<TxReceipt[]> canceled = peers.Transport.GetReceiptsAsync(header, caller.Token);
+        ReceiptRequest first = await peers.Requests.Reader.ReadAsync(token);
+        Task<TxReceipt[]> survivor = peers.Transport.GetReceiptsAsync(header, token, 2);
+        try
+        {
+            await caller.CancelAsync();
+            Assert.That(async () => await canceled, Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(peers.Server.FindHeader(header.Hash!), Is.Not.Null);
+            peers.Reply(first);
+            ReceiptRequest continuation = await peers.Requests.Reader.ReadAsync(token);
+            peers.Reply(continuation);
+            Assert.That(await survivor.WaitAsync(token), Has.Length.EqualTo(2));
+            using IDisposable assertionScope = Assert.EnterMultipleScope();
+            Assert.That(peers.Primary.Requests, Has.Count.EqualTo(2));
+            Assert.That(peers.Fallback.Requests, Is.Empty);
+            Assert.That(peers.Server.FindHeader(header.Hash!), Is.Null);
+        }
+        finally
+        {
+            await peers.DisposeAsync();
+            await ((Task)Task.WhenAll(canceled, survivor)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Receipt_contexts_are_bounded_by_admitted_bulk_requests(CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(false);
+        foreach (ReceiptPeer peer in peers.Sessions) peer.Respond = null;
+        BlockHeader[] headers = Enumerable.Range(100, 4).Select(number => peers.AddBlock((ulong)number)).ToArray();
+        Task<TxReceipt[]>[] requests = headers.Select(header => peers.Transport.GetReceiptsAsync(header, token)).ToArray();
+        try
+        {
+            ReceiptRequest[] active = new ReceiptRequest[3];
+            for (int i = 0; i < active.Length; i++) active[i] = await peers.Requests.Reader.ReadAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(active.Select(request => request.Hash).Distinct().Count(), Is.EqualTo(3));
+                Assert.That(headers.Count(header => peers.Server.FindHeader(header.Hash!) is not null), Is.EqualTo(3));
+                Assert.That(peers.Requests.Reader.TryRead(out _), Is.False);
+            }
+            Assert.That((await peers.Transport.GetHeaderByHashAsync(headers[3].Hash!, token)).Hash, Is.EqualTo(headers[3].Hash));
+            peers.Reply(active[0]);
+            ReceiptRequest fourth = await peers.Requests.Reader.ReadAsync(token);
+            Assert.That(peers.Server.FindHeader(active[0].Hash), Is.Null);
+            foreach (ReceiptRequest request in active.Skip(1).Append(fourth)) peers.Reply(request);
+            await Task.WhenAll(requests).WaitAsync(token);
+            using IDisposable assertionScope = Assert.EnterMultipleScope();
+            Assert.That(headers.All(header => peers.Server.FindHeader(header.Hash!) is null), Is.True);
+            Assert.That(peers.Sessions.Sum(peer => peer.BodyRequests), Is.Zero);
+        }
+        finally
+        {
+            await peers.DisposeAsync();
+            await ((Task)Task.WhenAll(requests)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Stopping_paged_receipts_joins_cleanup_before_disposing_services(CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(true);
+        peers.Primary.Respond = null;
+        BlockHeader header = peers.AddBlock(100);
+        Task<TxReceipt[]> request = peers.Transport.GetReceiptsAsync(header, token);
+        try
+        {
+            peers.Reply(await peers.Requests.Reader.ReadAsync(token));
+            ReceiptRequest continuation = await peers.Requests.Reader.ReadAsync(token);
+            Assert.That(continuation.Offset, Is.EqualTo(1));
+            Assert.That(peers.Server.FindHeader(header.Hash!), Is.Not.Null);
+            await peers.DisposeAsync();
+            Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
+            using IDisposable assertionScope = Assert.EnterMultipleScope();
+            Assert.That(peers.Server.FindHeader(header.Hash!), Is.Null);
+            Assert.That(peers.Sessions.All(peer => peer.BuffersReleased), Is.True);
+        }
+        finally
+        {
+            await peers.DisposeAsync();
+            await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Receipt_context_detaches_header_fields_and_preserves_server_contract(CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(false);
+        peers.Primary.Respond = null;
+        BlockHeader header = peers.AddBlock(100);
+        Task<TxReceipt[]> request = peers.Transport.GetReceiptsAsync(header, token);
+        ReceiptRequest wire = await peers.Requests.Reader.ReadAsync(token);
+        BlockHeader owned = peers.Server.FindHeader(header.Hash!)!;
+        Assert.That(owned, Is.Not.Null);
+        try
+        {
+            ulong gasLimit = owned.GasLimit;
+            ulong timestamp = owned.Timestamp;
+            header.GasLimit = 0;
+            header.GasUsed = 0;
+            header.Timestamp = ulong.MaxValue;
+            using IOwnedReadOnlyList<BlockHeader> unavailable = peers.Server.FindHeaders(header.Hash!, 1, 0, false);
+            Block? genesis = peers.Server.Find(peers.Server.Genesis.Hash!);
+            Assert.That(genesis, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(owned, Is.Not.SameAs(header));
+                Assert.That(owned.GasLimit, Is.EqualTo(gasLimit));
+                Assert.That(owned.Timestamp, Is.EqualTo(timestamp));
+                Assert.That(peers.Server.FindHeader(peers.Server.Genesis.Hash!), Is.SameAs(peers.Server.Genesis));
+                Assert.That(genesis!.Header, Is.SameAs(peers.Server.Genesis));
+                Assert.That(peers.Server.FindHash(0), Is.EqualTo(peers.Server.Genesis.Hash));
+                Assert.That(peers.Server.Find(header.Hash!), Is.Null);
+                Assert.That(unavailable, Is.Empty);
+                Assert.That(peers.Server.FindHash(header.Number), Is.Null);
+                Assert.That(peers.Server.GetReceipts(header.Hash!), Is.Null);
+            }
+            peers.Reply(wire);
+            Assert.That(await request.WaitAsync(token), Has.Length.EqualTo(2));
+            Assert.That(peers.Server.FindHeader(header.Hash!), Is.Null);
+            BlockHeader replacement = owned.Clone();
+            ExecutionPeerTransport.LightSyncServer server = (ExecutionPeerTransport.LightSyncServer)peers.Server;
+            server.AddReceiptHeader(replacement);
+            try
+            {
+                server.RemoveReceiptHeader(owned);
+                Assert.That(server.FindHeader(header.Hash!), Is.SameAs(replacement), "an old owner cannot remove a later registration");
+            }
+            finally { server.RemoveReceiptHeader(replacement); }
+        }
+        finally
+        {
+            await peers.DisposeAsync();
+            await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
     }
 
     [Test]
@@ -1131,6 +1354,209 @@ public class TransportTests
     private static ExecutionPeerTransport SnapTransport() => new("sepolia", Nethermind.Logging.LimboLogs.Instance,
         new VerifiedHead(0, 0, KnownHashes.SepoliaGenesis, Hash256.Zero), 1_800_000_000);
 
+    private readonly record struct ReceiptRequest(ReceiptPeer Peer, long Id, Hash256 Hash, long Offset);
+
+    private sealed class ReceiptPeers : IAsyncDisposable
+    {
+        private static readonly FieldInfo SoftLimit = typeof(SyncPeerProtocolHandlerBase)
+            .GetField("SoftOutgoingMessageSizeLimit", BindingFlags.Static | BindingFlags.NonPublic)!;
+        private readonly ulong _softLimit = (ulong)SoftLimit.GetValue(null)!;
+        private readonly ExecutionPeers _execution = new(0);
+        private bool _disposed;
+        internal ExecutionPeerTransport Transport => _execution.Transport;
+        internal ISyncServer Server { get; }
+        internal ISyncPeerPool Pool => _execution.Pool;
+        internal Dictionary<Hash256, (BlockHeader Header, TxReceipt[] Receipts)> Blocks { get; } = [];
+        internal Channel<ReceiptRequest> Requests { get; } = Channel.CreateUnbounded<ReceiptRequest>();
+        internal ReceiptPeer[] Sessions { get; }
+        internal ReceiptPeer Primary { get; }
+        internal ReceiptPeer Fallback { get; }
+
+        internal ReceiptPeers(bool paged)
+        {
+            IContainer services = Services(Transport);
+            Server = services.Resolve<ISyncServer>();
+            BlockHeader initial = EmptyHeader();
+            initial.Bloom = Bloom.Empty;
+            initial.Hash = initial.CalculateHash();
+            services.Resolve<IBlockTree>().Insert(initial, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+            Sessions = [new(this, services, initial, 1001), new(this, services, initial, 1002)];
+            foreach (ReceiptPeer peer in Sessions) Pool.AddPeer(peer.SyncPeer);
+            Primary = Sessions.Single(peer => ReferenceEquals(peer.SyncPeer, Pool.InitializedPeers.First().SyncPeer));
+            Fallback = Sessions.Single(peer => !ReferenceEquals(peer, Primary));
+            Primary.Paged = paged;
+            foreach (ReceiptPeer peer in Sessions) peer.Respond = request => Reply(request);
+            SoftLimit.SetValue(null, 75UL);
+        }
+
+        internal BlockHeader AddBlock(ulong number)
+        {
+            BlockHeader header = EmptyHeader();
+            header.Number = number;
+            header.GasLimit = 1_000_000;
+            header.GasUsed = 42_000;
+            TxReceipt[] receipts = Enumerable.Range(1, 2).Select(index => new TxReceipt
+            {
+                StatusCode = 1,
+                BlockNumber = number,
+                GasUsedTotal = (ulong)index * 21_000,
+                Logs = [new LogEntry(Address.Zero, [(byte)index], [])],
+            }).ToArray();
+            foreach (TxReceipt receipt in receipts) receipt.Bloom = new Bloom(receipt.Logs);
+            header.Bloom = new Bloom(receipts.SelectMany(receipt => receipt.Logs!).ToArray());
+            header.TxRoot = TxTrie.CalculateRoot(Enumerable.Range(1, 2).Select(index => new Transaction
+            {
+                Nonce = (ulong)index, To = Address.Zero, GasLimit = 30_000, GasPrice = 1,
+            }).ToArray());
+            header.ReceiptsRoot = ReceiptTrie.CalculateRoot(Transport.SpecProvider.GetSpec(header), receipts, new ReceiptMessageDecoder());
+            header.Hash = header.CalculateHash();
+            Blocks.Add(header.Hash!, (header, receipts));
+            return header;
+        }
+
+        internal void Reply(ReceiptRequest request, TxReceipt[]? receipts = null)
+        {
+            receipts ??= Blocks[request.Hash].Receipts;
+            bool partial = request.Peer.Paged && request.Offset == 0;
+            TxReceipt[] page = partial ? [receipts[0]] : receipts.Skip(checked((int)request.Offset)).ToArray();
+            request.Peer.Reply(request, page, partial);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            try
+            {
+                ValueTask stopping = _execution.DisposeAsync();
+                try
+                {
+                    foreach (ReceiptPeer peer in Sessions) peer.CompletePending();
+                }
+                finally { await stopping; }
+            }
+            finally
+            {
+                try
+                {
+                    foreach (ReceiptPeer peer in Sessions) peer.Dispose();
+                }
+                finally { SoftLimit.SetValue(null, _softLimit); }
+            }
+        }
+    }
+
+    private sealed class ReceiptPeer : IDisposable
+    {
+        private readonly ISession _session = Substitute.For<ISession>();
+        private readonly IMessageSerializationService _serializer;
+        private readonly IZeroProtocolHandler _handler;
+        private readonly ConcurrentQueue<IByteBuffer> _buffers = new();
+        private readonly ConcurrentDictionary<long, ReceiptRequest> _pending = new();
+        private int _bodyRequests;
+        internal ISyncPeer SyncPeer => (ISyncPeer)_handler;
+        internal ConcurrentQueue<ReceiptRequest> Requests { get; } = new();
+        internal ConcurrentQueue<Exception> WireErrors { get; } = new();
+        internal Action<ReceiptRequest>? Respond;
+        internal bool Paged;
+        internal int BodyRequests => Volatile.Read(ref _bodyRequests);
+        internal bool BuffersReleased => _buffers.All(buffer => buffer.ReferenceCount == 0);
+
+        internal ReceiptPeer(ReceiptPeers owner, IContainer services, BlockHeader initial, int identity)
+        {
+            _serializer = services.Resolve<IMessageSerializationService>();
+            using PrivateKey key = new(((UInt256)identity).ToBigEndian());
+            _session.Node.Returns(new Node(key.PublicKey, "127.0.0.1", 30303));
+            _handler = CreateProtocolHandler(services, _session, "eth", 70);
+            _session.When(session => session.DeliverMessage(Arg.Any<P2PMessage>())).Do(call =>
+            {
+                using P2PMessage message = call.Arg<P2PMessage>();
+                switch (message)
+                {
+                    case GetReceiptsMessage70 receipts:
+                        ReceiptRequest request = new(this, receipts.RequestId, receipts.Hashes[0], receipts.FirstBlockReceiptIndex);
+                        _pending.TryAdd(request.Id, request);
+                        Requests.Enqueue(request);
+                        owner.Requests.Writer.TryWrite(request);
+                        Respond?.Invoke(request);
+                        break;
+                    case Eth66Messages.GetBlockHeadersMessage headers:
+                        BlockHeader header = headers.EthMessage.StartBlockHash is { } hash && owner.Blocks.TryGetValue(hash, out (BlockHeader Header, TxReceipt[] Receipts) block)
+                            ? block.Header : initial;
+                        using (Eth66Messages.BlockHeadersMessage reply = new(headers.RequestId,
+                            new Eth62Messages.BlockHeadersMessage(new ArrayPoolList<BlockHeader>(1) { header }))) Deliver(reply);
+                        break;
+                    case Eth66Messages.GetBlockBodiesMessage bodies:
+                        Interlocked.Increment(ref _bodyRequests);
+                        using (Eth66Messages.BlockBodiesMessage reply = new(bodies.RequestId, new Eth62Messages.BlockBodiesMessage(Array.Empty<BlockBody>()))) Deliver(reply);
+                        break;
+                }
+            });
+            _handler.Init();
+            using StatusMessage69 status = new()
+            {
+                ProtocolVersion = 70, NetworkId = owner.Server.NetworkId, GenesisHash = owner.Server.Genesis.Hash!,
+                LatestBlock = initial.Number, LatestBlockHash = initial.Hash!,
+                ForkId = services.Resolve<IForkInfo>().GetForkId(initial.Number, initial.Timestamp),
+            };
+            Deliver(status);
+            SyncPeer.IsInitialized = true;
+        }
+
+        internal void Reply(ReceiptRequest request, TxReceipt[] receipts, bool partial)
+        {
+            if (!_pending.TryRemove(request.Id, out _)) throw new InvalidOperationException("ETH fixture request is no longer pending.");
+            try { SendReply(request, receipts, partial); }
+            catch
+            {
+                _pending.TryAdd(request.Id, request);
+                throw;
+            }
+        }
+
+        private void SendReply(ReceiptRequest request, TxReceipt[] receipts, bool partial)
+        {
+            ArrayPoolList<TxReceipt[]> blocks = new(1);
+            if (receipts.Length != 0) blocks.Add(receipts);
+            using ReceiptsMessage70 reply = new(request.Id, blocks, partial);
+            Deliver(reply);
+        }
+
+        internal void CompletePending()
+        {
+            foreach (KeyValuePair<long, ReceiptRequest> pending in _pending)
+                if (_pending.TryRemove(pending.Key, out ReceiptRequest request)) SendReply(request, [], false);
+        }
+
+        private void Deliver(P2PMessage message)
+        {
+            IByteBuffer buffer = message switch
+            {
+                StatusMessage69 value => _serializer.ZeroSerialize(value),
+                ReceiptsMessage70 value => _serializer.ZeroSerialize(value),
+                Eth66Messages.BlockHeadersMessage value => _serializer.ZeroSerialize(value),
+                Eth66Messages.BlockBodiesMessage value => _serializer.ZeroSerialize(value),
+                _ => throw new ArgumentException("Unexpected ETH test message.", nameof(message)),
+            };
+            _buffers.Enqueue(buffer);
+            buffer.ReadByte();
+            ZeroPacket packet = new(buffer) { PacketType = (byte)message.PacketType };
+            try { _handler.HandleMessage(packet); }
+            finally { ReferenceCountUtil.Release(packet); }
+        }
+
+        public void Dispose() => _handler.Dispose();
+    }
+
+    private static IZeroProtocolHandler CreateProtocolHandler(IContainer services, ISession session, string protocol, int version)
+    {
+        IProtocolHandler? created = null;
+        foreach (IProtocolHandlerFactory factory in services.Resolve<IProtocolHandlerFactory[]>())
+            if (factory.ProtocolCode == protocol && factory.TryCreate(session, version, out created)) break;
+        Assert.That(created, Is.AssignableTo<IZeroProtocolHandler>());
+        return (IZeroProtocolHandler)created!;
+    }
+
     private sealed class SnapSession : IDisposable
     {
         private readonly ISession _session = Substitute.For<ISession>();
@@ -1145,13 +1571,7 @@ public class TransportTests
             _session.Node.Returns(new Node(key.PublicKey, "127.0.0.1", 30303));
             _session.When(session => session.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
                 .Do(call => _response.TrySetException(new InvalidOperationException($"Unexpected disconnect: {call[0]} {call[1]}")));
-            IProtocolHandler? created = null;
-            foreach (IProtocolHandlerFactory factory in services.Resolve<IProtocolHandlerFactory[]>())
-            {
-                if (factory.ProtocolCode == Protocol.Snap && factory.TryCreate(_session, version, out created)) break;
-            }
-            Assert.That(created, Is.AssignableTo<IZeroProtocolHandler>());
-            _handler = (IZeroProtocolHandler)created!;
+            _handler = CreateProtocolHandler(services, _session, Protocol.Snap, version);
             _session.When(session => session.DeliverMessage(Arg.Any<P2PMessage>())).Do(call =>
             {
                 using P2PMessage message = call.Arg<P2PMessage>();
