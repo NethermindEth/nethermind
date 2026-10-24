@@ -43,6 +43,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -245,18 +246,18 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task Cached_receipts_do_not_share_mutable_rpc_metadata(CancellationToken token)
+    public async Task Cached_receipts_do_not_share_mutable_rpc_metadata([Values] bool headerFirst, CancellationToken token)
     {
         await using ExecutionPeers peers = new(1);
         Block block = new(peers.Header, peers.Body);
-        TxReceipt[] first = await peers.Transport.GetReceiptsAsync(block, token);
+        TxReceipt[] first = await peers.Transport.GetReceiptsAsync(block.Header, token, headerFirst ? null : block.Transactions.Length);
         first[0].BlockNumber = 123;
         first[0].BlockHash = Keccak.Compute("another block");
         first[0].TxHash = Keccak.Compute("another transaction");
         first[0].Index = 9;
         first[0].GasUsed = 77;
 
-        TxReceipt[] second = await peers.Transport.GetReceiptsAsync(block, token);
+        TxReceipt[] second = await peers.Transport.GetReceiptsAsync(block.Header, token, headerFirst ? block.Transactions.Length : null);
 
         using (Assert.EnterMultipleScope())
         {
@@ -269,6 +270,66 @@ public class TransportTests
             Assert.That(second[0].GasUsed, Is.EqualTo(peers.Receipts[0].GasUsed));
             Assert.That(peers.Counts(AllocationContexts.Receipts), Is.EqualTo(new[] { 1 }));
         }
+
+        Assert.That(async () => await peers.Transport.GetReceiptsAsync(block.Header, token, block.Transactions.Length + 1),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("receipt count"));
+        Assert.That(peers.Counts(AllocationContexts.Receipts), Is.EqualTo(new[] { 1 }), "a cached root proof does not replace a later exact-count check");
+    }
+
+    [TestCaseSource(nameof(ReceiptCountBounds))]
+    public void Receipt_count_limit_uses_the_authenticated_header_and_owning_fork(IReleaseSpec spec, ulong gasLimit, int? expected)
+    {
+        BlockHeader header = EmptyHeader();
+        header.GasLimit = gasLimit;
+        Assert.That(ExecutionPeerTransport.GetReceiptCountLimit(header, spec), Is.EqualTo(expected));
+    }
+
+    private static IEnumerable<TestCaseData> ReceiptCountBounds()
+    {
+        yield return new TestCaseData(Frontier.Instance, 42_000UL, 4);
+        yield return new TestCaseData(London.Instance, 42_000UL, 2);
+        yield return new TestCaseData(Amsterdam.Instance, 48_000UL, 4);
+        yield return new TestCaseData(Eip8141Prototype.Instance, 48_000UL, 4);
+        yield return new TestCaseData(new ReleaseSpec { IsEip2780Enabled = true, IsEip3529Enabled = true }, 48_000UL, 5);
+        yield return new TestCaseData(new ReleaseSpec { IsEip8141Enabled = true, IsEip3529Enabled = true }, 48_000UL, 5);
+        yield return new TestCaseData(new ReleaseSpec { IsEip3298Enabled = true }, 42_000UL, null);
+        yield return new TestCaseData(new ReleaseSpec { IsEip3298Enabled = true, IsEip7778Enabled = true }, 42_000UL, 2);
+        yield return new TestCaseData(Frontier.Instance, 10_499UL, 0);
+        yield return new TestCaseData(Frontier.Instance, 10_500UL, 1);
+        yield return new TestCaseData(Frontier.Instance, ulong.MaxValue, BlockBodyDecoder.TransactionsCountLimit.Limit);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Header_only_receipts_separate_decode_limits_from_unknown_transaction_counts(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        TxReceipt[] receipts = await peers.Transport.GetReceiptsAsync(peers.Header, token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(receipts, Has.Length.EqualTo(peers.Receipts.Length));
+        Assert.That(peers.Ordered[0].LastReceiptCounts.IsEmpty, Is.True);
+        Assert.That(peers.Ordered[0].LastReceiptLimits?.ToArray(), Is.EqualTo(new[]
+        {
+            ExecutionPeerTransport.GetReceiptCountLimit(peers.Header, peers.Transport.SpecProvider.GetSpec(peers.Header))!.Value,
+        }));
+        Assert.That(peers.Counts(AllocationContexts.Bodies), Is.EqualTo(new[] { 0 }));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_incomplete_receipt_tail_is_retried_before_root_authenticated_results_are_returned(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2);
+        peers.Ordered[0].MissingReceipts = true;
+
+        TxReceipt[] receipts = await peers.Transport.GetReceiptsAsync(peers.Header, token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(receipts, Has.Length.EqualTo(peers.Receipts.Length));
+        Assert.That(peers.Counts(AllocationContexts.Receipts), Is.EqualTo(new[] { 1, 1 }));
+        Assert.That(peers.Counts(AllocationContexts.Bodies), Is.EqualTo(new[] { 0, 0 }));
+        Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(1));
     }
 
     [Test]
@@ -1848,7 +1909,7 @@ public class TransportTests
                     Assert.That((await Transport.GetBlockAsync(Header, token)).Transactions, Is.EqualTo(Body.Transactions));
                     break;
                 case AllocationContexts.Receipts:
-                    Assert.That(await Transport.GetReceiptsAsync(new Block(Header, Body), token), Has.Length.EqualTo(Receipts.Length));
+                    Assert.That(await Transport.GetReceiptsAsync(Header, token, Body.Transactions.Length), Has.Length.EqualTo(Receipts.Length));
                     break;
                 case AllocationContexts.Snap:
                     await RequestSnap(0, token);
@@ -1894,7 +1955,7 @@ public class TransportTests
             if (context == AllocationContexts.Bodies)
                 Assert.That((await Transport.GetBlockAsync(different, token)).Transactions, Is.EqualTo(Body.Transactions));
             else if (context == AllocationContexts.Receipts)
-                Assert.That(await Transport.GetReceiptsAsync(new Block(different, Body), token), Has.Length.EqualTo(Receipts.Length));
+                Assert.That(await Transport.GetReceiptsAsync(different, token, Body.Transactions.Length), Has.Length.EqualTo(Receipts.Length));
             else throw new ArgumentOutOfRangeException(nameof(context));
         }
 
@@ -1915,6 +1976,9 @@ public class TransportTests
         internal bool InvalidData;
         internal bool InvalidAncestors;
         internal bool MissingAncestors;
+        internal bool MissingReceipts;
+        internal ReadOnlyMemory<int> LastReceiptCounts;
+        internal ReadOnlyMemory<int>? LastReceiptLimits;
 
         internal ExecutionPeer(ExecutionPeers owner, int id, bool snap2, byte ethVersion, bool snap1)
         {
@@ -1955,10 +2019,12 @@ public class TransportTests
                 await Read(AllocationContexts.Bodies, call.ArgAt<CancellationToken>(1));
                 return new OwnedBlockBodies([InvalidData ? new BlockBody([], [], []) : owner.Body], new ResponseMemory(Disposed));
             });
-            SyncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>()).Returns(async call =>
+            SyncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>(), Arg.Any<ReadOnlyMemory<int>?>()).Returns(async call =>
             {
+                LastReceiptCounts = call.ArgAt<ReadOnlyMemory<int>>(1);
+                LastReceiptLimits = call.ArgAt<ReadOnlyMemory<int>?>(3);
                 await Read(AllocationContexts.Receipts, call.ArgAt<CancellationToken>(2));
-                return (IOwnedReadOnlyList<TxReceipt[]?>)new TrackedResponse<TxReceipt[]?>([InvalidData ? [] : owner.Receipts], Disposed);
+                return (IOwnedReadOnlyList<TxReceipt[]?>)new TrackedResponse<TxReceipt[]?>(MissingReceipts ? [] : [InvalidData ? [] : owner.Receipts], Disposed);
             });
             SyncPeer.GetBlockAccessLists(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>()).Returns(async call =>
             {

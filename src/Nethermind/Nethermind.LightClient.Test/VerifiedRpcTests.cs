@@ -790,7 +790,7 @@ public class VerifiedRpcTests
         {
             Assert.That(first.GetArrayLength(), Is.EqualTo(empty ? 0 : 6));
             Assert.That(repeated.GetRawText(), Is.EqualTo(first.GetRawText()));
-            Assert.That(source.BodyNumbers, Is.EqualTo(new ulong[] { 310, 311, 312 }));
+            Assert.That(source.BodyNumbers, Is.EqualTo(empty ? Array.Empty<ulong>() : new ulong[] { 310, 311, 312 }));
             Assert.That(source.ReceiptReads, Is.EqualTo(3));
             Assert.That(source.HeaderReads, Is.GreaterThan(headerReads), "cache hits still authenticate current canonical ancestry");
         }
@@ -1022,7 +1022,7 @@ public class VerifiedRpcTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(batch, Is.EqualTo(candidates.Skip(offset).Take(4)));
-                    Assert.That(source.BodyNumbers.Count, Is.EqualTo(offset + 4), "prefetch must not issue a fifth payload while four are pending");
+                    Assert.That(source.ReceiptReads, Is.EqualTo(offset + 4), "prefetch must not issue a fifth payload while four are pending");
                     Assert.That(request.IsCompleted, Is.False);
                 }
                 for (int i = batch.Count - 1; i >= 0; i--)
@@ -1035,7 +1035,7 @@ public class VerifiedRpcTests
             AssertRangeLogs(logs, source, 300, last, Includes);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(source.BodyNumbers, Is.EqualTo(candidates), "bloom-negative headers must never request block bodies");
+                Assert.That(source.BodyNumbers, Is.EquivalentTo(candidates), "bloom-negative headers must never request block bodies");
                 Assert.That(source.ReceiptReads, Is.EqualTo(candidates.Length));
                 Assert.That(concurrency.Max(), Is.EqualTo(4));
                 Assert.That(active, Is.Zero);
@@ -1107,7 +1107,7 @@ public class VerifiedRpcTests
             {
                 Assert.That(request.IsCompleted, Is.False, "the RPC must wait for both sibling requests to drain");
                 Assert.That(drained, Is.Zero);
-                Assert.That(source.BodyNumbers.Count, Is.EqualTo(5));
+                Assert.That(receipts ? source.ReceiptReads : source.BodyNumbers.Count, Is.EqualTo(5));
             }
             release.SetResult();
             if (cancel)
@@ -1120,7 +1120,7 @@ public class VerifiedRpcTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(drained, Is.EqualTo(2));
-                Assert.That(source.BodyNumbers.Count, Is.EqualTo(5), "failed prefetch must not refill the remaining window");
+                Assert.That(receipts ? source.ReceiptReads : source.BodyNumbers.Count, Is.EqualTo(5), "failed prefetch must not refill the remaining window");
             }
         }
         finally
@@ -1265,6 +1265,10 @@ public class VerifiedRpcTests
             Assert.That(provider.BlockFetches, Is.EqualTo(1));
             Assert.That(provider.ReceiptFetches, Is.EqualTo(1));
         }
+
+        JsonElement observedTransaction = (JsonElement)await provider.Rpc.InvokeAsync("eth_getTransactionByHash",
+            Parameters(log.GetProperty("transactionHash").GetString()), CancellationToken.None);
+        Assert.That(observedTransaction.GetProperty("hash").GetString(), Is.EqualTo(provider.Transactions[1].Hash!.ToString()));
     }
 
     [Test]
@@ -1286,11 +1290,18 @@ public class VerifiedRpcTests
     }
 
     [Test]
-    public async Task Bloom_candidates_still_verify_and_filter_receipts([Values] bool tamper)
+    public async Task Bloom_candidates_still_verify_and_filter_receipts([Values] bool tamper, [Values] bool typed)
     {
         Hash256 topic = Keccak.Compute("candidate topic");
         using Provider provider = LogsProvider(
             [new LogEntry(AccountAddress, [], [Keccak.Compute("other topic")]), new LogEntry(Address.Zero, [], [topic])]);
+        if (typed)
+        {
+            provider.Transactions[0].Type = TxType.EIP1559;
+            provider.Receipts[0].TxType = TxType.EIP1559;
+            provider.Header.TxRoot = TxTrie.CalculateRoot(provider.Transactions);
+            provider.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec(provider.Header), provider.Receipts, new ReceiptMessageDecoder());
+        }
         if (tamper) provider.Header.ReceiptsRoot = Keccak.Compute("forged receipts");
         JsonElement parameters = Parameters(new
         {
@@ -1308,10 +1319,30 @@ public class VerifiedRpcTests
         }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.BlockFetches, Is.EqualTo(1));
+            Assert.That(provider.BlockFetches, Is.Zero, "a verified negative filter needs no transaction hashes");
             Assert.That(provider.ReceiptFetches, Is.EqualTo(1));
             Assert.That(provider.Transactions[0].SenderAddress, Is.Null);
         }
+    }
+
+    [Test]
+    public async Task Matching_logs_still_reject_body_receipt_count_and_type_mismatches([Values] bool wrongCount)
+    {
+        using Provider provider = LogsProvider([new LogEntry(AccountAddress, [], [])]);
+        if (wrongCount)
+            provider.Transactions = [.. provider.Transactions, provider.Transactions[0]];
+        else
+            provider.Transactions[0].Type = TxType.EIP1559;
+        provider.Header.TxRoot = TxTrie.CalculateRoot(provider.Transactions);
+
+        await AssertRpcErrorAsync(provider, "eth_getLogs", Parameters(new
+        {
+            blockHash = BlockHash.ToString(), address = AccountAddress.ToString(),
+        }), -32000);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(provider.ReceiptFetches, Is.EqualTo(1));
+        Assert.That(provider.BlockFetches, Is.EqualTo(1));
     }
 
     private static Provider LogsProvider(params LogEntry[][] logs)
@@ -1976,18 +2007,18 @@ public class VerifiedRpcTests
             return block;
         }
 
-        public async Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken)
+        public async Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _receiptReads);
-            if (BeforeReceiptRead is not null) await BeforeReceiptRead(block.Number, cancellationToken);
-            TxReceipt[] receipts = _receipts[block.Hash!];
+            if (BeforeReceiptRead is not null) await BeforeReceiptRead(header.Number, cancellationToken);
+            TxReceipt[] receipts = _receipts[header.Hash!];
             if (TamperReceipts)
             {
                 receipts = [new TxReceipt(receipts[0]) { Logs = [new LogEntry(AccountAddress, [0xff], [Topic])] }, receipts[1]];
             }
-            ExecutionPeerTransport.VerifyReceipts(block.Header, receipts, MainnetSpecProvider.Instance);
-            ReceiptsCompleted.Writer.TryWrite(block.Number);
+            ExecutionPeerTransport.VerifyReceipts(header, receipts, MainnetSpecProvider.Instance);
+            ReceiptsCompleted.Writer.TryWrite(header.Number);
             return receipts;
         }
 
@@ -2149,10 +2180,10 @@ public class VerifiedRpcTests
             ExecutionPeerTransport.VerifyBlockBody(header, body);
             return new Block(header, body);
         }
-        public Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken)
+        public Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null)
         {
             ReceiptFetches++;
-            ExecutionPeerTransport.VerifyReceipts(block.Header, Receipts, MainnetSpecProvider.Instance);
+            ExecutionPeerTransport.VerifyReceipts(header, Receipts, MainnetSpecProvider.Instance);
             return Task.FromResult(Receipts);
         }
 
@@ -2242,10 +2273,11 @@ public class VerifiedRpcTests
             ExecutionPeerTransport.VerifyBlockBody(header, block.Body);
             return Task.FromResult(block);
         }
-        public Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken)
+        public Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null)
         {
+            Block block = _chain[header.Number];
             TxReceipt[] receipts = block.Transactions.Length == 0 ? [] : [Receipt()];
-            ExecutionPeerTransport.VerifyReceipts(block.Header, receipts, MainnetSpecProvider.Instance);
+            ExecutionPeerTransport.VerifyReceipts(header, receipts, MainnetSpecProvider.Instance);
             return Task.FromResult(receipts);
         }
         public Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken) => throw new NotSupportedException();

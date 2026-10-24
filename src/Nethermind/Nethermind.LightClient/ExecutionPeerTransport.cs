@@ -21,6 +21,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -601,27 +602,47 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             throw new InvalidDataException("Execution peer returned a block body inconsistent with the verified header.");
     }
 
-    public async Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken)
+    public async Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null)
     {
-        if (block.Transactions.Length == 0)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (transactionCount == 0 || header.ReceiptsRoot == Keccak.EmptyTreeHash)
         {
-            VerifyReceipts(block.Header, [], SpecProvider);
+            VerifyReceipts(header, [], SpecProvider);
+            if (transactionCount is > 0) throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
             return Array.Empty<TxReceipt>();
         }
-        TxReceipt[] cached = await _receipts.GetAsync(block.Hash!, stopping => RequestExecutionAsync(AllocationContexts.Receipts, async (peer, token) =>
+        if ((transactionCount ?? GetReceiptCountLimit(header, SpecProvider.GetSpec(header))) is not { } maximum)
         {
-            int count = block.Transactions.Length;
-            using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts([block.Hash!], new[] { count }, token);
-            if (batches.Count != 1 || batches[0] is not { } receipts || receipts.Length != count)
+            maximum = (await GetBlockAsync(header, cancellationToken)).Transactions.Length;
+            transactionCount = maximum;
+        }
+        TxReceipt[] cached = await _receipts.GetAsync(header.Hash!, stopping => RequestExecutionAsync(AllocationContexts.Receipts, async (peer, token) =>
+        {
+            ReadOnlyMemory<int> counts = transactionCount is { } count ? new[] { count } : ReadOnlyMemory<int>.Empty;
+            ReadOnlyMemory<int>? limits = transactionCount is null ? new ReadOnlyMemory<int>(new[] { maximum }) : null;
+            using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts([header.Hash!], counts, token, limits);
+            if (batches.Count != 1 || batches[0] is not { } receipts || receipts.Length > maximum ||
+                transactionCount is { } exact && receipts.Length != exact)
                 throw new InvalidDataException("Execution peer did not supply the complete receipt list.");
-            VerifyReceipts(block.Header, receipts, SpecProvider);
-            TxReceipt[] result = new TxReceipt[count];
-            for (int i = 0; i < count; i++) result[i] = new TxReceipt(receipts[i]);
+            VerifyReceipts(header, receipts, SpecProvider);
+            TxReceipt[] result = new TxReceipt[receipts.Length];
+            for (int i = 0; i < result.Length; i++) result[i] = new TxReceipt(receipts[i]);
             return result;
         }, stopping), cancellationToken);
+        if (cached.Length > maximum || transactionCount is { } expected && cached.Length != expected)
+            throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
         TxReceipt[] copy = new TxReceipt[cached.Length];
         for (int i = 0; i < copy.Length; i++) copy[i] = new TxReceipt(cached[i]);
         return copy;
+    }
+
+    internal static int? GetReceiptCountLimit(BlockHeader header, IReleaseSpec spec)
+    {
+        ulong minimumGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        if (spec.IsEip8141Enabled) minimumGas = Math.Min(minimumGas, (ulong)Eip8141Constants.IntrinsicGasCost);
+        // Block accounting uses gross gas under EIP-7778, otherwise the fork's maximum refund applies.
+        if (!spec.IsEip7778Enabled) minimumGas -= RefundHelper.CalculateClaimableRefund(minimumGas, minimumGas, spec);
+        return minimumGas == 0 ? null : (int)Math.Min(header.GasLimit / minimumGas, (ulong)BlockBodyDecoder.TransactionsCountLimit.Limit);
     }
 
     private static long BodySize(Block block)

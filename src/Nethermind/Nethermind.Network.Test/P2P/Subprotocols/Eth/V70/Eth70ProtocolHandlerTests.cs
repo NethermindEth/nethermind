@@ -442,7 +442,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public async Task Partial_first_block_is_checked_against_its_remaining_expected_receipts([Values] bool exceedsCount)
+    public async Task Partial_first_block_is_checked_against_its_remaining_expected_receipts([Values] bool exceedsCount, [Values] bool countKnown)
     {
         SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
 
@@ -477,7 +477,9 @@ public class Eth70ProtocolHandlerTests
         });
 
         HandleIncomingStatusMessage();
-        Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts([Keccak.Zero, TestItem.KeccakA], new[] { block1.Length, block2.Length }, CancellationToken.None);
+        ReadOnlyMemory<int> counts = countKnown ? new[] { block1.Length, block2.Length } : new[] { -1, -1 };
+        ReadOnlyMemory<int>? limits = countKnown ? null : new ReadOnlyMemory<int>(new[] { block1.Length, block2.Length });
+        Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts([Keccak.Zero, TestItem.KeccakA], counts, CancellationToken.None, limits);
 
         if (exceedsCount)
         {
@@ -493,14 +495,15 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public async Task Should_not_page_receipts_of_block_with_unknown_header(
         [Values(0, 1)] int knownLeadingBlocks,
-        [Values] bool unknownBlockIncomplete)
+        [Values] bool unknownBlockIncomplete, [Values] bool bounded)
     {
         Hash256[] hashes = [Keccak.Zero, TestItem.KeccakA];
         _syncManager.FindHeader(hashes[knownLeadingBlocks]).Returns((BlockHeader?)null);
         StrongBox<int> requestCount = RespondWithSingleReceiptPages(knownLeadingBlocks > 0, unknownBlockIncomplete);
 
         HandleIncomingStatusMessage();
-        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes.Take(knownLeadingBlocks + 1).ToArray(), CancellationToken.None);
+        ReadOnlyMemory<int>? limits = bounded ? new ReadOnlyMemory<int>(new[] { 2, 2 }) : null;
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes.Take(knownLeadingBlocks + 1).ToArray(), ReadOnlyMemory<int>.Empty, CancellationToken.None, limits);
 
         using (Assert.EnterMultipleScope())
         {

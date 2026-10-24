@@ -732,12 +732,12 @@ public class VerifiedSubscriptionsTests
             ExecutionPeerTransport.VerifyBlockBody(header, block.Body);
             return block;
         }
-        public Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken)
+        public Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null)
         {
             Interlocked.Increment(ref _receiptReads);
-            TxReceipt[] receipts = _blocks[block.Hash!].Receipts;
+            TxReceipt[] receipts = _blocks[header.Hash!].Receipts;
             if (TamperReceipts) receipts[0].Logs![0].Data[0] ^= 1;
-            ExecutionPeerTransport.VerifyReceipts(block.Header, receipts, MainnetSpecProvider.Instance);
+            ExecutionPeerTransport.VerifyReceipts(header, receipts, MainnetSpecProvider.Instance);
             return Task.FromResult(receipts);
         }
         public void Dispose() => _key.Dispose();

@@ -22,7 +22,8 @@ internal interface IExecutionStateSource
         ulong lastNumber, CancellationToken cancellationToken) =>
         VerifiedLogHeaders.GetAsync(this, anchor, finalized, firstNumber, lastNumber, cancellationToken);
     Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken) => throw new NotSupportedException();
-    Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken) => throw new NotSupportedException();
+    /// <summary>Authenticates the complete receipt list, using the exact transaction count when known.</summary>
+    Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null) => throw new NotSupportedException();
     Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<ExecutionAccountProof> GetProofAsync(VerifiedHead head, Address address, UInt256[] storageKeys,
         CancellationToken cancellationToken) => throw new NotSupportedException();

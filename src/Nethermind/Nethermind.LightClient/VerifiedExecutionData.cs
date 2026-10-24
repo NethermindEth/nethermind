@@ -100,7 +100,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
     {
         Block block = await source.GetBlockAsync(header, cancellationToken);
         Index(block);
-        TxReceipt[] receipts = await source.GetReceiptsAsync(block, cancellationToken);
+        TxReceipt[] receipts = await source.GetReceiptsAsync(header, cancellationToken, block.Transactions.Length);
         long payloadBytes = 0;
         foreach (TxReceipt receipt in receipts) ValidateLogPayload(receipt, ref payloadBytes);
         ReceiptForRpc[] result = BuildReceipts(block, receipts);
@@ -113,7 +113,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         List<LogEntryForRpc> result = [];
         long payloadBytes = 2;
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        using ArrayPoolList<Task<(BlockHeader Header, Block Block, TxReceipt[] Receipts)>> pending = new(LogPrefetchLimit);
+        using ArrayPoolList<Task<(BlockHeader Header, Block? Block, TxReceipt[] Receipts)>> pending = new(LogPrefetchLimit);
         try
         {
             int next = 0;
@@ -127,14 +127,14 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
                     if (MayContainLogs(header.Bloom, addresses, topics)) pending.Add(FetchAsync(header));
                 }
                 if (pending.Count == 0) continue;
-                (BlockHeader Header, Block Block, TxReceipt[] Receipts) completed;
+                (BlockHeader Header, Block? Block, TxReceipt[] Receipts) completed;
                 try { completed = await pending[0]; }
                 catch
                 {
                     await Task.WhenAll(pending);
                     throw;
                 }
-                Append(completed.Header, completed.Block, completed.Receipts);
+                if (completed.Block is { } block) Append(completed.Header, block, completed.Receipts);
                 pending.RemoveAt(0);
             }
             return BoundedJson.ToElement(result);
@@ -145,13 +145,26 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             await ((Task)Task.WhenAll(pending)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
 
-        async Task<(BlockHeader, Block, TxReceipt[])> FetchAsync(BlockHeader header)
+        async Task<(BlockHeader, Block?, TxReceipt[])> FetchAsync(BlockHeader header)
         {
             try
             {
+                TxReceipt[] receipts = await source.GetReceiptsAsync(header, stop.Token);
+                bool matches = false;
+                ulong previousGas = 0;
+                foreach (TxReceipt receipt in receipts)
+                {
+                    stop.Token.ThrowIfCancellationRequested();
+                    if (receipt.GasUsedTotal < previousGas)
+                        throw new InvalidDataException("Verified receipt has inconsistent cumulative gas.");
+                    previousGas = receipt.GasUsedTotal;
+                    if (!matches)
+                        foreach (LogEntry log in receipt.Logs ?? [])
+                            if (Matches(log)) { matches = true; break; }
+                }
+                if (!matches) return (header, null, []);
                 Block block = await source.GetBlockAsync(header, stop.Token);
                 Index(block);
-                TxReceipt[] receipts = await source.GetReceiptsAsync(block, stop.Token);
                 return (header, block, receipts);
             }
             catch
@@ -165,22 +178,19 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         {
             if (receipts.Length != block.Transactions.Length)
                 throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
-            ulong previousGas = 0;
             int logIndex = 0;
             for (int i = 0; i < receipts.Length; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 TxReceipt receipt = receipts[i];
                 Transaction transaction = block.Transactions[i];
-                if (receipt.TxType != transaction.Type || receipt.GasUsedTotal < previousGas)
-                    throw new InvalidDataException("Verified receipt has inconsistent transaction type or cumulative gas.");
-                previousGas = receipt.GasUsedTotal;
+                if (receipt.TxType != transaction.Type)
+                    throw new InvalidDataException("Verified receipt has inconsistent transaction type.");
                 foreach (LogEntry log in receipt.Logs ?? [])
                 {
                     int index = logIndex;
                     logIndex = checked(logIndex + 1);
-                    if (addresses is not null && !addresses.Contains(log.Address)) continue;
-                    if (!MatchesTopics(log.Topics, topics)) continue;
+                    if (!Matches(log)) continue;
                     if (result.Count >= 10_000)
                         throw new RpcException(-32001, "Verified log query exceeds the 10000-log response limit.");
                     payloadBytes += log.Data.LongLength * 2 + 4 + log.Topics.LongLength * 68;
@@ -201,6 +211,8 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
                 }
             }
         }
+
+        bool Matches(LogEntry log) => (addresses is null || addresses.Contains(log.Address)) && MatchesTopics(log.Topics, topics);
     }
 
     internal bool TryLocateTransaction(Hash256 hash, out BlockHeader? header) =>
@@ -217,7 +229,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             if (transaction.Hash != hash) continue;
             if (receipt)
             {
-                TxReceipt[] receipts = await source.GetReceiptsAsync(block, cancellationToken);
+                TxReceipt[] receipts = await source.GetReceiptsAsync(block.Header, cancellationToken, block.Transactions.Length);
                 ReceiptForRpc[] result = BuildReceipts(block, receipts);
                 long payloadBytes = 0;
                 ValidateLogPayload(receipts[i], ref payloadBytes);
@@ -337,7 +349,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             {
                 Block block = await source.GetBlockAsync(header, cancellationToken);
                 Index(block);
-                TxReceipt[] receipts = await source.GetReceiptsAsync(block, cancellationToken);
+                TxReceipt[] receipts = await source.GetReceiptsAsync(block.Header, cancellationToken, block.Transactions.Length);
                 rewards[i] = Rewards(block, receipts, percentiles!);
             }
         }
