@@ -256,7 +256,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         {
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
-            InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
+            InclusionListTxSource = Container.Resolve<IInclusionListTxSource>();
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
