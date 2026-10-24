@@ -86,6 +86,11 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Set up .NET for CI scripts
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.402
+
     - name: Checkout tests repository
       uses: actions/checkout@v6
       with:
@@ -145,7 +150,7 @@ runs:
         SEPOLIA_EXECUTION_URL: ${{ inputs.sepolia_execution_url }}
         HOODI_CONSENSUS_URL: ${{ inputs.hoodi_consensus_url }}
         HOODI_EXECUTION_URL: ${{ inputs.hoodi_execution_url }}
-      run: bash "${GITHUB_ACTION_PATH}/run-sedge.sh"
+      run: dotnet run --file "${GITHUB_ACTION_PATH}/RunSedge.cs"
 
     - name: Start Grafana Alloy
       continue-on-error: true
@@ -166,7 +171,7 @@ runs:
       env:
         NETWORK: ${{ inputs.network }}
         SYNC_MODE: ${{ inputs.mode }}
-      run: python scripts/wait-for-sync.py
+      run: dotnet run --file scripts/WaitForSync.cs
 
     - name: Collect Nethermind debug logs
       if: failure() || cancelled()
