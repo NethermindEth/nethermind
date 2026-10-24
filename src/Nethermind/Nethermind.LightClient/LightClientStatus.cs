@@ -17,17 +17,33 @@ internal sealed record ClientProgress(string StartupStage, bool RpcInitialized, 
 internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
     Func<VerifiedHead?, bool> isLatestFresh, Func<VerifiedHead?, bool> isFinalizedFresh)
 {
+    private readonly Lock _lifecycle = new();
+    private readonly TaskCompletionSource _startupCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Runtime? _runtime;
     private int _stage = (int)StartupStage.Checkpoint;
 
-    internal void SetStage(StartupStage stage) => Volatile.Write(ref _stage, (int)stage);
+    internal void SetStage(StartupStage stage)
+    {
+        bool terminal = stage is StartupStage.Stopping or StartupStage.Failed;
+        lock (_lifecycle)
+        {
+            if (!terminal && (StartupStage)_stage is (StartupStage.Stopping or StartupStage.Failed)) return;
+            Volatile.Write(ref _stage, (int)stage);
+        }
+        if (terminal) _startupCompleted.TrySetResult();
+    }
 
     internal void Initialize(Func<string, JsonElement, CancellationToken, Task<object>> invoke,
         Func<HttpContext, Task> handleWebSocket, Func<VerifiedHead?> getLatest, Func<VerifiedHead?> getFinalized,
         Func<VerifiedHead?, HostedAccountProgress[]> getHostedAccounts, Func<HistoryProgress> getHistory)
     {
-        Volatile.Write(ref _runtime, new(invoke, handleWebSocket, getLatest, getFinalized, getHostedAccounts, getHistory));
-        SetStage(StartupStage.Running);
+        lock (_lifecycle)
+        {
+            if ((StartupStage)_stage is StartupStage.Stopping or StartupStage.Failed) return;
+            Volatile.Write(ref _runtime, new(invoke, handleWebSocket, getLatest, getFinalized, getHostedAccounts, getHistory));
+            Volatile.Write(ref _stage, (int)StartupStage.Running);
+        }
+        _startupCompleted.TrySetResult();
     }
 
     internal ClientProgress Read()
@@ -66,8 +82,23 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
                 return Task.FromResult<object>("0x" + chainId.ToString("x", CultureInfo.InvariantCulture));
             return Task.FromResult<object>(new { startingBlock = "0x0", currentBlock = "0x0", highestBlock = "0x0" });
         }
-        throw new RpcException(-32000, $"Light client is {stage.ToString().ToLowerInvariant()}; check GET /status for authenticated head, account and history progress.");
+        if (stage is StartupStage.Stopping or StartupStage.Failed || method == "eth_sendRawTransaction")
+            throw Unavailable(stage);
+        return InvokeWhenInitializedAsync(method, parameters, cancellationToken);
     }
+
+    private async Task<object> InvokeWhenInitializedAsync(string method, JsonElement parameters, CancellationToken cancellationToken)
+    {
+        await _startupCompleted.Task.WaitAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        StartupStage stage = (StartupStage)Volatile.Read(ref _stage);
+        if (stage is StartupStage.Stopping or StartupStage.Failed || Volatile.Read(ref _runtime) is not Runtime runtime)
+            throw Unavailable(stage);
+        return await runtime.Invoke(method, parameters, cancellationToken);
+    }
+
+    private static RpcException Unavailable(StartupStage stage) =>
+        new(-32000, $"Light client is {stage.ToString().ToLowerInvariant()}; check GET /status for authenticated head, account and history progress.");
 
     internal Task HandleWebSocketAsync(HttpContext context)
     {

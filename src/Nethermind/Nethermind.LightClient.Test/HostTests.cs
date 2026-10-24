@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using NSubstitute;
 
 namespace Nethermind.LightClient.Test;
 
@@ -382,6 +383,99 @@ public class HostTests
     }
 
     [Test]
+    [CancelAfter(10_000)]
+    [NonParallelizable]
+    public async Task Startup_rpc_wait_observes_http_initialization_and_cancellation_budget(
+        [Values("initialize", "shutdown", "deadline", "mixed-cancel")] string outcome, CancellationToken token)
+    {
+        const string parameters = "[\"0x1000000000000000000000000000000000000001\",\"latest\"]";
+        string readRequest = "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"eth_getBalance\",\"params\":" + parameters + "}";
+        string request = outcome == "mixed-cancel"
+            ? "[" + readRequest + ",{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"eth_sendRawTransaction\",\"params\":[\"0xc0\"]}]"
+            : readRequest;
+        LightClientStatus status = new(11155111, [], _ => false, _ => false);
+        using MemoryStream input = new(Encoding.UTF8.GetBytes(request));
+        using MemoryStream output = new();
+        DefaultHttpContext context = new();
+        context.Request.Body = input;
+        context.Response.Body = output;
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (outcome == "mixed-cancel") context.RequestAborted = stopping.Token;
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TimerCallback expire = _ => throw new AssertionException("The endpoint did not create its request deadline.");
+        object? timerState = null;
+        TimeSpan dueTime = default;
+        TimeProvider clock = Substitute.For<TimeProvider>();
+        clock.CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), Arg.Any<TimeSpan>(), Arg.Any<TimeSpan>()).Returns(call =>
+        {
+            expire = call.ArgAt<TimerCallback>(0);
+            timerState = call.ArgAt<object?>(1);
+            dueTime = call.ArgAt<TimeSpan>(2);
+            return Substitute.For<ITimer>();
+        });
+        List<(string Method, string Parameters)> invoked = [];
+        Task pending = RpcEndpoint.HandleAsync(context, (method, values, caller) =>
+        {
+            try { return status.InvokeAsync(method, values, caller); }
+            finally { entered.TrySetResult(); }
+        }, NullLogger.Instance, clock, outcome == "mixed-cancel" ? token : stopping.Token);
+        await entered.Task.WaitAsync(token);
+        bool completedBeforeInitialization = pending.IsCompleted;
+
+        if (outcome == "initialize") Initialize();
+        else if (outcome is "shutdown" or "mixed-cancel") await stopping.CancelAsync();
+        else expire(timerState);
+
+        if (outcome is "shutdown" or "mixed-cancel")
+            Assert.That(async () => await pending.WaitAsync(token), Throws.InstanceOf<OperationCanceledException>());
+        else
+            await pending.WaitAsync(token);
+        int completedCalls = invoked.Count;
+        if (outcome != "initialize") Initialize();
+
+        using MemoryStream nextInput = new(Encoding.UTF8.GetBytes(readRequest));
+        using MemoryStream nextOutput = new();
+        DefaultHttpContext next = new();
+        next.Request.Body = nextInput;
+        next.Response.Body = nextOutput;
+        await RpcEndpoint.HandleAsync(next, status.InvokeAsync, NullLogger.Instance, stoppingToken: token);
+        using JsonDocument nextResponse = JsonDocument.Parse(nextOutput.ToArray());
+        string nextResult = StringRpcResult(nextResponse);
+        if (outcome == "initialize")
+        {
+            using JsonDocument response = JsonDocument.Parse(output.ToArray());
+            Assert.That(StringRpcResult(response), Is.EqualTo("0x2a"));
+        }
+        else Assert.That(output.Length, Is.Zero, "a canceled startup read must not produce a successful response");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completedBeforeInitialization, Is.False);
+            Assert.That(dueTime, Is.EqualTo(TimeSpan.FromSeconds(90)));
+            Assert.That(completedCalls, Is.EqualTo(outcome == "initialize" ? 1 : 0));
+            if (outcome is "initialize" or "deadline")
+                Assert.That(context.Response.StatusCode, Is.EqualTo(outcome == "deadline" ? StatusCodes.Status504GatewayTimeout : StatusCodes.Status200OK));
+            if (outcome == "mixed-cancel") Assert.That(context.RequestAborted.IsCancellationRequested, Is.True);
+            Assert.That(next.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(nextResult, Is.EqualTo("0x2a"));
+            Assert.That(invoked, Is.EqualTo(Enumerable.Repeat(("eth_getBalance", parameters), outcome == "initialize" ? 2 : 1)));
+        }
+
+        void Initialize() => status.Initialize((method, values, _) =>
+            {
+                invoked.Add((method, values.GetRawText()));
+                return Task.FromResult<object>("0x2a");
+            }, static _ => Task.CompletedTask, static () => null, static () => null,
+            static _ => [], static () => new(null, null, null, null, false, null));
+    }
+
+    private static string StringRpcResult(JsonDocument response)
+    {
+        Assert.That(response.RootElement.TryGetProperty("result", out JsonElement result), Is.True, response.RootElement.GetRawText());
+        Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.String));
+        return result.GetString()!;
+    }
+
+    [Test]
     public async Task Host_waits_for_consensus_work_before_disposal([Values] bool failSync)
     {
         await using WebApplication app = CreateApp("http://127.0.0.1:0");
@@ -520,15 +614,148 @@ public class LightClientStatusTests
     }
 
     [Test]
-    public void Startup_data_requests_return_an_actionable_error(
-        [Values("eth_blockNumber", "eth_getBalance", "eth_getLogs", "eth_sendRawTransaction")] string method)
+    public void Startup_transaction_submission_returns_an_actionable_error()
     {
         LightClientStatus status = new(11155111, [], _ => false, _ => false);
         status.SetStage(StartupStage.Bootstrap);
+        int invoked = 0;
 
-        Assert.That(async () => await status.InvokeAsync(method, default, CancellationToken.None),
+        Assert.That(() => { _ = status.InvokeAsync("eth_sendRawTransaction", default, CancellationToken.None); },
             Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32000)
                 .And.Message.Contains("bootstrap").And.Message.Contains("GET /status"));
+        Initialize(status, (_, _, _) => { invoked++; return Task.FromResult<object>("submitted"); });
+        Assert.That(invoked, Is.Zero, "a rejected submission must not be queued for initialization");
+    }
+
+    [TestCase("eth_blockNumber", "[]")]
+    [TestCase("eth_getBalance", "[\"0x1000000000000000000000000000000000000001\",\"latest\"]")]
+    [TestCase("eth_getLogs", "[{\"fromBlock\":\"0x1\",\"toBlock\":\"0x2\"}]")]
+    [TestCase("unknown_method", "[]")]
+    [CancelAfter(10_000)]
+    public async Task Startup_requests_wait_for_runtime_and_preserve_arguments(string method, string parameters, CancellationToken token)
+    {
+        LightClientStatus status = new(11155111, [], _ => false, _ => false);
+        using JsonDocument input = JsonDocument.Parse(parameters);
+        object expected = new();
+        List<(string Method, string Parameters, CancellationToken Token)> invoked = [];
+        Task<object> pending = status.InvokeAsync(method, input.RootElement, token);
+        bool completedBeforeInitialization = pending.IsCompleted;
+        object chainId = await status.InvokeAsync("eth_chainId", default, token);
+        object syncing = await status.InvokeAsync("eth_syncing", default, token);
+        ClientProgress progress = status.Read();
+
+        Initialize(status, (name, values, caller) =>
+        {
+            invoked.Add((name, values.GetRawText(), caller));
+            return Task.FromResult(expected);
+        });
+        object result = await pending.WaitAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completedBeforeInitialization, Is.False);
+            Assert.That(progress.RpcInitialized, Is.False);
+            Assert.That(chainId, Is.EqualTo("0xaa36a7"));
+            Assert.That(JsonSerializer.Serialize(syncing), Is.EqualTo("{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x0\",\"highestBlock\":\"0x0\"}"));
+            Assert.That(result, Is.SameAs(expected));
+            Assert.That(invoked, Is.EqualTo(new[] { (method, parameters, token) }));
+            Assert.That(status.Read().RpcInitialized, Is.True);
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Intermediate_startup_stages_do_not_release_pending_requests(CancellationToken token)
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        Task<object> pending = status.InvokeAsync("eth_blockNumber", default, token);
+        List<bool> completed = [];
+        foreach (StartupStage stage in new[] { StartupStage.Checkpoint, StartupStage.Beacon, StartupStage.Bootstrap, StartupStage.Execution })
+        {
+            status.SetStage(stage);
+            completed.Add(pending.IsCompleted);
+        }
+        Initialize(status, static (_, _, _) => Task.FromResult<object>("verified"));
+        object result = await pending.WaitAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.EqualTo(new[] { false, false, false, false }));
+            Assert.That(result, Is.EqualTo("verified"));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Running_dispatch_returns_the_runtime_task_directly(
+        [Values("eth_blockNumber", "eth_chainId", "eth_syncing", "eth_sendRawTransaction")] string method, CancellationToken token)
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        TaskCompletionSource<object> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<object> expected = completion.Task;
+        Initialize(status, (_, _, _) => expected);
+        Task<object> actual = status.InvokeAsync(method, default, token);
+        try
+        {
+            using IDisposable scope = Assert.EnterMultipleScope();
+            Assert.That(actual, Is.SameAs(expected));
+            Assert.That(actual.IsCompleted, Is.False);
+        }
+        finally
+        {
+            completion.TrySetResult(new object());
+            await ((Task)actual).WaitAsync(token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Canceling_one_startup_request_does_not_cancel_other_waiters(CancellationToken token)
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<object> canceled = status.InvokeAsync("eth_getBalance", default, caller.Token);
+        Task<object> survivor = status.InvokeAsync("eth_blockNumber", default, token);
+        await caller.CancelAsync();
+        bool cancellationObserved;
+        try { await canceled.WaitAsync(token); cancellationObserved = false; }
+        catch (OperationCanceledException) when (caller.IsCancellationRequested) { cancellationObserved = true; }
+        bool survivorCompleted = survivor.IsCompleted;
+        List<string> invoked = [];
+        Initialize(status, (method, _, _) => { invoked.Add(method); return Task.FromResult<object>("verified"); });
+        object result = await survivor.WaitAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cancellationObserved, Is.True);
+            Assert.That(survivorCompleted, Is.False);
+            Assert.That(result, Is.EqualTo("verified"));
+            Assert.That(invoked, Is.EqualTo(new[] { "eth_blockNumber" }));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Terminal_startup_wakes_waiters_and_rejects_late_initialization(
+        [Values("stopping", "failed")] string stageName, CancellationToken token)
+    {
+        StartupStage terminal = Enum.Parse<StartupStage>(stageName, ignoreCase: true);
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        Task<object> pending = status.InvokeAsync("eth_getBalance", default, token);
+        status.SetStage(terminal);
+        Initialize(status, static (_, _, _) => throw new AssertionException("Terminal startup must not publish runtime services."));
+        status.SetStage(StartupStage.Execution);
+
+        Assert.That(async () => await pending.WaitAsync(token), Throws.TypeOf<RpcException>()
+            .With.Property(nameof(RpcException.Code)).EqualTo(-32000).And.Message.Contains(terminal.ToString().ToLowerInvariant()));
+        Assert.That(async () => await status.InvokeAsync("eth_blockNumber", default, token), Throws.TypeOf<RpcException>()
+            .With.Property(nameof(RpcException.Code)).EqualTo(-32000));
+        ClientProgress progress = status.Read();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(progress.StartupStage, Is.EqualTo(terminal.ToString().ToLowerInvariant()));
+            Assert.That(progress.RpcInitialized, Is.False);
+        }
     }
 
     [Test]
@@ -587,13 +814,18 @@ public class LightClientStatusTests
     }
 
     [Test]
-    public void Startup_rpc_observes_request_cancellation()
+    public void Startup_rpc_observes_request_cancellation(
+        [Values("eth_chainId", "eth_syncing", "eth_getBalance", "eth_sendRawTransaction")] string method)
     {
         LightClientStatus status = new(1, [], _ => false, _ => false);
         using CancellationTokenSource stop = new();
         stop.Cancel();
 
-        Assert.That(async () => await status.InvokeAsync("eth_syncing", default, stop.Token),
+        Assert.That(async () => await status.InvokeAsync(method, default, stop.Token),
             Throws.TypeOf<OperationCanceledException>());
     }
+
+    private static void Initialize(LightClientStatus status, Func<string, JsonElement, CancellationToken, Task<object>> invoke) =>
+        status.Initialize(invoke, static _ => Task.CompletedTask, static () => null, static () => null,
+            static _ => [], static () => new(null, null, null, null, false, null));
 }
