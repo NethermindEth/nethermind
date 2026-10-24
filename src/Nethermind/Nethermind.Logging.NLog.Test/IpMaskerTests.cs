@@ -41,6 +41,7 @@ public class IpMaskerTests
     [TestCase("Listening on [::1]:8545")]
     [TestCase("Listening on [::]:30303")]
     [TestCase("Peer ::ffff:127.0.0.1")]
+    [TestCase("Peer ::ffff:0.0.0.0")]
     // Versions and numbers that only look like addresses.
     [TestCase("Version: 1.36.0-unstable+3c7c9e40")]
     [TestCase("Geth/v1.14.12-stable/linux-amd64/go1.23.4")]
@@ -56,13 +57,23 @@ public class IpMaskerTests
     public void Keeps_data_that_is_not_sensitive(string text) =>
         Assert.That(IpMasker.Mask(text), Is.EqualTo(text));
 
-    [TestCase(true, "Peer x.x.x.x:30303|")]
-    [TestCase(false, "Peer 94.130.12.34:30303|")]
-    public void Logger_masks_only_when_enabled(bool enabled, string expected) =>
-        Assert.That(Log(enabled, static logger => logger.Info("Peer 94.130.12.34:30303")), Is.EqualTo(expected));
+    private static readonly Action<NLogLogger>[] EntryPoints =
+    [
+        static l => l.Info("Peer 94.130.12.34:30303"),
+        static l => l.Warn("Peer 94.130.12.34:30303"),
+        static l => l.Debug("Peer 94.130.12.34:30303"),
+        static l => l.Trace("Peer 94.130.12.34:30303"),
+        static l => l.Error("Peer 94.130.12.34:30303"),
+        static l => l.Warn("Peer 94.130.12.34:30303", LogEventKind.DebugWarn),
+        static l => l.Error("Peer 94.130.12.34:30303", LogEventKind.DebugError, new Exception("refused 94.130.12.34:30303")),
+    ];
 
-    [TestCase(true, "Failed: x.x.x.x:30303 System.Exception: Connection refused x.x.x.x:30303|")]
-    [TestCase(false, "Failed: 94.130.12.34:30303|System.Exception: Connection refused 94.130.12.34:30303")]
+    [Test]
+    public void Logger_masks_only_when_enabled([Values] bool enabled, [ValueSource(nameof(EntryPoints))] Action<NLogLogger> log) =>
+        Assert.That(Log(enabled, log), enabled ? Does.Not.Contain("94.130.12.34") : Does.Contain("94.130.12.34"));
+
+    [TestCase(true, "Failed: x.x.x.x:30303|Connection refused x.x.x.x:30303|System.Exception: Connection refused x.x.x.x:30303")]
+    [TestCase(false, "Failed: 94.130.12.34:30303|Connection refused 94.130.12.34:30303|System.Exception: Connection refused 94.130.12.34:30303")]
     public void Logger_masks_exception_only_when_enabled(bool enabled, string expected) =>
         Assert.That(
             Log(enabled, static logger => logger.Error("Failed: 94.130.12.34:30303", new Exception("Connection refused 94.130.12.34:30303"))),
@@ -72,7 +83,7 @@ public class IpMaskerTests
     {
         LoggingConfiguration previous = LogManager.Configuration;
         bool wasEnabled = IpMasker.Enabled;
-        MemoryTarget target = new() { Layout = "${message}|${exception:format=toString}" };
+        MemoryTarget target = new() { Layout = "${message}|${exception:format=message}|${exception:format=toString}" };
         LoggingConfiguration configuration = new();
         configuration.AddRuleForAllLevels(target);
         LogManager.Configuration = configuration;

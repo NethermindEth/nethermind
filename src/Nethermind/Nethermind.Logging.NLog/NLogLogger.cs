@@ -82,11 +82,15 @@ namespace Nethermind.Logging.NLog
 
         /// <remarks>
         /// Exception messages can carry addresses, e.g. a <see cref="System.Net.Sockets.SocketException"/> names the remote endpoint.
-        /// The exception cannot be changed, so its masked text moves into the message.
+        /// The exception cannot be changed, so a substitute with the masked text replaces it.
         /// </remarks>
         private static (string Text, Exception? Ex) MaskIfEnabled(string text, Exception? ex) =>
             !IpMasker.Enabled ? (text, ex)
-            : ex is null ? (IpMasker.Mask(text), null)
-            : (IpMasker.Mask($"{text} {ex}"), null);
+            : (IpMasker.Mask(text), ex is null ? null : new MaskedException(IpMasker.Mask(ex.Message), IpMasker.Mask(ex.ToString())));
+
+        private sealed class MaskedException(string message, string text) : Exception(message)
+        {
+            public override string ToString() => text;
+        }
     }
 }
