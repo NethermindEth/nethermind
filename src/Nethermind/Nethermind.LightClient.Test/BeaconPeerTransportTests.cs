@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Reflection;
+using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconChain.DataAvailability;
@@ -11,6 +13,7 @@ using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.LightClient.Consensus;
@@ -770,7 +773,7 @@ public class BeaconPeerTransportTests
         Assert.That(providers.Maintain(disconnected).Reconnect, Is.Null, "redial goes through a bounded retry cadence");
         clock.SetSlot(17);
         Assert.That(providers.Maintain(disconnected).Reconnect, Is.EqualTo(redialAddress));
-        clock.SetSlot(70);
+        clock.Advance(TimeSpan.FromHours(24));
         Assert.That(providers.Maintain(disconnected).Reconnect, Is.Null, "disconnected addresses expire instead of being retained indefinitely");
     }
 
@@ -894,6 +897,418 @@ public class BeaconPeerTransportTests
             .Invoke(manager, [session, address, null, true])!;
     }
 
+    [Test]
+    public void Supplier_dial_hints_survive_restart_without_restoring_trust([Values] bool quic, [Values] bool gossip)
+    {
+        using MemDb db = new();
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer peer = HintPeer(quic);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock, metadata: db);
+        providers.Admit(peer, PeerDirection.Outbound);
+        if (gossip) providers.RecordGossip(Multiformats.Address.Multiaddress.Decode(peer.Id).GetPeerId()!, 13);
+        else providers.RecordValidated(peer, ConsensusTests.Bootstrap(1, 1));
+        providers.FlushHints();
+        byte[] saved = db.Get(HintKey)!;
+        ManualDeadlineClock restart = new();
+        restart.SetSlot(14);
+        restart.Advance(TimeSpan.FromMinutes(11));
+        restart.ResetTimestamp();
+
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, restart, metadata: db);
+        Assert.That(restored.Preferred<LightClientBootstrap>([peer], 0), Is.EqualTo(-1), "import does not admit a session");
+        restored.Admit(peer, PeerDirection.Outbound);
+        string? occupied = restored.Maintain(Connected([peer])).Reconnect;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored.Preferred<LightClientBootstrap>([peer], 0), Is.EqualTo(-1));
+            Assert.That(restored.Preferred<LightClientOptimisticUpdate>([peer], 0), Is.EqualTo(-1));
+            Assert.That(occupied, Is.Null, "an occupied identity is not redialed");
+        }
+        Assert.That(restored.Maintain([]).Reconnect, Is.EqualTo(peer.Id));
+        restored.FlushHints();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Get(HintKey), Is.EqualTo(saved), "import and a redial must not extend authenticated useful time");
+            Assert.That(db.WritesCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Supplier_hints_require_current_outbound_authenticated_use(
+        [Values] PeerDirection direction, [Values] bool replaced, [Values] bool validated)
+    {
+        using MemDb db = new();
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer old = HintPeer();
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock, metadata: db);
+        providers.Admit(old, direction);
+        if (replaced) providers.Admit(new BootstrapPeer(ConsensusTests.Bootstrap(1, 1), old.Id), direction);
+        if (validated) providers.RecordValidated(old, ConsensusTests.Bootstrap(1, 1));
+        else providers.Failed<LightClientBootstrap>(old);
+        providers.FlushHints();
+
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+
+        Assert.That(restored.Maintain([]).Reconnect, Is.EqualTo(direction == PeerDirection.Outbound && !replaced && validated ? old.Id : null));
+    }
+
+    [TestCase(0, true)]
+    [TestCase(86400, true)]
+    [TestCase(86401, false)]
+    [TestCase(-1, false)]
+    public void Supplier_hint_import_preserves_the_original_utc_expiry(int ageSeconds, bool retained)
+    {
+        using MemDb db = new();
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer peer = HintPeer();
+        LearnHints(db, clock, peer).FlushHints();
+        clock.Advance(TimeSpan.FromSeconds(ageSeconds));
+        clock.ResetTimestamp();
+
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+
+        Assert.That(restored.Maintain([]).Reconnect, Is.EqualTo(retained ? peer.Id : null));
+    }
+
+    [Test]
+    public void Imported_hint_retention_uses_remaining_age_and_monotonic_elapsed_time()
+    {
+        using MemDb db = new();
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer peer = HintPeer();
+        LearnHints(db, clock, peer).FlushHints();
+        clock.Advance(TimeSpan.FromHours(24) - TimeSpan.FromSeconds(30));
+        clock.ResetTimestamp();
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+        clock.MoveUtc(TimeSpan.FromDays(-2));
+        Assert.That(restored.Maintain([]).Reconnect, Is.EqualTo(peer.Id));
+
+        clock.Advance(TimeSpan.FromSeconds(31));
+
+        Assert.That(restored.Maintain([]).Reconnect, Is.Null, "UTC rollback cannot extend a loaded hint");
+        restored.FlushHints();
+        Assert.That(db.Get(HintKey)![36], Is.Zero);
+    }
+
+    private static readonly string[] InvalidHintCases =
+    [
+        "magic", "genesis", "count", "header", "entry", "address", "trailing", "oversize",
+        "empty-address", "long-address", "utf8", "future", "negative", "expired", "peer-id", "protocol", "port"
+    ];
+
+    [Test]
+    public void Invalid_supplier_hint_cache_cannot_supply_a_route([ValueSource(nameof(InvalidHintCases))] string corruption)
+    {
+        using MemDb db = new();
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer peer = HintPeer();
+        LearnHints(db, clock, peer).FlushHints();
+        byte[] bytes = db.Get(HintKey)!.ToArray();
+        long utc = clock.GetUtcNow().ToUnixTimeSeconds();
+        switch (corruption)
+        {
+            case "magic": bytes[0] ^= 1; break;
+            case "genesis": bytes[4] ^= 1; break;
+            case "count": bytes[36] = 17; break;
+            case "header": bytes = bytes[..36]; break;
+            case "entry": bytes = bytes[..44]; break;
+            case "address": bytes = bytes[..^1]; break;
+            case "trailing": bytes = [.. bytes, 0]; break;
+            case "oversize": bytes = new byte[16582]; break;
+            case "empty-address": BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(45), 0); break;
+            case "long-address": BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(45), 1025); break;
+            case "utf8": bytes[47] = 0xff; break;
+            case "future": BinaryPrimitives.WriteInt64BigEndian(bytes.AsSpan(37), utc + 1); break;
+            case "negative": BinaryPrimitives.WriteInt64BigEndian(bytes.AsSpan(37), -1); break;
+            case "expired": BinaryPrimitives.WriteInt64BigEndian(bytes.AsSpan(37), utc - 86401); break;
+            case "peer-id": bytes[^1] = (byte)'!'; break;
+            case "protocol": Encoding.UTF8.GetBytes(peer.Id.Replace("/tcp/", "/udp/", StringComparison.Ordinal)).CopyTo(bytes.AsSpan(47)); break;
+            case "port": Encoding.UTF8.GetBytes(peer.Id.Replace("/9000/", "/0000/", StringComparison.Ordinal)).CopyTo(bytes.AsSpan(47)); break;
+            default: throw new ArgumentOutOfRangeException(nameof(corruption));
+        }
+        db.Set(HintKey, bytes);
+
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+        string? reconnect = restored.Maintain([]).Reconnect;
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(reconnect, Is.Null);
+        Assert.That(restored.Preferred<LightClientBootstrap>([peer], 0), Is.EqualTo(-1));
+    }
+
+    [Test]
+    public void Duplicate_hint_identities_keep_one_deterministic_route([Values(-1, 0, 1)] int secondNewer)
+    {
+        using MemDb db = new();
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer peer = HintPeer();
+        LearnHints(db, clock, peer).FlushHints();
+        byte[] first = db.Get(HintKey)!.ToArray();
+        long utc = clock.GetUtcNow().ToUnixTimeSeconds();
+        BinaryPrimitives.WriteInt64BigEndian(first.AsSpan(37), utc - 2);
+        byte[] second = first[37..];
+        BinaryPrimitives.WriteInt64BigEndian(second, utc - 2 + secondNewer);
+        string alternate = peer.Id.Replace("/9000/", "/9001/", StringComparison.Ordinal);
+        Encoding.UTF8.GetBytes(alternate).CopyTo(second.AsSpan(10));
+        byte[] duplicate = [.. first, .. second];
+        duplicate[36] = 2;
+        db.Set(HintKey, duplicate);
+
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+
+        Assert.That(restored.Maintain([]).Reconnect, Is.EqualTo(secondNewer > 0 ? alternate : peer.Id));
+        Assert.That(restored.Maintain([]).Reconnect, Is.Null, "the same identity cannot occupy two hint slots");
+    }
+
+    [Test]
+    public void Persisted_supplier_hints_remain_bounded_and_rotate_each_untried_identity()
+    {
+        using MemDb db = new();
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer[] peers = Enumerable.Range(0, 17).Select(_ => HintPeer()).ToArray();
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock, metadata: db);
+        foreach (BootstrapPeer peer in peers)
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            providers.Admit(peer, PeerDirection.Outbound);
+            providers.RecordValidated(peer, ConsensusTests.Bootstrap(1, 1));
+        }
+        providers.FlushHints();
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+        List<string?> requested = [];
+        for (int i = 0; i < 17; i++) requested.Add(restored.Maintain([]).Reconnect);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(db.Get(HintKey)!.Length, Is.LessThanOrEqualTo(16581));
+        Assert.That(db.Get(HintKey)![36], Is.EqualTo(16));
+        Assert.That(requested, Is.EqualTo(peers.Skip(1).Reverse().Select(peer => peer.Id).Append(null)));
+    }
+
+    [Test]
+    public void Failed_hint_redials_rotate_before_retry_and_new_authenticated_use_restores_priority()
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(1);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        BootstrapPeer[] peers = ProviderPeers(3);
+        foreach (BootstrapPeer peer in peers.Reverse())
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            providers.Admit(peer, PeerDirection.Outbound);
+            providers.RecordValidated(peer, ConsensusTests.Bootstrap(1, 1));
+        }
+        List<string?> requested = [];
+        for (int i = 0; i < 4; i++)
+        {
+            requested.Add(providers.Maintain([]).Reconnect);
+            clock.Advance(TimeSpan.FromSeconds(15));
+        }
+        Assert.That(requested, Is.EqualTo(new[] { peers[0].Id, peers[1].Id, peers[2].Id, peers[0].Id }),
+            "failed A/B attempts must not repeatedly skip the third route");
+        providers.Admit(peers[0], PeerDirection.Outbound);
+        providers.RecordValidated(peers[0], ConsensusTests.Bootstrap(1, 1));
+
+        Assert.That(providers.Maintain([]).Reconnect, Is.EqualTo(peers[0].Id), "new authenticated usefulness regains untried priority even during its prior dial cooldown");
+    }
+
+    [Test]
+    public void Unavailable_hint_storage_does_not_block_current_supplier_learning()
+    {
+        using HintDb db = new() { FailRead = true };
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer peer = HintPeer();
+        BeaconPeerTransport.PeerProviders providers = LearnHints(db, clock, peer);
+        Assert.That(providers.Maintain([]).Reconnect, Is.EqualTo(peer.Id));
+        providers.FlushHints();
+        db.FailRead = false;
+
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+
+        Assert.That(restored.Maintain([]).Reconnect, Is.EqualTo(peer.Id));
+    }
+
+    [Test]
+    public void Failed_hint_saves_preserve_last_good_metadata_and_retry_at_a_bounded_cadence()
+    {
+        using HintDb db = new();
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer first = HintPeer();
+        BeaconPeerTransport.PeerProviders providers = LearnHints(db, clock, first);
+        providers.FlushHints();
+        byte[] saved = db.Get(HintKey)!.ToArray();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        BootstrapPeer second = HintPeer();
+        providers.Admit(second, PeerDirection.Outbound);
+        providers.RecordValidated(second, ConsensusTests.Bootstrap(1, 1));
+        providers.FlushHints();
+        clock.Advance(TimeSpan.FromSeconds(58));
+        providers.FlushHints();
+        Assert.That(db.Attempts, Is.EqualTo(1));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        db.Fail = true;
+        providers.FlushHints();
+        providers.FlushHints();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Attempts, Is.EqualTo(2));
+            Assert.That(db.Get(HintKey), Is.EqualTo(saved));
+        }
+        clock.Advance(TimeSpan.FromMinutes(1));
+        db.Fail = false;
+        providers.FlushHints();
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+        string?[] requested = [restored.Maintain([]).Reconnect, restored.Maintain([]).Reconnect];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Attempts, Is.EqualTo(3));
+            Assert.That(requested, Is.EqualTo(new[] { second.Id, first.Id }));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Hint_snapshot_acknowledgement_preserves_concurrent_usefulness(
+        [Values] bool failWrite, [Values] bool sameIdentity, CancellationToken token)
+    {
+        using HintDb db = new();
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer first = HintPeer();
+        BeaconPeerTransport.PeerProviders providers = LearnHints(db, clock, first);
+        db.Fail = failWrite;
+        db.BeforeSave = () => { entered.SetResult(); release.Wait(token); };
+        Task save = Task.Run(() => providers.FlushHints());
+        BootstrapPeer second = sameIdentity
+            ? new BootstrapPeer(ConsensusTests.Bootstrap(1, 1), first.Id.Replace("/9000/", "/9001/", StringComparison.Ordinal))
+            : HintPeer();
+        try
+        {
+            await Task.WhenAny(entered.Task, save).WaitAsync(token);
+            if (save.IsCompleted) await save;
+            Assert.That(entered.Task.IsCompleted, Is.True, "the production snapshot must reach the metadata write");
+            clock.Advance(TimeSpan.FromSeconds(1));
+            providers.Admit(second, PeerDirection.Outbound);
+            providers.RecordValidated(second, ConsensusTests.Bootstrap(1, 1));
+        }
+        finally { release.Set(); await save; }
+        db.BeforeSave = null;
+        db.Fail = false;
+        clock.Advance(TimeSpan.FromMinutes(1));
+        providers.FlushHints();
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+
+        string?[] requested = [restored.Maintain([]).Reconnect, restored.Maintain([]).Reconnect];
+        Assert.That(requested, Is.EqualTo(new[] { second.Id, sameIdentity ? null : first.Id }));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Beacon_transport_joins_hint_writer_then_flushes_new_usefulness_before_disposal(CancellationToken token)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> backing = new();
+        using HintDb db = new();
+        using ManualResetEventSlim release = new();
+        using IColumnsDb<BeaconChainDbColumns> columns = Substitute.For<IColumnsDb<BeaconChainDbColumns>>();
+        columns.GetColumnDb(Arg.Any<BeaconChainDbColumns>()).Returns(call =>
+            (BeaconChainDbColumns)call[0] == BeaconChainDbColumns.Metadata ? db : backing.GetColumnDb((BeaconChainDbColumns)call[0]));
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BeaconPeerTransport transport = new(ConsensusTests.Spec, LimboLogs.Instance, columns, time: clock, quicPort: 0);
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        BeaconPeerTransport.PeerProviders providers = (BeaconPeerTransport.PeerProviders)typeof(BeaconPeerTransport).GetField("_providers", flags)!.GetValue(transport)!;
+        BootstrapPeer first = HintPeer();
+        BootstrapPeer second = HintPeer();
+        Task? save = null;
+        Task? shutdown = null;
+        try
+        {
+            providers.Admit(first, PeerDirection.Outbound);
+            providers.RecordValidated(first, ConsensusTests.Bootstrap(1, 1));
+            TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            db.BeforeSave = () => { db.BeforeSave = null; entered.SetResult(); release.Wait(token); };
+            save = Task.Run(() => providers.FlushHints());
+            typeof(BeaconPeerTransport).GetField("_peerLoop", flags)!.SetValue(transport, save);
+            await Task.WhenAny(entered.Task, save).WaitAsync(token);
+            if (save.IsCompleted) await save;
+            Assert.That(entered.Task.IsCompleted, Is.True, "the owned writer must reach the metadata write");
+            clock.Advance(TimeSpan.FromSeconds(1));
+            providers.Admit(second, PeerDirection.Outbound);
+            providers.RecordValidated(second, ConsensusTests.Bootstrap(1, 1));
+            shutdown = transport.DisposeAsync().AsTask();
+            Assert.That(shutdown.IsCompleted, Is.False, "shutdown must join the owned writer");
+        }
+        finally
+        {
+            release.Set();
+            try { await (shutdown ?? transport.DisposeAsync().AsTask()); }
+            finally { if (save is not null) await save; }
+        }
+        clock.Advance(TimeSpan.FromMinutes(1));
+        BootstrapPeer late = HintPeer();
+        providers.Admit(late, PeerDirection.Outbound);
+        providers.RecordValidated(late, ConsensusTests.Bootstrap(1, 1));
+        providers.FlushHints();
+        BeaconPeerTransport.PeerProviders restored = new(ConsensusTests.Spec, clock, metadata: db);
+        string?[] requested = [restored.Maintain([]).Reconnect, restored.Maintain([]).Reconnect, restored.Maintain([]).Reconnect];
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(db.Attempts, Is.EqualTo(2));
+        Assert.That(requested, Is.EqualTo(new[] { second.Id, first.Id, null }), "late callbacks cannot save after shutdown");
+    }
+
+    private static ReadOnlySpan<byte> HintKey => "light-client-supplier-hints/v1"u8;
+
+    private static BootstrapPeer HintPeer(bool quic = false) => new(ConsensusTests.Bootstrap(1, 1),
+        $"/ip4/127.0.0.1/{(quic ? "udp/9000/quic-v1" : "tcp/9000")}/p2p/{new Identity().PeerId}");
+
+    private static BeaconPeerTransport.PeerProviders LearnHints(IDb db, ManualDeadlineClock clock, params BootstrapPeer[] peers)
+    {
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock, metadata: db);
+        foreach (BootstrapPeer peer in peers)
+        {
+            providers.Admit(peer, PeerDirection.Outbound);
+            providers.RecordValidated(peer, ConsensusTests.Bootstrap(1, 1));
+        }
+        return providers;
+    }
+
+    private sealed class HintDb : MemDb
+    {
+        internal bool Fail;
+        internal bool FailRead;
+        internal Action? BeforeSave;
+        internal int Attempts;
+
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (FailRead && key.SequenceEqual(HintKey)) throw new IOException("Injected optional hint read failure.");
+            return base.Get(key, flags);
+        }
+
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (key.SequenceEqual(HintKey))
+            {
+                Attempts++;
+                BeforeSave?.Invoke();
+                if (Fail) throw new IOException("Injected optional hint write failure.");
+            }
+            base.Set(key, value, flags);
+        }
+    }
+
     private static BootstrapPeer[] ProviderPeers(int count, string first = "first") => Enumerable.Range(0, count)
         .Select(index => new BootstrapPeer(ConsensusTests.Bootstrap(1, 1), $"/ip4/127.0.0.1/tcp/9000/p2p/{(index == 0 ? first : index.ToString())}")).ToArray();
 
@@ -972,14 +1387,21 @@ public class BeaconPeerTransportTests
     private sealed class ManualDeadlineClock : TimeProvider
     {
         private DateTimeOffset _now;
+        private long _timestamp;
         private TimerCallback? _callback;
         private object? _state;
 
         public override DateTimeOffset GetUtcNow() => _now;
-        public override long GetTimestamp() => _now.UtcTicks;
+        public override long GetTimestamp() => _timestamp;
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-        internal void SetSlot(ulong slot) => _now = DateTimeOffset.FromUnixTimeSeconds(
-            (long)(ConsensusTests.Spec.GenesisTime + slot * ConsensusTests.Spec.SecondsPerSlot));
+        internal void SetSlot(ulong slot)
+        {
+            DateTimeOffset next = DateTimeOffset.FromUnixTimeSeconds((long)(ConsensusTests.Spec.GenesisTime + slot * ConsensusTests.Spec.SecondsPerSlot));
+            Advance(next - _now);
+        }
+        internal void Advance(TimeSpan elapsed) { _now += elapsed; _timestamp += elapsed.Ticks; }
+        internal void MoveUtc(TimeSpan elapsed) => _now += elapsed;
+        internal void ResetTimestamp() => _timestamp = 0;
 
         public TimeSpan DueTime { get; private set; }
 

@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Net.Quic;
+using System.Text;
+using Multiformats.Address;
 using Nethermind.BeaconChain;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
@@ -20,6 +24,7 @@ using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.RocksDbBindings;
 using BeaconPeerManager = Nethermind.BeaconChain.P2P.PeerManager;
 
 namespace Nethermind.LightClient;
@@ -52,7 +57,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     {
         _logger = logManager.GetClassLogger<BeaconPeerTransport>();
         _time = time ?? TimeProvider.System;
-        _providers = new(spec, _time, _logger);
+        _providers = new(spec, _time, _logger, db.GetColumnDb(BeaconChainDbColumns.Metadata));
         _bootstrapRequests = new(time, _logger, _providers);
         _updateRequests = new(time, _logger, _providers);
         _optimisticRequests = new(time, _logger, _providers);
@@ -131,8 +136,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     private async Task MaintainProvidersAsync(CancellationToken cancellationToken)
     {
         using PeriodicTimer timer = new(TimeSpan.FromSeconds(15), _time);
-        while (await timer.WaitForNextTickAsync(cancellationToken))
+        do
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            _providers.FlushHints();
             try
             {
                 (IBeaconSyncPeer? recycle, string? reconnect) = _providers.Maintain(_peers.Peers);
@@ -153,7 +160,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             {
                 if (_logger.IsDebug) _logger.Debug($"Light-client supplier search failed: {exception.Message}");
             }
-        }
+        } while (await timer.WaitForNextTickAsync(cancellationToken));
     }
 
     internal void StartGossip(Func<LightClientFinalityUpdate, CancellationToken, Task<bool>> finality,
@@ -310,18 +317,29 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         }
     }
 
-    internal sealed class PeerProviders(BeaconChainSpec spec, TimeProvider time, Nethermind.Logging.ILogger? logger = null)
+    internal sealed class PeerProviders(BeaconChainSpec spec, TimeProvider time, Nethermind.Logging.ILogger? logger = null, IDb? metadata = null)
     {
         private const int Capacity = 16;
         private const int TargetPeers = 8;
         private const ulong MaxSupplierLag = 10;
         private static readonly TimeSpan AdmissionGrace = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan Retention = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan HintRetention = TimeSpan.FromHours(24);
+        private static readonly TimeSpan SaveInterval = TimeSpan.FromMinutes(1);
         private static readonly TimeSpan RedialInterval = TimeSpan.FromSeconds(30);
+        private const int MaxAddressBytes = 1024;
+        private const int HintHeaderBytes = 37;
+        private const int MaxHintBytes = HintHeaderBytes + Capacity * (sizeof(long) + sizeof(ushort) + MaxAddressBytes);
+        private static ReadOnlySpan<byte> HintKey => "light-client-supplier-hints/v1"u8;
+        private static readonly UTF8Encoding HintEncoding = new(false, true);
         private readonly Nethermind.Logging.ILogger _logger = logger ?? NullLogger.Instance;
         private readonly Lock _lock = new();
         private readonly Dictionary<string, Supplier> _sessions = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, Remembered> _remembered = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Remembered> _remembered = LoadHints(metadata, spec, time, logger ?? NullLogger.Instance);
+        private long _hintGeneration;
+        private long _savedHintGeneration;
+        private long? _lastSaveAttempt;
+        private bool _stopping;
 
         internal void Admit(IBeaconSyncPeer peer, PeerDirection direction)
         {
@@ -460,8 +478,9 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 if (_logger.IsDebug && retired.Count > 0) retiredSessions = [.. retired];
                 retired.Clear();
                 foreach ((string id, Remembered remembered) in _remembered)
-                    if (time.GetElapsedTime(remembered.LastUseful, now) > Retention) retired.Add(id);
+                    if (HintAge(remembered, now) > HintRetention) retired.Add(id);
                 foreach (string id in retired) _remembered.Remove(id);
+                if (retired.Count > 0) _hintGeneration++;
 
                 fresh = 0;
                 Supplier? replacement = null;
@@ -480,7 +499,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     foreach ((string id, Remembered remembered) in _remembered)
                     {
                         if (connected.Contains(id) || remembered.LastDial is { } dialed && time.GetElapsedTime(dialed, now) < RedialInterval) continue;
-                        if (reconnect is null || remembered.LastUseful > reconnect.LastUseful) reconnect = remembered;
+                        if (reconnect is null || remembered.LastDial is null && reconnect.LastDial is not null ||
+                            remembered.LastDial is { } last && reconnect.LastDial is { } previous && last < previous ||
+                            remembered.LastDial == reconnect.LastDial && HintAge(remembered, now) < HintAge(reconnect, now))
+                            reconnect = remembered;
                     }
                     if (reconnect is not null) reconnect.LastDial = now;
                     recycle = connected.Count >= TargetPeers ? replacement?.Peer : null;
@@ -524,24 +546,144 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
         private void Remember(IBeaconSyncPeer peer)
         {
-            if (!TryCurrent(peer, out Supplier? supplier) || !supplier.CanRedial) return;
+            if (_stopping || !TryCurrent(peer, out Supplier? supplier) || !supplier.CanRedial || peer.Id.Length > MaxAddressBytes) return;
             string id = Identity(peer.Id);
             long now = time.GetTimestamp();
+            long utc = time.GetUtcNow().ToUnixTimeSeconds();
+            _hintGeneration++;
             if (_remembered.TryGetValue(id, out Remembered? remembered))
             {
                 remembered.Address = peer.Id;
                 remembered.LastUseful = now;
+                remembered.UsefulUtc = utc;
+                remembered.InitialAge = TimeSpan.Zero;
+                remembered.LastDial = null;
                 return;
             }
             if (_remembered.Count == Capacity)
             {
                 string? oldest = null;
-                long useful = long.MaxValue;
+                TimeSpan oldestAge = TimeSpan.MinValue;
                 foreach ((string key, Remembered known) in _remembered)
-                    if (known.LastUseful <= useful) { oldest = key; useful = known.LastUseful; }
+                    if (HintAge(known, now) >= oldestAge) { oldest = key; oldestAge = HintAge(known, now); }
                 _remembered.Remove(oldest!);
             }
-            _remembered.Add(id, new(peer.Id, now));
+            _remembered.Add(id, new(peer.Id, now, utc));
+        }
+
+        private TimeSpan HintAge(Remembered remembered, long now) => remembered.InitialAge + time.GetElapsedTime(remembered.LastUseful, now);
+
+        internal void FlushHints(bool stopping = false)
+        {
+            List<(string Address, long UsefulUtc)> snapshot;
+            long generation;
+            lock (_lock)
+            {
+                if (_stopping) return;
+                if (stopping) _stopping = true;
+                if (metadata is null || _savedHintGeneration == _hintGeneration) return;
+                long now = time.GetTimestamp();
+                if (!stopping && _lastSaveAttempt is { } previous && time.GetElapsedTime(previous, now) < SaveInterval) return;
+                _lastSaveAttempt = now;
+                generation = _hintGeneration;
+                snapshot = new(_remembered.Count);
+                foreach (Remembered remembered in _remembered.Values)
+                    if (HintAge(remembered, now) <= HintRetention) snapshot.Add((remembered.Address, remembered.UsefulUtc));
+            }
+            byte[] encoded = EncodeHints(snapshot, spec);
+            try { metadata.Set(HintKey, encoded); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or RocksDbException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Saving optional light-client supplier hints failed: {exception.GetType().Name}");
+                return;
+            }
+            lock (_lock) _savedHintGeneration = generation;
+        }
+
+        private static Dictionary<string, Remembered> LoadHints(IDb? db, BeaconChainSpec spec, TimeProvider time, Nethermind.Logging.ILogger logger)
+        {
+            Dictionary<string, Remembered> result = new(StringComparer.Ordinal);
+            if (db is null) return result;
+            try
+            {
+                using MemoryManager<byte>? saved = db.GetOwnedMemory(HintKey);
+                if (saved is null) return result;
+                ReadOnlySpan<byte> bytes = saved.Memory.Span;
+                if (bytes.Length is < HintHeaderBytes or > MaxHintBytes || !bytes[..4].SequenceEqual("LCP1"u8) ||
+                    !bytes.Slice(4, Hash256.Size).SequenceEqual(spec.GenesisValidatorsRoot.Bytes) || bytes[36] > Capacity)
+                    throw new InvalidDataException("Invalid supplier hint header.");
+                long utc = time.GetUtcNow().ToUnixTimeSeconds();
+                long now = time.GetTimestamp();
+                int offset = HintHeaderBytes;
+                for (int i = 0; i < bytes[36]; i++)
+                {
+                    if (bytes.Length - offset < sizeof(long) + sizeof(ushort)) throw new InvalidDataException("Truncated supplier hint.");
+                    long usefulUtc = BinaryPrimitives.ReadInt64BigEndian(bytes[offset..]);
+                    int length = BinaryPrimitives.ReadUInt16BigEndian(bytes[(offset + sizeof(long))..]);
+                    offset += sizeof(long) + sizeof(ushort);
+                    if (length is 0 or > MaxAddressBytes || bytes.Length - offset < length) throw new InvalidDataException("Invalid supplier hint address length.");
+                    ReadOnlySpan<byte> address = bytes.Slice(offset, length);
+                    offset += length;
+                    if (usefulUtc < 0 || usefulUtc > utc || utc - usefulUtc > HintRetention.TotalSeconds ||
+                        !TryCanonicalAddress(HintEncoding.GetString(address), out string canonical)) continue;
+                    string id = Identity(canonical);
+                    if (!result.TryGetValue(id, out Remembered? previous) || usefulUtc > previous.UsefulUtc ||
+                        usefulUtc == previous.UsefulUtc && string.CompareOrdinal(canonical, previous.Address) < 0)
+                        result[id] = new(canonical, now, usefulUtc, TimeSpan.FromSeconds(utc - usefulUtc));
+                }
+                if (offset != bytes.Length) throw new InvalidDataException("Trailing supplier hint data.");
+                return result;
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or RocksDbException or DecoderFallbackException)
+            {
+                if (logger.IsWarn) logger.Warn($"Ignoring optional light-client supplier hints: {exception.GetType().Name}");
+                return new(StringComparer.Ordinal);
+            }
+        }
+
+        private static byte[] EncodeHints(List<(string Address, long UsefulUtc)> snapshot, BeaconChainSpec spec)
+        {
+            List<(byte[] Address, long UsefulUtc)> entries = new(snapshot.Count);
+            int length = HintHeaderBytes;
+            foreach ((string address, long usefulUtc) in snapshot)
+            {
+                if (usefulUtc < 0 || !TryCanonicalAddress(address, out string canonical)) continue;
+                byte[] bytes = HintEncoding.GetBytes(canonical);
+                entries.Add((bytes, usefulUtc));
+                length += sizeof(long) + sizeof(ushort) + bytes.Length;
+            }
+            byte[] encoded = new byte[length];
+            "LCP1"u8.CopyTo(encoded);
+            spec.GenesisValidatorsRoot.Bytes.CopyTo(encoded.AsSpan(4));
+            encoded[36] = (byte)entries.Count;
+            int offset = HintHeaderBytes;
+            foreach ((byte[] address, long usefulUtc) in entries)
+            {
+                BinaryPrimitives.WriteInt64BigEndian(encoded.AsSpan(offset), usefulUtc);
+                BinaryPrimitives.WriteUInt16BigEndian(encoded.AsSpan(offset + sizeof(long)), (ushort)address.Length);
+                offset += sizeof(long) + sizeof(ushort);
+                address.CopyTo(encoded.AsSpan(offset));
+                offset += address.Length;
+            }
+            return encoded;
+        }
+
+        private static bool TryCanonicalAddress(string address, out string canonical)
+        {
+            canonical = string.Empty;
+            if (address.Length > MaxAddressBytes) return false;
+            try
+            {
+                string[] parts = address.Split('/');
+                bool tcp = parts is ["", "ip4" or "ip6" or "dns" or "dns4" or "dns6", _, "tcp", _, "p2p", _];
+                bool quic = parts is ["", "ip4" or "ip6", _, "udp", _, "quic-v1", "p2p", _];
+                if (!(tcp || quic) || !ushort.TryParse(parts[4], out ushort port) || port == 0) return false;
+                Multiaddress decoded = Multiaddress.Decode(address);
+                if (decoded.GetPeerId() is not { } id || Identity(address) != id.ToString()) return false;
+                canonical = decoded.ToString();
+                return HintEncoding.GetByteCount(canonical) <= MaxAddressBytes;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { return false; }
         }
 
         internal static string Identity(string address)
@@ -563,10 +705,12 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             internal ulong? GossipSlot;
         }
 
-        private sealed class Remembered(string address, long lastUseful)
+        private sealed class Remembered(string address, long lastUseful, long usefulUtc, TimeSpan initialAge = default)
         {
             internal string Address = address;
             internal long LastUseful = lastUseful;
+            internal long UsefulUtc = usefulUtc;
+            internal TimeSpan InitialAge = initialAge;
             internal long? LastDial;
         }
     }
@@ -583,10 +727,17 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 if (_logger.IsWarn) _logger.Warn($"Beacon peer loop stopped with an error: {exception.Message}");
             }
         }
-        await _discovery.DisposeAsync();
-        await _gossip.DisposeAsync();
-        await _p2p.DisposeAsync();
-        await _ipResolver.DisposeAsync();
-        _stop.Dispose();
+        try
+        {
+            await _discovery.DisposeAsync();
+            await _gossip.DisposeAsync();
+            await _p2p.DisposeAsync();
+            await _ipResolver.DisposeAsync();
+        }
+        finally
+        {
+            try { _providers.FlushHints(stopping: true); }
+            finally { _stop.Dispose(); }
+        }
     }
 }
