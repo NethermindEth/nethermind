@@ -488,7 +488,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             // EIP-8037: charge the execution component first so an OOG halt does not
             // spill state gas into gas_left and then restore it to the parent frame.
             true => UpdateGas(ref gas, executionWriteCost)
-                && TryConsumeStateGas(ref gas, GasCostOf.SSetState, legacyShare: (long)(GasCostOf.SSet - executionWriteCost)),
+                && TryConsumeStateGas(ref gas, GasCostOf.SSetState, legacyShare: executionWriteCost < GasCostOf.SSet ? (long)(GasCostOf.SSet - executionWriteCost) : 0),
             false => UpdateGas(ref gas, GasCostOf.SSet),
         };
     }
