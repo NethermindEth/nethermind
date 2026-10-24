@@ -4143,6 +4143,38 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
+    [Test]
+    public void Value_transfer_precheck_rejection_is_traced_as_a_reverted_subcall([Values] bool create)
+    {
+        byte[] revertData = [0xde, 0xad];
+        Address target = create ? ContractAddress.From(SenderRecipientAndMiner.Default.Recipient, UInt256.Zero) : TestItem.AddressE;
+        _worldState.CreateAccount(TestItem.AddressE, 1.Ether);
+        _hookedMachine.RejectedValueTransferTarget = target;
+        _hookedMachine.ValueTransferRevertData = revertData;
+        Prepare code = create
+            ? Prepare.EvmCode.Create([(byte)Instruction.STOP], UInt256.One)
+            : Prepare.EvmCode.CALL(50_000, TestItem.AddressE, 1, 0, 0, 0, 0);
+        (Block block, Transaction transaction) = PrepareTx(code.POP().Done, value: 0);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+        ParityTraceAction rejected = tracer.BuildResult().Action!.Subtraces.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected.Type, Is.EqualTo(create ? "create" : "call"));
+            Assert.That(rejected.To, Is.EqualTo(target), "a rejected creation reports its derived address");
+            Assert.That(rejected.Value, Is.EqualTo(UInt256.One));
+            Assert.That(rejected.Error, Is.EqualTo("Reverted"));
+            Assert.That(rejected.Result?.Output, Is.EqualTo(revertData));
+            Assert.That(rejected.Result?.GasUsed, Is.Zero);
+            if (!create)
+            {
+                Assert.That(rejected.Gas, Is.EqualTo(50_000 + GasCostOf.CallStipend));
+            }
+        }
+    }
+
     /// <summary>Appends an operation bracketed by GAS and stores its result, its gas and RETURNDATASIZE in three words at <paramref name="resultOffset"/>.</summary>
     private static void AppendMeasuredOperation(Prepare code, Func<Prepare, UInt256, Prepare> operation, UInt256 operand, int resultOffset) =>
         operation(code.GAS(), operand)
