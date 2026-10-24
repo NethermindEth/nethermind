@@ -391,14 +391,17 @@ public class LogFinderTests
         Assert.That(_rawBlockTree.SuggestBlock(orphan), Is.EqualTo(AddBlockResult.Added));
         _rawBlockTree.MarkChainAsProcessed([orphan]);
 
-        // Reproduce a previously processed side block after its receipts have been reclaimed.
+        // Match the history pruner's order: reclaim the receipts, then the block body.
+        // Header and chain-level metadata remain available for hash-pinned RPC lookups.
         _receiptStorage.Insert(orphan, [Build.A.Receipt.TestObject], ensureCanonical: false);
         _receiptStorage.RemoveReceipts(orphan);
+        _rawBlockTree.DeleteOldBlock(orphan.Number, orphan.Hash!);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_rawBlockTree.WasProcessed(orphan.Number, orphan.Hash!), Is.True);
             Assert.That(_rawBlockTree.IsMainChain(orphan.Header), Is.False);
+            Assert.That(_rawBlockTree.FindHeader(orphan.Hash, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(_receiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.False);
         }
 
