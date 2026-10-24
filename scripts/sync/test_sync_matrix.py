@@ -79,7 +79,8 @@ class SelectNetworksTest(unittest.TestCase):
         self.assertEqual(select(self.matrix, "taiko"), ["taiko-alethia", "taiko-hoodi"])
 
     def test_partial_name_selects_the_l2_sepolia_variants(self):
-        self.assertEqual(select(self.matrix, "-sepolia"), ["op-sepolia", "world-sepolia"])
+        matrix = [{"network": network} for network in ("sepolia", "op-sepolia", "world-sepolia")]
+        self.assertEqual(select(matrix, "-sepolia"), ["op-sepolia", "world-sepolia"])
 
     def test_exact_name_keeps_every_entry_for_that_network(self):
         # Callers may filter an already expanded matrix, where a network appears per mode.

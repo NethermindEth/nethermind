@@ -50,46 +50,6 @@
     "spot": true
   },
   {
-    "network": "op-sepolia",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 180,
-    "machine_type": "c2-standard-8",
-    "local_ssd_count": 1,
-    "spot": true
-  },
-  {
-    "network": "world-sepolia",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 180,
-    "machine_type": "c2-standard-8",
-    "local_ssd_count": 1,
-    "spot": true
-  },
-  {
-    "network": "op-mainnet",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 600,
-    "machine_type": "c2-standard-8",
-    "local_ssd_count": 2,
-    "spot": true
-  },
-  {
-    "network": "world-mainnet",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 600,
-    "machine_type": "c2-standard-8",
-    "local_ssd_count": 1,
-    "spot": true
-  },
-  {
     "network": "taiko-alethia",
     "cl": "",
     "cl_image": "",
