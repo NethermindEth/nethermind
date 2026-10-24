@@ -1337,8 +1337,7 @@ public partial class EngineModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-                Assert.That(blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!), Is.True,
-                    "processing is held until after the answer");
+                Assert.That(IsMarkedProcessed(), Is.False, "processing is held until after the answer");
             }
         }
         finally
@@ -1348,10 +1347,13 @@ public partial class EngineModuleTests
         }
 
         using CancellationTokenSource cts = new(GateTimeout);
-        while (blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!))
+        while (!IsMarkedProcessed())
         {
             await Task.Delay(10, cts.Token);
         }
+
+        // A suggest still in flight has already published the header, but not yet the chain level the flag is on.
+        bool IsMarkedProcessed() => blockTree.GetInfo(block.Number, block.Hash!).Info is { WasProcessed: true };
     }
 
     /// <summary>
@@ -3041,6 +3043,10 @@ public partial class EngineModuleTests
 
         IDebugRpcModule debug = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Pause();
+        // The loop releases the forkchoice's wait for the commit before it leaves the block, and the rewind refuses
+        // until the loop is idle.
+        Assert.That(() => chain.BlockProcessingQueue.IsEmpty && !chain.BlockTree.IsProcessingBlock, Is.True.After((int)GateTimeout.TotalMilliseconds, 10),
+            "precondition: the paused processing loop has drained");
         ResultWrapper<bool> rewind = byHash
             ? debug.debug_resetHead(blocks[0].BlockHash!)
             : debug.debug_setHead(new BlockParameter(blocks[0].BlockNumber));
