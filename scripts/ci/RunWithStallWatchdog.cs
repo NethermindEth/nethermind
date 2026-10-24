@@ -92,7 +92,7 @@ try
             if (silent < stall) continue;
             stalled = true;
             Console.WriteLine($"::error::No output for {stall.TotalSeconds}s — collecting diagnostics into {directory}");
-            await Diagnostics(directory, diagnostic, install, stack, cancellation.Token);
+            await Diagnostics(directory, process.Id, diagnostic, install, stack, cancellation.Token);
             break;
         }
         if (stalled) await Terminate(process, pidFile, termination);
@@ -142,8 +142,10 @@ static async Task<int> Signal(string signal, string target)
     return result.Code;
 }
 
-static async Task Diagnostics(string directory, TimeSpan total, TimeSpan install, TimeSpan stack, CancellationToken cancellationToken)
+static async Task Diagnostics(string directory, int wrapper, TimeSpan total, TimeSpan install, TimeSpan stack, CancellationToken cancellationToken)
 {
+    var pidFile = Path.Combine(directory, "command.pid");
+    if (File.Exists(pidFile) && int.TryParse(await File.ReadAllTextAsync(pidFile, cancellationToken), out var parsed)) wrapper = parsed;
     var elapsed = Stopwatch.StartNew();
     TimeSpan Remaining() => total - elapsed.Elapsed;
     TimeSpan Clamp(TimeSpan timeout) => timeout < Remaining() ? timeout : Remaining();
@@ -167,7 +169,7 @@ static async Task Diagnostics(string directory, TimeSpan total, TimeSpan install
         foreach (var pid in pids.Output.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
             if (Remaining() <= TimeSpan.Zero) break;
-            if (!int.TryParse(pid, out var number) || number <= 0) continue;
+            if (!int.TryParse(pid, out var number) || number <= 0 || number == Environment.ProcessId || number == wrapper) continue;
             var result = await Capture(executable, ["report", "--process-id", pid], Clamp(stack), cancellationToken);
             await File.WriteAllTextAsync(Path.Combine(directory, $"stack-{pid}.txt"), result.Output, cancellationToken);
         }
