@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Channels;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -54,19 +55,44 @@ internal static class ConsensusSync
 
     internal static async Task RunRepairLoopsAsync(Func<CancellationToken, Task> repair,
         Func<CancellationToken, Task> pollOptimistic, Func<ulong> getOptimisticSlot, Func<ulong> currentSlot,
-        TimeSpan slotDuration, TimeProvider clock, CancellationToken cancellationToken)
+        TimeSpan slotDuration, TimeProvider clock, CancellationToken cancellationToken,
+        ChannelReader<bool>? optimisticRequests = null)
     {
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task[] workers =
         [
             RunRepairLoopAsync(repair, getOptimisticSlot, currentSlot, slotDuration, clock, stop.Token),
-            RunRepairLoopAsync(pollOptimistic, getOptimisticSlot, currentSlot, slotDuration, clock, stop.Token),
+            RunOptimisticLoopAsync(pollOptimistic, slotDuration, clock, stop.Token, optimisticRequests),
         ];
         try { await Task.WhenAny(workers); }
         finally
         {
             await stop.CancelAsync();
             await Task.WhenAll(workers);
+        }
+    }
+
+    private static async Task RunOptimisticLoopAsync(Func<CancellationToken, Task> poll,
+        TimeSpan interval, TimeProvider clock, CancellationToken cancellationToken, ChannelReader<bool>? requests)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await poll(cancellationToken);
+            using CancellationTokenSource wake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            Task delay = Task.Delay(interval, clock, wake.Token);
+            if (requests is null)
+            {
+                await delay;
+                continue;
+            }
+            Task requested = requests.ReadAsync(wake.Token).AsTask();
+            try { await Task.WhenAny(delay, requested); }
+            finally
+            {
+                await wake.CancelAsync();
+                await Task.WhenAll(delay, requested).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
         }
     }
 

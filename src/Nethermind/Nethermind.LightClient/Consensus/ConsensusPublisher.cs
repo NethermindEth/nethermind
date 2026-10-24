@@ -17,8 +17,27 @@ internal sealed class ConsensusPublisher(
 
     private readonly Lock _commit = new();
     private PublishedHeads _heads = new(null, null, 0);
+    private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal PublishedHeads Heads => Volatile.Read(ref _heads);
+
+    internal async Task<VerifiedHead> WaitForFreshLatestAsync(Func<VerifiedHead, bool> isFresh,
+        Action requestRepair, CancellationToken cancellationToken)
+    {
+        PublishedHeads? requested = null;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            PublishedHeads observed = Heads;
+            if (observed.Latest is { } latest && isFresh(latest)) return latest;
+            if (!ReferenceEquals(requested, observed))
+            {
+                requestRepair();
+                requested = observed;
+            }
+            await WaitForChangeOrTickAsync(observed, cancellationToken);
+        }
+    }
 
     internal async Task RunAsync(Action<PublishedHeads> observe, Action<bool, Exception> reportFailure,
         CancellationToken cancellationToken)
@@ -64,11 +83,28 @@ internal sealed class ConsensusPublisher(
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                observe(Heads);
-                await Task.Delay(TimeSpan.FromSeconds(1), clock, cancellationToken);
+                PublishedHeads observed = Heads;
+                observe(observed);
+                await WaitForChangeOrTickAsync(observed, cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private async Task WaitForChangeOrTickAsync(PublishedHeads observed, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using CancellationTokenSource wake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task changed;
+        lock (_commit)
+            changed = ReferenceEquals(observed, _heads) ? _changed.Task.WaitAsync(wake.Token) : Task.CompletedTask;
+        Task delay = Task.Delay(TimeSpan.FromSeconds(1), clock, wake.Token);
+        try { await Task.WhenAny(changed, delay); }
+        finally
+        {
+            await wake.CancelAsync();
+            await Task.WhenAll(changed, delay).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
     }
 
     internal async Task PublishFinalizedAsync(CancellationToken cancellationToken)
@@ -86,13 +122,17 @@ internal sealed class ConsensusPublisher(
 
         // Startup publication finishes before RunAsync; only its finalized worker owns this advertisement.
         publishFinalized(verified, timestamp);
+        TaskCompletionSource changed;
         lock (_commit)
         {
             VerifiedHead? latest = _heads.Latest;
             if (latest is null || latest.Slot <= verified.Slot || latest.Number < verified.Number)
                 latest = verified;
             Volatile.Write(ref _heads, new(verified, latest, timestamp));
+            changed = _changed;
+            _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+        changed.TrySetResult();
     }
 
     private async Task PublishOptimisticAsync(CancellationToken cancellationToken)
@@ -107,6 +147,7 @@ internal sealed class ConsensusPublisher(
             ? current with { Slot = slot }
             : (await resolve(header, cancellationToken)).Head;
         cancellationToken.ThrowIfCancellationRequested();
+        TaskCompletionSource changed;
         lock (_commit)
         {
             PublishedHeads published = _heads;
@@ -114,7 +155,10 @@ internal sealed class ConsensusPublisher(
             if (published.Finalized is { } finalized &&
                 (verified.Slot < finalized.Slot || verified.Number < finalized.Number)) return;
             Volatile.Write(ref _heads, published with { Latest = verified });
+            changed = _changed;
+            _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+        changed.TrySetResult();
     }
 
     private static Hash256 ExecutionHash(LightClientHeader header, string kind) =>

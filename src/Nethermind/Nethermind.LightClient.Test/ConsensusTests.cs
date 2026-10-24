@@ -1252,6 +1252,134 @@ public class ConsensusTests
     }
 
     [Test]
+    [CancelAfter(15_000)]
+    public async Task Fresh_head_waiters_ignore_stale_publications_and_cancel_independently(CancellationToken token)
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        Channel<bool> repairs = Channel.CreateUnbounded<bool>();
+        using CancellationTokenSource canceledCaller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<VerifiedHead> canceled = harness.Publisher.WaitForFreshLatestAsync(
+            head => head.IsFresh(200, 10), () => repairs.Writer.TryWrite(true), canceledCaller.Token);
+        Task<VerifiedHead> survivor = harness.Publisher.WaitForFreshLatestAsync(
+            head => head.IsFresh(200, 10), () => repairs.Writer.TryWrite(true), token);
+        await repairs.Reader.ReadAsync(token);
+        await repairs.Reader.ReadAsync(token);
+        await canceledCaller.CancelAsync();
+        Assert.That(async () => await canceled, Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(survivor.IsCompleted, Is.False);
+        harness.Optimistic = PublicationHeader(188, 120);
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task loop = harness.Start(stop.Token);
+        try
+        {
+            await repairs.Reader.ReadAsync(token);
+            Assert.That(survivor.IsCompleted, Is.False, "an authenticated publication still has to satisfy freshness");
+            await harness.Clock.WaitForTimersAsync(4);
+            harness.Optimistic = PublicationHeader(198, 120);
+            Assert.That(harness.Clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
+
+            VerifiedHead recovered = await survivor.WaitAsync(token);
+
+            Assert.That(recovered, Is.EqualTo(ResolvedPublicationHeader(harness.Optimistic).Head));
+            Assert.That(recovered.Slot, Is.EqualTo(198));
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+        Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+    }
+
+    [Test]
+    [CancelAfter(15_000)]
+    public async Task Fresh_head_waiters_recheck_the_clock_without_repeated_repair_demand(CancellationToken token)
+    {
+        LightClientHeader header = PublicationHeader(180, 120);
+        RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + 179 * Spec.SecondsPerSlot)));
+        ConsensusPublisher publisher = new(() => header, () => header,
+            static (value, _) => Task.FromResult(ResolvedPublicationHeader(value)), static (_, _) => { }, clock);
+        await publisher.PublishFinalizedAsync(token);
+        ConsensusPublisher.PublishedHeads published = publisher.Heads;
+        int repairs = 0;
+        Task<VerifiedHead> recovered = publisher.WaitForFreshLatestAsync(
+            head => head.IsFresh(Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds()), 10),
+            () => repairs++, token);
+        await clock.WaitForTimersAsync(1);
+        Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
+        await clock.WaitForTimersAsync(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered.IsCompleted, Is.False, "the authenticated head is still ahead of the clock");
+            Assert.That(repairs, Is.EqualTo(1), "periodic freshness checks must not flood consensus repair");
+        }
+
+        Assert.That(clock.Advance(TimeSpan.FromSeconds(Spec.SecondsPerSlot - 1)), Is.True);
+
+        Assert.That(await recovered.WaitAsync(token), Is.SameAs(published.Latest));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(publisher.Heads, Is.SameAs(published), "clock recovery does not need another publication");
+            Assert.That(repairs, Is.EqualTo(1));
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
+    [CancelAfter(15_000)]
+    public async Task Publication_during_repair_demand_does_not_lose_the_freshness_wakeup(CancellationToken token)
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        harness.Finalized = PublicationHeader(198, 120);
+        Task publication = Task.CompletedTask;
+
+        Task<VerifiedHead> recovered = harness.Publisher.WaitForFreshLatestAsync(head => head.IsFresh(200, 10),
+            () => publication = harness.Publisher.PublishFinalizedAsync(token), token);
+
+        await publication.WaitAsync(token);
+        Assert.That(await recovered.WaitAsync(token), Is.EqualTo(ResolvedPublicationHeader(harness.Finalized).Head));
+        Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+    }
+
+    [Test]
+    [CancelAfter(15_000)]
+    public async Task Optimistic_demand_wakes_before_the_next_slot_and_coalesces_while_busy(CancellationToken token)
+    {
+        RepairClock clock = new();
+        Channel<bool> demand = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
+        Channel<int> requests = Channel.CreateUnbounded<int>();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int count = 0;
+        int active = 0;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task loop = ConsensusSync.RunRepairLoopsAsync(cancellation => Task.Delay(Timeout.InfiniteTimeSpan, cancellation),
+            async cancellation =>
+            {
+                Assert.That(Interlocked.Increment(ref active), Is.EqualTo(1));
+                int request = ++count;
+                requests.Writer.TryWrite(request);
+                try { if (request == 2) await release.Task.WaitAsync(cancellation); }
+                finally { Interlocked.Decrement(ref active); }
+            }, static () => 120, static () => 120, TimeSpan.FromSeconds(12), clock, stop.Token, demand.Reader);
+        try
+        {
+            Assert.That(await requests.Reader.ReadAsync(token), Is.EqualTo(1));
+            await clock.WaitForTimersAsync(1);
+            demand.Writer.TryWrite(true);
+            Assert.That(await requests.Reader.ReadAsync(token), Is.EqualTo(2));
+            for (int i = 0; i < 10; i++) demand.Writer.TryWrite(true);
+            Assert.That(count, Is.EqualTo(2), "demand must not start overlapping consensus requests");
+            release.SetResult();
+            Assert.That(await requests.Reader.ReadAsync(token), Is.EqualTo(3));
+            Assert.That(clock.GetTimestamp(), Is.Zero, "the request must not wait for the periodic repair timer");
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(active, Is.Zero);
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
     public async Task Publication_commits_preserve_newer_optimistic_heads_and_the_finalized_floor(
         [Values] bool finalizedFirst, [Values("none", "slot", "number")] string floor)
     {

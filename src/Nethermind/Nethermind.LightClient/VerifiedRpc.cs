@@ -15,7 +15,8 @@ namespace Nethermind.LightClient;
 
 internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<VerifiedHead> getHead, ulong chainId,
     VerifiedCall? calls = null, ISpecProvider? specProvider = null, Func<VerifiedHead?>? getLatestHead = null,
-    Func<VerifiedHead, bool>? isLatestHeadFresh = null, Func<VerifiedHead, bool>? isFinalizedHeadFresh = null)
+    Func<VerifiedHead, bool>? isLatestHeadFresh = null, Func<VerifiedHead, bool>? isFinalizedHeadFresh = null,
+    Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null)
     : IDisposable
 {
     private const ulong HistoricalStateDepth = 32;
@@ -74,7 +75,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
             byte[] raw;
             try { raw = ReadData(parameters[0], 2 * 1024 * 1024); }
             catch (Exception exception) when (exception is InvalidDataException or FormatException) { throw InvalidParameters(); }
-            return await _data.SendRawTransactionAsync(LatestHead(), raw, calls, cancellationToken);
+            return await _data.SendRawTransactionAsync(await LatestHeadAsync(cancellationToken), raw, calls, cancellationToken);
         }
         if (method == "eth_getProof") return await GetProofAsync(parameters, count, cancellationToken);
         if (method is "eth_feeHistory" or "eth_gasPrice" or "eth_maxPriorityFeePerGas")
@@ -94,7 +95,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
             if (count is < 1 or > 2 || parameters[0].ValueKind != JsonValueKind.Object) throw InvalidParameters();
             if (calls is null) throw new RpcException(-32601, "Method is not supported by the verified RPC.");
             (VerifiedHead callHead, bool historical) = count == 1
-                ? (LatestHead(), false) : await ResolveStateHeadAsync(parameters[1], cancellationToken);
+                ? (await LatestHeadAsync(cancellationToken), false) : await ResolveStateHeadAsync(parameters[1], cancellationToken);
             try { return await calls.ExecuteAsync(callHead, parameters[0], method == "eth_estimateGas", cancellationToken); }
             finally { if (historical) _historicalStateRequests.Release(); }
         }
@@ -189,7 +190,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         else
         {
             if (count != 0) throw InvalidParameters();
-            newest = await execution.GetHeaderAsync(LatestHead(), cancellationToken);
+            newest = await execution.GetHeaderAsync(await LatestHeadAsync(cancellationToken), cancellationToken);
             blocks = 1;
             percentiles = [60];
         }
@@ -338,7 +339,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         if (selector.ValueKind != JsonValueKind.String) throw InvalidParameters();
         string value = selector.GetString()!;
         RejectUnavailableTag(value);
-        if (!hashOnly && value == "latest") return await execution.GetHeaderAsync(LatestHead(), cancellationToken);
+        if (!hashOnly && value == "latest") return await execution.GetHeaderAsync(await LatestHeadAsync(cancellationToken), cancellationToken);
         VerifiedHead? latest = pinnedLatest ?? getLatestHead?.Invoke();
         if (hashOnly || value.Length == 66)
         {
@@ -410,7 +411,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         }
         bool latestFrom = from.ValueKind == JsonValueKind.Undefined || from.ValueKind == JsonValueKind.String && from.GetString() == "latest";
         bool latestTo = to.ValueKind == JsonValueKind.Undefined || to.ValueKind == JsonValueKind.String && to.GetString() == "latest";
-        VerifiedHead? current = latestFrom || latestTo ? LatestHead() : getLatestHead?.Invoke();
+        VerifiedHead? current = latestFrom || latestTo ? await LatestHeadAsync(cancellationToken) : getLatestHead?.Invoke();
         bool optimisticFrom = latestFrom || current is not null && from.ValueKind == JsonValueKind.String
             && from.GetString()?.StartsWith("0x", StringComparison.Ordinal) == true
             && ParseQuantity(from) == (UInt256)current.Number;
@@ -535,10 +536,16 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         return result;
     }
 
-    private VerifiedHead LatestHead()
+    private async ValueTask<VerifiedHead> LatestHeadAsync(CancellationToken cancellationToken)
     {
-        VerifiedHead head = getLatestHead?.Invoke()
-            ?? throw new RpcException(-32001, "An authenticated optimistic execution head is not available.");
+        cancellationToken.ThrowIfCancellationRequested();
+        VerifiedHead? head = getLatestHead?.Invoke();
+        if ((head is null || !(isLatestHeadFresh?.Invoke(head) ?? true)) && waitForLatestHead is not null)
+        {
+            head = await waitForLatestHead(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        if (head is null) throw new RpcException(-32001, "An authenticated optimistic execution head is not available.");
         if (!(isLatestHeadFresh?.Invoke(head) ?? true))
             throw new RpcException(-32001, "Authenticated optimistic execution head is stale or ahead of the local clock; waiting for consensus sync.");
         return head;
@@ -550,7 +557,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         {
             string selector = block.GetString()!;
             RejectUnavailableTag(selector);
-            if (selector == "latest") return (LatestHead(), false);
+            if (selector == "latest") return (await LatestHeadAsync(cancellationToken), false);
             if (selector.Length == 66)
             {
                 Hash256 requested = new(ReadParameterData(block, 32));

@@ -128,8 +128,14 @@ changing the replayed heads or participation thresholds. Interrupted or corrupt
 candidate persistence disables that recovery candidate while preserving the
 authenticated replay state.
 Optimistic polling runs independently of committee catch-up and finality polling,
-so a delayed repair request does not postpone optimistic recovery. Consensus
-updates still pass through the same serialized verification and persistence path.
+once per slot and when an RPC is waiting for a fresh head, so a delayed repair
+request does not postpone optimistic recovery. Up to three suppliers are queried
+concurrently; consensus updates still pass through the same serialized
+verification and persistence path. Beacon handshakes advertise the authenticated
+head and finalized checkpoint after durable publication; this does not claim full
+execution validation or retained sidecars. Execution discovery starts alongside beacon
+bootstrap. The client targets 16 beacon peers (maximum 32) and allows 32 execution
+peers, replenishing SNAP capacity when fewer than eight usable suppliers remain.
 
 Native beacon networking keeps its private P2P identity and monotonically
 increasing signed ENR sequence in `<data-dir>/cl/<chain-id>/network`, using
@@ -150,7 +156,7 @@ grants no trust to a peer. An unavailable
 or invalid cache falls back to fresh discovery. Peer bans, connection state and
 execution proof caches are not persisted.
 
-Authenticated outbound suppliers leave at most 16 dial hints in the networking
+Authenticated outbound suppliers leave at most 32 dial hints in the networking
 store, expiring after 24 hours. Restarting with the same data directory retries
 these addresses through normal admission and backoff checks. Supplier preference
 and head progress use newly authenticated data from the current session.
@@ -170,6 +176,14 @@ Outbound connections to public beacon and execution peers must be
 permitted. The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
+Execution data requests race at most two suppliers, use only a verified response,
+and cancel and join the other attempt. Account, storage and bytecode reads have
+separate 32 MiB verified caches shared by RPC, EVM and hosted-account refreshes.
+Authenticated headers have another 32 MiB cache; each read rechecks the requested
+number and state root and returns an independent mutable copy.
+Concurrent misses share one download; canceling one caller does not cancel the
+other callers. Cache keys bind accounts to the world-state root, storage to its
+authenticated storage root and slot, and bytecode to its code hash.
 Both P2P stacks use Nethermind's automatic IPv4/IPv6 IP resolver and its bounded
 retry, refresh and address-validation behavior. The resolved public address is
 used in discovery records; IP detection does not open or forward router/firewall
@@ -213,8 +227,11 @@ can require substantial RAM, temporary verification memory, bandwidth and time;
 there is deliberately no size eviction for accounts you select. No accounts are
 hosted by default.
 
-A background worker follows authenticated optimistic `latest`, checking for new
-roots every five seconds after the preceding refresh. At a new root it fetches
+Independent account workers follow authenticated optimistic `latest`, waking on
+new authenticated heads with a one-second retry fallback. Up to four accounts
+refresh concurrently, so a slow account does not block the others. Heads that
+arrive during a download are coalesced; the next refresh selects the newest fresh
+head. At a new root each worker fetches
 a fresh account proof. Unchanged storage roots and code hashes reuse their
 verified data; changed storage uses BAL updates automatically from the network's
 EIP-7928 activation, with complete SNAP downloads before activation or as fallback.
@@ -222,7 +239,7 @@ A snapshot becomes visible atomically only when all its data has verified.
 Reorganizations use the same root checks. While catching up, RPC uses the regular proof-backed P2P path
 for anything the retained snapshot cannot authenticate at the requested root.
 Other accounts and historical roots continue to use that path. `eth_getProof`
-continues to request witnesses from peers. Shutdown cancels and joins the worker.
+continues to request witnesses from peers. Shutdown cancels and joins all workers.
 
 Hosted storage uses [EIP-7928 BALs](https://eips.ethereum.org/EIPS/eip-7928)
 automatically from the activation block onward, using each authenticated block's
@@ -282,7 +299,9 @@ head. Gossip advances it between recovery polls; it is not restricted to the
 older finalized block. Use `"finalized"` explicitly when finality is required.
 `"latest"` state, block, log, fee and transaction-preparation requests require
 an authenticated head within ten beacon slots (120 seconds on supported networks)
-of the current slot; future or older heads return `-32001`. Explicit block
+of the current slot. While it is unavailable or stale, these requests trigger
+coalesced recovery and wait within the existing RPC deadline; stale data is never
+served as `latest`. Explicit block
 numbers and hashes are outside these time-based freshness gates and retain their
 separate authenticated-history bounds. Explicit `"finalized"` selectors require
 finality within one hour; an older authenticated finalized anchor can still

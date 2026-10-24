@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
+using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -10,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Trie;
+using NSubstitute;
 
 namespace Nethermind.LightClient.Test;
 
@@ -416,22 +419,124 @@ public class HostedAccountStateTests
     }
 
     [Test]
-    public async Task Worker_retries_failed_accounts_without_a_new_head_and_stops_on_cancellation()
+    [CancelAfter(5_000)]
+    public async Task Worker_retries_failed_accounts_without_a_new_head_and_stops_on_cancellation(CancellationToken token)
     {
         Source source = new() { FailStage = "storage" };
-        HostedAccountState hosted = Create(source);
-        ManualClock clock = new();
-        using CancellationTokenSource stop = new();
-        Task worker = hosted.RunAsync(() => FirstHead, clock, stop.Token);
-        Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.False);
+        await using Worker worker = new(source, [HostedAddress], () => FirstHead);
+        await worker.WaitForAsync(HostedAddress, "failed", null, token);
         source.FailStage = null;
 
-        clock.Expire();
-        await clock.NextDelay.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        worker.Clock.Expire();
+        await worker.WaitForAsync(HostedAddress, "complete", FirstHead.Number, token);
 
-        Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.True);
-        await stop.CancelAsync();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await worker);
+        Assert.That(worker.Hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.True);
+        await worker.StopAsync();
+        Assert.That(worker.Running.IsCompleted, Is.True);
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Slow_account_does_not_delay_other_accounts_following_new_heads(CancellationToken token)
+    {
+        Source source = new()
+        {
+            StorageGate = new(TaskCreationOptions.RunContinuationsAsynchronously),
+            StorageGateAddress = HostedAddress,
+        };
+        VerifiedHead latest = FirstHead;
+        await using Worker worker = new(source, [HostedAddress, OtherAddress], () => Volatile.Read(ref latest));
+        await worker.WaitForAsync(OtherAddress, "complete", FirstHead.Number, token);
+        Assert.That(worker.Hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.False);
+        source.Account = source.Account.WithChangedBalance(999);
+
+        Volatile.Write(ref latest, NextHead);
+        worker.Hosted.NotifyHeadChanged();
+        await worker.WaitForAsync(OtherAddress, "complete", NextHead.Number, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(worker.Hosted.TryGetAccount(NextHead, OtherAddress, out Account account), Is.True);
+            Assert.That(account.Balance, Is.EqualTo((UInt256)999));
+            Assert.That(worker.Hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.False);
+            Assert.That(source.RequestedHeads.Where(request => request.Address == HostedAddress).Select(request => request.Hash),
+                Is.EqualTo(new[] { FirstHead.BlockHash }));
+            Assert.That(source.StorageGate.Task.IsCompleted, Is.False);
+        }
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task New_heads_coalesce_without_interrupting_an_incomplete_snapshot(CancellationToken token)
+    {
+        Source source = new() { StorageGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        VerifiedHead latest = FirstHead;
+        VerifiedHead newest = new(102, 20_000_002, Keccak.Compute("newest block"), Keccak.Compute("newest state"));
+        await using Worker worker = new(source, [HostedAddress], () => Volatile.Read(ref latest));
+        await source.Downloads.Reader.ReadAsync(token);
+        source.Account = source.Account.WithChangedBalance(999);
+        Volatile.Write(ref latest, NextHead);
+        worker.Hosted.NotifyHeadChanged();
+        Volatile.Write(ref latest, newest);
+        worker.Hosted.NotifyHeadChanged();
+
+        source.StorageGate.SetResult();
+        await worker.WaitForAsync(HostedAddress, "complete", newest.Number, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.RequestedHeads.Select(request => request.Hash), Is.EqualTo(new[] { FirstHead.BlockHash, newest.BlockHash }));
+            Assert.That(source.StorageFetches, Is.EqualTo(1));
+            Assert.That(worker.Hosted.TryGetAccount(newest, HostedAddress, out Account account), Is.True);
+            Assert.That(account.Balance, Is.EqualTo((UInt256)999));
+        }
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Queued_accounts_sample_the_latest_head_after_a_bounded_refresh_slot_is_available(CancellationToken token)
+    {
+        Source source = new() { StorageGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        Address[] accounts = Enumerable.Range(1, 6).Select(index => new Address("0x" + index.ToString("x40"))).ToArray();
+        VerifiedHead latest = FirstHead;
+        await using Worker worker = new(source, accounts, () => Volatile.Read(ref latest));
+        for (int i = 0; i < 4; i++) await source.Downloads.Reader.ReadAsync(token);
+        Assert.That(source.StorageFetches, Is.EqualTo(4));
+        Volatile.Write(ref latest, NextHead);
+        worker.Hosted.NotifyHeadChanged();
+
+        source.StorageGate.SetResult();
+        foreach (Address address in accounts) await worker.WaitForAsync(address, "complete", NextHead.Number, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Address address in accounts.Skip(4))
+                Assert.That(source.RequestedHeads.Where(request => request.Address == address).Select(request => request.Hash),
+                    Is.EqualTo(new[] { NextHead.BlockHash }));
+            Assert.That(source.StorageFetches, Is.EqualTo(accounts.Length));
+        }
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Worker_shutdown_joins_active_downloads_and_waiting_accounts([Values(1, 6)] int accountCount, CancellationToken token)
+    {
+        Source source = new() { StorageGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        Address[] accounts = Enumerable.Range(1, accountCount).Select(index => new Address("0x" + index.ToString("x40"))).ToArray();
+        await using Worker worker = new(source, accounts, () => FirstHead);
+        int active = Math.Min(accountCount, 4);
+        for (int i = 0; i < active; i++) await source.Downloads.Reader.ReadAsync(token);
+
+        await worker.StopAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(worker.Running.IsCompleted, Is.True);
+            Assert.That(source.ActiveDownloads, Is.Zero);
+            Assert.That(source.StorageFetches, Is.EqualTo(active));
+            foreach (Address address in accounts)
+                Assert.That(worker.Hosted.TryGetAccount(FirstHead, address, out _), Is.False);
+        }
     }
 
     private static HostedAccountState Create(Source source, Address[]? accounts = null) =>
@@ -457,10 +562,14 @@ public class HostedAccountStateTests
         internal byte[] Code = [0x60, 0x01, 0x00];
         internal Account Account = new(7, 123, Keccak.Compute("storage"), Keccak.Compute((ReadOnlySpan<byte>)[0x60, 0x01, 0x00]));
         internal Dictionary<ValueHash256, UInt256> Storage = new() { [Path(1)] = 42 };
-        internal List<Address> RequestedAddresses = [];
+        internal ConcurrentQueue<Address> RequestedAddresses = new();
+        internal ConcurrentQueue<(Address Address, Hash256 Hash)> RequestedHeads = new();
+        internal Channel<Address> Downloads = Channel.CreateUnbounded<Address>();
         internal string? FailStage;
         internal Address? FailAddress;
         internal TaskCompletionSource? StorageGate;
+        internal Address? StorageGateAddress;
+        internal int ActiveDownloads;
         internal int AccountFetches;
         internal int StorageFetches;
         internal int CodeFetches;
@@ -472,8 +581,9 @@ public class HostedAccountStateTests
         public Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AccountFetches++;
-            RequestedAddresses.Add(address);
+            Interlocked.Increment(ref AccountFetches);
+            RequestedAddresses.Enqueue(address);
+            RequestedHeads.Enqueue((address, head.BlockHash));
             if (FailStage == "account" || address == FailAddress) throw new InvalidDataException("Account proof failed.");
             return Task.FromResult(Account);
         }
@@ -481,7 +591,7 @@ public class HostedAccountStateTests
         public Task<byte[]> GetCodeAsync(Account account, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            CodeFetches++;
+            Interlocked.Increment(ref CodeFetches);
             if (FailStage == "code") throw new InvalidDataException("Code request failed.");
             return Task.FromResult(Code);
         }
@@ -490,40 +600,89 @@ public class HostedAccountStateTests
             Account account, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            StorageFetches++;
-            if (StorageGate is not null) await StorageGate.Task.WaitAsync(cancellationToken);
-            if (FailStage == "storage") throw new InvalidDataException("Storage proof failed.");
-            return Storage;
+            Interlocked.Increment(ref StorageFetches);
+            Interlocked.Increment(ref ActiveDownloads);
+            try
+            {
+                Downloads.Writer.TryWrite(address);
+                if (StorageGate is not null && (StorageGateAddress is null || StorageGateAddress == address))
+                    await StorageGate.Task.WaitAsync(cancellationToken);
+                if (FailStage == "storage") throw new InvalidDataException("Storage proof failed.");
+                return Storage;
+            }
+            finally { Interlocked.Decrement(ref ActiveDownloads); }
         }
 
         public Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key,
             CancellationToken cancellationToken) => throw new AssertionException("Individual storage slots must not be fetched.");
         public Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken)
         {
-            HeaderFetches++;
+            Interlocked.Increment(ref HeaderFetches);
             return Task.FromResult(Header ?? throw new NotSupportedException());
         }
         public Task<ReadOnlyBlockAccessList> GetBlockAccessListAsync(BlockHeader header, CancellationToken cancellationToken)
         {
-            BalFetches++;
+            Interlocked.Increment(ref BalFetches);
             return Task.FromResult(Bal ?? throw new NotSupportedException());
         }
         public Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber,
             CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
+    private sealed class Worker : IAsyncDisposable
+    {
+        private readonly CancellationTokenSource _stop = new();
+        private readonly Channel<HostedAccountProgress[]> _changes = Channel.CreateUnbounded<HostedAccountProgress[]>();
+        private readonly Func<VerifiedHead?> _getHead;
+        internal readonly HostedAccountState Hosted;
+        internal readonly ManualClock Clock = new();
+        internal readonly Task Running;
+
+        internal Worker(Source source, Address[] accounts, Func<VerifiedHead?> getHead)
+        {
+            _getHead = getHead;
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsInfo.Returns(true);
+            logger.IsWarn.Returns(true);
+            Hosted = new(accounts, source, source.DownloadStorage, new ILogger(logger));
+            logger.When(log => log.Info(Arg.Any<string>())).Do(_ => _changes.Writer.TryWrite(Hosted.GetProgress(getHead())));
+            logger.When(log => log.Warn(Arg.Any<string>())).Do(_ => _changes.Writer.TryWrite(Hosted.GetProgress(getHead())));
+            Running = Hosted.RunAsync(getHead, Clock, _stop.Token);
+        }
+
+        internal async Task WaitForAsync(Address address, string stage, ulong? block, CancellationToken token)
+        {
+            while (true)
+            {
+                if (Hosted.GetProgress(_getHead()).Any(progress => progress.Address == address.ToString() &&
+                    progress.Stage == stage && progress.BlockNumber == block)) return;
+                await _changes.Reader.ReadAsync(token);
+            }
+        }
+
+        internal async Task StopAsync()
+        {
+            await _stop.CancelAsync();
+            try { await Running; }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await StopAsync();
+            _stop.Dispose();
+        }
+    }
+
     private sealed class ManualClock : TimeProvider
     {
         private TimerCallback? _callback;
         private object? _state;
-        private int _delays;
-        internal TaskCompletionSource NextDelay { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
             _callback = callback;
             _state = state;
-            if (++_delays == 2) NextDelay.TrySetResult();
             return new Timer();
         }
 

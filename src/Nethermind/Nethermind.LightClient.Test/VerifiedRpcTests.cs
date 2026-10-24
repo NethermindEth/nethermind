@@ -279,6 +279,71 @@ public class VerifiedRpcTests
         }
     }
 
+    [TestCaseSource(nameof(LatestAliasRequests))]
+    [CancelAfter(15_000)]
+    public async Task Latest_waits_for_verified_recovery_and_keeps_caller_cancellation_independent(
+        string method, JsonElement parameters, CancellationToken token)
+    {
+        using PrivateKey? key = method == "eth_sendRawTransaction"
+            ? new("0x0000000000000000000000000000000000000000000000000000000000000001") : null;
+        using Provider provider = new(new Account(7, 1_000_000_000),
+            headNumber: key is null ? 10UL : 20_000_000UL, accountAddress: key?.Address)
+        { CurrentSlot = 111 };
+        using VerifiedCall? calls = method is "eth_call" or "eth_estimateGas"
+            ? new(provider, MainnetSpecProvider.Instance, NullLogManager.Instance) : null;
+        TaskCompletionSource<VerifiedHead> recovery = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int waiting = 0;
+        using VerifiedRpc rpc = provider.CreateRpc(calls, waitForLatestHead: cancellation =>
+        {
+            Interlocked.Increment(ref waiting);
+            return recovery.Task.WaitAsync(cancellation);
+        });
+        using CancellationTokenSource canceledCaller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<object> canceled = rpc.InvokeAsync(method, parameters, canceledCaller.Token);
+        Task<object> survivor = rpc.InvokeAsync(method, parameters, token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting, Is.EqualTo(2));
+            Assert.That(canceled.IsCompleted, Is.False);
+            Assert.That(survivor.IsCompleted, Is.False);
+        }
+        AssertNoExecutionRequests(provider);
+        Assert.That(await rpc.InvokeAsync("eth_chainId", Parameters(), token), Is.EqualTo("0x1"));
+        if (key is null)
+            Assert.That(await rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), "0xa"), token), Is.EqualTo("0x3b9aca00"));
+        await canceledCaller.CancelAsync();
+        Assert.That(async () => await canceled, Throws.InstanceOf<OperationCanceledException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovery.Task.IsCompleted, Is.False);
+            Assert.That(survivor.IsCompleted, Is.False);
+        }
+        VerifiedHead fresh = provider.Head with { Slot = 111 };
+        provider.LatestHead = fresh;
+        recovery.SetResult(fresh);
+
+        object result = await survivor.WaitAsync(token);
+
+        Assert.That(result, Is.Not.Null);
+        if (method is "eth_getBalance" or "eth_getTransactionCount" or "eth_getCode" or "eth_getStorageAt"
+            or "eth_getProof" or "eth_call" or "eth_estimateGas" or "eth_sendRawTransaction")
+            Assert.That(provider.LastQueriedHead, Is.EqualTo(fresh));
+        else
+            Assert.That(provider.Requests, Does.Contain(("header", (Hash256?)fresh.BlockHash)));
+    }
+
+    [Test]
+    public async Task A_recovery_callback_cannot_bypass_latest_freshness()
+    {
+        using Provider provider = new(new Account(7, 123)) { CurrentSlot = 111 };
+        using VerifiedRpc rpc = provider.CreateRpc(waitForLatestHead: _ => Task.FromResult(provider.Head));
+
+        Assert.That(async () => await rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), "latest"), CancellationToken.None),
+            Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32001));
+
+        AssertNoExecutionRequests(provider);
+    }
+
     [Test]
     public async Task Latest_recovers_when_an_authenticated_slot_advances_at_the_same_execution_height()
     {
@@ -2058,8 +2123,10 @@ public class VerifiedRpcTests
         public VerifiedHead Head { get; }
         public VerifiedHead? LatestHead { get; set; }
         public ulong? CurrentSlot { get; set; }
-        public VerifiedRpc CreateRpc(VerifiedCall? calls = null, Func<VerifiedHead>? getHead = null) => new(this, getHead ?? (() => Head), 1,
-            calls, MainnetSpecProvider.Instance, () => LatestHead, head => head.IsFresh(CurrentSlot ?? head.Slot, 10));
+        public VerifiedRpc CreateRpc(VerifiedCall? calls = null, Func<VerifiedHead>? getHead = null,
+            Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null) => new(this, getHead ?? (() => Head), 1,
+            calls, MainnetSpecProvider.Instance, () => LatestHead, head => head.IsFresh(CurrentSlot ?? head.Slot, 10),
+            waitForLatestHead: waitForLatestHead);
         public BlockHeader Header { get; }
         public BlockHeader? HistoricalHeader { get; set; }
         public BlockHeader? OptimisticHeader { get; set; }

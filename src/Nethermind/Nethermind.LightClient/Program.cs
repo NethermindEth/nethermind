@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
@@ -157,36 +158,71 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         }
         bool redirected = Console.IsOutputRedirected;
         Console.Write(LightClientBanner.Render(network, rpcUrl, checkpoint.ToString(), redirected, beaconPort, executionPort));
+        await using ExecutionPeerTransport execution = new(network, logManager,
+            dataDirectory: dataDirectory, hostedAccounts: hostedAccounts, port: executionPort);
         status.SetStage(StartupStage.Beacon);
         using SemaphoreSlim consensusGate = new(1, 1);
         using ColumnsDb<BeaconChainDbColumns> beaconDb = BeaconPeerTransport.OpenPeerDb(dataDirectory, spec, logManager);
         using IFullDb beaconPeersDb = BoundedEnrStorage.OpenDb(Path.Combine(dataDirectory, "cl", spec.ChainId.ToString(), "discovery"), logManager, beacon: true);
         await using BeaconPeerTransport beacon = new(spec, logManager, beaconDb, new BoundedEnrStorage(new NetworkStorage(beaconPeersDb, logManager)),
             p2pPort: beaconPort, discoveryPort: beaconPort, time: clock, quicPort: quicPort);
-        await beacon.StartAsync(app.Lifetime.ApplicationStopping);
-        logger.LogInformation("Beacon P2P started; searching for light-client peers");
-        status.SetStage(StartupStage.Bootstrap);
         VerifiedConsensusJournal journal = new(dataDirectory, spec, network, checkpoint, logger);
-        (LightClientStore store, bool resumed) = await ConsensusSync.BootstrapAsync(spec, checkpoint, journal,
-            beacon.BootstrapAsync, clock, startupToken);
-        if (resumed)
-            logger.LogInformation("Replayed verified light-client state from {Directory}", dataDirectory);
-        else
-            logger.LogInformation("Trusted checkpoint accepted");
-        LightClientHeader initialHeader = store.FinalizedHeader;
+        using CancellationTokenSource startupStop = CancellationTokenSource.CreateLinkedTokenSource(startupToken);
+        Task executionStartup = StartExecutionAsync();
+        LightClientStore store;
+        LightClientHeader initialHeader;
+        bool executionReady = false;
+        try
+        {
+            await beacon.StartAsync(startupStop.Token);
+            logger.LogInformation("Beacon P2P started; searching for light-client peers");
+            status.SetStage(StartupStage.Bootstrap);
+            bool resumed;
+            (store, resumed) = await ConsensusSync.BootstrapAsync(spec, checkpoint, journal,
+                beacon.BootstrapAsync, clock, startupStop.Token);
+            beacon.PublishVerifiedHeads(store.FinalizedHeader, store.OptimisticHeader, checkpoint);
+            if (resumed)
+                logger.LogInformation("Replayed verified light-client state from {Directory}", dataDirectory);
+            else
+                logger.LogInformation("Trusted checkpoint accepted");
+            initialHeader = store.FinalizedHeader;
+            Hash256 initialHash = initialHeader.Execution?.BlockHash ?? initialHeader.ExecutionBlockHash
+                ?? throw new InvalidDataException("Verified beacon header has no execution block hash.");
+            VerifiedHead provisionalHead = new(initialHeader.Beacon!.Slot, initialHeader.Execution?.BlockNumber ?? 0,
+                initialHash, initialHeader.Execution?.StateRoot ?? Hash256.Zero);
+            execution.UpdateHead(provisionalHead, ExecutionTime(provisionalHead));
+            status.SetStage(StartupStage.Execution);
+            await executionStartup;
+            executionReady = true;
+        }
+        catch (OperationCanceledException) when (!startupToken.IsCancellationRequested && startupStop.IsCancellationRequested)
+        {
+            await executionStartup;
+            throw;
+        }
+        finally
+        {
+            try { if (!executionReady) await startupStop.CancelAsync(); }
+            finally { await executionStartup.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing); }
+        }
         LightClientHeader persistedFinalized = store.FinalizedHeader;
         LightClientHeader persistedOptimistic = store.OptimisticHeader;
-        Hash256 initialHash = initialHeader.Execution?.BlockHash ?? initialHeader.ExecutionBlockHash
-            ?? throw new InvalidDataException("Verified beacon header has no execution block hash.");
-        VerifiedHead provisionalHead = new(initialHeader.Beacon!.Slot, initialHeader.Execution?.BlockNumber ?? 0,
-            initialHash, initialHeader.Execution?.StateRoot ?? Hash256.Zero);
         ulong ExecutionTime(VerifiedHead verified) => spec.GenesisTime + verified.Slot * spec.SecondsPerSlot;
-        status.SetStage(StartupStage.Execution);
-        await using ExecutionPeerTransport execution = new(network, logManager,
-            provisionalHead, ExecutionTime(provisionalHead), dataDirectory: dataDirectory, hostedAccounts: hostedAccounts,
-            port: executionPort);
-        await execution.StartAsync(app.Lifetime.ApplicationStopping);
-        logger.LogInformation("Execution P2P started; searching for SNAP peers via {Domain}", execution.DiscoveryDomain);
+
+        async Task StartExecutionAsync()
+        {
+            try
+            {
+                await execution.StartAsync(startupStop.Token);
+                logger.LogInformation("Execution P2P started; searching for SNAP peers via {Domain}", execution.DiscoveryDomain);
+            }
+            catch
+            {
+                await startupStop.CancelAsync();
+                throw;
+            }
+        }
+
         async Task<(VerifiedHead Head, ulong Timestamp)> ResolveAsync(LightClientHeader header, CancellationToken token)
         {
             if (header.Execution is { } payload)
@@ -200,6 +236,12 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         }
         ConsensusPublisher publisher = new(() => Volatile.Read(ref persistedFinalized),
             () => Volatile.Read(ref persistedOptimistic), ResolveAsync, execution.UpdateHead, clock);
+        Channel<bool> optimisticRequests = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropWrite,
+        });
         if (initialHeader.Execution is not null)
         {
             await publisher.PublishFinalizedAsync(startupToken);
@@ -215,7 +257,9 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         }
         using VerifiedCall calls = new(execution, execution.SpecProvider, logManager);
         using VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
-            latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds));
+            latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
+            token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
+                () => optimisticRequests.Writer.TryWrite(true), token));
         VerifiedSubscriptions subscriptions = new(execution, rpc, logger);
         try
         {
@@ -274,8 +318,11 @@ async Task RunClientAsync(CancellationToken stoppingToken)
 
         void PublishPersistedHeaders()
         {
-            Volatile.Write(ref persistedFinalized, store.FinalizedHeader);
-            Volatile.Write(ref persistedOptimistic, store.OptimisticHeader);
+            LightClientHeader finalized = store.FinalizedHeader;
+            LightClientHeader optimistic = store.OptimisticHeader;
+            Volatile.Write(ref persistedFinalized, finalized);
+            Volatile.Write(ref persistedOptimistic, optimistic);
+            beacon.PublishVerifiedHeads(finalized, optimistic, checkpoint);
         }
 
         async Task PersistAsync(Task write, CancellationToken token)
@@ -330,6 +377,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                     observed.BlockHash != subscriptionHash)
                 {
                     subscriptions.PublishHead(observed);
+                    execution.NotifyHostedHeadChanged();
                     subscriptionHash = observed.BlockHash;
                 }
             }
@@ -356,7 +404,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 await ConsensusSync.RunRepairLoopsAsync(RepairConsensusAsync, PollOptimisticAsync,
                     () => Volatile.Read(ref persistedOptimistic).Beacon!.Slot, CurrentSlot,
-                    TimeSpan.FromSeconds(spec.SecondsPerSlot), clock, cancellationToken);
+                    TimeSpan.FromSeconds(spec.SecondsPerSlot), clock, cancellationToken, optimisticRequests.Reader);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         }
