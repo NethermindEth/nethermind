@@ -1,0 +1,382 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Trie;
+
+namespace Nethermind.Consensus.Stateless;
+
+/// <summary>A <see cref="TrieStoreScopeProvider"/> over a witness that rejects a trie whose paths do not end at the
+/// length of its hashed keys.</summary>
+/// <remarks>
+/// Mirrors <c>_validate_secured_trie_paths</c> of the zkEVM spec's <c>incremental_mpt.py</c>, which checks every witness
+/// node reachable from a trie's root once it decodes that trie: the state trie for every block, and a storage trie once
+/// its old storage is read, or written without being cleared first. Here these are the scope opening and the first load
+/// of a storage tree's root, which a cleared storage tree never loads: the tree records its root as pending, and the
+/// trie's node storage reports every storage node it loads. Lookups follow only the keys a block touches, so
+/// the nodes off their paths are checked by walking the witness instead, which throws a <see cref="TrieException"/> on a
+/// failing node. A child the witness lacks is left unchecked, as the spec leaves it hashed.
+/// </remarks>
+[SkipLocalsInit]
+internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
+{
+    private const int HashedKeyNibbles = 2 * Hash256.Size;
+    private const int BranchChildren = 16;
+    private const int ShortStringOffset = 0x80;
+    private const int ShortStringMaxPrefix = 0xb7;
+    private const int ListOffset = 0xc0;
+    private const int ShortListMaxPrefix = 0xf7;
+    // RLP spells a length below this in its prefix; a long form for it is not canonical.
+    private const int LongLengthMin = 56;
+
+    private readonly HashKeyedNodeStorage _witnessNodes;
+    // Storage roots whose trees exist; pending until loaded, then walked once.
+    private readonly OptimizedHashSet<ValueHash256> _storageRoots = [];
+    private readonly OptimizedHashSet<ValueHash256> _pendingStorageRoots = [];
+    // Set by the leading bits of each pending root and never cleared: most storage nodes a block loads are not pending
+    // roots, and this turns them away without hashing their keccak into the set.
+    private readonly byte[] _pendingRootFilter = new byte[PendingRootFilterLength];
+    private const int PendingRootFilterLength = 4096;
+
+    private readonly HashKeyedNodeStorage.HeldChild[] _held = new HashKeyedNodeStorage.HeldChild[BranchChildren];
+
+    // Nodes yet to walk. Depth first, at most fifteen siblings wait at each of the key's nibbles, each a level deeper.
+    private PendingNode[] _pending = new PendingNode[BranchChildren * (HashedKeyNibbles + 1)];
+    private int _pendingCount;
+
+    // Whether a node passes depends on it and its depth alone, so once the walk has read twice the witness' bytes, which
+    // takes nodes reached along several paths, each pair is walked once. Otherwise a witness could reference one node from
+    // every child of a branch, and the walk would grow exponentially with the depth. Bytes rather than nodes, as a node's
+    // inlined children are walked with it. Twice, as the tries of a block can share a few nodes.
+    private long _bytesBeforeMemo;
+    private OptimizedHashSet<WalkedNode>? _walked;
+
+    public WitnessTrieStoreScopeProvider(Witness witness, ILogManager logManager)
+        : this(witness, ObserveStorageNodes(witness.CreateNodeStorage()), logManager) { }
+
+    private WitnessTrieStoreScopeProvider(Witness witness, INodeStorage nodeStorage, ILogManager logManager)
+        // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
+        : base(new RawTrieStore(nodeStorage), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager)
+    {
+        switch (nodeStorage)
+        {
+            case HashKeyedNodeStorage witnessNodes:
+                witnessNodes.StorageNodeLoading = OnStorageNodeLoading;
+                _witnessNodes = witnessNodes;
+                break;
+            default:
+                ((StorageNodeObservingNodeStorage)nodeStorage).StorageNodeLoading = OnStorageNodeLoading;
+                _witnessNodes = new HashKeyedNodeStorage(witness.State.AsSpan());
+                break;
+        }
+
+        _bytesBeforeMemo = 2 * _witnessNodes.NodeBytes;
+    }
+
+    /// <summary>Gets the trie's node storage, reporting each storage node it loads.</summary>
+    /// <remarks>The guest's is a <see cref="HashKeyedNodeStorage"/>, which reports them itself. The host's is not one: the
+    /// host commits storage tries in parallel.</remarks>
+    private static INodeStorage ObserveStorageNodes(INodeStorage nodeStorage) =>
+        nodeStorage is HashKeyedNodeStorage ? nodeStorage : new StorageNodeObservingNodeStorage(nodeStorage);
+
+    protected override bool CanBeginScope(BlockHeader? baseBlock)
+    {
+        if (!base.CanBeginScope(baseBlock)) return false;
+
+        Hash256 stateRoot = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        if (stateRoot != Keccak.EmptyTreeHash) ValidatePaths(stateRoot.Bytes);
+        return true;
+    }
+
+    protected override StorageTree CreateStorageTree(Address address, Hash256 storageRoot)
+    {
+        if (storageRoot != Keccak.EmptyTreeHash && _storageRoots.Add(storageRoot.ValueHash256))
+        {
+            _pendingStorageRoots.Add(storageRoot.ValueHash256);
+            _pendingRootFilter[PendingRootFilterIndex(storageRoot.ValueHash256)] = 1;
+        }
+        return base.CreateStorageTree(address, storageRoot);
+    }
+
+    private void OnStorageNodeLoading(ValueHash256 keccak)
+    {
+        if (_pendingRootFilter[PendingRootFilterIndex(keccak)] != 0 && _pendingStorageRoots.Remove(keccak)) ValidatePaths(keccak.Bytes);
+    }
+
+    private static int PendingRootFilterIndex(in ValueHash256 keccak) =>
+        Unsafe.As<ValueHash256, ushort>(ref Unsafe.AsRef(in keccak)) & (PendingRootFilterLength - 1);
+
+    /// <remarks>Depth first, from a stack rather than by recursion: a call per node, saving the registers the walk
+    /// keeps, cost more than the node's own checks.</remarks>
+    private void ValidatePaths(ReadOnlySpan<byte> root)
+    {
+        byte[]? rootRlp = _witnessNodes.Find(root);
+        if (rootRlp is null) return;
+
+        HashKeyedNodeStorage.WitnessProbe probe = _witnessNodes.CreateProbe();
+        Span<HashKeyedNodeStorage.HeldChild> held = _held;
+        _pendingCount = 0;
+        Push(rootRlp, root.ToArray(), 0, HashedKeyNibbles);
+        // Locals rather than the fields, which the loop would reload and store for every node; synced around the calls
+        // that push themselves.
+        PendingNode[] pending = _pending;
+        nint pendingCount = _pendingCount;
+        long bytesBeforeMemo = _bytesBeforeMemo;
+        while (pendingCount != 0)
+        {
+            // Unchecked: the count stays within the stack, which grows before a full branch's children are stacked.
+            PendingNode node = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(pending), --pendingCount);
+            byte[] rlp = node.Rlp;
+            nint remainingNibbles = node.RemainingNibbles;
+            if ((bytesBeforeMemo -= rlp.Length) < 0
+                && !(_walked ??= []).Add(new WalkedNode(new ValueHash256(node.Parent.AsSpan((int)node.KeccakOffset, Hash256.Size)), (int)remainingNibbles)))
+            {
+                continue;
+            }
+
+            int candidates = probe.FilterFullBranch(rlp);
+            int heldCount = candidates < 0 ? probe.FindHeldOtherBranchChildren(rlp, held) : 0;
+            if (heldCount < 0)
+            {
+                if (TryValidateLeaf(rlp, remainingNibbles)) continue;
+
+                _pendingCount = (int)pendingCount;
+                _bytesBeforeMemo = bytesBeforeMemo;
+                ValidateOtherNode(rlp, 0, rlp.Length, (int)remainingNibbles);
+                pending = _pending;
+                pendingCount = _pendingCount;
+                bytesBeforeMemo = _bytesBeforeMemo;
+                continue;
+            }
+
+            if (remainingNibbles == 0) ThrowPathExceedsKey();
+
+            if (pending.Length - pendingCount < BranchChildren)
+            {
+                Array.Resize(ref _pending, 2 * pending.Length);
+                pending = _pending;
+            }
+
+            ref PendingNode top = ref MemoryMarshal.GetArrayDataReference(pending);
+            ref byte first = ref MemoryMarshal.GetArrayDataReference(rlp);
+            for (; candidates > 0; candidates &= candidates - 1)
+            {
+                nint offset = HashKeyedNodeStorage.FullBranchFirstKeccak + BitOperations.TrailingZeroCount(candidates) * HashKeyedNodeStorage.KeccakItemLength;
+                byte[]? child = probe.FindFiltered(ref Unsafe.Add(ref first, offset));
+                if (child is not null) Unsafe.Add(ref top, pendingCount++) = new PendingNode(child, rlp, offset, remainingNibbles - 1);
+            }
+
+            for (int i = 0; i < heldCount; i++)
+            {
+                Unsafe.Add(ref top, pendingCount++) = new PendingNode(held[i].Node, rlp, held[i].Offset, remainingNibbles - 1);
+            }
+        }
+
+        // The budget spans every walk of the block, or each storage root would get a fresh one.
+        _bytesBeforeMemo = bytesBeforeMemo;
+        _pendingCount = 0;
+    }
+
+    /// <summary>Validates a leaf of the usual shape: a list of a hex-prefixed path of 2 to 33 bytes and a string value.</summary>
+    /// <returns>Whether the node has that shape; if not, <see cref="ValidateOtherNode"/> decodes it.</returns>
+    /// <remarks>Accepts only what <see cref="ValidateOtherNode"/> decodes as a leaf without throwing, canonical lengths
+    /// included, so either path rejects the same witnesses. Saves leaves, a fifth of the walk's nodes, the decoder's
+    /// frame.</remarks>
+    private static bool TryValidateLeaf(byte[] rlp, nint remainingNibbles)
+    {
+        int length = rlp.Length;
+        if (length < 4) return false;
+
+        int header = rlp[0];
+        int start;
+        if (header is >= ListOffset and <= ShortListMaxPrefix)
+        {
+            if (header - ListOffset != length - 1) return false;
+            start = 1;
+        }
+        else if (header == ShortListMaxPrefix + 1)
+        {
+            if (rlp[1] < LongLengthMin || rlp[1] != length - 2) return false;
+            start = 2;
+        }
+        else
+        {
+            return false;
+        }
+
+        int pathLength = rlp[start] - ShortStringOffset;
+        int valueStart = start + 1 + pathLength;
+        // A path of one byte can be its own RLP; the decoder handles that and checks its canonical form.
+        if (pathLength is < 2 or > Hash256.Size + 1 || valueStart >= length) return false;
+
+        int flags = rlp[start + 1];
+        if ((flags & 0x20) == 0) return false;
+
+        int value = rlp[valueStart];
+        int valueEnd = value switch
+        {
+            < ShortStringOffset => valueStart + 1,
+            <= ShortStringMaxPrefix => valueStart + 1 + value - ShortStringOffset,
+            ShortStringMaxPrefix + 1 when valueStart + 1 < length && rlp[valueStart + 1] >= LongLengthMin => valueStart + 2 + rlp[valueStart + 1],
+            _ => -1
+        };
+        if (valueEnd != length) return false;
+
+        if (2 * pathLength - ((flags & 0x10) != 0 ? 1 : 2) != remainingNibbles) ThrowPathExceedsKey();
+        return true;
+    }
+
+    /// <summary>Validates the node inlined at <paramref name="start"/> of <paramref name="array"/>.</summary>
+    /// <remarks>Too short to reference a keccak, it stacks no children.</remarks>
+    private void ValidateInlinedNode(byte[] array, int start, int length, int remainingNibbles)
+    {
+        Span<HashKeyedNodeStorage.HeldChild> held = _held;
+        int heldCount = _witnessNodes.FindHeldBranchChildren(array.AsSpan(start, length), held);
+        if (heldCount < 0)
+        {
+            ValidateOtherNode(array, start, length, remainingNibbles);
+            return;
+        }
+
+        if (remainingNibbles == 0) ThrowPathExceedsKey();
+
+        for (int i = 0; i < heldCount; i++)
+        {
+            Push(held[i].Node, array, start + held[i].Offset, remainingNibbles - 1);
+        }
+    }
+
+    /// <param name="rlp">The node.</param>
+    /// <param name="parent">The array holding the node's keccak, the memo's key.</param>
+    /// <param name="keccakOffset">Where in <paramref name="parent"/> the node's keccak starts.</param>
+    /// <param name="remainingNibbles">The nibbles of the hashed key left below the node.</param>
+    private void Push(byte[] rlp, byte[] parent, int keccakOffset, int remainingNibbles)
+    {
+        if (_pendingCount == _pending.Length) Array.Resize(ref _pending, 2 * _pending.Length);
+        _pending[_pendingCount++] = new PendingNode(rlp, parent, keccakOffset, remainingNibbles);
+    }
+
+    /// <summary>Validates a node other than a branch of hashed or empty children: a leaf, an extension, the empty node
+    /// or a branch that inlines a child or holds a value.</summary>
+    /// <remarks>Kept out of <see cref="ValidatePaths"/>, whose every node would otherwise pay for the registers this
+    /// decoding takes.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ValidateOtherNode(byte[] array, int start, int length, int remainingNibbles)
+    {
+        RlpReader reader = new(array.AsSpan(start, length));
+        // Not a list: the empty node.
+        if (!reader.IsSequenceNext()) return;
+
+        int end = reader.ReadSequenceLength() + reader.Position;
+        int firstItem = reader.Position;
+        reader.SkipItems(2);
+        if (reader.Position != end)
+        {
+            if (remainingNibbles == 0) ThrowPathExceedsKey();
+
+            reader.Position = firstItem;
+            for (int i = 0; i < BranchChildren; i++)
+            {
+                ValidateChild(ref reader, array, start, remainingNibbles - 1);
+            }
+
+            return;
+        }
+
+        reader.Position = firstItem;
+        ReadOnlySpan<byte> path = reader.DecodeByteArraySpan();
+        // Hex-prefix encoding: the first nibble flags a leaf (0x2) and an odd nibble count (0x1), whose first nibble
+        // then shares the byte.
+        int nibbles = 2 * path.Length - ((path[0] & 0x10) != 0 ? 1 : 2);
+        if ((path[0] & 0x20) != 0)
+        {
+            if (nibbles != remainingNibbles) ThrowPathExceedsKey();
+        }
+        else
+        {
+            // The spec rejects an empty extension on decode; it would not advance the walk either.
+            if (nibbles == 0 || nibbles >= remainingNibbles) ThrowPathExceedsKey();
+
+            ValidateChild(ref reader, array, start, remainingNibbles - nibbles);
+        }
+    }
+
+    /// <param name="reader">At the child, over the node starting at <paramref name="start"/> of <paramref name="array"/>.</param>
+    private void ValidateChild(ref RlpReader reader, byte[] array, int start, int remainingNibbles)
+    {
+        if (reader.IsSequenceNext())
+        {
+            int inlinedStart = start + reader.Position;
+            int inlinedLength = reader.PeekNextRlpLength();
+            reader.SkipItem();
+            _bytesBeforeMemo -= inlinedLength;
+            ValidateInlinedNode(array, inlinedStart, inlinedLength, remainingNibbles);
+            return;
+        }
+
+        ReadOnlySpan<byte> reference = reader.DecodeByteArraySpan();
+        if (reference.Length != Hash256.Size) return;
+
+        byte[]? rlp = _witnessNodes.Find(reference);
+        if (rlp is not null) Push(rlp, array, start + reader.Position - Hash256.Size, remainingNibbles);
+    }
+
+    [DoesNotReturn]
+    private static void ThrowPathExceedsKey() =>
+        throw new TrieException("A witness trie path does not end at the length of its hashed keys");
+
+    private readonly record struct WalkedNode(ValueHash256 Hash, int RemainingNibbles);
+
+    // Word-sized offsets: the guest pays several times an aligned access for a narrow one.
+    private readonly record struct PendingNode(byte[] Rlp, byte[] Parent, nint KeccakOffset, nint RemainingNibbles);
+
+    /// <summary>The host's node storage, reporting each storage node it loads as <see cref="HashKeyedNodeStorage"/>
+    /// does.</summary>
+    /// <remarks>Storage tries commit in parallel, so the reports take turns.</remarks>
+    private sealed class StorageNodeObservingNodeStorage(INodeStorage inner) : INodeStorage
+    {
+        private readonly Lock _walk = new();
+
+        public Action<ValueHash256>? StorageNodeLoading { get; set; }
+
+        public INodeStorage.KeyScheme Scheme
+        {
+            get => inner.Scheme;
+            set => inner.Scheme = value;
+        }
+
+        public bool RequirePath => inner.RequirePath;
+
+        public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
+        {
+            if (address is not null && StorageNodeLoading is { } storageNodeLoading)
+            {
+                lock (_walk) storageNodeLoading(keccak);
+            }
+
+            return inner.Get(address, path, keccak, readFlags);
+        }
+
+        public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None) =>
+            inner.Set(address, path, hash, data, writeFlags);
+
+        public INodeStorage.IWriteBatch StartWriteBatch() => inner.StartWriteBatch();
+
+        public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash) => inner.KeyExists(address, path, hash);
+
+        public void Flush(bool onlyWal) => inner.Flush(onlyWal);
+
+        public void Compact() => inner.Compact();
+    }
+}

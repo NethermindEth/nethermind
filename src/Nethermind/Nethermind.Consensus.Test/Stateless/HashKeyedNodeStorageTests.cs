@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -119,15 +120,7 @@ public class HashKeyedNodeStorageTests
     [Test]
     public void Resolves_colliding_witness_buckets_before_and_after_writes([Values(2, 8, 9, 16)] int count)
     {
-        int mask = (int)BitOperations.RoundUpToPowerOf2((uint)count + 1) - 1;
-        int bucket = ((int)(BitConverter.ToUInt32(Keccak.EmptyTreeHash.Bytes) & (uint)mask) + 1) & mask;
-        byte[][] nodes = new byte[count + 1][];
-        int found = 0;
-        for (int candidate = 0; found < nodes.Length; candidate++)
-        {
-            byte[] node = BitConverter.GetBytes(candidate);
-            if ((BitConverter.ToUInt32(HashOf(node).Bytes) & (uint)mask) == bucket) nodes[found++] = node;
-        }
+        byte[][] nodes = NodesSharingABucket(count);
         HashKeyedNodeStorage storage = new(nodes.AsSpan(0, count));
         Assert.That(OverflowedCount(storage), Is.EqualTo(count > 8 ? count : 0), "a bucket must overflow past eight entries, and only then");
 
@@ -187,6 +180,89 @@ public class HashKeyedNodeStorageTests
         Assert.That(storage.Get(null, TreePath.Empty, UnknownHash), Is.EqualTo(reference.Get(null, TreePath.Empty, UnknownHash)));
         Assert.That(storage.KeyExists(null, TreePath.Empty, UnknownHash), Is.EqualTo(reference.KeyExists(null, TreePath.Empty, UnknownHash)));
         Assert.That(storage.Scheme, Is.EqualTo(reference.Scheme));
+    }
+
+    /// <remarks>Nine held children of one bucket overflow it.</remarks>
+    [Test]
+    public void Finds_the_held_children_of_a_branch([Values(2, 9)] int heldCount, [Values] bool full, [Values] bool afterWrite)
+    {
+        byte[][] held = NodesSharingABucket(heldCount)[..heldCount];
+        HashKeyedNodeStorage storage = Storage(held);
+        if (afterWrite) storage.Set(null, TreePath.Empty, UnknownHash, [0x01]);
+        Rlp[] items = new Rlp[BranchChildren + 1];
+        Array.Fill(items, Rlp.OfEmptyByteArray);
+        for (int i = 0; i < BranchChildren; i++)
+        {
+            // Held children every other slot; between them, children the witness lacks or none.
+            if (i % 2 == 0 && i / 2 < heldCount) items[i] = Rlp.Encode(HashOf(held[i / 2]).Bytes);
+            else if (full) items[i] = Rlp.Encode(ValueKeccak.Compute(new byte[] { (byte)i }).Bytes);
+        }
+        for (int i = BranchChildren / 2; i < heldCount; i++)
+        {
+            items[2 * (i - BranchChildren / 2) + 1] = Rlp.Encode(HashOf(held[i]).Bytes);
+        }
+        byte[] branch = Rlp.Encode(items).Bytes;
+        HashKeyedNodeStorage.HeldChild[] children = new HashKeyedNodeStorage.HeldChild[BranchChildren];
+
+        int count = storage.FindHeldBranchChildren(branch, children);
+
+        Assert.That(count, Is.EqualTo(heldCount));
+        Assert.That(branch, full ? Has.Length.EqualTo(532) : Has.Length.LessThan(532), "only a full branch takes the fast path");
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(children[i].Node, Is.EqualTo(storage.Get(null, TreePath.Empty, new ValueHash256(branch.AsSpan(children[i].Offset, 32)))));
+            Assert.That(children[i].Node, Is.Not.Null);
+        }
+    }
+
+    [TestCaseSource(nameof(NodesOfOtherShapes))]
+    public void Finds_no_children_of_other_shapes(byte[] node)
+    {
+        HashKeyedNodeStorage storage = Storage(Nodes);
+
+        Assert.That(storage.FindHeldBranchChildren(node, new HashKeyedNodeStorage.HeldChild[BranchChildren]), Is.EqualTo(-1));
+    }
+
+    private static IEnumerable<TestCaseData> NodesOfOtherShapes()
+    {
+        Rlp[] branch = new Rlp[BranchChildren + 1];
+        Array.Fill(branch, Rlp.OfEmptyByteArray);
+        Rlp[] withValue = (Rlp[])branch.Clone();
+        withValue[^1] = Rlp.Encode(new byte[] { 0x01 });
+        Rlp[] withInlinedChild = (Rlp[])branch.Clone();
+        withInlinedChild[0] = Rlp.Encode(Rlp.Encode(new byte[] { 0x20 }), Rlp.Encode(new byte[] { 0x01 }));
+
+        // The length, list prefix and last byte of a branch of sixteen keccaks, with a keccak-long first item.
+        byte[] value = new byte[532 - 3 - (1 + Hash256.Size) - 3];
+        value[^1] = 0x80;
+        byte[] twoItemsOfFullBranchLength = Rlp.Encode(Rlp.Encode(new byte[Hash256.Size]), Rlp.Encode(value)).Bytes;
+        Assert.That(twoItemsOfFullBranchLength, Has.Length.EqualTo(532));
+
+        yield return new TestCaseData(new byte[] { 0x80 }).SetName("The empty node");
+        yield return new TestCaseData(Rlp.Encode(Rlp.Encode(new byte[] { 0x20 }), Rlp.Encode(new byte[] { 0x01 })).Bytes).SetName("A leaf");
+        yield return new TestCaseData(twoItemsOfFullBranchLength).SetName("Two items of a full branch's length");
+        yield return new TestCaseData(Rlp.Encode(withValue).Bytes).SetName("A branch with a value");
+        yield return new TestCaseData(Rlp.Encode(withInlinedChild).Bytes).SetName("A branch inlining a child");
+        yield return new TestCaseData(Rlp.Encode(branch[..BranchChildren]).Bytes).SetName("Sixteen items");
+    }
+
+    private const int BranchChildren = 16;
+
+    /// <summary>Finds <paramref name="count"/> nodes and one more that a store of <paramref name="count"/> nodes puts in
+    /// one bucket.</summary>
+    private static byte[][] NodesSharingABucket(int count)
+    {
+        int mask = (int)BitOperations.RoundUpToPowerOf2((uint)count + 1) - 1;
+        int bucket = ((int)(BitConverter.ToUInt32(Keccak.EmptyTreeHash.Bytes) & (uint)mask) + 1) & mask;
+        byte[][] nodes = new byte[count + 1][];
+        int found = 0;
+        for (int candidate = 0; found < nodes.Length; candidate++)
+        {
+            byte[] node = BitConverter.GetBytes(candidate);
+            if ((BitConverter.ToUInt32(HashOf(node).Bytes) & (uint)mask) == bucket) nodes[found++] = node;
+        }
+
+        return nodes;
     }
 
     /// <summary>The host's form of the same store: a <see cref="MemDb"/> behind a hash-scheme <see cref="NodeStorage"/>.</summary>
