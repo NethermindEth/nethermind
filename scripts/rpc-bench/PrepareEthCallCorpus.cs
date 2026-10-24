@@ -87,7 +87,7 @@ internal static class PrepareEthCallCorpus
             SetMode(manifest);
             return classes;
         }
-        catch (Exception exception) when (exception is IOException or System.Text.DecoderFallbackException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.DecoderFallbackException or UnauthorizedAccessException)
         { throw new CorpusParityError($"{source}: line {number}: unable to read source ({exception.GetType().Name})"); }
         finally
         {

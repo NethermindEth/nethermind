@@ -100,7 +100,7 @@ internal sealed partial class CorpusParity : IDisposable
         var (method, options) = Rewrite();
         StreamReader reader;
         try { reader = OpenCorpus(path); }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { throw new CorpusParityError($"cannot read corpus: {exception.GetType().Name}"); }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException) { throw new CorpusParityError($"cannot read corpus: {exception.GetType().Name}"); }
         using (reader)
         {
             var records = 0;
@@ -198,7 +198,7 @@ internal sealed partial class CorpusParity : IDisposable
         var (status, raw) = fetched.Value;
         if (raw.Length > MaxResponseBytes) return ("invalid_response:response_too_large", "");
         JsonObject? envelope;
-        try { envelope = JsonNode.Parse(raw) as JsonObject; }
+        try { envelope = JsonNode.Parse(raw, documentOptions: RpcJson.DocumentOptions) as JsonObject; }
         catch (JsonException) { return (status >= 400 ? "transport_failure" : "invalid_response", ""); }
         var sameId = envelope?["id"] is JsonValue id && id.TryGetValue<int>(out var resultId) && resultId == index;
         if (status >= 400)
@@ -214,7 +214,7 @@ internal sealed partial class CorpusParity : IDisposable
             if (result is null) return ("invalid_response", "");
             try
             {
-                using var document = JsonDocument.Parse(result.ToJsonString());
+                using var document = JsonDocument.Parse(result.ToJsonString(RpcJson.SerializerOptions), RpcJson.DocumentOptions);
                 return (null, "0x" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(RpcJson.Canonical(document.RootElement, compact: true)))));
             }
             catch (JsonException) { return ("invalid_response", ""); }

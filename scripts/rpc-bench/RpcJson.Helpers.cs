@@ -7,6 +7,9 @@ using System.Text.Json;
 
 internal static class RpcJson
 {
+    internal static readonly JsonDocumentOptions DocumentOptions = new() { MaxDepth = 1024 };
+    internal static readonly JsonSerializerOptions SerializerOptions = new() { MaxDepth = 1024 };
+
     internal static string Canonical(JsonElement value, bool compact = false) => value.ValueKind switch
     {
         JsonValueKind.Object => "{" + string.Join(compact ? "," : ", ", value.EnumerateObject().OrderBy(property => property.Name, CodePointOrder).Select(property => Quote(property.Name) + (compact ? ":" : ": ") + Canonical(property.Value, compact))) + "}",
@@ -35,7 +38,11 @@ internal static class RpcJson
         var number = value.GetDouble();
         if (!double.IsFinite(number)) throw new JsonException("Non-finite JSON number");
         var text = number.ToString("R", CultureInfo.InvariantCulture).ToLowerInvariant();
-        if (text.Contains('e')) return text;
+        if (text.Contains('e'))
+        {
+            if (Math.Abs(number) is < 1e-4 or >= 1e16) return text;
+            text = decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+        }
         if (Math.Abs(number) >= 1e16)
         {
             var negative = text.StartsWith('-');

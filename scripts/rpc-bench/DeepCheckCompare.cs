@@ -25,7 +25,7 @@ foreach (var argument in args)
     foreach (var line in File.ReadLines(pair[1]))
     {
         if (string.IsNullOrWhiteSpace(line)) continue;
-        using var document = JsonDocument.Parse(line);
+        using var document = JsonDocument.Parse(line, RpcJson.DocumentOptions);
         var root = document.RootElement;
         rows[root.GetProperty("fp").GetString()!] = (root.TryGetProperty("method", out var method) ? method.GetString() : null, root.TryGetProperty("response", out var response) ? response.Clone() : default);
     }

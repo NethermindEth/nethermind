@@ -310,6 +310,23 @@ try
         foreach (var flag in new[] { "--dottrace", "--dotnet-trace", "--perf" }) if (!command.Contains(flag, StringComparison.Ordinal)) throw new Exception($"Missing {flag}");
         Equal(File.Exists(Path.Combine(root.FullName, "image-1-abc-run1", "metadata.json")), true);
     });
+    if (OperatingSystem.IsLinux()) await CheckAsync("escaped descendant cannot hold log pipes forever", async () =>
+    {
+        var pidFile = Path.Combine(temporary.FullName, "escaped.pid");
+        var log = Path.Combine(temporary.FullName, "escaped.log");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            var code = await Driver().ExecuteLogged(["sh", "-c", "setsid sleep 60 & echo $! > \"$1\"; echo retained", "sh", pidFile], temporary.FullName, [], log, timeout.Token);
+            Equal(code, 0); Equal(File.ReadAllText(log).Contains("retained", StringComparison.Ordinal), true);
+        }
+        finally
+        {
+            if (File.Exists(pidFile))
+                try { using var child = Process.GetProcessById(int.Parse(File.ReadAllText(pidFile))); child.Kill(); }
+                catch (ArgumentException) { }
+        }
+    });
     foreach (var mode in OperatingSystem.IsLinux() ? new[] { "cancel", "kill", "orphan" } : ["cancel"])
     await CheckAsync($"real cancellation {mode} retains metadata and terminates child", async () =>
     {

@@ -292,7 +292,7 @@ internal static partial class CorpusResults
     private static double Delta(double baseline, double candidate) => baseline != 0 ? (candidate - baseline) / baseline * 100 : double.NaN;
     private static string Arrow(double delta, double floor) => double.IsNaN(delta) ? "⚪" : delta < -floor ? "🟢" : delta > floor ? "🔴" : "⚪";
     private static string Fixed(double value, int decimals = 2) => value.ToString($"F{decimals}", CultureInfo.InvariantCulture);
-    private static string Signed(double value) => double.IsNaN(value) ? "+nan" : value.ToString("+0.0;-0.0;+0.0", CultureInfo.InvariantCulture);
+    private static string Signed(double value) => double.IsNaN(value) ? "+nan" : (double.IsNegative(value) ? "-" : "+") + Math.Abs(value).ToString("F1", CultureInfo.InvariantCulture);
     private static double Median(IEnumerable<double> values)
     {
         var ordered = values.Order().ToArray();

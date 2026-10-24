@@ -410,11 +410,12 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
         using var file = new StreamWriter(logPath, append: false);
         var writer = TextWriter.Synchronized(file);
         process.Start();
-        var stdout = Drain(process.StandardOutput, writer, CancellationToken.None);
-        var stderr = Drain(process.StandardError, writer, CancellationToken.None);
+        using var drains = new CancellationTokenSource();
+        var stdout = Drain(process.StandardOutput, writer, drains.Token);
+        var stderr = Drain(process.StandardError, writer, drains.Token);
         try
         {
-            try { await Task.WhenAll(process.WaitForExitAsync(CancellationToken.None), stdout, stderr).WaitAsync(cancellationToken); }
+            try { await process.WaitForExitAsync(cancellationToken); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 if (linux)
@@ -433,13 +434,14 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
                 if (!process.HasExited) process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync(CancellationToken.None);
             }
-            await Task.WhenAll(stdout, stderr);
             return process.ExitCode;
         }
         finally
         {
             if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); }
-            await Task.WhenAll(stdout, stderr);
+            drains.CancelAfter(TimeSpan.FromSeconds(5));
+            try { await Task.WhenAll(stdout, stderr); }
+            catch (OperationCanceledException) when (drains.IsCancellationRequested) { Console.Error.WriteLine("Output pipes remained open after expb exited; stopped draining."); }
         }
     }
 
@@ -460,7 +462,7 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
         var result = new JsonObject
         {
             ["sample_id"] = sampleId, ["image_id"] = image["id"]?.DeepClone(), ["image"] = image["image"]?.DeepClone(), ["run"] = run,
-            ["started_at"] = started, ["architecture"] = Architecture, ["runner_hostname"] = Environment.MachineName,
+            ["started_at"] = started, ["architecture"] = Architecture, ["runner_hostname"] = System.Net.Dns.GetHostName(),
             ["log"] = logPath, ["config"] = configPath, ["expb_source"] = Get("EXPB_SOURCE", "unknown"), ["expb_env"] = Get("EXPB_ENV_PASSTHROUGH"),
             ["measurement_mode"] = Get("MEASUREMENT_MODE", "standard"), ["client"] = Get("CLIENT", "nethermind"),
             ["measurement_source"] = Get("MEASUREMENT_SOURCE", "auto"), ["status"] = "failed"
@@ -528,7 +530,7 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
         result["failure_reasons"] = Array(reasons);
         result["status"] = reasons.Count == 0 ? "success" : "failed";
         Save(Path.Combine(directory, "metadata.json"), result);
-        Console.WriteLine($"{sampleId}: {result["status"]} AVG={metrics["avg"]}");
+        Console.WriteLine($"{sampleId}: {result["status"]} AVG={Text(metrics["avg"], "None")}");
         if (metrics["severe_count"]!.GetValue<int>() > 0) Console.WriteLine($"::warning::severe runtime signal in {sampleId}; see combined log");
         foreach (var line in diagnostics.Values.SelectMany(lines => lines).Take(20)) Console.Error.WriteLine(line);
         return result;
@@ -560,7 +562,7 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
         var record = new JsonObject
         {
             ["started_at"] = started, ["finished_at"] = Now(), ["images"] = images.DeepClone(), ["run_count"] = runCount,
-            ["architecture"] = Architecture, ["runner_hostname"] = Environment.MachineName, ["samples"] = samples.DeepClone()
+            ["architecture"] = Architecture, ["runner_hostname"] = System.Net.Dns.GetHostName(), ["samples"] = samples.DeepClone()
         };
         if (failureReasons is { Count: > 0 }) record["failure_reasons"] = Array(failureReasons);
         Save(Path.Combine(root, "campaign.json"), record);
@@ -597,7 +599,7 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
     {
         var successful = images.ToDictionary(image => Text(image!["id"]), image => samples.Where(sample => Text(sample!["status"]) == "success" && Text(sample["image_id"]) == Text(image!["id"])).Select(sample => sample!.AsObject()).ToArray());
         var baselineId = Text(images[0]!["id"]);
-        var lines = new List<string> { "## EXPB Campaign", "", $"Runner: {Environment.MachineName} ({Architecture})", $"Client: {Get("CLIENT", "nethermind")} (measurement_source={Get("MEASUREMENT_SOURCE", "auto")})", $"Samples: {samples.Count}", "", "**Images:**" };
+        var lines = new List<string> { "## EXPB Campaign", "", $"Runner: {System.Net.Dns.GetHostName()} ({Architecture})", $"Client: {Get("CLIENT", "nethermind")} (measurement_source={Get("MEASUREMENT_SOURCE", "auto")})", $"Samples: {samples.Count}", "", "**Images:**" };
         foreach (var image in images) lines.Add($"- `{image!["id"]}` → `{image["image"]}`");
         lines.AddRange(["", "| Sample | Status | Source | Count | Processing AVG ms | Request AVG ms | Outside AVG ms | MGas/s | Request MGas/s |", "|---|---|---|---:|---:|---:|---:|---:|---:|"]);
         foreach (var sample in samples)

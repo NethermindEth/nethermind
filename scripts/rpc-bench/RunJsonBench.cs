@@ -120,7 +120,7 @@ try
         var configPath = benchmarkName.Length == 0 ? "" : Path.IsPathRooted(benchmarkName) ? benchmarkName : benchmarkName.Contains('/') ? Path.Combine(source, benchmarkName) : Path.Combine(source, "config", "benchmark", benchmarkName + ".yaml");
         if (configPath.Length > 0 && !File.Exists(configPath)) throw new IOException($"benchmark_config '{benchmarkName}' not found (looked at {configPath})");
         if (corpus == "true" && !prepared) { Directory.CreateDirectory(fixtures); await Script("PrepareEthCallCorpus.cs", [corpusPath, fixtures]); }
-        benchmark = Render(configPath, label, reference.Length > 0 ? referenceLabel : "", corpus == "true" ? Path.Combine(fixtures, "classes.json") : "", method, name => name == "JB_SEED" ? seed : Get(name));
+        benchmark = Render(configPath, label, reference.Length > 0 ? referenceLabel : "", corpus == "true" ? Path.Combine(fixtures, "classes.json") : "", method, name => Get(name));
         Save(Path.Combine(io, "benchmark.yaml"), benchmark);
     }
     if (reuse) await File.WriteAllTextAsync(marker, preparationId + "\n", cancellation.Token);
@@ -391,12 +391,12 @@ internal static partial class JsonBenchReporting
                 var request = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = 1, ["method"] = method, ["params"] = parameters?.DeepClone() };
                 using var content = new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json");
                 using var result = await http.PostAsync(url, content, cancellationToken); result.EnsureSuccessStatusCode();
-                response = JsonNode.Parse(await result.Content.ReadAsStringAsync(cancellationToken));
+                response = JsonNode.Parse(await result.Content.ReadAsStringAsync(cancellationToken), documentOptions: RpcJson.DocumentOptions);
             }
             catch (Exception exception) when (exception is HttpRequestException or JsonException || exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             { response = new JsonObject { ["_capture_error"] = exception.Message }; }
             var row = new JsonObject { ["seq"] = sequence++, ["fp"] = fingerprint, ["method"] = method, ["response"] = response };
-            await writer.WriteLineAsync(row.ToJsonString().AsMemory(), cancellationToken);
+            await writer.WriteLineAsync(row.ToJsonString(RpcJson.SerializerOptions).AsMemory(), cancellationToken);
         }
     }
 

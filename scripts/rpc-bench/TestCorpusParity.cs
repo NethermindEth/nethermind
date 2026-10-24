@@ -187,6 +187,27 @@ try
         var result = await parity.Post(url, 1, [], "debug_traceCall", CancellationToken.None);
         Equal(result.Category, null); Equal(result.Result, "0x" + digest);
     });
+    foreach (var method in new[] { "debug_traceCall", "trace_call" }) await Check("deep trace " + method, async () =>
+    {
+        var json = "{}";
+        for (var depth = 0; depth < 40; depth++) json = "{\"calls\":[" + json + "]}";
+        using var parity = Create(_ => Raw("{\"id\":1,\"result\":" + json + "}"));
+        var result = await parity.Post(url, 1, [], method, CancellationToken.None);
+        Equal(result.Category, null);
+        Equal(result.Result, "0x" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(json))));
+    });
+    foreach (var (json, expected) in new[] { ("1e15", "1000000000000000.0"), ("1000000000000001.0", "1000000000000001.0"), ("1e-4", "0.0001"), ("1e16", "1e+16") })
+        await Check("float canonical form " + json, () =>
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            Equal(RpcJson.Canonical(document.RootElement), expected);
+            return Task.CompletedTask;
+        });
+    await Check("corrupt gzip header stays private", async () =>
+    {
+        var path = Path.Combine(root.FullName, "bad-header.jsonl.gz"); File.WriteAllText(path, sentinel);
+        using var parity = Create(); await Reject(() => { parity.LoadCorpus(path); return Task.CompletedTask; }, "cannot read corpus");
+    });
     await Check("trace rejects non-finite numbers", async () =>
     {
         using var parity = Create(_ => Raw("{\"id\":1,\"result\":1e999}"));

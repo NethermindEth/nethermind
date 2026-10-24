@@ -73,6 +73,9 @@ jobs:
             echo "skip_docker_build=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Capture workflow dispatch time
+        run: echo "DISCOVER_SINCE=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
+
       - name: Trigger Docker Build Action with Cleaned Ref
         if: steps.check_conditions.outputs.skip_docker_build != 'true'
         uses: benc-uk/workflow-dispatch@v1

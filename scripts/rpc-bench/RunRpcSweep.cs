@@ -279,8 +279,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         finally
         {
             // Teardown must finish even when the workflow cancels a cell.
-            using var teardown = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-            var stopped = await Script("StopNode.cs", [], new() { ["STATE_DIR"] = state, ["CONTAINER_NAME"] = container, ["OUT_DIR"] = Get("OUT_DIR"), ["LOG_OUT"] = Path.Combine(state, "node.log") }, teardown.Token);
+            var stopped = await Script("StopNode.cs", [], new() { ["STATE_DIR"] = state, ["CONTAINER_NAME"] = container, ["OUT_DIR"] = Get("OUT_DIR"), ["LOG_OUT"] = Path.Combine(state, "node.log") }, CancellationToken.None);
             if (stopped.Code != 0) Fail("stop-node DB-integrity/teardown failures");
             if (ScanNodeLog(Path.Combine(state, "node.log"), arm.Client, label, configuration.Corpus)) Fail("node health issues");
             Console.WriteLine("::endgroup::");

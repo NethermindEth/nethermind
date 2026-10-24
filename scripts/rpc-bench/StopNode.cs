@@ -8,6 +8,7 @@
 #:include BenchmarkProfiling.Helpers.cs
 #:include ../Profiles.Helpers.cs
 
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 
@@ -64,18 +65,32 @@ try
         if ((await BenchmarkProcess.RunAsync("docker", ["exec", container, "test", "-s", sourceMap], cancellation.Token)).Code != 0) throw new IOException($"could not prepare the Nethermind perf map from {sourceMap}");
         if (sourceMap != targetMap && (await BenchmarkProcess.RunAsync("docker", ["exec", container, "cp", sourceMap, targetMap], cancellation.Token)).Code != 0) throw new IOException($"could not copy the Nethermind perf map from {sourceMap}");
         var folded = Path.Combine(diag, "perf", $"perf{suffix}.folded");
-        var temporary = folded + ".tmp"; var raw = folded + ".script.tmp";
+        var temporary = folded + ".tmp";
+        var start = new ProcessStartInfo("perf") { RedirectStandardOutput = true };
+        foreach (var argument in new[] { "script", "--symfs", $"/proc/{Get("PERF_NODE_PID")}/root", "--input", data }) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start) ?? throw new IOException("Could not start perf script");
+        using var stop = cancellation.Token.Register(() =>
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException exception) { Console.Error.WriteLine(exception.Message); }
+        });
         try
         {
-            await BenchmarkFiles.RunToFileAsync("perf", ["script", "--symfs", $"/proc/{Get("PERF_NODE_PID")}/root", "--input", data], raw, false, cancellation.Token);
-            using (var input = File.OpenText(raw))
             await using (var output = File.CreateText(temporary))
-                foreach (var (stack, count) in Profiles.Fold(input)) await output.WriteLineAsync($"{stack} {count}".AsMemory(), cancellation.Token);
+                foreach (var (stack, count) in Profiles.Fold(process.StandardOutput)) await output.WriteLineAsync($"{stack} {count}".AsMemory(), cancellation.Token);
+            await process.WaitForExitAsync(cancellation.Token);
+            if (process.ExitCode != 0) throw new IOException($"perf script exited {process.ExitCode}");
             if (!Profiles.Read(temporary).Any(row => row.Count > 0 && row.Stack.Contains(';') && Profiles.IsManaged(row.Stack[(row.Stack.LastIndexOf(';') + 1)..]))) throw new IOException("folded profile has no managed leaf samples; check perf-map symbolization");
             File.Move(temporary, folded, overwrite: true);
             BenchmarkProcess.Log($"perf profile folded: {File.ReadLines(folded).LongCount()} stacks");
         }
-        finally { File.Delete(temporary); File.Delete(raw); }
+        finally
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException exception) { Console.Error.WriteLine(exception.Message); }
+            await process.WaitForExitAsync(CancellationToken.None);
+            File.Delete(temporary);
+        }
     });
     var dumpName = $"rpcbench{suffix}.dmp";
     string? dumpRoot = null;
@@ -147,7 +162,17 @@ try
         try { await action(); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or System.ComponentModel.Win32Exception)
         {
-            BenchmarkProcess.Log($"{(warnOnly ? "::warning::" : "ERROR:")} {name}: {exception.Message}");
+            BenchmarkProcess.Log($"{(warnOnly ? "::warning::" : "::error::")} {name}: {exception.Message}");
+            if (name == "dotnet-trace collection")
+            {
+                var traceLog = Path.Combine(diag, "dotnet-trace", $"dotnet-trace-collect{suffix}.log");
+                try
+                {
+                    if (File.Exists(traceLog))
+                        foreach (var line in File.ReadLines(traceLog).TakeLast(20)) Console.Error.WriteLine("    " + line);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.Error.WriteLine(error.Message); }
+            }
             if (!warnOnly) failures.Add(name);
         }
     }

@@ -100,6 +100,11 @@ try
             key => key == "RPC_BENCH_CORPUS_METHOD" ? "debug_traceCall" : key == "RPC_BENCH_CORPUS_TRACER" ? "gethTracer" : null), "unknown tracer");
         Equal(Directory.GetFileSystemEntries(destination).Length, 0);
     });
+    Check("corrupt gzip reports a clean conversion failure", () =>
+    {
+        var source = Path.Combine(root.FullName, "corrupt.jsonl.gz"); File.WriteAllText(source, "private invalid gzip");
+        Reject(() => PrepareEthCallCorpus.Convert(source, Destination(), EnvironmentFor()), "unable to read source");
+    });
     Check("CLI success and failure", () =>
     {
         var names = new[] { "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES" };

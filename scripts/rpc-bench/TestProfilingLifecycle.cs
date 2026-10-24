@@ -29,6 +29,9 @@ Executable("perf", """
     printf 'perf %s\n' "$*" >> "$FAKE_CALLS"
     case "$1" in
     stat) case "$FAKE_PERF:$3" in fail:*|clock:cycles:u) exit 1;; esac ;;
+    script)
+      printf 'nethermind 123\n    123 [Nethermind] Namespace.Type::Method() (/tmp/perf.map)\n\n'
+      test "${FAKE_PERF:-}" != script-fails ;;
     record)
       printf '%s\n' "$$" >> "$FAKE_PIDS"
       mkdir -p "$RPC_BENCH_PROC_ROOT/$$"
@@ -71,6 +74,7 @@ Executable("docker", """
           printf 'Microsoft.NETCore.App 8.0.0 [/opt/dotnet-a/shared/Microsoft.NETCore.App]\nMicrosoft.NETCore.App 10.0.0 [/opt/dotnet-b/shared/Microsoft.NETCore.App]\n'
         else printf 'Microsoft.NETCore.App 10.0.11 [/usr/share/dotnet/shared/Microsoft.NETCore.App]\n'; fi ;;
       'test -d '*) test "${FAKE_FXR:-true}" = true && test "$3" != /opt/dotnet-a/host/fxr ;;
+      'test -s /tmp/perf-'*|'cp /tmp/perf-'*) : ;;
       '/opt/dotnet-trace/dotnet-trace collect '*)
         if test "${FAKE_TRACE_STARTS:-true}" != true; then printf '.NET location: Not found\n' >&2; exit 1; fi
         printf '%s\n' "$$" >> "$FAKE_PIDS"
@@ -193,9 +197,24 @@ try
         Reset(); var state = State(); state["PERF"] = "false"; state["DOTNET_TRACE"] = "true"; state["DOTNET_TRACE_PID"] = "98765"; state["DOTNET_TRACE_COLLECTOR_PID"] = "77";
         if (alive) { Directory.CreateDirectory(Path.Combine(proc, "98765")); File.WriteAllText(Path.Combine(proc, "98765/active"), ""); }
         foreach (var (key, value) in state) BenchmarkState.Append(statePath, key, value);
+        File.WriteAllLines(Path.Combine(diag, "dotnet-trace/dotnet-trace-collect.log"), Enumerable.Range(0, 25).Select(index => $"collector line {index}"));
         var stop = RpcScriptTests.Run("scripts/rpc-bench/StopNode.cs");
         Assert(stop.Code == 1 && stop.Output.Contains(alive ? "refusing to signal" : "exited before it was stopped", StringComparison.Ordinal), stop.ToString());
+        Assert(stop.Output.Contains("::error::") && stop.Error.Contains("collector line 5\n") && stop.Error.Contains("collector line 24") && !stop.Error.Contains("collector line 4\n"), "collector diagnostic tail changed");
         Assert(!Commands().Any(line => line.Contains("kill -INT", StringComparison.Ordinal)), "unknown collector was signaled");
+    });
+    foreach (var fail in new[] { false, true }) tests.Case($"perf folding streams stdout and checks exit fail={fail}", () =>
+    {
+        Reset(); var state = State(); state["DOTTRACE"] = "false";
+        foreach (var (key, value) in state) BenchmarkState.Append(statePath, key, value);
+        new BenchmarkProfiling(state).StartAsync(statePath, CancellationToken.None).GetAwaiter().GetResult();
+        File.WriteAllText(Path.Combine(diag, "perf/perf.data"), "data");
+        var folded = Path.Combine(diag, "perf/perf.folded"); File.Delete(folded);
+        Environment.SetEnvironmentVariable("FAKE_PERF", fail ? "script-fails" : "");
+        var stop = RpcScriptTests.Run("scripts/rpc-bench/StopNode.cs");
+        Assert(stop.Code == (fail ? 1 : 0), stop.ToString());
+        Assert(File.Exists(folded) != fail && !File.Exists(folded + ".tmp") && !File.Exists(folded + ".script.tmp"), "partial or raw profile retained");
+        if (!fail) Assert(File.ReadAllText(folded).Contains("Namespace.Type::Method()"), "managed stack lost");
     });
 }
 finally

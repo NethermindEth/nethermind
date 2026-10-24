@@ -25,6 +25,7 @@ try
     var reference = EnvironmentValue("REF");
     if (!reference.StartsWith("refs/heads/", StringComparison.Ordinal)) reference = "refs/heads/" + reference;
     var name = EnvironmentValue("NAME_FILTER");
+    var since = EnvironmentValue("DISCOVER_SINCE") is { Length: > 0 } dispatched ? DateTimeOffset.Parse(dispatched, CultureInfo.InvariantCulture).AddMinutes(-1) : started.AddMinutes(-1);
     var maxWait = double.Parse(EnvironmentValue("MAX_WAIT_MINUTES"), CultureInfo.InvariantCulture);
     var timeout = double.Parse(EnvironmentValue("TIMEOUT"), CultureInfo.InvariantCulture);
     var interval = double.Parse(EnvironmentValue("INTERVAL"), CultureInfo.InvariantCulture);
@@ -49,7 +50,7 @@ try
                 if (text.Contains("API rate limit exceeded", StringComparison.Ordinal)) { Console.Error.WriteLine("❌ API rate limit exceeded. Please try again later."); return 1; }
                 if (text.Contains("Not Found", StringComparison.Ordinal)) { Console.Error.WriteLine("❌ Invalid input provided (organization, repository, or workflow ID). Please check your inputs."); return 1; }
             }
-            runId = Discover(response.RootElement, reference[11..], name, started.AddMinutes(-1), ref nameFilter) ?? "";
+            runId = Discover(response.RootElement, reference[11..], name, since, ref nameFilter) ?? "";
             if (runId.Length > 0) { Console.WriteLine($"🎉 Workflow triggered! Run ID: {runId}"); break; }
             if (++attempts * interval >= maxWait * 60) { Console.Error.WriteLine("❌ Maximum waiting time for the workflow to be triggered has been reached. Exiting."); return 1; }
             await Task.Delay(TimeSpan.FromSeconds(interval), cancellation.Token);

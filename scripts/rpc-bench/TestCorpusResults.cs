@@ -126,6 +126,11 @@ try
         var arrow = cached && delta == 3 ? "⚪" : "🔴";
         Contains(Comment(cached), $"median delta {arrow}", $"{(cached ? 5 : 1)}% arrow floor", $", {arrow} -{delta.ToString("F1", CultureInfo.InvariantCulture)}%.");
     });
+    foreach (var (candidate, expected) in new[] { (99.96, "-0.0%"), (102.25, "+2.2%") }) Check("signed rounding " + expected, () =>
+    {
+        Cell("master", 100, 100); Cell("pr", candidate, 100);
+        Contains(Comment(), expected);
+    });
     Check("record shifts exceed their own repeat spread", () =>
     {
         Timings("master", [.. Enumerable.Repeat(10d, 10), .. Enumerable.Repeat(100d, 10)], 800);

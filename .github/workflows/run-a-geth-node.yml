@@ -151,6 +151,7 @@ jobs:
             tests_config: {categories: "", branch: ""}
           }')
 
+          echo "DISCOVER_SINCE=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
           gh workflow run run-smoketests.yml \
             --repo NethermindEth/post-merge-smoke-tests --ref main \
             -f github_username="${{ github.actor }}" \

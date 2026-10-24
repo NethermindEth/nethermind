@@ -17,6 +17,26 @@ void Contains(string text, params string[] fragments)
 {
     foreach (var fragment in fragments) RpcScriptTests.Assert(text.Contains(fragment, StringComparison.Ordinal), "missing workflow contract: " + fragment);
 }
+foreach (var file in new[] { "run-a-geth-node.yml", "run-a-single-node-from-branch.yml", "test-assertoor.yml" })
+    tests.Case("discovery timestamp precedes dispatch " + file, () =>
+    {
+        var caller = new WorkflowTest(file);
+        var waits = 0;
+        foreach (var job in ((YamlMappingNode)WorkflowTest.Get(caller.Document, "jobs")!).Children.Values)
+        {
+            var captured = false;
+            if (WorkflowTest.Get(job, "steps") is not YamlSequenceNode steps) continue;
+            foreach (var step in steps.Children)
+            {
+                var body = WorkflowTest.Text(step, "run");
+                if (body.Contains("DISCOVER_SINCE=", StringComparison.Ordinal)) captured = true;
+                if (WorkflowTest.Text(step, "uses").StartsWith("benc-uk/workflow-dispatch@", StringComparison.Ordinal) || body.Contains("gh workflow run", StringComparison.Ordinal))
+                    RpcScriptTests.Assert(captured, "dispatch timestamp must precede SDK setup and compilation");
+                if (body.Contains("WaitForWorkflow.cs", StringComparison.Ordinal)) { RpcScriptTests.Assert(captured, "missing discovery floor"); waits++; }
+            }
+        }
+        RpcScriptTests.Assert(waits > 0, "no discovery caller tested");
+    });
 tests.Case("baseline cache keys include cell fingerprint on lookup and save", () =>
 {
     foreach (var step in new[] { "Restore the cached master baseline", "Save the master baseline" })

@@ -84,6 +84,22 @@ try
         RpcScriptTests.Assert(result.Code == 0 && result.Error.Contains("resource sampling unavailable", StringComparison.Ordinal), result.ToString());
         Environment.SetEnvironmentVariable("RESOURCE_SAMPLER_CONTAINER", null);
     });
+    var configuredSeed = tests.Write("seed.yaml", "seed: 17\ncalls: []\n");
+    var priorSeed = Environment.GetEnvironmentVariable("JB_SEED");
+    try
+    {
+        foreach (var seed in new string?[] { null, "0", "23" }) tests.Case($"benchmark preserves configured seed unless overridden: {seed ?? "unset"}", () =>
+        {
+            Environment.SetEnvironmentVariable("JB_SEED", seed);
+            Environment.SetEnvironmentVariable("JB_BENCHMARK_CONFIG", configuredSeed);
+            var result = RpcScriptTests.Run("scripts/rpc-bench/RunJsonBench.cs");
+            RpcScriptTests.Assert(result.Code == 0, result.ToString());
+            using var input = File.OpenText(Path.Combine(changes["SCRATCH_ROOT"]!, "jsonbench/io/benchmark.yaml"));
+            var yaml = new YamlStream(); yaml.Load(input);
+            RpcScriptTests.Assert(((YamlScalarNode)((YamlMappingNode)yaml.Documents[0].RootNode).Children[new YamlScalarNode("seed")]).Value == (seed ?? "17"), "configured seed replaced");
+        });
+    }
+    finally { Environment.SetEnvironmentVariable("JB_SEED", priorSeed); Environment.SetEnvironmentVariable("JB_BENCHMARK_CONFIG", null); }
     var scripts = Path.Combine(tests.DirectoryPath, "scripts"); Directory.CreateDirectory(scripts);
     File.WriteAllText(Path.Combine(scripts, "CorpusParity.cs"), """
         File.AppendAllText(Environment.GetEnvironmentVariable("PROBE_LOG")!, string.Join(' ', args) + "\n");
