@@ -72,9 +72,8 @@ public class Eth72ProtocolHandler(
     : Eth71ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), IStaticProtocolInfo
     , ISparseBlobPoolPeer
 {
-    private const int MinSamplerFullProviderAnnouncements = 2;
     private const int RequestToAnnouncementRatioThreshold = 5;
-    private const int MinCellRequestsBeforeRatioDisconnect = 5;
+    internal const int CellRequestBurstAllowance = MaxCellsRequestHashes;
     private const int MaxCountedBlobAnnouncements = 4096;
     internal const int MaxUnansweredCellRequestRestores = 2;
     private const int MaxPendingCellRequests = 1024;
@@ -697,9 +696,9 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        long announcements = Math.Max(1, Volatile.Read(ref _blobAnnouncementsReceived));
-        if (totalRequests < MinCellRequestsBeforeRatioDisconnect
-            || totalRequests < announcements * RequestToAnnouncementRatioThreshold)
+        long announcements = Volatile.Read(ref _blobAnnouncementsReceived);
+        // A peer that fetches full blobs announces them back only after admission, so a burst comes before any announcement.
+        if (totalRequests < announcements * RequestToAnnouncementRatioThreshold + CellRequestBurstAllowance)
         {
             return false;
         }
@@ -984,7 +983,8 @@ public class Eth72ProtocolHandler(
             return;
         }
 
-        AddPendingCellRequest(hash.ValueHash256, requestMask);
+        // No event for this hash may follow, so maintenance retries it once in-flight work drops.
+        AddPendingCellRequest(hash.ValueHash256, requestMask, _timestamper.UtcNowOffset);
     }
 
     private bool TryGetCellsResponseMetadata(
@@ -1325,7 +1325,7 @@ public class Eth72ProtocolHandler(
     /// The mask restored is the one the peer announced, not the one we requested:
     /// <see cref="ISparseBlobPoolPeerRegistry.RecordAnnouncement"/> overwrites a peer's mask, so
     /// restoring the narrower request mask would downgrade a full provider to a partial one and can
-    /// starve samplers gated on <see cref="MinSamplerFullProviderAnnouncements"/>.
+    /// starve samplers gated on <see cref="SparseBlobPoolPeerRegistry.MinSamplerFullProviderAnnouncements"/>.
     /// </remarks>
     private void BackOffAndParkCellRequest(Hash256 hash, BlobCellMask parkMask) =>
         ParkCellRequest(hash.ValueHash256, parkMask, _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash));
@@ -1861,7 +1861,7 @@ public class Eth72ProtocolHandler(
         bool hasValidatedTransaction = _sparseBlobPoolPeerRegistry.HasRecordedTransaction(hash)
             || _txPool.TryGetPendingBlobCellMask(hash, out _);
         return hasValidatedTransaction
-            && _sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(hash) >= MinSamplerFullProviderAnnouncements;
+            && _sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(hash) >= SparseBlobPoolPeerRegistry.MinSamplerFullProviderAnnouncements;
     }
 
     private bool TryRequestPendingCells(Hash256 hash)
