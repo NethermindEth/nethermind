@@ -53,9 +53,9 @@ var targetScript = """
     run().then(() => process.stdout.write(JSON.stringify({output})),
         error => process.stdout.write(JSON.stringify({error: error.message})));
     """.Replace("WORKFLOW_SCRIPT", Extract(instructions, TargetScriptRegex()), StringComparison.Ordinal);
-JsonObject Fixture(int count, JsonArray files, string? sha = null, string repo = "test/repo") => new()
+JsonObject Fixture(int count, JsonArray files) => new()
 {
-    ["pr"] = new JsonObject { ["base"] = new JsonObject { ["repo"] = new JsonObject { ["full_name"] = repo }, ["sha"] = sha ?? new string('a', 40) }, ["head"] = new JsonObject { ["sha"] = new string('b', 40) }, ["changed_files"] = count },
+    ["pr"] = new JsonObject { ["base"] = new JsonObject { ["repo"] = new JsonObject { ["full_name"] = "test/repo" }, ["sha"] = new string('a', 40) }, ["head"] = new JsonObject { ["sha"] = new string('b', 40) }, ["changed_files"] = count },
     ["files"] = files.DeepClone()
 };
 var pythonBlock = Extract(instructions, PrepareInstructionsRegex()).TrimEnd('\n').Split('\n');
