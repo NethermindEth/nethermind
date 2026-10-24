@@ -141,7 +141,7 @@ namespace Nethermind.Facade.Find
         /// </remarks>
         private bool WasPruned(BlockHeader header) =>
             (_blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header))
-            || (_blockFinder is IBlockTree tree && tree.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true);
+            || _blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
 
         protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
             prunedLogsRetention is not null
