@@ -22,6 +22,7 @@ using Autofac.Core;
 using Autofac.Core.Lifetime;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -69,6 +70,7 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Optimism;
@@ -874,6 +876,27 @@ public class EthereumRunnerTests
                 FieldInfo disposedField = typeof(TxPool.TxPool).GetField("_isDisposed", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 Assert.That(disposedField.GetValue(pool), Is.True);
             }
+        }
+    }
+
+    [TestCase(false, false, typeof(NoopMonitoringService))]
+    [TestCase(true, false, typeof(MonitoringService))]
+    [TestCase(false, true, typeof(MonitoringService))]
+    public async Task Metrics_enabled_loads_monitoring_plugin(bool enabled, bool countersEnabled, Type expected)
+    {
+        EthereumRunner runner = await CreateRunner("mainnet", configProvider =>
+        {
+            MetricsConfig config = (MetricsConfig)configProvider.GetConfig<IMetricsConfig>();
+            config.Enabled = enabled;
+            config.CountersEnabled = countersEnabled;
+        });
+        try
+        {
+            Assert.That(runner.Api.Context.Resolve<IMonitoringService>(), Is.TypeOf(expected));
+        }
+        finally
+        {
+            await runner.StopAsync();
         }
     }
 
