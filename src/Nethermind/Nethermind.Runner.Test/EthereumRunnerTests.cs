@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -27,6 +28,8 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Blockchain.Receipts;
@@ -55,6 +58,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots;
 using Nethermind.HealthChecks;
+using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Exceptions;
@@ -79,6 +83,7 @@ using Nethermind.State.OverridableEnv;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
+using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
@@ -694,6 +699,12 @@ public class EthereumRunnerTests
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
 
+    private static Type ExpectedRewardCalculatorType(IList<INethermindPlugin> plugins) =>
+        plugins.Any(static p => p is AuRaPlugin) ? typeof(AuRaRewardCalculator)
+        : plugins.Any(static p => p is XdcPlugin) ? typeof(XdcRewardCalculator)
+        : plugins.Any(static p => p is MergePlugin) ? typeof(MergeRewardCalculator)
+        : typeof(NoBlockRewards);
+
     /// <summary>Budget for a single start or stop of a runner under test.</summary>
     /// <remarks>This is what fails a smoke case whose steps deadlock on incorrect dependencies. A test-level
     /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
@@ -1031,7 +1042,9 @@ public class EthereumRunnerTests
             api.Context.Resolve<ISealValidator>();
             api.Context.Resolve<ISealer>();
             api.Context.Resolve<ISealEngine>();
-            api.Context.Resolve<IRewardCalculatorSource>();
+            // The calculator needs the world state, so only a processing scope can resolve it.
+            ILifetimeScope processingScope = ((MainProcessingContext)api.Context.Resolve<IMainProcessingContext>()).LifetimeScope;
+            Assert.That(processingScope.Resolve<IRewardCalculator>(), Is.TypeOf(ExpectedRewardCalculatorType(plugins)));
             api.Context.Resolve<IBlockValidator>();
             api.Context.Resolve<IHeaderValidator>();
             api.Context.Resolve<IUnclesValidator>();
