@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs;
@@ -131,6 +132,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip7954Enabled => spec.IsEip7954Enabled;
     public virtual bool IsEip8246Enabled => spec.IsEip8246Enabled;
     public virtual bool IsEip8253Enabled => spec.IsEip8253Enabled;
+    public virtual IReadOnlyList<Address> Eip8253Accounts => spec.Eip8253Accounts;
     public virtual bool IsEip2780Enabled => spec.IsEip2780Enabled;
     public virtual bool IsEip5920Enabled => spec.IsEip5920Enabled;
     public virtual bool IsEip8360Enabled => spec.IsEip8360Enabled;
