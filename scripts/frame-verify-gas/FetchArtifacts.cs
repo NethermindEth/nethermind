@@ -1,12 +1,12 @@
 #!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-#:include VerifierArtifacts.Helpers.cs
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -129,7 +129,7 @@ internal static partial class ArtifactFetch
             }
             catch (Exception exception) when (exception is IOException or JsonException or InvalidOperationException)
             { throw new IOException($"Release {version} of {Repository} does not carry the pinned soispoke verifier: {exception.Message}", exception); }
-            if (VerifierArtifacts.Check(artifacts, Labels) != 0) throw new IOException($"The plausibility heuristic in scripts/frame-verify-gas/CheckVerifiers.cs rejected release {version}; see the errors above.");
+            if (CheckVerifiers(artifacts) != 0) throw new IOException($"The plausibility heuristic in scripts/frame-verify-gas/FetchArtifacts.cs rejected release {version}; see the errors above.");
             var savedSums = Path.Combine(temporary, "frame-verify-gas-groth16.SHA256SUMS");
             File.Copy(sums, savedSums, overwrite: true);
             var digest = await Hash(sums);
@@ -185,6 +185,56 @@ internal static partial class ArtifactFetch
                     await Task.Delay(TimeSpan.FromSeconds(1 << attempt), cancellationToken);
                 }
             }
+        }
+    }
+
+    [GeneratedRegex(@"\A[1-9][0-9]{0,8}\z")]
+    private static partial Regex PositiveInteger();
+
+    [GeneratedRegex(@"\A0x(?:[0-9a-fA-F]{2})+\z")]
+    private static partial Regex HexBytes();
+
+    private static int CheckVerifiers(string root)
+    {
+        var failures = new List<string>();
+        foreach (var label in Labels)
+        {
+            var sweep = "sweep-" + label;
+            var verifier = sweep + "/verifier.hex";
+            var code = ReadHex(verifier);
+            if (code is not null)
+            {
+                if (code.Length is < 1024 or > 24576) Reject(verifier, "size", $"{code.Length} bytes, outside 1024..24576 (EIP-170)");
+                var pushed = new HashSet<byte>();
+                var staticCall = false;
+                for (var pc = 0; pc < code.Length;)
+                {
+                    var op = code[pc];
+                    if (op == 0x60 && pc + 1 < code.Length) pushed.Add(code[pc + 1]);
+                    staticCall |= op == 0xfa;
+                    pc += 1 + (op is >= 0x60 and <= 0x7f ? op - 0x60 + 1 : 0);
+                }
+                var missing = new List<string>();
+                foreach (var (address, name) in new[] { (6, "ecAdd"), (7, "ecMul"), (8, "ecPairing") })
+                    if (!pushed.Contains((byte)address)) missing.Add($"0x{address:x2} {name}");
+                if (missing.Count > 0) Reject(verifier, "precompile-push", "no PUSH1 of " + string.Join(", ", missing));
+                if (!staticCall) Reject(verifier, "staticcall", "no STATICCALL opcode");
+            }
+            var calldata = sweep + "/calldata-invalid.hex";
+            if (ReadHex(calldata) is { Length: < 4 }) Reject(calldata, "length", "shorter than a function selector");
+            if (!PositiveInteger().IsMatch(Read(sweep + "/gas.txt"))) Reject(sweep + "/gas.txt", "integer", "not a positive integer");
+        }
+        foreach (var failure in failures) Console.WriteLine("::error::" + failure);
+        return failures.Count > 0 ? 1 : 0;
+
+        void Reject(string path, string check, string detail) => failures.Add($"FetchArtifacts.cs heuristic rejected {path} ({check} check): {detail}");
+        string Read(string path) => Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(root, path))).Trim();
+        byte[]? ReadHex(string path)
+        {
+            var text = Read(path);
+            if (HexBytes().IsMatch(text)) return Convert.FromHexString(text[2..]);
+            Reject(path, "hex", "not 0x-prefixed, byte-aligned hex");
+            return null;
         }
     }
 

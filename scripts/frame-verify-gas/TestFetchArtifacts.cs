@@ -103,7 +103,7 @@ try
     }) await Expect(name, version, 1, pattern);
     Check("no-escaped-files", !File.Exists(escaped));
     var rejected = await Expect("verifier-no-precompile", "v4.0.0", 1, @"rejected sweep-250k/verifier.hex \(precompile-push check\): no PUSH1 of 0x06 ecAdd, 0x07 ecMul, 0x08 ecPairing");
-    Check("verifier-no-precompile:names-heuristic", rejected.Output.Contains("plausibility heuristic in scripts/frame-verify-gas/CheckVerifiers.cs rejected release v4.0.0"));
+    Check("verifier-no-precompile:names-heuristic", rejected.Output.Contains("plausibility heuristic in scripts/frame-verify-gas/FetchArtifacts.cs rejected release v4.0.0"));
     foreach (var (name, version, pattern) in new[]
     {
         ("verifier-push-data-only", "v4.0.1", @"verifier.hex \(precompile-push check\)"),
