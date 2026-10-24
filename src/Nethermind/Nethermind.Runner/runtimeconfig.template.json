@@ -3,6 +3,8 @@
     "System.Net.Http.EnableActivityPropagation": false,
     "System.Diagnostics.Tracing.EventSource.IsSupported": false,
     "System.Diagnostics.Metrics.Meter.IsSupported": false,
+    "System.Threading.ThreadPool.HillClimbing.Disable": true,
+    "System.Threading.ThreadPool.UnfairSemaphoreSpinLimit": 1024,
     "Nethermind.Int256.UseHashCodeRandomizer": true
   }
 }
