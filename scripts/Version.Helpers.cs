@@ -7,11 +7,12 @@ static partial class ScriptVersion
 {
     internal static string Root()
     {
-        var directory = new DirectoryInfo(Environment.CurrentDirectory);
+        var directory = new DirectoryInfo(Path.GetDirectoryName(AppContext.GetData("EntryPointFilePath") as string) ?? Environment.CurrentDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "scripts", "Version.cs"))) directory = directory.Parent;
         return directory?.FullName ?? throw new InvalidOperationException("Run from the repository or one of its subdirectories.");
     }
 
+    // Duplicate properties produce a multiline value that Read's tag-safe validation rejects.
     internal static string Property(string text, string name) => string.Join('\n', (name switch
     {
         "VersionPrefix" => Prefix(),
