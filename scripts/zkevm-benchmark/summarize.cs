@@ -7,7 +7,7 @@
 //   summarize.cs --results <dir> --release <tag> --commit <sha> --shards <json> --into <file> --summary <file>
 //
 // Each row is one benchmark block: its gas value, test id, and the ziskemu step count and cost
-// buckets that scripts/zisk-bench/parse-stats.py extracts. The report lists, per gas value, the
+// buckets that scripts/zisk-bench/ParseStats.cs extracts. The report lists, per gas value, the
 // costliest blocks and the costliest block of every test module, which is where a regression or a
 // new worst case shows first, and lists the blocks that failed. Blocks are ranked by the cost model's
 // total rather than steps:
