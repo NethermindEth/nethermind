@@ -130,7 +130,8 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// <summary>Charges state gas: <paramref name="legacyShare"/> from <see cref="Value"/>, then the reservoir, then <see cref="Value"/>.</summary>
     /// <remarks>
     /// The legacy share keeps the <c>gas_left</c> cost of state creation at least its cost before EIP-8037, so a frame
-    /// cannot create state with less gas than before because the reservoir pays for it.
+    /// cannot create state with less gas than before because the reservoir pays for it. An EIP-8141 frame pays the
+    /// legacy share from <see cref="Value"/> too, and the rest only from its own state-gas pool.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryConsumeStateGas(ref EthereumGasPolicy gas, long stateGasCost, long legacyShare)
@@ -138,14 +139,17 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long reservoir = gas.StateReservoir;
         if (gas.IndependentStatePool)
         {
-            if (reservoir < stateGasCost)
+            long share = Math.Min(stateGasCost, legacyShare);
+            if (reservoir < stateGasCost - share || gas.Value < (ulong)share)
             {
                 gas.OutOfGas = true;
                 return false;
             }
 
-            gas.StateReservoir -= stateGasCost;
+            ConsumeRaw(ref gas, (ulong)share);
+            gas.StateReservoir -= stateGasCost - share;
             gas.StateGasUsed += stateGasCost;
+            gas.StateGasSpill += share;
             return true;
         }
 
