@@ -307,6 +307,11 @@ namespace Nethermind.JsonRpc.Data
                     }
                 }
 
+                if (span.Length > sizeof(ulong) * 2)
+                {
+                    throw new BlockParameterParseException("hex number > 64 bits");
+                }
+
                 // Parse as block number
                 ulong value = ParseHexNumber(span);
                 return new BlockParameter(value);

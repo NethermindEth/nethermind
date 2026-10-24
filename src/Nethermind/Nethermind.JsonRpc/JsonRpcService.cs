@@ -998,7 +998,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             }
             catch (Exception e)
             {
-                parameterDeserializationException ??= ExceptionDispatchInfo.Capture(e);
+                parameterDeserializationException ??= ExceptionDispatchInfo.Capture(new InvalidArgumentException(providedParametersLength, e));
                 reader.Skip();
             }
 
@@ -1056,8 +1056,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     ThrowMissingParameterBytes();
                 }
 
-                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
-                executionParameters[i] = parameter;
+                try
+                {
+                    executionParameters[i] = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
+                }
+                catch (Exception e)
+                {
+                    throw new InvalidArgumentException(i, e);
+                }
+
                 i++;
             }
         }
@@ -1074,10 +1081,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         for (Exception? ex = e; ex is not null; ex = ex.InnerException)
         {
-            if (ex is IExceptionWithSafePublicMessage)
-                return ex.Message;
+            if (ex is IExceptionWithSafePublicMessage safe)
+                return e is InvalidArgumentException { Index: int index } && !safe.OmitArgumentPosition
+                    ? $"invalid argument {index}: {ex.Message}"
+                    : ex.Message;
         }
         return null;
+    }
+
+    /// <summary>Wraps a failure to bind the JSON-RPC argument at <see cref="Index"/>.</summary>
+    private sealed class InvalidArgumentException(int index, Exception innerException) : Exception(innerException.Message, innerException)
+    {
+        public int Index { get; } = index;
     }
 
     private static void FillDefaultParameters(ExpectedParameter[] expected, object?[] actual, int start, int count)

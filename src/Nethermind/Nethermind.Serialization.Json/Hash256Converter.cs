@@ -3,11 +3,14 @@
 
 #nullable enable
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
@@ -29,8 +32,17 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
         }
 
         byte[]? bytesArray = ByteArrayConverter.ConvertData(ref reader, _strictHexFormat);
-        return bytesArray is null ? null : new Hash256(bytesArray);
+        return bytesArray switch
+        {
+            null => null,
+            { Length: Hash256.Size } => new Hash256(bytesArray),
+            _ => ThrowInvalidLength(bytesArray.Length)
+        };
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static Hash256 ThrowInvalidLength(int length) =>
+        throw new SafePublicMessageFormatException($"hex string has length {length * 2}, want {Hash256.Size * 2} for common.Hash");
 
     [SkipLocalsInit]
     public override void Write(

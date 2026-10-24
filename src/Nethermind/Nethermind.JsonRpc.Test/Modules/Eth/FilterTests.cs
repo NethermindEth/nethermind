@@ -8,6 +8,7 @@ using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
@@ -149,14 +150,34 @@ public class FilterTests
         Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
     }
 
+    [Test]
+    public void ReadJson_accepts_hex_spellings(
+        [Values(20, 32)] int size, [Values] bool prefixed, [Values] bool oddLength, [Values] bool escaped)
+    {
+        string canonical = "0" + new string('1', size * 2 - 1);
+        string hex = oddLength ? canonical[1..] : canonical;
+        if (prefixed) hex = "0x" + hex;
+        if (escaped) hex = hex[..^1] + "\\u0031";
+        string json = size == Address.Size ? $$"""{"address":"{{hex}}"}""" : $$"""{"topics":["{{hex}}"]}""";
+        Filter filter = new();
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+
+        if (size == Address.Size)
+            Assert.That(filter.Address, Is.EqualTo(new AddressAsKey[] { new(new Address(canonical)) }));
+        else
+            Assert.That(filter.Topics, Is.EqualTo(new Hash256[][] { [new(canonical)] }));
+    }
+
     [TestCase("""{"address":"0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5g"}""", typeof(FormatException))]
-    [TestCase("""{"address":["0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda"]}""", typeof(ArgumentException))]
+    [TestCase("""{"address":["0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda"]}""", typeof(SafePublicMessageFormatException))]
     [TestCase("""{"address":["0XC2D77D118326C33BBE36EBEABF4F7ED6BC2DDA5C"]}""", typeof(FormatException))]
-    [TestCase("""{"address":[123]}""", typeof(ArgumentException))]
-    [TestCase("""{"address":[null]}""", typeof(ArgumentException))]
-    [TestCase("""{"address":"0x"}""", typeof(ArgumentException))]
+    [TestCase("""{"address":[123]}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"address":[null]}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"address":"0x"}""", typeof(SafePublicMessageFormatException))]
     [TestCase("""{"topics":["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fz7"]}""", typeof(FormatException))]
-    [TestCase("""{"topics":[["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7aa"]]}""", typeof(ArgumentException))]
+    [TestCase("""{"topics":[["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7aa"]]}""", typeof(SafePublicMessageFormatException))]
     [TestCase("""{"topics":[[true]]}""", typeof(FormatException))]
     [TestCase("""{"topics":[null,null,null,null,null]}""", typeof(JsonException))]
     public void ReadJson_rejects_invalid_address_or_topic(string json, Type expectedException)

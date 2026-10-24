@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
@@ -30,8 +33,17 @@ public class AddressConverter(bool strictHexFormat = false) : JsonConverter<Addr
         }
 
         byte[]? addressBytes = ByteArrayConverter.ConvertData(ref reader, strictHexFormat);
-        return addressBytes is null ? null : new Address(addressBytes);
+        return addressBytes switch
+        {
+            null => null,
+            { Length: Address.Size } => new Address(addressBytes),
+            _ => ThrowInvalidLength(addressBytes.Length)
+        };
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static Address ThrowInvalidLength(int length) =>
+        throw new SafePublicMessageFormatException($"hex string has length {length * 2}, want {Address.Size * 2} for common.Address");
 
     public override void Write(
         Utf8JsonWriter writer,

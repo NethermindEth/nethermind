@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using Nethermind.Core.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -23,6 +24,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
             }
             catch (ArgumentException e)
+            {
+                return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
+            }
+            catch (Exception e) when (e is IExceptionWithSafePublicMessage)
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
             }

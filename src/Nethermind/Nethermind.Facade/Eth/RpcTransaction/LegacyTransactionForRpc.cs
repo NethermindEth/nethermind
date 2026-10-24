@@ -75,7 +75,7 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         _isDeserializing = false;
         if (_data is null) return;
         if (Input is not null && !Input.AsSpan().SequenceEqual(_data))
-            throw new SafePublicMessageFormatException(RpcTransactionErrors.DataAndInputDiffer);
+            throw new SafePublicMessageFormatException(RpcTransactionErrors.DataAndInputDiffer, omitArgumentPosition: true);
 
         Input = _data;
         _data = null;
