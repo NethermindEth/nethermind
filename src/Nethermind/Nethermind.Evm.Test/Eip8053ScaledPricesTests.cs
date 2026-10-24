@@ -42,7 +42,8 @@ public class Eip8053ScaledPricesTests(bool amsterdam) : VirtualMachineTestsBase
         _legacyProcessor = _processor;
         _scaledProcessor = new TransactionProcessor<MilliGasPolicy<ScaledGasPrices>>(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, _scaledMachine, CodeInfoRepository, logManager);
 
-        // Creates a contract with 1,450 bytes of code, more than the EIP-8037 allowance of a 300,000-gas call covers.
+        // Creates a contract with 1,450 bytes of code. With the account charge of the CREATE, the state gas is more than
+        // the EIP-8037 allowance of a 300,000-gas call covers.
         TestState.CreateAccount(Factory, 0);
         TestState.InsertCode(Factory, Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(new byte[1450]).Done, 0).Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
         TestState.Commit(SpecProvider.GenesisSpec);

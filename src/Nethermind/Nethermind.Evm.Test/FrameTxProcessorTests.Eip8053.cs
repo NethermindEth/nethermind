@@ -78,6 +78,39 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    /// <remarks>
+    /// A frame's state use stays within its state limit and the transaction within its approved maximum gas under a
+    /// binding calldata floor, with scaled prices (which must match legacy) and with fractional prices (the leading
+    /// <c>JUMPDEST</c> leaves a fraction of a gas when the state charge runs).
+    /// </remarks>
+    [Test]
+    public void Eip8053_frame_write_under_binding_calldata_floor_stays_within_limits([Values(GasCostOf.SSetState - 10_000, GasCostOf.SSetState)] long stateLimit)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, [(byte)Instruction.JUMPDEST, .. Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done]);
+        byte[] calldata = new byte[10_000];
+        Array.Fill(calldata, (byte)1);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            new TxFrame(FrameMode.Default, FrameFlags.None, Recipient, executionGasLimit: 50_000, stateGasLimit: (ulong)stateLimit, UInt256.Zero, calldata));
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
+
+        FrameReceiptTracer legacy = ProcessAndRestore(_transactionProcessor, tx);
+        FrameReceiptTracer scaled = ProcessAndRestore(BuildMilliGasProcessor<ScaledGasPrices>(), tx);
+        FrameReceiptTracer fractional = ProcessAndRestore(BuildMilliGasProcessor<Eip8053IllustrativePrices>(), tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scaled.GasSpent, Is.EqualTo(legacy.GasSpent));
+            Assert.That(scaled.FrameReceipts!.Select(static receipt => (receipt.Status, receipt.ExecutionGasUsed, receipt.StateGasUsed)),
+                Is.EqualTo(legacy.FrameReceipts!.Select(static receipt => (receipt.Status, receipt.ExecutionGasUsed, receipt.StateGasUsed))));
+            foreach (FrameReceiptTracer tracer in new[] { legacy, fractional })
+            {
+                Assert.That(tracer.GasSpent, Is.LessThanOrEqualTo(maxGas));
+                Assert.That(tracer.FrameReceipts![1].StateGasUsed, Is.LessThanOrEqualTo((ulong)stateLimit));
+            }
+        }
+    }
+
     private ITransactionProcessor BuildMilliGasProcessor<TPrices>() where TPrices : struct, IMilliGasPrices
     {
         VirtualMachine<MilliGasPolicy<TPrices>> machine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
