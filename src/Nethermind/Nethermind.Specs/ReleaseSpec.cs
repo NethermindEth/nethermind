@@ -239,6 +239,12 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip8360Enabled { get; set; }
     public bool IsEip3298Enabled { get; set; }
 
+    /// <inheritdoc />
+    public bool IsEip8304Enabled { get; set; }
+
+    /// <inheritdoc />
+    public Address? Eip8304ContractAddress { get; set; }
+
     public bool IsEip7805Enabled { get; set; }
     public bool IsEip8298Enabled { get; set; }
     public bool IsEip4758Enabled { get; set; }

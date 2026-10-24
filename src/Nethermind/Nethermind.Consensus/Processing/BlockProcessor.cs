@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -45,7 +46,8 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IBlockAccessListManager balManager,
+    IIndexTableHandler? indexTableHandler = null)
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
@@ -57,7 +59,7 @@ public partial class BlockProcessor(
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
     private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() => new(balManager));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
-        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
+        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, indexTableHandler ?? NullIndexTableHandler.Instance));
     private ISystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -97,6 +99,12 @@ public partial class BlockProcessor(
             // positive on a valid block must stand out from ordinary invalid blocks.
             Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
             if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+            _systemContractHandler.RollbackBlock(block);
+            throw;
+        }
+        catch
+        {
+            _systemContractHandler.RollbackBlock(block);
             throw;
         }
         finally
@@ -278,6 +286,12 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
+        // Index tables are built from the receipts, which an unpersisted trace replay does not produce.
+        if (ReceiptsTracer.BuildsReceipts)
+        {
+            _systemContractHandler.CommitIndexTableRoots(block, receipts, spec, NullTxTracer.Instance);
+        }
+
         ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && TComputesCommitments.IsActive && !bloomsRemoved);
 
         if (TComputesCommitments.IsActive)
@@ -311,6 +325,8 @@ public partial class BlockProcessor(
         {
             header.Hash = header.CalculateHash();
         }
+
+        _systemContractHandler.UpdateFinalBlockHash(block);
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
