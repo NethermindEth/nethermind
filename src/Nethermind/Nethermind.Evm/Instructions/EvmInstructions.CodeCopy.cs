@@ -53,7 +53,7 @@ public static partial class EvmInstructions
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (TTracingInst.IsActive)
         {
-            if (TGasPolicy.GetRemainingGas(in gas) < GasCostOf.VeryLow)
+            if (TGasPolicy.GetRemainingGasUnits(in gas) < GasCostOf.VeryLow)
                 vm.TraceOperationGasCost(GasCostOf.VeryLow);
             else if (!outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
                 vm.TraceMemoryOperationGasCost(in a, in result, GasCostOf.VeryLow + GasCostOf.Memory * words);
@@ -98,11 +98,11 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         bool traceError = DispatchFlags.ConstTracing && (TTracingInst.IsActive || vm.IsTracingActions);
-        ulong traceInitialGas = traceError ? TGasPolicy.GetRemainingGas(in gas) : 0;
+        ulong traceInitialGas = traceError ? TGasPolicy.GetRemainingGasUnits(in gas) : 0;
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
         if (TTracingInst.IsActive)
         {
-            if (TGasPolicy.GetRemainingGas(in gas) < GasCostOf.VeryLow)
+            if (TGasPolicy.GetRemainingGasUnits(in gas) < GasCostOf.VeryLow)
                 vm.TraceOperationGasCost(GasCostOf.VeryLow);
             else if (!outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
                 vm.TraceMemoryOperationGasCost(in destOffset, in size, GasCostOf.VeryLow + GasCostOf.Memory * words);
@@ -118,7 +118,7 @@ public static partial class EvmInstructions
                 // Geth calculates memory expansion before checking return-data bounds.
                 EvmPooledMemory traceMemory = vm.VmState.Memory;
                 ulong memoryCost = traceMemory.CalculateMemoryCost(in destOffset, in size, out bool memoryOverflow);
-                ulong remainingGas = TGasPolicy.GetRemainingGas(in gas);
+                ulong remainingGas = TGasPolicy.GetRemainingGasUnits(in gas);
                 if (!memoryOverflow)
                 {
                     if (TTracingInst.IsActive)
@@ -147,10 +147,10 @@ public static partial class EvmInstructions
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size, TGasPolicy.GetRemainingGas(in gas));
+        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size, TGasPolicy.GetRemainingGasUnits(in gas));
         return EvmExceptionType.OutOfGas;
     AccessViolation:
-        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size, TGasPolicy.GetRemainingGas(in gas));
+        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size, TGasPolicy.GetRemainingGasUnits(in gas));
         return EvmExceptionType.AccessViolation;
     }
 

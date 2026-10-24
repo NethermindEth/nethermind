@@ -611,7 +611,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
+                    tracer.ReportActionEnd(TGasPolicy.GetRemainingGasUnits(in gasAvailable), default);
                 }
             }
 
@@ -638,7 +638,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private static void TraceSimpleTransferActionStart(Transaction tx, Address recipient, ITxTracer tracer, in UInt256 value, in TGasPolicy gasAvailable)
         {
             tracer.ReportAction(
-                TGasPolicy.GetRemainingGas(in gasAvailable),
+                TGasPolicy.GetRemainingGasUnits(in gasAvailable),
                 value,
                 tx.SenderAddress!,
                 recipient,
@@ -658,7 +658,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool isContractCreation = tx.IsContractCreation;
             tracer.ReportAction(
-                TGasPolicy.GetRemainingGas(in gasAvailable),
+                TGasPolicy.GetRemainingGasUnits(in gasAvailable),
                 env.Value,
                 env.Caller,
                 env.CodeSource ?? env.ExecutingAccount,
@@ -1845,7 +1845,7 @@ namespace Nethermind.Evm.TransactionProcessing
             long stateDepositCost,
             byte[] code)
         {
-            ulong remainingGas = TGasPolicy.GetRemainingGas(in unspentGas);
+            ulong remainingGas = TGasPolicy.GetRemainingGasUnits(in unspentGas);
             ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in unspentGas, stateDepositCost);
             bool hasEnoughGas = remainingGas >= executionDepositCost
                 && remainingGas - executionDepositCost >= stateSpill;
