@@ -130,7 +130,7 @@ public class BlockForRpc
     public Hash256? Hash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public Bloom LogsBloom { get; set; }
+    public Bloom? LogsBloom { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? Miner { get; set; }

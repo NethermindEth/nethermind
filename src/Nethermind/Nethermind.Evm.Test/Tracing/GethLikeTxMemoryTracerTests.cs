@@ -16,6 +16,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
@@ -103,7 +104,29 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
+    public void Unpaid_memory_expansion_cost_reaches_a_tracer_behind_wrappers([Values] bool wrapped)
+    {
+        const int offset = 0x100000;
+        byte[] code = Prepare.EvmCode
+            .PushData("0x1")
+            .PushData(offset)
+            .Op(Instruction.MSTORE)
+            .Done;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        using ITxTracer executionTracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(NullTxTracer.Instance, tracer))
+            : tracer;
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), executionTracer);
+
+        // As in geth, the opcode that runs out of gas reports the cost it could not pay.
+        const ulong words = offset / EvmStack.WordSize + 1;
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Memory * words + words * words / 512));
+    }
+
+    [Test]
     public void Can_trace_stack_underflow_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -114,7 +137,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries[0].Error, Is.EqualTo("StackUnderflow"));
+            Assert.That(trace.Entries[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
         }
     }
 
@@ -138,7 +161,6 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_invalid_jump_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -150,12 +172,11 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadJumpDestination"));
+            Assert.That(trace.Entries.Last().Error, Is.Null);
         }
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_invalid_opcode_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -166,7 +187,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadInstruction"));
+            Assert.That(trace.Entries.Last().Error, Is.Null);
         }
     }
 

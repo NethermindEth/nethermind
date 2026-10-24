@@ -234,6 +234,12 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
 
+    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on URLs without authentication, as host names without a port, for example `localhost` or `*.example.com`. Matching ignores the port and case. Requests with other host names get HTTP 403. Requests with an IP address or without a `Host` header are always accepted. `*` accepts all hosts. To stop web pages from calling the server, also limit `CorsOrigins`.", DefaultValue = "*")]
+    string[] AllowedHosts { get; set; }
+
+    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on authenticated (Engine API) URLs. The rules are the same as for `AllowedHosts`.", DefaultValue = "*")]
+    string[] EngineAllowedHosts { get; set; }
+
     [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Connections that are authenticated or enable the Engine module always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int WebSocketsProcessingConcurrency { get; set; }
 

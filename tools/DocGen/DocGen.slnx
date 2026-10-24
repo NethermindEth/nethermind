@@ -73,6 +73,6 @@
     <Project Path="../../src/Nethermind/Nethermind.Wallet/Nethermind.Wallet.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Xdc/Nethermind.Xdc.csproj" />
   </Folder>
-  <Project Path="DocGen.csproj" />
-  <Project Path="../DocGen.Test/Nethermind.DocGen.Test.csproj" />
+  <Project Path="DocGen/DocGen.csproj" />
+  <Project Path="DocGen.Test/Nethermind.DocGen.Test.csproj" />
 </Solution>

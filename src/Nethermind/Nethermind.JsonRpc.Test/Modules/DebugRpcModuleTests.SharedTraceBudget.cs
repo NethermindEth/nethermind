@@ -133,6 +133,99 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_and_traceCallMany_reject_malformed_timeout_before_execution(
+        [Values("debug_traceCall", "debug_traceCallMany")] string method)
+    {
+        ExecutionCount counter = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
+        counter.Enabled = true;
+        object transaction = new { from = TestItem.AddressB, to = TestItem.AddressC, gas = "0x186a0" };
+        object input = method == "debug_traceCall" ? transaction : new[] { new { transactions = new[] { transaction } } };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, input, "latest",
+            new { timeout = "bad", streamMode = true });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
+            Assert.That(counter.Calls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_applies_seed_before_timeout_validation_and_disarms([Values] bool invalidTimeout)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ObservedPrefixSeeds seeds = new(new ChangesetPrefixStateSeedSource(index));
+        ExecutionCount counter = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        IndexThroughTheCapture(chain, index, block, parent);
+        counter.Enabled = true;
+        counter.OnExecute = transaction => Assert.That(transaction.Hash, Is.EqualTo(transactions[1].Hash), "only the seeded target may execute");
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactions[1].Hash!,
+            new { timeout = invalidTimeout ? "bad" : "5s", streamMode = true });
+        JToken parsed = JToken.Parse(response);
+        Assert.That(seeds.Slot, Is.Not.Null, "the real indexed source must have been called");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.Accepted, Is.EqualTo(1), "real changeset lease armed before timeout resolution");
+            Assert.That(seeds.Index, Is.EqualTo(1));
+            Assert.That(seeds.BlockHash, Is.EqualTo(block.Hash));
+            Assert.That(seeds.Slot!.Current, Is.Null, "failure and success must both disarm and release the overlay lease");
+            Assert.That(counter.Calls, Is.EqualTo(invalidTimeout ? 0 : 1), "refused application would replay the prefix instead");
+            if (invalidTimeout)
+            {
+                Assert.That(parsed["result"], Is.Null);
+                Assert.That(parsed["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000));
+                Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain("Cannot parse 'bad'"));
+            }
+            else
+            {
+                Assert.That(parsed["error"], Is.Null);
+                Assert.That(parsed["result"]?["failed"]?.Value<bool>(), Is.False);
+                Assert.That(parsed["result"]?["gas"]?.Value<int>(), Is.EqualTo(21_000));
+            }
+        }
+    }
+
+    private sealed class ObservedPrefixSeeds(IPrefixStateSeedSource inner) : IPrefixStateSeedSource
+    {
+        public bool Enabled => inner.Enabled;
+        public StateReadOverlaySlot? Slot;
+        public int Accepted;
+        public int Index;
+        public Hash256? BlockHash;
+
+        public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
+        {
+            Slot = slot;
+            Index = transactionIndex;
+            BlockHash = block.Hash;
+            bool accepted = inner.TrySeed(block, transactionIndex, slot);
+            if (accepted)
+            {
+                Assert.That(slot.Current, Is.Not.Null);
+                Accepted++;
+            }
+            return accepted;
+        }
+
+        public bool TryOpenBlock(Block block, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out ICoveredBlock? covered) =>
+            inner.TryOpenBlock(block, out covered);
+    }
+
+    [Test]
     public async Task DebugAndTraceFactories_UseTheSameExecutionBudget()
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
@@ -500,7 +593,7 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    private static void IndexThroughTheCapture(TestRpcBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent)
+    internal static void IndexThroughTheCapture(TestRpcBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent)
     {
         using TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number);
         using IDisposable scope = chain.MainWorldState.BeginScope(parent);
@@ -513,6 +606,7 @@ public partial class DebugRpcModuleTests
     {
         public bool Enabled;
         public int Calls;
+        public Action<Transaction>? OnExecute;
         public int Active;
         public int Peak;
         public readonly Lock Gate = new();
@@ -528,7 +622,11 @@ public partial class DebugRpcModuleTests
                 count.Calls++;
                 count.Peak = Math.Max(count.Peak, ++count.Active);
             }
-            try { return inner.Execute(transaction, txTracer); }
+            try
+            {
+                count.OnExecute?.Invoke(transaction);
+                return inner.Execute(transaction, txTracer);
+            }
             finally { lock (count.Gate) count.Active--; }
         }
 

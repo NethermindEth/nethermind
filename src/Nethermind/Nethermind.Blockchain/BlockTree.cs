@@ -45,8 +45,9 @@ namespace Nethermind.Blockchain
         private readonly IBadBlockStore _badBlockStore;
         private readonly IBlockAccessListStore _balStore;
 
-        private readonly LruCache<ValueHash256, Block> _invalidBlocks =
-            new(128, 128, "invalid blocks");
+        // Headers only: a rejected block body can be large (e.g. its block access list) and nothing reads it back.
+        private readonly LruCache<ValueHash256, BlockHeader> _invalidHeaders =
+            new(128, 128, "invalid headers");
 
         protected readonly ILogger Logger;
         protected readonly ISpecProvider SpecProvider;
@@ -427,7 +428,7 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (_invalidBlocks.Contains(header.Hash))
+            if (_invalidHeaders.Contains(header.Hash))
             {
                 return AddBlockResult.InvalidBlock;
             }
@@ -533,7 +534,10 @@ namespace Nethermind.Blockchain
                 if (shouldProcess && (bestSuggestedImprovementSatisfied || header.IsGenesis || fillBeaconBlock))
                 {
                     BestSuggestedBody = block;
-                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block)
+                    {
+                        NonBlockingProcessing = options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)
+                    });
                 }
             }
 
@@ -623,9 +627,9 @@ namespace Nethermind.Blockchain
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-                if (allowInvalid && _invalidBlocks.TryGet(blockHash, out Block block))
+                if (allowInvalid)
                 {
-                    header = block.Header;
+                    _invalidHeaders.TryGet(blockHash, out header);
                 }
 
                 return header;
@@ -851,7 +855,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            _invalidBlocks.Set(badBlock.Hash, badBlock);
+            _invalidHeaders.Set(badBlock.Hash, badBlock.Header);
             _badBlockStore.Insert(badBlock);
         }
 
@@ -1491,16 +1495,17 @@ namespace Nethermind.Blockchain
 
         public bool IsKnownBlock(ulong number, Hash256 blockHash)
         {
+            // Recalculating progress can publish a bound below a concurrently advanced head.
+            // The captured canonical head is already downloaded, regardless of that stale bound.
+            Block? head = Head;
+            if (head is not null && blockHash == head.Hash)
+            {
+                return number == head.Number;
+            }
+
             if (number > BestKnownNumber)
             {
                 return false;
-            }
-
-            // IsKnownBlock will be mainly called when new blocks are incoming
-            // and these are very likely to be all at the head of the chain
-            if (blockHash == Head?.Hash)
-            {
-                return true;
             }
 
             (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(number, blockHash, false);
@@ -1756,13 +1761,7 @@ namespace Nethermind.Blockchain
 
             if (block is null)
             {
-                bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-                if (allowInvalid)
-                {
-                    _invalidBlocks.TryGet(blockHash, out block);
-                }
-
-                return block;
+                return null;
             }
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==

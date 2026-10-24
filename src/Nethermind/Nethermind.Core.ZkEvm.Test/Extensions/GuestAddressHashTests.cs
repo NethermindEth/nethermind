@@ -120,7 +120,8 @@ public class GuestAddressHashTests
         Assert.That(MixSlotIndex(laneSlot), Is.EqualTo(computed));
     }
 
-    private static ulong MixSlotIndex(byte[] slot) => SpanExtensions.MixSlotIndex(ref MemoryMarshal.GetArrayDataReference(slot));
+    private static ulong MixSlotIndex(byte[] slot) => SpanExtensions.MixSlotIndex(
+        BitConverter.ToUInt64(slot, 0), BitConverter.ToUInt64(slot, 8), BitConverter.ToUInt64(slot, 16), BitConverter.ToUInt64(slot, 24));
 
     [Test]
     public void Storage_cell_hash_is_its_address_and_slot_hash()

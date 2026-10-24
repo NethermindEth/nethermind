@@ -13,7 +13,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
-using Nethermind.Zkvm.Abstractions;
 using static Nethermind.Evm.GuestWord;
 
 namespace Nethermind.Evm;
@@ -207,13 +206,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static ref byte Moved(ref byte sp, nint words) => ref Unsafe.Add(ref sp, words * EvmStack.WordSize);
 
         /// <summary><paramref name="slot"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
-        /// <remarks>The rounding is a no-op the JIT sees through (dotnet-riscv perf-67), so it proves every slot access word aligned and drops its alignment test.</remarks>
+        /// <remarks>
+        /// The rounding is a no-op the JIT sees through (dotnet-riscv perf-67), so it proves every slot access word aligned and drops its alignment test.
+        /// It masks the byte offset from null rather than a pointer: casting the byref to one would copy the head, which stays live, to another register first.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe ref byte AlignedSlot(ref byte slot)
         {
             Debug.Assert(((nuint)Unsafe.AsPointer(ref slot) & (EvmStack.WordSize - 1)) == 0);
             return ref StrictAlignmentFlag.IsActive
-                ? ref Unsafe.AsRef<byte>((void*)((nuint)Unsafe.AsPointer(ref slot) & ~(nuint)(EvmStack.WordSize - 1)))
+                ? ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(), Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref slot) & ~(nint)(EvmStack.WordSize - 1))
                 : ref slot;
         }
 
@@ -227,7 +229,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary><paramref name="stack"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
-        /// <remarks>As <see cref="AlignedSlot"/>: one <c>andi</c> lets the JIT prove the loads of the stack's fields aligned and drop their tests.</remarks>
+        /// <remarks>
+        /// As in <see cref="AlignedSlot"/>, one <c>andi</c> lets the JIT prove the loads of the stack's fields aligned and drop their tests.
+        /// It masks the pointer directly: the byref is rarely live after the rounding, so the cast costs no register copy.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe ref EvmStack AlignedStack(ref EvmStack stack)
         {
@@ -1591,7 +1596,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
-            nint shared = Entry(&ExecuteOpcode<TStoreOpcode, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<TStoreOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
@@ -2179,9 +2184,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>DIV of a dividend below 2^64 by a nonzero divisor below 2^64, or by a power of two, which it shifts out.</summary>
         /// <remarks>
-        /// Either takes one instruction or a shift, where the shared handler calls out to the zkVM's 256-bit division.
-        /// In the ZisK guest every other division goes to <see cref="ExecuteDivOfWideOperands"/>; a short stack or gas,
-        /// or elsewhere a zero divisor or wider operands whose divisor is not a power of two, runs the shared DIV handler.
+        /// Either takes one instruction or a shift, where the shared handler runs a full 256-bit division.
+        /// Every other division goes to <see cref="ExecuteDivOfWideOperands"/>; a short stack or gas runs the shared DIV handler.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -2211,15 +2215,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     CopyWord(ref dividend, ref quotient);
                     ShiftRight(ref quotient, shift);
                 }
-                else if (ZiskFlag.IsActive)
+                else
                 {
                     nint wide = Entry(&ExecuteDivOfWideOperands);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, wide);
-                }
-                else
-                {
-                    gas += LowGasCost.GasCost;
-                    goto Shared;
                 }
 
                 head--;
@@ -2229,15 +2228,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
-        Shared:
             nint shared = Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpDiv, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>The rest of <see cref="ExecuteDiv"/> in the ZisK guest, for wider operands whose divisor is not a power of two.</summary>
+        /// <summary>The rest of <see cref="ExecuteDiv"/>, for a zero divisor, or wider operands whose divisor is not a power of two.</summary>
         /// <remarks>
         /// Entered only from there, with the stack checked and the gas charged. A zero divisor leaves the zero its slot
-        /// holds, and a dividend below the divisor a zero quotient; the rest go to ZisK's 256-bit division.
+        /// holds. In the ZisK guest a dividend below the divisor gives a zero quotient without
+        /// entering its 256-bit division; elsewhere <see cref="UInt256.Divide(in UInt256, in UInt256, out UInt256)"/>
+        /// compares the operands itself.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -2254,17 +2254,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref ulong quotient = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
             if ((quotient | Unsafe.Add(ref quotient, 1) | Unsafe.Add(ref quotient, 2) | Unsafe.Add(ref quotient, 3)) != 0)
             {
-                if (IsBelow(ref quotient, LimbsPerWord, 0))
+                if (ZiskFlag.IsActive && IsBelow(ref quotient, LimbsPerWord, 0))
                 {
                     SetWord(ref quotient, 0);
                 }
                 else
                 {
-                    UInt256 result, remainder;
-                    // The stack is pinned. The quotient must not alias an operand.
-                    ulong* divisor = (ulong*)Unsafe.AsPointer(ref quotient);
-                    Accelerators.DivRem256(divisor + LimbsPerWord, divisor, (ulong*)&result, (ulong*)&remainder);
-                    *(UInt256*)divisor = result;
+                    ref UInt256 divisor = ref Unsafe.As<ulong, UInt256>(ref quotient);
+                    // The quotient must not alias an operand.
+                    EvmInstructions.Divide256(in Unsafe.Add(ref divisor, 1), in divisor, out UInt256 result);
+                    divisor = result;
+
                     // Reloaded rather than held across the call, where each would take a callee-saved register.
                     handlers = state.OpcodeHandlers;
                     code = ref stack.Code;

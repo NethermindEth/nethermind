@@ -139,6 +139,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         return transaction;
     }
 
+    [SkipLocalsInit]
     public void Decode(ref RlpReader decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position))

@@ -28,14 +28,13 @@ jobs:
       matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-x64","os":"ubuntu-latest","variant":"checked","build_args":"-p:DefineConstants=TRACE%3BDEBUG"}]}'
 
   tests:
-    name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
+    name: Run ${{ matrix.project.name || matrix.project }} [${{ matrix.variant.label }}]
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
+    timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
     env:
       DOTNET_GCConserveMemory: 9
-      # Only these fixture tests read the src/tests submodule at runtime.
-      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
       matrix:
@@ -51,65 +50,82 @@ jobs:
             hw-intrinsic: 0
             artifact: release
             avx512: 1
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.sh).
         project:
-          - Ethereum.Abi.Test
-          - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Test
-          - Ethereum.Difficulty.Test
-          - Ethereum.HexPrefix.Test
-          - Ethereum.KeyAddress.Test
-          - Ethereum.KeyStore.Test
-          - Ethereum.Legacy.Blockchain.Block.Test
-          - Ethereum.Legacy.Transition.Test
-          - Ethereum.Legacy.VM.Test
-          - Ethereum.PoW.Test
-          - Ethereum.Rlp.Test
-          - Ethereum.Transaction.Test
-          - Ethereum.Trie.Test
-          - Nethermind.Abi.Test
-          - Nethermind.Api.Test
-          - Nethermind.AuRa.Test
-          - Nethermind.Blockchain.Test
-          - Nethermind.Clique.Test
-          - Nethermind.Config.Test
-          - Nethermind.Consensus.Test
-          - Nethermind.Core.Test
-          - Nethermind.Db.Test
-          - Nethermind.Era1.Test
-          - Nethermind.Ethash.Test
-          - Nethermind.EthStats.Test
-          - Nethermind.Evm.Test
-          - Nethermind.Facade.Test
-          - Nethermind.Flashbots.Test
-          - Nethermind.HealthChecks.Test
-          - Nethermind.History.Test
-          - Nethermind.Hive.Test
           - Nethermind.JsonRpc.Test
-          - Nethermind.JsonRpc.TraceStore.Test
-          - Nethermind.KeyStore.Test
-          - Nethermind.Logging.NLog.Test
-          - Nethermind.Merge.AuRa.Test
-          - Nethermind.Merge.Plugin.Test
-          - Nethermind.Mining.Test
-          - Nethermind.Monitoring.Test
-          - Nethermind.Network.Discovery.Test
-          - Nethermind.Network.Dns.Test
-          - Nethermind.Network.Enr.Test
-          - Nethermind.Network.Test
-          - Nethermind.Runner.Test
-          - Nethermind.SendPolicy.Plugin.Test
-          - Nethermind.Serialization.Ssz.Test
-          - Nethermind.Shutter.Test
-          - Nethermind.Sockets.Test
-          - Nethermind.Specs.Test
-          - Nethermind.State.Test
-          - Nethermind.State.Test.Runner.Test
           - Nethermind.Synchronization.Test
-          - Nethermind.Taiko.Test
-          - Nethermind.Trie.Test
           - Nethermind.TxPool.Test
-          - Nethermind.Wallet.Test
-          - Nethermind.Xdc.Test
+          - name: Ethereum fixture tests
+            fixtures: true  # these read the src/tests submodule at runtime
+            list: >-
+              Ethereum.Blockchain.Block.Test
+              Ethereum.Legacy.Blockchain.Block.Test
+              Ethereum.Legacy.Transition.Test
+              Ethereum.Legacy.VM.Test
+          - name: Nethermind tests 1
+            list: >-
+              Nethermind.Core.Test
+              Nethermind.Era1.Test
+              Nethermind.Facade.Test
+              Nethermind.Hive.Test
+              Nethermind.Shutter.Test
+              Nethermind.Trie.Test
+          - name: Nethermind tests 2
+            list: >-
+              Ethereum.Abi.Test
+              Ethereum.Basic.Test
+              Ethereum.HexPrefix.Test
+              Ethereum.KeyAddress.Test
+              Ethereum.KeyStore.Test
+              Ethereum.PoW.Test
+              Ethereum.Rlp.Test
+              Nethermind.Abi.Test
+              Nethermind.AuRa.Test
+              Nethermind.Ethash.Test
+              Nethermind.JsonRpc.TraceStore.Test
+              Nethermind.KeyStore.Test
+              Nethermind.Merge.Plugin.Test
+              Nethermind.Network.Discovery.Test
+              Nethermind.Network.Dns.Test
+              Nethermind.Network.Enr.Test
+              Nethermind.SendPolicy.Plugin.Test
+              Nethermind.Serialization.Ssz.Test
+              Nethermind.Taiko.Test
+          - name: Nethermind tests 3
+            list: >-
+              Ethereum.Difficulty.Test
+              Nethermind.Db.Test
+              Nethermind.State.Test
+              Nethermind.State.Test.Runner.Test
+              Nethermind.Wallet.Test
+              Nethermind.Xdc.Test
+          - name: Nethermind tests 4
+            list: >-
+              Ethereum.Transaction.Test
+              Ethereum.Trie.Test
+              Nethermind.Evm.Test
+              Nethermind.History.Test
+              Nethermind.Network.Test
+              Nethermind.Runner.Test
+              Nethermind.Specs.Test
+          - name: Nethermind tests 5
+            list: >-
+              Nethermind.Blockchain.Test
+              Nethermind.Clique.Test
+              Nethermind.Consensus.Test
+              Nethermind.Flashbots.Test
+              Nethermind.Merge.AuRa.Test
+              Nethermind.Mining.Test
+          - &checked_only
+            name: Checked-only tests
+            list: >-
+              Nethermind.Api.Test
+              Nethermind.Config.Test
+              Nethermind.EthStats.Test
+              Nethermind.HealthChecks.Test
+              Nethermind.Logging.NLog.Test
+              Nethermind.Monitoring.Test
+              Nethermind.Sockets.Test
         include:
           # The Keccak batch kernels are four lanes wide without AVX-512 and eight with it, and the
           # code that feeds them differs too, so the default runners cover only one of the two.
@@ -142,28 +158,33 @@ jobs:
           - project: Nethermind.Core.Test
             variant: *no_avx2
         exclude:
-          - { variant: *no_intrinsics, project: Nethermind.Api.Test }
-          - { variant: *no_intrinsics, project: Nethermind.Config.Test }
-          - { variant: *no_intrinsics, project: Nethermind.EthStats.Test }
-          - { variant: *no_intrinsics, project: Nethermind.HealthChecks.Test }
-          - { variant: *no_intrinsics, project: Nethermind.Logging.NLog.Test }
-          - { variant: *no_intrinsics, project: Nethermind.Monitoring.Test }
-          - { variant: *no_intrinsics, project: Nethermind.Sockets.Test }
+          - { variant: *no_intrinsics, project: *checked_only }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) && 'recursive' || 'false' }}
+          submodules: ${{ matrix.project.fixtures && 'recursive' || 'false' }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
         with:
           variant: ${{ matrix.variant.artifact }}
 
+      # A pack runs the checked and no-intrinsics lanes of several projects; the ISA lanes keep their own step.
+      - name: ${{ matrix.project.name }}
+        if: matrix.project.list
+        env:
+          PROJECTS: ${{ matrix.project.list }}
+          CRASH_RETRY: false
+          DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+          DOTNET_EnableAVX512: ${{ matrix.variant.avx512 }}
+        run: bash scripts/ci/run-test-projects.sh
+
       - name: ${{ matrix.project }}
+        if: '!matrix.project.list'
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
@@ -227,9 +248,9 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
-          name: ${{ matrix.project }}-${{ matrix.variant.label }}-dumps
+          name: ${{ matrix.project.name || matrix.project }}-${{ matrix.variant.label }}-dumps
           # The ISA lanes run several projects, each writing into its own TestResults.
           path: |
             src/Nethermind/*/TestResults/*_hang.*
@@ -272,7 +293,7 @@ jobs:
           submodules: recursive
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
@@ -300,7 +321,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.variant.label }}-dumps
           path: |

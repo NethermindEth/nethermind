@@ -301,6 +301,17 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [Test]
+        public void Serializes_transaction_index_as_hex_quantity([Values(0, 1, 255, int.MaxValue)] int index)
+        {
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.Index = index;
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+
+            Assert.That(document.RootElement.GetProperty("transactionIndex").GetString(), Is.EqualTo($"0x{index:x}"));
+        }
+
+        [Test]
         public void Error_field_is_not_serialized()
         {
             Hash256 txHash = Keccak.OfAnEmptyString;

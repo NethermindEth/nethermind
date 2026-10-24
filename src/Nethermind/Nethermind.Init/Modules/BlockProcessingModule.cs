@@ -26,11 +26,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Monitoring;
+using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -136,7 +139,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 ctx.Resolve<ITransactionComparerProvider>().GetDefaultComparer(),
                 ctx.Resolve<FrameTxWidthLedger>(),
                 ctx.Resolve<ITxGossipPolicy>(),
-                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>()))
+                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+                stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>()))
             .AddSingleton<ITxSender, ITxPool, IWallet, ISpecProvider, ITimestamper, INonceManager, IEthereumEcdsa>((txPool, wallet, specProvider, timestamper, nonceManager, ecdsa) =>
                 new TxPoolSender(txPool, new TxSealer(new WalletTxSigner(wallet, specProvider.ChainId), timestamper), nonceManager, ecdsa))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider, ILogManager>((mainProcessingContext, chainHeadInfoProvider, logManager) => new BackgroundTaskScheduler(
@@ -183,6 +187,18 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .InstancePerLifetimeScope()
             .ExternallyOwned()
             .WithMetadata(PrewarmerEnvFactory.HandoffMetadata, true);
+
+        // Metering costs a virtual dispatch and an atomic per precompile call, so it is only installed
+        // when something is there to scrape it - the same condition MonitoringModule registers on.
+        builder.AddDecorator<IPrecompileProvider>(static (ctx, inner) =>
+        {
+            IMetricsConfig metricsConfig = ctx.Resolve<IMetricsConfig>();
+            if (!metricsConfig.Enabled && !metricsConfig.CountersEnabled) return inner;
+
+            MeteredPrecompileProvider metered = new(inner);
+            ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(metered.PublishMetrics);
+            return metered;
+        });
 
         builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
 
