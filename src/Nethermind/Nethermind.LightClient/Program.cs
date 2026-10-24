@@ -168,29 +168,13 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         await beacon.StartAsync(app.Lifetime.ApplicationStopping);
         logger.LogInformation("Beacon P2P started; searching for light-client peers");
         status.SetStage(StartupStage.Bootstrap);
-        using CancellationTokenSource bootstrapTimeout = CancellationTokenSource.CreateLinkedTokenSource(app.Lifetime.ApplicationStopping);
-        bootstrapTimeout.CancelAfter(TimeSpan.FromMinutes(2));
         VerifiedConsensusJournal journal = new(dataDirectory, spec, network, checkpoint, logger);
-        LightClientStore? resumed = await journal.LoadAsync(CurrentSlot(), bootstrapTimeout.Token);
-        LightClientStore store;
-        if (resumed is not null)
-        {
-            store = resumed;
+        (LightClientStore store, bool resumed) = await ConsensusSync.BootstrapAsync(spec, checkpoint, journal,
+            beacon.BootstrapAsync, clock, startupToken);
+        if (resumed)
             logger.LogInformation("Replayed verified light-client state from {Directory}", dataDirectory);
-        }
         else
-        {
-            LightClientStore? acceptedStore = null;
-            LightClientBootstrap bootstrap = await beacon.BootstrapAsync(checkpoint,
-                (value, _) =>
-                {
-                    acceptedStore = new(spec, checkpoint, value, CurrentSlot());
-                    return Task.CompletedTask;
-                }, bootstrapTimeout.Token);
-            store = acceptedStore ?? throw new InvalidDataException("Beacon peers did not supply a valid trusted checkpoint.");
-            await journal.InitializeAsync(bootstrap, store, bootstrapTimeout.Token);
             logger.LogInformation("Trusted checkpoint accepted");
-        }
         LightClientHeader initialHeader = store.FinalizedHeader;
         LightClientHeader persistedFinalized = store.FinalizedHeader;
         LightClientHeader persistedOptimistic = store.OptimisticHeader;
@@ -220,7 +204,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             () => Volatile.Read(ref persistedOptimistic), ResolveAsync, execution.UpdateHead, clock);
         if (initialHeader.Execution is not null)
         {
-            await publisher.PublishFinalizedAsync(bootstrapTimeout.Token);
+            await publisher.PublishFinalizedAsync(startupToken);
             logger.LogInformation("Finalized execution block {BlockNumber} verified", publisher.Heads.Finalized!.Number);
         }
         VerifiedHead GetHead() =>

@@ -3,6 +3,7 @@
 
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.LightClient.Consensus;
 
@@ -10,6 +11,46 @@ internal static class ConsensusSync
 {
     private const ulong RepairHeadMaxAgeSlots = 2;
     private static readonly TimeSpan HealthyRepairInterval = TimeSpan.FromMinutes(1);
+
+    internal static async Task<(LightClientStore Store, bool Resumed)> BootstrapAsync(
+        BeaconChainSpec spec, Hash256 checkpoint, VerifiedConsensusJournal journal,
+        Func<Hash256, Func<LightClientBootstrap, CancellationToken, Task>, CancellationToken, Task<LightClientBootstrap>> fetchBootstrap,
+        TimeProvider clock, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
+        LightClientStore? resumed = await journal.LoadAsync(CurrentSlot(), cancellationToken);
+        if (resumed is not null) return (resumed, true);
+
+        LightClientStore? acceptedStore = null;
+        LightClientBootstrap bootstrap = await fetchBootstrap(checkpoint, (value, validationToken) =>
+        {
+            validationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
+            // Unproved peer data must not cause a terminal local clock failure.
+            LightClientStore candidate = new(spec, checkpoint, value, value.Header?.Beacon?.Slot ?? CurrentSlot());
+            try
+            {
+                ulong currentSlot = CurrentSlot();
+                if (candidate.FinalizedHeader.Beacon!.Slot > currentSlot)
+                    throw new LightClientLocalStateException("Checkpoint is in the future.");
+                candidate.RequireRecent(currentSlot);
+                validationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch (LightClientLocalStateException exception)
+            {
+                validationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new InvalidOperationException("The authenticated trusted checkpoint cannot initialize the light client; verify the system clock or supply a recent trusted checkpoint.", exception);
+            }
+            acceptedStore = candidate;
+            return Task.CompletedTask;
+        }, cancellationToken);
+        LightClientStore store = acceptedStore ?? throw new InvalidDataException("Beacon peers did not supply a valid trusted checkpoint.");
+        await journal.InitializeAsync(bootstrap, store, cancellationToken);
+        return (store, false);
+    }
 
     internal static async Task RunRepairLoopsAsync(Func<CancellationToken, Task> repair,
         Func<CancellationToken, Task> pollOptimistic, Func<ulong> getOptimisticSlot, Func<ulong> currentSlot,

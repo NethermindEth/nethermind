@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -13,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.LightClient.Consensus;
 using Nethermind.Int256;
+using NSubstitute;
 
 namespace Nethermind.LightClient.Test;
 
@@ -26,6 +28,287 @@ public class ConsensusTests
         GloasForkEpoch = 1000,
         Forks = [new([0, 0, 0, 0], 0), new([1, 0, 0, 0], 1)],
     };
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_waits_past_two_minutes_then_authenticates_and_persists(CancellationToken token)
+    {
+        LightClientBootstrap bootstrap = Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        using BootstrapFixture fixture = new(checkpoint);
+        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource fetching = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<LightClientBootstrap> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken requestToken = default;
+        Hash256? requestedRoot = null;
+        int requests = 0;
+        async Task<LightClientBootstrap> Fetch(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken cancellation)
+        {
+            requests++;
+            requestedRoot = root;
+            requestToken = cancellation;
+            fetching.SetResult();
+            LightClientBootstrap value = await release.Task.WaitAsync(cancellation);
+            await validate(value, cancellation);
+            return value;
+        }
+        Task<(LightClientStore Store, bool Resumed)> initializing = ConsensusSync.BootstrapAsync(
+            Spec, checkpoint, journal, Fetch, fixture.Clock, stop.Token);
+        try
+        {
+            await fetching.Task.WaitAsync(token);
+            fixture.Clock.Advance(TimeSpan.FromSeconds(121));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requestToken.IsCancellationRequested, Is.False, "sparse bootstrap supply must not cancel application startup");
+                Assert.That(initializing.IsCompleted, Is.False);
+                Assert.That(requestedRoot, Is.EqualTo(checkpoint));
+                Assert.That(requests, Is.EqualTo(1));
+            }
+
+            release.SetResult(bootstrap);
+            (LightClientStore store, bool resumed) = await initializing.WaitAsync(token);
+            Assert.That(resumed, Is.False);
+            LightClientStore? persisted = await fixture.OpenJournal().LoadAsync(fixture.CurrentSlot, token);
+            Assert.That(persisted, Is.Not.Null, "the bootstrap must be durable before initialization returns");
+            Assert.That(persisted!.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+
+            LightClientUpdate update = Update(2, 3, 4, 1);
+            store.Process(update, fixture.CurrentSlot);
+            await journal.AppendAsync(update, store, token);
+            LightClientStore? replayed = await fixture.OpenJournal().LoadAsync(fixture.CurrentSlot, token);
+            Assert.That(replayed, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(replayed!.FinalizedHeader.Beacon!.Slot, Is.EqualTo(2));
+                Assert.That(replayed.OptimisticHeader.Beacon!.Slot, Is.EqualTo(3));
+                Assert.That(replayed.FinalizedHeader.Execution!.StateRoot, Is.EqualTo(update.FinalizedHeader!.Execution!.StateRoot));
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            release.TrySetCanceled(stop.Token);
+            await ((Task)initializing).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_application_cancellation_joins_the_fetch_without_persisting(
+        [Values] bool alreadyCanceled, CancellationToken token)
+    {
+        LightClientBootstrap bootstrap = Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        using BootstrapFixture fixture = new(checkpoint);
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource fetching = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource unwinding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int requests = 0;
+        async Task<LightClientBootstrap> Fetch(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken cancellation)
+        {
+            requests++;
+            fetching.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellation);
+                await validate(bootstrap, cancellation);
+                return bootstrap;
+            }
+            finally
+            {
+                unwinding.SetResult();
+                await release.Task;
+            }
+        }
+        if (alreadyCanceled) stop.Cancel();
+        Task<(LightClientStore Store, bool Resumed)> initializing = ConsensusSync.BootstrapAsync(
+            Spec, checkpoint, fixture.OpenJournal(), Fetch, fixture.Clock, stop.Token);
+        try
+        {
+            if (!alreadyCanceled)
+            {
+                await fetching.Task.WaitAsync(token);
+                await stop.CancelAsync();
+                await unwinding.Task.WaitAsync(token);
+                Assert.That(initializing.IsCompleted, Is.False, "initialization must await the fetch owner's cleanup");
+                release.SetResult();
+            }
+            await Assert.CatchAsync<OperationCanceledException>(async () => await initializing);
+            LightClientStore? persisted = await fixture.OpenJournal().LoadAsync(fixture.CurrentSlot, token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requests, Is.EqualTo(alreadyCanceled ? 0 : 1));
+                Assert.That(persisted, Is.Null);
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await stop.CancelAsync();
+            await ((Task)initializing).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_replays_authenticated_state_without_fetching([Values(10UL, 8195UL)] ulong currentSlot, CancellationToken token)
+    {
+        LightClientBootstrap bootstrap = Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        using BootstrapFixture fixture = new(checkpoint);
+        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        LightClientStore store = new(Spec, checkpoint, bootstrap, fixture.CurrentSlot);
+        await journal.InitializeAsync(bootstrap, store, token);
+        LightClientUpdate update = Update(2, 3, 4, 1);
+        store.Process(update, fixture.CurrentSlot);
+        await journal.AppendAsync(update, store, token);
+        fixture.Clock.Advance(TimeSpan.FromSeconds((currentSlot - 10) * Spec.SecondsPerSlot));
+        int requests = 0;
+
+        (LightClientStore replayed, bool resumed) = await ConsensusSync.BootstrapAsync(Spec, checkpoint, fixture.OpenJournal(),
+            (_, _, _) =>
+            {
+                requests++;
+                throw new InvalidOperationException("A persisted bootstrap must not be fetched again.");
+            }, fixture.Clock, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed, Is.True);
+            Assert.That(requests, Is.Zero);
+            Assert.That(replayed.FinalizedHeader.Beacon!.Slot, Is.EqualTo(2));
+            Assert.That(replayed.OptimisticHeader.Beacon!.Slot, Is.EqualTo(3));
+            Assert.That(replayed.FinalizedHeader.Execution!.StateRoot, Is.EqualTo(update.FinalizedHeader!.Execution!.StateRoot));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_authenticates_before_local_clock_failures_escape_peer_retry(
+        [Values("expired", "future", "current")] string anchor, [Values] bool cancelDuringValidation, CancellationToken token)
+    {
+        LightClientBootstrap bootstrap = Bootstrap(anchor == "future" ? 12UL : 1UL, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        using BootstrapFixture fixture = new(checkpoint, anchor == "expired" ? 8184UL : 1UL);
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.Id.Returns("trusted-checkpoint-peer");
+        TaskCompletionSource searching = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Hash256? requestedRoot = null;
+        async Task<LightClientBootstrap> Fetch(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken cancellation)
+        {
+            requestedRoot = root;
+            searching.SetResult();
+            await release.Task.WaitAsync(cancellation);
+            if (cancelDuringValidation) fixture.Clock.BeforeUtcRead = stop.Cancel;
+            return await BootstrapFromPeersAsync(fixture.Clock, [peer], (_, _) => Task.FromResult(bootstrap), validate, cancellation);
+        }
+        Task<(LightClientStore Store, bool Resumed)> initializing = ConsensusSync.BootstrapAsync(
+            Spec, checkpoint, fixture.OpenJournal(), Fetch, fixture.Clock, stop.Token);
+        try
+        {
+            await searching.Task.WaitAsync(token);
+            if (anchor != "future") fixture.Clock.Advance(TimeSpan.FromSeconds(121));
+            release.SetResult();
+            if (cancelDuringValidation)
+                await Assert.CatchAsync<OperationCanceledException>(async () => await initializing);
+            else if (anchor == "current")
+            {
+                (LightClientStore store, bool resumed) = await initializing.WaitAsync(token);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(resumed, Is.False);
+                    Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+                }
+            }
+            else
+                Assert.That(async () => await initializing, Throws.TypeOf<InvalidOperationException>().With.InnerException.TypeOf<LightClientLocalStateException>());
+            LightClientStore? persisted = await fixture.OpenJournal().LoadAsync(fixture.CurrentSlot, token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requestedRoot, Is.EqualTo(checkpoint));
+                Assert.That(persisted is not null, Is.EqualTo(anchor == "current" && !cancelDuringValidation));
+                peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string?>());
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await stop.CancelAsync();
+            await ((Task)initializing).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_invalid_proofs_cannot_turn_untrusted_data_into_a_terminal_clock_failure(
+        [Values("wrong-root", "committee-proof", "missing-header")] string invalid, CancellationToken token)
+    {
+        LightClientBootstrap bootstrap = Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        using BootstrapFixture fixture = new(checkpoint, 1);
+        LightClientBootstrap bad = Bootstrap(invalid == "wrong-root" ? 12UL : 1UL, 1);
+        if (invalid == "committee-proof") bad.CurrentSyncCommitteeBranch![0] = Hash(0x42);
+        if (invalid == "missing-header") bad.Header = null;
+        IBeaconSyncPeer first = Substitute.For<IBeaconSyncPeer>();
+        IBeaconSyncPeer second = Substitute.For<IBeaconSyncPeer>();
+        first.Id.Returns("invalid-bootstrap-peer");
+        second.Id.Returns("valid-bootstrap-peer");
+        List<string> requested = [];
+        async Task<LightClientBootstrap> Fetch(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken cancellation)
+        {
+            Assert.That(root, Is.EqualTo(checkpoint));
+            return await BootstrapFromPeersAsync(fixture.Clock,
+                [first, second], (peer, _) =>
+                {
+                    requested.Add(peer.Id);
+                    return Task.FromResult(ReferenceEquals(peer, first) ? bad : bootstrap);
+                }, validate, cancellation);
+        }
+
+        (LightClientStore store, bool resumed) = await ConsensusSync.BootstrapAsync(
+            Spec, checkpoint, fixture.OpenJournal(), Fetch, fixture.Clock, token);
+        LightClientStore? persisted = await fixture.OpenJournal().LoadAsync(fixture.CurrentSlot, token);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(resumed, Is.False);
+        Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+        Assert.That(persisted?.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+        Assert.That(requested, Is.EqualTo(new[] { first.Id, second.Id }));
+        first.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string?>());
+        second.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string?>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_callback_cancellation_precedes_authentication_of_unproved_data(CancellationToken token)
+    {
+        LightClientBootstrap bootstrap = Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        using BootstrapFixture fixture = new(checkpoint, 1);
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.Id.Returns("canceled-bootstrap-peer");
+        bootstrap.Header = null;
+
+        Task<(LightClientStore Store, bool Resumed)> initializing = ConsensusSync.BootstrapAsync(
+            Spec, checkpoint, fixture.OpenJournal(), (_, validate, cancellation) =>
+                BootstrapFromPeersAsync(fixture.Clock, [peer], (_, _) =>
+                {
+                    stop.Cancel();
+                    return Task.FromResult(bootstrap);
+                }, validate, cancellation), fixture.Clock, stop.Token);
+        await Assert.CatchAsync<OperationCanceledException>(async () => await initializing);
+        LightClientStore? persisted = await fixture.OpenJournal().LoadAsync(fixture.CurrentSlot, token);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(persisted, Is.Null);
+        peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string?>());
+    }
 
     [Test]
     public void Authenticates_finalized_execution_state_and_detaches_snapshots()
@@ -1279,16 +1562,49 @@ public class ConsensusTests
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
     }
 
-    private sealed class RepairClock : TimeProvider
+    private static async Task<LightClientBootstrap> BootstrapFromPeersAsync(TimeProvider clock, IReadOnlyList<IBeaconSyncPeer> peers,
+        Func<IBeaconSyncPeer, CancellationToken, Task<LightClientBootstrap>> request,
+        Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken cancellationToken)
+    {
+        (LightClientBootstrap? response, _) = await new BeaconPeerTransport.PeerRequests(clock).RequestAsync<LightClientBootstrap>(
+            peers, request, async (value, token) =>
+            {
+                await validate(value, token);
+                return true;
+            }, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        Assert.That(response, Is.Not.Null, "a terminal authenticated anchor failure must escape the actual peer retry classifier");
+        return response!;
+    }
+
+    private sealed class BootstrapFixture(Hash256 checkpoint, ulong initialSlot = 10) : IDisposable
+    {
+        private readonly string _directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
+            "NethermindLightClientBootstrapTests", Guid.NewGuid().ToString("N"));
+        internal RepairClock Clock { get; } = new(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + initialSlot * Spec.SecondsPerSlot)));
+        internal ulong CurrentSlot => Spec.GetSlotAtTime((ulong)Clock.GetUtcNow().ToUnixTimeSeconds());
+        internal VerifiedConsensusJournal OpenJournal() => new(_directory, Spec, "mainnet", checkpoint, NullLogger.Instance);
+        public void Dispose()
+        {
+            if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
+        }
+    }
+
+    private sealed class RepairClock(DateTimeOffset? utcOrigin = null) : TimeProvider
     {
         private readonly object _gate = new();
         private readonly List<Timer> _timers = [];
         private readonly Channel<TimeSpan> _created = Channel.CreateUnbounded<TimeSpan>();
         private long _ticks;
+        internal Action? BeforeUtcRead;
         internal int ActiveTimers { get { lock (_gate) return _timers.Count; } }
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() => Interlocked.Read(ref _ticks);
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(GetTimestamp());
+        public override DateTimeOffset GetUtcNow()
+        {
+            Interlocked.Exchange(ref BeforeUtcRead, null)?.Invoke();
+            return (utcOrigin ?? DateTimeOffset.UnixEpoch).AddTicks(GetTimestamp());
+        }
         internal async Task NextTimerAsync() => await _created.Reader.ReadAsync();
         internal async Task WaitForTimersAsync(int count)
         {
