@@ -649,6 +649,8 @@ namespace Nethermind.Synchronization.Peers
                             if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number}");
 
                             UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
+                            if (_logger.IsDebug)
+                                _logger.Debug($"Sync peer initialized for {syncPeer.Node:s}: head {header.Number} {header.Hash}, initialized {syncPeer.IsInitialized}");
 
                             SignalPeersChanged();
                         }
@@ -711,6 +713,8 @@ namespace Nethermind.Synchronization.Peers
 
         public void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception = null)
         {
+            if (_logger.IsDebug)
+                _logger.Debug($"Sync peer refresh failed for {syncPeer.Node:s}: {reason}, error type {exception?.GetType().Name}, initialized {syncPeer.IsInitialized}");
             if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}, {exception}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
 

@@ -114,6 +114,8 @@ namespace Nethermind.Network
 
         protected bool Disconnect(ISession session, DisconnectReason reason, CompatibilityValidationType type, string details, string traceDetails = "")
         {
+            if (_logger.IsDebug)
+                _logger.Debug($"Protocol validation rejected session {session.SessionId} with {session.RemoteNodeId}: {type}, disconnect {reason}");
             if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, {details}{traceDetails}");
             _nodeStatsManager.ReportFailedValidation(session.Node, type);
             session.InitiateDisconnect(reason, details);

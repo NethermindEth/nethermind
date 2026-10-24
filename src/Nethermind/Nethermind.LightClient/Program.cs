@@ -66,6 +66,21 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     loggingConfiguration.LoggingRules.Add(new LoggingRule("System.*", NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget) { Final = true });
     loggingConfiguration.AddRule(logLevel, NLog.LogLevel.Fatal, consoleTarget, "LightClient");
     loggingConfiguration.AddRule(logLevel, NLog.LogLevel.Fatal, consoleTarget, "LightClient.*");
+    if (logLevel == NLog.LogLevel.Debug || logLevel == NLog.LogLevel.Trace)
+    {
+        string[] categories =
+        [
+            "BeaconChain.P2P.PeerManager",
+            "Network.PeerManager",
+            "Network.ProtocolsManager",
+            "Network.ProtocolValidator",
+            "Network.Rlpx.NettyHandshakeHandler",
+            "Network.Rlpx.RlpxHost",
+            "Synchronization.Peers.SyncPeerPool",
+        ];
+        foreach (string category in categories)
+            loggingConfiguration.LoggingRules.Add(new LoggingRule(category, NLog.LogLevel.Debug, NLog.LogLevel.Fatal, consoleTarget) { Final = true });
+    }
     loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "BeaconChain.P2P.*");
     loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "Network.*");
     loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "Synchronization.Peers.*");

@@ -52,13 +52,12 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     {
         _logger = logManager.GetClassLogger<BeaconPeerTransport>();
         _time = time ?? TimeProvider.System;
-        _providers = new(spec, _time);
+        _providers = new(spec, _time, _logger);
         _bootstrapRequests = new(time, _logger, _providers);
         _updateRequests = new(time, _logger, _providers);
         _optimisticRequests = new(time, _logger, _providers);
         _finalityRequests = new(time, _logger, _providers);
         _gossip = new(spec, logManager, time);
-        _gossip.ValidatedUpdate = _providers.RecordGossip;
         bool quicSupported = QuicListener.IsSupported && QuicConnection.IsSupported;
         if (!quicSupported && quicPort > 0 && _logger.IsWarn)
             _logger.Warn("QUIC is unavailable on this platform; beacon P2P will use TCP. Install the platform's MsQuic runtime to enable QUIC.");
@@ -80,10 +79,20 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             peerPool: new Lazy<IBeaconSyncPeerPool>(() => _peers!), configureGossip: _gossip.Configure);
         _discovery = new BeaconDiscovery(config, spec, store, _ipResolver, clock, logManager, peerStorage);
         _peers = new BeaconPeerManager(_p2p, config, status, logManager, _discovery, clock);
+        _gossip.ValidatedUpdate = (source, slot) =>
+        {
+            _providers.RecordGossip(source, slot);
+            if (_logger.IsDebug)
+            {
+                bool connected = _peers.TryGetPeer(source.ToString(), out PeerRecord record) && record.State == PeerConnectionState.Connected;
+                _logger.Debug($"Authenticated light-client gossip supplier {source}: attested slot {slot}, connected {connected}, direction {(connected ? record.Direction : (PeerDirection?)null)}, address {(connected ? record.LastKnownMultiaddr : null)}, agent {(connected ? record.AgentVersion : null)}");
+            }
+        };
         _peers.PeerAdmitted += peer =>
         {
             if (_peers.TryGetPeer(PeerProviders.Identity(peer.Id), out PeerRecord record) && record.State == PeerConnectionState.Connected)
                 _providers.Admit(peer, record.Direction);
+            else if (_logger.IsDebug) _logger.Debug($"Admitted beacon peer {peer.Id} no longer has a connected peer-directory record");
         };
     }
 
@@ -132,7 +141,12 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     if (_logger.IsDebug) _logger.Debug($"Seeking another light-client supplier instead of beacon peer {recycle.Id}");
                     await _peers.RecyclePeerAsync(recycle, "seeking a current light-client data supplier", cancellationToken);
                 }
-                if (reconnect is not null) await _peers.TryAddPeerAsync(reconnect, cancellationToken);
+                if (reconnect is not null)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Redialing remembered light-client supplier {reconnect}");
+                    bool admitted = await _peers.TryAddPeerAsync(reconnect, cancellationToken);
+                    if (_logger.IsDebug) _logger.Debug($"Remembered light-client supplier redial {reconnect}: admitted {admitted}");
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception exception)
@@ -296,7 +310,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         }
     }
 
-    internal sealed class PeerProviders(BeaconChainSpec spec, TimeProvider time)
+    internal sealed class PeerProviders(BeaconChainSpec spec, TimeProvider time, Nethermind.Logging.ILogger? logger = null)
     {
         private const int Capacity = 16;
         private const int TargetPeers = 8;
@@ -304,16 +318,20 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         private static readonly TimeSpan AdmissionGrace = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan Retention = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan RedialInterval = TimeSpan.FromSeconds(30);
+        private readonly Nethermind.Logging.ILogger _logger = logger ?? NullLogger.Instance;
         private readonly Lock _lock = new();
         private readonly Dictionary<string, Supplier> _sessions = new(StringComparer.Ordinal);
         private readonly Dictionary<string, Remembered> _remembered = new(StringComparer.Ordinal);
 
         internal void Admit(IBeaconSyncPeer peer, PeerDirection direction)
         {
+            string id = Identity(peer.Id);
+            string? evicted = null;
+            bool replaced;
             lock (_lock)
             {
-                string id = Identity(peer.Id);
                 if (_sessions.TryGetValue(id, out Supplier? current) && ReferenceEquals(current.Peer, peer)) return;
+                replaced = current is not null;
                 if (_sessions.Count == Capacity && !_sessions.ContainsKey(id))
                 {
                     string? oldest = null;
@@ -330,9 +348,11 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                         }
                     }
                     _sessions.Remove(oldest!);
+                    evicted = oldest;
                 }
                 _sessions[id] = new(peer, time.GetTimestamp(), direction == PeerDirection.Outbound);
             }
+            if (_logger.IsDebug) _logger.Debug($"Tracking light-client supplier {id}: address {peer.Id}, direction {direction}, replaced session {replaced}, capacity eviction {evicted}");
         }
 
         internal void RecordValidated<T>(IBeaconSyncPeer peer, T response)
@@ -365,12 +385,23 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
         internal void RecordGossip(PeerId source, ulong attestedSlot)
         {
+            bool tracked = false;
+            ulong? recordedSlot = null;
+            string? trackedAddress = null;
+            string? rememberedAddress = null;
             lock (_lock)
             {
-                if (!_sessions.TryGetValue(source.ToString(), out Supplier? supplier)) return;
-                supplier.GossipSlot = Math.Max(supplier.GossipSlot ?? 0, attestedSlot);
-                if (IsFresh(attestedSlot)) Remember(supplier.Peer);
+                if (_sessions.TryGetValue(source.ToString(), out Supplier? supplier))
+                {
+                    tracked = true;
+                    supplier.GossipSlot = Math.Max(supplier.GossipSlot ?? 0, attestedSlot);
+                    if (IsFresh(attestedSlot)) Remember(supplier.Peer);
+                    recordedSlot = supplier.GossipSlot;
+                    trackedAddress = supplier.Peer.Id;
+                    if (_logger.IsDebug && _remembered.TryGetValue(source.ToString(), out Remembered? remembered)) rememberedAddress = remembered.Address;
+                }
             }
+            if (_logger.IsDebug) _logger.Debug($"Light-client gossip supplier credit {source}: attested slot {attestedSlot}, tracked {tracked}, tracked address {trackedAddress}, recorded gossip slot {recordedSlot}, remembered address {rememberedAddress}");
         }
 
         internal void Failed<T>(IBeaconSyncPeer peer)
@@ -408,6 +439,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
         internal (IBeaconSyncPeer? Recycle, string? Reconnect) Maintain(IReadOnlyList<PeerRecord> peers)
         {
+            int connectedCount, trackedCount, fresh, rememberedCount;
+            List<string>? retiredSessions = null;
+            IBeaconSyncPeer? recycle = null;
+            string? redialAddress = null;
             lock (_lock)
             {
                 long now = time.GetTimestamp();
@@ -422,12 +457,13 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 foreach ((string id, Supplier supplier) in _sessions)
                     if (!admitted.Contains(id) && time.GetElapsedTime(supplier.Admitted, now) >= AdmissionGrace) retired.Add(id);
                 foreach (string id in retired) _sessions.Remove(id);
+                if (_logger.IsDebug && retired.Count > 0) retiredSessions = [.. retired];
                 retired.Clear();
                 foreach ((string id, Remembered remembered) in _remembered)
                     if (time.GetElapsedTime(remembered.LastUseful, now) > Retention) retired.Add(id);
                 foreach (string id in retired) _remembered.Remove(id);
 
-                int fresh = 0;
+                fresh = 0;
                 Supplier? replacement = null;
                 foreach (Supplier supplier in _sessions.Values)
                 {
@@ -438,17 +474,29 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                         IsCandidate(replacement) == IsCandidate(supplier) && supplier.Admitted < replacement.Admitted)
                         replacement = supplier;
                 }
-                if (fresh >= 2) return (null, null);
-
-                Remembered? reconnect = null;
-                foreach ((string id, Remembered remembered) in _remembered)
+                if (fresh < 2)
                 {
-                    if (connected.Contains(id) || remembered.LastDial is { } dialed && time.GetElapsedTime(dialed, now) < RedialInterval) continue;
-                    if (reconnect is null || remembered.LastUseful > reconnect.LastUseful) reconnect = remembered;
+                    Remembered? reconnect = null;
+                    foreach ((string id, Remembered remembered) in _remembered)
+                    {
+                        if (connected.Contains(id) || remembered.LastDial is { } dialed && time.GetElapsedTime(dialed, now) < RedialInterval) continue;
+                        if (reconnect is null || remembered.LastUseful > reconnect.LastUseful) reconnect = remembered;
+                    }
+                    if (reconnect is not null) reconnect.LastDial = now;
+                    recycle = admitted.Count >= TargetPeers ? replacement?.Peer : null;
+                    redialAddress = reconnect?.Address;
                 }
-                if (reconnect is not null) reconnect.LastDial = now;
-                return (admitted.Count >= TargetPeers ? replacement?.Peer : null, reconnect?.Address);
+                connectedCount = admitted.Count;
+                trackedCount = _sessions.Count;
+                rememberedCount = _remembered.Count;
             }
+            if (_logger.IsDebug)
+            {
+                if (retiredSessions is not null)
+                    foreach (string id in retiredSessions) _logger.Debug($"Retired disconnected light-client supplier session {id}");
+                _logger.Debug($"Light-client supplier maintenance: connected {connectedCount}, tracked {trackedCount}, fresh {fresh}, remembered {rememberedCount}, recycle {recycle?.Id}, reconnect {redialAddress}");
+            }
+            return (recycle, redialAddress);
         }
 
         private bool TryCurrent(IBeaconSyncPeer peer, out Supplier supplier)

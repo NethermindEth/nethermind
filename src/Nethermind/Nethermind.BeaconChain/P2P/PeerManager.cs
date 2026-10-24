@@ -1459,6 +1459,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         if (_logger.IsDebug) _logger.Debug($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
+        if (_logger.IsDebug && info.Identify is { } advertised)
+            _logger.Debug($"Beacon chain peer {peerId} identify: agent {advertised.AgentVersion}, protocols {string.Join(", ", advertised.Protocols)}");
         await RefreshCustodyAsync(peer, token, AdmissionMetadataTimeout);
         // The dial then records a failure: a success would clear the backoff the close of a peer that broke the protocol set (see RecordClosedSession).
         if (peer.RemovedOnClose)

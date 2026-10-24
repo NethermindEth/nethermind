@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Quic;
 using System.Net.Sockets;
+using System.Threading.Channels;
 using Google.Protobuf;
 using Multiformats.Address.Net;
 using Nethermind.BeaconChain;
@@ -27,7 +28,7 @@ public class LightClientGossipTests
 {
     [Test]
     [CancelAfter(120_000)]
-    public async Task Signed_finality_gossip_crosses_a_real_libp2p_connection_and_authenticates([Values] bool quic, CancellationToken token)
+    public async Task Distinct_anonymous_light_client_updates_authenticate_over_one_libp2p_connection([Values] bool quic, CancellationToken token)
     {
         if (quic && OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
             Assert.That(QuicListener.IsSupported && QuicConnection.IsSupported, Is.True, "Windows CI must exercise QUIC with the bundled MsQuic runtime.");
@@ -37,44 +38,111 @@ public class LightClientGossipTests
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 10);
         await using LightClientGossip gossip = new(ConsensusTests.Spec, LimboLogs.Instance, clock);
+        PubsubRouter senderRouter = null!, receiverRouter = null!;
+        PubsubSettings senderSettings = null!, receiverSettings = null!;
         int senderQuicPort = quic ? FreeUdpPort() : 0;
-        await using BeaconP2P sender = CreateHost(quicPort: senderQuicPort);
-        await using BeaconP2P receiver = CreateHost(gossip, quic ? FreeUdpPort() : 0);
+        await using BeaconP2P sender = CreateHost(quicPort: senderQuicPort, configure: (router, settings) =>
+        {
+            senderRouter = router;
+            senderSettings = settings;
+        });
+        await using BeaconP2P receiver = CreateHost(gossip, quic ? FreeUdpPort() : 0, (router, settings) =>
+        {
+            receiverRouter = router;
+            receiverSettings = settings;
+        });
         await sender.StartAsync(token);
         await receiver.StartAsync(token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(senderSettings.DefaultSignaturePolicy, Is.EqualTo(PubsubSettings.SignaturePolicy.StrictNoSign));
+            Assert.That(receiverSettings.DefaultSignaturePolicy, Is.EqualTo(PubsubSettings.SignaturePolicy.StrictNoSign));
+        }
+        Channel<(PeerId Source, Message Message)> receivedWire = System.Threading.Channels.Channel.CreateUnbounded<(PeerId, Message)>();
+        Func<PeerId, Message, MessageValidity> verify = receiverRouter.VerifyMessage!;
+        receiverRouter.VerifyMessage = (source, message) =>
+        {
+            receivedWire.Writer.TryWrite((source, message.Clone()));
+            return verify(source, message);
+        };
         TaskCompletionSource received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Channel<ulong> optimisticReceived = System.Threading.Channels.Channel.CreateUnbounded<ulong>();
         gossip.Start(receiver.GetTopic, (update, _) =>
         {
             ulong before = store.FinalizedHeader.Beacon!.Slot;
             store.Process(update, ConsensusTests.Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds()));
             received.TrySetResult();
             return Task.FromResult(store.FinalizedHeader.Beacon!.Slot > before);
-        }, static (_, _) => Task.FromResult(false), token);
+        }, (update, _) =>
+        {
+            ulong before = store.OptimisticHeader.Beacon!.Slot;
+            store.Process(update, ConsensusTests.Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds()));
+            optimisticReceived.Writer.TryWrite(update.AttestedHeader!.Beacon!.Slot);
+            return Task.FromResult(store.OptimisticHeader.Beacon!.Slot > before);
+        }, token);
+        byte[] digest = ForkDigest.Compute(ConsensusTests.Spec, 0);
+        string finalityTopic = GossipTopics.Topic(digest, GossipTopics.LightClientFinalityUpdate);
+        string optimisticTopic = GossipTopics.Topic(digest, GossipTopics.LightClientOptimisticUpdate);
+        ITopic finalityPublisher = sender.GetTopic(finalityTopic);
+        ITopic optimisticPublisher = sender.GetTopic(optimisticTopic);
         PeerManager manager = new(sender, new BeaconChainConfig { P2PPort = 0, QuicPort = senderQuicPort },
             new BeaconChainStatusHolder(ConsensusTests.Spec, Timestamper.Default), LimboLogs.Instance);
         int port = receiver.ListenAddresses.Single(address => address.ToString().Contains(quic ? "/quic-v1" : "/tcp/", StringComparison.Ordinal)).ToEndPoint().Port;
         string transport = quic ? $"udp/{port}/quic-v1" : $"tcp/{port}";
         Assert.That(await manager.TryAddPeerAsync($"/ip4/127.0.0.1/{transport}/p2p/{receiver.LocalPeerId}", token), Is.True);
-
-        for (ulong slot = 4; !received.Task.IsCompleted; slot++)
+        Assert.That(sender.TryGetEstablishedSession(receiver.LocalPeerId!, out ISession? originalSession), Is.True);
+        while (!HasMeshPeer(senderRouter, finalityTopic, receiver.LocalPeerId!) || !HasMeshPeer(senderRouter, optimisticTopic, receiver.LocalPeerId!) ||
+            !HasMeshPeer(receiverRouter, finalityTopic, sender.LocalPeerId!) || !HasMeshPeer(receiverRouter, optimisticTopic, sender.LocalPeerId!))
         {
-            clock.SetSlot(slot + 1, 6);
-            gossip.RefreshTopics(receiver.GetTopic);
-            LightClientFinalityUpdate update = Finality(ConsensusTests.Update(2, slot - 1, slot, 1));
-            string topic = GossipTopics.Topic(ForkDigest.Compute(ConsensusTests.Spec, ConsensusTests.Spec.GetEpoch(slot - 1)),
-                GossipTopics.LightClientFinalityUpdate);
-            sender.GetTopic(topic).Publish(Snappy.CompressToArray(LightClientWireCodec.EncodeFinality(update, ConsensusTests.Spec)));
-            await Task.WhenAny(received.Task, Task.Delay(500, token));
             token.ThrowIfCancellationRequested();
+            await Task.Yield();
         }
-        Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(2));
+
+        finalityPublisher.Publish(Snappy.CompressToArray(LightClientWireCodec.EncodeFinality(Finality(ConsensusTests.Update(2, 3, 4, 1)), ConsensusTests.Spec)));
+        await received.Task.WaitAsync(token);
+        (PeerId Source, Message Message) finalityWire = await receivedWire.Reader.ReadAsync(token);
+        Assert.That(finalityWire.Message.Topic, Is.EqualTo(finalityTopic));
+        List<Message> optimisticWire = [];
+        foreach (ulong slot in new[] { 4UL, 5UL })
+        {
+            optimisticPublisher.Publish(Snappy.CompressToArray(LightClientWireCodec.EncodeOptimistic(Optimistic(ConsensusTests.Update(2, slot, slot + 1, 1)), ConsensusTests.Spec)));
+            Assert.That(await optimisticReceived.Reader.ReadAsync(token), Is.EqualTo(slot));
+            (PeerId Source, Message Message) wire = await receivedWire.Reader.ReadAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(wire.Source, Is.EqualTo(sender.LocalPeerId));
+                Assert.That(wire.Message.Topic, Is.EqualTo(optimisticTopic));
+            }
+            optimisticWire.Add(wire.Message);
+        }
+        Assert.That(sender.TryGetEstablishedSession(receiver.LocalPeerId!, out ISession? currentSession), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Message wire in optimisticWire.Prepend(finalityWire.Message))
+                Assert.That(wire.HasFrom || wire.HasSeqno || wire.HasSignature || wire.HasKey, Is.False, "eth2 gossip omits every authorship field");
+            Assert.That(receiverSettings.GetMessageId(optimisticWire[0]), Is.Not.EqualTo(receiverSettings.GetMessageId(optimisticWire[1])));
+            Assert.That(currentSession, Is.SameAs(originalSession));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(2));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(5));
+        }
     }
 
-    private static BeaconP2P CreateHost(LightClientGossip? gossip = null, int quicPort = 0) => new(new BeaconChainConfig { P2PPort = 0, QuicPort = quicPort },
+    private static bool HasMeshPeer(PubsubRouter router, string topic, PeerId peer)
+    {
+        lock (router)
+            return ((IRoutingStateContainer)router).Mesh.TryGetValue(topic, out HashSet<PeerId>? peers) && peers.Contains(peer);
+    }
+
+    private static BeaconP2P CreateHost(LightClientGossip? gossip = null, int quicPort = 0,
+        Action<PubsubRouter, PubsubSettings>? configure = null) => new(new BeaconChainConfig { P2PPort = 0, QuicPort = quicPort },
         ConsensusTests.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>(), ConsensusTests.Spec),
         new BeaconChainStatusHolder(ConsensusTests.Spec, Timestamper.Default), new LocalMetadataSource(),
         new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance,
-        configureGossip: gossip is null ? null : gossip.Configure);
+        configureGossip: (router, settings) =>
+        {
+            gossip?.Configure(router, settings);
+            configure?.Invoke(router, settings);
+        });
 
     private static int FreeUdpPort()
     {

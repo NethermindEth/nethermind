@@ -59,6 +59,8 @@ selection and before a cross-check.
 `http://127.0.0.1:8545`; `--urls` overrides it. `--help` prints the options.
 `--log-level Debug` adds received beacon-update slots, validation outcomes and
 durable consensus progress to the light-client logs; the default is `Info`.
+Debug also records selected peer admission, advertised capabilities, connection
+outcomes and disconnect reasons from the consensus and execution transports.
 To use MetaMask or another browser wallet extension, select
 `http://127.0.0.1:8545` as the RPC URL for Ethereum
 Mainnet (chain ID `1`), or Sepolia (chain ID `11155111`). In MetaMask's network

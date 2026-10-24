@@ -108,14 +108,20 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
 
     internal MessageValidity Verify(PeerId source, Message message)
     {
-        if (_stop.IsCancellationRequested || _finality is null) return MessageValidity.Throttled;
+        if (_stop.IsCancellationRequested || _finality is null) return Finish(MessageValidity.Throttled, "validation is not running");
         if (!GossipTopics.TryParse(message.Topic, out _, out string? name) || !GossipTopics.IsEth2TopicName(name!))
-            return MessageValidity.Rejected;
+            return Finish(MessageValidity.Rejected, "invalid eth2 topic");
         if (name is not (GossipTopics.LightClientFinalityUpdate or GossipTopics.LightClientOptimisticUpdate))
-            return MessageValidity.Ignored;
-        if (!Volatile.Read(ref _activeTopics).Contains(message.Topic)) return MessageValidity.Throttled;
+            return Finish(MessageValidity.Ignored, "not a light-client topic");
+        if (!Volatile.Read(ref _activeTopics).Contains(message.Topic)) return Finish(MessageValidity.Throttled, "inactive fork topic");
         return message.Data.Length <= Eth2MessageId.MaxCompressedLength(MaxUpdateBytes)
-            ? MessageValidity.Deferred : MessageValidity.Rejected;
+            ? MessageValidity.Deferred : Finish(MessageValidity.Rejected, "compressed payload exceeds the light-client bound");
+
+        MessageValidity Finish(MessageValidity validity, string reason)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Light-client gossip precheck from {source} on {message.Topic}: {validity}; {reason}");
+            return validity;
+        }
     }
 
     private async Task ValidateDeferredAsync(PeerId source, Message message)
@@ -136,8 +142,9 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
             await HandleAsync(message.Topic, message.Data.Memory,
                 validity => _router!.CompleteValidation(message, validity), attempt.Token, source);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception)
         {
+            if (_logger.IsDebug) _logger.Debug($"Light-client gossip validation from {source} on {message.Topic} was cancelled: {exception.Message}");
             _router!.CompleteValidation(message, MessageValidity.Throttled);
         }
         catch (Exception exception)
@@ -159,19 +166,26 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
     {
         await _validation.WaitAsync(token);
         bool forwardingIgnored = false;
+        ulong? diagnosticSlot = null;
+        ulong? diagnosticSignatureSlot = null;
+        bool authenticated = false;
+        MessageValidity? diagnosticValidity = null;
+        string? diagnosticReason = null;
         try
         {
-            if (!Volatile.Read(ref _activeTopics).Contains(topic)) return Finish(MessageValidity.Throttled);
+            if (!Volatile.Read(ref _activeTopics).Contains(topic)) return Finish(MessageValidity.Throttled, "inactive fork topic");
             if (Eth2MessageId.TryDecompress(compressed.Span, MaxUpdateBytes, out byte[]? ssz) != SnappyDecodeResult.Decoded)
-                return Finish(MessageValidity.Rejected);
+                return Finish(MessageValidity.Rejected, "invalid or oversized Snappy payload");
             GossipTopics.TryParse(topic, out byte[]? digest, out string? name);
             if (name == GossipTopics.LightClientFinalityUpdate)
             {
                 LightClientFinalityUpdate update = LightClientWireCodec.DecodeFinality(ssz!, spec);
                 if (update.FinalizedHeader?.Beacon is null || update.SyncAggregate?.SyncCommitteeBits is not { Length: Presets.SyncCommitteeSize })
-                    return Finish(MessageValidity.Rejected);
+                    return Finish(MessageValidity.Rejected, "missing finalized header or invalid committee bits");
                 ulong attestedSlot = update.AttestedHeader!.Beacon!.Slot;
-                if (!MatchesDigest(digest!, attestedSlot)) return Finish(MessageValidity.Rejected);
+                diagnosticSlot = attestedSlot;
+                diagnosticSignatureSlot = update.SignatureSlot;
+                if (!MatchesDigest(digest!, attestedSlot)) return Finish(MessageValidity.Rejected, "fork digest does not match the attested slot");
                 ulong finalizedSlot = update.FinalizedHeader!.Beacon!.Slot;
                 int participants = 0;
                 foreach (bool bit in update.SyncAggregate!.SyncCommitteeBits!) if (bit) participants++;
@@ -181,8 +195,11 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
                      finalizedSlot == _forwardedFinalitySlot && supermajority && !_forwardedSupermajority);
                 forwardingIgnored = !mayForward;
                 bool advanced = await _finality!(update, token);
+                authenticated = true;
                 if (source is not null) ValidatedUpdate?.Invoke(source, attestedSlot);
                 MessageValidity validity = mayForward && advanced ? MessageValidity.Accepted : MessageValidity.Ignored;
+                diagnosticValidity = validity;
+                diagnosticReason = !mayForward ? "not eligible for forwarding" : advanced ? "finalized head advanced" : "finalized head unchanged";
                 if (complete(validity) && validity == MessageValidity.Accepted)
                 {
                     _forwardedFinalitySlot = finalizedSlot;
@@ -198,24 +215,35 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
             }
             LightClientOptimisticUpdate optimistic = LightClientWireCodec.DecodeOptimistic(ssz!, spec);
             ulong optimisticSlot = optimistic.AttestedHeader!.Beacon!.Slot;
-            if (!MatchesDigest(digest!, optimisticSlot)) return Finish(MessageValidity.Rejected);
+            diagnosticSlot = optimisticSlot;
+            diagnosticSignatureSlot = optimistic.SignatureSlot;
+            if (!MatchesDigest(digest!, optimisticSlot)) return Finish(MessageValidity.Rejected, "fork digest does not match the attested slot");
             bool eligible = IsDue(optimistic.SignatureSlot) &&
                 (_forwardedOptimisticSlot is null || optimisticSlot > _forwardedOptimisticSlot);
             forwardingIgnored = !eligible;
             bool progressed = await _optimistic!(optimistic, token);
+            authenticated = true;
             if (source is not null) ValidatedUpdate?.Invoke(source, optimisticSlot);
             bool matchesFinality = _forwardedFinalityFields is not null && ssz!.AsSpan().SequenceEqual(_forwardedFinalityFields);
             MessageValidity result = eligible && (progressed || matchesFinality) ? MessageValidity.Accepted : MessageValidity.Ignored;
+            diagnosticValidity = result;
+            diagnosticReason = !eligible ? "not eligible for forwarding" : progressed ? "optimistic head advanced" : "optimistic head unchanged";
             if (complete(result) && result == MessageValidity.Accepted) _forwardedOptimisticSlot = optimisticSlot;
             return result;
         }
-        catch (IrrelevantLightClientUpdateException) { return Finish(MessageValidity.Ignored); }
-        catch (LightClientLocalStateException) { return Finish(forwardingIgnored ? MessageValidity.Ignored : MessageValidity.Throttled); }
-        catch (InvalidDataException) { return Finish(forwardingIgnored ? MessageValidity.Ignored : MessageValidity.Rejected); }
-        finally { _validation.Release(); }
-
-        MessageValidity Finish(MessageValidity validity)
+        catch (IrrelevantLightClientUpdateException exception) { return Finish(MessageValidity.Ignored, exception.Message); }
+        catch (LightClientLocalStateException exception) { return Finish(forwardingIgnored ? MessageValidity.Ignored : MessageValidity.Throttled, exception.Message); }
+        catch (InvalidDataException exception) { return Finish(forwardingIgnored ? MessageValidity.Ignored : MessageValidity.Rejected, exception.Message); }
+        finally
         {
+            _validation.Release();
+            if (_logger.IsDebug) _logger.Debug($"Light-client gossip from {source} on {topic}: attested slot {diagnosticSlot}, signature slot {diagnosticSignatureSlot}, current slot {CurrentSlot()}, authenticated {authenticated}, validity {diagnosticValidity}, reason {diagnosticReason}");
+        }
+
+        MessageValidity Finish(MessageValidity validity, string reason)
+        {
+            diagnosticValidity = validity;
+            diagnosticReason = reason;
             complete(validity);
             return validity;
         }
