@@ -757,6 +757,26 @@ public class Eip8037Tests : VirtualMachineTestsBase
         Assert.That(outer.Value, Is.EqualTo(1_000UL - (ulong)Math.Max(0, stateGas - reservoir)));
     }
 
+    [Test]
+    public void Frame_pool_charge_takes_the_legacy_share_from_execution_gas([Values] bool canPayShare)
+    {
+        ulong executionGas = canPayShare ? 100_000UL : (ulong)Eip8037Constants.NewAccountLegacyShare - 1;
+        EthereumGasPolicy gas = EthereumGasPolicy.FromFrameLimits(executionGas, 1_000_000);
+
+        bool charged = EthereumGasPolicy.TryConsumeNewAccountCreation<OnFlag>(ref gas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(charged, Is.EqualTo(canPayShare));
+            Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill), canPayShare
+                ? Is.EqualTo((executionGas - (ulong)Eip8037Constants.NewAccountLegacyShare,
+                    1_000_000L - (GasCostOf.NewAccountState - Eip8037Constants.NewAccountLegacyShare),
+                    GasCostOf.NewAccountState,
+                    Eip8037Constants.NewAccountLegacyShare))
+                : Is.EqualTo((executionGas, 1_000_000L, 0L, 0L)));
+        }
+    }
+
     [TestCase(ExpectedResult = 5_000L)]
     public long Spent_gas_subtracts_state_reservoir()
     {
