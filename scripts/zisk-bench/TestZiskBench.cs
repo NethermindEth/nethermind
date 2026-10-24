@@ -16,7 +16,8 @@ try
     var workflow = File.ReadAllText(Path.Combine(root, ".github/workflows/stateless-benchmarks.yml")).Replace("\r\n", "\n", StringComparison.Ordinal);
     const string guest = "src/Nethermind/Nethermind.Stateless.ZiskGuest";
     const string log = "STEPS 437561208\nMAIN 29754162144 59.88%\nOPCODES 6287492347 12.65%\nPRECOMPILES 8023714093 16.15%\nMEMORY 5334595573 10.74%\nTOTAL 49687273981 100.00%\n";
-    const string grouped = "STEPS 406,243,606\nMAIN 27,624,565,208 61.34%\nOPCODES 6,223,986,843 13.82%\nPRECOMPILES 6,875,247,706 15.27%\nMEMORY 4,027,415,979 8.94%\nTOTAL 45,038,525,560 100.00%\nFLOPS 4,877,143,744 10.90%\nOP keccak 165,632 0.04% 6,369,212,928 14.23%\n";
+    // cspell:ignore FROPS
+    const string grouped = "STEPS 406,243,606\nMAIN 27,624,565,208 61.34%\nOPCODES 6,223,986,843 13.82%\nPRECOMPILES 6,875,247,706 15.27%\nMEMORY 4,027,415,979 8.94%\nTOTAL 45,038,525,560 100.00%\nFROPS 4,877,143,744 10.90%\nOP keccak 165,632 0.04% 6,369,212,928 14.23%\n";
     JsonObject Row(string name = "a.ssz", long steps = 100, long total = 1000, long main = 1, long opcodes = 1, long precompiles = 1, long memory = 1) => new()
     { ["input"] = name, ["steps"] = steps, ["total"] = total, ["main"] = main, ["opcodes"] = opcodes, ["precompiles"] = precompiles, ["memory"] = memory };
     Dictionary<string, JsonObject> Rows(params JsonObject[] rows) => rows.ToDictionary(row => row["input"]!.GetValue<string>());
