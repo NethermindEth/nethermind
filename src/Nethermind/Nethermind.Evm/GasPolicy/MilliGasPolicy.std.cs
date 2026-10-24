@@ -34,8 +34,9 @@ namespace Nethermind.Evm.GasPolicy;
 /// its fraction, so the two policies follow one set of state gas rules.
 /// </para>
 /// <para>
-/// Prices come from <see cref="EthereumGasPolicy"/>: composite charges without state gas run against an unlimited
-/// Ethereum probe and the probe's charge is scaled, so the two policies cannot price an operation differently.
+/// Prices come from <see cref="EthereumGasPolicy"/>: composite charges run against an Ethereum probe that can pay any
+/// charge, and the policy then charges the probe's execution gas x1000 and its state gas through the reservoir, so the
+/// two policies cannot price an operation differently.
 /// </para>
 /// </remarks>
 public struct MilliGasPolicy<TPrices> : IGasPolicy<MilliGasPolicy<TPrices>>
@@ -43,6 +44,7 @@ public struct MilliGasPolicy<TPrices> : IGasPolicy<MilliGasPolicy<TPrices>>
 {
     private const ulong MilliGasPerGas = Eip8053Constants.MilliGasPerGas;
     private const ulong ProbeGas = ulong.MaxValue;
+    private const long ProbeStateGas = long.MaxValue / 2;
     private const ulong MaxGasUnits = ulong.MaxValue / MilliGasPerGas;
 
     /// <summary><c>gas_left</c> in milli-gas in a frame and in gas units in intrinsic and floor gas; state gas in gas units.</summary>
@@ -55,6 +57,10 @@ public struct MilliGasPolicy<TPrices> : IGasPolicy<MilliGasPolicy<TPrices>>
     public static MilliGasPolicy<TPrices> FromULong(ulong value) => new() { _gas = EthereumGasPolicy.FromULong(value) };
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// EIP-8141: a frame starts with <c>limits.execution * 1000</c> milli-gas, and <see cref="GetPreRefundGas"/> rounds its
+    /// gas left down when it completes, so each frame rounds its execution gas up once.
+    /// </remarks>
     public static MilliGasPolicy<TPrices> FromFrameLimits(ulong executionGasLimit, ulong stateGasLimit) =>
         FromExecutionGasUnits(EthereumGasPolicy.FromFrameLimits(executionGasLimit, stateGasLimit));
 
@@ -149,15 +155,15 @@ public struct MilliGasPolicy<TPrices> : IGasPolicy<MilliGasPolicy<TPrices>>
         EthereumGasPolicy.Refund(ref gas._gas, in childGas._gas);
 
     /// <inheritdoc/>
-    /// <remarks>The gas argument is in gas units; EIP-150 caps it at the remaining milli-gas less <see cref="RetainedMilliGas"/>.</remarks>
+    /// <remarks>The gas argument is in gas units; EIP-150 caps it at <see cref="MaxChildGas"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryReserveChildGas(ref MilliGasPolicy<TPrices> gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
     {
         ulong gasAvailable = gas._gas.Value;
         if (spec.Use63Over64Rule)
         {
-            ulong cap = gasAvailable - RetainedMilliGas(gasAvailable);
-            childGas = requestedGas.IsUint64 && requestedGas.u0 <= cap / MilliGasPerGas ? requestedGas.u0 * MilliGasPerGas : cap;
+            ulong maxChildGas = MaxChildGas(gasAvailable);
+            childGas = (requestedGas.IsUint64 && requestedGas.u0 <= maxChildGas ? requestedGas.u0 : maxChildGas) * MilliGasPerGas;
         }
         else if (requestedGas.IsUint64 && requestedGas.u0 <= gasAvailable / MilliGasPerGas)
         {
@@ -179,7 +185,7 @@ public struct MilliGasPolicy<TPrices> : IGasPolicy<MilliGasPolicy<TPrices>>
     public static bool TryReserveChildGas(ref MilliGasPolicy<TPrices> gas, IReleaseSpec spec, out ulong childGas)
     {
         ulong gasAvailable = gas._gas.Value;
-        childGas = spec.Use63Over64Rule ? gasAvailable - RetainedMilliGas(gasAvailable) : gasAvailable;
+        childGas = spec.Use63Over64Rule ? MaxChildGas(gasAvailable) * MilliGasPerGas : gasAvailable;
         gas._gas.Value -= childGas;
         return true;
     }
@@ -305,26 +311,31 @@ public struct MilliGasPolicy<TPrices> : IGasPolicy<MilliGasPolicy<TPrices>>
             && ChargeProbe(ref gas, in probe);
     }
 
-    /// <remarks>Mirrors <see cref="EthereumGasPolicy.TryConsumeStorageWrite{TEip8037, TIsSlotCreation}"/>, whose state gas a probe cannot price.</remarks>
     public static bool TryConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref MilliGasPolicy<TPrices> gas, IReleaseSpec spec)
         where TEip8037 : struct, IFlag
         where TIsSlotCreation : struct, IFlag
     {
-        if (!TIsSlotCreation.IsActive)
-            return UpdateGas(ref gas, spec.IsEip8038Enabled ? Eip8038Constants.StorageWrite : spec.GasCosts.SStoreResetCost);
-
-        ulong executionWriteCost = spec.IsEip8038Enabled ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution;
-        return TEip8037.IsActive
-            ? TryConsumeStateAndExecutionGas(ref gas, GasCostOf.SSetState, executionWriteCost)
-            : UpdateGas(ref gas, GasCostOf.SSet);
+        EthereumGasPolicy probe = Probe();
+        return EthereumGasPolicy.TryConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref probe, spec) && ChargeProbe(ref gas, in probe);
     }
 
-    public static bool TryConsumeCallValueTransfer(ref MilliGasPolicy<TPrices> gas) => UpdateGas(ref gas, GasCostOf.CallValue);
+    public static bool TryConsumeCallValueTransfer(ref MilliGasPolicy<TPrices> gas)
+    {
+        EthereumGasPolicy probe = Probe();
+        return EthereumGasPolicy.TryConsumeCallValueTransfer(ref probe) && ChargeProbe(ref gas, in probe);
+    }
 
-    public static bool TryConsumeCallValueTransferEip2780(ref MilliGasPolicy<TPrices> gas) => UpdateGas(ref gas, Eip8038Constants.CallValue);
+    public static bool TryConsumeCallValueTransferEip2780(ref MilliGasPolicy<TPrices> gas)
+    {
+        EthereumGasPolicy probe = Probe();
+        return EthereumGasPolicy.TryConsumeCallValueTransferEip2780(ref probe) && ChargeProbe(ref gas, in probe);
+    }
 
-    public static bool TryConsumeNewAccountCreation<TEip8037>(ref MilliGasPolicy<TPrices> gas) where TEip8037 : struct, IFlag =>
-        TEip8037.IsActive ? TryConsumeStateGas(ref gas, GasCostOf.NewAccountState) : UpdateGas(ref gas, GasCostOf.NewAccount);
+    public static bool TryConsumeNewAccountCreation<TEip8037>(ref MilliGasPolicy<TPrices> gas) where TEip8037 : struct, IFlag
+    {
+        EthereumGasPolicy probe = Probe();
+        return EthereumGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref probe) && ChargeProbe(ref gas, in probe);
+    }
 
     public static bool TryConsumeLogEmission(ref MilliGasPolicy<TPrices> gas, ulong topicCount, ulong dataSize)
     {
@@ -358,10 +369,14 @@ public struct MilliGasPolicy<TPrices> : IGasPolicy<MilliGasPolicy<TPrices>>
     private static ulong PreRefundGas<TGasPolicy>(in TGasPolicy gas, ulong txGasLimit) where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
         TGasPolicy.GetPreRefundGas(in gas, txGasLimit);
 
-    /// <summary>The EIP-150 64th a caller keeps, taken in whole gas units.</summary>
-    /// <remarks>Whole units keep every result equal to legacy metering while the remaining milli-gas is a multiple of 1,000.</remarks>
+    /// <summary>The most gas a call or create can forward: all but one 64th of the whole gas units left (EIP-150).</summary>
+    /// <remarks>Forwarded gas is always whole; the fraction of a gas unit stays with the caller.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong RetainedMilliGas(ulong gasAvailable) => gasAvailable / MilliGasPerGas / 64 * MilliGasPerGas;
+    private static ulong MaxChildGas(ulong gasAvailable)
+    {
+        ulong wholeGas = gasAvailable / MilliGasPerGas;
+        return wholeGas - wholeGas / 64;
+    }
 
     private static MilliGasPolicy<TPrices> FromExecutionGasUnits(EthereumGasPolicy gas)
     {
@@ -387,11 +402,14 @@ public struct MilliGasPolicy<TPrices> : IGasPolicy<MilliGasPolicy<TPrices>>
     private static void LeaveGasUnits(ref MilliGasPolicy<TPrices> gas, ulong fraction) =>
         gas._gas.Value = gas._gas.Value * MilliGasPerGas + fraction;
 
+    /// <summary>An <see cref="EthereumGasPolicy"/> that can pay any charge: execution gas from its gas left, state gas from its reservoir.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EthereumGasPolicy Probe() => EthereumGasPolicy.FromULong(ProbeGas);
+    private static EthereumGasPolicy Probe() => new() { Value = ProbeGas, StateReservoir = ProbeStateGas };
 
+    /// <summary>Charges what <paramref name="probe"/> paid: its execution gas, then its state gas, in the order EIP-8037 charges them.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool ChargeProbe(ref MilliGasPolicy<TPrices> gas, in EthereumGasPolicy probe) => UpdateGas(ref gas, ProbeGas - probe.Value);
+    private static bool ChargeProbe(ref MilliGasPolicy<TPrices> gas, in EthereumGasPolicy probe) =>
+        UpdateGas(ref gas, ProbeGas - probe.Value) && (probe.StateGasUsed == 0 || TryConsumeStateGas(ref gas, probe.StateGasUsed));
 }
 
 /// <summary>EIP-8053 constants.</summary>

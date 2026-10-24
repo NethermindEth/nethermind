@@ -870,7 +870,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 ulong delegationAccess = delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
                     ? TGasPolicy.GetColdAccountAccessCost(spec)
                     : Eip8038Constants.WarmAccess;
-                if (!TGasPolicy.TryConsume(ref frameGas, delegationAccess))
+                if (!TGasPolicy.UpdateGas(ref frameGas, delegationAccess))
                 {
                     gasUsed = frame.ExecutionGasLimit;
                     return new TransactionSubstate(EvmExceptionType.OutOfGas, isTracingInstructions);

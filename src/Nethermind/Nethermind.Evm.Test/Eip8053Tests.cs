@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
@@ -28,13 +29,17 @@ public class Eip8053Tests(bool traceInstructions) : VirtualMachineTestsBase
 {
     private const ulong LegacyBlock = 1;
     private const ulong MilliGasBlock = 2;
+    private const ulong AmsterdamLegacyBlock = 3;
+    private const ulong AmsterdamMilliGasBlock = 4;
     private const ulong TxGasLimit = 100_000;
 
     private static readonly Address Callee = TestItem.AddressC;
 
     private static readonly ISpecProvider Eip8053SpecProvider = new CustomSpecProvider(
         ((ForkActivation)0, new OverridableReleaseSpec(Osaka.Instance) { IsEip7778Enabled = true }),
-        ((ForkActivation)MilliGasBlock, new OverridableReleaseSpec(Osaka.Instance) { IsEip7778Enabled = true, IsEip8053Enabled = true }));
+        ((ForkActivation)MilliGasBlock, new OverridableReleaseSpec(Osaka.Instance) { IsEip7778Enabled = true, IsEip8053Enabled = true }),
+        ((ForkActivation)AmsterdamLegacyBlock, Amsterdam.Instance),
+        ((ForkActivation)AmsterdamMilliGasBlock, new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8053Enabled = true }));
 
     private VirtualMachine<IllustrativeMilliGasPolicy> _milliGasMachine = null!;
 
@@ -95,11 +100,11 @@ public class Eip8053Tests(bool traceInstructions) : VirtualMachineTestsBase
         Assert.That(result.OutputWord, Is.EqualTo((UInt256)49_998));
     }
 
-    /// <remarks>The caller keeps a 64th of its remaining gas in whole gas units: 100 of 6,400.063 gas, 1 of 100.5 gas.</remarks>
+    /// <remarks>The 63/64 rule works on whole gas units, so the child gets whole gas and the fraction stays with the caller.</remarks>
     [TestCase(6_400_063UL, 6_300UL, 6_300_000UL)]
-    [TestCase(6_400_063UL, 6_301UL, 6_300_063UL)]
-    [TestCase(100_500UL, 1_000UL, 99_500UL)]
-    public void Call_gas_is_capped_at_remaining_milli_gas_less_a_whole_gas_64th(ulong availableMilliGas, ulong requestedGas, ulong expectedChildMilliGas)
+    [TestCase(6_400_063UL, 6_301UL, 6_300_000UL)]
+    [TestCase(100_500UL, 1_000UL, 99_000UL)]
+    public void Call_forwards_whole_gas_capped_at_63_64_of_whole_gas_left(ulong availableMilliGas, ulong requestedGas, ulong expectedChildMilliGas)
     {
         IllustrativeMilliGasPolicy gas = IllustrativeMilliGasPolicy.FromULong(availableMilliGas);
 
@@ -114,7 +119,7 @@ public class Eip8053Tests(bool traceInstructions) : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Create_forwards_remaining_milli_gas_less_a_whole_gas_64th()
+    public void Create_forwards_63_64_of_whole_gas_left_and_the_caller_keeps_the_fraction()
     {
         IllustrativeMilliGasPolicy gas = IllustrativeMilliGasPolicy.FromULong(100_500);
 
@@ -122,9 +127,9 @@ public class Eip8053Tests(bool traceInstructions) : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(childGas, Is.EqualTo(99_500UL));
+            Assert.That(childGas, Is.EqualTo(99_000UL));
             Assert.That(RemainingGasUnits(IllustrativeMilliGasPolicy.FromULong(childGas)), Is.EqualTo(99UL));
-            Assert.That(gas.Value, Is.EqualTo(1_000UL));
+            Assert.That(gas.Value, Is.EqualTo(1_500UL));
         }
     }
 
@@ -275,6 +280,53 @@ public class Eip8053Tests(bool traceInstructions) : VirtualMachineTestsBase
         Assert.That(trace.Entries.Select(static entry => entry.Gas), Is.EqualTo(new ulong[] { 79_000, 78_999, 78_999, 78_999, 78_997 }));
     }
 
+    /// <remarks>
+    /// EIP-8037: three <c>JUMPDEST</c>s leave 0.7 gas of fraction. The SSTORE then spills all its state gas into
+    /// <c>gas_left</c> (the reservoir is empty below the transaction gas cap), and a reverting child returns its spilled
+    /// state gas. Both state gas steps must keep the fraction: the legacy run differs only by the repriced opcodes.
+    /// </remarks>
+    [Test]
+    public void State_gas_spill_and_revert_credit_keep_the_milli_gas_fraction()
+    {
+        DeployCallee([(byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH1, 0, (byte)Instruction.SSTORE, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.REVERT]);
+        byte[] code =
+        [
+            .. JumpDests(3),
+            (byte)Instruction.GAS,
+            (byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH1, 0, (byte)Instruction.SSTORE,
+            (byte)Instruction.GAS,
+            (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+            (byte)Instruction.PUSH20, .. Callee.Bytes,
+            (byte)Instruction.PUSH3, 0xFF, 0xFF, 0xFF,
+            (byte)Instruction.CALL, (byte)Instruction.POP,
+            (byte)Instruction.GAS, (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH1, 0x40, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 0x20, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH0, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 0x60, (byte)Instruction.PUSH0, (byte)Instruction.RETURN,
+        ];
+
+        RunResult legacy = Run(AmsterdamLegacyBlock, 1_000_000, code);
+        RunResult milliGas = Run(AmsterdamMilliGasBlock, 1_000_000, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(milliGas.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(legacy.StatusCode, Is.EqualTo(StatusCode.Success));
+            // JUMPDESTs cost 0.3 gas instead of 3, and GAS rounds 2.3 gas up to 3.
+            Assert.That(milliGas.Word(0), Is.EqualTo(legacy.Word(0) + 2));
+            // Two PUSH1 at 1.5 gas, the SSTORE's cold access and write, its whole state gas spill, then GAS.
+            Assert.That(milliGas.Word(0) - milliGas.Word(1),
+                Is.EqualTo((UInt256)(3 + Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite + (ulong)GasCostOf.SSetState + 2)));
+            // PUSH20, PUSH3 and POP in the caller and two PUSH1 in the child save 7 gas; the child's spill comes back.
+            Assert.That(legacy.Word(1) - legacy.Word(2) - (milliGas.Word(1) - milliGas.Word(2)), Is.EqualTo((UInt256)7));
+            // 22.6 gas of repriced opcodes in all, rounded once at the end. The last JUMPDEST leaves a fraction that a
+            // dropped 0.7 gas would push over a whole gas unit.
+            Assert.That(legacy.Gas.SpentGas - milliGas.Gas.SpentGas, Is.EqualTo(22UL));
+            Assert.That(milliGas.Gas.BlockStateGas, Is.EqualTo(legacy.Gas.BlockStateGas));
+        }
+    }
+
     private static readonly byte[] ReturnGas =
     [
         (byte)Instruction.GAS, (byte)Instruction.PUSH0, (byte)Instruction.MSTORE,
@@ -315,9 +367,12 @@ public class Eip8053Tests(bool traceInstructions) : VirtualMachineTestsBase
     }
 
     /// <summary>Runs <paramref name="code"/> as the recipient of a transaction and restores the state afterwards.</summary>
-    private RunResult Run(bool eip8053, byte[] code, byte[]? input = null)
+    private RunResult Run(bool eip8053, byte[] code, byte[]? input = null) =>
+        Run(eip8053 ? MilliGasBlock : LegacyBlock, TxGasLimit, code, input);
+
+    private RunResult Run(ulong blockNumber, ulong gasLimit, byte[] code, byte[]? input = null)
     {
-        (Block block, Transaction transaction) = PrepareTx((eip8053 ? MilliGasBlock : LegacyBlock, Timestamp), TxGasLimit, code, input ?? [], UInt256.Zero);
+        (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code, input ?? [], UInt256.Zero);
         Eip8053ReceiptTracer receipt = new();
         ITxTracer tracer = traceInstructions
             ? new CompositeTxTracer(receipt, new GethLikeTxMemoryTracer(transaction, GethTraceOptions.Default))
@@ -329,7 +384,9 @@ public class Eip8053Tests(bool traceInstructions) : VirtualMachineTestsBase
 
     private readonly record struct RunResult(byte StatusCode, GasConsumed Gas, byte[] Output)
     {
-        public UInt256 OutputWord => new(Output, isBigEndian: true);
+        public UInt256 OutputWord => Word(0);
+
+        public UInt256 Word(int index) => new(Output.AsSpan(index * 32, 32), isBigEndian: true);
     }
 }
 
