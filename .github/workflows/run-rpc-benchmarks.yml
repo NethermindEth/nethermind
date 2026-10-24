@@ -784,7 +784,7 @@ jobs:
       JB_CONTAINER_NAME: jsonbench-bench-${{ github.run_id }}
       RPC_PORT: "8545"
       REF_RPC_PORT: "8546"
-      # Mirrors corpus_results.BASELINE_SCHEMA (bump both together; test_workflow_contracts pins them equal).
+      # Mirrors CorpusResults.BaselineSchema (bump both together; TestWorkflowContracts.cs pins them equal).
       CORPUS_BASELINE_SCHEMA: "1"
     steps:
       - name: Set up run paths

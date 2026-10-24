@@ -69,7 +69,7 @@ jobs:
           #
           # This body is duplicated verbatim in arm-runner-maintenance.yml and in both benchmark jobs of
           # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
-          # actions/checkout, which none of the three jobs has and which arm-runner-maintenance.yml must
+          # actions/checkout, which arm-runner-maintenance.yml must
           # not depend on - it is the workflow you dispatch when the disk is full.
           # scripts/ci/TestReapStaleOverlays.cs asserts the three copies are byte-identical and drives
           # this body against synthetic mount tables.

@@ -491,7 +491,7 @@ only; production baselines come from master. `tool_config.corpus_baseline` (`non
 the presets set.
 
 `Validate the cached master baseline` runs before the sweep and drops a restored tree this run cannot
-use — one staged at a different `corpus_results.BASELINE_SCHEMA` (a staged-file schema change since
+use — one staged at a different `CorpusResults.BaselineSchema` (a staged-file schema change since
 that master push) or measured on another cell — with a `::warning::`; the sweep then measures master
 in this job, so a schema bump costs a slower run rather than an empty comment.
 
