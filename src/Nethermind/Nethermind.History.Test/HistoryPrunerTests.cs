@@ -426,7 +426,7 @@ public class HistoryPrunerTests
 
         // The production pruner reclaims the orphan receipts and body together, while preserving
         // the side-block header and WasProcessed metadata for block-hash lookups.
-        IHistoryPruner pruner = chain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner pruner = (HistoryPruner)chain.Container.Resolve<IHistoryPruner>();
         pruner.TryPruneHistory(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
