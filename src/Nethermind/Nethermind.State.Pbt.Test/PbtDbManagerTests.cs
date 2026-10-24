@@ -1527,17 +1527,33 @@ public class PbtDbManagerTests
         string path = Path.Combine(Path.GetTempPath(), "pbt-flat-differential-" + Guid.NewGuid().ToString("N"));
         PbtConfig pbtConfig = new()
         {
-            Enabled = true, EnableLongFinality = longFinality, CompactSize = 4, CompactionOffset = offset,
-            MinReorgDepth = 2, MaxReorgDepth = 6, LongFinalityMaxReorgDepth = 32,
-            MaxInMemoryBaseSnapshotCount = memoryLimit, MaxInMemorySnapshotBytes = bytePressure ? 1UL : 0UL, ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576, PersistedSnapshotArenaPageCacheBytes = 0,
+            Enabled = true,
+            EnableLongFinality = longFinality,
+            CompactSize = 4,
+            CompactionOffset = offset,
+            MinReorgDepth = 2,
+            MaxReorgDepth = 6,
+            LongFinalityMaxReorgDepth = 32,
+            MaxInMemoryBaseSnapshotCount = memoryLimit,
+            MaxInMemorySnapshotBytes = bytePressure ? 1UL : 0UL,
+            ArenaFileSizeBytes = 1048576,
+            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
+            PersistedSnapshotArenaPageCacheBytes = 0,
         };
         FlatDbConfig flatConfig = new()
         {
-            Enabled = true, EnableLongFinality = longFinality, CompactSize = 4, CompactionOffset = offset,
-            MinReorgDepth = 2, MaxReorgDepth = 6, LongFinalityMaxReorgDepth = 32,
-            MaxInMemoryBaseSnapshotCount = memoryLimit, MaxInMemorySnapshotBytes = bytePressure ? 1UL : 0UL, ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576, PersistedSnapshotArenaPageCacheBytes = 0,
+            Enabled = true,
+            EnableLongFinality = longFinality,
+            CompactSize = 4,
+            CompactionOffset = offset,
+            MinReorgDepth = 2,
+            MaxReorgDepth = 6,
+            LongFinalityMaxReorgDepth = 32,
+            MaxInMemoryBaseSnapshotCount = memoryLimit,
+            MaxInMemorySnapshotBytes = bytePressure ? 1UL : 0UL,
+            ArenaFileSizeBytes = 1048576,
+            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
+            PersistedSnapshotArenaPageCacheBytes = 0,
         };
         PbtTestContext.TestFinalizedStateProvider finality = new() { FinalizedBlockNumber = (ulong)finalized };
         for (ulong height = 0; height <= (ulong)finalized; height++) finality.SetCanonicalRoot(height, TestItem.KeccakA);
