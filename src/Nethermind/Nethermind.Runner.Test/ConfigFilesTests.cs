@@ -17,6 +17,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
@@ -224,11 +225,14 @@ public class ConfigFilesTests : ConfigFileTestsBase
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
             .LoadEmbeddedOrFromFile(initConfig.ChainSpecPath);
+        TestLogger logger = new();
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider, chainSpec, useTestSpecProvider: false))
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .Build();
 
         Assert.That(container.Resolve<INetworkConfig>().Bootnodes.Select(static node => node.ToString()), Does.Contain(bootnode));
+        Assert.That(logger.LogList, Has.Some.Contains("Discovery.Bootnodes is deprecated"));
     }
 
     [TestCase("sepolia.json", 5)]
