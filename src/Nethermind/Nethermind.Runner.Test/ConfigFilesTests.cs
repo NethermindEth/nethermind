@@ -17,6 +17,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
@@ -213,6 +214,25 @@ public class ConfigFilesTests : ConfigFileTestsBase
             Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
             Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
         }
+    }
+
+    [Test]
+    public void Deprecated_discovery_bootnodes_are_merged_into_network_bootnodes()
+    {
+        const string bootnode = "enode://04fb7acb86f47b64298374b5ccb3c2959f1e5e9362158e50e0793c261518ffe83759d8295ca4a88091d4726d5f85e6276d53ae9ef4f35b8c4c0cc6b99c8c0537@40.70.214.166:40303";
+        ConfigProvider configProvider = GetConfigProvider("hoodi.json");
+        configProvider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["Discovery.Bootnodes"] = bootnode }));
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile(initConfig.ChainSpecPath);
+        TestLogger logger = new();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider, chainSpec, useTestSpecProvider: false))
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+            .Build();
+
+        Assert.That(container.Resolve<INetworkConfig>().Bootnodes.Select(static node => node.ToString()), Does.Contain(bootnode));
+        Assert.That(logger.LogList, Has.Some.Contains("Discovery.Bootnodes is deprecated"));
     }
 
     [TestCase("sepolia.json", 5)]
