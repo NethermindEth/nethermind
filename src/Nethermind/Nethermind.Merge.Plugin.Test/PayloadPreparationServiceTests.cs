@@ -343,6 +343,10 @@ public class PayloadPreparationServiceTests
             TimeSpan.FromMilliseconds(1));
     }
 
+    private static TestPayloadPreparationService CreateService(IBlockProducer producer) =>
+        new(producer, Substitute.For<ITxPool>(), new BlockImprovementContextFactory(producer, TimePerSlot),
+            Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
+
     [Test]
     [CancelAfter(30000)]
     public async Task StartPreparingPayload_does_not_wait_for_the_empty_block()
@@ -354,8 +358,7 @@ public class PayloadPreparationServiceTests
             .Returns(emptyBuild.Task);
         producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>())
             .Returns(new TaskCompletionSource<Block?>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
-        using TestPayloadPreparationService service = new(producer, Substitute.For<ITxPool>(),
-            new BlockImprovementContextFactory(producer, TimePerSlot), Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
+        using TestPayloadPreparationService service = CreateService(producer);
 
         try
         {
@@ -374,6 +377,68 @@ public class PayloadPreparationServiceTests
         {
             emptyBuild.TrySetResult(empty);
         }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task Failed_empty_block_still_starts_the_improvement()
+    {
+        Block improved = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<Block?>(new InvalidOperationException()));
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>())
+            .Returns(improved);
+        using TestPayloadPreparationService service = CreateService(producer);
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+
+        Assert.That((await service.GetPayload(payloadId, skipCancel: true))?.CurrentBestBlock, Is.SameAs(improved));
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task CancelBlockProduction_stops_a_build_whose_empty_block_is_pending()
+    {
+        TaskCompletionSource<Block?> emptyBuild = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<CancellationToken> emptyBuildToken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Do<CancellationToken>(t => emptyBuildToken.TrySetResult(t)))
+            .Returns(emptyBuild.Task);
+        using TestPayloadPreparationService service = CreateService(producer);
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        CancellationToken token = await emptyBuildToken.Task.WaitAsync(WaitTimeout);
+        service.CancelBlockProduction(payloadId);
+        bool emptyBuildCancelled = token.IsCancellationRequested;
+        emptyBuild.SetResult(Build.A.Block.WithNumber(1).TestObject);
+        IBlockProductionContext? payload = await service.GetPayload(payloadId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(emptyBuildCancelled, Is.True);
+            Assert.That(payload, Is.Null);
+            _ = producer.DidNotReceive().BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>());
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task StartPreparingPayload_does_not_build_a_published_payload_again()
+    {
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>())
+            .Returns(Build.A.Block.WithNumber(1).TestObject);
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>())
+            .Returns(new TaskCompletionSource<Block?>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        using TestPayloadPreparationService service = CreateService(producer);
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        Assert.That(() => service.Stored(payloadId), Is.Not.Null.After(5000, 10));
+        service.StartPreparingPayload(ParentHeader, Attributes);
+        await service.GetPayload(payloadId);
+
+        _ = producer.Received(1).BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>());
     }
 
     [Test]
