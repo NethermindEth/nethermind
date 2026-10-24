@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -22,6 +21,7 @@ using Nethermind.Network;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Logging.Microsoft;
+using Nethermind.Network.Libp2p;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 
@@ -29,6 +29,8 @@ namespace Nethermind.Shutter;
 
 public class ShutterP2P : IShutterP2P
 {
+    private const string DecryptionKeysTopic = "decryptionKeys";
+
     private readonly ILogger _logger;
     private readonly IShutterConfig _cfg;
     private readonly Channel<byte[]> _msgQueue = System.Threading.Channels.Channel.CreateBounded<byte[]>(1000);
@@ -45,6 +47,12 @@ public class ShutterP2P : IShutterP2P
 
 
     public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IIPResolver ipResolver)
+        : this(shutterConfig, logManager, fileSystem, keyStoreConfig, ipResolver, configureGossip: null)
+    {
+    }
+
+    internal ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IIPResolver ipResolver,
+        Action<PubsubSettings>? configureGossip)
     {
         _logger = logManager.GetClassLogger<ShutterP2P>();
         _cfg = shutterConfig;
@@ -52,6 +60,9 @@ public class ShutterP2P : IShutterP2P
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
         DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
 
+        PubsubPeerDiscoverySettings discoverySettings = new() { Interval = 300 };
+        PubsubSettings pubsubSettings = CreatePubsubSettings();
+        configureGossip?.Invoke(pubsubSettings);
         IServiceCollection serviceCollection = new ServiceCollection()
             .AddLibp2p(builder => builder.WithPubsub())
             .AddSingleton(new IdentifyProtocolSettings
@@ -59,14 +70,7 @@ public class ShutterP2P : IShutterP2P
                 ProtocolVersion = _cfg.P2PProtocolVersion,
                 AgentVersion = ProductInfo.ClientId
             })
-            .AddSingleton(new PubsubSettings()
-            {
-                ReconnectionAttempts = int.MaxValue,
-                Degree = 3,
-                LowestDegree = 2,
-                HighestDegree = 6,
-                LazyDegree = 3
-            });
+            .AddSingleton(pubsubSettings);
 
         if (_cfg.P2PLogsEnabled)
         {
@@ -88,15 +92,25 @@ public class ShutterP2P : IShutterP2P
         Identity identity = GetPeerIdentity(fileSystem, _cfg, keyStoreConfig);
         _peer = peerFactory.Create(identity);
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
-        _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
-        ITopic topic = _router.GetTopic("decryptionKeys");
+        _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, discoverySettings, _peer);
+        ITopic topic = _router.GetTopic(DecryptionKeysTopic);
 
-        topic.OnMessage += (byte[] msg) =>
+        topic.OnMessage += (_, msg) =>
         {
             _msgQueue.Writer.TryWrite(msg);
             if (_logger.IsTrace) _logger.Trace("Received Shutter P2P message.");
         };
     }
+
+    /// <summary>The gossipsub parameters of the key and peer discovery topics.</summary>
+    internal static PubsubSettings CreatePubsubSettings() => new()
+    {
+        ReconnectionAttempts = int.MaxValue,
+        Degree = 3,
+        LowestDegree = 2,
+        HighestDegree = 6,
+        LazyDegree = 3,
+    };
 
     public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken)
     {
@@ -151,9 +165,15 @@ public class ShutterP2P : IShutterP2P
         }
     }
 
+    internal ILocalPeer PeerForTest => _peer;
+
+    internal IRoutingStateContainer RoutingStateForTest => _router;
+
     public async ValueTask DisposeAsync()
     {
         _router?.UnsubscribeAll();
+        // Disposing through ILocalPeer marks the peer closed before it disconnects, so a dial that completes later is closed too.
+        await _peer.DisposeAsync();
         await (_serviceProvider?.DisposeAsync() ?? default);
     }
 

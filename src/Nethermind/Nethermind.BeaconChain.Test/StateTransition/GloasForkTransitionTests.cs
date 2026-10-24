@@ -1,0 +1,408 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Security.Cryptography;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.BeaconChain.Test.Crypto;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
+using Nethermind.Int256;
+using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
+
+namespace Nethermind.BeaconChain.Test.StateTransition;
+
+[HardTimeout(60_000)]
+public class GloasForkTransitionTests
+{
+    private const ulong Gwei = 1_000_000_000;
+    // PTC sampling needs a nonempty committee at every slot.
+    private const int ValidatorCount = 2048;
+    private static readonly byte[] GloasVersion = Bytes.FromHexString("0x07000000");
+    // PAYLOAD_BUILDER_VERSION, Uint8(0) in specs/gloas/beacon-chain.md.
+    private const byte PayloadBuilderVersion = 0;
+
+    [Test]
+    public void UpgradeToGloas_preserves_the_fields_the_spec_says_carry_over()
+    {
+        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
+
+        pre.Slot = 64;
+        pre.Eth1DepositIndex = 7;
+        pre.NextWithdrawalIndex = 11;
+        pre.NextWithdrawalValidatorIndex = 13;
+        pre.DepositRequestsStartIndex = 17;
+        BeaconChainSpec spec = SyntheticSpec();
+
+        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.GenesisTime, Is.EqualTo(pre.GenesisTime));
+        Assert.That(post.GenesisValidatorsRoot, Is.EqualTo(pre.GenesisValidatorsRoot));
+        Assert.That(post.Slot, Is.EqualTo(pre.Slot));
+        Assert.That(post.LatestBlockHeader, Is.SameAs(pre.LatestBlockHeader));
+        Assert.That(post.BlockRoots, Is.SameAs(pre.BlockRoots));
+        Assert.That(post.StateRoots, Is.SameAs(pre.StateRoots));
+        Assert.That(post.Eth1Data, Is.SameAs(pre.Eth1Data));
+        Assert.That(post.Eth1DepositIndex, Is.EqualTo(pre.Eth1DepositIndex));
+        Assert.That(post.Validators, Is.SameAs(pre.Validators));
+        Assert.That(post.Balances, Is.SameAs(pre.Balances));
+        Assert.That(post.RandaoMixes, Is.SameAs(pre.RandaoMixes));
+        Assert.That(post.Slashings, Is.SameAs(pre.Slashings));
+        Assert.That(post.JustificationBits, Is.SameAs(pre.JustificationBits));
+        Assert.That(post.PreviousJustifiedCheckpoint, Is.SameAs(pre.PreviousJustifiedCheckpoint));
+        Assert.That(post.CurrentJustifiedCheckpoint, Is.SameAs(pre.CurrentJustifiedCheckpoint));
+        Assert.That(post.FinalizedCheckpoint, Is.SameAs(pre.FinalizedCheckpoint));
+        Assert.That(post.InactivityScores, Is.SameAs(pre.InactivityScores));
+        Assert.That(post.CurrentSyncCommittee, Is.SameAs(pre.CurrentSyncCommittee));
+        Assert.That(post.NextSyncCommittee, Is.SameAs(pre.NextSyncCommittee));
+        Assert.That(post.NextWithdrawalIndex, Is.EqualTo(pre.NextWithdrawalIndex));
+        Assert.That(post.NextWithdrawalValidatorIndex, Is.EqualTo(pre.NextWithdrawalValidatorIndex));
+        Assert.That(post.PendingPartialWithdrawals, Is.SameAs(pre.PendingPartialWithdrawals));
+        Assert.That(post.PendingConsolidations, Is.SameAs(pre.PendingConsolidations));
+        Assert.That(post.ProposerLookahead, Is.SameAs(pre.ProposerLookahead));
+        Assert.That(post.DepositRequestsStartIndex, Is.EqualTo(pre.DepositRequestsStartIndex));
+        Assert.That(post.EarliestExitEpoch, Is.EqualTo(pre.EarliestExitEpoch));
+        Assert.That(post.EarliestConsolidationEpoch, Is.EqualTo(pre.EarliestConsolidationEpoch));
+    }
+
+    [Test]
+    public void UpgradeToGloas_initialises_the_new_fields_to_the_specs_values()
+    {
+        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
+        // Every bid source differs from every other candidate, so a bid field read from the wrong one
+        // fails: the last block (slot 62) precedes the fork-boundary state slot 64 across missed slots.
+        pre.Slot = 64;
+        pre.LatestExecutionPayloadHeader = new ExecutionPayloadHeader
+        {
+            ParentHash = Hash(0x10),
+            FeeRecipient = new Address(Hash(0x14).Bytes[12..]),
+            StateRoot = Hash(0x15),
+            ReceiptsRoot = Hash(0x16),
+            BlockHash = Hash(0x11),
+            PrevRandao = Hash(0x12),
+            BlockNumber = 61,
+            GasLimit = 36_000_000,
+            GasUsed = 21_000_000,
+        };
+        pre.LatestBlockHeader = new BeaconBlockHeader { Slot = 62, ProposerIndex = 3, ParentRoot = Hash(0x13), StateRoot = Hash(0x17), BodyRoot = Hash(0x18) };
+        BeaconChainSpec spec = SyntheticSpec();
+
+        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.LatestBlockHash, Is.EqualTo(pre.LatestExecutionPayloadHeader.BlockHash));
+        Assert.That(post.Builders, Is.Empty);
+        Assert.That(post.NextWithdrawalBuilderIndex, Is.EqualTo(0ul));
+        Assert.That(post.BuilderPendingWithdrawals, Is.Empty);
+        Assert.That(post.PayloadExpectedWithdrawals, Is.Empty);
+        Assert.That(post.BuilderPendingPayments, Has.Length.EqualTo((int)Presets.BuilderPendingPaymentsLength));
+        Assert.That(post.BuilderPendingPayments!.All(static p => p.Weight == 0 && p.ProposerIndex == 0), Is.True);
+        Assert.That(post.PtcWindow, Has.Length.EqualTo((int)Presets.PtcWindowLength));
+
+        BitArrayAllTrue(post.ExecutionPayloadAvailability!, (int)Presets.SlotsPerHistoricalRoot);
+
+        ExecutionPayloadBid bid = post.LatestExecutionPayloadBid!;
+        Assert.That(bid.ParentBlockHash, Is.EqualTo(pre.LatestExecutionPayloadHeader.ParentHash));
+        Assert.That(bid.ParentBlockRoot, Is.EqualTo(pre.LatestBlockHeader.ParentRoot));
+        Assert.That(bid.BlockHash, Is.EqualTo(pre.LatestExecutionPayloadHeader.BlockHash));
+        Assert.That(bid.PrevRandao, Is.EqualTo(pre.LatestExecutionPayloadHeader.PrevRandao));
+        Assert.That(bid.GasLimit, Is.EqualTo(pre.LatestExecutionPayloadHeader.GasLimit));
+        Assert.That(bid.BuilderIndex, Is.EqualTo(Presets.BuilderIndexSelfBuild));
+        Assert.That(bid.FeeRecipient, Is.EqualTo(Address.Zero));
+        Assert.That(bid.Slot, Is.EqualTo(62ul), "the bid's slot is latest_block_header.slot, not the state slot");
+        Assert.That(bid.Value, Is.EqualTo(0ul));
+        Assert.That(bid.ExecutionPayment, Is.EqualTo(0ul));
+        Assert.That(bid.BlobKzgCommitments, Is.Empty);
+    }
+
+    // initialize_ptc_window's empty previous epoch is explicit zero vectors (specs/gloas/fork.md); the
+    // upgrade leaves those entries' Indices null, so root and encoding must not tell the two apart.
+    [Test]
+    public void A_ptc_with_null_indices_hashes_and_encodes_as_an_explicit_zero_vector()
+    {
+        PayloadTimelinessCommittee nullCommittee = new();
+        PayloadTimelinessCommittee zeroCommittee = new() { Indices = new ulong[(int)Presets.PtcSize] };
+        PayloadTimelinessCommittee[] nullWindow = [.. Enumerable.Range(0, (int)Presets.PtcWindowLength).Select(static _ => new PayloadTimelinessCommittee())];
+        PayloadTimelinessCommittee[] zeroWindow = [.. Enumerable.Range(0, (int)Presets.PtcWindowLength).Select(static _ => new PayloadTimelinessCommittee { Indices = new ulong[(int)Presets.PtcSize] })];
+
+        PayloadTimelinessCommittee.MerkleizeVector(nullWindow, out UInt256 nullWindowRoot);
+        PayloadTimelinessCommittee.MerkleizeVector(zeroWindow, out UInt256 zeroWindowRoot);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(SszRoots.HashTreeRoot(nullCommittee), Is.EqualTo(SszRoots.HashTreeRoot(zeroCommittee)));
+        Assert.That(PayloadTimelinessCommittee.Encode(nullCommittee), Is.EqualTo(PayloadTimelinessCommittee.Encode(zeroCommittee)));
+        Assert.That(nullWindowRoot, Is.EqualTo(zeroWindowRoot));
+        Assert.That(PayloadTimelinessCommittee.Encode(nullWindow), Is.EqualTo(PayloadTimelinessCommittee.Encode(zeroWindow)));
+    }
+
+    // get_index_for_new_builder (specs/gloas/beacon-chain.md): a slot is reusable from its withdrawable
+    // epoch on, and only once drained; otherwise the new builder is appended after the active one.
+    [TestCase(5ul, 0ul, 0ul, TestName = "withdrawable_this_epoch_and_drained_is_reused")]
+    [TestCase(4ul, 0ul, 0ul, TestName = "withdrawable_before_this_epoch_and_drained_is_reused")]
+    [TestCase(6ul, 0ul, 2ul, TestName = "withdrawable_next_epoch_is_not_reused")]
+    [TestCase(5ul, 1ul, 2ul, TestName = "withdrawable_but_not_drained_is_not_reused")]
+    public void GetIndexForNewBuilder_reuses_only_a_withdrawable_drained_slot(ulong withdrawableEpoch, ulong balance, ulong expectedIndex)
+    {
+        const ulong currentEpoch = 5;
+        Builder[] builders =
+        [
+            new() { WithdrawableEpoch = withdrawableEpoch, Balance = balance },
+            new() { WithdrawableEpoch = Presets.FarFutureEpoch, Balance = 32 * Gwei },
+        ];
+
+        Assert.That(GloasForkTransition.GetIndexForNewBuilder(builders, currentEpoch), Is.EqualTo(expectedIndex));
+    }
+
+    // onboard_builders_from_pending_deposits (specs/gloas/fork.md): a later deposit for a builder already
+    // onboarded from this queue tops up its balance only, with no signature check, and leaves the queue.
+    [Test]
+    public void UpgradeToGloas_tops_up_a_builder_onboarded_earlier_in_the_same_queue([Values] bool customNetwork)
+    {
+        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
+        BeaconChainSpec spec = customNetwork ? SyntheticSpec() with { Forks = NetworkSigningDomainTests.CustomSigningSpec.Forks, GenesisValidatorsRoot = NetworkSigningDomainTests.CustomSigningSpec.GenesisValidatorsRoot } : SyntheticSpec();
+        pre.GenesisValidatorsRoot = spec.GenesisValidatorsRoot;
+        pre.Slot = 64;
+        Bls.SecretKey sk = DeriveKey(101);
+        Hash256 withdrawalCredentials = BuilderWithdrawalCredentials(0xAB);
+        (BlsPublicKey pubkey, BlsSignature signature) = SignDeposit(sk, withdrawalCredentials, 32 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
+        Hash256 otherCredentials = BuilderWithdrawalCredentials(0xAC);
+        (BlsPublicKey otherPubkey, BlsSignature otherSignature) = SignDeposit(DeriveKey(102), otherCredentials, 32 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
+        Hash256 lastCredentials = BuilderWithdrawalCredentials(0xAF);
+        (BlsPublicKey lastPubkey, BlsSignature lastSignature) = SignDeposit(DeriveKey(107), lastCredentials, 32 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
+        // The top-up differs from the onboarding deposit in slot epoch and credentials, so a field taken from it shows,
+        // and it targets the middle of three builders, so only a lookup by pubkey credits the right one.
+        pre.PendingDeposits =
+        [
+            new PendingDeposit { Pubkey = otherPubkey, WithdrawalCredentials = otherCredentials, Amount = 32 * Gwei, Signature = otherSignature, Slot = 40 },
+            new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = 32 * Gwei, Signature = signature, Slot = 40 },
+            new PendingDeposit { Pubkey = lastPubkey, WithdrawalCredentials = lastCredentials, Amount = 32 * Gwei, Signature = lastSignature, Slot = 40 },
+            new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = BuilderWithdrawalCredentials(0xCD), Amount = 5 * Gwei, Signature = Signature(0xDE), Slot = 10 },
+        ];
+
+        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.PendingDeposits, Is.Empty);
+        Assert.That(post.Builders!.Select(static b => b.Pubkey), Is.EqualTo(new[] { otherPubkey, pubkey, lastPubkey }).AsCollection);
+        Assert.That(post.Builders!.Select(static b => b.Balance), Is.EqualTo(new[] { 32 * Gwei, 37 * Gwei, 32 * Gwei }).AsCollection);
+        Builder builder = post.Builders![1];
+        Assert.That(builder.Pubkey, Is.EqualTo(pubkey));
+        Assert.That(builder.Version, Is.EqualTo(PayloadBuilderVersion));
+        Assert.That(builder.ExecutionAddress, Is.EqualTo(new Address(withdrawalCredentials.Bytes[12..])));
+        Assert.That(builder.DepositEpoch, Is.EqualTo(1ul), "slot 40 of the onboarding deposit, not slot 10 of the top-up");
+        Assert.That(builder.WithdrawableEpoch, Is.EqualTo(Presets.FarFutureEpoch));
+    }
+
+    // is_pending_validator keeps builder deposits only behind an earlier valid same-pubkey deposit (specs/gloas/beacon-chain.md).
+    [TestCase(true, true, false, true, false, false, TestName = "valid_earlier_deposit_for_the_pubkey_keeps_the_builder_deposit")]
+    [TestCase(true, false, false, true, true, false, TestName = "invalid_earlier_deposit_for_the_pubkey_does_not_block_onboarding")]
+    [TestCase(false, true, false, true, true, false, TestName = "valid_earlier_deposit_for_another_pubkey_does_not_block_onboarding")]
+    [TestCase(true, true, true, true, false, false, TestName = "valid_earlier_deposit_after_an_invalid_one_for_the_pubkey_keeps_the_builder_deposit")]
+    // is_pending_validator runs before the builder deposit's signature check (specs/gloas/fork.md), so the invalid deposit is kept, not dropped.
+    [TestCase(true, true, false, false, false, false, TestName = "valid_earlier_deposit_for_the_pubkey_keeps_an_invalidly_signed_builder_deposit")]
+    [TestCase(true, true, false, true, false, true, TestName = "custom_network_valid_validator_deposit_prevents_builder_onboarding")]
+    [TestCase(true, false, false, true, true, true, TestName = "custom_network_invalid_validator_deposit_allows_builder_onboarding")]
+    public void UpgradeToGloas_onboards_a_builder_deposit_unless_a_validator_deposit_is_pending_for_its_pubkey(bool samePubkey, bool validSignature, bool precededByInvalid, bool validBuilderSignature, bool expectBuilder, bool customNetwork)
+    {
+        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
+        BeaconChainSpec spec = customNetwork ? SyntheticSpec() with { Forks = NetworkSigningDomainTests.CustomSigningSpec.Forks, GenesisValidatorsRoot = NetworkSigningDomainTests.CustomSigningSpec.GenesisValidatorsRoot } : SyntheticSpec();
+        pre.GenesisValidatorsRoot = spec.GenesisValidatorsRoot;
+        Bls.SecretKey builderKey = DeriveKey(103);
+        Bls.SecretKey validatorKey = samePubkey ? builderKey : DeriveKey(104);
+        Hash256 validatorCredentials = EthWithdrawalCredentials(0x11);
+        (BlsPublicKey validatorPubkey, BlsSignature validatorSignature) = SignDeposit(validatorKey, validatorCredentials, validSignature ? 32 * Gwei : 1 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
+        Hash256 builderCredentials = BuilderWithdrawalCredentials(0xAD);
+        (BlsPublicKey builderPubkey, BlsSignature builderSignature) = SignDeposit(builderKey, builderCredentials, validBuilderSignature ? 32 * Gwei : 1 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
+        // Signed over 1 ETH while the deposit claims 32 ETH, so the signature is invalid.
+        (_, BlsSignature invalidSignature) = SignDeposit(validatorKey, validatorCredentials, 1 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
+        BlsSignature[] validatorSignatures = precededByInvalid ? [invalidSignature, validatorSignature] : [validatorSignature];
+        pre.PendingDeposits =
+        [
+            .. validatorSignatures.Select(s => new PendingDeposit { Pubkey = validatorPubkey, WithdrawalCredentials = validatorCredentials, Amount = 32 * Gwei, Signature = s, Slot = pre.Slot }),
+            new PendingDeposit { Pubkey = builderPubkey, WithdrawalCredentials = builderCredentials, Amount = 32 * Gwei, Signature = builderSignature, Slot = pre.Slot },
+        ];
+
+        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.Builders!.Select(static b => b.Pubkey), Is.EqualTo(expectBuilder ? new[] { builderPubkey } : []).AsCollection);
+        Assert.That(post.PendingDeposits!.Select(static d => d.Signature), Is.EqualTo(expectBuilder ? validatorSignatures : [.. validatorSignatures, builderSignature]).AsCollection,
+            "the validator deposits always stay; the builder deposit stays only while a validator is pending");
+    }
+
+    // onboard_builders_from_pending_deposits (specs/gloas/fork.md) checks the builder registry before the credentials,
+    // so a later 0x01 deposit for an onboarded builder's pubkey tops the builder up instead of staying queued.
+    [Test]
+    public void UpgradeToGloas_tops_up_a_builder_from_a_later_validator_deposit_for_its_pubkey()
+    {
+        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
+        Bls.SecretKey sk = DeriveKey(105);
+        Hash256 builderCredentials = BuilderWithdrawalCredentials(0xAE);
+        Hash256 validatorCredentials = EthWithdrawalCredentials(0x12);
+        (BlsPublicKey pubkey, BlsSignature builderSignature) = SignDeposit(sk, builderCredentials, 32 * Gwei);
+        (_, BlsSignature validatorSignature) = SignDeposit(sk, validatorCredentials, 3 * Gwei);
+        pre.PendingDeposits =
+        [
+            new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = builderCredentials, Amount = 32 * Gwei, Signature = builderSignature, Slot = pre.Slot },
+            new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = validatorCredentials, Amount = 3 * Gwei, Signature = validatorSignature, Slot = pre.Slot },
+        ];
+
+        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.PendingDeposits, Is.Empty);
+        Assert.That(post.Builders, Has.Length.EqualTo(1));
+        Assert.That(post.Builders![0].Balance, Is.EqualTo(35 * Gwei));
+    }
+
+    // Independent compute_ptc oracle (specs/gloas/beacon-chain.md):8192validators yield two committees/slot; distinct mixes and32â€“2048ETH balances exercise seed and weighting.
+    [Test]
+    public void UpgradeToGloas_fills_the_ptc_window_with_the_spec_committee_of_each_slot()
+    {
+        BeaconStateFulu pre = CreateState(validatorCount: 8192);
+        pre.Slot = 64;
+        for (int i = 0; i < pre.RandaoMixes!.Length; i++)
+            pre.RandaoMixes[i] = Keccak.Compute(BitConverter.GetBytes(i));
+        for (int i = 0; i < pre.Validators!.Length; i++)
+            pre.Validators[i].EffectiveBalance = (ulong)(1 + i % 64) * 32 * Gwei;
+        ulong currentEpoch = pre.GetCurrentEpoch();
+
+        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
+
+        int slotsPerEpoch = (int)Presets.SlotsPerEpoch;
+        Assert.That(post.PtcWindow, Has.Length.EqualTo(3 * slotsPerEpoch));
+        for (int i = 0; i < 2 * slotsPerEpoch; i++)
+        {
+            ulong slot = currentEpoch * Presets.SlotsPerEpoch + (ulong)i;
+            Assert.That(post.PtcWindow![slotsPerEpoch + i].Indices, Is.EqualTo(SpecComputePtc(pre, slot)).AsCollection, $"PTC of slot {slot}");
+        }
+    }
+
+    // Spec compute_ptc oracle; candidate committees use production Fulu shuffling, covered separately by official vectors.
+    private static ulong[] SpecComputePtc(BeaconStateFulu state, ulong slot)
+    {
+        ulong epoch = slot / Presets.SlotsPerEpoch;
+        // get_seed(state, epoch, DOMAIN_PTC_ATTESTER): the mix of epoch + EPOCHS_PER_HISTORICAL_VECTOR - MIN_SEED_LOOKAHEAD - 1.
+        byte[] seedPreimage = [0x0C, 0x00, 0x00, 0x00, .. BitConverter.GetBytes(epoch), .. state.RandaoMixes![(int)((epoch + Presets.EpochsPerHistoricalVector - Presets.MinSeedLookahead - 1) % Presets.EpochsPerHistoricalVector)].Bytes];
+        byte[] seed = SHA256.HashData([.. SHA256.HashData(seedPreimage), .. BitConverter.GetBytes(slot)]);
+
+        CommitteeCache committees = CommitteeCache.Build(state, epoch);
+        List<int> indices = [];
+        for (int i = 0; i < committees.CommitteesPerSlot; i++)
+            indices.AddRange(committees.GetBeaconCommittee(slot, i).ToArray());
+        Assert.That(committees.CommitteesPerSlot, Is.GreaterThan(1), "fixture bug: the candidates must span several committees");
+
+        // compute_balance_weighted_selection(state, indices, seed, size=PTC_SIZE, shuffle_indices=False)
+        const ulong MaxRandomValue = 65535;
+        const ulong MaxEffectiveBalanceElectra = 2048 * Gwei;
+        List<ulong> selected = [];
+        byte[] randomBytes = [];
+        for (ulong i = 0; selected.Count < (int)Presets.PtcSize; i++)
+        {
+            ulong offset = i % 16 * 2;
+            if (offset == 0)
+                randomBytes = SHA256.HashData([.. seed, .. BitConverter.GetBytes(i / 16)]);
+            int candidate = indices[(int)(i % (ulong)indices.Count)];
+            ulong randomValue = BitConverter.ToUInt16(randomBytes, (int)offset);
+            if (state.Validators![candidate].EffectiveBalance * MaxRandomValue >= MaxEffectiveBalanceElectra * randomValue)
+                selected.Add((ulong)candidate);
+        }
+
+        return [.. selected];
+    }
+
+    // compute_balance_weighted_selection (specs/gloas/beacon-chain.md) accepts when effective_balance * MAX_RANDOM_VALUE >= MAX_EFFECTIVE_BALANCE_ELECTRA * random_value,
+    // so a 2048 ETH candidate is taken even on the largest draw 0xFFFF; sha256(seed + uint64_le(0)) starts with 0xFFFF for this seed.
+    [Test]
+    public void ComputeBalanceWeightedSelection_takes_a_max_balance_candidate_on_the_largest_random_value()
+    {
+        byte[] seed = Bytes.FromHexString("0xe4082e9976bcd4e72849ec03e52eabdd679edb9438bf328799039a48c26cbd66");
+        Validator[] validators = [.. Enumerable.Range(0, 2).Select(static _ => new Validator { EffectiveBalance = 2048 * Gwei })];
+
+        int[] selected = GloasForkTransition.ComputeBalanceWeightedSelection(validators, [0, 1], seed, size: 1, shuffleIndices: false);
+
+        Assert.That(selected, Is.EqualTo(new[] { 0 }).AsCollection, "the first draw takes candidate 0; rejecting it would move on to candidate 1");
+    }
+
+    // Valid signatures isolate the existing-validator and credential-prefix checks; invalid builder signatures are dropped outright.
+    [TestCase(Presets.BuilderWithdrawalPrefix, true, false, TestName = "UpgradeToGloas_leaves_a_pending_deposit_for_an_existing_validator_in_the_queue")]
+    [TestCase(Presets.BuilderWithdrawalPrefix, false, true, TestName = "UpgradeToGloas_drops_a_builder_prefixed_deposit_with_an_invalid_signature")]
+    [TestCase(Presets.BlsWithdrawalPrefix, false, false, TestName = "UpgradeToGloas_keeps_a_non_builder_prefixed_deposit_for_a_new_pubkey_in_the_queue(0)")]
+    [TestCase(Presets.EthWithdrawalPrefix, false, false, TestName = "UpgradeToGloas_keeps_a_non_builder_prefixed_deposit_for_a_new_pubkey_in_the_queue(1)")]
+    [TestCase(Presets.CompoundingWithdrawalPrefix, false, false, TestName = "UpgradeToGloas_keeps_a_non_builder_prefixed_deposit_for_a_new_pubkey_in_the_queue(2)")]
+    public void UpgradeToGloas_does_not_onboard_a_deposit_with_an_existing_validator_invalid_signature_or_non_builder_prefix(
+        byte prefix, bool existingValidator, bool invalidSignature)
+    {
+        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
+        Hash256 withdrawalCredentials = PrefixedCredentials(prefix, existingValidator ? (byte)0xAC : invalidSignature ? (byte)0xBB : (byte)0xEE);
+        (BlsPublicKey pubkey, BlsSignature signature) = invalidSignature
+            ? (Pubkey(0xCC), Signature(0xDD))
+            : SignDeposit(DeriveKey(existingValidator ? 102 : 106), withdrawalCredentials, 32 * Gwei);
+        if (existingValidator)
+            pre.Validators![0].Pubkey = pubkey;
+        pre.PendingDeposits = [new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = 32 * Gwei, Signature = signature, Slot = pre.Slot }];
+
+        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.Builders, Is.Empty);
+        Assert.That(post.PendingDeposits, Has.Length.EqualTo(invalidSignature ? 0 : 1),
+            "invalid builder signatures are dropped; existing validators and non-builder credentials stay queued");
+        if (existingValidator)
+            Assert.That(post.PendingDeposits![0].Pubkey, Is.EqualTo(pubkey));
+    }
+
+    private static void BitArrayAllTrue(System.Collections.BitArray bits, int length)
+    {
+        Assert.That(bits.Length, Is.EqualTo(length));
+        for (int i = 0; i < length; i++)
+            Assert.That(bits[i], Is.True, $"bit {i} must be set: every historical slot starts marked payload-delivered");
+    }
+
+    private static BeaconChainSpec SyntheticSpec() => GloasTestFixtures.SyntheticSpec(0, GloasVersion);
+
+    private static BeaconStateFulu CreateState(int validatorCount)
+    {
+        BeaconStateFulu state = CreateFuluState(validatorCount);
+        state.GenesisValidatorsRoot = Hash(0x01);
+        state.BlockRoots = null;
+        state.StateRoots = null;
+        state.HistoricalRoots = null;
+        state.Eth1DataVotes = null;
+        state.FinalizedCheckpoint!.Epoch = 0;
+        state.JustificationBits = null;
+        state.CurrentSyncCommittee!.Pubkeys = null;
+        state.NextSyncCommittee!.Pubkeys = null;
+        state.PendingDeposits = null;
+        state.PendingPartialWithdrawals = null;
+        state.PendingConsolidations = null;
+        for (int i = 0; i < validatorCount; i++)
+            state.Validators![i].Pubkey = PubkeyForIndex(i);
+        return state;
+    }
+
+    private static Hash256 BuilderWithdrawalCredentials(byte seed) => PrefixedCredentials(Presets.BuilderWithdrawalPrefix, seed);
+    private static Hash256 EthWithdrawalCredentials(byte seed) => PrefixedCredentials(Presets.EthWithdrawalPrefix, seed);
+
+    // Every byte differs, so an execution address read from the wrong 20-byte window of the credentials shows.
+    private static Hash256 PrefixedCredentials(byte prefix, byte seed)
+    {
+        byte[] bytes = Enumerable.Range(0, 32).Select(i => unchecked((byte)(seed + i))).ToArray();
+        bytes[0] = prefix;
+        return new Hash256(bytes);
+    }
+
+    private static BlsPublicKey PubkeyForIndex(int index)
+    {
+        byte[] bytes = Enumerable.Repeat((byte)0x50, BlsPublicKey.Length).ToArray();
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(BlsPublicKey.Length - 4), index);
+        return new BlsPublicKey(bytes);
+    }
+
+    private static BlsSignature Signature(byte value) => new(Enumerable.Repeat(value, BlsSignature.Length).ToArray());
+}

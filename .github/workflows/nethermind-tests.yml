@@ -41,7 +41,7 @@ jobs:
     needs: build
     runs-on: ${{ matrix.runner }}
     # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
-    timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
+    timeout-minutes: ${{ matrix.project == 'Nethermind.BeaconChain.Test' && 30 || matrix.project.list && 25 || 15 }}
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
     env:
@@ -55,6 +55,7 @@ jobs:
         # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.sh);
         # each pack takes about 6 minutes, sized from the job times of a master run.
         project:
+          - Nethermind.BeaconChain.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
@@ -131,6 +132,12 @@ jobs:
         chunk: ['']
         exclude: # These projects are chunked on slower runners (see include block) to stay within the 15-minute job budget.
           - runner: ubuntu-24.04-arm
+            project: Nethermind.BeaconChain.Test
+            chunk: ''
+          - runner: ubuntu-latest
+            project: Nethermind.BeaconChain.Test
+            chunk: ''
+          - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
           - runner: ubuntu-latest
@@ -143,6 +150,10 @@ jobs:
             project: Nethermind.Merge.AuRa.Test
             chunk: ''
         include:
+          - { runner: ubuntu-24.04-arm, project: Nethermind.BeaconChain.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.BeaconChain.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.BeaconChain.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.BeaconChain.Test, chunk: 4of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
@@ -155,6 +166,11 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 1of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 2of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 3of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 4of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Gnosis.Test, chunk: '' }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
@@ -445,6 +461,92 @@ jobs:
       test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
       setup_group: all
 
+  tests-consensus-spec:
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    # The preset archives are streamed and extracted on every run rather than cached. A partially
+    # populated cache still carries its completion marker, and the suite then reports green over
+    # zero vectors - this repo's fixture downloader has already produced exactly that.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # The mainnet vectors run serially for over 30 minutes after the archive download, so that assembly is chunked.
+        include:
+          - { project: Ethereum.ConsensusSpec.Test, chunk: 1of4 }
+          - { project: Ethereum.ConsensusSpec.Test, chunk: 2of4 }
+          - { project: Ethereum.ConsensusSpec.Test, chunk: 3of4 }
+          - { project: Ethereum.ConsensusSpec.Test, chunk: 4of4 }
+          - { project: Ethereum.ConsensusSpec.Minimal.Test, chunk: '' }
+    env:
+      # Validate both compiled presets before merge, including production-only SSZ layouts.
+      NETHERMIND_CONSENSUS_SPEC_MAINNET: '1'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
+
+      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.chunk }}
+        run: |
+          dotnet restore ${{ matrix.project }}.csproj  # binaries from the shared Linux artifact
+          # Same dump handling as the other test jobs. The hang timeout is longer than theirs on
+          # purpose: it counts inactivity, and this suite streams and extracts multi-gigabyte preset
+          # archives before the first test reports, which an 8m window would read as a hang.
+          test_args=(--no-build --no-restore
+            --hangdump --hangdump-timeout 25m --hangdump-type Mini
+            --crashdump --crashdump-type Mini --crash-report-if-supported)
+
+          set +e
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          rc=$?
+          set -e
+          if [[ $rc -eq 0 ]]; then
+            exit 0
+          elif compgen -G "TestResults/*_hang.*" > /dev/null; then
+            echo "::error::Test host hung and was dumped; see the hang-dump artifact"
+            exit 1
+          elif [[ $rc -ne 7 ]]; then
+            # Only MTP exit code 7 (the test host exited non-gracefully, a crash) is worth a retry; 2 (a test failed) and the rest are real failures.
+            echo "::error::dotnet test failed with exit code $rc"
+            exit $rc
+          else
+            echo "::warning::Test process crashed (exit code $rc), retrying..."
+            echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
+            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          fi
+
+      - name: Upload dumps
+        if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
+          path: |
+            src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+            src/Nethermind/${{ matrix.project }}/TestResults/*_crash.*
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload consensus spec report
+        if: ${{ always() }}
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: consensus-spec-report-${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}
+          path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/consensus-spec-report.txt
+          if-no-files-found: warn
+          retention-days: 3
+
   matrix-guard:
     name: Check test project matrix is exhaustive
     runs-on: ubuntu-latest
@@ -478,7 +580,7 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-native, tests-spec, tests-chunked, tests-chunked-native, nethtest, matrix-guard]
+    needs: [tests, tests-native, tests-spec, tests-chunked, tests-chunked-native, tests-consensus-spec, nethtest, matrix-guard]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -490,6 +592,7 @@ jobs:
             "${{ needs.tests-spec.result }}" == "success" && \
             "${{ needs.tests-chunked.result }}" == "success" && \
             "${{ needs.tests-chunked-native.result }}" == "success" && \
+            "${{ needs.tests-consensus-spec.result }}" == "success" && \
             "${{ needs.nethtest.result }}" == "success" && \
             "${{ needs.matrix-guard.result }}" == "success" \
           ]]

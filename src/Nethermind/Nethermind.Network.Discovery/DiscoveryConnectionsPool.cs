@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Discv5;
 
 namespace Nethermind.Network.Discovery;
 
@@ -11,7 +12,7 @@ namespace Nethermind.Network.Discovery;
 /// Manages UDP sockets (<see cref="IDatagramSocket"/>) allocated for all Discovery protocol versions.
 /// </summary>
 /// <remarks> Not thread-safe </remarks>
-internal sealed class DiscoveryConnectionsPool(
+public sealed class DiscoveryConnectionsPool(
     ILogger logger,
     IDiscoveryConfig discoveryConfig,
     NetworkListenerState listenerState)
@@ -38,7 +39,7 @@ internal sealed class DiscoveryConnectionsPool(
     /// <param name="socketFactory">Creates an unbound socket suitable for the given local address.</param>
     /// <param name="port">The local port to bind.</param>
     /// <param name="onReceive">Takes ownership of each received datagram; called on the receive loop.</param>
-    public IDatagramSocket Bind(
+    internal IDatagramSocket Bind(
         Func<IPAddress, IDatagramSocket> socketFactory,
         int port,
         Action<PooledUdpReceiveResult> onReceive)
@@ -57,6 +58,16 @@ internal sealed class DiscoveryConnectionsPool(
         _byPort.Add(port, new Listener(socket, receiveTask));
         return socket;
     }
+
+    /// <summary>
+    /// Binds a socket to <paramref name="port"/> and attaches <paramref name="transport"/> to it, so the transport
+    /// receives every valid datagram and sends through the bound socket.
+    /// </summary>
+    /// <param name="socketFactory">Creates an unbound UDP socket suitable for the given local address.</param>
+    /// <param name="port">The local port to bind.</param>
+    /// <param name="transport">The discv5 transport to attach.</param>
+    public void Bind(Func<IPAddress, Socket> socketFactory, int port, DiscoveryV5Transport transport) =>
+        transport.BindSocket(Bind(address => new UdpDatagramSocket(socketFactory(address)), port, transport.Receive));
 
     private IDatagramSocket BindWithFallback(Func<IPAddress, IDatagramSocket> socketFactory, int port)
     {

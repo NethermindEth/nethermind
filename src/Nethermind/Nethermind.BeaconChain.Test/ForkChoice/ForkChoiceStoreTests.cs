@@ -1,0 +1,73 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.Core.Crypto;
+using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
+
+namespace Nethermind.BeaconChain.Test.ForkChoice;
+
+public class ForkChoiceStoreTests
+{
+    [Test]
+    public void On_tick_resets_proposer_boost_and_pulls_up_unrealized_checkpoints_at_epoch_boundary()
+    {
+        ForkChoiceStore store = new(slotsPerEpoch: 8, currentSlot: 9, GetCheckpoint(1), GetCheckpoint(0));
+
+        store.ProposerBoostRoot = GetRoot(5);
+        store.UpdateUnrealizedCheckpoints(GetCheckpoint(2), GetCheckpoint(1));
+
+        store.OnTick(9);
+        Assert.That(store.ProposerBoostRoot, Is.EqualTo(GetRoot(5)), "boost survives a no-op tick");
+
+        store.OnTick(10);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.ProposerBoostRoot, Is.EqualTo(Hash256.Zero), "boost reset at slot start");
+            Assert.That(store.JustifiedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "no pull-up mid-epoch");
+            Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(0)), "no pull-up mid-epoch");
+        }
+
+        store.OnTick(17);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.CurrentSlot, Is.EqualTo(17ul));
+            Assert.That(store.CurrentEpoch, Is.EqualTo(2ul));
+            Assert.That(store.JustifiedCheckpoint, Is.EqualTo(GetCheckpoint(2)), "justified pulled up");
+            Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "finalized pulled up");
+        }
+
+        store.UpdateCheckpoints(GetCheckpoint(1), GetCheckpoint(0));
+        store.UpdateUnrealizedCheckpoints(GetCheckpoint(1), GetCheckpoint(0));
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.JustifiedCheckpoint, Is.EqualTo(GetCheckpoint(2)), "stale justified ignored");
+        Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "stale finalized ignored");
+        Assert.That(store.UnrealizedJustifiedCheckpoint, Is.EqualTo(GetCheckpoint(2)), "stale unrealized justified ignored");
+        Assert.That(store.UnrealizedFinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "stale unrealized finalized ignored");
+    }
+
+    [Test]
+    public void Update_checkpoints_advances_only_on_a_later_epoch()
+    {
+        ForkChoiceStore store = new(slotsPerEpoch: 8, currentSlot: 9, GetCheckpoint(3), GetCheckpoint(2));
+
+        store.UpdateCheckpoints(GetCheckpoint(2), GetCheckpoint(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(store.JustifiedCheckpoint.Epoch, Is.EqualTo(3ul), "an earlier justified epoch must not roll the store back");
+            Assert.That(store.FinalizedCheckpoint.Epoch, Is.EqualTo(2ul), "an earlier finalized epoch must not roll the store back");
+        });
+
+        store.UpdateCheckpoints(GetCheckpoint(3), GetCheckpoint(2));
+        Assert.Multiple(() =>
+        {
+            Assert.That(store.JustifiedCheckpoint.Epoch, Is.EqualTo(3ul), "an equal epoch is not a later one");
+            Assert.That(store.FinalizedCheckpoint.Epoch, Is.EqualTo(2ul));
+        });
+
+        store.UpdateCheckpoints(GetCheckpoint(5), GetCheckpoint(4));
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.JustifiedCheckpoint, Is.EqualTo(GetCheckpoint(5)), "a later justified epoch advances, root and all");
+        Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(4)));
+    }
+}

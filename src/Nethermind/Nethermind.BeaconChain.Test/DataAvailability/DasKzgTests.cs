@@ -1,0 +1,41 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.IO;
+
+namespace Nethermind.BeaconChain.Test.DataAvailability;
+
+public class DasKzgTests
+{
+    [Test]
+    public void Exactly_one_production_call_site_loads_the_kzg_trusted_setup()
+    {
+        string sourceRoot = FindSourceRoot();
+
+        string[] callSites = Directory.EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                && !path.Contains(".Test") && !path.Contains(".Benchmark") && !path.Contains("Ethereum.")
+                && File.ReadAllText(path).Contains("Ckzg.LoadTrustedSetup"))
+            .ToArray();
+
+        Assert.That(callSites, Has.Length.EqualTo(1),
+            $"expected exactly one production Ckzg.LoadTrustedSetup call site, found: {string.Join(", ", callSites)}");
+        Assert.That(callSites[0], Does.Match(@"Nethermind\.Crypto[\\/]KzgPolynomialCommitments\.cs$"));
+    }
+
+    // Locate the source file, not merely a named directory: artifacts/bin contains matching assembly directories.
+    private static string FindSourceRoot()
+    {
+        DirectoryInfo? dir = new(AppContext.BaseDirectory);
+        for (int i = 0; i < 15 && dir is not null; i++, dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "Nethermind.Crypto", "KzgPolynomialCommitments.cs")))
+            {
+                return dir.FullName;
+            }
+        }
+
+        throw new InvalidOperationException($"Could not find the 'src/Nethermind' source root walking up from '{AppContext.BaseDirectory}'.");
+    }
+}
