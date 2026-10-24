@@ -2447,6 +2447,34 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip8037_top_level_frame_deploys_several_maximum_size_contracts_from_the_reservoir()
+    {
+        // PUSH2 0x6000 PUSH0 RETURN: 24,576 zero bytes. The top-level frame has no allowance, and each create frame
+        // gets one from the gas forwarded to it, so both deposits come from the reservoir.
+        byte[] initCode = Bytes.FromHexString("0x6160005ff3");
+        byte[] code = Prepare.EvmCode
+            .Create(initCode, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Create(initCode, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + 80_000_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: 100_000_000);
+
+        UInt256 nonce = TestState.GetNonce(Recipient);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(TestState.GetCode(ContractAddress.From(Recipient, nonce - 2)).Length, Is.EqualTo(24_576));
+            Assert.That(TestState.GetCode(ContractAddress.From(Recipient, nonce - 1)).Length, Is.EqualTo(24_576));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas,
+                Is.EqualTo(2 * (GasCostOf.CreateState + 24_576 * GasCostOf.CostPerStateByte)));
+        }
+    }
+
+    [Test]
     public void Eip8037_callee_pays_from_gas_left_when_its_ancestor_used_the_allowance()
     {
         // PUSH2 0x0708 PUSH0 RETURN: deploys 1,800 zero bytes, a code deposit of 2,754,000 state gas.

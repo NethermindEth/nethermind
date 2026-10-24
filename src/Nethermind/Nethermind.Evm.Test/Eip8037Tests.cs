@@ -777,11 +777,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
         Assert.That(grandchild.StateGasAllowance, Is.EqualTo(82_500L), "limited by what is left of the parent's allowance");
     }
 
-    [TestCase(0L)]
-    [TestCase(1L)]
-    [TestCase(50_000L)]
-    [TestCase(50_001L)]
-    public void State_gas_beyond_the_allowance_comes_from_gas_left(long overAllowance)
+    [Test]
+    public void State_gas_beyond_the_allowance_comes_from_gas_left([Values(0L, 1L, 50_000L, 50_001L)] long overAllowance)
     {
         EthereumGasPolicy top = new() { Value = 1_000_000, StateReservoir = 10_000_000 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref top, 50_000);
@@ -790,12 +787,36 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         bool charged = EthereumGasPolicy.TryConsumeStateGas(ref child, child.StateGasAllowance + overAllowance);
 
-        Assert.That(charged, Is.EqualTo(canPay));
-        if (canPay)
-            Assert.That((child.Value, child.StateReservoir, child.StateGasDrawn),
-                Is.EqualTo((before.Value - (ulong)overAllowance, before.StateReservoir - before.StateGasAllowance, before.StateGasAllowance)));
-        else
-            Assert.That(child, Is.EqualTo(before), "a refused charge changes nothing");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(charged, Is.EqualTo(canPay));
+            if (canPay)
+                Assert.That((child.Value, child.StateReservoir, child.StateGasDrawn),
+                    Is.EqualTo((before.Value - (ulong)overAllowance, before.StateReservoir - before.StateGasAllowance, before.StateGasAllowance)));
+            else
+                Assert.That(child, Is.EqualTo(before), "a refused charge changes nothing");
+        }
+    }
+
+    [Test]
+    public void Code_deposit_above_the_create_frame_allowance_pays_the_rest_from_gas_left()
+    {
+        // 251 bytes: 384,030 state gas and 48 execution gas (hash); the create frame's allowance is 382,500.
+        const long depositStateGas = 251 * GasCostOf.CostPerStateByte;
+        const ulong depositExecutionGas = 48;
+        EthereumGasPolicy top = new() { Value = 1_000_000, StateReservoir = 10_000_000 };
+        EthereumGasPolicy parent = EthereumGasPolicy.CreateChildFrameGas(ref top, 100_000);
+        parent.Value -= 50_000;
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 50_000);
+
+        Assert.That(EthereumGasPolicy.CalculateStateGasSpill(in child, depositStateGas), Is.EqualTo(1_530UL),
+            "the create frame must pay 1,530 from gas_left, which the deposit check uses");
+        EthereumGasPolicy.Refund(ref parent, in child);
+
+        Assert.That(EthereumGasPolicy.TryConsumeCodeDepositGas(ref parent, in child, depositStateGas, depositExecutionGas), Is.True);
+        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill, parent.StateGasDrawn),
+            Is.EqualTo((98_422UL, 9_617_500L, depositStateGas, 1_530L, 382_500L)),
+            "the deposit draws only the create frame's allowance, although the parent has more");
     }
 
     [Test]
