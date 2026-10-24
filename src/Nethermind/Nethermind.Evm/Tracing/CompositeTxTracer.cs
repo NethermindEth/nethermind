@@ -100,6 +100,19 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
+    public bool ObservesStackPushes
+    {
+        get
+        {
+            for (int index = 0; index < _txTracers.Length; index++)
+            {
+                ITxTracer tracer = _txTracers[index];
+                if (tracer.IsTracingInstructions && tracer is not IInstructionTracingFilter { ObservesStackPushes: false }) return true;
+            }
+            return false;
+        }
+    }
+
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
         for (int index = 0; index < _txTracers.Length; index++)
