@@ -774,27 +774,33 @@ public class BeaconPeerTransportTests
         Assert.That(providers.Maintain(disconnected).Reconnect, Is.Null, "disconnected addresses expire instead of being retained indefinitely");
     }
 
-    [Test]
-    public void Supplier_search_requires_fresh_verified_data_instead_of_connected_peer_count([Values(0, 1, 2)] int freshSuppliers)
+    [TestCase(7, false, 0)]
+    [TestCase(7, true, 0)]
+    [TestCase(7, true, 1)]
+    [TestCase(7, true, 2)]
+    [TestCase(8, false, 0)]
+    [TestCase(8, false, 1)]
+    [TestCase(8, false, 2)]
+    public void Supplier_search_counts_admission_reservations_and_preserves_fresh_verified_sources(
+        int connectedPeers, bool connectingPeer, int freshSuppliers)
     {
         ManualDeadlineClock clock = new();
         clock.SetSlot(1);
         BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
-        BootstrapPeer[] peers = ProviderPeers(8);
-        foreach (BootstrapPeer peer in peers) providers.Admit(peer, PeerDirection.Outbound);
+        BootstrapPeer[] peers = ProviderPeers(connectedPeers + (connectingPeer ? 1 : 0));
+        BootstrapPeer[] admitted = peers[..connectedPeers];
+        foreach (BootstrapPeer peer in admitted) providers.Admit(peer, PeerDirection.Outbound);
         clock.SetSlot(14);
-        for (int i = 0; i < peers.Length; i++) providers.RecordValidated(peers[i], Optimistic(i < freshSuppliers ? 13UL : 3UL));
+        for (int i = 0; i < admitted.Length; i++) providers.RecordValidated(admitted[i], Optimistic(i < freshSuppliers ? 13UL : 3UL));
+        PeerRecord[] occupied = Connected(peers);
+        if (connectingPeer) occupied[^1] = occupied[^1] with { State = PeerConnectionState.Connecting };
 
-        (IBeaconSyncPeer? recycle, string? reconnect) = providers.Maintain(Connected(peers));
+        (IBeaconSyncPeer? recycle, string? reconnect) = providers.Maintain(occupied);
 
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(reconnect, Is.Null);
-        if (freshSuppliers == 2) Assert.That(recycle, Is.Null);
-        else
-        {
-            Assert.That(recycle, Is.Not.Null);
-            Assert.That(peers.Take(freshSuppliers), Does.Not.Contain(recycle));
-        }
+        if (occupied.Length < 8 || freshSuppliers == 2) Assert.That(recycle, Is.Null);
+        else Assert.That(admitted.Skip(freshSuppliers), Does.Contain(recycle));
     }
 
     [Test]

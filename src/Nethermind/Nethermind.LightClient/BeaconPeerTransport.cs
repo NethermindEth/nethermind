@@ -439,7 +439,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
         internal (IBeaconSyncPeer? Recycle, string? Reconnect) Maintain(IReadOnlyList<PeerRecord> peers)
         {
-            int connectedCount, trackedCount, fresh, rememberedCount;
+            int connectedCount, occupiedCount, trackedCount, fresh, rememberedCount;
             List<string>? retiredSessions = null;
             IBeaconSyncPeer? recycle = null;
             string? redialAddress = null;
@@ -483,10 +483,11 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                         if (reconnect is null || remembered.LastUseful > reconnect.LastUseful) reconnect = remembered;
                     }
                     if (reconnect is not null) reconnect.LastDial = now;
-                    recycle = admitted.Count >= TargetPeers ? replacement?.Peer : null;
+                    recycle = connected.Count >= TargetPeers ? replacement?.Peer : null;
                     redialAddress = reconnect?.Address;
                 }
                 connectedCount = admitted.Count;
+                occupiedCount = connected.Count;
                 trackedCount = _sessions.Count;
                 rememberedCount = _remembered.Count;
             }
@@ -494,7 +495,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             {
                 if (retiredSessions is not null)
                     foreach (string id in retiredSessions) _logger.Debug($"Retired disconnected light-client supplier session {id}");
-                _logger.Debug($"Light-client supplier maintenance: connected {connectedCount}, tracked {trackedCount}, fresh {fresh}, remembered {rememberedCount}, recycle {recycle?.Id}, reconnect {redialAddress}");
+                _logger.Debug($"Light-client supplier maintenance: connected {connectedCount}, occupied {occupiedCount}, tracked {trackedCount}, fresh {fresh}, remembered {rememberedCount}, recycle {recycle?.Id}, reconnect {redialAddress}");
             }
             return (recycle, redialAddress);
         }
