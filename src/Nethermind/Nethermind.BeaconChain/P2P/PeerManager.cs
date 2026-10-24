@@ -657,14 +657,15 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <param name="token">Cancels the dial; a timeout past <see cref="DialTimeout"/> is treated as a refusal, not propagated.</param>
     /// <param name="enr">The candidate's discv5 ENR text when known, so the resulting <see cref="PeerRecord"/>
     /// can report it truthfully instead of <c>null</c>. Omitted for a static-peer reconnect, which has no ENR to offer.</param>
+    /// <param name="allowAboveTarget">Allows admission up to the ordinary ceiling even when the target is reached; identity, ban and dial-backoff checks still apply.</param>
     /// <returns><c>true</c> when the peer is (already) connected and on our fork.</returns>
     /// <remarks>
-    /// At or above <see cref="IBeaconChainConfig.TargetPeerCount"/>, once this node's custody is known, a candidate is dialed only
+    /// Unless <paramref name="allowAboveTarget"/> is set, at or above <see cref="IBeaconChainConfig.TargetPeerCount"/>, once this node's custody is known, a candidate is dialed only
     /// when <paramref name="enr"/> custodies a sampled column no connected peer custodies (see <see cref="WaitForAdmissionCapacityAsync"/>);
     /// at <see cref="IBeaconChainConfig.MaxPeerCount"/> such a candidate is dialed one over the ceiling and, once admitted, takes the place of the worst
     /// peer that is not the last custodian of a sampled column; with no such peer it is not dialed.
     /// </remarks>
-    public async Task<bool> TryAddPeerAsync(string address, CancellationToken token, string? enr = null)
+    public async Task<bool> TryAddPeerAsync(string address, CancellationToken token, string? enr = null, bool allowAboveTarget = false)
     {
         if (!address.Contains(PeerIdSeparator, StringComparison.Ordinal))
         {
@@ -677,7 +678,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return true;
         }
 
-        if (!IsWantedAtCurrentCount(enr, out PeerColumnCustody? covering))
+        PeerColumnCustody? covering = null;
+        if (!allowAboveTarget && !IsWantedAtCurrentCount(enr, out covering))
         {
             if (_logger.IsDebug) _logger.Debug($"Not dialing {address}: at the target peer count and it custodies no sampled column that lacks a connected custodian");
             return false;
@@ -2299,7 +2301,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         /// <summary>The identify agent string, <c>null</c> when the peer left the probe unanswered.</summary>
         public string? AgentVersion { get; } = agentVersion;
         /// <summary>The discv5 ENR text this peer was discovered with; <c>null</c> for a static peer or
-        /// an inbound session (see <see cref="PeerManager.TryAddPeerAsync"/>'s optional parameter).</summary>
+        /// an inbound session (see <see cref="PeerManager.TryAddPeerAsync"/>'s optional ENR parameter).</summary>
         public string? Enr { get; } = enr;
         public int ConsecutiveFailures => Volatile.Read(ref _consecutiveFailures);
 

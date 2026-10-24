@@ -31,6 +31,78 @@ public class SampledColumnCustodianTests
     private const string LocalKey = "3c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29133";
 
     [Test]
+    public async Task Admission_above_target_counts_discovery_reservations_toward_the_ceiling([Values(2, 3)] int reservations, CancellationToken token)
+    {
+        Node candidate = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(candidate, client);
+        client.Config.TargetPeerCount = 2;
+        client.Config.MaxPeerCount = 3;
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        await using PeerHostScope hosts = new(client, candidate);
+        await StartAsync(token, candidate, client);
+        PeerManager manager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+        string[] held = [.. Enumerable.Range(0, reservations).Select(static i => $"/ip4/1.2.3.4/tcp/9000/p2p/reserved-{i}")];
+        foreach (string address in held) manager.ReserveDialingForTest(address);
+
+        try
+        {
+            Assert.That(manager.PeerCount, Is.Zero, "discovery is still dialing, so there is no connected peer to recycle");
+            string candidateAddress = LoopbackAddress(candidate.P2P);
+            Assert.That(await manager.TryAddPeerAsync(candidateAddress, token), Is.False, "ordinary discovery stops at the target, including its reservations");
+
+            bool admitted = await manager.TryAddPeerAsync(candidateAddress, token, allowAboveTarget: true);
+            bool capacityRemains = reservations < client.Config.MaxPeerCount;
+
+            using IDisposable assertionScope = Assert.EnterMultipleScope();
+            Assert.That(admitted, Is.EqualTo(capacityRemains), "a preferred dial passes the target but cannot reserve past the ceiling");
+            Assert.That(manager.PeerCount, Is.EqualTo(capacityRemains ? 1 : 0));
+            Assert.That(manager.Peers.Count, Is.EqualTo(reservations + (capacityRemains ? 1 : 0)), "admitted peers and outstanding discovery reservations share the same capacity");
+        }
+        finally
+        {
+            foreach (string address in held) manager.ReleaseReservationForTest(address);
+        }
+    }
+
+    [Test]
+    public async Task Admission_above_target_preserves_identity_deduplication_and_survives_maintenance(CancellationToken token)
+    {
+        Node connected = CreateNode();
+        Node candidate = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(connected, candidate, client);
+        client.Config.TargetPeerCount = 1;
+        client.Config.MaxPeerCount = 3;
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        await using PeerHostScope hosts = new(client, connected, candidate);
+        await StartAsync(token, connected, candidate, client);
+        PeerManager manager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+        Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(connected.P2P), token), Is.True);
+        string address = LoopbackAddress(candidate.P2P);
+        string alias = address.Replace("/ip4/127.0.0.1/", "/ip4/127.0.0.2/", StringComparison.Ordinal);
+
+        manager.ReserveDialingForTest(alias);
+        try
+        {
+            Assert.That(await manager.TryAddPeerAsync(address, token, allowAboveTarget: true), Is.False, "a peer id already in flight cannot be dialed under another address");
+        }
+        finally
+        {
+            manager.ReleaseReservationForTest(alias);
+        }
+
+        Assert.That(await manager.TryAddPeerAsync(address, token), Is.False, "the default admission policy still enforces the target");
+        Assert.That(await manager.TryAddPeerAsync(address, token, allowAboveTarget: true), Is.True);
+        Assert.That(await manager.TryAddPeerAsync(alias, token, allowAboveTarget: true), Is.True, "a connected peer id reuses its existing session");
+        Assert.That(manager.PeerCount, Is.EqualTo(2), "a second address must not create another pool entry");
+
+        await manager.RunMaintenanceRoundAsync(token);
+
+        Assert.That(manager.PeerCount, Is.EqualTo(2), "healthy peers above the target remain until the ordinary ceiling is exceeded");
+    }
+
+    [Test]
     public async Task A_sampled_column_without_a_custodian_is_sought_through_discovery_and_only_its_custodian_is_admitted_past_the_target(CancellationToken token)
     {
         using PrivateKey partialKey = new(PartialCustodianKey);

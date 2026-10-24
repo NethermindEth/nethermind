@@ -144,7 +144,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 if (reconnect is not null)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Redialing remembered light-client supplier {reconnect}");
-                    bool admitted = await _peers.TryAddPeerAsync(reconnect, cancellationToken);
+                    bool admitted = await _peers.TryAddPeerAsync(reconnect, cancellationToken, allowAboveTarget: true);
                     if (_logger.IsDebug) _logger.Debug($"Remembered light-client supplier redial {reconnect}: admitted {admitted}");
                 }
             }
