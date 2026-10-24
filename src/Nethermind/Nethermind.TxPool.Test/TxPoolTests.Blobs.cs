@@ -6581,10 +6581,10 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyB, 0), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyB, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // Control: the set [0] aliases the account nonce, so this blob-carrying frame tx does spend it and must
+            // Control: the empty set selects the account nonce, so this blob-carrying frame tx does spend it and must
             // cascade like any other type-3 entry — the exemption is the keyed domain, not the frame format.
             Transaction accountDomainFrame = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true,
-                nonceKeys: [UInt256.Zero], sender: TestItem.PrivateKeyC);
+                nonceKeys: [], sender: TestItem.PrivateKeyC);
             Assert.That(_txPool.SubmitTx(accountDomainFrame, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyC, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 

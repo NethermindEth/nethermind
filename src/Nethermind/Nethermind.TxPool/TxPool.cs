@@ -2127,12 +2127,15 @@ namespace Nethermind.TxPool
             KeyedNonceManager.IsNonceSetValid(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, tx.NonceKeys!, tx.Nonce);
 
         /// <summary>Whether any nonce key <paramref name="tx"/> selects has advanced past its declared sequence in the head state.</summary>
-        /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.</remarks>
+        /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.
+        /// A single-use set (<see cref="Eip8250Constants.MaxNonceSeq"/>) is behind once any of its keys has been used.</remarks>
         private bool IsKeyedNonceBehind(Transaction tx)
         {
+            bool singleUse = tx.Nonce == Eip8250Constants.MaxNonceSeq;
             foreach (UInt256 nonceKey in tx.NonceKeys!)
             {
-                if (KeyedNonceManager.CurrentNonceSeq(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, in nonceKey) > tx.Nonce)
+                ulong current = KeyedNonceManager.CurrentNonceSeq(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, in nonceKey);
+                if (singleUse ? current != 0 : current > tx.Nonce)
                 {
                     return true;
                 }

@@ -115,9 +115,9 @@ public static unsafe partial class EvmInstructions
             0x0B => stack.PushUInt256<TTracingInst>((UInt256)ctx.Signatures.Length),
             0x0C => stack.PushUInt256<TTracingInst>((UInt256)(ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in gas))),
             0x0D when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
-            0x0E when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 1)),
+            0x0E when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 0)),
             0x0F when TEip8250.IsActive => stack.PushBytes<TTracingInst>(ctx.NonceKeysHash.BytesAsSpan),
-            0x10 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is { } keys ? keys[0] : UInt256.Zero),
+            0x10 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is [var firstKey, ..] ? firstKey : UInt256.Zero),
             _ => EvmExceptionType.BadInstruction,
         };
     }
