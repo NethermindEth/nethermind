@@ -20,8 +20,9 @@ namespace Nethermind.State.Pbt;
 /// <see cref="PerTableDbConfig"/> resolves per-column options from <see cref="IDbConfig"/> by naming
 /// convention, and the pbt columns have no entries there: they live in <see cref="IPbtConfig"/>, so
 /// the backend that owns them owns their tuning too. The per-table config is therefore built with
-/// validation off, and the pbt options appended to it - the column's last, so that it wins over the
-/// shared one, which in turn wins over the global database options.
+/// validation off, and the pbt options appended to it in increasing precedence: the shared ones, the
+/// flat-entry or node-group ones, the column's own, then the group's additional ones, so that each
+/// wins over the ones before it and all of them win over the global database options.
 /// Like the flat account and storage columns, <see cref="PbtColumns.Accounts"/> and
 /// <see cref="PbtColumns.Storages"/> get their own block caches carved out of
 /// <see cref="IPbtConfig.BlockCacheSizeBudget"/> instead of competing in the shared one.
@@ -52,15 +53,18 @@ public sealed class PbtRocksDbConfigAdjuster(
 
     private string ColumnRocksDbOptions(string? columnName) => columnName switch
     {
-        nameof(PbtColumns.Accounts) => pbtConfig.AccountsRocksDbOptions,
-        nameof(PbtColumns.Storages) => pbtConfig.StoragesRocksDbOptions,
-        nameof(PbtColumns.Codes) => pbtConfig.CodesRocksDbOptions,
-        nameof(PbtColumns.CodeLeaves) => pbtConfig.CodeLeavesRocksDbOptions,
+        nameof(PbtColumns.Accounts) => FlatEntryRocksDbOptions(pbtConfig.AccountsRocksDbOptions),
+        nameof(PbtColumns.Storages) => FlatEntryRocksDbOptions(pbtConfig.StoragesRocksDbOptions),
+        nameof(PbtColumns.Codes) => FlatEntryRocksDbOptions(pbtConfig.CodesRocksDbOptions),
+        nameof(PbtColumns.CodeLeaves) => FlatEntryRocksDbOptions(pbtConfig.CodeLeavesRocksDbOptions),
         nameof(PbtColumns.Metadata) => pbtConfig.MetadataRocksDbOptions,
         nameof(PbtColumns.AccountNodeGroups) or nameof(PbtColumns.CodeNodeGroups) or nameof(PbtColumns.StorageNodeGroups) or nameof(PbtColumns.TopNodeGroups)
-            => pbtConfig.NodeGroupsRocksDbOptions,
+            => pbtConfig.NodeGroupsRocksDbOptions + pbtConfig.NodeGroupsAdditionalRocksDbOptions,
         _ => "",
     };
+
+    private string FlatEntryRocksDbOptions(string columnRocksDbOptions) =>
+        pbtConfig.FlatEntriesRocksDbOptions + columnRocksDbOptions + pbtConfig.FlatEntriesAdditionalRocksDbOptions;
 
     private nint? DedicatedBlockCache(string? columnName)
     {

@@ -103,7 +103,7 @@ public class PbtAnchorImportTests
     {
         // Tiny buffers spill many runs in both of the verifier's spools.
         using Harness harness = new(name, tinyVerifyBuffer
-            ? new PbtConfig { ExportSortBufferBytes = 1024, ImportConcurrency = 2 }
+            ? new PbtConfig { ImportSortBufferBytes = 1024, ImportConcurrency = 2 }
             : new PbtConfig());
         await harness.Publish();
         AssertPublishedState(harness, name);
@@ -208,7 +208,7 @@ public class PbtAnchorImportTests
     public async Task Cancellation_during_snapshot_staging_cleans_code_spool_and_can_be_retried([Values] bool withPreimages)
     {
         // A one-leaf window keeps the fold from reading the whole snapshot before staging creates its code spool.
-        using Harness harness = new("a4", new PbtConfig { ExportSortBufferBytes = 1024, ImportConcurrency = 3, ImportWindowSize = 1 });
+        using Harness harness = new("a4", new PbtConfig { ImportSortBufferBytes = 1024, ImportConcurrency = 3, ImportWindowSize = 1 });
         using CancellationTokenSource cancellation = new();
         bool observedCodeSpool = false;
         using MemoryStream snapshot = new ObservedSnapshot(File.ReadAllBytes(Eip8347FixtureState.ArtifactPath("a4", "snapshot.pbt")), () =>

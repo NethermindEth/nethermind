@@ -96,7 +96,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
         try
         {
             (ulong Accounts, ulong Slots) staged;
-            using PbtCodeReassembly codes = new(target, scratchDirectory, config.ExportSortBufferBytes, workers, logManager, cancellationToken);
+            using PbtCodeReassembly codes = new(target, scratchDirectory, config.ImportSortBufferBytes, workers, logManager, cancellationToken);
             using (LogicalBatch batch = new(target, workers, cancellationToken))
             {
                 staged = Stage(batch, leaves, codes, cancellationToken);
@@ -116,7 +116,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
     /// Leaves carry no storage roots and PBT never treats one as authoritative, so accounts are staged as their stem leaves.
     /// Code chunks are keyed by a hash of their code hash, so no bytecode can be reassembled as its chunks stream past: they
     /// are handed to a <see cref="PbtCodeReassembly"/>, which reassembles each bytecode once the code
-    /// section ends.
+    /// section ends. The storage section is staged only after every bytecode is written.
     /// </remarks>
     /// <returns>The staged accounts and slots.</returns>
     public static (ulong Accounts, ulong Slots) Stage(LogicalBatch batch, IEnumerator<RebuildEntry> leaves,
@@ -130,6 +130,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
         ValueHash256? delegation = null;
         PbtVariableTreeKey? runKey = null;
         PackedSlotRun run = SlotRun.Empty;
+        bool codesWritten = false;
 
         while (leaves.MoveNext())
         {
@@ -165,10 +166,11 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
                         throw new InvalidDataException("Snapshot holds a leaf at a reserved account sub-index.");
                 }
             }
-            else
+            else if (!codesWritten)
             {
                 FlushAccount();
-                codes.EndChunks();
+                codes.Complete();
+                codesWritten = true;
             }
 
             slots++;
@@ -248,15 +250,25 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
     {
         ulong read = 0;
         float walked = 0;
+        string phase = Phase;
         using ProgressReporter progress = PbtImageProgress.Start(Phase, "leaf", 0, logManager);
-        progress.Logger.SetFormat(p => PbtImageProgress.Format(Phase, walked, PbtImageProgress.Counted("leaf", p)));
+        progress.Logger.SetFormat(p => PbtImageProgress.Format(phase, walked, PbtImageProgress.Counted("leaf", p)));
         foreach (RebuildEntry entry in leaves)
         {
+            phase = ZonePhase(entry.Key.Bytes[0]);
             walked = PbtImageProgress.KeyspaceFraction(new ValueHash256(entry.Key.Bytes.Slice(1, ValueHash256.MemorySize)));
             progress.Update(++read);
             yield return entry;
         }
     }
+
+    private static string ZonePhase(byte zone) => zone switch
+    {
+        Eip8297KeyDerivation.AccountZone => "PBT import (Account)",
+        Eip8297KeyDerivation.CodeZone => "PBT import (Code)",
+        Eip8297KeyDerivation.StorageZone => "PBT import (Storage)",
+        _ => Phase
+    };
 
     /// <summary>Compiles staged writes into no-WAL batches on the caller's thread and writes them on parallel flushers.</summary>
     /// <remarks>Staged keys are unique, so the order the flushers write in does not matter. Nothing is durable until

@@ -21,8 +21,8 @@ namespace Nethermind.State.Pbt.Image;
 /// regroup them without reading staged state back: the code hashes and sizes of the account section; the chunk stems those
 /// codes derive, which ascend as the code section does, so each stem streaming past names its code and first chunk; and the
 /// chunks keyed by code hash and chunk id, which yield each code's chunks in sequence. The reassembly runs in the background
-/// once the code section ends, alongside the staging of the storage section. Requiring every chunk to fall within a spooled
-/// code is what stops a stream carrying code no account names.
+/// once the code section ends. Requiring every chunk to fall within a spooled code is what stops a stream carrying code no
+/// account names.
 /// </remarks>
 public sealed class PbtCodeReassembly : IDisposable
 {
@@ -80,18 +80,14 @@ public sealed class PbtCodeReassembly : IDisposable
     }
 
     /// <summary>Marks the end of the code section, starting the reassembly in the background on the first call.</summary>
-    /// <remarks>Later calls rethrow a failed reassembly, so the staging that follows the code section stops early.</remarks>
     public void EndChunks()
     {
-        if (_rebuild is null)
-        {
-            _codeWriter.Dispose();
-            _chunkWriter?.Dispose();
-            _stemCursor?.Dispose();
-            _stemCursor = null;
-            _rebuild = Task.Run(Reassemble, CancellationToken.None);
-        }
-        else if (_rebuild.IsFaulted) _rebuild.GetAwaiter().GetResult();
+        if (_rebuild is not null) return;
+        _codeWriter.Dispose();
+        _chunkWriter?.Dispose();
+        _stemCursor?.Dispose();
+        _stemCursor = null;
+        _rebuild = Task.Run(Reassemble, CancellationToken.None);
     }
 
     /// <summary>Waits for the reassembled codes to be written and flushed.</summary>
