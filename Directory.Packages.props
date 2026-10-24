@@ -103,6 +103,7 @@
     <PackageVersion Include="Testably.Abstractions" Version="10.4.0" />
     <PackageVersion Include="Testably.Abstractions.Testing" Version="7.1.1" />
     <PackageVersion Include="Testcontainers" Version="4.16.0" />
+    <PackageVersion Include="Tomlyn" Version="0.20.0" />
     <PackageVersion Include="Websocket.Client" Version="5.5.1" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.8" />
