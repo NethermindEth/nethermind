@@ -13,7 +13,6 @@ if (args.Length == 0)
 try
 {
     var scripts = Path.Combine(Environment.CurrentDirectory, "scripts");
-    if (!Directory.Exists(scripts)) scripts = Path.Combine(Environment.CurrentDirectory, "nethermind", "scripts");
     var launchTest = "client launch (nethermind)";
     var knownFails = File.ReadAllLines(Path.Combine(scripts, "known-failing-hive-tests.txt")).ToHashSet(StringComparer.Ordinal);
     var knownFlaky = File.ReadAllLines(Path.Combine(scripts, "known-flaky-hive-tests.txt")).ToHashSet(StringComparer.Ordinal);

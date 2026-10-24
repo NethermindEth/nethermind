@@ -39,15 +39,13 @@ try
         ("missing_pass_ignored", "engine", Array.Empty<(string, bool)>(), 1, "Hive ran no test cases."),
         ("malformed_json", "engine", new[] { ("test_a", true) }, 1, ""),
         ("missing_known_file", "engine", new[] { ("test_a", true) }, 1, ""),
-        ("cli_working_directory", "engine", new[] { ("test_a", true) }, 0, "Unexpected fails: 0"),
-        ("cli_checkout_directory", "engine", new[] { ("test_a", true) }, 0, "Unexpected fails: 0")
     })
     {
         var (name, suite, cases, expectedCode, expectedOutput) = scenario;
         var directory = Directory.CreateTempSubdirectory("hive-results-tests-");
         try
         {
-            var scripts = Directory.CreateDirectory(Path.Combine(directory.FullName, "nethermind", "scripts"));
+            var scripts = Directory.CreateDirectory(Path.Combine(directory.FullName, "scripts"));
             File.WriteAllText(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"), $"# suite\n\n{failing}\nsync/{failing}\nsnapsync/{failing}\n{flaky}\n{launch}\n");
             File.WriteAllText(Path.Combine(scripts.FullName, "known-flaky-hive-tests.txt"), $"# suite\n\n{flaky}\n");
             var logs = Directory.CreateDirectory(Path.Combine(directory.FullName, "hive", "workspace", "logs"));
@@ -69,9 +67,9 @@ try
                 File.Delete(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"));
             var arguments = name == "explicit_paths"
                 ? new[] { "hive/workspace/logs/first.json", "hive/workspace/logs/second.json" }
-                : [name == "cli_checkout_directory" ? "../hive/workspace/logs/*.json" : "hive/workspace/logs/*.json"];
+                : ["hive/workspace/logs/*.json"];
             var (code, output, error) = await ScriptProcess.Run("dotnet", [executable, .. arguments], CancellationToken.None,
-                workingDirectory: name == "cli_checkout_directory" ? Path.Combine(directory.FullName, "nethermind") : directory.FullName);
+                workingDirectory: directory.FullName);
             if (code != expectedCode || !output.Replace("\r\n", "\n").Contains(expectedOutput, StringComparison.Ordinal) ||
                 (name is "malformed_json" or "missing_known_file" && error.Length == 0))
                 throw new InvalidOperationException($"{name}: expected exit {expectedCode} and '{expectedOutput}', got {code}\n{output}\n{error}");
