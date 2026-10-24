@@ -519,15 +519,33 @@ public class Eip8037Tests : VirtualMachineTestsBase
                 parent.Value,
                 parent.StateReservoir,
                 parent.StateGasUsed,
-                parent.StateGasSpill
+                parent.StateGasSpill,
+                parent.StateGasDrawn
             ),
             Is.EqualTo(
                 (
                     parentExecutionGas + childExecutionGas,
                     childRemainingStateReservoir + childStateGasUsed,
                     parentStateGasUsed,
-                    77L
+                    77L,
+                    parentStateGasUsed
                 )));
+    }
+
+    [Test]
+    public void Code_deposit_halt_returns_the_child_draws_to_the_parent_allowance()
+    {
+        EthereumGasPolicy top = new() { Value = 1_000_000, StateReservoir = 10_000_000 };
+        EthereumGasPolicy parent = EthereumGasPolicy.CreateChildFrameGas(ref top, 100_000);
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 50_000);
+        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref child, child.StateGasAllowance), Is.True);
+        EthereumGasPolicy.Refund(ref parent, in child);
+        EthereumGasPolicy.RevertRefundToHalt(ref parent, in child);
+        ulong value = parent.Value;
+
+        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref parent, parent.StateGasAllowance), Is.True);
+        Assert.That((parent.StateGasDrawn, parent.Value), Is.EqualTo((parent.StateGasAllowance, value)),
+            "the whole allowance is drawn from the reservoir");
     }
 
     [Test]
