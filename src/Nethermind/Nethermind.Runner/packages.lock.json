@@ -805,7 +805,8 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Crypto": "[2.3.0-preview, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
-          "Nethermind.Specs": "[2.3.0-preview, )"
+          "Nethermind.Specs": "[2.3.0-preview, )",
+          "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.evm.precompiles": {

@@ -269,13 +269,16 @@ public partial class VirtualMachine<TGasPolicy>(
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
     // Tracer capabilities are fixed for one execution. IsCancelable also selects both the dispatch table
-    // and its matching loop specialization; IsTracingImplicitStop avoids walking the tracer graph at frame exit.
+    // and its matching loop specialization; IsTracingImplicitStop avoids walking the tracer graph at frame exit,
+    // and IsTracingOperationGasCost and IsTracingOperationStart avoid walking it per traced opcode.
     private VmTracerFlags _tracerFlags;
     internal bool IsTracingActions => _tracerFlags.IsTracingActions;
     internal bool IsTracingRefunds => _tracerFlags.IsTracingRefunds;
     internal bool IsTracingAccess => _tracerFlags.IsTracingAccess;
     internal bool IsTracingOpLevelStorage => _tracerFlags.IsTracingOpLevelStorage;
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
+    private bool IsTracingOperationGasCost { get => DispatchFlags.Tracing(field); set; }
+    private bool IsTracingOperationStart { get => DispatchFlags.Tracing(field); set; }
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -357,6 +360,8 @@ public partial class VirtualMachine<TGasPolicy>(
         _txTracer = txTracer;
         _tracerFlags = new(txTracer);
         IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
+        IsTracingOperationGasCost = TTracingInst.IsActive && txTracer.Any<ITraceOperationGasCost>(static tracer => tracer.IsTracingInstructions);
+        IsTracingOperationStart = TTracingInst.IsActive && txTracer.Any<ITraceOperationStart>(static tracer => tracer.IsTracingInstructions);
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
         _isInstructionTraceActive = false;
@@ -1714,11 +1719,12 @@ public partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Read from the value pinned at transaction start, which is also what chose the dispatch table.
-        return DispatchFlags.Cancelable(_tracerFlags.IsCancelable) switch
-        {
-            false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
-            true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),
-        };
+        // Each arm returns its call directly, so the result is written into this method's return buffer rather than
+        // into a temporary the switch expression's value would be copied from.
+        if (DispatchFlags.Cancelable(_tracerFlags.IsCancelable))
+            return RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas);
+
+        return RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas);
 
     Empty:
         // Return an empty CallResult if there is no machine code to execute.
@@ -1837,7 +1843,7 @@ public partial class VirtualMachine<TGasPolicy>(
         VmState<TGasPolicy> vmState = VmState;
         _isInstructionTraceActive = true;
         tracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
-        if (gasCost is ulong cost)
+        if (gasCost is ulong cost && IsTracingOperationStart)
             tracer.ForEach<ITraceOperationStart, (ulong Cost, int Head, int Inputs, int Growth)>(
                 static inner => inner.IsTracingInstructions, (cost, stackHead, stackInputs, stackGrowth),
                 static (inner, operation) => inner.ReportOperationStart(operation.Cost, operation.Head, operation.Inputs, operation.Growth));
@@ -1898,7 +1904,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceOperationGasCost(ulong gasCost)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && IsTracingOperationGasCost)
             TraceOperationGasCostCore(gasCost);
     }
 
@@ -1911,7 +1917,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceMemoryOperationGasCost(in UInt256 position, in UInt256 length, ulong additionalGas = 0)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && (IsTracingOperationGasCost || IsTracingOperationStart))
             TraceMemoryOperationGasCostCore(in position, in length, additionalGas);
     }
 
@@ -1931,7 +1937,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceOperationReady(ulong gasCost, string? error = null)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && IsTracingOperationStart)
             TraceOperationReadyCore(gasCost, error);
     }
 
