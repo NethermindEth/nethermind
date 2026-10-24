@@ -42,7 +42,7 @@ public readonly struct PbtGroupRecord(ReadOnlyMemory<byte> buffer, int offset)
     public ulong GetLink(int slot)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(slot);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(slot, PbtThreeLevelGroupGeometry.BoundarySlots);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(slot, PbtTwoLevelGroupGeometry.BoundarySlots);
         return Header.Links[slot];
     }
 }

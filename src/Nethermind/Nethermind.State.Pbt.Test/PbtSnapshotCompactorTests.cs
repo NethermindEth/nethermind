@@ -78,7 +78,7 @@ public class PbtSnapshotCompactorTests
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
             using PbtNodeGroupWriter<PbtNodePath> writer = PbtNodeGroupWriter<PbtNodePath>.Rent(groupKey.BitDepth, memoryProvider);
-            writer.Write(path, PbtThreeLevelGroupGeometry.RootPosition, PbtTreeHarness.EncodeLeaf(key));
+            writer.Write(path, PbtTwoLevelGroupGeometry.RootPosition, PbtTreeHarness.EncodeLeaf(key));
             return writer.Detach(default, 0)!;
         }
     }
@@ -336,7 +336,7 @@ public class PbtSnapshotCompactorTests
             if (group.BitDepth != 0) path.AppendMut(0);
             byte[] node = group.BitDepth == 0 ? PbtTreeHarness.EncodeLeaf(leaf)
                 : PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
-            writer.Write(path, group.BitDepth == 0 ? PbtThreeLevelGroupGeometry.RootPosition : 0, node);
+            writer.Write(path, group.BitDepth == 0 ? PbtTwoLevelGroupGeometry.RootPosition : 0, node);
             using RefCountingMemory payload = writer.Detach(default, 0)!;
             expected = payload.GetSpan().ToArray();
             older.SetTree((group, expected));
@@ -435,7 +435,7 @@ public class PbtSnapshotCompactorTests
     }
 
     private static readonly PbtStorageNodePath[] MergeGroupPaths =
-        [new([], 0), new([0], 3), new([0], 6), new([1, 0], 9), new([0xFF, 0], 9)];
+        [new([], 0), new([0], 2), new([0], 4), new([1], 8), new([0xFF], 8)];
 
     [Test]
     public void Persisted_merge_cancellation_releases_source_scanners_and_sessions()

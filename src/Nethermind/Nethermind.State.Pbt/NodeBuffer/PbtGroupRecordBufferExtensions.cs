@@ -27,7 +27,7 @@ public static class PbtGroupRecordBufferExtensions
     /// <remarks>The caller's pin must outlive all uses of the returned record.</remarks>
     public static bool TryFindGroup(this IPbtGroupRecordBuffer buffer, ulong rootPointer, PbtStorageNodePath path, out PbtGroupRecord record)
     {
-        if (!PbtThreeLevelGroupGeometry.IsGroupDepth(path.BitDepth)) throw new ArgumentException("The path is not a PBT group boundary.", nameof(path));
+        if (!PbtTwoLevelGroupGeometry.IsGroupDepth(path.BitDepth)) throw new ArgumentException("The path is not a PBT group boundary.", nameof(path));
         Span<byte> target = stackalloc byte[PbtVariableTreeKey.MaxLength];
         Span<byte> linked = stackalloc byte[PbtVariableTreeKey.MaxLength];
         target.Clear();

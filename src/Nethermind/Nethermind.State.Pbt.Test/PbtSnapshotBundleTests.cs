@@ -367,7 +367,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void SnapshotContent_ReplacedTreesAndResetPreserveReadLeases([Values(1, 8)] int groupCount, [Values] bool removed)
+    public void SnapshotContent_ReplacedTreesAndResetPreserveReadLeases([Values(1, 4)] int groupCount, [Values] bool removed)
     {
         TrackingMemoryProvider memoryProvider = new();
         using PbtGroupRecordBuffer buffer = new(0, 256, 1);
@@ -375,7 +375,7 @@ public class PbtSnapshotBundleTests
         for (int round = 0; round < 2; round++)
         {
             content.BeginNodeGroupWrites(buffer);
-            PbtStorageNodePath[] paths = [.. Enumerable.Range(0, groupCount).Select(static index => new PbtStorageNodePath([(byte)(index << 5)], 3))];
+            PbtStorageNodePath[] paths = [.. Enumerable.Range(0, groupCount).Select(static index => new PbtStorageNodePath([(byte)(index << 6)], 2))];
             byte[][] originals = [.. paths.Select(path => Group(path, (byte)(round + 1)))];
             byte[][] replacements = [.. paths.Select(path => Group(path, (byte)(round + 3)))];
             content.SetTree([.. paths.Select((path, index) => (path, (byte[]?)originals[index]))]);
@@ -507,7 +507,7 @@ public class PbtSnapshotBundleTests
         if (bundle.GroupRecordBuffer.TryLocate(bundle.RootGroupPointer, out PbtGroupRecord record))
         {
             using GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> frame = new(record);
-            encoding = frame.GetEncoding(PbtThreeLevelGroupGeometry.RootPosition).ToArray();
+            encoding = frame.GetEncoding(PbtTwoLevelGroupGeometry.RootPosition).ToArray();
         }
         using (Assert.EnterMultipleScope())
         {
@@ -531,7 +531,7 @@ public class PbtSnapshotBundleTests
         PbtStorageNodePath wideGroupKey = new([], 0);
         PbtResourcePool pool = new(new PbtConfig(), nodeGroupMemory: memoryProvider);
         byte[] persisted = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(1)),
-            new PbtNodeRecord(PbtTestPaths.PathOf(groupKey, 6).ToPath<PbtStorageNodePath>(), BranchEncoding(2))], default);
+            new PbtNodeRecord(PbtTestPaths.PathOf(groupKey, 2).ToPath<PbtStorageNodePath>(), BranchEncoding(2))], default);
         byte[] shared = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(3))], default);
         byte[] local = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(4))], default);
         byte[] write = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(5))], default);
@@ -598,7 +598,7 @@ public class PbtSnapshotBundleTests
             Assert.That(payload?.Memory.ToArray(), Is.EqualTo(persistedEncoding));
             Assert.That(reader.GroupReadCount, Is.EqualTo(persistenceReads), "only a group no persisted tree holds is read from persistence");
         }
-        using (RefCountingMemory? missingPayload = bundle.GetPersistedNodeGroup(new PbtStorageNodePath([0, 0], 9)))
+        using (RefCountingMemory? missingPayload = bundle.GetPersistedNodeGroup(new PbtStorageNodePath([0], 8)))
         using (Assert.EnterMultipleScope())
         {
             Assert.That(missingPayload, Is.Null);
@@ -1107,7 +1107,7 @@ public class PbtSnapshotBundleTests
 
         private void Apply(in PbtStorageNodePath path)
         {
-            if (path.BitDepth >= 9 && path.GetByte(0) == FailedZone) throw new InvalidDataException("Configured partition write failure.");
+            if (path.BitDepth >= 8 && path.GetByte(0) == FailedZone) throw new InvalidDataException("Configured partition write failure.");
             System.Threading.Interlocked.Increment(ref _applyCount);
         }
 

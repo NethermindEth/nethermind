@@ -37,7 +37,7 @@ public static class PbtNodeGroupKey
         if (key[^1] > 7) throw new InvalidDataException("Invalid persisted PBT node-group key trailer.");
         int bitsInLastByte = key[^1] == 0 ? 8 : key[^1];
         int depth = (key.Length - TrailerLength - 1) * 8 + bitsInLastByte;
-        if (!PbtThreeLevelGroupGeometry.IsGroupDepth(depth))
+        if (!PbtTwoLevelGroupGeometry.IsGroupDepth(depth))
             throw new InvalidDataException("A persisted PBT node-group key depth must be a group boundary.");
         ReadOnlySpan<byte> path = key[..^TrailerLength];
         if (!PbtNodeCodec.IsCanonicalPath(path, depth, PbtStorageNodePath.MaxBitDepth))
@@ -69,7 +69,7 @@ public static class PbtNodeGroupKey
     {
         PbtGroupLinks links = record.Links;
         Span<byte> key = stackalloc byte[MaxLength];
-        for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
+        for (int slot = 0; slot < PbtTwoLevelGroupGeometry.BoundarySlots; slot++)
         {
             if (!TryResolve(buffer, links[slot], lowerBound, out PbtGroupRecord child)) continue;
             int below = 0;

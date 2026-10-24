@@ -43,7 +43,7 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposa
         {
             ReadOnlySpan<byte> payload = memory.Span;
             uint availability = PbtNodeGroupCodec.ReadAvailability(payload);
-            Debug.Assert(bitDepth == 0 || (availability & (1u << PbtThreeLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
+            Debug.Assert(bitDepth == 0 || (availability & (1u << PbtTwoLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
             _offsetTable = payload.Length - PbtNodeGroupCodec.GetTrailerLength(availability, payload);
             _stored = availability;
         }
@@ -115,7 +115,7 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposa
     /// </remarks>
     public readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot(in ValueHash256 groupHash)
     {
-        ReadOnlyMemory<byte> encoding = GetEncoding(PbtThreeLevelGroupGeometry.RootPosition);
+        ReadOnlyMemory<byte> encoding = GetEncoding(PbtTwoLevelGroupGeometry.RootPosition);
         if (encoding.IsEmpty) return default;
         return PbtNodeCodec.IsLeaf(encoding.Span)
             ? new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, groupHash)

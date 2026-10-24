@@ -158,7 +158,7 @@ internal static class PbtStoreTestExtensions
     internal static long[] ReadDescendantBytes(ReadOnlySpan<byte> payload)
     {
         ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
-        long[] descendantBytes = new long[PbtThreeLevelGroupGeometry.BoundarySlots];
+        long[] descendantBytes = new long[PbtTwoLevelGroupGeometry.BoundarySlots];
         for (int slot = 0; slot < descendantBytes.Length; slot++)
             descendantBytes[slot] = (descendantMask & (1 << slot)) == 0 ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantMask, slot);
         return descendantBytes;
@@ -220,7 +220,7 @@ internal static class PbtStoreTestExtensions
             foreach (PbtPhysicalPayload group in payloads)
             {
                 int groupDepth = group.Key.BitDepth;
-                long[] expected = new long[PbtThreeLevelGroupGeometry.BoundarySlots];
+                long[] expected = new long[PbtTwoLevelGroupGeometry.BoundarySlots];
                 foreach (PbtPhysicalPayload candidate in payloads)
                 {
                     if (candidate.Key.BitDepth <= groupDepth || !candidate.Key.Prefix(groupDepth).Equals(group.Key)) continue;
@@ -242,7 +242,7 @@ internal static class PbtStoreTestExtensions
         if (path.BitDepth != 0) throw new ArgumentException("Use canonical traversal for non-root reads.", nameof(path));
         using RefCountingMemory? payload = store.GetNodeGroup(path);
         if (payload is null) return null;
-        return ResolveNode(PbtStoreTestExtensions.ReadGroup(path, payload.GetSpan()), path, PbtThreeLevelGroupGeometry.RootPosition);
+        return ResolveNode(PbtStoreTestExtensions.ReadGroup(path, payload.GetSpan()), path, PbtTwoLevelGroupGeometry.RootPosition);
     }
 
     internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
@@ -410,8 +410,8 @@ internal static class PbtStoreTestExtensions
         if (!encoding.IsEmpty) return encoding.ToArray();
         TPath path = PbtTestPaths.PathOf(groupKey, position);
         int relativeDepth = path.BitDepth - groupKey.BitDepth;
-        if (relativeDepth < 1 || relativeDepth >= PbtThreeLevelGroupGeometry.LevelsPerGroup) return null;
-        int width = 1 << (PbtThreeLevelGroupGeometry.LevelsPerGroup - relativeDepth);
+        if (relativeDepth < 1 || relativeDepth >= PbtTwoLevelGroupGeometry.LevelsPerGroup) return null;
+        int width = 1 << (PbtTwoLevelGroupGeometry.LevelsPerGroup - relativeDepth);
         byte[]? left = ResolveNode(reader, groupKey, position - width);
         byte[]? right = ResolveNode(reader, groupKey, position - 1);
         return left is null || right is null ? null : PbtTreeHarness.EncodeBranch([], 0,
