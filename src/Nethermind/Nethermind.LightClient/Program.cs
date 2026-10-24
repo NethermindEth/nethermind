@@ -186,11 +186,11 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             else
                 logger.LogInformation("Trusted checkpoint accepted");
             initialHeader = store.FinalizedHeader;
-            Hash256 initialHash = initialHeader.Execution?.BlockHash ?? initialHeader.ExecutionBlockHash
-                ?? throw new InvalidDataException("Verified beacon header has no execution block hash.");
-            VerifiedHead provisionalHead = new(initialHeader.Beacon!.Slot, initialHeader.Execution?.BlockNumber ?? 0,
-                initialHash, initialHeader.Execution?.StateRoot ?? Hash256.Zero);
-            execution.UpdateHead(provisionalHead, ExecutionTime(provisionalHead));
+            if (initialHeader.Execution is { } payload)
+            {
+                VerifiedHead initialExecutionHead = new(initialHeader.Beacon!.Slot, payload.BlockNumber, payload.BlockHash!, payload.StateRoot!);
+                execution.UpdateHead(initialExecutionHead, ExecutionTime(initialExecutionHead));
+            }
             status.SetStage(StartupStage.Execution);
             await executionStartup;
             executionReady = true;

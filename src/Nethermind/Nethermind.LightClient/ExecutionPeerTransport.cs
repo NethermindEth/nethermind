@@ -167,7 +167,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         _services = builder.Build();
         try
         {
-            if (head is null)
+            if (head is null || head.Number == 0 && head.BlockHash != genesisHash)
             {
                 using ILifetimeScope scope = _services.BeginLifetimeScope(scopeBuilder => scopeBuilder
                     .AddSingleton<IWorldStateScopeProvider>(_services.Resolve<IWorldStateManager>().GlobalWorldState));
@@ -1124,15 +1124,15 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         internal LightSyncServer(ChainSpec chainSpec, VerifiedHead? head, ulong timestamp)
         {
             _chainSpec = chainSpec;
-            if (head is null)
-            {
-                _head = chainSpec.Genesis!.Header;
-                return;
-            }
-            _head = CreateHead(head, timestamp);
+            _head = chainSpec.Genesis!.Header;
+            if (head is not null) UpdateHead(head, timestamp);
         }
 
-        internal void UpdateHead(VerifiedHead head, ulong timestamp) => Volatile.Write(ref _head, CreateHead(head, timestamp));
+        internal void UpdateHead(VerifiedHead head, ulong timestamp)
+        {
+            if (head.Number == 0 && head.BlockHash != _chainSpec.Genesis!.Hash) return;
+            Volatile.Write(ref _head, CreateHead(head, timestamp));
+        }
 
         internal void AddReceiptHeader(BlockHeader header)
         {
@@ -1146,24 +1146,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     _receiptHeaders.Remove(header.Hash!);
         }
 
-        private BlockHeader CreateHead(VerifiedHead head, ulong timestamp)
+        private BlockHeader CreateHead(VerifiedHead head, ulong timestamp) => new(
+            Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero,
+            head.Number, 0, timestamp, [])
         {
-            if (head.Number == 0 && head.BlockHash != _chainSpec.Genesis?.Hash)
-            {
-                // Gloas authenticates the EL hash before its number is known; ETH/69 status must not pair that hash with block zero.
-                ulong lastBlockFork = 0;
-                foreach (ForkActivation activation in new ChainSpecBasedSpecProvider(_chainSpec).TransitionActivations)
-                    lastBlockFork = Math.Max(lastBlockFork, activation.BlockNumber);
-                head = head with { Number = lastBlockFork };
-            }
-            return new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero,
-                head.Number, 0, timestamp, [])
-            {
-                Hash = head.BlockHash,
-                StateRoot = head.StateRoot,
-                TotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty ?? UInt256.Zero,
-            };
-        }
+            Hash = head.BlockHash,
+            StateRoot = head.StateRoot,
+            TotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty ?? UInt256.Zero,
+        };
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public BlockHeader Genesis => _chainSpec.Genesis!.Header;

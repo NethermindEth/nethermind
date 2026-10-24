@@ -2298,20 +2298,42 @@ public class TransportTests
     }
 
     [Test]
-    public void Gloas_provisional_execution_status_uses_a_post_merge_block_number_and_current_fork_id([Values] bool updateHead)
+    public async Task Unresolved_Gloas_heads_preserve_the_last_known_execution_status([Values] bool updateHead)
     {
-        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), Nethermind.Logging.LimboLogs.Instance)
-            .LoadEmbeddedOrFromFile("sepolia.json");
-        chainSpec.Genesis!.Header.Hash = KnownHashes.SepoliaGenesis;
         ulong timestamp = BeaconChainSpec.Sepolia.GenesisTime + 11_311_456 * BeaconChainSpec.Sepolia.SecondsPerSlot;
-        VerifiedHead provisional = new(11_311_456, 0, Keccak.Compute("authenticated execution header"), Hash256.Zero);
-        ExecutionPeerTransport.LightSyncServer server = new(chainSpec, updateHead ? null : provisional, timestamp);
-        if (updateHead) server.UpdateHead(provisional, timestamp);
-        ForkInfo forks = new(new ChainSpecBasedSpecProvider(chainSpec), server);
+        VerifiedHead unresolved = new(11_311_456, 0, Keccak.Compute("authenticated execution header"), Hash256.Zero);
+        await using ExecutionPeerTransport transport = new("sepolia", Nethermind.Logging.LimboLogs.Instance,
+            updateHead ? null : unresolved, timestamp);
+        ISyncServer server = Services(transport).Resolve<ISyncServer>();
+        IForkInfo forks = Services(transport).Resolve<IForkInfo>();
+        if (updateHead) transport.UpdateHead(unresolved, timestamp);
 
-        using IDisposable scope = Assert.EnterMultipleScope();
-        Assert.That(server.Head!.Number, Is.GreaterThan(1_000_000));
-        Assert.That(forks.GetForkId(server.Head.Number, timestamp), Is.EqualTo(forks.GetForkId(uint.MaxValue, timestamp)));
+        Assert.That(server.Head, Is.SameAs(server.Genesis));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(server.Head!.Number, Is.Zero);
+            Assert.That(server.Head.Hash, Is.EqualTo(KnownHashes.SepoliaGenesis));
+            Assert.That(server.Head.CalculateHash(), Is.EqualTo(KnownHashes.SepoliaGenesis));
+            Assert.That(server.Head.Timestamp, Is.EqualTo(0x6159af19UL));
+            Assert.That(forks.GetForkId(server.Head.Number, server.Head.Timestamp), Is.EqualTo(new Nethermind.Network.ForkId(0xfe3366e7, 1_735_371)));
+        }
+        VerifiedHead resolved = unresolved with { Number = 12_345_678, StateRoot = Keccak.Compute("verified state root") };
+
+        transport.UpdateHead(resolved, timestamp);
+
+        BlockHeader published = server.Head!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(published.Number, Is.EqualTo(resolved.Number));
+            Assert.That(published.Hash, Is.EqualTo(resolved.BlockHash));
+            Assert.That(published.StateRoot, Is.EqualTo(resolved.StateRoot));
+            Assert.That(published.Timestamp, Is.EqualTo(timestamp));
+            Assert.That(forks.GetForkId(published.Number, published.Timestamp), Is.EqualTo(new Nethermind.Network.ForkId(0x6c1d9423, 0)));
+        }
+
+        transport.UpdateHead(unresolved with { Slot = unresolved.Slot + 1, BlockHash = Keccak.Compute("next unresolved head") }, timestamp + 12);
+
+        Assert.That(server.Head, Is.SameAs(published));
     }
 
     [Test]
