@@ -25,6 +25,7 @@ for (var index = 0; index < args.Length; index++)
     }
 }
 var temporary = Directory.CreateTempSubdirectory("superchain-");
+var indentedJson = new JsonSerializerOptions { WriteIndented = true };
 try
 {
     Directory.CreateDirectory(Path.Combine(output, "chainspec"));
@@ -54,7 +55,7 @@ try
         var genesis = (await JsonNode.ParseAsync(decompressed))!;
         var spec = Chainspec(name, l1, superchain, chain, genesis);
         await File.WriteAllTextAsync(Path.Combine(temporary.FullName, $"{name}-{l1}.json"), spec.ToJsonString());
-        await File.WriteAllTextAsync(Path.Combine(output, "runner", $"{name}-{l1}.json"), Runner(name, l1, chain).ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        await File.WriteAllTextAsync(Path.Combine(output, "runner", $"{name}-{l1}.json"), Runner(name, l1, chain).ToJsonString(indentedJson));
     }
     Log("Training compression dictionary");
     var files = Directory.GetFiles(temporary.FullName, "*.json");

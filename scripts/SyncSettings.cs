@@ -44,6 +44,7 @@ internal static class SyncSettings
 
     internal static async Task<int> Update(HttpClient http, string key, bool superchain, string directory, Func<TimeSpan, Task> delay)
     {
+        var indentedJson = new JsonSerializerOptions { WriteIndented = true };
         Console.WriteLine("Fast Sync configuration settings initialization     ✅ ");
         var failed = new List<string>();
         foreach (var (name, url, reduction, multiple, pos) in Configs)
@@ -93,7 +94,7 @@ internal static class SyncSettings
                 updated[target] = config;
             }
             foreach (var (target, config) in updated)
-                await File.WriteAllTextAsync(Path.Combine(directory, target + ".json"), config.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                await File.WriteAllTextAsync(Path.Combine(directory, target + ".json"), config.ToJsonString(indentedJson));
 
             async Task<JsonNode?> Request(string method, string? tag)
             {
