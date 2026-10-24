@@ -2455,27 +2455,32 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     public void Eip8037_top_level_frame_deploys_several_maximum_size_contracts_from_the_reservoir()
     {
         // PUSH2 0x6000 PUSH0 RETURN: 24,576 zero bytes. The top-level frame has no allowance, and each create frame
-        // gets one from the gas forwarded to it, so both deposits come from the reservoir.
+        // gets one from the gas forwarded to it, so all deposits come from the reservoir. Four deployments draw about
+        // 151M, more than the 128M that an allowance derived from the top level's execution gas would permit.
+        const int deployments = 4;
         byte[] initCode = Bytes.FromHexString("0x6160005ff3");
-        byte[] code = Prepare.EvmCode
-            .Create(initCode, UInt256.Zero)
-            .Op(Instruction.POP)
-            .Create(initCode, UInt256.Zero)
-            .Op(Instruction.POP)
-            .Op(Instruction.STOP)
-            .Done;
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 0; i < deployments; i++)
+        {
+            prepare = prepare.Create(initCode, UInt256.Zero).Op(Instruction.POP);
+        }
 
-        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + 80_000_000;
-        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: 100_000_000);
+        byte[] code = prepare.Op(Instruction.STOP).Done;
+
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + 160_000_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: 200_000_000);
 
         UInt256 nonce = TestState.GetNonce(Recipient);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(TestState.GetCode(ContractAddress.From(Recipient, nonce - 2)).Length, Is.EqualTo(24_576));
-            Assert.That(TestState.GetCode(ContractAddress.From(Recipient, nonce - 1)).Length, Is.EqualTo(24_576));
+            for (int i = 1; i <= deployments; i++)
+            {
+                Assert.That(TestState.GetCode(ContractAddress.From(Recipient, nonce - (ulong)i)).Length, Is.EqualTo(24_576));
+            }
+
             Assert.That(tracer.GasConsumedResult.BlockStateGas,
-                Is.EqualTo(2 * (GasCostOf.CreateState + 24_576 * GasCostOf.CostPerStateByte)));
+                Is.EqualTo(deployments * (GasCostOf.CreateState + 24_576 * GasCostOf.CostPerStateByte)));
         }
     }
 

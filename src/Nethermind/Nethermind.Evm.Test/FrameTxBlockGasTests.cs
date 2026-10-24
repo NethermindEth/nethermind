@@ -243,6 +243,43 @@ public class FrameTxBlockGasTests
         }
     }
 
+    /// <summary>
+    /// The legacy share of EIP-8037 is an extra execution-gas charge in a frame, and the frame's state pool pays
+    /// the whole state gas. So state use never exceeds the frame's state limit, the block's state reservation and
+    /// the approved maximum gas still bound the transaction, and the payer pays exactly the spent gas even when
+    /// the calldata floor binds.
+    /// </summary>
+    [TestCase((ulong)GasCostOf.SSetState - 10_000, false)]
+    [TestCase((ulong)GasCostOf.SSetState, true)]
+    public void Execute_FrameWriteUnderBindingCalldataFloor_StaysWithinStateLimitAndApprovedMaximum(ulong stateLimit, bool expectedWrite)
+    {
+        UInt256 initialBalance = UInt256.Parse("100000000000000000000");
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), initialBalance);
+        Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        byte[] calldata = new byte[10_000];
+        Array.Fill(calldata, (byte)1);
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Writer, executionGasLimit: 50_000, stateGasLimit: stateLimit, UInt256.Zero, calldata));
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out ulong floorGas, out ulong maxGas), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out _, out ulong stateReservation, estimateSignatureBytes: false), Is.True);
+
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.EqualTo(!expectedWrite),
+                "the state pool must cover the whole state charge of the new slot");
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedWrite ? (ulong)GasCostOf.SSetState : 0UL));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.LessThanOrEqualTo(stateReservation));
+            Assert.That(tracer.GasSpent, Is.EqualTo(floorGas + tracer.GasConsumedResult.BlockStateGas), "the calldata floor binds, with the state gas on top");
+            Assert.That(tracer.GasSpent, Is.LessThanOrEqualTo(maxGas));
+            Assert.That(_state.GetBalance(Sender), Is.EqualTo(initialBalance - tracer.GasSpent), "the payer pays exactly the spent gas at price 1");
+        }
+    }
+
     /// <summary>An atomic batch whose later frame fails gives back the state gas its earlier frame owed.</summary>
     /// <remarks>The unroll restores the pre-batch state, so the slot the first frame wrote never reaches
     /// the block and must not be priced into the block's state dimension.</remarks>
