@@ -378,6 +378,40 @@ public class LogFinderTests
         AssertSerializedAsFilterLogs(_logFinder.FindLogs(logFilter));
     }
 
+    [Test]
+    public void processed_noncanonical_block_with_missing_receipts_is_not_unprocessed()
+    {
+        Block parent = _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
+        Block orphan = Build.A.Block
+            .WithParent(parent)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .WithExtraData([1])
+            .TestObject;
+
+        Assert.That(_rawBlockTree.SuggestBlock(orphan), Is.EqualTo(AddBlockResult.Added));
+        _rawBlockTree.MarkChainAsProcessed([orphan]);
+
+        // Reproduce a previously processed side block after its receipts have been reclaimed.
+        _receiptStorage.Insert(orphan, [Build.A.Receipt.TestObject], ensureCanonical: false);
+        _receiptStorage.RemoveReceipts(orphan);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_rawBlockTree.WasProcessed(orphan.Number, orphan.Hash!), Is.True);
+            Assert.That(_rawBlockTree.IsMainChain(orphan.Header), Is.False);
+            Assert.That(_receiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.False);
+        }
+
+        BlockParameter blockHash = new(orphan.Hash!);
+        LogFilter filter = new(0, blockHash, blockHash, AddressFilter.AnyAddress, new SequenceTopicsFilter());
+
+        // PR #15051 currently classifies this as BlockNotProcessedException,
+        // even though the persisted chain-level metadata says it was executed.
+        Assert.That(() => _logFinder.FindLogs(filter),
+            Throws.TypeOf<ResourceNotFoundException>()
+                .With.Message.Contains("Receipt not available"));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void single_block_filter_reads_receipts_only_when_enumerated()
     {
