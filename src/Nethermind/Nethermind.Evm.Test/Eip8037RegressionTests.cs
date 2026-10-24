@@ -2407,6 +2407,46 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip8037_callee_pays_from_gas_left_when_its_ancestor_used_the_allowance()
+    {
+        // PUSH2 0x0708 PUSH0 RETURN: deploys 1,800 zero bytes, a code deposit of 2,754,000 state gas.
+        byte[] deployAndCallCode = Prepare.EvmCode
+            .Create(Bytes.FromHexString("0x6107085ff3"), UInt256.Zero)
+            .Op(Instruction.POP)
+            .Call(TestItem.AddressE, 230_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] twoSlotsCode = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .PushData(1).PushData(1).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+        TestState.CreateAccount(TestItem.AddressD, 0);
+        TestState.InsertCode(TestItem.AddressD, deployAndCallCode, SpecProvider.GenesisSpec);
+        TestState.CreateAccount(TestItem.AddressE, 0);
+        TestState.InsertCode(TestItem.AddressE, twoSlotsCode, SpecProvider.GenesisSpec);
+        Address deployed = ContractAddress.From(TestItem.AddressD, TestState.GetNonce(TestItem.AddressD));
+
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressD, 400_000).Op(Instruction.STOP).Done;
+
+        // The deployment leaves about 142,400 of the 3,060,000 allowance, less than the two slots need from the
+        // reservoir. The callee pays the rest from its own gas instead of halting.
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + 10_000_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: 100_000_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(TestState.GetCode(deployed).Length, Is.EqualTo(1_800));
+            AssertStorage(new StorageCell(TestItem.AddressE, 0), UInt256.One);
+            AssertStorage(new StorageCell(TestItem.AddressE, 1), UInt256.One);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas,
+                Is.EqualTo(GasCostOf.CreateState + 1_800 * GasCostOf.CostPerStateByte + 2 * GasCostOf.SSetState));
+        }
+    }
+
+    [Test]
     public void Eip8037_callee_cannot_drain_the_reservoir_of_a_later_callee()
     {
         byte[] newSlotCode = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;

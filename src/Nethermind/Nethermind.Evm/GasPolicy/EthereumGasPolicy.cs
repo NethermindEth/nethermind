@@ -31,8 +31,11 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasUsed;
     /// <summary>State gas drawn from this frame's execution gas pool.</summary>
     public long StateGasSpill;
-    /// <summary>Most net state gas this frame and its descendants can create (EIP-8037 allowance); used only when <see cref="HasStateGasAllowance"/> is set.</summary>
+    /// <summary>Most state gas this frame and its descendants can take from the reservoir (EIP-8037 allowance); used only when <see cref="HasStateGasAllowance"/> is set.</summary>
     public long StateGasAllowance;
+    /// <summary>State gas this frame and its returned descendants took from the reservoir.</summary>
+    /// <remarks>A revert or halt of a child drops the child's draws; refills never lower it.</remarks>
+    public long StateGasDrawn;
     /// <summary>Set for call frames below the top level, which have an EIP-8037 state-gas allowance.</summary>
     public bool HasStateGasAllowance;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
@@ -103,7 +106,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return 0;
         }
 
-        long reservoirContribution = gas.StateReservoir;
+        long reservoirContribution = Math.Min(gas.StateReservoir, RemainingStateGasAllowance(in gas));
         if (reservoirContribution <= 0)
         {
             return (ulong)stateGasCost;
@@ -134,10 +137,11 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// <summary>Charges state gas: <paramref name="legacyShare"/> from <see cref="Value"/>, then the reservoir, then <see cref="Value"/>.</summary>
     /// <remarks>
     /// The legacy share keeps the <c>gas_left</c> cost of state creation at least its cost before EIP-8037, so a frame
-    /// cannot create state with less gas than before because the reservoir pays for it.
+    /// cannot create state with less gas than before because the reservoir pays for it. The reservoir pays at most the
+    /// frame's remaining allowance and <paramref name="drawLimit"/>; the rest comes from <see cref="Value"/>.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryConsumeStateGas(ref EthereumGasPolicy gas, long stateGasCost, long legacyShare)
+    private static bool TryConsumeStateGas(ref EthereumGasPolicy gas, long stateGasCost, long legacyShare, long drawLimit = long.MaxValue)
     {
         long reservoir = gas.StateReservoir;
         if (gas.IndependentStatePool)
@@ -153,14 +157,14 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return true;
         }
 
-        if (ExceedsStateGasAllowance(in gas, stateGasCost)) return false;
-
         long fromGasLeft = Math.Min(stateGasCost, legacyShare);
-        long fromReservoir = Math.Max(0, Math.Min(reservoir, stateGasCost - fromGasLeft));
+        long reservoirLimit = Math.Min(Math.Min(reservoir, RemainingStateGasAllowance(in gas)), drawLimit);
+        long fromReservoir = Math.Max(0, Math.Min(reservoirLimit, stateGasCost - fromGasLeft));
         fromGasLeft = stateGasCost - fromReservoir;
         if (!TryConsume(ref gas, (ulong)fromGasLeft)) return false;
 
         gas.StateReservoir -= fromReservoir;
+        gas.StateGasDrawn += fromReservoir;
         gas.StateGasUsed += stateGasCost;
         gas.StateGasSpill += fromGasLeft;
         return true;
@@ -180,6 +184,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateReservoir += childGas.StateReservoir;
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
+        gas.StateGasDrawn += childGas.StateGasDrawn;
     }
 
     // On explicit REVERT, restore the child's remaining state reservoir plus its reverted
@@ -209,6 +214,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         parentGas.StateGasSpill -= childGas.StateGasSpill;
         parentGas.StateReservoir += childGas.StateGasUsed - childGas.StateGasSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
+        parentGas.StateGasDrawn -= childGas.StateGasDrawn;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -572,26 +578,18 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, long amount)
-    {
+    public static void AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, long amount) =>
         gas.StateReservoir += amount;
-        ExtendStateGasAllowance(ref gas, amount);
-    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long RemainingStateGasAllowance(in EthereumGasPolicy gas) =>
+        gas.HasStateGasAllowance ? Math.Max(0, gas.StateGasAllowance - gas.StateGasDrawn) : long.MaxValue;
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ExceedsStateGasAllowance(in EthereumGasPolicy gas, long stateGasCost) =>
-        gas.HasStateGasAllowance && gas.StateGasUsed + stateGasCost > gas.StateGasAllowance;
-
-    /// <inheritdoc/>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ExtendStateGasAllowance(ref EthereumGasPolicy gas, long amount)
-    {
-        if (gas.HasStateGasAllowance)
-        {
-            gas.StateGasAllowance += amount;
-        }
-    }
+    public static bool TryConsumeCodeDepositGas(ref EthereumGasPolicy gas, in EthereumGasPolicy createFrameGas, long stateGasCost, ulong executionGasCost) =>
+        (executionGasCost <= 0 || UpdateGas(ref gas, executionGasCost)) &&
+        (stateGasCost <= 0 || TryConsumeStateGas(ref gas, stateGasCost, legacyShare: 0, RemainingStateGasAllowance(in createFrameGas)));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RemoveStateGasRefundFromReservoir(ref EthereumGasPolicy gas, long amount)
@@ -691,7 +689,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long childStateReservoir = parentGas.StateReservoir;
         parentGas.StateReservoir = 0;
 
-        // EIP-8037: the child can create as many state bytes as its gas bought at the pre-EIP-8037 code-deposit price,
+        // EIP-8037: the child can take from the reservoir what its gas bought at the pre-EIP-8037 code-deposit price,
         // within what is left of its parent's allowance. EIP-8141 frame transactions keep their own state-gas limits.
         bool hasAllowance = !parentGas.IndependentStatePool;
         long allowance = 0;
@@ -699,10 +697,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         {
             allowance = (long)Math.Min(childExecutionGas, (ulong)(long.MaxValue / GasCostOf.CostPerStateByte))
                 * GasCostOf.CostPerStateByte / Eip8037Constants.LegacyGasPerStateByte;
-            if (parentGas.HasStateGasAllowance)
-            {
-                allowance = Math.Min(allowance, Math.Max(0, parentGas.StateGasAllowance - parentGas.StateGasUsed));
-            }
+            allowance = Math.Min(allowance, RemainingStateGasAllowance(in parentGas));
         }
 
         return new EthereumGasPolicy

@@ -299,14 +299,11 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
 
-    /// <summary>Whether charging <paramref name="stateGasCost"/> would take the frame above its EIP-8037 state-gas allowance.</summary>
+    /// <summary>Charges the code deposit of a create frame whose remaining gas was already returned to <paramref name="gas"/>.</summary>
+    /// <remarks>Under EIP-8037 the deposit takes from the reservoir only what the create frame's state-gas allowance permits.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual bool ExceedsStateGasAllowance(in TSelf gas, long stateGasCost) => false;
-
-    /// <summary>Raises the frame's EIP-8037 state-gas allowance by state gas that it refilled for an ancestor.</summary>
-    /// <remarks>Such a refill lowers the transaction's net state gas without lowering the frame's own usage.</remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual void ExtendStateGasAllowance(ref TSelf gas, long amount) { }
+    static virtual bool TryConsumeCodeDepositGas(ref TSelf gas, in TSelf createFrameGas, long stateGasCost, ulong executionGasCost)
+        => TSelf.TryConsumeStateAndExecutionGas(ref gas, stateGasCost, executionGasCost);
 
     // EIP-8037 top-level halt: snap state-gas back to (R0, intrinsicStateUsed, 0); the
     // post-reset StateGasUsed feeds SpentGas so the user doesn't pay for uncommitted state.

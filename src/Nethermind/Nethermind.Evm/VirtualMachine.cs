@@ -772,10 +772,8 @@ public partial class VirtualMachine<TGasPolicy>(
 
         ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in previousState.Gas, stateDepositCost);
         ulong codeDepositGasCost = executionDepositCost + stateSpill;
-        // EIP-8037: the deposit is checked against the create frame's allowance, not its parent's.
         bool hasEnoughGas = gasAvailableForCodeDeposit >= executionDepositCost
-            && gasAvailableForCodeDeposit - executionDepositCost >= stateSpill
-            && !TGasPolicy.ExceedsStateGasAllowance(in previousState.Gas, stateDepositCost);
+            && gasAvailableForCodeDeposit - executionDepositCost >= stateSpill;
         bool chargedCodeDeposit = false;
 
         if (hasEnoughGas && !invalidCode)
@@ -783,7 +781,8 @@ public partial class VirtualMachine<TGasPolicy>(
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
             // EIP-8279: the deployed code joins the block access list once its deposit is paid for; an out-of-gas
             // there fails the deposit. EIP-8360 TCREATE code is discarded at the end of the transaction.
-            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost)
+            // EIP-8037: the deposit draws on the create frame's allowance, not its parent's.
+            chargedCodeDeposit = TGasPolicy.TryConsumeCodeDepositGas(ref gasAfterCodeDeposit, in previousState.Gas, stateDepositCost, executionDepositCost)
                 && (previousState.ExecutionType == ExecutionType.TCREATE || TryMeterBalData((ulong)code.Length));
             if (chargedCodeDeposit)
             {
@@ -1054,7 +1053,6 @@ public partial class VirtualMachine<TGasPolicy>(
             if (unappliedRefund > 0)
             {
                 _currentState.StateGasRefundAdvanced += unappliedRefund;
-                TGasPolicy.ExtendStateGasAllowance(ref _currentState.Gas, unappliedRefund);
             }
 
             childState.StateGasRefundAdvanced = 0;
@@ -1356,8 +1354,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in currentState.Gas, stateDepositCost);
                 codeDepositGasCost = executionDepositCost + stateSpill;
                 hasEnoughGasForCodeDeposit = remainingGas >= executionDepositCost
-                    && remainingGas - executionDepositCost >= stateSpill
-                    && !TGasPolicy.ExceedsStateGasAllowance(in currentState.Gas, stateDepositCost);
+                    && remainingGas - executionDepositCost >= stateSpill;
             }
             else
             {

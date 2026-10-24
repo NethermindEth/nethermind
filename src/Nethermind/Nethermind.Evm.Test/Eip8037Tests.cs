@@ -742,31 +742,69 @@ public class Eip8037Tests : VirtualMachineTestsBase
         Assert.That(grandchild.StateGasAllowance, Is.EqualTo(82_500L), "limited by what is left of the parent's allowance");
     }
 
-    [TestCase(0L, true)]
-    [TestCase(1L, false)]
-    public void State_gas_charge_up_to_the_allowance_succeeds(long overAllowance, bool expected)
+    [TestCase(0L)]
+    [TestCase(1L)]
+    [TestCase(50_000L)]
+    [TestCase(50_001L)]
+    public void State_gas_beyond_the_allowance_comes_from_gas_left(long overAllowance)
     {
         EthereumGasPolicy top = new() { Value = 1_000_000, StateReservoir = 10_000_000 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref top, 50_000);
         EthereumGasPolicy before = child;
+        bool canPay = overAllowance <= (long)child.Value;
 
         bool charged = EthereumGasPolicy.TryConsumeStateGas(ref child, child.StateGasAllowance + overAllowance);
 
-        Assert.That(charged, Is.EqualTo(expected));
-        if (!expected)
+        Assert.That(charged, Is.EqualTo(canPay));
+        if (canPay)
+            Assert.That((child.Value, child.StateReservoir, child.StateGasDrawn),
+                Is.EqualTo((before.Value - (ulong)overAllowance, before.StateReservoir - before.StateGasAllowance, before.StateGasAllowance)));
+        else
             Assert.That(child, Is.EqualTo(before), "a refused charge changes nothing");
     }
 
     [Test]
-    public void State_gas_refill_for_an_ancestor_frees_allowance()
+    public void State_gas_charge_with_no_allowance_left_comes_from_gas_left()
     {
         EthereumGasPolicy top = new() { Value = 1_000_000, StateReservoir = 10_000_000 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref top, 50_000);
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref child, child.StateGasAllowance), Is.True);
+        EthereumGasPolicy grandchild = EthereumGasPolicy.CreateChildFrameGas(ref child, 200_000);
+        long reservoir = grandchild.StateReservoir;
+
+        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref grandchild, GasCostOf.SSetState), Is.True);
+        Assert.That((grandchild.StateGasAllowance, grandchild.Value, grandchild.StateReservoir),
+            Is.EqualTo((0L, 200_000UL - (ulong)GasCostOf.SSetState, reservoir)));
+    }
+
+    [Test]
+    public void State_gas_refill_does_not_restore_allowance()
+    {
+        EthereumGasPolicy top = new() { Value = 1_000_000, StateReservoir = 10_000_000 };
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref top, 200_000);
+        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref child, child.StateGasAllowance), Is.True);
 
         EthereumGasPolicy.AddStateGasRefundToReservoir(ref child, GasCostOf.SSetState);
+        long reservoir = child.StateReservoir;
 
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref child, GasCostOf.SSetState), Is.True);
+        Assert.That((child.Value, child.StateReservoir), Is.EqualTo((200_000UL - (ulong)GasCostOf.SSetState, reservoir)));
+    }
+
+    [Test]
+    public void State_gas_draws_of_a_child_count_for_the_parent_only_on_success([Values] bool childSucceeds)
+    {
+        EthereumGasPolicy top = new() { Value = 1_000_000, StateReservoir = 10_000_000 };
+        EthereumGasPolicy parent = EthereumGasPolicy.CreateChildFrameGas(ref top, 100_000);
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 50_000);
+        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref child, GasCostOf.SSetState), Is.True);
+
+        if (childSucceeds)
+            EthereumGasPolicy.Refund(ref parent, in child);
+        else
+            EthereumGasPolicy.RestoreChildStateGas(ref parent, in child);
+
+        Assert.That(parent.StateGasDrawn, Is.EqualTo(childSucceeds ? GasCostOf.SSetState : 0L));
     }
 
     [Test]
