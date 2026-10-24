@@ -44,6 +44,131 @@ namespace Nethermind.Blockchain.Test;
 public class BlockTreeTests
 {
     [Test]
+    public void DefaultPreMergeSuggestionGuardStillRejectsLighterHeaders()
+    {
+        BlockTree tree = BuildBlockTree();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(genesis);
+
+        Block heavier = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithDifficulty((UInt256)2)
+            .TestObject;
+        tree.SuggestBlock(heavier);
+
+        Block lighter = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithDifficulty((UInt256)1)
+            .TestObject;
+        tree.SuggestBlock(lighter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(heavier.Hash));
+            Assert.That(tree.BestSuggestedBody?.Hash, Is.EqualTo(heavier.Hash));
+        }
+    }
+
+    [Test]
+    public void ProtectedSuggestionGuardAllowsAnAlternatePolicyToPromoteLighterHeader()
+    {
+        BlockTreeBuilder builder = BuildBlockTreeBuilder();
+        AlternatePolicyBlockTree tree = new(builder);
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(genesis);
+
+        Block heavier = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithDifficulty((UInt256)2)
+            .TestObject;
+        tree.SuggestBlock(heavier);
+
+        Block lighter = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithDifficulty((UInt256)1)
+            .TestObject;
+        tree.SuggestBlock(lighter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(lighter.Hash));
+            Assert.That(tree.BestSuggestedBody?.Hash, Is.EqualTo(lighter.Hash));
+            Assert.That(tree.BestSuggestedHeader?.TotalDifficulty, Is.EqualTo(lighter.TotalDifficulty));
+        }
+    }
+
+    [Test]
+    public void KnownLowerHeaderPayloadTakesTheExistingAlreadyKnownPath()
+    {
+        BlockTree tree = BuildBlockTree();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(genesis);
+
+        Block mainBlock = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithDifficulty((UInt256)2)
+            .TestObject;
+        tree.SuggestBlock(mainBlock);
+        Block mainHead = Build.A.Block
+            .WithNumber(2)
+            .WithParent(mainBlock)
+            .WithDifficulty((UInt256)2)
+            .TestObject;
+        tree.SuggestBlock(mainHead);
+
+        Block lowerBranch = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithDifficulty((UInt256)1)
+            .TestObject;
+        Assert.That(tree.SuggestHeader(lowerBranch.Header), Is.EqualTo(AddBlockResult.Added));
+
+        Assert.That(tree.SuggestBlock(lowerBranch), Is.EqualTo(AddBlockResult.AlreadyKnown));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(mainHead.Hash));
+            Assert.That(tree.BestSuggestedBody?.Hash, Is.EqualTo(mainHead.Hash));
+        }
+    }
+
+    [Test]
+    public void AlternateKnownHeaderPolicyReachesNormalPromotionHooks()
+    {
+        BlockTreeBuilder builder = BuildBlockTreeBuilder();
+        AlternatePolicyBlockTree tree = new(builder);
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(genesis);
+
+        Block main = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithDifficulty((UInt256)2)
+            .TestObject;
+        tree.SuggestBlock(main);
+        Block lower = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithDifficulty((UInt256)1)
+            .WithExtraData([0x01])
+            .TestObject;
+        int lowerPromotionNotifications = 0;
+        tree.NewBestSuggestedBlock += (_, args) =>
+        {
+            if (args.Block.Hash == lower.Hash) lowerPromotionNotifications++;
+        };
+        Assert.That(tree.SuggestHeader(lower.Header), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(tree.SuggestBlock(lower), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(lower.Hash));
+        Assert.That(tree.BestSuggestedBody?.Hash, Is.EqualTo(lower.Hash));
+        Assert.That(lowerPromotionNotifications, Is.EqualTo(1));
+    }
+
+    [Test]
     public void IsKnownBlock_requires_the_correct_canonical_head_number([Range(-1, 1)] int offset)
     {
         BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -4828,5 +4953,26 @@ public class BlockTreeTests
             Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
             Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
         }
+    }
+
+    private sealed class AlternatePolicyBlockTree(BlockTreeBuilder builder) : BlockTree(
+        builder.BlockStore,
+        builder.HeaderStore,
+        builder.BlockInfoDb,
+        builder.MetadataDb,
+        builder.BadBlockStore,
+        builder.BlockAccessListStore,
+        builder.ChainLevelInfoRepository,
+        MainnetSpecProvider.Instance,
+        builder.SyncConfig,
+        builder.StateBoundary,
+        LimboLogs.Instance,
+        new BlockTreeMutationLock())
+    {
+        protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header) => true;
+
+        protected override bool IsLighterPreMergeThanBestSuggestedHeader(BlockHeader header) => false;
+
+        protected override bool IsKnownBlockAtOrBelowBestSuggestedHeader(BlockHeader header, bool isKnown) => false;
     }
 }

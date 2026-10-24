@@ -275,7 +275,7 @@ public class PowForwardHeaderProvider(
                 return null;
             }
 
-            headersToRequest = Math.Min(headersToRequest, (ulong)bestPeer.MaxHeadersPerRequest());
+            headersToRequest = Math.Min(headersToRequest, (ulong)GetMaxHeadersPerRequest(bestPeer));
             if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
 
             cancellation.ThrowIfCancellationRequested();
@@ -468,6 +468,10 @@ public class PowForwardHeaderProvider(
     }
 
     protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty ?? UInt256.Zero) > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero);
+
+    /// <summary>Returns the maximum number of headers to request from the selected peer.</summary>
+    /// <param name="peer">The peer selected for the forward-header request.</param>
+    protected virtual int GetMaxHeadersPerRequest(PeerInfo peer) => peer.MaxHeadersPerRequest();
 
     protected virtual IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers) => headers;
 }

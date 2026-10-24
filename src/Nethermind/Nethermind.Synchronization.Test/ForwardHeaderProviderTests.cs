@@ -19,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.Stats;
@@ -74,6 +75,40 @@ public partial class ForwardHeaderProviderTests
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders((ulong)skipLastN, (ulong)maxNHeader, CancellationToken.None);
         Assert.That(headers?[0]?.Number, Is.EqualTo(expectedStartNumber));
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedEndNumber));
+    }
+
+    [TestCase(0, 512, 1024UL, 192)]
+    [TestCase(384, 512, 1024UL, 384)]
+    [TestCase(512, 512, 1024UL, 512)]
+    [TestCase(512, 384, 1024UL, 384)]
+    [TestCase(512, 512, 200UL, 201)]
+    public async Task Header_request_limit_uses_provider_hook_and_bounds_request(int providerLimit, int maxHeaders, ulong headNumber, int expectedRequest)
+    {
+        await using IContainer node = CreateNode(builder =>
+        {
+            if (providerLimit > 0)
+            {
+                builder.RegisterType<ConfigurableForwardHeaderProvider>()
+                    .As<IForwardHeaderProvider>()
+                    .WithParameter(new TypedParameter(typeof(int), providerLimit))
+                    .InstancePerLifetimeScope();
+            }
+        });
+        Context ctx = node.Resolve<Context>();
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.ClientType.Returns(NodeClientType.Geth);
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.HeadNumber.Returns(headNumber);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await ctx.ForwardHeaderProvider.GetBlockHeaders(0, (ulong)maxHeaders, CancellationToken.None);
+
+        Assert.That(headers, Is.Not.Null);
+        await syncPeer.Received(1).GetBlockHeaders(0, expectedRequest, 0, Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -711,6 +746,18 @@ public partial class ForwardHeaderProviderTests
             Thread.Sleep(200);
             return true;
         }
+    }
+
+    private sealed class ConfigurableForwardHeaderProvider(
+        int maxHeadersPerRequest,
+        ISealValidator sealValidator,
+        IBlockTree blockTree,
+        ISyncPeerPool syncPeerPool,
+        ISyncReport syncReport,
+        ILogManager logManager
+    ) : PowForwardHeaderProvider(sealValidator, blockTree, syncPeerPool, syncReport, logManager)
+    {
+        protected override int GetMaxHeadersPerRequest(PeerInfo peer) => maxHeadersPerRequest;
     }
 
     [Test, MaxTime(7000)]
