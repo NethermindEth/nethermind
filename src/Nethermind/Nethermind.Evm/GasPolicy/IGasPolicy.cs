@@ -299,6 +299,15 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
 
+    /// <summary>Whether charging <paramref name="stateGasCost"/> would take the frame above its EIP-8998 state-gas allowance.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ExceedsStateGasAllowance(in TSelf gas, long stateGasCost) => false;
+
+    /// <summary>Raises the frame's EIP-8998 state-gas allowance by state gas that it refilled for an ancestor.</summary>
+    /// <remarks>Such a refill lowers the transaction's net state gas without lowering the frame's own usage.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void ExtendStateGasAllowance(ref TSelf gas, long amount) { }
+
     // EIP-8037 top-level halt: snap state-gas back to (R0, intrinsicStateUsed, 0); the
     // post-reset StateGasUsed feeds SpentGas so the user doesn't pay for uncommitted state.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

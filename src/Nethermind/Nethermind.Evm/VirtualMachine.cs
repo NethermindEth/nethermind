@@ -772,8 +772,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
         ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in previousState.Gas, stateDepositCost);
         ulong codeDepositGasCost = executionDepositCost + stateSpill;
+        // EIP-8998: the deposit is checked against the create frame's allowance, not its parent's.
         bool hasEnoughGas = gasAvailableForCodeDeposit >= executionDepositCost
-            && gasAvailableForCodeDeposit - executionDepositCost >= stateSpill;
+            && gasAvailableForCodeDeposit - executionDepositCost >= stateSpill
+            && !TGasPolicy.ExceedsStateGasAllowance(in previousState.Gas, stateDepositCost);
         bool chargedCodeDeposit = false;
 
         if (hasEnoughGas && !invalidCode)
@@ -1052,6 +1054,7 @@ public partial class VirtualMachine<TGasPolicy>(
             if (unappliedRefund > 0)
             {
                 _currentState.StateGasRefundAdvanced += unappliedRefund;
+                TGasPolicy.ExtendStateGasAllowance(ref _currentState.Gas, unappliedRefund);
             }
 
             childState.StateGasRefundAdvanced = 0;
@@ -1353,7 +1356,8 @@ public partial class VirtualMachine<TGasPolicy>(
                 ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in currentState.Gas, stateDepositCost);
                 codeDepositGasCost = executionDepositCost + stateSpill;
                 hasEnoughGasForCodeDeposit = remainingGas >= executionDepositCost
-                    && remainingGas - executionDepositCost >= stateSpill;
+                    && remainingGas - executionDepositCost >= stateSpill
+                    && !TGasPolicy.ExceedsStateGasAllowance(in currentState.Gas, stateDepositCost);
             }
             else
             {
