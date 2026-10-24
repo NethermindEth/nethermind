@@ -175,15 +175,6 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     static abstract bool TryConsumeSelfDestructGas(ref TSelf gas);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
 
-    /// <summary>Repays outstanding EIP-8037 state-gas spill from the reservoir after a successful child merge.</summary>
-    /// <remarks>
-    /// Implements the EIP-8037 <c>d = min(state_gas_reservoir, state_gas_from_gas_left)</c> merge step.
-    /// Policies that retain total spill separately record <c>d</c> as repaid spill instead of reducing that total.
-    /// Policies that implement this step leave either the reservoir or the outstanding spill exhausted.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual void RepayStateGasSpill(ref TSelf gas) { }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeCreateStateGas(ref TSelf gas) =>
         TSelf.TryConsumeStateGas(ref gas, TSelf.GetCreateStateCost());
@@ -292,24 +283,19 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     // Pre-EIP-8037 fallback: refund into execution gas.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, (ulong)amount);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor, bool trackSpillRefund) =>
-        TSelf.RefundStateGas(ref gas, amount, stateGasFloor);
 
     // Drop state-gas from block-state accounting without refunding to the gas budget;
     // reverted state charges stay paid by the tx but don't contribute to committed state gas.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual long DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) => amount;
 
-    /// <summary>Credits a speculative state-gas refund to the frame, continuing the source-based
-    /// LIFO refill: gas_left up to the frame's unrefunded spill, the remainder to the reservoir.</summary>
+    /// <summary>Credits a speculative state-gas refund to the frame's reservoir.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund)
+    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount)
         => TSelf.UpdateGasUp(ref gas, (ulong)amount);
 
     /// <summary>Revokes a speculative refund credited by <see cref="AddStateGasRefundToReservoir"/>.</summary>
-    /// <remarks>Claws the full amount from the reservoir (negative if needed); the gas_left-refilled
-    /// portion stays there, its permanent spill-refund mark keeping the net spill consistent.</remarks>
+    /// <remarks>Claws the full amount from the reservoir (negative if needed).</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
 

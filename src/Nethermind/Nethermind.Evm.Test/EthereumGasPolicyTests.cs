@@ -512,13 +512,12 @@ public class EthereumGasPolicyTests
             StateReservoir = 50,
             StateGasUsed = 30,
             StateGasSpill = 20,
-            StateGasSpillRefunded = 10,
         };
 
         EthereumGasPolicy.ClearExecutionGas(ref gas);
 
-        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill, gas.StateGasSpillRefunded),
-            Is.EqualTo((0UL, 50L, 30L, 20L, 10L)));
+        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
+            Is.EqualTo((0UL, 50L, 30L, 20L)));
     }
 
     [TestCase(29_999UL, false, 0UL)]
@@ -582,8 +581,8 @@ public class EthereumGasPolicyTests
     [TestCase(40_000UL, true)]
     public void MinimalGas_preserves_selected_policy(ulong floorValue, bool selectFloor)
     {
-        EthereumGasPolicy standard = new() { Value = 30_000, StateReservoir = 100, StateGasUsed = 200, StateGasSpill = 300, StateGasSpillRefunded = 400 };
-        EthereumGasPolicy floor = new() { Value = floorValue, StateReservoir = 500, StateGasUsed = 600, StateGasSpill = 700, StateGasSpillRefunded = 800 };
+        EthereumGasPolicy standard = new() { Value = 30_000, StateReservoir = 100, StateGasUsed = 200, StateGasSpill = 300 };
+        EthereumGasPolicy floor = new() { Value = floorValue, StateReservoir = 500, StateGasUsed = 600, StateGasSpill = 700 };
         IntrinsicGas<EthereumGasPolicy> intrinsic = new(standard, floor);
         EthereumGasPolicy expected = selectFloor ? floor : standard;
 
