@@ -121,6 +121,12 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         (chainSpec.Genesis ?? throw new InvalidOperationException("Chain spec has no genesis block")).Header.Hash = genesisHash;
         _syncServer = new LightSyncServer(chainSpec, head, timestamp);
         InitConfig init = new() { DiagnosticMode = DiagnosticMode.MemDb, DataDir = "src/Nethermind/artifacts/lightclient-execution" };
+        if (dataDirectory is not null)
+        {
+            string executionDirectory = Path.GetFullPath(Path.Combine(dataDirectory, "el", network));
+            init.DataDir = executionDirectory;
+            init.BaseDbPath = Path.Combine(executionDirectory, "db");
+        }
         NetworkConfig net = new()
         {
             DiscoveryDns = $"enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{network}.ethdisco.net",

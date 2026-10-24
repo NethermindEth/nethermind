@@ -14,6 +14,7 @@ using DotNetty.Buffers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
@@ -1157,6 +1158,33 @@ public class TransportTests
             BlockAccessListsMessage value => _serializer.ZeroSerialize(value),
             _ => throw new ArgumentException("Unexpected SNAP test message.", nameof(message)),
         };
+    }
+
+    [Test]
+    public async Task Execution_data_directory_scopes_inherited_paths_and_preserves_memory_databases(
+        [Values(null, "relative", "absolute")] string? directoryKind)
+    {
+        string directory = PeerTestDirectory();
+        string? dataDirectory = directoryKind switch
+        {
+            "relative" => Path.GetRelativePath(Environment.CurrentDirectory, directory),
+            "absolute" => directory,
+            _ => null,
+        };
+        await using ExecutionPeerTransport transport = new("sepolia", Nethermind.Logging.LimboLogs.Instance,
+            new VerifiedHead(0, 0, KnownHashes.SepoliaGenesis, Hash256.Zero), 0, dataDirectory);
+        IContainer services = Services(transport);
+        IInitConfig configuration = services.Resolve<IInitConfig>();
+        string expected = Path.Combine(directory, "el", "sepolia");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(configuration.DataDir, Is.EqualTo(dataDirectory is null
+                ? "src/Nethermind/artifacts/lightclient-execution" : expected));
+            Assert.That(configuration.BaseDbPath, Is.EqualTo(dataDirectory is null ? "db" : Path.Combine(expected, "db")));
+            Assert.That(configuration.DiagnosticMode, Is.EqualTo(DiagnosticMode.MemDb));
+            Assert.That(services.ResolveKeyed<IDb>(DbNames.Headers), Is.TypeOf<MemDb>());
+        }
     }
 
     [Test]
