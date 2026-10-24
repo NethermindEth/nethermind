@@ -740,6 +740,23 @@ public class Eip8037Tests : VirtualMachineTestsBase
             Is.EqualTo((500_000UL, GasCostOf.CreateState + GasCostOf.SSetState, 0L, GasCostOf.CreateState + GasCostOf.SSetState)));
     }
 
+    [Test]
+    public void Halt_after_child_revert_restores_the_reservoir_and_burns_the_spill([Values(0L, 50L, 200L)] long reservoir)
+    {
+        const long stateGas = 100;
+        EthereumGasPolicy outer = new() { Value = 1_000, StateReservoir = reservoir };
+        EthereumGasPolicy middle = EthereumGasPolicy.CreateChildFrameGas(ref outer, 400);
+        EthereumGasPolicy inner = EthereumGasPolicy.CreateChildFrameGas(ref middle, 200);
+        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref inner, stateGas), Is.True);
+
+        EthereumGasPolicy.RestoreChildStateGas(ref middle, in inner);
+        EthereumGasPolicy.RestoreChildStateGasOnHalt(ref outer, in middle);
+
+        Assert.That((outer.StateReservoir, outer.StateGasUsed, outer.StateGasSpill), Is.EqualTo((reservoir, 0L, 0L)));
+        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref outer, stateGas), Is.True);
+        Assert.That(outer.Value, Is.EqualTo(1_000UL - (ulong)Math.Max(0, stateGas - reservoir)));
+    }
+
     [TestCase(ExpectedResult = 5_000L)]
     public long Spent_gas_subtracts_state_reservoir()
     {

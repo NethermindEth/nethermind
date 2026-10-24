@@ -764,6 +764,45 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip8037_preparation_oog_under_the_cap_consumes_the_gas_limit_and_rolls_back_the_authorization()
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Address codeSource = TestItem.AddressC;
+        AuthorizationTuple authorization = ecdsa.Sign(RecipientKey, SpecProvider.ChainId, codeSource, 0);
+        Transaction template = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(authorization)
+            .TestObject;
+        // Enough for intrinsic gas, not for the state gas of the authorization, and no reservoir.
+        ulong gasLimit = EthereumGasPolicy.CalculateIntrinsicGas(template, Spec).Standard.Value + 1_000;
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(authorization)
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        TestState.CreateAccount(codeSource, 0);
+        TestState.InsertCode(codeSource, Prepare.EvmCode.Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
+        (Block block, _) = PrepareTx(Activation, gasLimit, transaction: transaction, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(TestState.GetNonce(Recipient), Is.Zero);
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCodeSpan(Recipient)), Is.False);
+        }
+    }
+
+    [Test]
     public void Eip8037_halted_child_spill_does_not_reduce_persistent_authorization_state_gas()
     {
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
@@ -2315,8 +2354,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(15_000, false, TestName = "Eip8037_reservoir_does_not_fund_new_slot_below_legacy_cost")]
-    [TestCase(25_000, true, TestName = "Eip8037_reservoir_funds_new_slot_above_legacy_cost")]
+    // PUSH1, PUSH1 and a cold new-slot SSTORE cost 22,106 in Osaka; the legacy share keeps that cost with a reservoir.
+    [TestCase(22_105, false, TestName = "Eip8037_reservoir_does_not_fund_new_slot_one_gas_below_osaka_cost")]
+    [TestCase(22_106, true, TestName = "Eip8037_reservoir_funds_new_slot_at_osaka_cost")]
     public void Eip8037_new_slot_takes_legacy_cost_from_gas_left_with_a_reservoir(long childGas, bool expectedSuccess)
     {
         TestState.CreateAccount(TestItem.AddressC, 0);
