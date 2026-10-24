@@ -1,0 +1,23 @@
+name: Orphan receipts regression verification
+
+on:
+  pull_request:
+    branches: [audit/ci-base-20261024]
+    paths:
+      - 'src/Nethermind/Nethermind.Blockchain.Test/Find/LogFinderTests.cs'
+      - 'src/Nethermind/Nethermind.Facade/Find/LogFinder.cs'
+      - '.github/workflows/orphan-receipts-regression-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+      - name: Execute the targeted NUnit regression test
+        run: |
+          dotnet test --project src/Nethermind/Nethermind.Blockchain.Test/Nethermind.Blockchain.Test.csproj -c release -- --filter "FullyQualifiedName~processed_noncanonical_block_with_missing_receipts_is_not_unprocessed"
