@@ -760,6 +760,18 @@ public class Eip8037Tests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Frame_pool_refill_returns_the_state_gas_but_not_the_legacy_share()
+    {
+        EthereumGasPolicy gas = EthereumGasPolicy.FromFrameLimits(100_000, 1_000_000);
+        Assert.That(EthereumGasPolicy.TryConsumeNewAccountCreation<OnFlag>(ref gas), Is.True);
+
+        EthereumGasPolicy.RefundStateGas(ref gas, GasCostOf.NewAccountState, stateGasFloor: 0);
+
+        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed),
+            Is.EqualTo((100_000UL - (ulong)Eip8037Constants.NewAccountLegacyShare, 1_000_000L, 0L)));
+    }
+
     [TestCase(ExpectedResult = 5_000L)]
     public long Spent_gas_subtracts_state_reservoir()
     {
