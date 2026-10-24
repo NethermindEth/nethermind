@@ -80,6 +80,10 @@ public class Eip8053ScaledPricesTests(bool amsterdam) : VirtualMachineTestsBase
             (byte)Instruction.PUSH1, 0, (byte)Instruction.PUSH1, 0, (byte)Instruction.SSTORE,
             (byte)Instruction.STOP,
         ]);
+        // 100 words: 3 × 100 + 100² // 512 = 319 gas. A cost formula with a division is evaluated in gas and then scaled,
+        // so this costs 319,000 milli-gas, not the 319,531 of evaluating it in milli-gas.
+        yield return Program("memory expansion to 100 words", 100_000,
+            Prepare.EvmCode.PushData(1).PushData(99 * 32).Op(Instruction.MSTORE).Op(Instruction.GAS).Op(Instruction.STOP).Done);
         yield return Program("log and memory", 1_000_000,
             Prepare.EvmCode.StoreDataInMemory(64, "c0de").Log(96, 0, [TestItem.KeccakA]).Op(Instruction.GAS).Op(Instruction.STOP).Done);
         yield return Program("value call to a new account", 1_000_000,
