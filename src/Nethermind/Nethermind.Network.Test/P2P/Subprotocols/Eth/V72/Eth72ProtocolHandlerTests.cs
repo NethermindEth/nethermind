@@ -70,6 +70,7 @@ public class Eth72ProtocolHandlerTests
     private CompositeDisposable _disposables = null!;
     private BlobCustodyTracker _blobCustodyTracker = null!;
     private SparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = null!;
+    private const int MaxSamplerTransactionAttempts = 64;
     private TestSparseBlobPeer _idlePeer = null!;
     private List<P2PMessage> _deliveredMessages = null!;
 
@@ -870,13 +871,12 @@ public class Eth72ProtocolHandlerTests
         RecreateHandler(providerProbabilityPercent: 0);
         BlobCellMask requestMask = BlobCellMask.FromIndices([2, 7]);
         _blobCustodyTracker.Update(requestMask);
-        Transaction tx;
-        ulong nonce = 0;
-        do
+        Transaction tx = BuildSparseBlobTransaction(out _, out _, out _, 0);
+        for (ulong nonce = 1; _sparseBlobPoolPeerRegistry.GetRequestMask(tx.Hash!, BlobCellMask.Full, 15).IsFull; nonce++)
         {
-            tx = BuildSparseBlobTransaction(out _, out _, out _, nonce++);
+            Assert.That(nonce, Is.LessThan(MaxSamplerTransactionAttempts), "Could not build a sampler blob transaction.");
+            tx = BuildSparseBlobTransaction(out _, out _, out _, nonce);
         }
-        while (_sparseBlobPoolPeerRegistry.GetRequestMask(tx.Hash!, BlobCellMask.Full, 15).IsFull);
 
         Hash256 hash = tx.Hash!;
         _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
@@ -968,6 +968,60 @@ public class Eth72ProtocolHandlerTests
         _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
             m.Hashes.Length == 1 &&
             m.Hashes[0] == tx.Hash &&
+            m.CellMask.SequenceEqual(BlobCellMask.Full.ToBytes())));
+    }
+
+    [Test]
+    public void normal_mode_should_wait_for_partial_announcement_when_too_few_peers_to_sample()
+    {
+        RecreateHandler();
+        _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
+        Transaction tx = BuildSamplerBlobTransaction();
+        _sparseBlobPoolPeerRegistry.RemovePeer(_idlePeer);
+        _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        using NewPooledTransactionHashesMessage72 message = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [tx.Hash!],
+            BlobCellMask.FromIndices([2, 7, 9]).ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+
+        _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
+    }
+
+    [Test]
+    public void single_peer_should_retry_full_cell_requests_over_in_flight_budget()
+    {
+        _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
+        _sparseBlobPoolPeerRegistry.RemovePeer(_idlePeer);
+        const int count = 17;
+        byte[] types = new byte[count];
+        int[] sizes = new int[count];
+        ValueHash256[] hashes = new ValueHash256[count];
+        for (int i = 0; i < count; i++)
+        {
+            types[i] = (byte)TxType.Blob;
+            sizes[i] = 1024;
+            hashes[i] = HashFromInt(i);
+        }
+
+        using NewPooledTransactionHashesMessage72 message = new(types, sizes, hashes, BlobCellMask.Full.ToBytes());
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+
+        GetCellsMessage72[] requests = [.. _deliveredMessages.OfType<GetCellsMessage72>()];
+        Assert.That(requests, Has.Length.EqualTo(count - 1));
+
+        _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(requests[0].Hashes[0].ToHash256(), BlobCellMask.Full, (ISparseBlobPoolPeer)_handler);
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(1));
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.Hashes[0] == hashes[count - 1] &&
             m.CellMask.SequenceEqual(BlobCellMask.Full.ToBytes())));
     }
 
@@ -1730,7 +1784,7 @@ public class Eth72ProtocolHandlerTests
             .SetValue(_handler, DateTimeOffset.MinValue);
         BlobCellMask requestedMask = BlobCellMask.FromIndices([1]);
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < Eth72ProtocolHandler.CellRequestBurstAllowance - 1; i++)
         {
             using GetCellsMessage72 request = new(1000 + i, [HashFromInt(i)], requestedMask.ToBytes());
             HandleZeroMessage(request, Eth72MessageCode.GetCells);
@@ -1738,7 +1792,7 @@ public class Eth72ProtocolHandlerTests
 
         _session.DidNotReceive().InitiateDisconnect(DisconnectReason.UselessPeer, Arg.Any<string>());
 
-        using GetCellsMessage72 abusiveRequest = new(1004, [HashFromInt(4)], requestedMask.ToBytes());
+        using GetCellsMessage72 abusiveRequest = new(2000, [HashFromInt(Eth72ProtocolHandler.CellRequestBurstAllowance - 1)], requestedMask.ToBytes());
         HandleZeroMessage(abusiveRequest, Eth72MessageCode.GetCells);
 
         _session.Received(1).InitiateDisconnect(
@@ -1755,8 +1809,8 @@ public class Eth72ProtocolHandlerTests
             .SetValue(_handler, DateTimeOffset.MinValue);
         typeof(Eth72ProtocolHandler)
             .GetField("_blobAnnouncementsReceived", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(_handler, 13L);
-        ValueHash256[] hashes = new ValueHash256[Eth72ProtocolHandler.MaxCellsRequestHashes + 1];
+            .SetValue(_handler, 1L);
+        ValueHash256[] hashes = new ValueHash256[Eth72ProtocolHandler.CellRequestBurstAllowance + 5];
         for (int i = 0; i < hashes.Length; i++)
         {
             hashes[i] = HashFromInt(i);
@@ -1789,7 +1843,7 @@ public class Eth72ProtocolHandlerTests
             .GetField("_requestRatioWarmupEndsAt", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(_handler, DateTimeOffset.MinValue);
         BlobCellMask requestedMask = BlobCellMask.FromIndices([1]);
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < Eth72ProtocolHandler.CellRequestBurstAllowance + 5; i++)
         {
             using GetCellsMessage72 request = new(2000 + i, [HashFromInt(i)], requestedMask.ToBytes());
             HandleZeroMessage(request, Eth72MessageCode.GetCells);
@@ -1823,7 +1877,7 @@ public class Eth72ProtocolHandlerTests
             .GetField("_requestRatioWarmupEndsAt", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(_handler, DateTimeOffset.MinValue);
         BlobCellMask requestedMask = BlobCellMask.FromIndices([1]);
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < Eth72ProtocolHandler.CellRequestBurstAllowance + 5; i++)
         {
             using GetCellsMessage72 request = new(3000 + i, [HashFromInt(i)], requestedMask.ToBytes());
             HandleZeroMessage(request, Eth72MessageCode.GetCells);
@@ -5515,7 +5569,7 @@ public class Eth72ProtocolHandlerTests
 
     private Transaction BuildSamplerBlobTransaction()
     {
-        for (int nonce = 0; nonce < 4096; nonce++)
+        for (int nonce = 0; nonce < MaxSamplerTransactionAttempts; nonce++)
         {
             Transaction tx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)

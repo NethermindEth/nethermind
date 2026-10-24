@@ -73,7 +73,7 @@ public class Eth72ProtocolHandler(
     , ISparseBlobPoolPeer
 {
     private const int RequestToAnnouncementRatioThreshold = 5;
-    private const int MinCellRequestsBeforeRatioDisconnect = 5;
+    internal const int CellRequestBurstAllowance = MaxCellsRequestHashes;
     private const int MaxCountedBlobAnnouncements = 4096;
     internal const int MaxUnansweredCellRequestRestores = 2;
     private const int MaxPendingCellRequests = 1024;
@@ -696,9 +696,9 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        long announcements = Math.Max(1, Volatile.Read(ref _blobAnnouncementsReceived));
-        if (totalRequests < MinCellRequestsBeforeRatioDisconnect
-            || totalRequests < announcements * RequestToAnnouncementRatioThreshold)
+        long announcements = Volatile.Read(ref _blobAnnouncementsReceived);
+        // A peer that fetches full blobs announces them back only after admission, so a burst comes before any announcement.
+        if (totalRequests < announcements * RequestToAnnouncementRatioThreshold + CellRequestBurstAllowance)
         {
             return false;
         }
@@ -983,7 +983,8 @@ public class Eth72ProtocolHandler(
             return;
         }
 
-        AddPendingCellRequest(hash.ValueHash256, requestMask);
+        // No event for this hash may follow, so maintenance retries it once in-flight work drops.
+        AddPendingCellRequest(hash.ValueHash256, requestMask, _timestamper.UtcNowOffset);
     }
 
     private bool TryGetCellsResponseMetadata(

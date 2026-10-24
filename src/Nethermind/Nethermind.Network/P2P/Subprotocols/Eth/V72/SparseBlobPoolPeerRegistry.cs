@@ -83,6 +83,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private int _inFlightCellWork;
     private int _trackedTransactionCount;
     private int _transactionOrderCount;
+    private int _peerCount;
     private double _cellServeTokens = GlobalCellServeTokenCapacity;
     private DateTimeOffset _cellServeTokensUpdatedAt;
     private int _maintenanceScheduled;
@@ -306,6 +307,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
 
             _peers[peer.Id] = peer;
+            Volatile.Write(ref _peerCount, _peers.Count);
         }
 
         ProcessPeerCleanupActions(cleanupActions, peer.Id);
@@ -322,6 +324,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             if (((ICollection<KeyValuePair<PublicKey, ISparseBlobPoolPeer>>)_peers)
                 .Remove(new KeyValuePair<PublicKey, ISparseBlobPoolPeer>(peer.Id, peer)))
             {
+                Volatile.Write(ref _peerCount, _peers.Count);
                 cleanupActions = CollectPeerCleanupActions(peer.Id);
             }
         }
@@ -544,7 +547,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         int threshold = Math.Clamp(providerProbabilityPercent, MinProviderProbabilityPercent, MaxProviderProbabilityPercent);
         // With fewer peers than providers a sampler waits for, sampling never starts.
-        if (announcementMask.IsFull && (_peers.Count < MinSamplerFullProviderAnnouncements || ShouldFetchFull(hash, threshold)))
+        if (announcementMask.IsFull && (Volatile.Read(ref _peerCount) < MinSamplerFullProviderAnnouncements || ShouldFetchFull(hash, threshold)))
         {
             return BlobCellMask.Full;
         }
