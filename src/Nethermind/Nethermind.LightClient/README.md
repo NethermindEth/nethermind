@@ -40,6 +40,8 @@ their EF-operated checkpoint defaults. All profiles use RPC port 8545.
 Press **Ctrl+C** in the terminal to cancel checkpoint/bootstrap startup or stop
 the running client. Shutdown waits for RPC and sync workers, closes P2P
 connections and storage, then flushes logging.
+Native P2P bootstrap retries until a verified response arrives or shutdown
+cancels the operation. Individual peer requests retain bounded timeouts.
 
 The example mainnet URL is operated by Sigma Prime, not the EF. The client
 fetches its finalized checkpoint through the standard
@@ -84,8 +86,10 @@ of these flags and grows on demand.
 During initialization, `eth_chainId` is available and `eth_syncing` returns the
 standard `startingBlock`, `currentBlock`, `highestBlock` quantity object. Its
 zero heights mean execution progress is unknown; `/status` supplies the startup
-stage. Other RPC requests return an actionable startup error instead of a
-success-shaped placeholder. WebSocket upgrades return HTTP 503 until RPC
+stage. Other HTTP reads wait for RPC initialization within the original
+90-second request deadline and observe caller disconnect and application shutdown.
+Transaction submission invoked before initialization returns an actionable startup
+error. WebSocket upgrades return HTTP 503 until RPC
 initialization completes. After initialization, `eth_syncing` follows the
 authenticated latest head; it does not promise all configured accounts or
 requested history have finished downloading.
@@ -145,6 +149,11 @@ normal dialing. The live authenticated handshake is still required: this cache
 grants no trust to a peer. An unavailable
 or invalid cache falls back to fresh discovery. Peer bans, connection state and
 execution proof caches are not persisted.
+
+Authenticated outbound suppliers leave at most 16 dial hints in the networking
+store, expiring after 24 hours. Restarting with the same data directory retries
+these addresses through normal admission and backoff checks. Supplier preference
+and head progress use newly authenticated data from the current session.
 
 The host listens for beacon libp2p on TCP 9050, beacon discv5 on UDP 9050,
 beacon QUIC v1 on UDP 9051, and execution P2P on TCP/UDP 30307.
@@ -294,8 +303,11 @@ authenticated `"latest"`; crossing finality verifies the finalized block hash
 on the selected chain. Optimistic ancestry is transient and bounded to 512
 parent steps behind the pinned optimistic head. Older finalized ranges and log
 `blockHash` selectors use an on-demand authenticated header cache retaining at
-most 262,144 headers, including the finalized anchor. Bodies and receipts must
-also be verified; cached headers alone do not establish complete log results.
+most 262,144 headers, including the finalized anchor. Each bloom candidate's
+complete receipts are verified before exact address and topic filtering.
+Candidates without matching logs finish from verified receipts; matching blocks
+also fetch and verify their bodies for transaction hashes and coordinates.
+Cached headers alone do not establish complete log results.
 Verified bodies and receipts have separate 32 MiB weighted in-memory caches keyed
 by block hash. Concurrent misses for the same payload share one download; canceling
 a caller does not cancel other callers' download. Log queries prefetch up to four
