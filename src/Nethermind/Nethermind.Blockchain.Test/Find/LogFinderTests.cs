@@ -382,9 +382,13 @@ public class LogFinderTests
     public void processed_noncanonical_block_with_missing_receipts_is_not_unprocessed()
     {
         Block parent = _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
+        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         Block orphan = Build.A.Block
             .WithParent(parent)
+            .WithTransactions(transaction)
             .WithReceiptsRoot(TestItem.KeccakA)
+            .WithBloom(new Bloom([log]))
             .WithExtraData([1])
             .TestObject;
 
@@ -393,7 +397,12 @@ public class LogFinderTests
 
         // Match the history pruner's order: reclaim the receipts, then the block body.
         // Header and chain-level metadata remain available for hash-pinned RPC lookups.
-        _receiptStorage.Insert(orphan, [Build.A.Receipt.TestObject], ensureCanonical: false);
+        _receiptStorage.Insert(orphan, [Build.A.Receipt
+            .WithLogs(log)
+            .WithTransactionHash(transaction.Hash)
+            .WithBlockHash(orphan.Hash)
+            .WithBlockNumber(orphan.Number)
+            .TestObject], ensureCanonical: false);
         _receiptStorage.RemoveReceipts(orphan);
         _rawBlockTree.DeleteOldBlock(orphan.Number, orphan.Hash!);
 
