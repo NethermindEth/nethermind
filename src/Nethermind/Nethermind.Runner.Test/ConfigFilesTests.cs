@@ -51,8 +51,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
     {
         foreach (string configFile in Resolve(configWildcard))
         {
-            string configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
-            Assert.That(File.Exists(configPath), Is.True);
+            using Stream stream = BuiltInConfigs.Open(configFile);
+            Assert.That(stream, Is.Not.Null, configFile);
         }
     }
 
@@ -367,7 +367,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Assert.That(JsonNode.DeepEquals(aztec, mainnet), Is.True, "mainnet_aztec.json has drifted from mainnet.json");
 
         static JsonObject ReadConfig(string file) =>
-            JsonNode.Parse(File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", file)))!.AsObject();
+            JsonNode.Parse(ReadBuiltInConfig(file))!.AsObject();
     }
 
     [TestCase("^spaceneth", "nethermind_db")]
@@ -567,14 +567,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [Test]
     public void No_additional_commas_in_config_files()
     {
-        char pathSeparator = Path.AltDirectorySeparatorChar;
-        string configDirectory = $"{AppDomain.CurrentDomain.BaseDirectory}{pathSeparator}configs";
-
-        IEnumerable<string> filesPaths = Directory.EnumerateFiles(configDirectory);
-
-        foreach (string filePath in filesPaths)
+        foreach (string name in BuiltInConfigs.Names)
         {
-            string content = File.ReadAllText(filePath)
+            string content = ReadBuiltInConfig(name)
                 .Replace("\n", string.Empty)
                 .Replace(" ", string.Empty);
 
@@ -583,7 +578,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
             foreach (int commaIndex in commaIndexes)
             {
                 char nextChar = content.ElementAt(commaIndex + 1);
-                Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {filePath}");
+                Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {name}");
             }
         }
     }
@@ -637,29 +632,18 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
-    private static IEnumerable<string> AllConfigFiles()
-    {
-        string[] configPaths = Directory.GetFiles(ConfigDirectory, "*.json");
-        Array.Sort(configPaths, StringComparer.OrdinalIgnoreCase);
-
-        for (int i = 0; i < configPaths.Length; i++)
-        {
-            yield return Path.GetFileName(configPaths[i]);
-        }
-    }
+    private static IEnumerable<string> AllConfigFiles() => BuiltInConfigs.Names.Select(static name => $"{name}.json");
 
     private static T GetConfigFromFile<T>(string configFile) where T : IConfig => GetConfigProvider(configFile).GetConfig<T>();
 
     private static ConfigProvider GetConfigProvider(string configFile)
     {
         ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource(Path.Combine(ConfigDirectory, configFile)));
+        configProvider.AddSource(LoadBuiltInConfig(configFile));
         return configProvider;
     }
 
     private static bool IsArchiveConfig(string configFile) =>
         configFile.Contains("_archive", StringComparison.OrdinalIgnoreCase) ||
         configFile.Contains("-archive", StringComparison.OrdinalIgnoreCase);
-
-    private static string ConfigDirectory => Path.Combine(TestContext.CurrentContext.TestDirectory, "configs");
 }
