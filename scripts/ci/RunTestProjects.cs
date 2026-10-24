@@ -52,7 +52,7 @@ catch (Exception exception)
 static async Task<bool> RunProject(string directory, string project, CancellationToken cancellationToken)
 {
     var linux = Environment.GetEnvironmentVariable("RUNNER_OS") == "Linux";
-    // Analyzers already run in build-solutions; the in-job build leaves less time for hangs.
+    // Analyzers already run in build-solutions.
     if (!linux && await Execute(directory, "dotnet", ["build", $"{project}.csproj", "-c", "release", "-p:RunAnalyzersDuringBuild=false"], cancellationToken) != 0)
         return false;
     // macOS build servers can fail to shut down; this must not fail the test pack.
@@ -63,6 +63,7 @@ static async Task<bool> RunProject(string directory, string project, Cancellatio
         arguments.AddRange(["--results-directory", "TestResults"]);
     else
         arguments.AddRange(["test", "--project", $"{project}.csproj", "-c", "release", "--no-build", "--no-restore"]);
+    // The in-job build on Windows/macOS leaves less time for hangs.
     arguments.AddRange(["--hangdump", "--hangdump-timeout", linux ? "8m" : "4m", "--hangdump-type", "Mini",
         "--crashdump", "--crashdump-type", "Mini", "--crash-report-if-supported"]);
     var coverage = Environment.GetEnvironmentVariable("COVERAGE") == "true";
