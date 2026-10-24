@@ -819,6 +819,21 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void System_call_children_get_a_state_gas_allowance()
+    {
+        Assert.That(EthereumGasPolicy.TryCreateSystemTransactionAvailableGas(
+            Eip8037Constants.SystemCallGasLimit,
+            EthereumGasPolicy.CreateSystemTransactionIntrinsicGas(0),
+            Amsterdam.Instance,
+            out EthereumGasPolicy systemCall), Is.True);
+
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref systemCall, 50_000);
+
+        Assert.That((systemCall.HasStateGasAllowance, child.HasStateGasAllowance, child.StateGasAllowance),
+            Is.EqualTo((false, true, 382_500L)));
+    }
+
+    [Test]
     public void Code_deposit_above_the_create_frame_allowance_pays_the_rest_from_gas_left()
     {
         // 251 bytes: 384,030 state gas and 48 execution gas (hash); the create frame's allowance is 382,500.

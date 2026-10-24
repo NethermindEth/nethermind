@@ -2414,7 +2414,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8037_large_code_deposit_fails_only_the_create_of_a_gas_limited_callee()
+    public void Eip8037_large_code_deposit_fails_only_the_create_of_a_gas_limited_callee(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL)] Instruction callType)
     {
         // PUSH2 0x6000 PUSH0 RETURN: returns 24,576 zero bytes, a code deposit of 37,601,280 state gas.
         byte[] helperCode = Prepare.EvmCode
@@ -2424,16 +2425,21 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Done;
         TestState.CreateAccount(TestItem.AddressD, 0);
         TestState.InsertCode(TestItem.AddressD, helperCode, SpecProvider.GenesisSpec);
-        Address deployed = ContractAddress.From(TestItem.AddressD, TestState.GetNonce(TestItem.AddressD));
 
-        byte[] code = Prepare.EvmCode
-            .Call(TestItem.AddressD, 50_000)
+        Prepare call = callType switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(TestItem.AddressD, 50_000),
+            Instruction.CALLCODE => Prepare.EvmCode.CallCode(TestItem.AddressD, 50_000),
+            _ => Prepare.EvmCode.DelegateCall(TestItem.AddressD, 50_000),
+        };
+        byte[] code = call
             .PushData(0)
             .Op(Instruction.SSTORE)
             .Op(Instruction.STOP)
             .Done;
 
-        // The reservoir could pay the whole deposit; only the allowance of the create frame stops it.
+        // The reservoir could pay the whole deposit; only the allowance of the create frame stops it. A failed
+        // deployment refills its account charge, so only the slot written by the caller stays in block state gas.
         ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + 40_000_000;
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: 100_000_000);
 
@@ -2441,7 +2447,6 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
-            Assert.That(TestState.IsContract(deployed), Is.False);
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
         }
     }
