@@ -84,8 +84,6 @@ jobs:
             # The zkVM version is the tag of the image the guest is run with
             zkvm_version=$(sed -n 's/^[A-Z0-9]*_IMAGE ?= [^:]*:v\{0,1\}\([^@]*\)@.*/\1/p' \
               "../src/Nethermind/Nethermind.Stateless.${guests[$vm]}Guest/Makefile")
-            # The naming the guest handbook requires:
-            # https://github.com/eth-act/zkevm-standards/blob/main/handbooks/guest-handbook.md#release-elfs-in-teams-gh-repo-via-ci
             name=stateless-validator-nethermind-$vm-v${zkvm_version:?}
             digests+="- **${names[$vm]} $zkvm_version**"$'\n'"  - ELF: \`$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)\`"$'\n'
 
