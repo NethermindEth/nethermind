@@ -417,8 +417,6 @@ public class LogFinderTests
         BlockParameter blockHash = new(orphan.Hash!);
         LogFilter filter = new(0, blockHash, blockHash, AddressFilter.AnyAddress, new SequenceTopicsFilter());
 
-        // PR #15051 currently classifies this as BlockNotProcessedException,
-        // even though the persisted chain-level metadata says it was executed.
         Assert.That(() => _logFinder.FindLogs(filter),
             Throws.TypeOf<ResourceNotFoundException>()
                 .With.Message.Contains("Receipt not available"));

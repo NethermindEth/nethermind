@@ -138,8 +138,6 @@ namespace Nethermind.Facade.Find
         /// <remarks>
         /// Missing receipts on an already processed non-canonical block are unavailable history, not proof that
         /// the block still awaits execution. Reorgs change canonical membership without clearing WasProcessed.
-        /// Use the persisted processed marker when the block tree is available; retain the canonical fallback
-        /// for other IBlockFinder implementations.
         /// </remarks>
         private bool WasPruned(BlockHeader header) =>
             (_blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header))
