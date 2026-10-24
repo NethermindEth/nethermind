@@ -18,6 +18,13 @@ namespace Nethermind.Facade.Eth
         public ulong HighestBlock { get; set; }
         public bool IsSyncing { get; set; }
         public SyncMode SyncMode { get; set; }
+        public ulong? WarpChunksAmount { get; set; }
+        public ulong? WarpChunksProcessed { get; set; }
+        public ulong? SyncedAccounts { get; set; }
+        public ulong? SyncedStorage { get; set; }
+        public ulong? SyncedBytecodes { get; set; }
+        public ulong? HealedTrienodes { get; set; }
+        public ulong? HealedBytecodes { get; set; }
 
         public override readonly string ToString() => $"IsSyncing: {IsSyncing}, StartingBlock: {StartingBlock}, CurrentBlock {CurrentBlock}, HighestBlock {HighestBlock}";
     }
