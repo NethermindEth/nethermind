@@ -15,7 +15,6 @@ var command = Read(".github/workflows/ai-review-command.yml");
 var instructions = Read(".github/workflows/ai-review-instructions.yml");
 var temporary = Directory.CreateTempSubdirectory("review command tests ");
 var output = Path.Combine(temporary.FullName, "output");
-var saved = new[] { "PR_NUMBER", "CHANGED_PATHS", "ALL_SCOPES", "GITHUB_OUTPUT" }.ToDictionary(key => key, Environment.GetEnvironmentVariable);
 var passed = 0;
 void Check(bool condition, string name)
 {
@@ -216,7 +215,6 @@ try
 }
 finally
 {
-    foreach (var (key, value) in saved) Environment.SetEnvironmentVariable(key, value);
     temporary.Delete(recursive: true);
 }
 
