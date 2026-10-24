@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -26,6 +27,8 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -380,6 +383,65 @@ public class HistoryPrunerTests
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
         Assert.That(historyPruner.BalCutoffBlockNumber, Is.EqualTo(expectedCutoff));
+    }
+
+    [Test]
+    public async Task Pruning_a_processed_side_block_reports_unavailable_receipts()
+    {
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 1,
+            PruningInterval = 0
+        };
+        using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(historyConfig, blocks: 100, syncPivot: 100);
+
+        IBlockTree tree = chain.BlockTree;
+        Block parent = tree.FindBlock(19UL, BlockTreeLookupOptions.None)!;
+        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block sideBlock = Build.A.Block
+            .WithParent(parent)
+            .WithTransactions(tx)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .WithBloom(new Bloom([log]))
+            .WithExtraData([1])
+            .TestObject;
+
+        Assert.That(tree.SuggestBlock(sideBlock), Is.EqualTo(AddBlockResult.Added));
+        tree.MarkChainAsProcessed([sideBlock]);
+        chain.ReceiptStorage.Insert(sideBlock, [Build.A.Receipt
+            .WithLogs(log)
+            .WithTransactionHash(tx.Hash)
+            .WithBlockHash(sideBlock.Hash)
+            .WithBlockNumber(sideBlock.Number)
+            .TestObject], ensureCanonical: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.WasProcessed(sideBlock.Number, sideBlock.Hash!), Is.True);
+            Assert.That(tree.IsMainChain(sideBlock.Header), Is.False);
+            Assert.That(chain.ReceiptStorage.HasBlock(sideBlock.Number, sideBlock.Hash!), Is.True);
+        }
+
+        // The production pruner reclaims the orphan receipts and body together, while preserving
+        // the side-block header and WasProcessed metadata for block-hash lookups.
+        IHistoryPruner pruner = chain.Container.Resolve<IHistoryPruner>();
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ReceiptStorage.HasBlock(sideBlock.Number, sideBlock.Hash!), Is.False);
+            Assert.That(tree.FindBlock(sideBlock.Hash, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(tree.FindHeader(sideBlock.Hash, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(tree.GetInfo(sideBlock.Number, sideBlock.Hash!).Info?.WasProcessed, Is.True);
+        }
+
+        BlockParameter hash = new(sideBlock.Hash!);
+        LogFilter filter = new(0, hash, hash, AddressFilter.AnyAddress, new SequenceTopicsFilter());
+        Assert.That(() => chain.LogFinder.FindLogs(filter),
+            Throws.TypeOf<ResourceNotFoundException>()
+                .With.Message.Contains("Receipt not available"));
     }
 
     [TestCaseSource(nameof(PruningCases))]
