@@ -254,20 +254,32 @@ public static partial class EvmInstructions
             gasLimitUl += GasCostOf.CallStipend;
         }
 
-        if (TOpCall.ExecutionType == ExecutionType.CALL && hasValueTransfer)
-            vm.OnValueTransferCallPrecheck(env.ExecutingAccount, target, in callValue);
+        byte[]? precheckRevert = TOpCall.ExecutionType == ExecutionType.CALL && hasValueTransfer
+            ? vm.OnValueTransferCallPrecheck(env.ExecutingAccount, target, in callValue)
+            : null;
 
         // Check call depth and balance of the caller.
-        if (env.CallDepth >= MaxCallDepth ||
+        if (precheckRevert is not null || env.CallDepth >= MaxCallDepth ||
             (hasValueTransfer && !HasAtLeast(state, env.ExecutingAccount, in callValue)))
         {
-            EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
+            EvmExceptionType? precheckError = precheckRevert is not null ? null
+                : env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
             if (DispatchFlags.ConstTracing && vm.IsTracingActions)
-                TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckError);
+            {
+                if (precheckError is { } error)
+                    TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, error);
+                else
+                    TraceRevertedCallPrecheck<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckRevert!);
+            }
 
-            // If the call cannot proceed, return an empty response and push zero on the stack.
-            vm.ReturnDataBuffer = default;
+            // If the call cannot proceed, return an empty response (or the precheck's revert data) and push zero on the stack.
+            vm.ReturnDataBuffer = precheckRevert;
             EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
+            if (precheckRevert is not null)
+            {
+                int copyLength = outputLength < (UInt256)precheckRevert.Length ? (int)outputLength.u0 : precheckRevert.Length;
+                vm.VmState.Memory.SaveAfterGas(in outputOffset, precheckRevert.AsSpan(0, copyLength));
+            }
 
             if (TTracingInst.IsActive)
             {
@@ -582,6 +594,30 @@ public static partial class EvmInstructions
         bool loaded = vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
         Debug.Assert(loaded, "The rejected call input was validated and expanded before its precheck.");
         vm.TxTracer.ReportRejectedAction(gas, gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, error, isPrecompile);
+    }
+
+    /// <summary>
+    /// Reports a CALL that <see cref="VirtualMachine{TGasPolicy}.OnValueTransferCallPrecheck"/> rejected as an action that
+    /// reverted at once with the precheck's revert data and all of its gas left.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceRevertedCallPrecheck<TGasPolicy, TOpCall>(
+        VirtualMachine<TGasPolicy> vm,
+        in UInt256 dataOffset,
+        in UInt256 dataLength,
+        Address codeSource,
+        in UInt256 callValue,
+        ulong gas,
+        bool isPrecompile,
+        byte[] revertData)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+    {
+        ExecutionEnvironment env = vm.VmState.Env;
+        bool loaded = vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
+        Debug.Assert(loaded, "The rejected call input was validated and expanded before its precheck.");
+        vm.TxTracer.ReportAction(gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, isPrecompile);
+        vm.TxTracer.ReportActionRevert(gas, revertData);
     }
 
     [MethodImpl(FullCallFrameInlining)]

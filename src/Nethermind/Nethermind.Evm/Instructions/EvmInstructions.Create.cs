@@ -157,6 +157,32 @@ public static partial class EvmInstructions
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
+        // Load the initialization code from memory based on the specified position and length.
+        if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+            goto OutOfGas;
+
+        // The value-transfer precheck below sees the derived address, so derive it before the depth, balance and nonce checks.
+        ulong accountNonce = state.GetNonce(env.ExecutingAccount);
+
+        // Compute the contract address:
+        // - For CREATE: based on the executing account and its current nonce.
+        // - For CREATE2: based on the executing account, the provided salt, and the init code.
+        // - For TCREATE: as CREATE2 with the EIP-8360 0xfe prefix.
+        Address contractAddress = !TOpCreate.IsSalted
+            ? ContractAddress.From(env.ExecutingAccount, accountNonce)
+            : isTransientCreate
+                ? ContractAddress.FromTransientCreate(env.ExecutingAccount, salt, initCode.Span)
+                : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
+
+        if (!value.IsZero && vm.OnValueTransferCreatePrecheck(env.ExecutingAccount, contractAddress, in value) is { } precheckRevert)
+        {
+            if (!TEip8037.IsActive && vm.IsTracingActions)
+                TraceRevertedCreatePrecheck<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, contractAddress, initCode, precheckRevert);
+
+            vm.ReturnDataBuffer = precheckRevert;
+            return stack.PushZero<TTracingInst, OnFlag>();
+        }
+
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
         // This guard ensures we do not create nested contract calls beyond EVM limits.
         if (env.CallDepth >= MaxCallDepth)
@@ -167,10 +193,6 @@ public static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
-
-        // Load the initialization code from memory based on the specified position and length.
-        if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
-            goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
@@ -184,23 +206,12 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
-        // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
-        ulong accountNonce = state.GetNonce(env.ExecutingAccount);
+        // Ensure the executing account's nonce hasn't reached the maximum.
         if (accountNonce >= ulong.MaxValue)
         {
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
-
-        // Compute the contract address:
-        // - For CREATE: based on the executing account and its current nonce.
-        // - For CREATE2: based on the executing account, the provided salt, and the init code.
-        // - For TCREATE: as CREATE2 with the EIP-8360 0xfe prefix.
-        Address contractAddress = !TOpCreate.IsSalted
-            ? ContractAddress.From(env.ExecutingAccount, accountNonce)
-            : isTransientCreate
-                ? ContractAddress.FromTransientCreate(env.ExecutingAccount, salt, initCode.Span)
-                : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         if (isTransientCreate)
         {
@@ -346,5 +357,27 @@ public static partial class EvmInstructions
         // The creation already paid to expand memory over its init code.
         vm.VmState.Memory.TryLoad(in initCodePosition, in initCodeLength, out ReadOnlyMemory<byte> initCode);
         vm.TxTracer.ReportRejectedAction(callGas, callGas, value, vm.VmState.Env.ExecutingAccount, null, initCode, TOpCreate.ExecutionType, error);
+    }
+
+    /// <summary>
+    /// Reports a creation that <see cref="VirtualMachine{TGasPolicy}.OnValueTransferCreatePrecheck"/> rejected as an
+    /// action that reverted at once with the precheck's revert data and all of the gas it would have forwarded left.
+    /// </summary>
+    /// <param name="gas">A copy of the caller's gas, before any is reserved for the creation.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceRevertedCreatePrecheck<TGasPolicy, TOpCreate, TSpec>(
+        VirtualMachine<TGasPolicy> vm,
+        TGasPolicy gas,
+        in UInt256 value,
+        Address contractAddress,
+        ReadOnlyMemory<byte> initCode,
+        byte[] revertData)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+        where TSpec : struct, ICreateSpec
+    {
+        TSpec.TryReserveChildGas<TGasPolicy>(ref gas, vm.Spec, out ulong callGas);
+        vm.TxTracer.ReportAction(callGas, value, vm.VmState.Env.ExecutingAccount, contractAddress, initCode, TOpCreate.ExecutionType);
+        vm.TxTracer.ReportActionRevert(callGas, revertData);
     }
 }

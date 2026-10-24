@@ -4049,6 +4049,110 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
+    [Test]
+    public void Value_transfer_call_precheck_revert_returns_its_data_and_the_reserved_gas([Values] bool affordable)
+    {
+        byte[] revertData = [.. Enumerable.Range(1, 36).Select(static i => (byte)i)];
+        _worldState.CreateAccount(TestItem.AddressE, 1.Ether);
+        _worldState.CreateAccount(TestItem.AddressF, 1.Ether);
+        _hookedMachine.RejectedValueTransferTarget = TestItem.AddressE;
+        _hookedMachine.ValueTransferRevertData = revertData;
+        UInt256 value = affordable ? 1 : 101.Ether;
+        Prepare code = Prepare.EvmCode.MSTORE(0, [0]);
+        AppendMeasuredOperation(code, static (p, operand) => p.CALL(50_000, TestItem.AddressE, operand, 0, 0, 0, 32), value, 64);
+        code.MLOAD(0).MSTORE(160);
+        AppendMeasuredOperation(code, static (p, operand) => p.CALL(50_000, TestItem.AddressF, operand, 0, 0, 0, 32), value, 192);
+
+        TestAllTracerWithOutput result = Execute(code.RETURN(64, 224).Done, transactionValue: 0);
+        byte[] output = result.ReturnValue!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(ReadWord(output, 0), Is.EqualTo(UInt256.Zero), "rejected call status");
+            Assert.That(ReadWord(output, 1), Is.EqualTo(ReadWord(output, 5)), "gas spent by the rejected call");
+            Assert.That(ReadWord(output, 2), Is.EqualTo((UInt256)revertData.Length), "rejected call RETURNDATASIZE");
+            Assert.That(output.AsSpan(96, 32).ToArray(), Is.EqualTo(revertData[..32]), "rejected call output window");
+            Assert.That(ReadWord(output, 4), Is.EqualTo(affordable ? UInt256.One : UInt256.Zero), "continued call status");
+            Assert.That(ReadWord(output, 6), Is.EqualTo(UInt256.Zero), "continued call RETURNDATASIZE");
+            Assert.That(result.ActionRevertOutputs, Is.EqualTo([revertData]));
+            Assert.That(_worldState.GetBalance(TestItem.AddressE), Is.EqualTo(1.Ether));
+        }
+    }
+
+    [Test]
+    public void Value_transfer_create_precheck_sees_the_derived_address_and_can_revert_before_nonce_and_warm_up(
+        [Values] bool salted,
+        [Values] bool reject)
+    {
+        byte[] revertData = [0xde, 0xad];
+        byte[] initCode = [(byte)Instruction.STOP];
+        byte[] salt = new byte[32];
+        Address creator = SenderRecipientAndMiner.Default.Recipient;
+        Address contractAddress = salted ? ContractAddress.From(creator, salt, initCode) : ContractAddress.From(creator, UInt256.Zero);
+        _hookedMachine.RejectedValueTransferTarget = reject ? contractAddress : null;
+        _hookedMachine.ValueTransferRevertData = revertData;
+        _hookedMachine.WarmValueTransferStorage = true;
+        UInt256 value = reject ? 1 : 101.Ether;
+        Prepare code = Prepare.EvmCode.StoreDataInMemory(0, initCode);
+        Func<Prepare, UInt256, Prepare> create = salted
+            ? (p, operand) => p.PushData(salt).CREATEx(2, operand, 0, (UInt256)initCode.Length)
+            : (p, operand) => p.CREATEx(1, operand, 0, (UInt256)initCode.Length);
+        AppendMeasuredOperation(code, create, value, 64);
+        AppendMeasuredOperation(code, create, value, 160);
+        code.GAS().BALANCE(contractAddress).POP().GAS().SWAPx(1).Op(Instruction.SUB).MSTORE(256);
+
+        TestAllTracerWithOutput result = Execute(code.RETURN(64, 224).Done, transactionValue: 0);
+        byte[] output = result.ReturnValue!;
+        // The CREATE itself, its init-code word, the CREATE2 hash word, its operand pushes and the closing GAS.
+        UInt256 createGas = GasCostOf.Create + GasCostOf.InitCodeWord + (salted ? GasCostOf.Sha3Word : 0)
+            + GasCostOf.VeryLow * (salted ? 4UL : 3UL) + GasCostOf.Base;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.ValueTransferCreatePrechecks, Is.EqualTo([(creator, contractAddress, value), (creator, contractAddress, value)]));
+            for (int offset = 0; offset < 6; offset += 3)
+            {
+                Assert.That(ReadWord(output, offset), Is.EqualTo(UInt256.Zero), "pushed address");
+                Assert.That(ReadWord(output, offset + 1), Is.EqualTo(createGas), "gas spent by the creation");
+                Assert.That(ReadWord(output, offset + 2), Is.EqualTo(reject ? (UInt256)revertData.Length : UInt256.Zero), "RETURNDATASIZE");
+            }
+
+            Assert.That(ReadWord(output, 6), Is.EqualTo((UInt256)(GasCostOf.ColdAccountAccess + GasCostOf.VeryLow + 2 * GasCostOf.Base)), "BALANCE of the derived address");
+            Assert.That(_hookedMachine.ValueTransferStorageWasCold, Is.EqualTo([true, false]));
+            Assert.That(result.ActionRevertOutputs, Is.EqualTo(reject ? [revertData, revertData] : Array.Empty<byte[]>()));
+            Assert.That(_worldState.GetNonce(creator), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Value_transfer_create_precheck_is_limited_to_nonzero_creation([Values] bool salted, [Values(0, 7)] int value)
+    {
+        byte[] initCode = [(byte)Instruction.STOP];
+        Prepare code = salted
+            ? Prepare.EvmCode.Create2(initCode, new byte[32], (UInt256)value)
+            : Prepare.EvmCode.Create(initCode, (UInt256)value);
+
+        TestAllTracerWithOutput result = Execute(code.POP().Done, transactionValue: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.ValueTransferCreatePrechecks, Has.Count.EqualTo(value == 0 ? 0 : 1));
+        }
+    }
+
+    /// <summary>Appends an operation bracketed by GAS and stores its result, its gas and RETURNDATASIZE in three words at <paramref name="resultOffset"/>.</summary>
+    private static void AppendMeasuredOperation(Prepare code, Func<Prepare, UInt256, Prepare> operation, UInt256 operand, int resultOffset) =>
+        operation(code.GAS(), operand)
+            .GAS()
+            .SWAPx(1).MSTORE((UInt256)resultOffset)
+            .SWAPx(1).Op(Instruction.SUB).MSTORE((UInt256)(resultOffset + 32))
+            .RETURNDATASIZE().MSTORE((UInt256)(resultOffset + 64));
+
+    private static UInt256 ReadWord(byte[] output, int index) => new(output.AsSpan(index * 32, 32), isBigEndian: true);
+
     [TestCase((byte)Instruction.STOP, StatusCode.Success)]
     [TestCase((byte)Instruction.INVALID, StatusCode.Failure)]
     public void Top_level_completion_does_not_report_child_completion(byte instruction, byte expectedStatus)
@@ -4338,6 +4442,9 @@ public sealed class VirtualMachineExtensionHooksTests
         public List<(Address From, Address To, UInt256 Value)> ValueTransferPrechecks { get; } = [];
         public List<bool> ValueTransferStorageWasCold { get; } = [];
         public bool WarmValueTransferStorage { get; set; }
+        public Address? RejectedValueTransferTarget { get; set; }
+        public byte[] ValueTransferRevertData { get; set; } = [];
+        public List<(Address Creator, Address ContractAddress, UInt256 Value)> ValueTransferCreatePrechecks { get; } = [];
 
         protected override bool TryExecuteFrameInitialization(VmState<EthereumGasPolicy> currentState, out CallResult result)
         {
@@ -4392,13 +4499,25 @@ public sealed class VirtualMachineExtensionHooksTests
             Address codeSource,
             in UInt256 value) => SkipEoaCallFastPath;
 
-        protected internal override void OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value)
+        protected internal override byte[]? OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value)
         {
             ValueTransferPrechecks.Add((from, to, value));
+            return ObserveValueTransferPrecheck(to);
+        }
+
+        protected internal override byte[]? OnValueTransferCreatePrecheck(Address creator, Address contractAddress, in UInt256 value)
+        {
+            ValueTransferCreatePrechecks.Add((creator, contractAddress, value));
+            return ObserveValueTransferPrecheck(contractAddress);
+        }
+
+        private byte[]? ObserveValueTransferPrecheck(Address to)
+        {
             StorageCell cell = new(to, UInt256.One);
             ValueTransferStorageWasCold.Add(VmState.AccessTracker.IsCold(in cell));
             if (WarmValueTransferStorage)
                 VmState.AccessTracker.WarmUp(in cell);
+            return to == RejectedValueTransferTarget ? ValueTransferRevertData : null;
         }
 
         protected internal override bool TryExecuteSelfDestruct(

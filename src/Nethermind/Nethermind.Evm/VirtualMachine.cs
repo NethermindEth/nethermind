@@ -609,18 +609,33 @@ public partial class VirtualMachine<TGasPolicy>(
         Address codeSource,
         in UInt256 value) => false;
 
-    /// <summary>Notifies a specialized virtual machine before a value-bearing CALL is prechecked.</summary>
+    /// <summary>Lets a specialized virtual machine observe or reject a value-bearing CALL before it is prechecked.</summary>
     /// <param name="from">The account supplying the call value.</param>
     /// <param name="to">The account receiving the call value.</param>
     /// <param name="value">The nonzero value supplied by the call.</param>
+    /// <returns>Revert data that rejects the call, or <see langword="null"/> to continue.</returns>
     /// <remarks>
-    /// The notification runs after child gas reservation and the value stipend, but before depth and balance
-    /// rejection. It is raised only for CALL operations and before a child snapshot or frame exists. The default
-    /// implementation is a no-op.
+    /// The hook runs after child gas reservation and the value stipend, but before depth and balance rejection.
+    /// It is raised only for CALL operations and before a child snapshot or frame exists. A rejection is handled
+    /// like a failed precheck: it pushes zero and returns the reserved gas, but also stages the revert data as
+    /// return data and copies it into the output window. State and access-list changes made by the hook persist
+    /// whether the call is then rejected or proceeds. The default continues.
     /// </remarks>
-    protected internal virtual void OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value)
-    {
-    }
+    protected internal virtual byte[]? OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value) => null;
+
+    /// <summary>Lets a specialized virtual machine observe or reject a value-bearing creation before it is prechecked.</summary>
+    /// <param name="creator">The account creating the contract and supplying the value.</param>
+    /// <param name="contractAddress">The address derived for the new contract.</param>
+    /// <param name="value">The nonzero endowment.</param>
+    /// <returns>Revert data that rejects the creation, or <see langword="null"/> to continue.</returns>
+    /// <remarks>
+    /// The hook runs for CREATE, CREATE2 and TCREATE after the operation's own gas is charged, and before the
+    /// depth, balance and nonce checks, the child gas reservation, the nonce increment and the address warm-up.
+    /// A rejection pushes zero, stages the revert data as return data and leaves the remaining gas with the
+    /// caller, so the nonce and the address warmth are unchanged. State and access-list changes made by the
+    /// hook persist whether the creation is then rejected, fails a later check or proceeds. The default continues.
+    /// </remarks>
+    protected internal virtual byte[]? OnValueTransferCreatePrecheck(Address creator, Address contractAddress, in UInt256 value) => null;
 
     /// <summary>Reports the completed result of a nested frame to a specialized virtual machine.</summary>
     /// <remarks>
