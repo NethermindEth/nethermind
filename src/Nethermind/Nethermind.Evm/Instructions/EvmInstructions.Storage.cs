@@ -439,14 +439,14 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
+        ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGasUnits(in gas) : 0;
         if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
         {
             if (TTracingInst.IsActive)
                 vm.TraceOperationReady(0, "out of gas: not enough gas for slot access");
             goto OutOfGas;
         }
-        if (TTracingInst.IsActive) traceStorageAccessCost -= TGasPolicy.GetRemainingGas(in gas);
+        if (TTracingInst.IsActive) traceStorageAccessCost -= TGasPolicy.GetRemainingGasUnits(in gas);
 
         // Retrieve the current value from persistent storage.
         vm.WorldState.Get(in storageCell, out UInt256 currentValue);
@@ -554,7 +554,7 @@ public static partial class EvmInstructions
         {
             if (vm.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - gasCosts.NetMeteredSStoreCost + 1);
-            if (TGasPolicy.GetRemainingGas(in gas) <= GasCostOf.CallStipend)
+            if (TGasPolicy.GetRemainingGas(in gas) <= GasCostOf.CallStipend * TGasPolicy.ExecutionGasPerGasUnit)
             {
                 if (TTracingInst.IsActive)
                 {
@@ -575,14 +575,14 @@ public static partial class EvmInstructions
 
         // Charge gas based on whether this is a cold or warm storage access before reading
         // the slot; BAL records the read only once the access cost is covered.
-        ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
+        ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGasUnits(in gas) : 0;
         if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
         {
             if (TTracingInst.IsActive)
                 vm.TraceOperationReady(0, "out of gas: not enough gas for slot access");
             goto OutOfGas;
         }
-        if (TTracingInst.IsActive) traceStorageAccessCost -= TGasPolicy.GetRemainingGas(in gas);
+        if (TTracingInst.IsActive) traceStorageAccessCost -= TGasPolicy.GetRemainingGasUnits(in gas);
 
         // EIP-8279: the slot enters the block access list on the transaction's first access.
         if (Eip8279.IsActive && !vm.TryMeterBalStorageKey(in storageCell))

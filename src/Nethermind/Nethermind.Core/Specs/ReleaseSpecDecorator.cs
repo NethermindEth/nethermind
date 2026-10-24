@@ -82,6 +82,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual ulong Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public virtual bool IsEip8038Enabled => spec.IsEip8038Enabled;
+    public virtual bool IsEip8053Enabled => spec.IsEip8053Enabled;
     public virtual bool IsEip8282Enabled => spec.IsEip8282Enabled;
     public virtual bool IsEip8141Enabled => spec.IsEip8141Enabled;
     public virtual bool IsEip8250Enabled => spec.IsEip8250Enabled;

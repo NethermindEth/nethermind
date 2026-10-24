@@ -298,7 +298,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             {
                 Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
-                state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in state.Gas), (int)pc, in stack,
+                state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGasUnits(in state.Gas), (int)pc, in stack,
                     TOpcode.TraceGasCost ?? TOpcode.GetSpecTraceGasCost(state.Vm.Spec), TOpcode.StackInputs, TOpcode.StackGrowth);
             }
 
@@ -445,7 +445,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
 
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
-                state.Vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in state.Gas));
+                state.Vm.EndInstructionTrace(TGasPolicy.GetRemainingGasUnits(in state.Gas));
 
             // Reaching here means the halt check passed, so the status is None and gas is valid: the exit
             // block returns exactly that, and one copy of it is smaller than two.
@@ -515,7 +515,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             {
                 Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
-                vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in state.Gas), (int)pc, in stack,
+                vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGasUnits(in state.Gas), (int)pc, in stack,
                     GasPolicy.JumpIGasCost.GasCost, stackInputs: 2);
             }
 
@@ -546,7 +546,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
 
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
-                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in state.Gas));
+                vm.EndInstructionTrace(TGasPolicy.GetRemainingGasUnits(in state.Gas));
 
             // Each outcome resolves its own successor and transfers from its own site, so the predictor gets
             // a taken entry and a fall-through entry to learn separately. Sharing one lookup would let the

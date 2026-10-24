@@ -30,6 +30,21 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
 
     static abstract ulong GetRemainingGas(in TSelf gas);
 
+    /// <summary>Execution gas the policy meters per gas unit.</summary>
+    /// <remarks>
+    /// 1 unless the policy meters fractions of a gas unit (EIP-8053). Costs passed to the policy are in gas units;
+    /// <see cref="GetRemainingGas"/>, reserved child gas and <see cref="UpdateGasUp"/> are in the metered unit.
+    /// </remarks>
+    static virtual ulong ExecutionGasPerGasUnit
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => 1;
+    }
+
+    /// <summary>The remaining execution gas in whole gas units, as the <c>GAS</c> opcode and tracers report it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual ulong GetRemainingGasUnits(in TSelf gas) => TSelf.GetRemainingGas(in gas) / TSelf.ExecutionGasPerGasUnit;
+
     /// <summary>Cold account-access cost (EIP-2929), repriced by EIP-8038.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong GetColdAccountAccessCost(IReleaseSpec spec) => spec.GasCosts.ColdAccountAccessCost;
@@ -97,6 +112,7 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
             : 0;
     }
 
+    /// <summary>Consumes <paramref name="cost"/> in the metered unit, leaving the gas unchanged when it is short.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsume(ref TSelf gas, ulong cost)
     {
