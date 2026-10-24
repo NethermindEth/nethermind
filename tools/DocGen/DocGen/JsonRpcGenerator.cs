@@ -57,6 +57,7 @@ internal static class JsonRpcGenerator
         [typeof(AddressAsKey)] = "_string_ (address)",
         [typeof(BigInteger)] = "_string_ (decimal integer)",
         [typeof(BlockParameter)] = $"_string_ (block number or hash or either of {_blockTags}), _object_ (EIP-1898 `{{blockHash, requireCanonical}}` or `{{blockNumber}}`), or {_blockNumberIfNotStrict}",
+        [typeof(BlockTransactions)] = "array of _string_ (hash), or array of _object_ (transaction, same as `result` in `eth_getTransactionByHash`) when full transactions are requested",
         [typeof(Bloom)] = "_string_ (hex data)",
         [typeof(bool)] = "_boolean_",
         [typeof(byte)] = "_integer_",
@@ -161,7 +162,10 @@ internal static class JsonRpcGenerator
         // Written only while syncing
         [typeof(SyncingResultJsonConverter)] =
         [
-            ("currentBlock", typeof(ulong), null), ("highestBlock", typeof(ulong), null), ("startingBlock", typeof(ulong), null),
+            ("currentBlock", typeof(ulong), null), ("healedBytecodes", typeof(ulong?), null), ("healedTrienodes", typeof(ulong?), null),
+            ("highestBlock", typeof(ulong), null), ("startingBlock", typeof(ulong), null), ("syncedAccounts", typeof(ulong?), null),
+            ("syncedBytecodes", typeof(ulong?), null), ("syncedStorage", typeof(ulong?), null), ("warpChunksAmount", typeof(ulong?), null),
+            ("warpChunksProcessed", typeof(ulong?), null),
         ],
         // Read by Filter.ReadJson rather than a converter, so keyed by the type
         [typeof(Filter)] =

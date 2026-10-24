@@ -50,6 +50,8 @@ public class JsonRpcGeneratorTests
     [TestCase("trace", "trace_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("debug", "debug_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("eth", "eth_simulateV1", "- `calls`:", "- `traces`:")]
+    [TestCase("eth", "eth_getBlockByHash", "- `transactions`: array of _string_ (hash), or array of _object_ (transaction, same as `result` in `eth_getTransactionByHash`) when full transactions are requested", "- `hashes`:")]
+    [TestCase("debug", "debug_getBadBlocks", "Each `block` carries full transaction objects.", "- `hashes`:")]
     [TestCase("eth", "eth_createAccessList", "- `accessList`: array of _object_", "- `accessList`: _object_")]
     [TestCase("eth", "eth_getProof", "- `storageHash`:", "- `storageRoot`:")]
     [TestCase("eth", "eth_syncing", "`result`: `false` when not syncing, else _object_", "- `isSyncing`:")]
@@ -179,7 +181,17 @@ public class JsonRpcGeneratorTests
     private static IEnumerable<TestCaseData> ConverterWrittenResults()
     {
         yield return new TestCaseData("eth", "eth_getProof", new AccountProof());
-        yield return new TestCaseData("eth", "eth_syncing", new SyncingResult { IsSyncing = true });
+        yield return new TestCaseData("eth", "eth_syncing", new SyncingResult
+        {
+            IsSyncing = true,
+            SyncedAccounts = 0,
+            SyncedStorage = 0,
+            SyncedBytecodes = 0,
+            HealedTrienodes = 0,
+            HealedBytecodes = 0,
+            WarpChunksAmount = 0,
+            WarpChunksProcessed = 0
+        });
     }
 
     [TestCaseSource(nameof(ConverterWrittenResults))]
