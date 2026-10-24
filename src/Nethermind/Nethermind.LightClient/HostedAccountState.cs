@@ -20,17 +20,17 @@ internal sealed class HostedAccountState
     private readonly IExecutionStateSource _execution;
     private readonly Func<VerifiedHead, Address, Account, CancellationToken, Task<IReadOnlyDictionary<ValueHash256, UInt256>>> _downloadStorage;
     private readonly ILogger _logger;
-    private readonly HostedAccountBalUpdater? _balUpdater;
+    private readonly HostedAccountBalUpdater _balUpdater;
 
     internal HostedAccountState(Address[] accounts, IExecutionStateSource execution,
         Func<VerifiedHead, Address, Account, CancellationToken, Task<IReadOnlyDictionary<ValueHash256, UInt256>>> downloadStorage,
-        ILogger logger, bool useBal = false)
+        ILogger logger)
     {
         foreach (Address address in accounts) _accounts.TryAdd(address, new Entry());
         _execution = execution;
         _downloadStorage = downloadStorage;
         _logger = logger;
-        if (useBal) _balUpdater = new(execution, logger);
+        _balUpdater = new(execution, logger);
     }
 
     internal static Address[] ParseAccounts(string? value)
@@ -120,7 +120,7 @@ internal sealed class HostedAccountState
                 else if (previous?.Account.StorageRoot == account.StorageRoot) storage = previous.Storage;
                 else
                 {
-                    IReadOnlyDictionary<ValueHash256, UInt256>? updated = previous is not null && _balUpdater is not null
+                    IReadOnlyDictionary<ValueHash256, UInt256>? updated = previous is not null
                         ? await _balUpdater.TryUpdateAsync(previous.Head, head, address, previous.Storage, account.StorageRoot, cancellationToken)
                         : null;
                     storage = (updated ?? await _downloadStorage(head, address, account, cancellationToken)).ToFrozenDictionary();

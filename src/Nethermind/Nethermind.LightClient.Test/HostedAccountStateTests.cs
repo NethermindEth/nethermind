@@ -136,14 +136,13 @@ public class HostedAccountStateTests
     }
 
     [Test]
-    public async Task BAL_updates_are_opt_in_and_failed_updates_use_the_full_download(
-        [Values("default", "enabled", "fallback", "failed-fallback", "code-failure")] string mode)
+    public async Task BAL_updates_are_automatic_after_the_fork_and_failed_updates_use_the_full_download(
+        [Values("before-fork", "after-fork", "fallback", "failed-fallback", "code-failure")] string mode)
     {
         Source source = new();
         source.Account = source.Account.WithChangedStorageRoot(StorageRoot(source.Storage));
         Account original = source.Account;
-        HostedAccountState hosted = mode == "default" ? Create(source)
-            : new([HostedAddress], source, source.DownloadStorage, NullLogger.Instance, useBal: true);
+        HostedAccountState hosted = Create(source);
         await hosted.RefreshAsync(FirstHead, CancellationToken.None);
 
         source.Storage = new() { [Path(1)] = 99 };
@@ -158,7 +157,7 @@ public class HostedAccountStateTests
         source.Bal = new([new(HostedAddress,
             [new(1, [new(1, mode is "fallback" or "failed-fallback" ? (UInt256)100 : (UInt256)99)])], [], [], [], [])], 2);
         byte[] encodedBal = BlockAccessListDecoder.EncodeToBytes(source.Bal);
-        source.Header.BlockAccessListHash = Keccak.Compute(encodedBal);
+        source.Header.BlockAccessListHash = mode == "before-fork" ? null : Keccak.Compute(encodedBal);
         source.Header.Hash = source.Header.CalculateHash();
         source.Bal = BlockAccessListDecoder.Instance.DecodeCompleteNotNull(encodedBal);
         source.FailStage = mode switch { "failed-fallback" => "storage", "code-failure" => "code", _ => null };
@@ -188,9 +187,9 @@ public class HostedAccountStateTests
             Assert.That(value, Is.EqualTo((UInt256)99));
             Assert.That(hosted.TryGetCode(current, out byte[] code), Is.True);
             Assert.That(code, Is.EqualTo(source.Code));
-            Assert.That(source.StorageFetches, Is.EqualTo(mode == "enabled" ? 1 : 2));
-            Assert.That(source.BalFetches, Is.EqualTo(mode == "default" ? 0 : 1));
-            Assert.That(source.HeaderFetches, Is.EqualTo(mode == "default" ? 0 : 1));
+            Assert.That(source.StorageFetches, Is.EqualTo(mode == "after-fork" ? 1 : 2));
+            Assert.That(source.BalFetches, Is.EqualTo(mode == "before-fork" ? 0 : 1));
+            Assert.That(source.HeaderFetches, Is.EqualTo(1));
             Assert.That(source.AccountFetches, Is.EqualTo(2));
             Assert.That(source.CodeFetches, Is.EqualTo(2));
         }

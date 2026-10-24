@@ -98,7 +98,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         _hostedAccounts?.GetProgress(target) ?? [];
 
     internal ExecutionPeerTransport(string network, ILogManager logManager, VerifiedHead head, ulong timestamp,
-        string? dataDirectory = null, Address[]? hostedAccounts = null, bool hostedAccountsBal = false, int port = 30307,
+        string? dataDirectory = null, Address[]? hostedAccounts = null, int port = 30307,
         TimeProvider? clock = null)
     {
         _clock = clock ?? TimeProvider.System;
@@ -107,7 +107,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         _logManager = logManager;
         _logger = logManager.GetClassLogger<ExecutionPeerTransport>();
         if (hostedAccounts is { Length: > 0 })
-            _hostedAccounts = new(hostedAccounts, this, DownloadStorageAsync, _logger, hostedAccountsBal);
+            _hostedAccounts = new(hostedAccounts, this, DownloadStorageAsync, _logger);
         _ = typeof(EthashChainSpecEngineParameters).Assembly;
         TypeDiscovery.Initialize();
         (string chainSpecFile, Hash256 genesisHash) = network switch
@@ -144,8 +144,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         ConfigProvider config = new(init, net, sync, discovery, new FlatDbConfig { Enabled = false });
         ContainerBuilder builder = new();
         builder.RegisterModule(new NethermindModule(chainSpec, config, logManager));
-        bool snap2 = chainSpec.Parameters.Eip7928TransitionTimestamp is ulong activation && timestamp >= activation;
-        builder.RegisterModule(new LightExecutionOverrides(_syncServer, _transactionRelay, _stop.Token, snap2));
+        builder.RegisterModule(new LightExecutionOverrides(_syncServer, _transactionRelay, _stop.Token));
         if (dataDirectory is not null)
         {
             string directory = Path.Combine(dataDirectory, "el", network, "discovery");
@@ -922,7 +921,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     }
 
     private sealed class LightExecutionOverrides(LightSyncServer syncServer, BoundedTransactionRelay transactionRelay,
-        CancellationToken stopToken, bool snap2) : Module
+        CancellationToken stopToken) : Module
     {
         protected override void Load(ContainerBuilder builder)
         {
@@ -938,7 +937,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             builder.RegisterType<ProtocolsManager>()
                 .As<IProtocolsManager>()
                 .As<IProtocolRegistrar>()
-                .WithParameter(new TypedParameter(typeof(IP2PCapabilityResolver[]), new IP2PCapabilityResolver[] { new LightCapabilities(snap2) }))
+                .WithParameter(new TypedParameter(typeof(IP2PCapabilityResolver[]), new IP2PCapabilityResolver[] { new LightCapabilities() }))
                 .WithAttributeFiltering()
                 .SingleInstance();
         }
@@ -984,7 +983,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), EmptyByteArrayList.Instance);
     }
 
-    private sealed class LightCapabilities(bool snap2) : IP2PCapabilityResolver
+    private sealed class LightCapabilities : IP2PCapabilityResolver
     {
         public event Action? Changed { add { } remove { } }
         public void Resolve(ISet<Capability> capabilities)
@@ -992,7 +991,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             for (byte version = 68; version <= 72; version++)
                 capabilities.Add(new Capability(Protocol.Eth, version));
             capabilities.Add(new Capability(Protocol.Snap, 1));
-            if (snap2) capabilities.Add(new Capability(Protocol.Snap, 2));
+            capabilities.Add(new Capability(Protocol.Snap, 2));
         }
     }
 

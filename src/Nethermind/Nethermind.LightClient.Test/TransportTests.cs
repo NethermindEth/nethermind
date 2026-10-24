@@ -38,7 +38,6 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
-using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Nethermind.Network.Rlpx;
@@ -1888,6 +1887,27 @@ public class TransportTests
     private sealed record ServingRequest : IBackgroundTaskRequest<ServingRequest>;
 
     [Test]
+    [CancelAfter(30_000)]
+    public async Task BAL_requests_follow_the_target_fork_when_started_before_activation(
+        [Values(-1, 0, 1)] int offset, CancellationToken token)
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), Nethermind.Logging.LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile("sepolia.json");
+        ulong activation = chainSpec.Parameters.Eip7928TransitionTimestamp!.Value;
+        await using ExecutionPeers peers = new(1, startupTimestamp: activation - 1);
+        BlockHeader header = peers.Header;
+        header.Timestamp = (ulong)((long)activation + offset);
+        header.Hash = header.CalculateHash();
+
+        Assert.That(Services(peers.Transport).Resolve<IProtocolsManager>().GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(2));
+        if (offset < 0)
+            Assert.That(async () => await peers.Transport.GetBlockAccessListAsync(header, token), Throws.TypeOf<NotSupportedException>());
+        else
+            Assert.That((await peers.Transport.GetBlockAccessListAsync(header, token)).WireHash, Is.EqualTo(header.BlockAccessListHash));
+        Assert.That(peers.Counts(AllocationContexts.BlockAccessLists), Is.EqualTo(new[] { offset < 0 ? 0 : 1 }));
+    }
+
+    [Test]
     public async Task Execution_transport_uses_discv5_without_direct_bootnode_candidates()
     {
         await using ExecutionPeerTransport transport = new("mainnet", Nethermind.Logging.LimboLogs.Instance,
@@ -2282,10 +2302,11 @@ public class TransportTests
         private bool _disposed;
         private int _balRequest;
 
-        internal ExecutionPeers(int count, bool snap2 = false, byte ethVersion = 71, bool snap1 = false)
+        internal ExecutionPeers(int count, bool snap2 = false, byte ethVersion = 71, bool snap1 = false,
+            ulong startupTimestamp = 1_800_000_000)
         {
             Transport = new("sepolia", Nethermind.Logging.LimboLogs.Instance,
-                new VerifiedHead(0, 0, KnownHashes.SepoliaGenesis, Keccak.Zero), 1_800_000_000, clock: Clock);
+                new VerifiedHead(0, 0, KnownHashes.SepoliaGenesis, Keccak.Zero), startupTimestamp, clock: Clock);
             Body = new([new Transaction { Nonce = 1, To = Address.Zero, Value = 1, GasLimit = 21_000, GasPrice = 1 }], [], []);
             Chain = new BlockHeader[3];
             for (int i = 0; i < Chain.Length; i++)

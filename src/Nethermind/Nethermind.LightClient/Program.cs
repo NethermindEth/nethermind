@@ -27,7 +27,6 @@ if (Array.Exists(args, static arg => arg is "--help" or "-h"))
         "          --data-dir src/Nethermind/artifacts/lightclient\n" +
         "          --beacon-port 9050 --beacon-quic-port 9051 (0 disables QUIC) --execution-port 30307\n" +
         "          --host-accounts <0xaddress,0xaddress,...> (complete account state retained in RAM)\n" +
-        "          --host-accounts-bal true|false (incremental BAL storage updates; default false)\n" +
         "          --log-level Trace|Debug|Info|Warn|Error|Fatal (default Info)\n" +
         "Mainnet needs --checkpoint or --checkpoint-url; Hoodi and Sepolia use EF-operated defaults.\n" +
         "See README.md for verified RPC selectors and checkpoint trust requirements.");
@@ -91,7 +90,6 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     builder.Services.AddCors();
     string network = builder.Configuration["network"] ?? "mainnet";
     Address[] hostedAccounts = HostedAccountState.ParseAccounts(builder.Configuration["host-accounts"]);
-    bool hostedAccountsBal = builder.Configuration.GetValue<bool>("host-accounts-bal");
     (int beaconPort, int quicPort, int executionPort) = LightClientHost.ReadPorts(builder.Configuration);
     BeaconChainSpec spec = network switch
     {
@@ -186,7 +184,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         status.SetStage(StartupStage.Execution);
         await using ExecutionPeerTransport execution = new(network, logManager,
             provisionalHead, ExecutionTime(provisionalHead), dataDirectory: dataDirectory, hostedAccounts: hostedAccounts,
-            hostedAccountsBal: hostedAccountsBal, port: executionPort);
+            port: executionPort);
         await execution.StartAsync(app.Lifetime.ApplicationStopping);
         logger.LogInformation("Execution P2P started; searching for SNAP peers via {Domain}", execution.DiscoveryDomain);
         async Task<(VerifiedHead Head, ulong Timestamp)> ResolveAsync(LightClientHeader header, CancellationToken token)

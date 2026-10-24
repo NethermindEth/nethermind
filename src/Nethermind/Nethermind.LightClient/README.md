@@ -216,19 +216,26 @@ hosted by default.
 A background worker follows authenticated optimistic `latest`, checking for new
 roots every five seconds after the preceding refresh. At a new root it fetches
 a fresh account proof. Unchanged storage roots and code hashes reuse their
-verified data; changed storage uses a full download unless BAL updates are enabled.
+verified data; changed storage uses BAL updates automatically from the network's
+EIP-7928 activation, with complete SNAP downloads before activation or as fallback.
 A snapshot becomes visible atomically only when all its data has verified.
 Reorganizations use the same root checks. While catching up, RPC uses the regular proof-backed P2P path
 for anything the retained snapshot cannot authenticate at the requested root.
 Other accounts and historical roots continue to use that path. `eth_getProof`
 continues to request witnesses from peers. Shutdown cancels and joins the worker.
 
-To update hosted storage incrementally using [EIP-7928 BALs](https://eips.ethereum.org/EIPS/eip-7928),
-add `--host-accounts-bal true` to the same command. This is **disabled by default**
-and only applies to accounts selected by `--host-accounts`. The first snapshot
-still requires a complete SNAP download. Balance, nonce and code commitments
-continue to come from fresh account proofs; changed bytecode is fetched and
-hash-checked normally, including hash-only code adoption.
+Hosted storage uses [EIP-7928 BALs](https://eips.ethereum.org/EIPS/eip-7928)
+automatically from the activation block onward, using each authenticated block's
+release spec. There is no separate BAL option; `--host-accounts` selects the
+accounts to retain. The first snapshot still requires a complete SNAP download.
+Balance, nonce and code commitments continue to come from fresh account proofs;
+changed bytecode is fetched and hash-checked normally, including hash-only code
+adoption.
+
+Both SNAP protocol versions are offered from startup, so starting before
+activation does not require a restart to use BALs afterward. BAL requests remain
+gated by the authenticated block's fork; available peers must support SNAP/2 or
+ETH/71+.
 
 The updater verifies every intervening execution header and its ancestry back to
 the retained snapshot before fetching any BALs. It obtains BALs over SNAP/2 or
@@ -477,7 +484,7 @@ Finality repair accepts a valid response even when its finalized head is unchang
 The execution side uses
 [SNAP account/storage ranges and bytecode](https://github.com/ethereum/devp2p/blob/master/caps/snap.md).
 It runs Nethermind's discv5 execution discovery, RLPx, `eth/68`–`eth/72` and
-`snap/1` or `snap/2` as the network schedule requires. Execution proofs are
+offers both `snap/1` and `snap/2`, with BAL requests gated by the block's fork. Execution proofs are
 cached in memory; it does no full block synchronization. Peers can withhold
 recent selected state; this affects availability, never the returned
 value. The startup checkpoint remains a trusted input, whether supplied directly
