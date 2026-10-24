@@ -35,6 +35,9 @@ namespace Nethermind.Network
         private readonly ITrustedNodesManager _trustedNodesManager;
         private readonly IStaticHostFilter _staticHostFilter;
         private readonly TimeProvider _timeProvider;
+        private readonly ConditionalWeakTable<Node, StrongBox<long>> _unprovenSince = [];
+
+        internal static readonly TimeSpan UnprovenStaticHostTimeout = TimeSpan.FromMinutes(10);
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -156,10 +159,14 @@ namespace Nethermind.Network
         // peers db loses its static status for the whole session and is never redialed as one.
         private void PromoteFlags(Node incoming, Node pooled)
         {
-            if (incoming.IsStatic && !pooled.IsStatic)
+            if (incoming.IsStatic && !_staticHostFilter.IsPromoted(incoming))
             {
-                pooled.IsStatic = true;
-                if (_logger.IsDebug) DebugPromoted(pooled, "static");
+                _staticHostFilter.Untrack(pooled);
+                if (!pooled.IsStatic)
+                {
+                    pooled.IsStatic = true;
+                    if (_logger.IsDebug) DebugPromoted(pooled, "static");
+                }
             }
 
             if (incoming.IsTrusted && !pooled.IsTrusted)
@@ -187,22 +194,32 @@ namespace Nethermind.Network
             !node.IsStatic && _staticHostFilter.IsMatch(node.Address) && !FailedToProveKey(node);
 
         // A discovery record can claim any address, so a host match alone does not prove that the node
-        // runs there. A node we dialed that never completed a handshake is a spoofed record or a stale key.
-        private bool FailedToProveKey(Node node)
-        {
-            INodeStats stats = _stats.GetOrAdd(node);
-            return stats.DidEventHappen(NodeStatsEventType.Connecting) && !stats.DidEventHappen(NodeStatsEventType.HandshakeCompleted);
-        }
+        // runs there. Only an outbound handshake to that address proves it; an inbound one can come from anywhere.
+        private bool FailedToProveKey(Node node) =>
+            _stats.GetOrAdd(node).DidEventHappen(NodeStatsEventType.Connecting) && !_staticHostFilter.IsProven(node);
 
+        // The timeout lets a configured node that is offline at the first dial, for example during its restart, stay static.
         private void DemoteUnprovenStaticHosts()
         {
+            long now = _timeProvider.GetTimestamp();
             foreach (KeyValuePair<PublicKeyAsKey, Peer> kvp in Peers)
             {
                 Peer peer = kvp.Value;
-                if (peer.Node.IsStatic && peer.InSession is null && peer.OutSession is null && !peer.IsAwaitingConnection
-                    && FailedToProveKey(peer.Node))
+                Node node = peer.Node;
+                if (!node.IsStatic || !_staticHostFilter.IsPromoted(node) || peer.InSession is not null || peer.OutSession is not null
+                    || peer.IsAwaitingConnection || !FailedToProveKey(node))
                 {
-                    _staticHostFilter.Demote(peer.Node);
+                    continue;
+                }
+
+                if (!_unprovenSince.TryGetValue(node, out StrongBox<long>? since))
+                {
+                    _unprovenSince.AddOrUpdate(node, new StrongBox<long>(now));
+                }
+                else if (_timeProvider.GetElapsedTime(since.Value, now) >= UnprovenStaticHostTimeout)
+                {
+                    _unprovenSince.Remove(node);
+                    _staticHostFilter.Demote(node);
                 }
             }
         }

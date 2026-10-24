@@ -558,6 +558,26 @@ namespace Nethermind.Network.Test
             if (isStatic) Assert.That(peer!.Node.IsStatic, Is.True);
         }
 
+        [Test]
+        public async Task Incoming_session_does_not_inherit_a_static_host_match_of_the_pooled_record()
+        {
+            await using Context ctx = new(maxActivePeers: 1, staticPeerHosts: "5.5.5.5");
+            ctx.PeerManager.Start();
+            PrivateKeyGenerator keyGenerator = new();
+            for (int i = 0; i < 100; i++)
+            {
+                PublicKey key = keyGenerator.Generate().PublicKey;
+                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "5.6.7.8", 30303));
+            }
+
+            Peer pooled = ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "5.5.5.5", 30303));
+            Assert.That(pooled.Node.IsStatic, Is.True);
+
+            ctx.RlpxPeer.CreateIncoming(CreateIncomingSessionTemplate(TestItem.PublicKeyB));
+
+            Assert.That(ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.False);
+        }
+
         // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,
         // applied when a session completes the P2P Hello exchange.
         [TestCase(11, 10, true)]

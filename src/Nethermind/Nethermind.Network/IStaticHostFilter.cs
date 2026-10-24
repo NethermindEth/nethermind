@@ -22,11 +22,23 @@ public interface IStaticHostFilter
     /// <param name="node">The node to promote. A node that is already static is not changed.</param>
     /// <param name="matchPort"><c>false</c> to match the IP only.</param>
     /// <returns><c>true</c> when the node was promoted.</returns>
-    /// <remarks>A promoted node is demoted when a hostname refresh drops its IP.</remarks>
+    /// <remarks>A promoted node is demoted when a hostname refresh makes it stop matching in the same mode.</remarks>
     bool TryPromote(Node node, bool matchPort);
 
     /// <summary>Clears the static flag set by <see cref="TryPromote"/>. Nodes that are static for other reasons are not changed.</summary>
     void Demote(Node node);
+
+    /// <summary>Stops tracking a node that became static for another reason, so <see cref="Demote"/> does not clear its flag.</summary>
+    void Untrack(Node node);
+
+    /// <summary>Returns <c>true</c> when the static flag of the node was set by <see cref="TryPromote"/>.</summary>
+    bool IsPromoted(Node node);
+
+    /// <summary>Records that an outbound handshake to the node address completed, and promotes the node when it matches.</summary>
+    void MarkProven(Node node);
+
+    /// <summary>Returns <c>true</c> when an outbound handshake to the current node address completed.</summary>
+    bool IsProven(Node node);
 
     /// <summary>Raised when a hostname resolves to a new set of addresses.</summary>
     event EventHandler? Changed;

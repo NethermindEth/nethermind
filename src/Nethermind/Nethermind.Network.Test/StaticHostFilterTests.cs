@@ -122,6 +122,66 @@ public class StaticHostFilterTests
     }
 
     [Test]
+    public async Task Refresh_keeps_the_match_mode_of_each_promotion()
+    {
+        IPAddress[] result = [IPAddress.Parse("1.2.3.4")];
+        StaticHostFilter filter = Create("dynamic.example:30303,1.2.3.4:30304", (_, _) => Task.FromResult(result));
+        await filter.RefreshAsync(CancellationToken.None);
+
+        Node discovered = new(TestItem.PublicKeyA, "1.2.3.4", 30303);
+        Node inbound = new(TestItem.PublicKeyB, "1.2.3.4", 40000);
+        Assert.That(filter.TryPromote(discovered, matchPort: true), Is.True);
+        Assert.That(filter.TryPromote(inbound, matchPort: false), Is.True);
+
+        result = [IPAddress.Parse("5.6.7.8")];
+        await filter.RefreshAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(discovered.IsStatic, Is.False);
+            Assert.That(inbound.IsStatic, Is.True);
+        }
+    }
+
+    [Test]
+    public void Untracked_node_is_not_demoted()
+    {
+        StaticHostFilter filter = Create("1.2.3.4");
+        Node node = new(TestItem.PublicKeyA, "1.2.3.4", 30303);
+        filter.TryPromote(node, matchPort: true);
+
+        filter.Untrack(node);
+        filter.Demote(node);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.IsStatic, Is.True);
+            Assert.That(filter.IsPromoted(node), Is.False);
+        }
+    }
+
+    [Test]
+    public void Mark_proven_promotes_a_matching_node()
+    {
+        StaticHostFilter filter = Create("1.2.3.4:30303");
+        Node matching = new(TestItem.PublicKeyA, "1.2.3.4", 30303);
+        Node otherPort = new(TestItem.PublicKeyB, "1.2.3.4", 30304);
+
+        filter.MarkProven(matching);
+        filter.MarkProven(otherPort);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(matching.IsStatic, Is.True);
+            Assert.That(filter.IsPromoted(matching), Is.True);
+            Assert.That(filter.IsProven(matching), Is.True);
+            Assert.That(otherPort.IsStatic, Is.False);
+            Assert.That(filter.IsProven(otherPort), Is.True);
+            Assert.That(StaticHostFilter.Empty.IsProven(matching), Is.False);
+        }
+    }
+
+    [Test]
     public void Refresh_survives_a_throwing_changed_handler()
     {
         StaticHostFilter filter = Create("my-node.example", static (_, _) => Task.FromResult(new[] { IPAddress.Parse("5.6.7.8") }));

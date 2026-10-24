@@ -979,7 +979,8 @@ namespace Nethermind.Network
             if (isPooled)
             {
                 // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
-                session.Node.IsStatic = existingPeer.Node.IsStatic;
+                // A host match of the pooled node can come from a discovery record, which says nothing about the address of this session.
+                session.Node.IsStatic = existingPeer.Node.IsStatic && !_staticHostFilter.IsPromoted(existingPeer.Node);
                 session.Node.IsTrusted = existingPeer.Node.IsTrusted;
             }
 
@@ -1344,6 +1345,7 @@ namespace Nethermind.Network
                     }
 
                     peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
+                    _staticHostFilter.MarkProven(peer.Node);
                 }
 
                 if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeInitialized);

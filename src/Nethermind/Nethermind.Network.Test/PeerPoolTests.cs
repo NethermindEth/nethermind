@@ -356,37 +356,58 @@ public class PeerPoolTests
     }
 
     [Test]
-    public async Task StaticHostPeer_WithoutHandshakeAfterDial_IsDemotedUntilItCompletesOne()
+    public async Task StaticHostPeer_WithoutOutboundHandshakeAfterDial_IsDemotedAfterTimeoutUntilItCompletesOne()
     {
         INodeStats stats = Substitute.For<INodeStats>();
         INodeStatsManager statsManager = Substitute.For<INodeStatsManager>();
         statsManager.GetOrAdd(Arg.Any<Node>()).Returns(stats);
         StaticHostFilter filter = new("1.2.3.0/24", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+        ManualTimestampProvider timeProvider = new();
         PeerPool pool = new(new TestNodeSource(), statsManager, new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
-            new NetworkConfig { PeersPersistenceInterval = 10 }, LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), filter);
+            new NetworkConfig { PeersPersistenceInterval = 10 }, LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), timeProvider, filter);
 
         Peer hostPeer = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
         Peer configuredPeer = pool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 30303) { IsStatic = true });
         Assert.That(hostPeer.Node.IsStatic, Is.True);
 
         stats.DidEventHappen(NodeStatsEventType.Connecting).Returns(true);
+        stats.DidEventHappen(NodeStatsEventType.HandshakeCompleted).Returns(true);
         pool.Start();
         try
         {
-            Assert.That(() => hostPeer.Node.IsStatic, Is.False.After(5000, 10));
+            Assert.That(() => hostPeer.Node.IsStatic, Is.True.After(200), "an offline node stays static within the timeout");
+
+            timeProvider.Advance(PeerPool.UnprovenStaticHostTimeout);
+            Assert.That(() => hostPeer.Node.IsStatic, Is.False.After(5000, 10), "an inbound handshake does not prove the address");
             Assert.That(configuredPeer.Node.IsStatic, Is.True);
 
             pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
             Assert.That(hostPeer.Node.IsStatic, Is.False, "rediscovery of an unproven node does not promote it again");
 
-            stats.DidEventHappen(NodeStatsEventType.HandshakeCompleted).Returns(true);
-            pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+            filter.MarkProven(hostPeer.Node);
             Assert.That(hostPeer.Node.IsStatic, Is.True);
         }
         finally
         {
             await pool.StopAsync();
         }
+    }
+
+    [Test]
+    public async Task StaticHostPeer_LaterAddedAsConfiguredStaticPeer_IsNotDemoted()
+    {
+        StaticHostFilter filter = new("1.2.3.0/24", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+        PeerPool pool = new(new TestNodeSource(), Substitute.For<INodeStatsManager>(), new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig(), LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), filter);
+
+        Peer peer = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+        Assert.That(filter.IsPromoted(peer.Node), Is.True);
+
+        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303) { IsStatic = true });
+        filter.Demote(peer.Node);
+
+        Assert.That(peer.Node.IsStatic, Is.True);
+        await pool.StopAsync();
     }
 
     [Test]
@@ -612,6 +633,17 @@ public class PeerPoolTests
         }
 
         return node!;
+    }
+
+    private sealed class ManualTimestampProvider : TimeProvider
+    {
+        private long _timestamp;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => Volatile.Read(ref _timestamp);
+
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _timestamp, by.Ticks);
     }
 
     private sealed class FirstTwoDelaysImmediateTimeProvider : TimeProvider

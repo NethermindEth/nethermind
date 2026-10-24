@@ -32,7 +32,8 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
     private readonly Func<string, CancellationToken, Task<IPAddress[]>> _resolve;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts = new();
-    private readonly ConditionalWeakTable<Node, object> _promoted = [];
+    private readonly ConditionalWeakTable<Node, Promotion> _promoted = [];
+    private readonly ConditionalWeakTable<Node, IPEndPoint> _proven = [];
     private volatile Rule[] _rules;
     private int _disposed;
 
@@ -82,7 +83,7 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
         if (node.IsStatic || !(matchPort ? IsMatch(node.Address) : IsMatch(node.Address.Address))) return false;
 
         node.IsStatic = true;
-        _promoted.AddOrUpdate(node, node);
+        _promoted.AddOrUpdate(node, matchPort ? Promotion.EndPoint : Promotion.Address);
         return true;
     }
 
@@ -93,6 +94,20 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
             node.IsStatic = false;
         }
     }
+
+    public void Untrack(Node node) => _promoted.Remove(node);
+
+    public bool IsPromoted(Node node) => _promoted.TryGetValue(node, out _);
+
+    public void MarkProven(Node node)
+    {
+        if (_fixedRules.Length == 0 && _hosts.Length == 0) return;
+
+        _proven.AddOrUpdate(node, node.Address);
+        TryPromote(node, matchPort: true);
+    }
+
+    public bool IsProven(Node node) => _proven.TryGetValue(node, out IPEndPoint? endPoint) && endPoint.Equals(node.Address);
 
     internal async Task RefreshAsync(CancellationToken token)
     {
@@ -129,11 +144,12 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
 
         _rules = rules.ToArray();
 
-        // The port of a promoted node cannot stop matching, as the port of a host entry is fixed config.
         List<Node> stale = [];
-        foreach (KeyValuePair<Node, object> promoted in _promoted)
+        foreach (KeyValuePair<Node, Promotion> promoted in _promoted)
         {
-            if (!IsMatch(promoted.Key.Address.Address)) stale.Add(promoted.Key);
+            Node node = promoted.Key;
+            bool matches = promoted.Value.MatchPort ? IsMatch(node.Address) : IsMatch(node.Address.Address);
+            if (!matches) stale.Add(node);
         }
 
         foreach (Node node in stale)
@@ -255,6 +271,14 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
     }
 
     private readonly record struct Rule(IPNetwork Network, int Port);
+
+    private sealed class Promotion(bool matchPort)
+    {
+        public static readonly Promotion EndPoint = new(true);
+        public static readonly Promotion Address = new(false);
+
+        public bool MatchPort { get; } = matchPort;
+    }
 
     private sealed class HostEntry(string name, int port)
     {
