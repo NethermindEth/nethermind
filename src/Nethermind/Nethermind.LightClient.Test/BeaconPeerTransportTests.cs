@@ -1268,6 +1268,377 @@ public class BeaconPeerTransportTests
         Assert.That(requested, Is.EqualTo(new[] { second.Id, first.Id, null }), "late callbacks cannot save after shutdown");
     }
 
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_absence_releases_its_startup_slot_without_a_peer_fault(
+        [Values] bool wrapped, CancellationToken token)
+    {
+        await using BootstrapAbsenceFixture fixture = new();
+        BootstrapSession unavailable = fixture.Add();
+        BootstrapSession available = fixture.Add();
+        for (int i = 2; i < 8; i++) fixture.Add();
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(8));
+        long before = fixture.Clock.GetTimestamp();
+        List<IBeaconSyncPeer> requested = [];
+        using CancellationTokenSource capacityStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task? capacity = null;
+        try
+        {
+            (LightClientBootstrap? response, _) = await fixture.RequestAsync([unavailable.Peer, available.Peer], (peer, _) =>
+            {
+                requested.Add(peer);
+                return ReferenceEquals(peer, unavailable.Peer)
+                    ? Task.FromException<LightClientBootstrap>(BootstrapUnavailable(wrapped))
+                    : Task.FromResult(fixture.Bootstrap);
+            }, token);
+
+            Assert.That(response, Is.SameAs(fixture.Bootstrap));
+            Assert.That(requested, Is.EqualTo(new[] { unavailable.Peer, available.Peer }));
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(7));
+            capacity = fixture.Manager.WaitForAdmissionCapacityAsync(capacityStop.Token);
+            Assert.That(capacity.IsCompletedSuccessfully, Is.True, "the actual admission gate must have room before maintenance or grace elapses");
+            await capacity;
+            await unavailable.Session.Received(1).DisconnectAsync();
+            await available.Session.DidNotReceive().DisconnectAsync();
+            PeerManager.PeerDiagnostics diagnostics = fixture.Manager.GetPeerDiagnostics().Single();
+            using IDisposable scope = Assert.EnterMultipleScope();
+            Assert.That(diagnostics.LastDisconnectReason, Is.EqualTo("TooManyPeers"));
+            Assert.That(diagnostics.FailuresReported, Is.Zero);
+            Assert.That(diagnostics.Banned, Is.False);
+            Assert.That(fixture.CanDial(unavailable.Peer.Id), Is.False, "normal endpoint backoff must still apply after release");
+            Assert.That(fixture.Clock.GetTimestamp(), Is.EqualTo(before));
+            Assert.That(fixture.Manager.GetBestPeers(0), Does.Not.Contain(unavailable.Peer));
+            Assert.That(fixture.Manager.GetBestPeers(0), Does.Contain(available.Peer));
+        }
+        finally
+        {
+            await capacityStop.CancelAsync();
+            if (capacity is not null)
+            {
+                try { await capacity; }
+                catch (OperationCanceledException) when (capacityStop.IsCancellationRequested) { }
+            }
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_absence_preserves_recent_authenticated_credit_until_it_expires(
+        [Values("gossip", "range", "bootstrap")] string credit, [Values] bool expired, CancellationToken token)
+    {
+        await using BootstrapAbsenceFixture fixture = new();
+        BootstrapSession unavailable = fixture.Add();
+        BootstrapSession available = fixture.Add();
+        fixture.RecordCredit(unavailable, credit);
+        if (expired)
+        {
+            fixture.Clock.Advance(credit == "gossip"
+                ? TimeSpan.FromSeconds(ConsensusTests.Spec.SecondsPerSlot * 11)
+                : TimeSpan.FromMinutes(10) + TimeSpan.FromTicks(1));
+        }
+        List<IBeaconSyncPeer> requested = [];
+
+        (LightClientBootstrap? response, _) = await fixture.RequestAsync([unavailable.Peer, available.Peer], (peer, _) =>
+        {
+            requested.Add(peer);
+            return ReferenceEquals(peer, unavailable.Peer)
+                ? Task.FromException<LightClientBootstrap>(BootstrapUnavailable())
+                : Task.FromResult(fixture.Bootstrap);
+        }, token);
+
+        Assert.That(response, Is.SameAs(fixture.Bootstrap));
+        Assert.That(requested, Is.EqualTo(new[] { unavailable.Peer, available.Peer }));
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(expired ? 1 : 2));
+        if (expired)
+        {
+            await unavailable.Session.Received(1).DisconnectAsync();
+            Assert.That(fixture.Manager.GetBestPeers(0), Does.Not.Contain(unavailable.Peer));
+        }
+        else
+        {
+            await unavailable.Session.DidNotReceive().DisconnectAsync();
+            Assert.That(fixture.Manager.GetBestPeers(0), Does.Contain(unavailable.Peer));
+        }
+        Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_absence_cannot_recycle_a_replacement_admitted_during_the_request(CancellationToken token)
+    {
+        await using BootstrapAbsenceFixture fixture = new();
+        BootstrapSession old = fixture.Add();
+        BootstrapSession available = fixture.Add();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenSource requestStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        List<IBeaconSyncPeer> requested = [];
+        Task<(LightClientBootstrap? Response, bool SawInapplicable)> request = fixture.RequestAsync([old.Peer, available.Peer], async (peer, _) =>
+        {
+            requested.Add(peer);
+            if (!ReferenceEquals(peer, old.Peer)) return fixture.Bootstrap;
+            entered.TrySetResult();
+            await release.Task.WaitAsync(token);
+            throw BootstrapUnavailable();
+        }, requestStop.Token);
+        try
+        {
+            await Task.WhenAny(entered.Task, request).WaitAsync(token);
+            if (request.IsCompleted) await request;
+            Assert.That(entered.Task.IsCompletedSuccessfully, Is.True);
+            BootstrapSession replacement = fixture.Add(old);
+            release.TrySetResult();
+            (LightClientBootstrap? response, _) = await request;
+            Assert.That(response, Is.SameAs(fixture.Bootstrap));
+            Assert.That(requested, Is.EqualTo(new[] { old.Peer, available.Peer }));
+            Assert.That(fixture.Manager.GetBestPeers(0), Is.EquivalentTo(new[] { replacement.Peer, available.Peer }));
+            await old.Session.DidNotReceive().DisconnectAsync();
+            await replacement.Session.DidNotReceive().DisconnectAsync();
+            Assert.That(fixture.Manager.GetPeerDiagnostics(), Is.Empty);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await requestStop.CancelAsync();
+            try { await request; }
+            catch (OperationCanceledException) when (requestStop.IsCancellationRequested) { }
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Optional_absence_on_other_production_cursors_does_not_recycle(
+        [Values("_updateRequests", "_finalityRequests", "_optimisticRequests")] string cursor, CancellationToken token)
+    {
+        await using BootstrapAbsenceFixture fixture = new();
+        BootstrapSession unavailable = fixture.Add();
+        BeaconPeerTransport.PeerRequests requests = fixture.Requests(cursor);
+        Task attempt = cursor switch
+        {
+            "_updateRequests" => Reject<LightClientUpdate>(),
+            "_finalityRequests" => Reject<LightClientFinalityUpdate>(),
+            _ => Reject<LightClientOptimisticUpdate>(),
+        };
+        await attempt;
+
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1));
+        Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
+        Assert.That(fixture.Manager.GetPeerDiagnostics(), Is.Empty);
+        await unavailable.Session.DidNotReceive().DisconnectAsync();
+
+        async Task Reject<T>() where T : class
+        {
+            (T? response, _) = await requests.RequestAsync<T>([unavailable.Peer],
+                static (_, _) => Task.FromException<T>(BootstrapUnavailable()),
+                static (_, _) => Task.FromResult(true), token);
+            Assert.That(response, Is.Null);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_nonabsence_failure_does_not_invoke_normal_recycling(
+        [Values] bool invalidProof, CancellationToken token)
+    {
+        await using BootstrapAbsenceFixture fixture = new();
+        BootstrapSession invalid = fixture.Add();
+        BootstrapSession available = fixture.Add();
+        LightClientBootstrap corrupted = ConsensusTests.Bootstrap(1, 1);
+        corrupted.CurrentSyncCommitteeBranch![0] = Keccak.Compute("invalid bootstrap committee proof");
+        List<IBeaconSyncPeer> requested = [];
+
+        (LightClientBootstrap? response, _) = await fixture.RequestAsync([invalid.Peer, available.Peer], (peer, _) =>
+        {
+            requested.Add(peer);
+            return !ReferenceEquals(peer, invalid.Peer) ? Task.FromResult(fixture.Bootstrap)
+                : invalidProof ? Task.FromResult(corrupted)
+                : Task.FromException<LightClientBootstrap>(new Eth2ReqRespException("Invalid request.", ReqRespFraming.ResponseCode.InvalidRequest));
+        }, token);
+
+        Assert.That(response, Is.SameAs(fixture.Bootstrap));
+        Assert.That(requested, Is.EqualTo(new[] { invalid.Peer, available.Peer }));
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
+        Assert.That(BootstrapAbsenceFixture.Failures(invalid.Peer), Is.EqualTo(1));
+        Assert.That(BootstrapAbsenceFixture.ViolatedProtocol(invalid.Peer), Is.EqualTo(invalidProof));
+        await invalid.Session.DidNotReceive().DisconnectAsync();
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_absence_cancellation_precedes_normal_recycling(
+        [Values] bool alreadyCanceled, CancellationToken token)
+    {
+        await using BootstrapAbsenceFixture fixture = new();
+        BootstrapSession unavailable = fixture.Add();
+        BootstrapSession available = fixture.Add();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenSource requestStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (alreadyCanceled) await requestStop.CancelAsync();
+        List<IBeaconSyncPeer> requested = [];
+        Task<(LightClientBootstrap? Response, bool SawInapplicable)> request = fixture.RequestAsync([unavailable.Peer, available.Peer], async (peer, _) =>
+        {
+            requested.Add(peer);
+            entered.TrySetResult();
+            await release.Task.WaitAsync(token);
+            await requestStop.CancelAsync();
+            throw BootstrapUnavailable();
+        }, requestStop.Token);
+        try
+        {
+            if (!alreadyCanceled)
+            {
+                await Task.WhenAny(entered.Task, request).WaitAsync(token);
+                if (request.IsCompleted) await request;
+                Assert.That(entered.Task.IsCompletedSuccessfully, Is.True);
+                release.TrySetResult();
+            }
+            Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
+            IBeaconSyncPeer[] expected = alreadyCanceled ? [] : [unavailable.Peer];
+            Assert.That(requested, Is.EqualTo(expected));
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
+            Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
+            Assert.That(fixture.Manager.GetPeerDiagnostics(), Is.Empty);
+            await unavailable.Session.DidNotReceive().DisconnectAsync();
+        }
+        finally
+        {
+            release.TrySetResult();
+            await requestStop.CancelAsync();
+            try { await request; }
+            catch (OperationCanceledException) when (requestStop.IsCancellationRequested) { }
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bootstrap_absence_joins_current_session_cleanup_when_its_owner_cancels(CancellationToken token)
+    {
+        await using BootstrapAbsenceFixture fixture = new();
+        BootstrapSession unavailable = fixture.Add();
+        BootstrapSession available = fixture.Add();
+        TaskCompletionSource cleanupEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseCleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        unavailable.Session.DisconnectAsync().Returns(_ => HoldCleanupAsync());
+        using CancellationTokenSource requestStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        List<IBeaconSyncPeer> requested = [];
+        Task<(LightClientBootstrap? Response, bool SawInapplicable)> request = fixture.RequestAsync([unavailable.Peer, available.Peer], (peer, _) =>
+        {
+            requested.Add(peer);
+            return Task.FromException<LightClientBootstrap>(BootstrapUnavailable());
+        }, requestStop.Token);
+        try
+        {
+            await Task.WhenAny(cleanupEntered.Task, request).WaitAsync(token);
+            if (request.IsCompleted) await request;
+            Assert.That(cleanupEntered.Task.IsCompletedSuccessfully, Is.True, "the constructor-wired callback must enter actual session cleanup");
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1), "capacity is released before slow disconnect completion");
+            await requestStop.CancelAsync();
+            Assert.That(request.IsCompleted, Is.False, "the request owner must still join its current cleanup");
+        }
+        finally
+        {
+            releaseCleanup.TrySetResult();
+            await requestStop.CancelAsync();
+            try { await request; }
+            catch (OperationCanceledException) when (requestStop.IsCancellationRequested) { }
+        }
+        Assert.That(requested, Is.EqualTo(new[] { unavailable.Peer }));
+        Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
+        Assert.That(fixture.Manager.GetPeerDiagnostics().Single().Banned, Is.False);
+        await unavailable.Session.Received(1).DisconnectAsync();
+        await available.Session.DidNotReceive().DisconnectAsync();
+
+        async Task HoldCleanupAsync()
+        {
+            cleanupEntered.TrySetResult();
+            await releaseCleanup.Task.WaitAsync(token);
+        }
+    }
+
+    private static Exception BootstrapUnavailable(bool wrapped = false)
+    {
+        Exception failure = new Eth2ReqRespException("Optional bootstrap unavailable.", ReqRespFraming.ResponseCode.ResourceUnavailable);
+        return wrapped ? new AggregateException(failure) : failure;
+    }
+
+    private sealed record BootstrapSession(IBeaconSyncPeer Peer, ISession Session, PeerId Remote);
+
+    private sealed class BootstrapAbsenceFixture : IAsyncDisposable
+    {
+        private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        private readonly MemColumnsDb<BeaconChainDbColumns> _db = new();
+        private readonly BeaconPeerTransport _transport;
+        internal ManualDeadlineClock Clock { get; } = new();
+        internal PeerManager Manager { get; }
+        internal BeaconPeerTransport.PeerProviders Providers { get; }
+        internal LightClientBootstrap Bootstrap { get; } = ConsensusTests.Bootstrap(1, 1);
+
+        internal BootstrapAbsenceFixture()
+        {
+            Clock.SetSlot(14);
+            _transport = new(ConsensusTests.Spec, LimboLogs.Instance, _db, time: Clock, quicPort: 0);
+            Manager = (PeerManager)typeof(BeaconPeerTransport).GetField("_peers", Flags)!.GetValue(_transport)!;
+            Providers = (BeaconPeerTransport.PeerProviders)typeof(BeaconPeerTransport).GetField("_providers", Flags)!.GetValue(_transport)!;
+        }
+
+        internal BootstrapSession Add(BootstrapSession? replacing = null)
+        {
+            PeerId remote = replacing?.Remote ?? new Identity().PeerId;
+            string address = replacing?.Peer.Id ?? $"/ip4/127.0.0.1/tcp/9000/p2p/{remote}";
+            ISession session = Substitute.For<ISession>();
+            IBeaconSyncPeer peer = (IBeaconSyncPeer)typeof(PeerManager).GetMethod("AddPeerForTest", Flags)!
+                .Invoke(Manager, [session, address, new StatusMessageV2 { HeadSlot = 14 }, true])!;
+            Providers.Admit(peer, PeerDirection.Outbound);
+            return new(peer, session, remote);
+        }
+
+        internal BeaconPeerTransport.PeerRequests Requests(string field) =>
+            (BeaconPeerTransport.PeerRequests)typeof(BeaconPeerTransport).GetField(field, Flags)!.GetValue(_transport)!;
+
+        internal Task<(LightClientBootstrap? Response, bool SawInapplicable)> RequestAsync(
+            IReadOnlyList<IBeaconSyncPeer> peers, Func<IBeaconSyncPeer, CancellationToken, Task<LightClientBootstrap>> request, CancellationToken token) =>
+            Requests("_bootstrapRequests").RequestAsync(peers, request, Validate<LightClientBootstrap>(ValidateBootstrap), token);
+
+        private void ValidateBootstrap(LightClientBootstrap bootstrap) => _ = new LightClientStore(ConsensusTests.Spec,
+            SszRoots.HashTreeRoot(Bootstrap.Header!.Beacon!), bootstrap,
+            ConsensusTests.Spec.GetSlotAtTime((ulong)Clock.GetUtcNow().ToUnixTimeSeconds()));
+
+        internal void RecordCredit(BootstrapSession source, string credit)
+        {
+            if (credit == "bootstrap")
+            {
+                ValidateBootstrap(Bootstrap);
+                Providers.RecordValidated(source.Peer, Bootstrap);
+                return;
+            }
+            LightClientUpdate update = ConsensusTests.Update(1, 11, 12, 1);
+            LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(Bootstrap.Header!.Beacon!), Bootstrap, 14);
+            store.Process(update, 14);
+            if (credit == "gossip") Providers.RecordGossip(source.Remote, update.AttestedHeader!.Beacon!.Slot);
+            else Providers.RecordValidated(source.Peer, update);
+        }
+
+        internal static long Failures(IBeaconSyncPeer peer) => (long)typeof(PeerManager)
+            .GetMethod("FailuresReportedForTest", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [peer])!;
+
+        internal static bool ViolatedProtocol(IBeaconSyncPeer peer) => (bool)peer.GetType()
+            .GetProperty("ViolatedProtocolSinceLastHealthyCheck", Flags | BindingFlags.Public)!.GetValue(peer)!;
+
+        internal bool CanDial(string address)
+        {
+            object history = typeof(PeerManager).GetField("_dialHistory", Flags)!.GetValue(Manager)!;
+            return (bool)history.GetType().GetMethod("CanDial", Flags)!.Invoke(history, [address])!;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try { await _transport.DisposeAsync(); }
+            finally { _db.Dispose(); }
+        }
+    }
+
+
     private static ReadOnlySpan<byte> HintKey => "light-client-supplier-hints/v1"u8;
 
     private static BootstrapPeer HintPeer(bool quic = false) => new(ConsensusTests.Bootstrap(1, 1),

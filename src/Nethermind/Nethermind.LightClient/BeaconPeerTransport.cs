@@ -58,7 +58,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         _logger = logManager.GetClassLogger<BeaconPeerTransport>();
         _time = time ?? TimeProvider.System;
         _providers = new(spec, _time, _logger, db.GetColumnDb(BeaconChainDbColumns.Metadata));
-        _bootstrapRequests = new(time, _logger, _providers);
+        _bootstrapRequests = new(time, _logger, _providers, RecycleUnavailableBootstrapAsync);
         _updateRequests = new(time, _logger, _providers);
         _optimisticRequests = new(time, _logger, _providers);
         _finalityRequests = new(time, _logger, _providers);
@@ -163,6 +163,16 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         } while (await timer.WaitForNextTickAsync(cancellationToken));
     }
 
+    /// <remarks>Startup invokes bootstrap before gossip and repair workers start. The usefulness check and session removal
+    /// use separate locks, so this callback must remain confined to that phase.</remarks>
+    private Task RecycleUnavailableBootstrapAsync(IBeaconSyncPeer peer, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return _providers.CanRecycleUnavailableBootstrap(peer)
+            ? _peers.RecyclePeerAsync(peer, "bootstrap data for the pinned checkpoint is unavailable", token)
+            : Task.CompletedTask;
+    }
+
     internal void StartGossip(Func<LightClientFinalityUpdate, CancellationToken, Task<bool>> finality,
         Func<LightClientOptimisticUpdate, CancellationToken, Task<bool>> optimistic, CancellationToken token) =>
         _gossip.Start(_p2p.GetTopic, finality, optimistic, token);
@@ -204,7 +214,8 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         }
     }
 
-    internal sealed class PeerRequests(TimeProvider? timeProvider = null, Nethermind.Logging.ILogger? logger = null, PeerProviders? providers = null)
+    internal sealed class PeerRequests(TimeProvider? timeProvider = null, Nethermind.Logging.ILogger? logger = null,
+        PeerProviders? providers = null, Func<IBeaconSyncPeer, CancellationToken, Task>? unavailable = null)
     {
         private readonly Nethermind.Logging.ILogger _logger = logger ?? NullLogger.Instance;
         private string? _lastAttemptedPeerId;
@@ -271,6 +282,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     token.ThrowIfCancellationRequested();
                     providers?.Failed<T>(peer);
                     if (_logger.IsDebug) _logger.Debug($"Beacon peer {peer.Id} has no {typeof(T).Name} available");
+                    if (unavailable is not null) await unavailable(peer, token);
                     continue;
                 }
                 catch (Exception exception)
@@ -431,6 +443,14 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 if (typeof(T) == typeof(LightClientOptimisticUpdate)) supplier.OptimisticSlot = null;
                 else if (typeof(T) == typeof(LightClientFinalityUpdate)) supplier.FinalitySlot = null;
                 else if (typeof(T) == typeof(LightClientUpdate)) supplier.UpdateSlot = null;
+            }
+        }
+
+        internal bool CanRecycleUnavailableBootstrap(IBeaconSyncPeer peer)
+        {
+            lock (_lock)
+            {
+                return TryCurrent(peer, out Supplier? supplier) && !IsFresh(supplier) && !IsCandidate(supplier);
             }
         }
 
