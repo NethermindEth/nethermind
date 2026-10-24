@@ -137,6 +137,7 @@ static partial class StartupProvision
             await Stage("runner-started");
             return 0;
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { return 143; }
         catch (Exception exception)
         {
             Console.Error.WriteLine(exception.Message);
@@ -144,7 +145,5 @@ static partial class StartupProvision
             await Stage("failed");
             return 1;
         }
-
-
     }
 }

@@ -4,11 +4,14 @@ set -euo pipefail
 MD=http://metadata.google.internal/computeMetadata/v1/instance
 fail() {
   local status=$?
-  curl -sf -X PUT --data "bootstrap line ${BASH_LINENO[0]}: exit ${status}" -H 'Metadata-Flavor: Google' "$MD/guest-attributes/gh-runner/error" >/dev/null || true
+  if [[ $(curl -sf --max-time 5 -H 'Metadata-Flavor: Google' "$MD/guest-attributes/gh-runner/stage" || true) != failed ]]; then
+    curl -sf -X PUT --data "bootstrap line ${BASH_LINENO[0]}: exit ${status}" -H 'Metadata-Flavor: Google' "$MD/guest-attributes/gh-runner/error" >/dev/null || true
+  fi
   curl -sf -X PUT --data failed -H 'Metadata-Flavor: Google' "$MD/guest-attributes/gh-runner/stage" >/dev/null || true
   exit "$status"
 }
 trap fail ERR
+curl -sf -X PUT --data bootstrap -H 'Metadata-Flavor: Google' "$MD/guest-attributes/gh-runner/stage" >/dev/null || true
 BOOTSTRAP_DIR=${BOOTSTRAP_DIR:-/opt/gh-runner-bootstrap}
 export HOME="${HOME:-$BOOTSTRAP_DIR/home}" DOTNET_CLI_HOME="$BOOTSTRAP_DIR"
 export DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1

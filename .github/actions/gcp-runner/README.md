@@ -36,7 +36,5 @@ dotnet run --file scripts/ci/TestSyncMetrics.cs
 dotnet run --file scripts/ci/RunScriptTests.cs -- --check .github/actions/gcp-runner
 ```
 
-Lifecycle tests inject command results; startup tests use temporary filesystem
-roots and fake package, disk, service, and metadata commands. Process tests use
-stub Docker/Sedge executables and verify follower cancellation. These checks do
-not provision a live VM or download the SDK archive.
+Lifecycle tests inject command results; these checks do not provision a live VM or
+download the SDK archive.
