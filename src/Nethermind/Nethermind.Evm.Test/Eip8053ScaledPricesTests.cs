@@ -11,7 +11,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
