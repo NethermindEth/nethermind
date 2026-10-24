@@ -24,7 +24,7 @@ public static class Eip8037Constants
     /// <remarks> Keeps the <c>gas_left</c> cost of CREATE at least its cost before EIP-8037. Assumes EIP-8038 (<c>CREATE_ACCESS</c>), which Amsterdam enables together with EIP-8037. </remarks>
     public const long CreateLegacyShare = (long)(GasCostOf.Create - Eip8038Constants.CreateAccess);
 
-    /// <summary> EIP-8998: <c>GAS_CODE_DEPOSIT</c> before EIP-8037, the lowest gas per new state byte before EIP-8037. </summary>
+    /// <summary> <c>LEGACY_GAS_PER_STATE_BYTE</c>: <c>GAS_CODE_DEPOSIT</c> before EIP-8037, the lowest gas per new state byte before EIP-8037. </summary>
     /// <remarks> A call frame with <c>g</c> gas can create <c>g * CPSB / LegacyGasPerStateByte</c> of net state gas. </remarks>
     public const long LegacyGasPerStateByte = 200;
 

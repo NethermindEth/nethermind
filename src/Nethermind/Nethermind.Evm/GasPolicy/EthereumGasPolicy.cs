@@ -31,9 +31,9 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasUsed;
     /// <summary>State gas drawn from this frame's execution gas pool.</summary>
     public long StateGasSpill;
-    /// <summary>Most net state gas this frame and its descendants can create (EIP-8998); used only when <see cref="HasStateGasAllowance"/> is set.</summary>
+    /// <summary>Most net state gas this frame and its descendants can create (EIP-8037 allowance); used only when <see cref="HasStateGasAllowance"/> is set.</summary>
     public long StateGasAllowance;
-    /// <summary>Set for call frames below the top level, which have an EIP-8998 state-gas allowance.</summary>
+    /// <summary>Set for call frames below the top level, which have an EIP-8037 state-gas allowance.</summary>
     public bool HasStateGasAllowance;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
@@ -691,7 +691,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long childStateReservoir = parentGas.StateReservoir;
         parentGas.StateReservoir = 0;
 
-        // EIP-8998: the child can create as many state bytes as its gas bought at the pre-EIP-8037 code-deposit price,
+        // EIP-8037: the child can create as many state bytes as its gas bought at the pre-EIP-8037 code-deposit price,
         // within what is left of its parent's allowance. EIP-8141 frame transactions keep their own state-gas limits.
         bool hasAllowance = !parentGas.IndependentStatePool;
         long allowance = 0;

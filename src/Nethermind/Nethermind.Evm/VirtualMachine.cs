@@ -772,7 +772,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in previousState.Gas, stateDepositCost);
         ulong codeDepositGasCost = executionDepositCost + stateSpill;
-        // EIP-8998: the deposit is checked against the create frame's allowance, not its parent's.
+        // EIP-8037: the deposit is checked against the create frame's allowance, not its parent's.
         bool hasEnoughGas = gasAvailableForCodeDeposit >= executionDepositCost
             && gasAvailableForCodeDeposit - executionDepositCost >= stateSpill
             && !TGasPolicy.ExceedsStateGasAllowance(in previousState.Gas, stateDepositCost);

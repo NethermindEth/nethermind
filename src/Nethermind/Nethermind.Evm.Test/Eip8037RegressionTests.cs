@@ -2374,7 +2374,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8998_large_code_deposit_fails_only_the_create_of_a_gas_limited_callee()
+    public void Eip8037_large_code_deposit_fails_only_the_create_of_a_gas_limited_callee()
     {
         // PUSH2 0x6000 PUSH0 RETURN: returns 24,576 zero bytes, a code deposit of 37,601,280 state gas.
         byte[] helperCode = Prepare.EvmCode
@@ -2407,7 +2407,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8998_callee_cannot_drain_the_reservoir_of_a_later_callee()
+    public void Eip8037_callee_cannot_drain_the_reservoir_of_a_later_callee()
     {
         byte[] newSlotCode = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
         // PUSH2 0x0400 PUSH0 RETURN: deploys 1,024 zero bytes, a code deposit of 1,566,720 state gas.
