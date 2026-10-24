@@ -12,6 +12,6 @@ public class MonitoringPlugin(IMetricsConfig metricsConfig) : INethermindPlugin
     public string Name => "Monitoring";
     public string Description => "Prometheus and dotnet-counters metrics";
     public string Author => "Nethermind";
-    public bool Enabled => metricsConfig.Enabled || metricsConfig.CountersEnabled;
+    public bool Enabled => metricsConfig.IsMonitoringEnabled();
     public IModule Module => new MonitoringModule();
 }

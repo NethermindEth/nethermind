@@ -868,12 +868,17 @@ public class EthereumRunnerTests
         }
     }
 
-    [TestCase(false, typeof(NoopMonitoringService))]
-    [TestCase(true, typeof(MonitoringService))]
-    public async Task Metrics_enabled_loads_monitoring_plugin(bool enabled, Type expected)
+    [TestCase(false, false, typeof(NoopMonitoringService))]
+    [TestCase(true, false, typeof(MonitoringService))]
+    [TestCase(false, true, typeof(MonitoringService))]
+    public async Task Metrics_enabled_loads_monitoring_plugin(bool enabled, bool countersEnabled, Type expected)
     {
         EthereumRunner runner = await CreateRunner("mainnet", configProvider =>
-            ((MetricsConfig)configProvider.GetConfig<IMetricsConfig>()).Enabled = enabled);
+        {
+            MetricsConfig config = (MetricsConfig)configProvider.GetConfig<IMetricsConfig>();
+            config.Enabled = enabled;
+            config.CountersEnabled = countersEnabled;
+        });
         try
         {
             Assert.That(runner.Api.Context.Resolve<IMonitoringService>(), Is.TypeOf(expected));

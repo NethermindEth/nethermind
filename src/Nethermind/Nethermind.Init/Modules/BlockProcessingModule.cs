@@ -188,11 +188,11 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .WithMetadata(PrewarmerEnvFactory.HandoffMetadata, true);
 
         // Metering costs a virtual dispatch and an atomic per precompile call, so it is only installed
-        // when something is there to scrape it - the same condition that enables MonitoringPlugin.
+        // when something is there to scrape it.
         builder.AddDecorator<IPrecompileProvider>(static (ctx, inner) =>
         {
             IMetricsConfig metricsConfig = ctx.Resolve<IMetricsConfig>();
-            if (!metricsConfig.Enabled && !metricsConfig.CountersEnabled) return inner;
+            if (!metricsConfig.IsMonitoringEnabled()) return inner;
 
             MeteredPrecompileProvider metered = new(inner);
             ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(metered.PublishMetrics);
