@@ -30,7 +30,14 @@ public class SyncingResultJsonConverter : JsonConverter<SyncingResult>
         {
             StartingBlock = value.StartingBlock,
             CurrentBlock = value.CurrentBlock,
-            HighestBlock = value.HighestBlock
+            HighestBlock = value.HighestBlock,
+            SyncedAccounts = value.SyncedAccounts,
+            SyncedStorage = value.SyncedStorage,
+            SyncedBytecodes = value.SyncedBytecodes,
+            HealedTrienodes = value.HealedTrienodes,
+            HealedBytecodes = value.HealedBytecodes,
+            WarpChunksAmount = value.WarpChunksAmount,
+            WarpChunksProcessed = value.WarpChunksProcessed
         }, options);
     }
 
@@ -39,5 +46,12 @@ public class SyncingResultJsonConverter : JsonConverter<SyncingResult>
         public ulong StartingBlock { get; set; }
         public ulong CurrentBlock { get; set; }
         public ulong HighestBlock { get; set; }
+        public ulong? SyncedAccounts { get; set; }
+        public ulong? SyncedStorage { get; set; }
+        public ulong? SyncedBytecodes { get; set; }
+        public ulong? HealedTrienodes { get; set; }
+        public ulong? HealedBytecodes { get; set; }
+        public ulong? WarpChunksAmount { get; set; }
+        public ulong? WarpChunksProcessed { get; set; }
     }
 }
