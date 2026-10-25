@@ -91,12 +91,18 @@ public partial class BlockProcessor(
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
         }
-        catch (InvalidBlockException ex) when (_balManager.ParallelExecutionEnabled && IsBlockAccessListFailure(ex))
+        catch (InvalidBlockException ex) when (IsBlockAccessListFailure(ex))
         {
-            // Some checks run only on the parallel path, and no sequential re-execution backs them up, so a false
-            // positive on a valid block must stand out from ordinary invalid blocks.
-            Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
-            if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+            // The bad-block store keeps the generated access list next to the suggested one for diagnostics.
+            suggestedBlock.GeneratedBlockAccessList ??= block.GeneratedBlockAccessList;
+            if (_balManager.ParallelExecutionEnabled)
+            {
+                // Some checks run only on the parallel path, and no sequential re-execution backs them up, so a false
+                // positive on a valid block must stand out from ordinary invalid blocks.
+                Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
+                if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+            }
+
             throw;
         }
         finally

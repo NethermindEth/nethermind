@@ -62,12 +62,13 @@ public class BadBlockStoreTests
     }
 
     [Test]
-    public void Insert_drops_block_access_list_above_size_limit([Values] bool aboveLimit)
+    public void Insert_keeps_generated_block_access_list([Values] bool hasSuggested)
     {
-        const int limit = 100;
-        BadBlockStore badBlockStore = new(new TestMemDb(), 10, maxBlockAccessListSize: limit);
-        byte[] bal = new byte[aboveLimit ? limit + 1 : limit];
-        Block block = Build.A.Block.WithNumber(1).WithEncodedBlockAccessList(bal).TestObject;
+        BadBlockStore badBlockStore = new(new TestMemDb(), 10);
+        byte[]? suggested = hasSuggested ? Sequence(100, 1) : null;
+        byte[] generated = Sequence(80, 2);
+        Block block = Build.A.Block.WithNumber(1).WithEncodedBlockAccessList(suggested).TestObject;
+        block.EncodedGeneratedBlockAccessList = generated;
 
         badBlockStore.Insert(block);
 
@@ -75,28 +76,57 @@ public class BadBlockStoreTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stored.Hash, Is.EqualTo(block.Hash));
-            Assert.That(stored.EncodedBlockAccessList, aboveLimit ? Is.Null : Is.EqualTo(bal));
+            Assert.That(stored.EncodedBlockAccessList, Is.EqualTo(suggested));
+            Assert.That(stored.EncodedGeneratedBlockAccessList, Is.EqualTo(generated));
         }
     }
 
     [Test]
-    public void Insert_drops_oldest_block_access_lists_above_budget()
+    public void Insert_drops_block_access_list_above_size_limit([Values] bool aboveLimit, [Values] bool generated)
+    {
+        const int limit = 100;
+        BadBlockStore badBlockStore = new(new TestMemDb(), 10, maxBlockAccessListSize: limit);
+        byte[] bal = Sequence(aboveLimit ? limit + 1 : limit, 1);
+        byte[] other = Sequence(limit, 2);
+        Block block = Build.A.Block.WithNumber(1).WithEncodedBlockAccessList(generated ? other : bal).TestObject;
+        block.EncodedGeneratedBlockAccessList = generated ? bal : other;
+
+        badBlockStore.Insert(block);
+
+        Block stored = badBlockStore.GetAll().Single();
+        byte[]? storedBal = generated ? stored.EncodedGeneratedBlockAccessList : stored.EncodedBlockAccessList;
+        byte[]? storedOther = generated ? stored.EncodedBlockAccessList : stored.EncodedGeneratedBlockAccessList;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored.Hash, Is.EqualTo(block.Hash));
+            Assert.That(storedBal, aboveLimit ? Is.Null : Is.EqualTo(bal));
+            Assert.That(storedOther, Is.EqualTo(other));
+        }
+    }
+
+    [Test]
+    public void Insert_drops_oldest_block_access_lists_above_budget([Values] bool reopen)
     {
         const int balSize = 100;
-        BadBlockStore badBlockStore = new(new TestMemDb(), 10, maxBlockAccessListSize: balSize, blockAccessListBudget: 2 * balSize);
+        TestMemDb db = new();
+        BadBlockStore CreateStore() => new(db, 10, maxBlockAccessListSize: balSize, blockAccessListBudget: 4 * balSize);
+        BadBlockStore badBlockStore = CreateStore();
 
-        for (ulong number = 1; number <= 4; number++)
+        for (byte number = 1; number <= 4; number++)
         {
-            byte[] bal = new byte[balSize];
-            bal[0] = (byte)number;
-            badBlockStore.Insert(Build.A.Block.WithNumber(number).WithEncodedBlockAccessList(bal).TestObject);
+            // A new store loads the access list sizes from the DB, so it must trim the same entries.
+            if (reopen && number == 3) badBlockStore = CreateStore();
+            Block block = Build.A.Block.WithNumber(number).WithEncodedBlockAccessList(Sequence(balSize, number)).TestObject;
+            block.EncodedGeneratedBlockAccessList = Sequence(balSize, number);
+            badBlockStore.Insert(block);
         }
 
         Block[] stored = badBlockStore.GetAll().ToArray();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stored.Select(static b => b.Number), Is.EqualTo(new ulong[] { 1, 2, 3, 4 }));
-            Assert.That(stored.Select(static b => b.EncodedBlockAccessList?[0]), Is.EqualTo(new byte?[] { null, null, 3, 4 }));
+            Assert.That(stored.Select(static b => b.EncodedBlockAccessList?[2]), Is.EqualTo(new byte?[] { null, null, 3, 4 }));
+            Assert.That(stored.Select(static b => b.EncodedGeneratedBlockAccessList?[2]), Is.EqualTo(new byte?[] { null, null, 3, 4 }));
         }
     }
 
@@ -150,6 +180,16 @@ public class BadBlockStoreTests
         }
 
         Assert.That(count, Is.EqualTo(2));
+    }
+
+    // An RLP sequence of 0x00 items, with the marker as the first item. Valid for sizes from 58 to 257 bytes.
+    private static byte[] Sequence(int size, byte marker)
+    {
+        byte[] rlp = new byte[size];
+        rlp[0] = 0xf8;
+        rlp[1] = (byte)(size - 2);
+        rlp[2] = marker;
+        return rlp;
     }
 
     private sealed class ByteSizeMemDb : MemDb
