@@ -168,6 +168,8 @@ namespace Nethermind.Runner.JsonRpc
 
         internal async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
         {
+            // The message stream does not own the socket, so the connection closes only here.
+            using Socket connection = socket;
             JsonRpcUrl? url = _jsonRpcConfig.IpcEnabledModules is { Length: > 0 } enabledModules
                 ? new("ipc", _jsonRpcConfig.IpcUnixDomainSocketPath, 0, RpcEndpoint.IPC, isAuthenticated: true, enabledModules)
                 : null;
@@ -191,7 +193,7 @@ namespace Nethermind.Runner.JsonRpc
             {
                 if (_logger.IsDebug) _logger.Debug("Connection was cancelled.");
             }
-            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
+            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset or SocketError.Shutdown or SocketError.ConnectionAborted })
             {
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }

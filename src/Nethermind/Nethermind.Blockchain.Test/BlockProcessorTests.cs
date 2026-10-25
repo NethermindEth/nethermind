@@ -842,7 +842,7 @@ public partial class BlockProcessorTests
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         // As the node wires it: on an Amsterdam block the access list seeds, on any other the changesets do.
         using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, new ChangesetPrefixStateSeedSource(index), builder => builder
-            .AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary())
+            .AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary())
             .AddDecorator<IPrefixStateSeedSource, BlockAccessListPrefixStateSeedSource>());
         IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
         BlockHeader parent = chain.BlockTree.Head!.Header;
@@ -1286,7 +1286,7 @@ public partial class BlockProcessorTests
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         ChangesetPrefixStateSeedSource seeds = new(index);
         // A calculator that does not rule rewards out, so the reward pass runs and its boundary is checked.
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculatorSource>(new UnhintedNoRewards()));
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculator>(new UnhintedNoRewards()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
@@ -1341,17 +1341,13 @@ public partial class BlockProcessorTests
         return tracer.BuildResult();
     }
 
-    private sealed class UnhintedNoRewards : IRewardCalculatorSource, IRewardCalculator
+    private sealed class UnhintedNoRewards : IRewardCalculator
     {
-        public IRewardCalculator Get(ITransactionProcessor processor) => this;
-
         public BlockReward[] CalculateRewards(Block block) => [];
     }
 
-    private sealed class ZeroRewardToTheBeneficiary : IRewardCalculatorSource, IRewardCalculator
+    private sealed class ZeroRewardToTheBeneficiary : IRewardCalculator
     {
-        public IRewardCalculator Get(ITransactionProcessor processor) => this;
-
         public BlockReward[] CalculateRewards(Block block) => [new BlockReward(block.Beneficiary!, UInt256.Zero)];
     }
 
@@ -1482,7 +1478,7 @@ public partial class BlockProcessorTests
     {
         RefusingSeedSource seeds = new();
         using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds,
-            builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
+            builder => builder.AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain, parent.Beneficiary);
         using ParallelBlockTracer.OwnedEnvironment environment = BuildParallelEnvironment(chain);

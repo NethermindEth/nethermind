@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing;
@@ -302,6 +303,29 @@ public class GethStyleTracer(
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
         scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
         return tracer.BuildResult();
+    }
+
+    public StorageRangeVisitor StorageRangeAt(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken)
+    {
+        if (block.IsGenesis) throw new GenesisNotTraceableException();
+        if ((uint)txIndex >= (uint)Math.Max(block.Transactions.Length, 1)) throw new ArgumentOutOfRangeException(nameof(txIndex));
+
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header);
+        // Chains whose block processor cannot stop before a transaction (AuRa, Taiko) do not install the trace executor.
+        if (scope.Component.TraceExecutor is null) throw new NotSupportedException("Replaying a block up to a transaction is not supported on this chain.");
+        TransactionTraceBoundary boundary = TransactionTraceBoundary.BeforeTransaction(NullBlockTracer.Instance.WithCancellation(cancellationToken), block, txIndex);
+        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
+        // A processor that must build the full block access list executes the whole block, past the boundary.
+        if (!boundary.HasExecuted) throw new InvalidOperationException($"Block {block.Hash} was replayed past transaction {txIndex}, so the state before it is not available.");
+
+        // The prefix state is committed into the environment's overlay so that its tries can be walked.
+        IWorldState worldState = scope.Component.WorldState;
+        worldState.Commit(specProvider.GetSpec(block.Header), commitRoots: true);
+        worldState.CommitTree(block.Number);
+        BlockHeader stateHeader = block.Header.Clone();
+        stateHeader.StateRoot = worldState.StateRoot;
+
+        return scope.Component.StateReader.CollectStorageRange(stateHeader, address, startKey, limit);
     }
 
     public IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
@@ -651,5 +675,5 @@ public class GethStyleTracer(
         public UInt256? BlobBaseFee { get; set; }
     }
 
-    public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor);
+    public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor, IStateReader StateReader, TransactionTraceExecutor? TraceExecutor = null);
 }

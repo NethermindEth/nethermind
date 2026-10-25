@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -132,10 +133,7 @@ public class Startup : IStartup
 
         services.AddSingleton<MatcherPolicy, LocalPortMatcherPolicy>();
 
-        services.AddCors(options => options.AddDefaultPolicy(builder => builder
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .WithOrigins(jsonRpcConfig.CorsOrigins)));
+        services.AddCors(options => options.AddDefaultPolicy(CreateCorsPolicy(jsonRpcConfig)));
 
         services.AddResponseCompression(options =>
         {
@@ -147,6 +145,12 @@ public class Startup : IStartup
     }
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
+
+    internal static CorsPolicy CreateCorsPolicy(IJsonRpcConfig jsonRpcConfig) => new CorsPolicyBuilder()
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .WithOrigins(jsonRpcConfig.CorsOrigins)
+        .Build();
 
     public void Configure(IApplicationBuilder app)
     {
@@ -225,12 +229,7 @@ public class Startup : IStartup
 
         if (initConfig.WebSocketsEnabled)
         {
-            app.UseWebSockets(new WebSocketOptions());
-            app.UseWhen(ctx =>
-                ctx.WebSockets.IsWebSocketRequest &&
-                jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
-                jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-            builder => builder.UseWebSocketsModules());
+            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection, logger);
         }
 
         IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
@@ -275,6 +274,25 @@ public class Startup : IStartup
                     builder.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
                 });
         }
+    }
+
+    /// <summary>
+    /// Serves WebSockets on the ports that enable them. Clients that send an <c>Origin</c> that
+    /// <see cref="IJsonRpcConfig.CorsOrigins"/> does not allow are turned away before a socket is accepted.
+    /// </summary>
+    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogger logger)
+    {
+        CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
+        app.UseWebSockets(new WebSocketOptions());
+        app.UseWhen(ctx =>
+            ctx.WebSockets.IsWebSocketRequest &&
+            jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+            jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
+        builder =>
+        {
+            builder.UseWebSocketOriginFilter(corsPolicy, logger);
+            builder.UseWebSocketsModules();
+        });
     }
 
     private static bool IsLocalhost(IPAddress remoteIp)
