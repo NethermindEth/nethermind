@@ -106,6 +106,11 @@ public struct MilliGasPolicy<TPrices> : IGasPolicy<MilliGasPolicy<TPrices>>
     public static long GetStateGasSpill(in MilliGasPolicy<TPrices> gas) => gas._gas.StateGasSpill;
 
     /// <inheritdoc/>
+    /// <remarks>In gas units, as <see cref="GetPreRefundGas"/> returns.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long GetLegacySharePaid(in MilliGasPolicy<TPrices> gas) => gas._gas.LegacySharePaid;
+
+    /// <inheritdoc/>
     /// <remarks>In gas units.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong CalculateStateGasSpill(in MilliGasPolicy<TPrices> gas, long stateGasCost) =>
