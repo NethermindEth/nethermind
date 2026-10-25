@@ -90,6 +90,7 @@ public class Eth72ProtocolHandler(
     private static readonly TimeSpan CellResponseCorrelationTtl = Timeouts.Cleanup;
     private static readonly TimeSpan PartialCellResponseBackoff = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PendingCellStateTtl = TimeSpan.FromSeconds(15);
+    internal static readonly TimeSpan SamplerProviderWait = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan RequestToAnnouncementWarmup = TimeSpan.FromSeconds(60);
     private readonly int _providerProbabilityPercent = txPoolConfig.SparseBlobProviderProbabilityPercent;
     private readonly Dictionary<ValueHash256, CellRequestState> _pendingCellRequests = [];
@@ -974,7 +975,9 @@ public class Eth72ProtocolHandler(
     {
         if (!CanRequestCellsNow(hash, requestMask))
         {
-            AddPendingCellRequest(hash.ValueHash256, requestMask);
+            // A second provider may never announce (small network, or a peer left), so maintenance
+            // falls back to a full fetch when the wait ends.
+            AddPendingCellRequest(hash.ValueHash256, requestMask, _timestamper.UtcNowOffset + SamplerProviderWait, fullFetchWhenDue: true);
             return;
         }
 
@@ -1179,11 +1182,13 @@ public class Eth72ProtocolHandler(
     /// The announcement to put back once <paramref name="retryAt"/> elapses, or
     /// <see cref="BlobCellMask.Empty"/> when the peer's announcement was left in place.
     /// </param>
+    /// <param name="fullFetchWhenDue">Whether to fetch all cells from the full providers when <paramref name="retryAt"/> elapses and sampling is still blocked.</param>
     private void AddPendingCellRequest(
         ValueHash256 hash,
         BlobCellMask requestMask,
         DateTimeOffset? retryAt = null,
-        BlobCellMask restoreMask = default)
+        BlobCellMask restoreMask = default,
+        bool fullFetchWhenDue = false)
     {
         if (requestMask.IsEmpty && restoreMask.IsEmpty)
         {
@@ -1211,7 +1216,8 @@ public class Eth72ProtocolHandler(
                     ExpiresAt = _timestamper.UtcNowOffset + PendingCellStateTtl,
                     RetryAt = combinedRetryAt,
                     RestoreMask = existing.RestoreMask | restoreMask,
-                    RestoreEpoch = restoreMask.IsEmpty ? existing.RestoreEpoch : NextCellStateRevision()
+                    RestoreEpoch = restoreMask.IsEmpty ? existing.RestoreEpoch : NextCellStateRevision(),
+                    FullFetchWhenDue = existing.FullFetchWhenDue | fullFetchWhenDue
                 };
                 TrimPendingCellRequests();
                 return;
@@ -1225,7 +1231,8 @@ public class Eth72ProtocolHandler(
                 ExpiresAt: _timestamper.UtcNowOffset + PendingCellStateTtl,
                 RetryAt: retryAt,
                 RestoreMask: restoreMask,
-                RestoreEpoch: restoreMask.IsEmpty ? NoRestoreEpoch : NextCellStateRevision());
+                RestoreEpoch: restoreMask.IsEmpty ? NoRestoreEpoch : NextCellStateRevision(),
+                FullFetchWhenDue: fullFetchWhenDue);
             _pendingCellRequestCount++;
             _pendingCellRequestWork += requestMask.Count;
             _pendingCellRequestOrder.Enqueue(new CellStateKey(hash, revision));
@@ -1639,7 +1646,7 @@ public class Eth72ProtocolHandler(
                     }
                 }
 
-                TryRequestPendingCells(hash);
+                TryRequestPendingCells(hash, retryDue: true);
             }
         }
 
@@ -1864,7 +1871,7 @@ public class Eth72ProtocolHandler(
             && _sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(hash) >= SparseBlobPoolPeerRegistry.MinSamplerFullProviderAnnouncements;
     }
 
-    private bool TryRequestPendingCells(Hash256 hash)
+    private bool TryRequestPendingCells(Hash256 hash, bool retryDue = false)
     {
         ValueHash256 key = hash.ValueHash256;
         CellRequestState pendingRequestState;
@@ -1877,12 +1884,21 @@ public class Eth72ProtocolHandler(
             }
         }
 
-        if (!CanRequestCellsNow(hash, pendingRequestState.Mask))
+        BlobCellMask requestMask = pendingRequestState.Mask;
+        if (!CanRequestCellsNow(hash, requestMask))
         {
-            return false;
+            // The sampler wait ended without a second provider: fetch all cells from the providers that announced.
+            if (!retryDue
+                || !pendingRequestState.FullFetchWhenDue
+                || _sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(hash) == 0)
+            {
+                return false;
+            }
+
+            requestMask = BlobCellMask.Full;
         }
 
-        if (!_sparseBlobPoolPeerRegistry.TryRequestCells(hash, pendingRequestState.Mask, Id))
+        if (!_sparseBlobPoolPeerRegistry.TryRequestCells(hash, requestMask, Id))
         {
             return false;
         }
@@ -1977,7 +1993,8 @@ public class Eth72ProtocolHandler(
         DateTimeOffset ExpiresAt,
         DateTimeOffset? RetryAt,
         long RestoreEpoch,
-        BlobCellMask RestoreMask);
+        BlobCellMask RestoreMask,
+        bool FullFetchWhenDue = false);
 
     /// <summary>Why an in-flight cell request is being returned to the pending queue.</summary>
     private enum CellRequeueReason

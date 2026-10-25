@@ -1026,6 +1026,84 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void sampler_should_fetch_full_cells_when_second_provider_wait_ends([Values] bool peerLeaves)
+    {
+        Transaction tx = AnnounceParkedSamplerTransaction();
+        if (peerLeaves)
+        {
+            _sparseBlobPoolPeerRegistry.RemovePeer(_idlePeer);
+        }
+
+        ISparseBlobPoolPeer handler = _handler;
+        handler.MaintainSparseBlobState(DateTimeOffset.UtcNow + Eth72ProtocolHandler.SamplerProviderWait / 2);
+        _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
+
+        handler.MaintainSparseBlobState(DateTimeOffset.UtcNow + Eth72ProtocolHandler.SamplerProviderWait * 2);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.Hashes[0] == tx.Hash &&
+            m.CellMask.SequenceEqual(BlobCellMask.Full.ToBytes())));
+    }
+
+    [Test]
+    public void sampler_should_sample_when_second_provider_announces_before_wait_ends()
+    {
+        Transaction tx = AnnounceParkedSamplerTransaction();
+        Hash256 hash = tx.Hash!;
+        TestSparseBlobPeer secondProvider = new(TestItem.PublicKeyC);
+        _sparseBlobPoolPeerRegistry.AddPeer(secondProvider);
+        _sparseBlobPoolPeerRegistry.RecordAnnouncement(secondProvider, hash, BlobCellMask.Full);
+        BlobCellMask sampledMask = _sparseBlobPoolPeerRegistry.GetRequestMask(hash, BlobCellMask.Full, 15);
+
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + Eth72ProtocolHandler.SamplerProviderWait * 2);
+
+        BlobCellMask requestedMask = BlobCellMask.Empty;
+        foreach (GetCellsMessage72 request in _deliveredMessages.OfType<GetCellsMessage72>())
+        {
+            requestedMask |= BlobCellMask.FromBytes(request.CellMask);
+        }
+
+        foreach ((Hash256 _, BlobCellMask cellMask) in secondProvider.CellRequests)
+        {
+            requestedMask |= cellMask;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sampledMask.IsFull, Is.False);
+            Assert.That(requestedMask, Is.EqualTo(sampledMask));
+        }
+    }
+
+    /// <summary>Announces a sampler-role transaction in full from the handler peer, with its body known, so its cells wait for a second provider.</summary>
+    private Transaction AnnounceParkedSamplerTransaction()
+    {
+        _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
+        Transaction tx = BuildSparseBlobTransaction(out _, out _, out _, 0);
+        for (ulong nonce = 1; _sparseBlobPoolPeerRegistry.GetRequestMask(tx.Hash!, BlobCellMask.Full, 15).IsFull; nonce++)
+        {
+            Assert.That(nonce, Is.LessThan(MaxSamplerTransactionAttempts), "Could not build a sampler blob transaction.");
+            tx = BuildSparseBlobTransaction(out _, out _, out _, nonce);
+        }
+
+        _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        using NewPooledTransactionHashesMessage72 message = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [tx.Hash!],
+            BlobCellMask.Full.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+        Assert.That(_sparseBlobPoolPeerRegistry.RecordTransaction((ISparseBlobPoolPeer)_handler, tx), Is.Null);
+        _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
+        return tx;
+    }
+
+    [Test]
     public void custody_with_64_columns_should_request_all_announced_sparse_cells()
     {
         RecreateHandler();
@@ -3729,7 +3807,8 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_keep_counting_as_full_provider_after_cell_request_times_out()
     {
-        RecreateHandler();
+        // A sampler role would also send a full request when its provider wait ends, inside the time jumps below.
+        RecreateHandler(providerProbabilityPercent: 100);
         _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
         Assert.That(SparseBlobPoolPeerRegistry.HasSupernodeCustody(_blobCustodyTracker.CurrentMask), Is.False);
         Transaction tx = BuildBlobTransaction(fullProvider: true);
