@@ -242,16 +242,17 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Execute_WhenExcludedOpcodeFails_ReportsTheError(
-        [Values(Instruction.ADD, Instruction.SLOAD, Instruction.SSTORE)] Instruction opcode)
+    public void Execute_WhenOpcodeFails_ReportsTheError(
+        [Values(Instruction.ADD, Instruction.SLOAD, Instruction.SSTORE)] Instruction opcode,
+        [Values] bool disableStorage)
     {
-        using RecordingPrestateTracer tracer = new(TestState, disableStorage: true);
+        using RecordingPrestateTracer tracer = new(TestState, disableStorage);
 
         Execute(tracer, Prepare.EvmCode.Op(opcode).Done, MainnetSpecProvider.CancunActivation);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.Operations, Does.Not.Contain(opcode));
+            Assert.That(tracer.Operations.Contains(opcode), Is.EqualTo(opcode != Instruction.ADD && !disableStorage));
             Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.StackUnderflow));
         }
     }
