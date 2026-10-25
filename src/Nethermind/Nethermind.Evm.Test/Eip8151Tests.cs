@@ -155,34 +155,16 @@ public class Eip8151Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Failed_recovery_charges_the_base_cost_only(
-        [Values] bool eip8151Enabled,
-        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
-    {
-        _spec.IsEip8151Enabled = eip8151Enabled;
-
-        Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, UnrecoverableInput).Done);
-
-        Measurement call = Read(0);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(call.Result, Is.EqualTo(UInt256.One), "success");
-            Assert.That(call.ReturnDataSize, Is.EqualTo(UInt256.Zero), "return data size");
-            Assert.That(call.Output, Is.EqualTo(SentinelWord), "output");
-            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(EcRecoverBaseCost), "gas");
-        }
-    }
-
-    [Test]
-    public void Failed_recovery_reads_no_account_and_needs_only_the_base_cost(
+    public void Failed_recovery_reads_no_account_and_charges_the_base_cost_only(
         [Values] bool eip8151Enabled,
         [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode,
+        [Values] bool malformedV,
         [Values] bool enoughGas)
     {
         _spec.IsEip8151Enabled = eip8151Enabled;
         long gasLimit = (long)EcRecoverBaseCost - (enoughGas ? 0 : 1);
 
-        Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, gasLimit, InvalidVInput).Done);
+        Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, gasLimit, malformedV ? InvalidVInput : UnrecoverableInput).Done);
 
         Measurement call = Read(0);
         using (Assert.EnterMultipleScope())
@@ -340,12 +322,14 @@ public class Eip8151Tests : VirtualMachineTestsBase
 
         Run(MeasureEcRecover(code, 1, Instruction.STATICCALL, PrecompileGasLimit, ValidInput).Done);
 
+        Measurement permitted = Read(0);
+        Measurement withheld = Read(1);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Read(0).Output, Is.EqualTo(AsWord(PermittedSignerKey.Address)), "permitted output");
-            Assert.That(Read(0).ReturnDataSize, Is.EqualTo((UInt256)32), "permitted return data size");
-            Assert.That(Read(1).Result, Is.EqualTo(UInt256.One), "withheld success");
-            Assert.That(Read(1).ReturnDataSize, Is.EqualTo(eip8151Enabled ? UInt256.Zero : (UInt256)32), "withheld return data size");
+            Assert.That(permitted.Output, Is.EqualTo(AsWord(PermittedSignerKey.Address)), "permitted output");
+            Assert.That(permitted.ReturnDataSize, Is.EqualTo((UInt256)32), "permitted return data size");
+            Assert.That(withheld.Result, Is.EqualTo(UInt256.One), "withheld success");
+            Assert.That(withheld.ReturnDataSize, Is.EqualTo(eip8151Enabled ? UInt256.Zero : (UInt256)32), "withheld return data size");
         }
     }
 
@@ -643,7 +627,6 @@ public class Eip8151Tests : VirtualMachineTestsBase
         return input;
     }
 
-    /// <remarks>The signature from <paramref name="key"/> with its <c>v</c> replaced.</remarks>
     private static byte[] CreateInputWithV(PrivateKey key, byte v)
     {
         byte[] input = CreateInput(key);
