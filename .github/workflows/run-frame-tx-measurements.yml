@@ -170,7 +170,7 @@ jobs:
         run: scripts/frame-verify-gas/fetch-artifacts.sh
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Run measurement harnesses
         id: measure

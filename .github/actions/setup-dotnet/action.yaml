@@ -1,8 +1,23 @@
 name: Set up .NET
 description: >-
-  Runs actions/setup-dotnet, retrying up to 10 attempts with growing pauses: the dotnet-install
+  Runs actions/setup-dotnet, retrying up to 3 attempts with growing pauses: the dotnet-install
   script sometimes crashes on hosted runners (e.g. "Internal CLR error" on windows-11-arm).
+  If all attempts fail, installs the SDK directly from the .NET CDN.
   Run after actions/checkout, as this action is local.
+
+inputs:
+  dotnet-version:
+    description: SDK version(s) to install, as for actions/setup-dotnet. Defaults to global.json.
+    required: false
+    default: ''
+  global-json-file:
+    description: Path to a global.json file, as for actions/setup-dotnet.
+    required: false
+    default: ''
+  cache:
+    description: Cache the NuGet global-packages folder, as for actions/setup-dotnet. The CDN fallback skips it.
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -10,7 +25,11 @@ runs:
     - name: Set up .NET
       id: attempt1
       continue-on-error: true
-      uses: actions/setup-dotnet@v5
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+        global-json-file: ${{ inputs.global-json-file }}
+        cache: ${{ inputs.cache }}
 
     - name: Wait before attempt 2
       if: steps.attempt1.outcome == 'failure'
@@ -21,91 +40,116 @@ runs:
       id: attempt2
       if: steps.attempt1.outcome == 'failure'
       continue-on-error: true
-      uses: actions/setup-dotnet@v5
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+        global-json-file: ${{ inputs.global-json-file }}
+        cache: ${{ inputs.cache }}
 
     - name: Wait before attempt 3
       if: steps.attempt2.outcome == 'failure'
       shell: bash
-      run: sleep 10
+      run: sleep 15
 
     - name: Set up .NET (attempt 3)
       id: attempt3
       if: steps.attempt2.outcome == 'failure'
       continue-on-error: true
-      uses: actions/setup-dotnet@v5
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+        global-json-file: ${{ inputs.global-json-file }}
+        cache: ${{ inputs.cache }}
 
-    - name: Wait before attempt 4
+    # For a channel, dotnet-install downloads only the aka.ms redirect target (the origin storage)
+    # and never tries the CDN. An exact version makes it use the feed that we pass.
+    - name: Set up .NET from the CDN
       if: steps.attempt3.outcome == 'failure'
       shell: bash
-      run: sleep 15
+      env:
+        DOTNET_VERSION_INPUT: ${{ inputs.dotnet-version }}
+        GLOBAL_JSON_FILE: ${{ inputs.global-json-file }}
+        FEED: https://builds.dotnet.microsoft.com/dotnet
+      run: |
+        set -euo pipefail
 
-    - name: Set up .NET (attempt 4)
-      id: attempt4
-      if: steps.attempt3.outcome == 'failure'
-      continue-on-error: true
-      uses: actions/setup-dotnet@v5
+        # Same mapping as setup-dotnet: rollForward widens sdk.version to a channel.
+        version_from_global_json() {
+          local version roll
+          version=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$1" | head -n1)
+          roll=$(sed -nE 's/.*"rollForward"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$1" | head -n1)
+          if [[ -n $roll && $version != *-* ]]; then
+            case $roll in
+              latestFeature) version=${version%.*} ;;
+              latestMinor) version=${version%%.*} ;;
+              latestPatch) version="${version%??}xx" ;;
+              latestMajor) version='' ;;
+            esac
+          fi
+          echo "$version"
+        }
 
-    - name: Wait before attempt 5
-      if: steps.attempt4.outcome == 'failure'
-      shell: bash
-      run: sleep 20
+        resolve_version() {
+          local channel
+          if [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "$1"
+            return
+          elif [[ $1 =~ ^([0-9]+)(\.[xX*])?$ ]]; then
+            channel="${BASH_REMATCH[1]}.0"
+          elif [[ $1 =~ ^([0-9]+\.[0-9]+)(\.[xX*])?$ ]]; then
+            channel=${BASH_REMATCH[1]}
+          else
+            echo "::error::The CDN fallback does not support the .NET version '$1'." >&2
+            return 1
+          fi
+          curl -fsSL --retry 5 --retry-all-errors "$FEED/Sdk/$channel/latest.version" | tr -d '\r' | sed '/^$/d' | tail -n1
+        }
 
-    - name: Set up .NET (attempt 5)
-      id: attempt5
-      if: steps.attempt4.outcome == 'failure'
-      continue-on-error: true
-      uses: actions/setup-dotnet@v5
+        versions=()
+        while read -r line; do
+          if [[ -n $line ]]; then versions+=("$line"); fi
+        done <<< "$DOTNET_VERSION_INPUT"
+        if [[ -n $GLOBAL_JSON_FILE ]]; then
+          versions+=("$(version_from_global_json "$GLOBAL_JSON_FILE")")
+        elif [[ ${#versions[@]} -eq 0 && -f global.json ]]; then
+          versions+=("$(version_from_global_json global.json)")
+        fi
+        if [[ ${#versions[@]} -eq 0 ]]; then
+          echo "::error::No .NET version to install: set dotnet-version or add global.json."
+          exit 1
+        fi
 
-    - name: Wait before attempt 6
-      if: steps.attempt5.outcome == 'failure'
-      shell: bash
-      run: sleep 25
+        if [[ $RUNNER_OS == Windows ]]; then
+          script_name=dotnet-install.ps1
+          script="$RUNNER_TEMP\\$script_name"
+          default_dir="$PROGRAMFILES\\dotnet"
+        else
+          script_name=dotnet-install.sh
+          script="$RUNNER_TEMP/$script_name"
+          default_dir=/usr/share/dotnet
+          if [[ $RUNNER_OS == macOS ]]; then default_dir="$HOME/.dotnet"; fi
+        fi
+        install_dir=${DOTNET_INSTALL_DIR:-$default_dir}
+        curl -fsSL --retry 5 --retry-all-errors -o "$script" "$FEED/scripts/v1/$script_name"
 
-    - name: Set up .NET (attempt 6)
-      id: attempt6
-      if: steps.attempt5.outcome == 'failure'
-      continue-on-error: true
-      uses: actions/setup-dotnet@v5
+        run_install() {
+          if [[ $RUNNER_OS == Windows ]]; then
+            pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -File "$script" \
+              -Version "$1" -AzureFeed "$FEED" -InstallDir "$install_dir" -SkipNonVersionedFiles
+          else
+            bash "$script" --version "$1" --azure-feed "$FEED" --install-dir "$install_dir" --skip-non-versioned-files
+          fi
+        }
 
-    - name: Wait before attempt 7
-      if: steps.attempt6.outcome == 'failure'
-      shell: bash
-      run: sleep 30
+        for requested in "${versions[@]}"; do
+          version=$(resolve_version "$requested")
+          echo "Installing .NET SDK $version (requested '$requested') from $FEED"
+          for attempt in 1 2 3; do
+            if run_install "$version"; then break; fi
+            if [[ $attempt -eq 3 ]]; then exit 1; fi
+            sleep 10
+          done
+        done
 
-    - name: Set up .NET (attempt 7)
-      id: attempt7
-      if: steps.attempt6.outcome == 'failure'
-      continue-on-error: true
-      uses: actions/setup-dotnet@v5
-
-    - name: Wait before attempt 8
-      if: steps.attempt7.outcome == 'failure'
-      shell: bash
-      run: sleep 35
-
-    - name: Set up .NET (attempt 8)
-      id: attempt8
-      if: steps.attempt7.outcome == 'failure'
-      continue-on-error: true
-      uses: actions/setup-dotnet@v5
-
-    - name: Wait before attempt 9
-      if: steps.attempt8.outcome == 'failure'
-      shell: bash
-      run: sleep 40
-
-    - name: Set up .NET (attempt 9)
-      id: attempt9
-      if: steps.attempt8.outcome == 'failure'
-      continue-on-error: true
-      uses: actions/setup-dotnet@v5
-
-    - name: Wait before attempt 10
-      if: steps.attempt9.outcome == 'failure'
-      shell: bash
-      run: sleep 45
-
-    - name: Set up .NET (attempt 10)
-      id: attempt10
-      if: steps.attempt9.outcome == 'failure'
-      uses: actions/setup-dotnet@v5
+        echo "DOTNET_ROOT=$install_dir" >> "$GITHUB_ENV"
+        echo "$install_dir" >> "$GITHUB_PATH"

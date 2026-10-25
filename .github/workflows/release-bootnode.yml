@@ -109,7 +109,7 @@ jobs:
           echo "PACKAGE_PREFIX=$package_prefix" >> "$GITHUB_ENV"
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Build Bootnode solution
         working-directory: tools
