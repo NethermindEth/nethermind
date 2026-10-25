@@ -508,6 +508,56 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
+    public async Task ConnectAsync_AlternateDoesNotKeepStaticPeerHostMatch([Values] bool hostMatch)
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        using TcpListener ipv6Listener = new(IPAddress.IPv6Loopback, 0);
+        ipv6Listener.Start();
+        int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
+        using Socket refused = ReserveRefusedPort(IPAddress.Loopback);
+        int refusedPort = ((IPEndPoint)refused.LocalEndPoint!).Port;
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort(), staticPeerHosts: "127.0.0.1");
+        RlpxHost host = container.Resolve<RlpxHost>();
+        TaskCompletionSource<ISession> sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.SessionCreated += (_, args) => sessionCreated.TrySetResult(args.Session);
+        Node node = CreateDualStackNode(refusedPort, listeningPort);
+        if (hostMatch)
+        {
+            Assert.That(container.Resolve<IStaticHostFilter>().TryPromote(node, matchPort: true), Is.True);
+        }
+        else
+        {
+            node.IsStatic = true;
+        }
+
+        try
+        {
+            await host.Init();
+            Task<Socket> acceptTask = ipv6Listener.AcceptSocketAsync();
+
+            Assert.That(await host.ConnectAsync(node), Is.True);
+
+            using Socket accepted = await acceptTask.WaitAsync(TimeSpan.FromSeconds(5));
+            ISession session = await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.Node.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
+                Assert.That(session.Node.IsStatic, Is.EqualTo(!hostMatch), "only a configured static peer keeps the flag at another address");
+                Assert.That(node.IsStatic, Is.True);
+            }
+        }
+        finally
+        {
+            await host.Shutdown();
+            ipv6Listener.Stop();
+        }
+    }
+
+    [Test]
     public async Task ConnectAsync_DoesNotDialFilteredAlternate()
     {
         if (!Socket.OSSupportsIPv6)
@@ -894,7 +944,8 @@ public class RlpxHostIntegrationTests
         NetworkListenerState? listenerState = null,
         IChannelFactory? channelFactory = null,
         IPrivilegedIpProvider? privilegedIpProvider = null,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        string? staticPeerHosts = null)
     {
         NetworkConfig networkConfig = new()
         {
@@ -902,7 +953,8 @@ public class RlpxHostIntegrationTests
             P2PPort = port,
             LocalIp = localIpConfig,
             MaxActivePeers = 50,
-            RlpxHostShutdownCloseTimeoutMs = 100
+            RlpxHostShutdownCloseTimeoutMs = 100,
+            StaticPeerHosts = staticPeerHosts
         };
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(

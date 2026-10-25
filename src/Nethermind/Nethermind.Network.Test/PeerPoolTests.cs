@@ -693,7 +693,7 @@ public class PeerPoolTests
         return node!;
     }
 
-    private sealed class ManualTimestampProvider : TimeProvider
+    internal sealed class ManualTimestampProvider : TimeProvider
     {
         private long _timestamp;
 

@@ -578,6 +578,33 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.False);
         }
 
+        [Test]
+        public async Task Handshake_at_an_alternate_address_does_not_prove_a_static_peer_host()
+        {
+            PeerPoolTests.ManualTimestampProvider timeProvider = new();
+            await using Context ctx = new(staticPeerHosts: "5.5.5.5", peerPoolTimeProvider: timeProvider);
+            // Same flags as the RlpxHost fallback dial: a host match is not copied to the other address.
+            ctx.RlpxPeer.AlternateDialNode = node => new Node(node.Id, "6.6.6.6", node.Port) { IsStatic = node.IsStatic && !ctx.StaticHostFilter.IsPromoted(node) };
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+            ctx.RlpxPeer.SessionCreated += HandshakeOnCreate;
+
+            Peer pooled = ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "5.5.5.5", 30303));
+            Assert.That(pooled.Node.IsStatic, Is.True);
+            Assert.That(() => pooled.OutSession?.State, Is.EqualTo(SessionState.HandshakeComplete).After(_delayLonger, 10));
+            ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
+
+            Assert.That(ctx.StaticHostFilter.IsProven(pooled.Node), Is.False, "the handshake was at 6.6.6.6, not at the matched address");
+
+            ctx.RlpxPeer.MakeItFail();
+            pooled.OutSession!.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Remote, "test");
+            Assert.That(() => pooled.OutSession, Is.Null.After(_delayLonger, 10));
+            Assert.That(() => pooled.Node.IsStatic, Is.True.After(300), "the window has not passed yet");
+
+            timeProvider.Advance(PeerPool.UnprovenStaticHostTimeout);
+            Assert.That(() => pooled.Node.IsStatic, Is.False.After(_delayLonger, 10));
+        }
+
         // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,
         // applied when a session completes the P2P Hello exchange.
         [TestCase(11, 10, true)]
@@ -1201,8 +1228,9 @@ namespace Nethermind.Network.Test
             public List<Session> Sessions { get; } = [];
             private readonly TimeProvider _timeProvider;
             private readonly StaticHostFilter _staticHostFilter;
+            public StaticHostFilter StaticHostFilter => _staticHostFilter;
 
-            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null, TimeProvider? timeProvider = null, string? staticPeerHosts = null)
+            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null, TimeProvider? timeProvider = null, string? staticPeerHosts = null, TimeProvider? peerPoolTimeProvider = null)
             {
                 _staticHostFilter = new StaticHostFilter(staticPeerHosts, static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
                 _timeProvider = timeProvider ?? TimeProvider.System;
@@ -1223,7 +1251,7 @@ namespace Nethermind.Network.Test
                 TestNodeSource = new TestNodeSource();
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager, TestNodeSource);
                 ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance, trustedNodesManager, _staticHostFilter);
+                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance, trustedNodesManager, peerPoolTimeProvider ?? TimeProvider.System, _staticHostFilter);
                 CreatePeerManager(peerManagerLogManager);
             }
 
@@ -1376,7 +1404,7 @@ namespace Nethermind.Network.Test
                     return Task.FromResult(false);
                 }
 
-                Session session = new(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                Session session = new(30313, AlternateDialNode?.Invoke(node) ?? node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                     LimboLogs.Instance);
                 Track(session);
                 lock (_sessions)
@@ -1474,6 +1502,9 @@ namespace Nethermind.Network.Test
             private bool _isFailing;
 
             public void MakeItFail() => _isFailing = true;
+
+            /// <summary>Simulates the fallback dial of <c>RlpxHost</c> to another address of the node record.</summary>
+            public Func<Node, Node>? AlternateDialNode { get; set; }
 
             /// <summary>Addresses accepted for contact, that is, the ones that spent a filter entry.</summary>
             public ConcurrentBag<IPAddress> ContactedIps { get; } = [];

@@ -62,6 +62,7 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _shutdownCloseTimeout;
         private CancellationTokenSource? _shutdownCts = new();
         private readonly Lock _dialLock = new();
+        private readonly IStaticHostFilter _staticHostFilter;
 
         public RlpxHost(
             IMessageSerializationService serializationService,
@@ -73,8 +74,10 @@ namespace Nethermind.Network.Rlpx
             IPrivilegedIpProvider privilegedIpProvider,
             ILogManager logManager,
             NetworkListenerState listenerState,
-            IChannelFactory? channelFactory = null)
+            IChannelFactory? channelFactory = null,
+            IStaticHostFilter? staticHostFilter = null)
         {
+            _staticHostFilter = staticHostFilter ?? StaticHostFilter.Empty;
             ArgumentNullException.ThrowIfNull(serializationService);
             ArgumentNullException.ThrowIfNull(handshakeService);
             ArgumentNullException.ThrowIfNull(sessionMonitor);
@@ -260,6 +263,13 @@ namespace Nethermind.Network.Rlpx
             if (!TryCreateAlternateDialNode(node, allowNonRoutable, out Node? alternate))
             {
                 return false;
+            }
+
+            // A host match holds only at the matched address. A static copy would also reach the peer pool
+            // through the session node and pass there as a configured static peer that is never demoted.
+            if (_staticHostFilter.IsPromoted(node))
+            {
+                alternate.IsStatic = false;
             }
 
             bool exactOnly = alternate.IsStatic || alternate.IsBootnode;
