@@ -358,6 +358,12 @@ namespace Nethermind.Core.Specs
         bool IsEip8038Enabled { get; }
 
         /// <summary>
+        /// EIP-8053: milli-gas metering; contracts, transactions and receipts keep gas units.
+        /// </summary>
+        /// <remarks>Prototype, off on every fork.</remarks>
+        bool IsEip8053Enabled { get; }
+
+        /// <summary>
         /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
         /// </summary>
         bool IsEip8024Enabled { get; }

@@ -1471,7 +1471,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool HasCheckedBody => true;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.PopGasCost>(ref gas);
         public static ulong? TraceGasCost => GasPolicy.BaseGasCost.GasCost;
         public static int StackInputs => 1;
         public static int StackGrowth => -1;
@@ -1712,7 +1712,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static int StackGrowth => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            HasCheckedBody ? stack.PushUInt64<TTracingInst, OffFlag>(TGasPolicy.GetRemainingGas(in gas))
+            HasCheckedBody ? stack.PushUInt64<TTracingInst, OffFlag>(TGasPolicy.GetRemainingGasUnits(in gas))
                 : EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 

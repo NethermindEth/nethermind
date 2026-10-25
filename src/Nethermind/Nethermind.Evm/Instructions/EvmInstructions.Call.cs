@@ -151,7 +151,7 @@ public static partial class EvmInstructions
         if (vm.VmState.IsStatic && hasValueTransfer && TOpCall.ExecutionType != ExecutionType.CALLCODE)
         {
             if (TTracingInst.IsActive)
-                TraceCallWriteProtection(vm, TGasPolicy.GetRemainingGas(in gas), codeSource, in dataOffset, in dataLength, in outputOffset, in outputLength);
+                TraceCallWriteProtection(vm, TGasPolicy.GetRemainingGasUnits(in gas), codeSource, in dataOffset, in dataLength, in outputOffset, in outputLength);
             return EvmExceptionType.StaticCallViolation;
         }
 
@@ -164,7 +164,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
         bool traceNewAccountCharge = false;
-        ulong initialGas = DispatchFlags.ConstTracing && (vm.IsTracingActions || TTracingInst.IsActive) ? TGasPolicy.GetRemainingGas(in gas) : 0;
+        ulong initialGas = DispatchFlags.ConstTracing && (vm.IsTracingActions || TTracingInst.IsActive) ? TGasPolicy.GetRemainingGasUnits(in gas) : 0;
         long initialStateSpill = TTracingInst.IsActive && TEip8037.IsActive ? TGasPolicy.GetStateGasSpill(in gas) : 0;
         ulong traceMemorySize = DispatchFlags.ConstTracing && vm.IsTracingActions ? vm.VmState.Memory.Size : 0;
         bool traceColdAccess = DispatchFlags.ConstTracing && vm.IsTracingActions && TSpec.UseHotAndColdStorage &&
@@ -243,7 +243,7 @@ public static partial class EvmInstructions
         if (TTracingInst.IsActive)
         {
             ulong stateSpill = TEip8037.IsActive ? (ulong)(TGasPolicy.GetStateGasSpill(in gas) - initialStateSpill) : 0;
-            vm.TraceOperationReady(initialGas - TGasPolicy.GetRemainingGas(in gas) - stateSpill);
+            vm.TraceOperationReady(initialGas - TGasPolicy.GetRemainingGasUnits(in gas) - stateSpill);
         }
 
         // Add call stipend if value is being transferred.
@@ -251,7 +251,7 @@ public static partial class EvmInstructions
         {
             if (vm.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
-            gasLimitUl += GasCostOf.CallStipend;
+            gasLimitUl += GasCostOf.CallStipend * TGasPolicy.ExecutionGasPerGasUnit;
         }
 
         // Check call depth and balance of the caller.
@@ -260,7 +260,7 @@ public static partial class EvmInstructions
         {
             EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
             if (DispatchFlags.ConstTracing && vm.IsTracingActions)
-                TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckError);
+                TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl / TGasPolicy.ExecutionGasPerGasUnit, codeInfo.IsPrecompile, precheckError);
 
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = default;
@@ -269,7 +269,7 @@ public static partial class EvmInstructions
             if (TTracingInst.IsActive)
             {
                 vm.TraceCallOutputWindow(in outputOffset, in outputLength);
-                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), precheckError);
+                vm.EndInstructionTrace(TGasPolicy.GetRemainingGasUnits(in gas), precheckError);
             }
 
             // Refund the remaining gas to the caller.
@@ -280,7 +280,7 @@ public static partial class EvmInstructions
                 vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetNewAccountStateCost());
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
+                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl / TGasPolicy.ExecutionGasPerGasUnit, TGasPolicy.GetRemainingGasUnits(in gas));
             }
             return pushResult;
         }
@@ -420,7 +420,7 @@ public static partial class EvmInstructions
         bool reportsAction = vm.IsTracingActions;
         if (reportsAction)
         {
-            if (TTracingInst.IsActive) vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            if (TTracingInst.IsActive) vm.EndInstructionTrace(TGasPolicy.GetRemainingGasUnits(in gas));
             vm.TxTracer.ReportAction(0, value, executingAccount, target, default, ExecutionType.CALL);
         }
 
@@ -437,7 +437,7 @@ public static partial class EvmInstructions
         // Two words were popped, so the push cannot overflow.
         EvmExceptionType pushResult = stack.PushOne<TTracingInst>();
         if (TTracingInst.IsActive && reportsAction)
-            vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(in gas));
+            vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGasUnits(in gas));
         return pushResult;
 
     OutOfGas:

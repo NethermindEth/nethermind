@@ -227,7 +227,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         if (TTracingInst.IsActive)
-            vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            vm.EndInstructionTrace(TGasPolicy.GetRemainingGasUnits(in gas));
 
         // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
         if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, spec, out ulong callGas))
@@ -256,7 +256,7 @@ public static partial class EvmInstructions
             }
 
             if (vm.IsTracingActions)
-                vm.TxTracer.ReportRejectedAction(callGas, 0, value, env.ExecutingAccount, contractAddress, initCode, TOpCreate.ExecutionType, EvmExceptionType.TransactionCollision);
+                vm.TxTracer.ReportRejectedAction(callGas / TGasPolicy.ExecutionGasPerGasUnit, 0, value, env.ExecutingAccount, contractAddress, initCode, TOpCreate.ExecutionType, EvmExceptionType.TransactionCollision);
 
             vm.ReturnDataBuffer = default;
             EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
@@ -264,7 +264,7 @@ public static partial class EvmInstructions
             // The instruction trace ended before the creation's gas was reserved and the 0 was pushed, and the
             // collision consumed that gas.
             if (TTracingInst.IsActive)
-                vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(in gas));
+                vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGasUnits(in gas));
 
             return pushResult;
         }
@@ -345,6 +345,6 @@ public static partial class EvmInstructions
         TSpec.TryReserveChildGas<TGasPolicy>(ref gas, vm.Spec, out ulong callGas);
         // The creation already paid to expand memory over its init code.
         vm.VmState.Memory.TryLoad(in initCodePosition, in initCodeLength, out ReadOnlyMemory<byte> initCode);
-        vm.TxTracer.ReportRejectedAction(callGas, callGas, value, vm.VmState.Env.ExecutingAccount, null, initCode, TOpCreate.ExecutionType, error);
+        vm.TxTracer.ReportRejectedAction(callGas / TGasPolicy.ExecutionGasPerGasUnit, callGas / TGasPolicy.ExecutionGasPerGasUnit, value, vm.VmState.Env.ExecutingAccount, null, initCode, TOpCreate.ExecutionType, error);
     }
 }

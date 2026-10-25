@@ -122,6 +122,33 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void SetOperationStack_WhenAccountReadThrows_RemovesPendingSnapshotAndAllowsRetry()
+    {
+        StorageReadCounter reads = new();
+        using IContainer container = CreateStorageReadContainer(reads);
+        using ILifetimeScope processingScope = CreateStorageProcessingScope(container);
+        IWorldState state = processingScope.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(TestItem.AddressC, 9);
+        using NativePrestateTracer tracer = new(state, GetGethTraceOptions(), Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
+        byte[] stack = TestItem.AddressC.Bytes.PadLeft(32);
+        tracer.StartOperation(0, Instruction.BALANCE, 100, environment);
+        reads.FailNextAccountRead = true;
+
+        Assert.Throws<InvalidOperationException>(() => tracer.SetOperationStack(new TraceStack(stack)));
+
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> prestate =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+        Assert.That(prestate.ContainsKey(TestItem.AddressC), Is.False, "a failed read must not leave an empty account");
+
+        tracer.SetOperationStack(new TraceStack(stack));
+
+        Assert.That(prestate[TestItem.AddressC].Balance, Is.EqualTo((UInt256)9), "retry must capture the real account");
+    }
+
     private static IContainer CreateStorageReadContainer(StorageReadCounter reads) => new ContainerBuilder()
         .AddModule(new TestNethermindModule(Cancun.Instance))
         .AddSingleton(reads)
@@ -1467,6 +1494,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     {
         public int Count { get; set; }
         public bool FailNextRead { get; set; }
+        public bool FailNextAccountRead { get; set; }
     }
 
     private sealed class RecordingStorageWorldState(IWorldState state, StorageReadCounter reads) : WorldStateDecorator(state)
@@ -1480,6 +1508,16 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
                 throw new InvalidOperationException("storage read failed");
             }
             base.Get(in storageCell, out value);
+        }
+
+        public override bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            if (reads.FailNextAccountRead)
+            {
+                reads.FailNextAccountRead = false;
+                throw new InvalidOperationException("account read failed");
+            }
+            return base.TryGetAccount(address, out account);
         }
     }
 }

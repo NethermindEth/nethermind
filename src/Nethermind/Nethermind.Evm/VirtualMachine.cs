@@ -269,13 +269,16 @@ public partial class VirtualMachine<TGasPolicy>(
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
     // Tracer capabilities are fixed for one execution. IsCancelable also selects both the dispatch table
-    // and its matching loop specialization; IsTracingImplicitStop avoids walking the tracer graph at frame exit.
+    // and its matching loop specialization; IsTracingImplicitStop avoids walking the tracer graph at frame exit,
+    // and IsTracingOperationGasCost and IsTracingOperationStart avoid walking it per traced opcode.
     private VmTracerFlags _tracerFlags;
     internal bool IsTracingActions => _tracerFlags.IsTracingActions;
     internal bool IsTracingRefunds => _tracerFlags.IsTracingRefunds;
     internal bool IsTracingAccess => _tracerFlags.IsTracingAccess;
     internal bool IsTracingOpLevelStorage => _tracerFlags.IsTracingOpLevelStorage;
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
+    private bool IsTracingOperationGasCost { get => DispatchFlags.Tracing(field); set; }
+    private bool IsTracingOperationStart { get => DispatchFlags.Tracing(field); set; }
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -357,6 +360,8 @@ public partial class VirtualMachine<TGasPolicy>(
         _txTracer = txTracer;
         _tracerFlags = new(txTracer);
         IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
+        IsTracingOperationGasCost = TTracingInst.IsActive && txTracer.Any<ITraceOperationGasCost>(static tracer => tracer.IsTracingInstructions);
+        IsTracingOperationStart = TTracingInst.IsActive && txTracer.Any<ITraceOperationStart>(static tracer => tracer.IsTracingInstructions);
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
         _isInstructionTraceActive = false;
@@ -679,7 +684,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (IsTracingActions)
         {
-            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGasUnits(previousState.Gas), ReturnDataBuffer);
         }
 
         return previousCallOutputLength;
@@ -714,7 +719,7 @@ public partial class VirtualMachine<TGasPolicy>(
             if (IsTracingActions)
             {
                 Address createdAccount = previousState.Env.ExecutingAccount;
-                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), createdAccount, _worldState.GetCode(createdAccount));
+                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGasUnits(previousState.Gas), createdAccount, _worldState.GetCode(createdAccount));
             }
             return;
         }
@@ -772,8 +777,9 @@ public partial class VirtualMachine<TGasPolicy>(
 
         ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in previousState.Gas, stateDepositCost);
         ulong codeDepositGasCost = executionDepositCost + stateSpill;
-        bool hasEnoughGas = gasAvailableForCodeDeposit >= executionDepositCost
-            && gasAvailableForCodeDeposit - executionDepositCost >= stateSpill;
+        ulong gasUnitsForCodeDeposit = gasAvailableForCodeDeposit / TGasPolicy.ExecutionGasPerGasUnit;
+        bool hasEnoughGas = gasUnitsForCodeDeposit >= executionDepositCost
+            && gasUnitsForCodeDeposit - executionDepositCost >= stateSpill;
         bool chargedCodeDeposit = false;
 
         if (hasEnoughGas && !invalidCode)
@@ -798,14 +804,14 @@ public partial class VirtualMachine<TGasPolicy>(
                 }
                 if (IsTracingActions)
                 {
-                    _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, code);
+                    _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGasUnits(previousState.Gas) - codeDepositGasCost, callCodeOwner, code);
                 }
             }
         }
 
         if (!chargedCodeDeposit && (spec.FailOnOutOfGasCodeDeposit || invalidCode))
         {
-            bool charged = TGasPolicy.UpdateGas(ref _currentState.Gas, gasAvailableForCodeDeposit);
+            bool charged = TGasPolicy.TryConsume(ref _currentState.Gas, gasAvailableForCodeDeposit);
             Debug.Assert(charged, "Refund already merged the child's remaining gas into the parent.");
             // Code deposit failure is an exceptional halt of the child CREATE frame.
             // Refund already merged the child's state gas (reservoir, stateGasUsed) into the parent,
@@ -880,7 +886,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // If transaction tracing is enabled, report the revert action along with the available gas and output bytes.
         if (IsTracingActions)
         {
-            _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGas(previousState.Gas), outputBytes);
+            _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGasUnits(previousState.Gas), outputBytes);
         }
     }
 
@@ -1169,7 +1175,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (isTracingActions)
         {
             _txTracer.ReportAction(
-                TGasPolicy.GetRemainingGas(currentState.Gas),
+                TGasPolicy.GetRemainingGasUnits(currentState.Gas),
                 currentState.Env.Value,
                 currentState.From,
                 currentState.To,
@@ -1308,7 +1314,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected void TraceTransactionActionStart(VmState<TGasPolicy> currentState)
     {
-        _txTracer.ReportAction(TGasPolicy.GetRemainingGas(currentState.Gas),
+        _txTracer.ReportAction(TGasPolicy.GetRemainingGasUnits(currentState.Gas),
             currentState.Env.Value,
             currentState.From,
             currentState.To,
@@ -1350,7 +1356,7 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             if (CodeDepositHandler.CalculateCost(spec, outputBytes.Length, in currentState.Gas, out ulong executionDepositCost, out long stateDepositCost))
             {
-                ulong remainingGas = TGasPolicy.GetRemainingGas(currentState.Gas);
+                ulong remainingGas = TGasPolicy.GetRemainingGasUnits(currentState.Gas);
                 ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in currentState.Gas, stateDepositCost);
                 codeDepositGasCost = executionDepositCost + stateSpill;
                 hasEnoughGasForCodeDeposit = remainingGas >= executionDepositCost
@@ -1370,12 +1376,12 @@ public partial class VirtualMachine<TGasPolicy>(
         }
         else if (callResult.ShouldRevert)
         {
-            _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGas(currentState.Gas), outputBytes);
+            _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGasUnits(currentState.Gas), outputBytes);
         }
         // Process contract creation flows.
         else if (currentState.ExecutionType.IsAnyCreate())
         {
-            ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
+            ulong gasAvailable = TGasPolicy.GetRemainingGasUnits(currentState.Gas);
             // If available gas is insufficient to cover the code deposit cost...
             if (!hasEnoughGasForCodeDeposit)
             {
@@ -1407,7 +1413,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
         else
         {
-            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(currentState.Gas), outputBytes);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGasUnits(currentState.Gas), outputBytes);
         }
     }
 
@@ -1682,11 +1688,11 @@ public partial class VirtualMachine<TGasPolicy>(
 
             if (TTracingInst.IsActive)
             {
-                _txTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(vmState.Gas));
+                _txTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGasUnits(vmState.Gas));
             }
             if (IsTracingActions)
             {
-                _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
+                _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGasUnits(vmState.Gas));
             }
         }
 
@@ -1746,7 +1752,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 ThrowOperationCanceledException();
 
             // Reading past non-empty code yields the zero byte, so trace its implicit STOP.
-            TraceImplicitStop(_txTracer, TGasPolicy.GetRemainingGas(in gas), (int)programCounter, (int)stack.Head);
+            TraceImplicitStop(_txTracer, TGasPolicy.GetRemainingGasUnits(in gas), (int)programCounter, (int)stack.Head);
         }
 
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
@@ -1756,9 +1762,9 @@ public partial class VirtualMachine<TGasPolicy>(
                     static tracer => tracer.IsTracingInstructions, EvmExceptionType.Revert,
                     static (tracer, error) => tracer.ReportOperationError(error));
             if (TTracingInst.IsActive)
-                EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+                EndInstructionTrace(TGasPolicy.GetRemainingGasUnits(in gas));
             if (IsTracingActions)
-                _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(in gas));
+                _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGasUnits(in gas));
             int stackHead = (int)stack.Head;
             VmState<TGasPolicy> state = VmState;
             state.ProgramCounter = (int)programCounter;
@@ -1799,7 +1805,7 @@ public partial class VirtualMachine<TGasPolicy>(
             BlockContextReads |= BlockContextReads.OutOfGas;
         }
 
-        return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
+        return GetFailureReturn(TGasPolicy.GetRemainingGasUnits(in gas), exceptionType);
     }
 
 
@@ -1831,7 +1837,7 @@ public partial class VirtualMachine<TGasPolicy>(
         VmState<TGasPolicy> vmState = VmState;
         _isInstructionTraceActive = true;
         tracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
-        if (gasCost is ulong cost)
+        if (gasCost is ulong cost && IsTracingOperationStart)
             tracer.ForEach<ITraceOperationStart, (ulong Cost, int Head, int Inputs, int Growth)>(
                 static inner => inner.IsTracingInstructions, (cost, stackHead, stackInputs, stackGrowth),
                 static (inner, operation) => inner.ReportOperationStart(operation.Cost, operation.Head, operation.Inputs, operation.Growth));
@@ -1892,7 +1898,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceOperationGasCost(ulong gasCost)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && IsTracingOperationGasCost)
             TraceOperationGasCostCore(gasCost);
     }
 
@@ -1905,7 +1911,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceMemoryOperationGasCost(in UInt256 position, in UInt256 length, ulong additionalGas = 0)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && (IsTracingOperationGasCost || IsTracingOperationStart))
             TraceMemoryOperationGasCostCore(in position, in length, additionalGas);
     }
 
@@ -1925,7 +1931,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceOperationReady(ulong gasCost, string? error = null)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && IsTracingOperationStart)
             TraceOperationReadyCore(gasCost, error);
     }
 
