@@ -932,9 +932,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         ulong combinedLimit = frame.ExecutionGasLimit.SaturatingAdd(frame.StateGasLimit);
+        // EIP-8141: the legacy shares stay out of the execution gas used unless the frame halts, as a transaction
+        // with a reservoir gets them back through its state gas.
         gasUsed = substate.IsError
             ? combinedLimit - (ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in state.Gas))
-            : TGasPolicy.GetPreRefundGas(in state.Gas, combinedLimit);
+            : TGasPolicy.GetPreRefundGas(in state.Gas, combinedLimit) - (ulong)TGasPolicy.GetLegacySharePaid(in state.Gas);
         stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas));
 
         if (substate.ShouldRevert || substate.IsError)

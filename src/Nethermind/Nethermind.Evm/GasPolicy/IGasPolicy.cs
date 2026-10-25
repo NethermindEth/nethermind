@@ -78,6 +78,9 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     static virtual long GetStateGasUsed(in TSelf gas) => 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual long GetStateGasSpill(in TSelf gas) => 0;
+    /// <summary>EIP-8141 legacy shares paid from execution gas, which the frame rebates from its execution gas used at exit.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual long GetLegacySharePaid(in TSelf gas) => 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CalculateStateGasSpill(in TSelf gas, long stateGasCost)
     {

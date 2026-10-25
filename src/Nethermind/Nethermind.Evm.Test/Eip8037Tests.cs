@@ -751,25 +751,52 @@ public class Eip8037Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(charged, Is.EqualTo(canPayShare));
-            Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill), canPayShare
+            Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill, gas.LegacySharePaid), canPayShare
                 ? Is.EqualTo((executionGas - (ulong)Eip8037Constants.NewAccountLegacyShare,
                     1_000_000L - GasCostOf.NewAccountState,
                     GasCostOf.NewAccountState,
-                    0L))
-                : Is.EqualTo((executionGas, 1_000_000L, 0L, 0L)));
+                    0L,
+                    Eip8037Constants.NewAccountLegacyShare))
+                : Is.EqualTo((executionGas, 1_000_000L, 0L, 0L, 0L)));
         }
     }
 
+    /// <remarks>The share stays consumed from <c>gas_left</c>, and the frame rebates it at its exit.</remarks>
     [Test]
-    public void Frame_pool_refill_returns_the_state_gas_but_not_the_legacy_share()
+    public void Frame_pool_refill_returns_the_state_gas_and_keeps_the_legacy_share_for_the_rebate()
     {
         EthereumGasPolicy gas = EthereumGasPolicy.FromFrameLimits(100_000, 1_000_000);
         Assert.That(EthereumGasPolicy.TryConsumeNewAccountCreation<OnFlag>(ref gas), Is.True);
 
         EthereumGasPolicy.RefundStateGas(ref gas, GasCostOf.NewAccountState, stateGasFloor: 0);
 
-        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed),
-            Is.EqualTo((100_000UL - (ulong)Eip8037Constants.NewAccountLegacyShare, 1_000_000L, 0L)));
+        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.LegacySharePaid),
+            Is.EqualTo((100_000UL - (ulong)Eip8037Constants.NewAccountLegacyShare, 1_000_000L, 0L, Eip8037Constants.NewAccountLegacyShare)));
+    }
+
+    public enum ChildOutcome { Success, Revert, Halt }
+
+    [Test]
+    public void Frame_pool_child_legacy_share_reaches_the_parent_unless_the_child_halts([Values] ChildOutcome outcome)
+    {
+        EthereumGasPolicy parent = EthereumGasPolicy.FromFrameLimits(200_000, 1_000_000);
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 100_000);
+        Assert.That(EthereumGasPolicy.TryConsumeNewAccountCreation<OnFlag>(ref child), Is.True);
+
+        switch (outcome)
+        {
+            case ChildOutcome.Success:
+                EthereumGasPolicy.Refund(ref parent, in child);
+                break;
+            case ChildOutcome.Revert:
+                EthereumGasPolicy.RestoreChildStateGas(ref parent, in child);
+                break;
+            default:
+                EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child);
+                break;
+        }
+
+        Assert.That(parent.LegacySharePaid, Is.EqualTo(outcome == ChildOutcome.Halt ? 0L : Eip8037Constants.NewAccountLegacyShare));
     }
 
     [TestCase(ExpectedResult = 5_000L)]
