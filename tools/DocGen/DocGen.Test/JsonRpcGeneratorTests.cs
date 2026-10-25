@@ -66,6 +66,8 @@ public class JsonRpcGeneratorTests
     [TestCase("txpool", "txpool_inspect", "to _string_ (`sender: value wei + gas × gasPrice gas`)", "- `info`:")]
     [TestCase("trace", "trace_replayTransaction", "- `balance`: `\"=\"` (unchanged), or _object_ `{\"+\": value}` (added)", "- `after`:")]
     [TestCase("trace", "trace_replayTransaction", "- `ops`: array of _object_", "- `operations`:")]
+    [TestCase("trace", "trace_replayTransaction", "- `push`: array of _string_ (hex integer) or `null`", "- `push`: array of _string_ (hex data)")]
+    [TestCase("trace", "trace_replayTransaction", "- `val`: _string_ (hex integer)", "- `val`: _string_ (hex data)")]
     public void Response_documents_wire_shape(string ns, string method, string documented, string notDocumented)
     {
         string response = ReadResponse(ns, method);

@@ -176,14 +176,15 @@ internal static class JsonRpcGenerator
             ("cost", typeof(int), null), ("ex", typeof(ParityVmOperationExecution), null), ("op", typeof(string), null),
             ("pc", typeof(int), null), ("sub", typeof(ParityVmTrace), null),
         ],
+        // push and store values are written without leading zeros, which the UInt256 type stands for
         [typeof(ParityVmOperationExecution)] =
         [
-            ("mem", typeof(ParityMemoryChangeTrace), null), ("push", typeof(byte[][]), null),
+            ("mem", typeof(ParityMemoryChangeTrace), null), ("push", typeof(UInt256[]), null),
             ("store", typeof(ParityStorageChangeTrace), null), ("used", typeof(int), null),
         ],
         // Written by ParityVmOperationTraceConverter rather than their own contracts, so keyed by the type
         [typeof(ParityMemoryChangeTrace)] = [("data", typeof(byte[]), null), ("off", typeof(int), null)],
-        [typeof(ParityStorageChangeTrace)] = [("key", typeof(byte[]), null), ("val", typeof(byte[]), null)],
+        [typeof(ParityStorageChangeTrace)] = [("key", typeof(UInt256), null), ("val", typeof(UInt256), null)],
         [typeof(ParityVmTraceConverter)] = [("code", typeof(byte[]), null), ("ops", typeof(ParityVmOperationTrace[]), null)],
         // Writes the action and each of its subtraces as one flat list of entries
         [typeof(ParityTraceActionFromReplayJsonConverter)] =
