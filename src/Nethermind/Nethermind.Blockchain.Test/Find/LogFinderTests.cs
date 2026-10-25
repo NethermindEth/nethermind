@@ -386,13 +386,13 @@ public class LogFinderTests
     }
 
     [Test]
-    public void processed_noncanonical_block_with_missing_receipts_is_not_unprocessed()
+    public void noncanonical_block_with_missing_receipts_reports_processing_state([Values] bool aheadOfHead, [Values] bool wasProcessed)
     {
-        Block parent = _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
+        Block parent = aheadOfHead ? _headTestBlock : _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
         (Block orphan, Transaction _, TxReceipt receipt) = BuildNonCanonicalTestBlock(parent, withReceiptsRoot: true);
 
         Assert.That(_rawBlockTree.SuggestBlock(orphan), Is.EqualTo(AddBlockResult.Added));
-        _rawBlockTree.MarkChainAsProcessed([orphan]);
+        if (wasProcessed) _rawBlockTree.MarkChainAsProcessed([orphan]);
 
         // Match the history pruner's order: reclaim the receipts, then the block body.
         // Header and chain-level metadata remain available for hash-pinned RPC lookups.
@@ -402,7 +402,7 @@ public class LogFinderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_rawBlockTree.WasProcessed(orphan.Number, orphan.Hash!), Is.True);
+            Assert.That(_rawBlockTree.WasProcessed(orphan.Number, orphan.Hash!), Is.EqualTo(wasProcessed));
             Assert.That(_rawBlockTree.IsMainChain(orphan.Header), Is.False);
             Assert.That(_rawBlockTree.FindHeader(orphan.Hash, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(_receiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.False);
@@ -411,9 +411,8 @@ public class LogFinderTests
         BlockParameter blockHash = new(orphan.Hash!);
         LogFilter filter = new(0, blockHash, blockHash, AddressFilter.AnyAddress, new SequenceTopicsFilter());
 
-        Assert.That(() => _logFinder.FindLogs(filter),
-            Throws.TypeOf<ResourceNotFoundException>()
-                .With.Message.Contains("Receipt not available"));
+        Type expectedException = wasProcessed ? typeof(ResourceNotFoundException) : typeof(BlockNotProcessedException);
+        Assert.That(() => _logFinder.FindLogs(filter).ToArray(), Throws.TypeOf(expectedException));
     }
 
     [Test]
