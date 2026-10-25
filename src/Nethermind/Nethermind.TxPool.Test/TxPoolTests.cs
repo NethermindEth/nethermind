@@ -58,6 +58,7 @@ namespace Nethermind.TxPool.Test
     public partial class TxPoolTests
     {
         private const int Timeout = 10000;
+        private static readonly TimeSpan HeadChangeTimeout = TimeSpan.FromMinutes(1);
         private ILogManager _logManager;
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
@@ -123,10 +124,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [Test, NonParallelizable]
-        public void Rejected_blob_buffers_are_reused_only_without_discovery_subscribers(
-            [Values(0, 1, 2)] int listenerMode, [Values] bool pooled, [Values] bool ownsTransaction,
-            [Values("size", "syncing", "translation")] string rejection)
+        internal void AssertRejectedBlobBuffersAreReusedOnlyWithoutDiscoverySubscribers(
+            int listenerMode, bool pooled, bool ownsTransaction, string rejection)
         {
             if (rejection == "syncing")
             {
@@ -146,7 +145,7 @@ namespace Nethermind.TxPool.Test
             if (listenerMode != 0) _txPool.NewDiscovered += listener;
 
             AcceptTxResult result = ownsTransaction
-                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _)
+                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out _)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(rejection switch
             {
@@ -175,6 +174,32 @@ namespace Nethermind.TxPool.Test
             TxDecoder.TxObjectPool.Return(next);
         }
 
+        internal void AssertTrySubmitKnownSettlesOnlyAKnownHashThatNeedsNoBody(string scenario)
+        {
+            if (scenario == "syncing")
+            {
+                _blockTree.Head = Build.A.Block.WithNumber(1).TestObject;
+            }
+            _txPool = CreatePool();
+            _txPool.AcceptTxWhenNotSynced = true;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _txPool.AcceptTxWhenNotSynced = false;
+            if (scenario == "discovery") _txPool.NewDiscovered += static (_, _) => { };
+            ValueHash256 hash = scenario == "unknown" ? TestItem.KeccakH : tx.Hash!;
+            long known = Metrics.PendingTransactionsKnown;
+
+            bool settled = ((IRecyclableTxPool)_txPool).TrySubmitKnown(in hash);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(settled, Is.EqualTo(scenario == "known"));
+                Assert.That(Metrics.PendingTransactionsKnown - known, Is.EqualTo(settled ? 1 : 0));
+            }
+        }
+
         [Test, NonParallelizable]
         public void Duplicate_blob_returns_buffers_but_validation_rejection_keeps_them()
         {
@@ -185,7 +210,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction duplicate = DecodeReceivedBlob(0x11, pooled: true);
             byte[] duplicateBlob = ((ShardBlobNetworkWrapper)duplicate.NetworkWrapper).Blobs[0];
-            Assert.That(((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out _), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            Assert.That(((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, peer: null, out _), Is.EqualTo(AcceptTxResult.AlreadyKnown));
 
             Transaction next = DecodeReceivedBlob(0x22, pooled: true);
             using (Assert.EnterMultipleScope())
@@ -197,8 +222,7 @@ namespace Nethermind.TxPool.Test
             TxDecoder.TxObjectPool.Return(next);
         }
 
-        [Test, NonParallelizable]
-        public void Early_rejection_keeps_transaction_intact_and_reports_ownership([Values(0, 1, 2)] int listenerMode)
+        internal void AssertEarlyRejectionKeepsTransactionIntactAndReportsOwnership(int listenerMode)
         {
             _txPool = CreatePool(new TxPoolConfig { MaxTxSize = 1 });
             Transaction tx = Build.A.Transaction.WithNonce(17).SignedAndResolved().TestObject;
@@ -212,7 +236,7 @@ namespace Nethermind.TxPool.Test
             };
             if (listenerMode != 0) _txPool.NewDiscovered += listener;
 
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycle);
 
             using (Assert.EnterMultipleScope())
             {
@@ -256,7 +280,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycle);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -273,7 +297,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(incomingTxFilter: filter);
             Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
 
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycle);
 
             using (Assert.EnterMultipleScope())
             {
@@ -303,7 +327,7 @@ namespace Nethermind.TxPool.Test
             _txPool = derived;
             Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
 
-            AcceptTxResult result = ((IRecyclableTxPool)derived).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)derived).SubmitOwnedTx(tx, peer: null, out bool canRecycle);
 
             using (Assert.EnterMultipleScope())
             {
@@ -336,8 +360,8 @@ namespace Nethermind.TxPool.Test
             RlpReader reader = new(encoded.Bytes);
             Transaction duplicate = TxDecoder.Instance.Decode(ref reader);
 
-            AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycleInvalid);
-            AcceptTxResult known = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out bool canRecycleDuplicate);
+            AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycleInvalid);
+            AcceptTxResult known = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, peer: null, out bool canRecycleDuplicate);
 
             using (Assert.EnterMultipleScope())
             {
@@ -775,6 +799,36 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+            }
+        }
+
+        [Test]
+        public void should_recover_authorities_only_for_set_code_replacement_that_can_replace([Values] bool bumpsFee)
+        {
+            TestSpecProvider provider = new(Prague.Instance);
+            _txPool = CreatePool(specProvider: provider);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction SetCodeTx(UInt256 fee, UInt256 value) => Build.A.Transaction
+                .WithType(TxType.SetCode)
+                .WithMaxFeePerGas(fee)
+                .WithMaxPriorityFeePerGas(fee)
+                .WithGasLimit(100_000)
+                .WithValue(value)
+                .WithAuthorizationCode(_ethereumEcdsa.Sign(TestItem.PrivateKeyA, provider.ChainId, TestItem.AddressC, 0))
+                .WithTo(TestItem.AddressA)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(SetCodeTx(9.GWei, 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction replacement = SetCodeTx(bumpsFee ? 10.GWei : 9.GWei, 2);
+            AcceptTxResult result = _txPool.SubmitTx(replacement, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(bumpsFee ? AcceptTxResult.Accepted : AcceptTxResult.ReplacementNotAllowed));
+                Assert.That(replacement.AuthorizationList![0].Authority, bumpsFee ? Is.EqualTo(TestItem.AddressA) : Is.Null);
             }
         }
 
@@ -1542,7 +1596,7 @@ namespace Nethermind.TxPool.Test
                 specProvider = Substitute.For<ISpecProvider>();
                 specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
             }
-            TxPool txPool = CreatePool(null, specProvider);
+            TxPool txPool = _txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithChainId(TestBlockchainIds.ChainId)
@@ -1563,7 +1617,7 @@ namespace Nethermind.TxPool.Test
         public void should_not_ignore_insufficient_funds_for_eip1559_transactions()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
-            TxPool txPool = CreatePool(null, specProvider);
+            TxPool txPool = _txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559).WithMaxFeePerGas(20)
                 .WithChainId(TestBlockchainIds.ChainId)
@@ -1589,7 +1643,7 @@ namespace Nethermind.TxPool.Test
         public AcceptTxResult should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
         {
             ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) { IsEip3607Enabled = eip3607Enabled });
-            TxPool txPool = CreatePool(null, specProvider);
+            TxPool txPool = _txPool = CreatePool(null, specProvider);
 
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
@@ -1687,7 +1741,7 @@ namespace Nethermind.TxPool.Test
         public void should_ignore_overflow_transactions(bool eip1559)
         {
             ISpecProvider specProvider = eip1559 ? GetLondonSpecProvider() : _specProvider;
-            TxPool txPool = CreatePool(null, specProvider);
+            TxPool txPool = _txPool = CreatePool(null, specProvider);
 
             TransactionBuilder<Transaction> builder = Build.A.Transaction
                 .WithGasPrice(UInt256.MaxValue / Transaction.BaseTxGasCost)
@@ -2172,7 +2226,7 @@ namespace Nethermind.TxPool.Test
 
             transactions[0].Value = 100000;
 
-            await RaiseBlockAddedToMainAndWaitForTransactions(5);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
 
             using (Assert.EnterMultipleScope())
             {
@@ -2204,7 +2258,7 @@ namespace Nethermind.TxPool.Test
                 _stateProvider.IncrementNonce(TestItem.AddressA);
             }
 
-            await RaiseBlockAddedToMainAndWaitForTransactions(3);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
             Assert.That(_txPool.GetPendingTransactions().Count(static t => t.GasBottleneck == 0), Is.EqualTo(0));
         }
 
@@ -2314,7 +2368,7 @@ namespace Nethermind.TxPool.Test
                 _stateProvider.IncrementNonce(TestItem.AddressA);
             }
 
-            await RaiseBlockAddedToMainAndWaitForTransactions(5);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
@@ -2606,11 +2660,9 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             _ = AddTransactionToPool();
-            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.HeadNumber.Returns(peerHeadNumber);
-            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            RecordingTxPoolPeer txPoolPeer = new(TestItem.PublicKeyA, peerHeadNumber);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received(expectedAnnouncements).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.EqualTo(expectedAnnouncements));
         }
 
         [TestCase(12_000_000UL, 0, TestName = "should_not_notify_added_peer_at_the_tip_while_syncing")]
@@ -2626,12 +2678,11 @@ namespace Nethermind.TxPool.Test
         public void should_notify_peer_only_once()
         {
             _txPool = CreatePool();
-            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            RecordingTxPoolPeer txPoolPeer = new(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             _ = AddTransactionToPool();
-            Assert.That(() => txPoolPeer.ReceivedCallsMatching(p => p.SendNewTransaction(Arg.Any<Transaction>())), Is.True.After(500, 10));
-            txPoolPeer.DidNotReceive().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            Assert.That(() => txPoolPeer.BatchCount(sendFullTx: true), Is.Not.Zero.After(500, 10));
+            Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.Zero);
         }
 
         [TestCase(true, TestName = "should_send_to_peers_full_newly_added_local_tx")]
@@ -3754,7 +3805,7 @@ namespace Nethermind.TxPool.Test
         private static TxFrame SelfVerifyPrefixFrame() =>
             new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>());
 
-        private Transaction SignedFrameTx(TxFrame[] frames)
+        private Transaction SignedFrameTx(TxFrame[] frames, FrameSignatureDefect defect = FrameSignatureDefect.None)
         {
             Transaction frameTx = new()
             {
@@ -3768,20 +3819,20 @@ namespace Nethermind.TxPool.Test
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
             };
-            frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
+            frameTx.FrameSignatures = [FrameSignature(frameTx, defect)];
             frameTx.Hash = frameTx.CalculateHash();
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             return frameTx;
         }
 
         /// <summary>The frame-transaction properties a change of head specification can turn from valid to invalid.</summary>
-        public enum FrameForkGate { PostTx, ExecutionGasCap }
+        public enum FrameForkGate { Assert, ExecutionGasCap }
 
         // Each is admitted under a head that allows it, and the block that included it under the next head would
         // be invalid, so the pool must drop it at the transition. The retained rows hold the same transaction
         // across the same transition with the gate untouched, so the flipped flag is the only variable.
-        [TestCase(FrameForkGate.PostTx, true, TestName = "post_tx_frame_is_evicted_when_the_new_head_drops_eip7906")]
-        [TestCase(FrameForkGate.PostTx, false, TestName = "post_tx_frame_is_retained_while_eip7906_stays_active")]
+        [TestCase(FrameForkGate.Assert, true, TestName = "assert_frame_is_evicted_when_the_new_head_drops_eip7906")]
+        [TestCase(FrameForkGate.Assert, false, TestName = "assert_frame_is_retained_while_eip7906_stays_active")]
         [TestCase(FrameForkGate.ExecutionGasCap, true, TestName = "frame_execution_reservation_is_evicted_when_repriced_over_the_cap")]
         [TestCase(FrameForkGate.ExecutionGasCap, false, TestName = "frame_execution_reservation_is_retained_while_the_price_holds")]
         public async Task Frame_transaction_invalidated_by_the_new_head_is_evicted(FrameForkGate gate, bool revokedAtFork)
@@ -3791,12 +3842,12 @@ namespace Nethermind.TxPool.Test
 
             OverridableReleaseSpec preForkSpec = new(Eip8141Prototype.Instance)
             {
-                IsEip7906Enabled = gate == FrameForkGate.PostTx,
+                IsEip7906Enabled = gate == FrameForkGate.Assert,
                 IsEip2780Enabled = false
             };
             OverridableReleaseSpec postForkSpec = new(Eip8141Prototype.Instance)
             {
-                IsEip7906Enabled = preForkSpec.IsEip7906Enabled && !(revokedAtFork && gate == FrameForkGate.PostTx),
+                IsEip7906Enabled = preForkSpec.IsEip7906Enabled && !(revokedAtFork && gate == FrameForkGate.Assert),
                 IsEip2780Enabled = revokedAtFork && gate == FrameForkGate.ExecutionGasCap
             };
             TestSpecProvider provider = new(preForkSpec)
@@ -3822,9 +3873,9 @@ namespace Nethermind.TxPool.Test
         {
             switch (gate)
             {
-                case FrameForkGate.PostTx:
+                case FrameForkGate.Assert:
                     return SelfVerifyFrameTx(
-                        new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
+                        new TxFrame(FrameMode.Assert, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
                 default:
                     // Reserving half the EIP-2780 transfer charge below the cap, so pricing the transfer at the
                     // next head is the whole difference. The half also absorbs the few tokens by which a fresh
@@ -4641,6 +4692,29 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // A foreign signer fails signature verification, so a deferral instead of Invalid proves no recovery ran.
+        internal void AssertFrameTxSkipsSignaturesWhenTheHeadBudgetIsSpent(bool budgetSpent, bool local, bool deferred)
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
+            simulator.IsHeadBudgetSpent.Returns(budgetSpent);
+            // One gas below its entry charge, so the native shortcut declines it and it needs the simulator.
+            Transaction tx = SignedFrameTx([
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess - 1, UInt256.Zero, Array.Empty<byte>())
+            ], defect: FrameSignatureDefect.ForeignSigner);
+
+            long budgetExhaustedBefore = Volatile.Read(ref Metrics.FrameTxSimulationsBudgetExhausted);
+            long deferredBefore = Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, local ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Invalid));
+                Assert.That(Volatile.Read(ref Metrics.FrameTxSimulationsBudgetExhausted) - budgetExhaustedBefore, Is.EqualTo(deferred ? 1 : 0));
+                Assert.That(Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationDeferred) - deferredBefore, Is.EqualTo(deferred ? 1 : 0));
+            }
+        }
+
         // The native shortcut skips simulation, so it may only name a payer for a frame that provably
         // succeeds. One that cannot pay the access charge its own dispatch owes does not, and admitting
         // it hands the pool a transaction execution rejects.
@@ -4699,6 +4773,105 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None),
                 Is.EqualTo(sponsorCoversMaxCost ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+
+        // A prefix that approves and then fails a later filter cost the full validation, so the sending peer pays for it;
+        // a duplicate is turned away before any validation work and costs it nothing.
+        [TestCase(true, TestName = "SubmitOwnedTx_ChargesThePeer_ForARejectionAfterSignaturesAndSimulation")]
+        [TestCase(false, TestName = "SubmitOwnedTx_ChargesThePeer_ForARejectionAfterSimulationAlone")]
+        public void SubmitOwnedTx_ChargesThePeer_ForARejectionAfterValidationButNotForADuplicate(bool withSignatures)
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = true });
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            if (!withSignatures)
+            {
+                tx.FrameSignatures = [];
+                tx.Hash = tx.CalculateHash();
+            }
+            EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx) - 1);
+            object peer = new();
+            PeerValidationShares shares = _txPool.PeerValidationShares!;
+
+            AcceptTxResult rejected = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer, out _);
+            long spentAfterRejection = shares.SpentTicks(peer);
+            AcceptTxResult duplicate = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+                Assert.That(spentAfterRejection, Is.GreaterThan(0), "the prefix ran before the exposure filter rejected the transaction");
+                Assert.That(duplicate, Is.EqualTo(AcceptTxResult.AlreadyKnown));
+                Assert.That(shares.SpentTicks(peer), Is.EqualTo(spentAfterRejection), "a duplicate costs no validation");
+            }
+        }
+
+        // Under spam an attacker spends the per-head budget, and honest transactions are deferred after their
+        // signatures verified; charging that to the honest peer would hand the attacker its share too.
+        [Test]
+        public void SubmitOwnedTx_DeferralForTheNodesOwnBound_IsNotChargedToThePeer()
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head"),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = true });
+            object peer = new();
+            // One gas below its entry charge, so the native shortcut declines it and it reaches the simulator.
+            Transaction tx = SignedFrameTx([
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess - 1, UInt256.Zero, Array.Empty<byte>())
+            ]);
+
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+                Assert.That(_txPool.PeerValidationShares!.SpentTicks(peer), Is.Zero);
+            }
+        }
+
+        // The share's charge sits beside the accept/reject branches of submission, never between them: an accepted
+        // transaction must not run the rejection cleanup.
+        internal void AssertAcceptedTransactionIsNotCountedAsDiscarded(bool fairShare)
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = fairShare });
+            Transaction tx = Build.A.Transaction.WithNonce(0).WithGasPrice(1.GWei).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            long discarded = Metrics.PendingTransactionsDiscarded;
+
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, new object(), out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(Metrics.PendingTransactionsDiscarded, Is.EqualTo(discarded));
+            }
+        }
+
+        [Test]
+        public void SubmitOwnedTx_PeerThatSpentItsShare_IsDroppedBeforeValidation()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Reject("validation prefix frame reverted"),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = true });
+            object spent = new();
+            object fresh = new();
+            PeerValidationShares shares = _txPool.PeerValidationShares!;
+            shares.HasShare(spent, headGeneration: 0);
+            shares.Charge(spent, headGeneration: 0, ticks: long.MaxValue / 2);
+            // One gas below its entry charge, so the native shortcut declines it and it is simulated.
+            Transaction first = SignedFrameTx([
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess - 1, UInt256.Zero, Array.Empty<byte>())
+            ]);
+
+            AcceptTxResult dropped = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(first, spent, out _);
+            AcceptTxResult simulated = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(first, fresh, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dropped, Is.EqualTo(AcceptTxResult.FramePeerValidationBudgetSpent));
+                Assert.That(simulated, Is.EqualTo(AcceptTxResult.FrameSimulationFailed), "a peer with share left is still validated");
+                simulator.Received(1).Simulate(first, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
+            }
         }
 
         [Test]
@@ -5430,9 +5603,41 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(expectedSimulations));
+                Assert.That(simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate)),
+                    Is.EqualTo(expectedSimulations));
                 Assert.That(_txPool.IsKnown(tx.Hash), Is.True);
                 Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.Delayed));
+            }
+        }
+
+        // Asserts against the shared preemption counter, so it runs from TxPoolProcessWideStateTests.
+        internal void AssertGossipedFrameTxWhoseSignatureVerificationYieldedIsRefetchableOncePerRequest(bool announced, int expectedYields)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            // Two signatures: the first verifying entry always runs, so only a later one can yield.
+            tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 2)];
+            tx.Hash = tx.CalculateHash();
+            IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            if (announced) Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
+            long before = Metrics.FrameTxSignatureVerificationsPreempted;
+            _blockTree.IsProcessingBlock = true;
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+            Assert.That(_txPool.IsKnown(tx.Hash), Is.EqualTo(!announced));
+            for (int resend = 0; resend < 3; resend++)
+            {
+                _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.FrameTxSignatureVerificationsPreempted - before, Is.EqualTo(expectedYields));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.IsKnown(tx.Hash), Is.True);
+                // A yielded push waits for its first announcement to refetch it; an announced one spent its retry.
+                Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(announced ? AnnounceResult.Delayed : AnnounceResult.RequestRequired));
             }
         }
 
@@ -5455,8 +5660,35 @@ namespace Nethermind.TxPool.Test
             IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1));
+                Assert.That(simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate)), Is.EqualTo(1));
                 Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
+            }
+        }
+
+        // Asserts against the shared preemption counter, so it runs from TxPoolProcessWideStateTests.
+        internal async Task AssertFrameTxReaddedFromAReorgDuringBlockWorkIsNotDeferred()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            // Two signatures: only an entry after the first can yield, so this tx would be deferred if gossiped now.
+            tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 2)];
+            tx.Hash = tx.CalculateHash();
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block blockA = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
+            Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out _), Is.False, "the included tx must have left the pool");
+
+            long before = Metrics.FrameTxSignatureVerificationsPreempted;
+            _blockTree.IsProcessingBlock = true;
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject, blockA);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out _), Is.True,
+                    "a re-added tx has no peer to refetch it from, so block work must not defer it");
+                Assert.That(Metrics.FrameTxSignatureVerificationsPreempted, Is.EqualTo(before));
             }
         }
 
@@ -5680,7 +5912,7 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult baselineResult = _txPool.SubmitTx(baseline, TxHandlingOptions.None);
             AcceptTxResult withoutWidth = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
-            int simulations = simulator.ReceivedCalls().Count();
+            int simulations = simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate));
             _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)WidthChargeOf(additional, Eip8141Prototype.Instance) }]);
             AcceptTxResult withWidth = _txPool.SubmitTx(additional, TxHandlingOptions.None);
             _txPool.RemoveTransaction(additional.Hash);
@@ -5724,7 +5956,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(widthAfterOneRevalidation, Is.EqualTo(UInt256.Zero), "the rerun prefix spent the paymaster's charge");
                 Assert.That(paymastersHeldAfterOneRevalidation, Is.Zero, "a settled reservation releases the drained paymaster");
                 Assert.That(_txPool.GetPendingTransactions().Select(static tx => tx.Hash), Is.EqualTo(new[] { baseline.Hash }), "the baseline survives without width");
-                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1), "a paymaster short of width evicts without rerunning the prefix");
+                Assert.That(simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate)), Is.EqualTo(1), "a paymaster short of width evicts without rerunning the prefix");
             }
         }
 
@@ -5886,12 +6118,7 @@ namespace Nethermind.TxPool.Test
             _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(sponsored[0]).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)earned }]);
 
             using Barrier start = new(submissions);
-            AcceptTxResult[] results = new AcceptTxResult[submissions];
-            Parallel.For(0, submissions, new ParallelOptions { MaxDegreeOfParallelism = submissions }, i =>
-            {
-                start.SignalAndWait();
-                results[i] = _txPool.SubmitTx(sponsored[i], TxHandlingOptions.None);
-            });
+            AcceptTxResult[] results = SubmitTogether(start, i => _txPool.SubmitTx(sponsored[i], TxHandlingOptions.None));
 
             using (Assert.EnterMultipleScope())
             {
@@ -5901,7 +6128,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(results.Count(static r => r == AcceptTxResult.Accepted), Is.EqualTo(1 + covered));
                 Assert.That(results.Count(static r => r == AcceptTxResult.PaymasterWidthUnmet), Is.EqualTo(submissions - 1 - covered));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1 + covered));
-                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1 + covered), "paymaster width bounds the prefixes simulated at once");
+                Assert.That(simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate)), Is.EqualTo(1 + covered), "paymaster width bounds the prefixes simulated at once");
                 Assert.That(left, Is.LessThan(charges.Min()), "no refusal left width that covered it");
                 Assert.That(acceptedCharges.Any(baseline => earned - left == acceptedTotal - baseline), Is.True, "every admission but the baseline spent exactly its charge");
             }
@@ -6647,12 +6874,7 @@ namespace Nethermind.TxPool.Test
                 .Select(key => BuildKeyedFrameTx(sender, nonceKey: (UInt256)key, seq: 0, value: UInt256.Zero, maxFee: 1.GWei))
                 .ToArray();
             using Barrier start = new(submissions);
-            AcceptTxResult[] results = new AcceptTxResult[submissions];
-            Parallel.For(0, submissions, new ParallelOptions { MaxDegreeOfParallelism = submissions }, i =>
-            {
-                start.SignalAndWait();
-                results[i] = _txPool.SubmitTx(txs[i], TxHandlingOptions.PersistentBroadcast);
-            });
+            AcceptTxResult[] results = SubmitTogether(start, i => _txPool.SubmitTx(txs[i], TxHandlingOptions.PersistentBroadcast));
 
             using (Assert.EnterMultipleScope())
             {
@@ -6660,6 +6882,19 @@ namespace Nethermind.TxPool.Test
                 Assert.That(results.Count(static r => r == AcceptTxResult.WidthUnmet), Is.EqualTo(submissions - 1));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
             }
+        }
+
+        /// <summary>Runs one submission per <paramref name="start"/> participant, released together.</summary>
+        /// <remarks>On dedicated threads: thread-pool threads parked on the barrier would starve the head and revalidation
+        /// loops of every other test in the process for the seconds the pool takes to inject enough threads.</remarks>
+        private static AcceptTxResult[] SubmitTogether(Barrier start, Func<int, AcceptTxResult> submit)
+        {
+            Task<AcceptTxResult>[] submissions = Enumerable.Range(0, start.ParticipantCount).Select(i => RunOnDedicatedThread(() =>
+            {
+                if (!start.SignalAndWait(TimeSpan.FromSeconds(30))) throw new TimeoutException("Not every submitter reached the barrier.");
+                return submit(i);
+            })).ToArray();
+            return Task.WhenAll(submissions).GetAwaiter().GetResult();
         }
 
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
@@ -6823,8 +7058,8 @@ namespace Nethermind.TxPool.Test
             Transaction secondTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.SetCode)
-                .WithMaxFeePerGas(9.GWei)
-                .WithMaxPriorityFeePerGas(9.GWei)
+                .WithMaxFeePerGas(10.GWei)
+                .WithMaxPriorityFeePerGas(10.GWei)
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
                 .WithTo(TestItem.AddressB)
@@ -7228,7 +7463,7 @@ namespace Nethermind.TxPool.Test
                 Frames =
                 [
                     FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-                    new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
+                    new TxFrame(FrameMode.Assert, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
                 ],
                 FrameSignatures = [],
                 NonceKeys = [UInt256.One],
@@ -7301,11 +7536,11 @@ namespace Nethermind.TxPool.Test
         /// <summary>Recreates the pool over a stubbed prefix simulator answering with <paramref name="result"/>.</summary>
         /// <remarks>The verify-gas bound is out of scope for these tests, so it is disabled and whatever
         /// filter the test is about is what binds.</remarks>
-        private IFrameTxPrefixSimulator CreatePoolWithSimulator(FrameTxSimulationResult result, ISpecProvider specProvider = null)
+        private IFrameTxPrefixSimulator CreatePoolWithSimulator(FrameTxSimulationResult result, ISpecProvider specProvider = null, TxPoolConfig config = null)
         {
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             SimulatesAs(simulator, result);
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 },
+            _txPool = CreatePool(config ?? new TxPoolConfig { FrameTxMaxVerifyGas = 0 },
                 specProvider ?? new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             return simulator;
         }
@@ -7339,7 +7574,8 @@ namespace Nethermind.TxPool.Test
             bool thereIsPriorityContract = false,
             IEthereumEcdsa ethereumEcdsa = null,
             ITxValidator specChangeTxValidator = null,
-            IFrameTxPrefixSimulator frameTxPrefixSimulator = null)
+            IFrameTxPrefixSimulator frameTxPrefixSimulator = null,
+            IStateHeaderProvider stateHeaderProvider = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -7367,7 +7603,8 @@ namespace Nethermind.TxPool.Test
                 ShouldGossip.Instance,
                 incomingTxFilter is null ? null : [incomingTxFilter],
                 thereIsPriorityContract,
-                frameTxPrefixSimulator);
+                frameTxPrefixSimulator,
+                stateHeaderProvider);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
@@ -7481,21 +7718,6 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, privateKey)
                 .TestObject;
 
-        private async Task RaiseBlockAddedToMainAndWaitForTransactions(int txCount, Block block = null, Block previousBlock = null)
-        {
-            BlockReplacementEventArgs blockReplacementEventArgs = previousBlock is null
-                ? new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject)
-                : new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject, previousBlock);
-
-            SemaphoreSlim semaphoreSlim = new(0, txCount);
-            _txPool.NewPending += (o, e) => semaphoreSlim.Release();
-            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
-            for (int i = 0; i < txCount; i++)
-            {
-                await semaphoreSlim.WaitAsync(1000);
-            }
-        }
-
         private void AssertRevalidatedForHead() =>
             Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
@@ -7517,15 +7739,25 @@ namespace Nethermind.TxPool.Test
                 ? new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject)
                 : new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject, previousBlock);
 
+            // The pool skips the event when its head update throws, so an unbounded wait would hang the test host
+            // instead of failing the test.
+            using CancellationTokenSource timeout = new(HeadChangeTimeout);
             Task waitTask = Wait.ForEventCondition<Block>(
-                CancellationToken.None,
+                timeout.Token,
                 e => _txPool.TxPoolHeadChanged += e,
                 e => _txPool.TxPoolHeadChanged -= e,
                 e => e.Number == block.Number
             );
 
             _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
-            await waitTask;
+            try
+            {
+                await waitTask;
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                Assert.Fail($"The pool did not report head {block.Number} within {HeadChangeTimeout}.");
+            }
         }
 
         [Test]
@@ -7851,5 +8083,107 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+    }
+
+    [TestFixture, NonParallelizable]
+    public class AcceptedTransactionMetricsTests
+    {
+        [OneTimeSetUp]
+        public static void Initialize() => TxPoolTests.OneTimeSetup();
+
+        [TestCase(false, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded")]
+        [TestCase(true, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded_WithFairShares")]
+        public async Task AcceptedTransactionIsNotCountedAsDiscarded(bool fairShare)
+        {
+            TxPoolTests fixture = new();
+            fixture.Setup();
+            try
+            {
+                fixture.AssertAcceptedTransactionIsNotCountedAsDiscarded(fairShare);
+            }
+            finally
+            {
+                await fixture.TearDown();
+            }
+        }
+    }
+    [TestFixture, NonParallelizable]
+    public class FrameTxSimulationBudgetMetricsTests
+    {
+        [OneTimeSetUp]
+        public static void Initialize() => TxPoolTests.OneTimeSetup();
+
+        [TestCase(true, false, true, TestName = "SubmitTx_GossipedFrameTx_IsDeferredBeforeSignatures_OnceTheHeadBudgetIsSpent")]
+        [TestCase(false, false, false, TestName = "SubmitTx_GossipedFrameTx_HasItsSignaturesVerified_WhileTheHeadBudgetLasts")]
+        [TestCase(true, true, false, TestName = "SubmitTx_LocalFrameTx_HasItsSignaturesVerified_EvenWithTheHeadBudgetSpent")]
+        public async Task FrameTxSkipsSignaturesWhenTheHeadBudgetIsSpent(bool budgetSpent, bool local, bool deferred)
+        {
+            TxPoolTests fixture = new();
+            fixture.Setup();
+            try
+            {
+                fixture.AssertFrameTxSkipsSignaturesWhenTheHeadBudgetIsSpent(budgetSpent, local, deferred);
+            }
+            finally
+            {
+                await fixture.TearDown();
+            }
+        }
+    }
+
+    // These cases read process-wide state that parallel TxPoolTests change. A method-level [NonParallelizable] does not
+    // keep a parameterized test away from its parallel siblings (nunit/nunit#3371); a fixture-level one does.
+    [TestFixture, NonParallelizable]
+    public class TxPoolProcessWideStateTests
+    {
+        [OneTimeSetUp]
+        public static void Initialize() => TxPoolTests.OneTimeSetup();
+
+        // Asserts buffer identity through the process-wide blob buffer pool.
+        [Test]
+        public Task Rejected_blob_buffers_are_reused_only_without_discovery_subscribers(
+            [Values(0, 1, 2)] int listenerMode, [Values] bool pooled, [Values] bool ownsTransaction,
+            [Values("size", "syncing", "translation")] string rejection) =>
+            Run(fixture => fixture.AssertRejectedBlobBuffersAreReusedOnlyWithoutDiscoverySubscribers(listenerMode, pooled, ownsTransaction, rejection));
+
+        // Every duplicate submission increments Metrics.PendingTransactionsKnown.
+        [Test]
+        public Task TrySubmitKnown_settles_only_a_known_hash_that_needs_no_body([Values("known", "unknown", "discovery", "syncing")] string scenario) =>
+            Run(fixture => fixture.AssertTrySubmitKnownSettlesOnlyAKnownHashThatNeedsNoBody(scenario));
+
+        // Reads a transaction after it went back to TxDecoder.TxObjectPool, where any concurrent decode can rent it.
+        [Test]
+        public Task Early_rejection_keeps_transaction_intact_and_reports_ownership([Values(0, 1, 2)] int listenerMode) =>
+            Run(fixture => fixture.AssertEarlyRejectionKeepsTransactionIntactAndReportsOwnership(listenerMode));
+
+        // Both read Metrics.FrameTxSignatureVerificationsPreempted, which the first one increments.
+        [TestCase(true, 2)]
+        [TestCase(false, 1)]
+        public Task Gossiped_frame_tx_whose_signature_verification_yielded_is_refetchable_once_per_request(bool announced, int expectedYields) =>
+            Run(fixture => fixture.AssertGossipedFrameTxWhoseSignatureVerificationYieldedIsRefetchableOncePerRequest(announced, expectedYields));
+
+        [Test]
+        public Task Frame_tx_readded_from_a_reorg_during_block_work_is_not_deferred() =>
+            RunAsync(static fixture => fixture.AssertFrameTxReaddedFromAReorgDuringBlockWorkIsNotDeferred());
+
+        private static Task Run(Action<TxPoolTests> test) => RunAsync(fixture =>
+        {
+            test(fixture);
+            return Task.CompletedTask;
+        });
+
+        private static async Task RunAsync(Func<TxPoolTests, Task> test)
+        {
+            TxPoolTests fixture = new();
+            fixture.Setup();
+            try
+            {
+                await test(fixture);
+            }
+            finally
+            {
+                await fixture.TearDown();
+            }
+        }
     }
 }

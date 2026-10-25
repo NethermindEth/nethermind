@@ -18,8 +18,6 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 
     public static BN254AddPrecompile Instance { get; } = new();
 
-    public static Address Address { get; } = Address.FromNumber(6);
-
     /// <see href="https://eips.ethereum.org/EIPS/eip-7910" />
     public string Name => "BN254_ADD";
 
@@ -35,13 +33,9 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
         return end < 0 ? ReadOnlyMemory<byte>.Empty : clamped[..(end + 1)];
     }
 
-    /// <summary>Counts the call for the host's metrics; the guest publishes none.</summary>
-    partial void CountCall();
-
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        CountCall();
         ReadOnlySpan<byte> input = inputData.Span;
         if (InputLength < input.Length)
         {

@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2Affine = Nethermind.Crypto.Bls.P2Affine;
@@ -14,11 +15,13 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381PairingCheckPrecompile
 {
+    private static readonly byte[] _successResult = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+
+    public static Address Address { get; } = Address.FromNumber(0xf);
+
     [SkipLocalsInit]
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Metrics.Bls12381PairingCheckPrecompile++;
-
         if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
@@ -52,22 +55,14 @@ public partial class Bls12381PairingCheckPrecompile
 
         // all pairs had an infinity point: empty product is one
         if (npairs == 0)
-        {
-            byte[] one = new byte[32];
-            one[31] = 1;
-            return one;
-        }
+            return _successResult;
 
         // batched product of the per-pair Miller loops
         GT acc = new(stackalloc long[GT.Sz]);
         acc.MillerLoopN(g2Points, g1Points, npairs);
 
         // e(x_0, y_0) * e(x_1, y_1) * ... == 1
-        byte[] res = new byte[32];
-
-        if (acc.FinalExp().IsOne()) res[31] = 1;
-
-        return res;
+        return acc.FinalExp().IsOne() ? _successResult : Bytes.Zero32;
     }
 
     private readonly struct PairDecoder(ReadOnlyMemory<byte> inputData, Memory<long> g1Buffer, Memory<long> g2Buffer, ArrayPoolList<int> destinations)

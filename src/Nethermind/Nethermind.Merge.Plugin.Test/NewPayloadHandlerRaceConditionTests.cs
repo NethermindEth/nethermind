@@ -62,6 +62,17 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     private static readonly FieldInfo? QueuedCopiesField =
         typeof(NewPayloadHandler).GetField("_queuedCopies", BindingFlags.Instance | BindingFlags.NonPublic);
 
+    private static readonly FieldInfo? TimeoutField =
+        typeof(NewPayloadHandler).GetField("_timeout", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    // The long budget outlasts the answer wait, so a runner stall cannot turn the answer into Syncing,
+    // and a handler that waits for the wrong event is still pending when the wait gives up.
+    private const int LongRequestBudgetMs = 60_000;
+    // Only the request that is meant to give up gets this budget. The handler reads `_timeout` once per request, so
+    // the tests switch it around that request, and a stalled runner cannot answer the other requests SYNCING.
+    private const int TimedOutRequestBudgetMs = 3_000;
+    private static readonly TimeSpan AnswerWait = TimeSpan.FromSeconds(30);
+
     [Test]
     public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash)
     {
@@ -86,7 +97,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         block.Header.IsPostMerge = true;
         TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
         ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
-        payload.OnDecoding = workers => decodingWorkers = workers;
+        bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
+        payload.OnDecoding = workers =>
+        {
+            decodingWorkers = workers;
+            // An invalid hash cancels recovery right after decoding, which could otherwise stop it before its first sender.
+            if (invalidHash && !singleProcessor) Assert.That(entered.Task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Recovery did not start before decoding finished");
+        };
         Transaction[] transactions = payload.TryGetTransactions().Data!;
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
@@ -97,9 +114,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         {
             ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
             progress = recovery.GetInFlight(transactions);
-            bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
             ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor
-                ? null : await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                ? null : await entered.Task.WaitAsync(AnswerWait);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodingWorkers, Is.Not.Null);
@@ -116,6 +132,316 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             if (progress is not null)
                 Assert.That(progress.WaitForCompletion(10_000), Is.True);
         }
+    }
+
+    /// <summary>
+    /// The Received line is written once per payload, after the block is handed to the processing queue and before
+    /// the verdict.
+    /// </summary>
+    [Test]
+    public async Task Received_line_is_written_once_on_the_normal_path()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        int receivedBeforeHandOff = -1;
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            // The suggest is the request's last step on its own thread before the hand-off.
+            configure: (blockTree, stateReader) => blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(_ =>
+                {
+                    receivedBeforeHandOff = logger.ReceivedCount;
+                    return ValueTask.FromResult(AddBlockResult.Added);
+                }),
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await enqueued.Task.WaitAsync(AnswerWait);
+        // The line must not wait for the verdict, which lands only once it is written.
+        await logger.FirstReceived.WaitAsync(AnswerWait);
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(receivedBeforeHandOff, Is.EqualTo(0));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>
+    /// A request that ends before the hand-off still writes its Received line, once: on an invalid hash, or when the
+    /// block validator turns the block down.
+    /// </summary>
+    [Test]
+    public async Task Received_line_is_written_once_when_the_request_ends_before_the_hand_off([Values] bool invalidHash)
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: invalidHash,
+            processingQueue: processingQueue,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+        ExecutionPayload payload = ExecutionPayload.Create(block);
+        if (invalidHash) payload.BlockHash = TestItem.KeccakB;
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload).WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1));
+        }
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    /// <summary>
+    /// A request that has to wait before the hand-off writes its Received line as the wait starts, not once it is
+    /// over, so a wait on our side does not read like a late payload; here, for a parent still committing.
+    /// </summary>
+    [Test]
+    public async Task Received_line_is_written_once_while_the_request_waits_for_a_parent_still_committing()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        bool parentCommitted = false;
+        TaskCompletionSource parentWaitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource parentRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilExecutedCopyRemovedAsync(block.ParentHash!).Returns(_ =>
+        {
+            parentWaitRequested.TrySetResult();
+            return new ValueTask(parentRemoved.Task);
+        });
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            parentProcessedNow: () => parentCommitted,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: parentWaitRequested.Task, waitsFor: "the parent",
+            release: async () =>
+            {
+                parentCommitted = true;
+                parentRemoved.SetResult();
+                await enqueued.Task.WaitAsync(AnswerWait);
+                processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+            });
+    }
+
+    [Test]
+    public async Task Received_line_is_written_once_while_the_request_waits_for_an_earlier_copy()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        bool committed = false;
+        TaskCompletionSource waitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(_ =>
+        {
+            waitRequested.TrySetResult();
+            return new ValueTask(firstCopyRemoved.Task);
+        });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            wasProcessedNow: () => committed,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: waitRequested.Task, waitsFor: "the first copy",
+            release: () =>
+            {
+                committed = true;
+                firstCopyRemoved.SetResult();
+                return Task.CompletedTask;
+            });
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    [Test]
+    public async Task Received_line_is_written_once_while_the_suggest_is_pending()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        TaskCompletionSource<AddBlockResult> suggest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource suggestRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            configure: (blockTree, _) => blockTree
+                .SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(_ =>
+                {
+                    suggestRequested.TrySetResult();
+                    return new ValueTask<AddBlockResult>(suggest.Task);
+                }),
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: suggestRequested.Task, waitsFor: "the suggest",
+            release: async () =>
+            {
+                suggest.SetResult(AddBlockResult.Added);
+                await enqueued.Task.WaitAsync(AnswerWait);
+                processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+            });
+    }
+
+    /// <summary>A canonical payload behind the head whose re-executed copy is still committing.</summary>
+    [Test]
+    public async Task Received_line_is_written_once_while_a_canonical_payload_waits_for_its_executed_copy()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        bool committed = false;
+        TaskCompletionSource waitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource executedCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilExecutedCopyRemovedAsync(block.Hash!).Returns(_ =>
+        {
+            waitRequested.TrySetResult();
+            return new ValueTask(executedCopyRemoved.Task);
+        });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: true,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            configure: (blockTree, stateReader) =>
+            {
+                blockTree.Head.Returns(block);
+                blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+                stateReader.HasStateForBlock(Arg.Is<BlockHeader>(h => h != null && h.Hash == block.Hash)).Returns(_ => committed);
+            },
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: waitRequested.Task, waitsFor: "the commit",
+            release: () =>
+            {
+                committed = true;
+                executedCopyRemoved.SetResult();
+                return Task.CompletedTask;
+            });
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    /// <summary>
+    /// Drives a request held at a wait before the hand-off: once it has reached the wait, its Received line must be
+    /// written while it is still held there; <paramref name="release"/> then lets it go on, and it must end VALID with
+    /// that one line and no other.
+    /// </summary>
+    private static async Task AssertReceivedWrittenWhileHeld(
+        Task<ResultWrapper<PayloadStatusV1>> request,
+        ReceivedLineLogger logger,
+        Task reachedWait,
+        string waitsFor,
+        Func<Task> release)
+    {
+        // Awaited first, so the checks below see the request on the wait rather than at an earlier step.
+        await reachedWait.WaitAsync(AnswerWait);
+        Assert.That(await Task.WhenAny(logger.FirstReceived, Task.Delay(AnswerWait)), Is.SameAs(logger.FirstReceived),
+            $"no Received line while the request waits for {waitsFor}");
+        Assert.That(request.IsCompleted, Is.False, $"the line is written while the request still waits for {waitsFor}");
+
+        await release();
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(logger.ReceivedCount, Is.EqualTo(1), "exactly one Received line for the request");
+        }
+    }
+
+    /// <summary>Counts the handler's Received lines; the request writes them from whichever thread it is on.</summary>
+    private sealed class ReceivedLineLogger : InterfaceLogger
+    {
+        private int _receivedCount;
+        private readonly TaskCompletionSource _firstReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int ReceivedCount => Volatile.Read(ref _receivedCount);
+        public Task FirstReceived => _firstReceived.Task;
+
+        public void Info(string text)
+        {
+            if (!text.StartsWith("Received ", StringComparison.Ordinal)) return;
+            Interlocked.Increment(ref _receivedCount);
+            _firstReceived.TrySetResult();
+        }
+
+        public void Warn(string text) { }
+        public void Debug(string text) { }
+        public void Trace(string text) { }
+        public void Error(string text, Exception? ex = null) { }
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => false;
+        public bool IsTrace => false;
+        public bool IsError => true;
     }
 
     [Test]
@@ -266,7 +592,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// do not change it, so newPayload answers on <see cref="IBlockProcessingQueue.BlockExecuted"/> and does not
     /// wait for <see cref="IBlockProcessingQueue.BlockRemoved"/>.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    /// <remarks>
+    /// No wall-clock limit: a stalled runner must not fail a request that was answered correctly. The budget is
+    /// long enough that only the verdict can answer the request, and a handler that waited for the removal would
+    /// leave it pending, so the bounded wait for the answer fails it.
+    /// </remarks>
+    [Test]
     public async Task ValidateBlockAndProcess_answers_on_the_verdict_without_waiting_for_removal()
     {
         Block block = PostMergeBlock();
@@ -287,7 +618,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000);
+            timeoutMs: LongRequestBudgetMs);
 
         TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
         ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
@@ -296,7 +627,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ParallelUnbalancedWork.WorkerGroup? queuedWorkers = await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // The verdict lands; BlockRemoved never does, as if the commit were still running.
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request;
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         using (Assert.EnterMultipleScope())
         {
@@ -311,7 +642,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// so the handler marks the verdict answered exactly when a waiting request takes it, and not for a block
     /// nobody is waiting on.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_marks_the_verdict_answered_only_when_a_request_takes_it()
     {
         Block block = PostMergeBlock();
@@ -332,7 +663,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000);
+            timeoutMs: LongRequestBudgetMs);
 
         BlockVerdictEventArgs unwaited = new(TestItem.KeccakB, ProcessingResult.Success);
         processingQueue.BlockExecuted += Raise.EventWith(unwaited);
@@ -341,7 +672,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         BlockVerdictEventArgs verdict = new(block.Hash!, ProcessingResult.Success);
         processingQueue.BlockExecuted += Raise.EventWith(verdict);
-        ResultWrapper<PayloadStatusV1> result = await request;
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         using (Assert.EnterMultipleScope())
         {
@@ -356,7 +687,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// so the request must fail at once, as it did when Enqueue ran on its own thread, instead of waiting out its
     /// budget while holding the engine API's lock.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    [Test]
     public void HandleAsync_fails_at_once_when_the_block_cannot_be_enqueued()
     {
         Block block = PostMergeBlock();
@@ -372,11 +703,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000);
+            timeoutMs: LongRequestBudgetMs);
 
-        Assert.That(async () => await handler.HandleAsync(ExecutionPayload.Create(block)),
+        Assert.That(async () => await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait),
             Throws.InstanceOf<InvalidOperationException>().With.Message.EqualTo("queue refused the block"),
-            "the failure reaches the request well inside its 60 s budget");
+            "the failure reaches the request well inside its budget");
         Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0));
     }
 
@@ -385,7 +716,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// marked processed. Queued again it would be skipped as not better than head and answered INVALID, so the
     /// handler waits for the first copy instead of enqueueing.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_waits_for_a_known_copy_still_in_the_queue_instead_of_enqueueing_again()
     {
         Block block = PostMergeBlock();
@@ -407,7 +738,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000,
+            timeoutMs: LongRequestBudgetMs,
             wasProcessedNow: () => committed);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
@@ -417,7 +748,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         committed = true;
         firstCopyRemoved.SetResult();
-        ResultWrapper<PayloadStatusV1> result = await request;
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), "once the first copy is committed the tree's answer is the block's");
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
@@ -428,7 +759,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// for the hash. It must not become the re-submission's answer: the request re-validates the block with its own
     /// queue attempt and answers on that attempt's verdict.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_does_not_take_the_first_copy_removal_for_a_resubmission_answer()
     {
         Block block = PostMergeBlock();
@@ -456,7 +787,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000);
+            timeoutMs: LongRequestBudgetMs);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         // Awaited first, so the assertion below means the request is on the wait, not at an earlier await.
@@ -470,7 +801,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(request.IsCompleted, Is.False, "the request must wait for its own attempt's verdict");
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request;
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the answer is the re-submission's own verdict");
         await processingQueue.Received(1).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
@@ -481,7 +812,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// the copy is still in flight. Its removal must not answer the re-submission - here one with an inclusion list of
     /// its own - the request waits for the copy to be gone and then judges its own list.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_waits_for_a_processed_first_copy_still_in_flight_before_judging_a_new_inclusion_list()
     {
         Block block = PostMergeBlock();
@@ -509,7 +840,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: true,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000);
+            timeoutMs: LongRequestBudgetMs);
 
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
         payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
@@ -523,7 +854,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
@@ -596,7 +927,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
 
-    [Test, MaxTime(10_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_does_not_take_a_copy_that_has_left_the_queue_for_one_carrying_the_same_inclusion_list()
     {
         Block block = PostMergeBlock();
@@ -617,22 +948,22 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000);
+            timeoutMs: LongRequestBudgetMs);
 
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
         payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
-        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        await request.WaitAsync(TimeSpan.FromSeconds(5));
+        await request.WaitAsync(AnswerWait);
 
         object copy = ((Array)QueuedCopiesField!.GetValue(handler)!).GetValue(0)!;
-        await ((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).WaitAsync(TimeSpan.FromSeconds(5));
+        await ((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).WaitAsync(TimeSpan.FromSeconds(10));
         ValueHash256 sameList = (ValueHash256)copy.GetType().GetProperty("InclusionListDigest")!.GetValue(copy)!;
         processingQueue.ClearReceivedCalls();
 
-        await WaitForEarlierCopies(handler, block.Hash!, sameList);
+        await WaitForEarlierCopies(handler, block.Hash!, sameList).WaitAsync(TimeSpan.FromSeconds(10));
 
         await processingQueue.Received(1).WaitUntilRemovedAsync(block.Hash!, false);
     }
@@ -642,7 +973,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// second copy that is answered and gone while the first is still held. A re-submission with another inclusion
     /// list must go on waiting for the held copy, which would otherwise run first and answer it.
     /// </summary>
-    [Test, MaxTime(30_000)]
+    /// <remarks>
+    /// No wall-clock limit: only the first request needs a short budget, and the later ones get a long one so a
+    /// stalled runner cannot answer them SYNCING before their verdicts land. The budget is raised through
+    /// `_timeout`, which the handler reads once per request.
+    /// </remarks>
+    [Test]
     public async Task ValidateBlockAndProcess_waits_for_a_held_copy_with_another_inclusion_list_after_a_same_list_retry_has_finished()
     {
         Block block = PostMergeBlock();
@@ -662,11 +998,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                 {
                     case 1:
                         firstEnqueueEntered.TrySetResult();
-                        firstEnqueueReleased.Task.Wait(TimeSpan.FromSeconds(20));
+                        firstEnqueueReleased.Task.Wait(LongRequestBudgetMs);
                         break;
                     case 2:
                         retryEnqueued.TrySetResult();
-                        retryEnqueueReleased.Task.Wait(TimeSpan.FromSeconds(20));
+                        retryEnqueueReleased.Task.Wait(LongRequestBudgetMs);
                         break;
                     default:
                         resentEnqueued.TrySetResult();
@@ -682,7 +1018,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: true,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 3_000);
+            timeoutMs: TimedOutRequestBudgetMs);
 
         ExecutionPayloadV3 heldPayload = ExecutionPayloadV3.Create(block);
         heldPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
@@ -696,14 +1032,15 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         {
             Task<ResultWrapper<PayloadStatusV1>> held = handler.HandleAsync(heldPayload);
             await firstEnqueueEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.That((await held.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its copy is still on the way to the queue");
+            Assert.That((await held.WaitAsync(AnswerWait)).Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its copy is still on the way to the queue");
+            TimeoutField!.SetValue(handler, TimeSpan.FromMilliseconds(LongRequestBudgetMs));
 
             Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(retryPayload);
             await retryEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Task bothCopiesWait = WaitForEarlierCopies(handler, block.Hash!);
             retryEnqueueReleased.SetResult();
             processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-            Assert.That((await retry.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That((await retry.WaitAsync(AnswerWait)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(() => GetQueuedCopies(handler, block.Hash!).Length, Is.EqualTo(1).After(10_000, 10), "the retry's copy has left the queue and the held copy has not");
             Assert.That(bothCopiesWait.IsCompleted, Is.False, "a wait started while both copies were outstanding must outlast the retry's copy");
 
@@ -722,12 +1059,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         await resentEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
-        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
 
-    [Test, MaxTime(30_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_waits_for_a_copy_with_another_inclusion_list_whose_request_timed_out_in_suggest()
     {
         Block block = PostMergeBlock();
@@ -758,7 +1095,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 3_000,
+            timeoutMs: TimedOutRequestBudgetMs,
             configure: (blockTree, _) => blockTree
                 .SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
                 .Returns(_ => new ValueTask<AddBlockResult>((Interlocked.Increment(ref suggests) == 1 ? timedOutSuggest : resentSuggest).Task)));
@@ -768,8 +1105,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
         resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
 
-        ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(AnswerWait);
         Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its suggest is still pending");
+        TimeoutField!.SetValue(handler, TimeSpan.FromMilliseconds(LongRequestBudgetMs));
 
         Task<ResultWrapper<PayloadStatusV1>> resent = handler.HandleAsync(resentPayload);
         resentSuggest.SetResult(AddBlockResult.AlreadyKnown);
@@ -786,12 +1124,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
-        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
 
-    [Test, MaxTime(30_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_keeps_waiting_for_a_queued_copy_when_a_request_with_another_inclusion_list_times_out_in_suggest()
     {
         Block block = PostMergeBlock();
@@ -826,7 +1164,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 3_000,
+            timeoutMs: LongRequestBudgetMs,
             configure: (blockTree, _) => blockTree
                 .SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
                 .Returns(_ => Interlocked.Increment(ref suggests) switch
@@ -847,10 +1185,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await queuedCopyReachedItsRemovalWait.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        Assert.That((await queuedRequest.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That((await queuedRequest.WaitAsync(AnswerWait)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(TimeSpan.FromSeconds(10));
+        TimeoutField!.SetValue(handler, TimeSpan.FromMilliseconds(TimedOutRequestBudgetMs));
+        ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(AnswerWait);
         Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the second request gives up while its suggest is still pending");
+        TimeoutField!.SetValue(handler, TimeSpan.FromMilliseconds(LongRequestBudgetMs));
 
         Task<ResultWrapper<PayloadStatusV1>> resent = handler.HandleAsync(resentPayload);
 
@@ -867,12 +1207,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
-        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
 
-    [Test, MaxTime(30_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_does_not_share_the_verdict_of_a_sync_copy_queued_while_a_same_list_suggest_is_still_pending()
     {
         Block block = PostMergeBlock();
@@ -903,7 +1243,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 3_000,
+            timeoutMs: TimedOutRequestBudgetMs,
             configure: (blockTree, _) => blockTree
                 .SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
                 .Returns(_ => Interlocked.Increment(ref suggests) == 1
@@ -915,8 +1255,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
         resentPayload.InclusionListTransactions = timedOutPayload.InclusionListTransactions;
 
-        ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(AnswerWait);
         Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its suggest is still pending");
+        TimeoutField!.SetValue(handler, TimeSpan.FromMilliseconds(LongRequestBudgetMs));
 
         Task<ResultWrapper<PayloadStatusV1>> resent = handler.HandleAsync(resentPayload);
 
@@ -932,12 +1273,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
-        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
 
-    [Test, MaxTime(30_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_keeps_the_entry_of_a_queued_copy_when_a_suggest_that_timed_out_adds_the_block()
     {
         Block block = PostMergeBlock();
@@ -963,7 +1304,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 3_000,
+            timeoutMs: LongRequestBudgetMs,
             configure: (blockTree, _) => blockTree
                 .SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
                 .Returns(_ => Interlocked.Increment(ref suggests) == 1
@@ -980,12 +1321,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             Task<ResultWrapper<PayloadStatusV1>> queuedRequest = handler.HandleAsync(queuedPayload);
             await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
             processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-            Assert.That((await queuedRequest.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That((await queuedRequest.WaitAsync(AnswerWait)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
             object[] queuedCopies = GetQueuedCopies(handler, block.Hash!);
             Assert.That(queuedCopies, Has.Length.EqualTo(1), "the copy still in the queue keeps its entry");
             object queuedCopy = queuedCopies[0];
 
-            ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(TimeSpan.FromSeconds(10));
+            TimeoutField!.SetValue(handler, TimeSpan.FromMilliseconds(TimedOutRequestBudgetMs));
+            ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(AnswerWait);
             Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the second request gives up while its suggest is still pending");
 
             timedOutSuggest.SetResult(AddBlockResult.Added);
@@ -1006,7 +1348,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// has to be processed again when the consensus client re-sends it, not answered VALID from the cache while
     /// every forkchoice update says SYNCING.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_does_not_leave_a_verdict_cached_for_a_block_that_never_commits()
     {
         Block block = PostMergeBlock();
@@ -1028,7 +1370,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000);
+            timeoutMs: LongRequestBudgetMs);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1037,13 +1379,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.Exception, new Exception("commit failed")));
 
-        ResultWrapper<PayloadStatusV1> answer = await request.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> answer = await request.WaitAsync(AnswerWait);
         Assert.That(answer.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(ExecutionPayload.Create(block));
         await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        await retry.WaitAsync(TimeSpan.FromSeconds(10));
+        await retry.WaitAsync(AnswerWait);
 
         await processingQueue.Received(2).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
@@ -1053,7 +1395,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// removal reports a failure. That must not take the first copy's answer out of the cache: the block is in the
     /// chain, and the next payload for it is entitled to be answered from what the first copy established.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_keeps_the_answer_of_a_committed_block_when_another_copy_of_it_fails()
     {
         Block block = PostMergeBlock();
@@ -1075,19 +1417,19 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000,
+            timeoutMs: LongRequestBudgetMs,
             wasProcessedNow: () => committed);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        await request.WaitAsync(TimeSpan.FromSeconds(10));
+        await request.WaitAsync(AnswerWait);
 
         // The block is in the chain now, and a copy of it that was queued earlier is skipped as no better than head.
         committed = true;
         processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.ProcessingError, "skipped"));
 
-        ResultWrapper<PayloadStatusV1> again = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> again = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1101,7 +1443,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// A payload whose parent was answered VALID a moment ago finds the parent not yet marked processed. It must wait
     /// for the parent to leave the queue rather than be inserted for beacon sync and answered SYNCING.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    [Test]
     public async Task HandleAsync_waits_for_a_parent_still_committing_instead_of_answering_syncing()
     {
         Block block = PostMergeBlock();
@@ -1130,7 +1472,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000,
+            timeoutMs: LongRequestBudgetMs,
             parentProcessedNow: () => parentCommitted);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
@@ -1143,12 +1485,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         parentRemoved.SetResult();
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
-    [Test, MaxTime(10_000)]
+    [Test]
     public async Task ValidateBlockAndProcess_gives_up_on_a_known_copy_that_never_finishes()
     {
         Block block = PostMergeBlock();
@@ -1164,7 +1506,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             processingQueue: processingQueue,
             timeoutMs: 100);
 
-        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the request times out the way a pending block does");
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
@@ -1220,7 +1562,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Func<bool>? parentProcessedNow = null,
         Action<IBlockTree, IStateReader>? configure = null,
         RecoverSignatures? senderRecovery = null,
-        ISpecProvider? specProvider = null)
+        ISpecProvider? specProvider = null,
+        ILogManager? logManager = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -1299,6 +1642,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             senderRecovery ?? new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
             specProvider ?? Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
     }
 }

@@ -31,6 +31,12 @@ public static class JsonRpcResponseWriter
         SkipValidation = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
+    private static readonly ArrayBufferWriter<byte> DetachedOutput = new(1);
+
+    [ThreadStatic] private static Utf8JsonWriter? _cachedWriter;
+    [ThreadStatic] private static JsonSerializerOptions? _cachedWriterOptions;
+    [ThreadStatic] private static ArrayBufferWriter<byte>? _payloadBuffer;
+    private const int MaxCachedPayloadBufferSize = 16 * 1024;
 
     /// <summary>Writes <paramref name="response"/> as a JSON-RPC response envelope.</summary>
     public static void Write(IBufferWriter<byte> writer, JsonRpcResponse response, JsonSerializerOptions options)
@@ -41,8 +47,40 @@ public static class JsonRpcResponseWriter
             return;
         }
 
-        using Utf8JsonWriter jsonWriter = new(writer, CreateWriterOptions(options));
-        response.WriteTo(jsonWriter, options);
+        Utf8JsonWriter jsonWriter = RentWriter(writer, options);
+        try
+        {
+            response.WriteTo(jsonWriter, options);
+            jsonWriter.Flush();
+        }
+        catch
+        {
+            jsonWriter.Dispose();
+            throw;
+        }
+
+        ReturnWriter(jsonWriter, options);
+    }
+
+    private static void ReturnWriter(Utf8JsonWriter writer, JsonSerializerOptions options)
+    {
+        // Detach so the cached writer does not keep the transport buffer alive.
+        writer.Reset(DetachedOutput);
+        _cachedWriter = writer;
+        _cachedWriterOptions = options;
+    }
+
+    private static Utf8JsonWriter RentWriter(IBufferWriter<byte> output, JsonSerializerOptions options)
+    {
+        Utf8JsonWriter? cached = _cachedWriter;
+        if (cached is null || !ReferenceEquals(_cachedWriterOptions, options))
+        {
+            return new Utf8JsonWriter(output, CreateWriterOptions(options));
+        }
+
+        _cachedWriter = null;
+        cached.Reset(output);
+        return cached;
     }
 
     /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>
@@ -62,6 +100,11 @@ public static class JsonRpcResponseWriter
             return ValueTask.CompletedTask;
         }
 
+        if (response.StreamedResultObservation is { } observation)
+        {
+            return WriteObservedAsync(writer, response, observation, streamable, options, isBatch, cancellationToken);
+        }
+
         if (response.Streaming is { } streaming)
         {
             return WriteDeferredAsync(writer, response, streaming, streamable, options, isBatch, cancellationToken);
@@ -70,6 +113,37 @@ public static class JsonRpcResponseWriter
         return cancellationToken.IsCancellationRequested
             ? CancelledAsync(cancellationToken)
             : WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+    }
+
+    /// <summary>Writes a streamed result as <see cref="WriteAsync(PipeWriter, JsonRpcResponse, JsonSerializerOptions, bool, CancellationToken)"/> does, reporting it to its observer.</summary>
+    private static async ValueTask WriteObservedAsync(
+        PipeWriter writer,
+        JsonRpcResponse response,
+        StreamedResultObservation observation,
+        IStreamableResult streamable,
+        JsonSerializerOptions options,
+        bool isBatch,
+        CancellationToken cancellationToken)
+    {
+        bool written = false;
+        try
+        {
+            if (response.Streaming is { } streaming)
+            {
+                await WriteDeferredAsync(writer, response, streaming, streamable, options, isBatch, cancellationToken);
+                written = streaming.Replacement is null;
+            }
+            else
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+                written = true;
+            }
+        }
+        finally
+        {
+            observation.Complete(written);
+        }
     }
 
     /// <summary>Completes as cancelled with the <see cref="OperationCanceledException"/> itself, as an async method does.</summary>
@@ -196,23 +270,26 @@ public static class JsonRpcResponseWriter
         CancellationToken cancellationToken)
     {
         writer.Write(SuccessEnvelopeStart);
+        StreamedResultObservation? observation = response.StreamedResultObservation;
+        PipeWriter resultWriter = observation?.Wrap(writer) ?? writer;
         StreamableResultStatus? status = null;
         if (streamable is IBatchAwareStreamableResultWithStatus batchAwareStatusStreamable)
         {
-            status = await batchAwareStatusStreamable.WriteToWithStatusAsync(writer, isBatch, cancellationToken);
+            status = await batchAwareStatusStreamable.WriteToWithStatusAsync(resultWriter, isBatch, cancellationToken);
         }
         else if (streamable is IStreamableResultWithStatus statusStreamable)
         {
-            status = await statusStreamable.WriteToWithStatusAsync(writer, cancellationToken);
+            status = await statusStreamable.WriteToWithStatusAsync(resultWriter, cancellationToken);
         }
         else if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
         {
-            await batchAwareStreamable.WriteToAsync(writer, isBatch, cancellationToken);
+            await batchAwareStreamable.WriteToAsync(resultWriter, isBatch, cancellationToken);
         }
         else
         {
-            await streamable.WriteToAsync(writer, cancellationToken);
+            await streamable.WriteToAsync(resultWriter, cancellationToken);
         }
+        observation?.ResultWritten(status);
         if (status is not null)
         {
             writer.Write(StreamStatusSeparator);
@@ -297,15 +374,33 @@ public static class JsonRpcResponseWriter
     }
 
     /// <summary>Serializes a payload once, byte for byte as <see cref="WritePayload{T}"/> writes it in a response.</summary>
+    /// <remarks>
+    /// Writes through the thread's cached writer and buffer, so only the returned array is allocated; a buffer grown
+    /// beyond <see cref="MaxCachedPayloadBufferSize"/> by a large payload is not kept.
+    /// </remarks>
     internal static byte[] SerializePayload<T>(T value, JsonSerializerOptions options)
     {
-        ArrayBufferWriter<byte> buffer = new();
-        using (Utf8JsonWriter writer = new(buffer, CreateWriterOptions(options)))
+        ArrayBufferWriter<byte> buffer = _payloadBuffer ?? new(MaxCachedPayloadBufferSize);
+        _payloadBuffer = null;
+        buffer.ResetWrittenCount();
+
+        Utf8JsonWriter writer = RentWriter(buffer, options);
+        try
         {
             WritePayload(writer, value, options);
+            writer.Flush();
+        }
+        catch
+        {
+            writer.Dispose();
+            throw;
         }
 
-        return buffer.WrittenSpan.ToArray();
+        ReturnWriter(writer, options);
+
+        byte[] payload = buffer.WrittenSpan.ToArray();
+        if (buffer.Capacity <= MaxCachedPayloadBufferSize) _payloadBuffer = buffer;
+        return payload;
     }
 
     internal static bool TryWriteSimpleValue<T>(Utf8JsonWriter writer, T value)

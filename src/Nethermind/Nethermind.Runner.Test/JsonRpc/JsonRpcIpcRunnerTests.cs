@@ -3,8 +3,8 @@
 
 #nullable enable
 using System;
+using System.Diagnostics;
 using System.IO.Abstractions;
-using System.IO.Pipelines;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
@@ -29,11 +29,74 @@ namespace Nethermind.Runner.Test.JsonRpc;
 public class JsonRpcIpcRunnerTests
 {
     [Test]
-    public async Task HandleIpcConnection_logs_disconnect_not_server_error_when_client_drops_mid_response()
+    public async Task AcceptConnectionsAsync_keeps_accepting_after_an_accept_error()
+    {
+        TestLogger testLogger = new();
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+        using Socket accepted = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        TaskCompletionSource<Socket> onAccepted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int attempts = 0;
+
+        async ValueTask<Socket> Accept(CancellationToken token)
+        {
+            switch (++attempts)
+            {
+                case <= 3:
+                    throw new SocketException((int)SocketError.TooManyOpenSockets);
+                case 4:
+                    return accepted;
+                default:
+                    await Task.Delay(Timeout.Infinite, token);
+                    throw new UnreachableException();
+            }
+        }
+
+        Task loop = JsonRpcIpcRunner.AcceptConnectionsAsync(Accept, socket => onAccepted.TrySetResult(socket), new(testLogger), cts.Token);
+
+        Task first = await Task.WhenAny(onAccepted.Task, loop);
+        cts.Cancel();
+        await loop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.SameAs(onAccepted.Task), "the accept loop must survive a failed accept");
+            Assert.That(onAccepted.Task.IsCompletedSuccessfully ? onAccepted.Task.Result : null, Is.SameAs(accepted));
+            Assert.That(testLogger.LogList.Count(l => l.StartsWith("Failed to accept an IPC connection (TooManyOpenSockets)")), Is.EqualTo(1),
+                "a persistent accept error must be logged once, not on every retry");
+        }
+    }
+
+    private static readonly TestCaseData[] ShutdownAcceptErrors =
+    [
+        new TestCaseData(new SocketException((int)SocketError.OperationAborted)).SetName("listener disposed while accepting"),
+        new TestCaseData(new ObjectDisposedException(nameof(Socket))).SetName("listener already disposed"),
+    ];
+
+    [TestCaseSource(nameof(ShutdownAcceptErrors))]
+    public async Task AcceptConnectionsAsync_stops_quietly_on_shutdown(Exception acceptError)
+    {
+        TestLogger testLogger = new();
+        bool accepted = false;
+
+        await JsonRpcIpcRunner.AcceptConnectionsAsync(
+            _ => ValueTask.FromException<Socket>(acceptError),
+            _ => accepted = true,
+            new(testLogger),
+            CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.False);
+            Assert.That(testLogger.LogList, Has.None.StartsWith("Failed to accept"));
+        }
+    }
+
+    [Test]
+    public async Task HandleIpcConnection_logs_disconnect_not_server_error_when_client_drops_mid_response([Values] bool clientClosesBeforeResponse)
     {
         TestLogger testLogger = new();
 
-        await HandleSingleRequest(new JsonRpcConfig(), testLogger);
+        await HandleSingleRequest(new JsonRpcConfig(), testLogger, clientClosesBeforeResponse);
 
         using (Assert.EnterMultipleScope())
         {
@@ -61,15 +124,16 @@ public class JsonRpcIpcRunnerTests
 
     /// <summary>
     /// Sends one request over a Unix domain socket and returns the context the processor received.
-    /// The processor then fails as if the client dropped mid-response, which ends the connection.
+    /// The processor then fails as if the client dropped mid-response, or writes its response after the client has closed.
     /// </summary>
-    private static async Task<JsonRpcContext?> HandleSingleRequest(IJsonRpcConfig config, TestLogger testLogger)
+    private static async Task<JsonRpcContext?> HandleSingleRequest(IJsonRpcConfig config, TestLogger testLogger, bool clientClosesBeforeResponse = false)
     {
         JsonRpcContext? context = null;
+        using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
         processor
             .ProcessAsync(
-                Arg.Any<PipeReader>(),
+                Arg.Any<ReadOnlyMemory<byte>>(),
                 Arg.Any<JsonRpcContext>(),
                 Arg.Any<IJsonRpcResponseSink>(),
                 Arg.Any<JsonRpcProcessingOptions>(),
@@ -77,7 +141,11 @@ public class JsonRpcIpcRunnerTests
             .Returns(callInfo =>
             {
                 context = callInfo.ArgAt<JsonRpcContext>(1);
-                return ValueTask.FromException(new ObjectDisposedException(typeof(IpcSocketMessageStream).FullName));
+                if (!clientClosesBeforeResponse)
+                    return ValueTask.FromException(new ObjectDisposedException(typeof(IpcSocketMessageStream).FullName));
+
+                client.Dispose();
+                return callInfo.Arg<IJsonRpcResponseSink>().WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), callInfo.Arg<CancellationToken>());
             });
 
         IConfigProvider configProvider = Substitute.For<IConfigProvider>();
@@ -97,7 +165,6 @@ public class JsonRpcIpcRunnerTests
         listener.Bind(endPoint);
         listener.Listen(1);
 
-        using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         await client.ConnectAsync(endPoint);
         using Socket server = await listener.AcceptAsync();
 
@@ -178,6 +245,19 @@ public class JsonRpcIpcRunnerTests
         await recorder.SlowAnswered.WaitAsync(cts.Token);
     }
 
+    [Test]
+    public async Task HandleIpcConnection_closes_the_connection_after_answering_a_half_closed_client()
+    {
+        PipelinedRequestRecorder recorder = new(slowGate: Task.CompletedTask);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+
+        await using IpcConnection connection = await IpcConnection.OpenAsync(recorder.Processor, [ModuleType.Eth], cts.Token);
+        await connection.SendAsync("fast"u8.ToArray(), cts.Token);
+        string received = await connection.CloseSendAndReadToEndAsync(cts.Token);
+
+        Assert.That(received, Does.Contain("\"result\""), "a half-closed client must get its response and then the end of the stream");
+    }
+
     private sealed class IpcConnection : IAsyncDisposable
     {
         private readonly TempPath _path;
@@ -186,6 +266,7 @@ public class JsonRpcIpcRunnerTests
         private readonly IpcSocketMessageStream _sendStream;
         private readonly JsonRpcIpcRunner _runner;
         private readonly Task _serving;
+        private bool _sendClosed;
 
         private IpcConnection(TempPath path, Socket listener, Socket client, JsonRpcIpcRunner runner, Task serving)
         {
@@ -235,14 +316,31 @@ public class JsonRpcIpcRunnerTests
         public async Task SendAsync(byte[] message, CancellationToken token)
         {
             await _sendStream.WriteAsync(message, token);
-            await _sendStream.WriteEndOfMessageAsync();
+            await _sendStream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
+        }
+
+        public async Task<string> CloseSendAndReadToEndAsync(CancellationToken token)
+        {
+            _client.Shutdown(SocketShutdown.Send);
+            _sendClosed = true;
+            await _serving.WaitAsync(token);
+
+            byte[] buffer = new byte[1024];
+            StringBuilder received = new();
+            int read;
+            while ((read = await _client.ReceiveAsync(buffer, SocketFlags.None, token)) > 0)
+            {
+                received.Append(Encoding.UTF8.GetString(buffer, 0, read));
+            }
+
+            return received.ToString();
         }
 
         public async ValueTask DisposeAsync()
         {
             try
             {
-                _client.Shutdown(SocketShutdown.Send);
+                if (!_sendClosed) _client.Shutdown(SocketShutdown.Send);
                 await _serving;
             }
             finally

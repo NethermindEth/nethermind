@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -29,7 +32,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 {
     protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
     protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
-    protected override ulong SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
+    protected override ulong SyncConfigBarrierCalc =>
+        ulong.Max(_syncConfig.AncientBlockAccessListsBarrierCalc, SkippedBelow);
     protected override Func<bool> HasPivot =>
         () =>
         {
@@ -38,7 +42,17 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                    (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotNumber, pivotHash));
         };
 
+    /// <summary>How many different nodes must report an access list unavailable before the height is left as a gap.</summary>
+    /// <remarks>
+    /// Peers keep access lists only for their own retention window, which can be shorter than this node's, so an old
+    /// height may be unavailable everywhere. Leaving it out keeps the feed from stalling; the store then reports it
+    /// missing, as it would a pruned one. Heights inside the chain's minimum BAL retention window are never left out,
+    /// since every peer must serve them.
+    /// </remarks>
+    internal const int MaxUnavailableResponses = 8;
+
     private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.BlockAccessLists, 0, true);
+    private readonly ConcurrentDictionary<ulong, HashSet<PublicKey>> _unavailable = new();
 
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
@@ -46,15 +60,24 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private readonly IBlockAccessListStore _blockAccessListStore;
     private readonly ISyncPointers _syncPointers;
     private readonly ISyncPeerPool _syncPeerPool;
+    private readonly IHistoryPruner _historyPruner;
     private readonly BlockAccessListDownloadStrategy _blockAccessListDownloadStrategy;
+    private readonly BlockAccessListServingWindow _servingWindow;
     private readonly bool _blockAccessListsEverEnabled;
 
     private SyncStatusList _syncStatusList;
     private bool _barrierFallbackLogged;
+    private ulong _unavailableCutoff;
 
     private bool ShouldFinish => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded;
     private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? ulong.MaxValue) <= _barrier;
     private bool PivotHasNoBlockAccessLists => FindPivotHeader(out _, out _) is { BlockAccessListHash: null };
+    private ulong SkippedBelow => GetPruningCutoff(_historyPruner, _blockTree.SyncPivot.BlockNumber);
+
+    private static ulong GetPruningCutoff(IHistoryPruner historyPruner, ulong pivot) =>
+        ulong.Min(ulong.Max(historyPruner.BalCutoffBlockNumber ?? 0, historyPruner.CutoffBlockNumber ?? 0), pivot);
+
+    internal int UnavailableHeightsCount => _unavailable.Count;
 
     public override bool IsFinished => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded || PivotHasNoBlockAccessLists;
     public override string FeedName => nameof(BlockAccessListsSyncFeed);
@@ -67,6 +90,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         ISyncPeerPool syncPeerPool,
         ISyncConfig syncConfig,
         ISyncReport syncReport,
+        IHistoryPruner historyPruner,
+        BlockAccessListServingWindow servingWindow,
         [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         ILogManager logManager)
         : base(metadataDb, specProvider, logManager?.GetClassLogger<BlockAccessListsSyncFeed>() ?? default)
@@ -77,7 +102,9 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncConfig = syncConfig;
         _syncReport = syncReport;
         _blockTree = blockTree;
-        _blockAccessListDownloadStrategy = new(blockTree, syncReport);
+        _historyPruner = historyPruner;
+        _blockAccessListDownloadStrategy = new(blockTree, syncReport, historyPruner);
+        _servingWindow = servingWindow;
         _blockAccessListsEverEnabled = specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
 
         if (!_syncConfig.FastSync)
@@ -106,7 +133,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     }
 
     /// <summary>
-    /// Returns the configured barrier, raised to the last block before EIP-7928 activation when that is higher.
+    /// Returns the configured barrier, raised to the block access list pruning cutoff or to the last block before
+    /// EIP-7928 activation when either is higher.
     /// </summary>
     /// <remarks>
     /// No block below the activation has an access list, so the sync stops there instead of walking down to genesis.
@@ -115,7 +143,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     /// </remarks>
     private ulong ResolveBarrier(bool logFallback)
     {
-        ulong barrier = _syncConfig.AncientBlockAccessListsBarrierCalc;
+        ulong barrier = SyncConfigBarrierCalc;
         BlockHeader? pivotHeader = FindPivotHeader(out ulong pivotNumber, out _);
         if (pivotHeader is null || barrier >= pivotNumber || !_specProvider.GetSpec(pivotHeader).BlockLevelAccessListsEnabled)
         {
@@ -290,11 +318,21 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     {
         bool hasBreachedProtocol = false;
         int validResponsesCount = 0;
+        int gaps = 0;
+        ulong lowestGap = ulong.MaxValue;
+        ulong highestGap = 0;
+        RemoveSkippedUnavailable();
 
         BlockInfo?[] blockInfos = batch.Infos;
         for (int i = 0; i < blockInfos.Length; i++)
         {
             BlockInfo? blockInfo = blockInfos[i];
+            if (blockInfo is not null && blockInfo.BlockNumber < SkippedBelow)
+            {
+                MarkSkipped(blockInfo.BlockNumber);
+                continue;
+            }
+
             bool hasAccessListResponse = (batch.Response?.Count ?? 0) > i;
             byte[]? accessListRlp = hasAccessListResponse
                 ? batch.Response![i]
@@ -312,8 +350,18 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 bool isValid = !hasBreachedProtocol && IsValidAccessList(blockInfo, accessListRlp, out errorMessage);
                 if (isValid)
                 {
-                    _blockAccessListStore.Insert(blockInfo.BlockNumber, blockInfo.BlockHash, accessListRlp);
-                    _syncStatusList.MarkInserted(blockInfo.BlockNumber);
+                    // Share the store's range-deletion lock so deletion cannot pass between the cutoff check and write.
+                    lock (_blockAccessListStore.WriteLock)
+                    {
+                        if (blockInfo.BlockNumber < SkippedBelow)
+                        {
+                            MarkSkipped(blockInfo.BlockNumber);
+                            continue;
+                        }
+
+                        _blockAccessListStore.Insert(blockInfo.BlockNumber, blockInfo.BlockHash, accessListRlp);
+                    }
+                    MarkInserted(blockInfo.BlockNumber);
                     validResponsesCount++;
                 }
                 else
@@ -335,18 +383,83 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                     _syncStatusList.MarkPending(blockInfo);
                 }
             }
-            else
+            else if (blockInfo is not null)
             {
-                if (blockInfo is not null)
+                if (hasAccessListResponse && IsUnavailableEverywhere(blockInfo.BlockNumber, batch.ResponseSourcePeer?.SyncPeer))
+                {
+                    MarkInserted(blockInfo.BlockNumber);
+                    gaps++;
+                    lowestGap = ulong.Min(lowestGap, blockInfo.BlockNumber);
+                    highestGap = ulong.Max(highestGap, blockInfo.BlockNumber);
+                }
+                else
                 {
                     _syncStatusList.MarkPending(blockInfo);
                 }
             }
         }
 
+        if (gaps > 0 && _logger.IsWarn)
+            _logger.Warn($"Leaving out {gaps} block access lists between {lowestGap} and {highestGap}: unavailable from {MaxUnavailableResponses} peers.");
+
         UpdateSyncReport();
         LogPostProcessingBatchInfo(batch, validResponsesCount);
         return validResponsesCount;
+    }
+
+    /// <summary>Records which node reported the height unavailable and reports when enough different nodes have.</summary>
+    /// <remarks>Keyed on the node ID, not the session, so a node that reconnects counts once.</remarks>
+    private bool IsUnavailableEverywhere(ulong blockNumber, ISyncPeer? peer)
+    {
+        if (peer?.Node?.Id is not { } nodeId || _servingWindow.Contains(blockNumber)) return false;
+
+        lock (_unavailable)
+        {
+            if (blockNumber < SkippedBelow || _syncStatusList.IsInserted(blockNumber)) return false;
+
+            HashSet<PublicKey> peers = _unavailable.GetOrAdd(blockNumber, static _ => []);
+            peers.Add(nodeId);
+            if (peers.Count < MaxUnavailableResponses) return false;
+
+            _unavailable.TryRemove(blockNumber, out _);
+            return true;
+        }
+    }
+
+    /// <summary>Drops tracking for heights the feed no longer requests because the pruning cutoff has passed them.</summary>
+    private void RemoveSkippedUnavailable()
+    {
+        ulong skippedBelow = SkippedBelow;
+        if (skippedBelow == Volatile.Read(ref _unavailableCutoff)) return;
+
+        lock (_unavailable)
+        {
+            skippedBelow = SkippedBelow;
+            if (skippedBelow > _unavailableCutoff)
+            {
+                foreach (KeyValuePair<ulong, HashSet<PublicKey>> entry in _unavailable)
+                {
+                    if (entry.Key < skippedBelow) _unavailable.TryRemove(entry.Key, out _);
+                }
+            }
+
+            Volatile.Write(ref _unavailableCutoff, skippedBelow);
+        }
+    }
+
+    private void MarkSkipped(ulong blockNumber)
+    {
+        MarkInserted(blockNumber);
+        _syncReport.FastBlockAccessLists.IncrementSkipped();
+    }
+
+    private void MarkInserted(ulong blockNumber)
+    {
+        lock (_unavailable)
+        {
+            _syncStatusList.MarkInserted(blockNumber);
+            _unavailable.TryRemove(blockNumber, out _);
+        }
     }
 
     private void LogPostProcessingBatchInfo(BlockAccessListsSyncBatch batch, int validResponsesCount)
@@ -361,12 +474,19 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncReport.FastBlockAccessLists.CurrentQueued = _syncStatusList.QueueSize;
     }
 
-    private class BlockAccessListDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport) : IBlockDownloadStrategy
+    private class BlockAccessListDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport, IHistoryPruner historyPruner) : IBlockDownloadStrategy
     {
         private ulong _lowestQueriedBlockWithAccessLists = ulong.MaxValue;
 
         public bool ShouldDownloadBlock(BlockInfo info)
         {
+            // The pruner has moved past these heights already, so an access list stored here would never be deleted.
+            if (info.BlockNumber < GetPruningCutoff(historyPruner, blockTree.SyncPivot.BlockNumber))
+            {
+                syncReport.FastBlockAccessLists.IncrementSkipped();
+                return false;
+            }
+
             if (info.BlockNumber > Interlocked.Read(ref _lowestQueriedBlockWithAccessLists))
             {
                 return true;

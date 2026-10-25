@@ -96,9 +96,10 @@ jobs:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           $releaseInfo = curl -sL $env:ASSETS_URL | ConvertFrom-Json
-          $releaseUrl = $releaseInfo | Where-Object -Property name -like '*windows-x64.zip' | Select-Object -ExpandProperty browser_download_url
+          $arm64Url = $releaseInfo | Where-Object -Property name -like '*windows-arm64.zip' | Select-Object -ExpandProperty browser_download_url
+          $x64Url = $releaseInfo | Where-Object -Property name -like '*windows-x64.zip' | Select-Object -ExpandProperty browser_download_url
           curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
-          ./wingetcreate update Nethermind.Nethermind -s -v $env:TAG_NAME -u $releaseUrl
+          ./wingetcreate update Nethermind.Nethermind -s -v $env:TAG_NAME -u "$arm64Url|arm64" "$x64Url|x64"
 
   publish-homebrew:
     name: Publish on Homebrew
@@ -155,6 +156,7 @@ jobs:
     if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       id-token: write
     steps:
@@ -167,15 +169,28 @@ jobs:
         uses: actions/setup-dotnet@v6
 
       - name: Download Nethermind reference assemblies
-        id: download
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          json=$(curl -s "$ASSETS_URL")
-          asset=$(echo "$json" | jq -r '.[] | select(.name | contains("ref-assemblies"))')
-          name=$(echo "$asset" | jq -r '.name')
-          url=$(echo "$asset" | jq -r '.browser_download_url')
-          curl -sL $url -o refasm.zip
-          unzip refasm.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
-          echo "asset-name=$name" >> $GITHUB_OUTPUT
+          sha=$(git rev-parse HEAD)
+          name=nethermind-$TAG_NAME-${sha:0:8}-ref-assemblies-package
+          # Only release workflow runs are trusted, as any run, e.g., from a fork PR, can upload an artifact of the same name
+          run_ids=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?head_sha=$sha&event=workflow_dispatch" \
+            --jq '.workflow_runs[].id')
+          for id in $run_ids; do
+            artifact_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?name=$name" --jq '.artifacts[] | select(.expired | not) | .id')
+            if [[ -n "$artifact_id" ]]; then
+              run_id=$id
+              break
+            fi
+          done
+          if [[ -z "$run_id" ]]; then
+            echo "::error::Artifact $name not found"
+            exit 1
+          fi
+          refasm_dir="$(mktemp -d)"
+          gh run download "$run_id" -n "$name" -D "$refasm_dir"
+          unzip "$refasm_dir"/*.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
 
       - name: NuGet login
         uses: nuget/login@v1
@@ -196,15 +211,3 @@ jobs:
           test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.Kademlia.*.snupkg' -print -quit)"
           dotnet nuget push "$package_output/*.nupkg" --skip-duplicate \
             -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json
-
-      - name: Create GitHub app token
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
-      - name: Delete asset from release
-        env:
-          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
-        run: gh release delete-asset "$TAG_NAME" "${{ steps.download.outputs.asset-name }}" -y

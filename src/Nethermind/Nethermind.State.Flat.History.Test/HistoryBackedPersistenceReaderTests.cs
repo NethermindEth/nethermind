@@ -20,6 +20,7 @@ public class HistoryBackedPersistenceReaderTests
     private static readonly Address Address = new("0x0000000000000000000000000000000000000abc");
     private static readonly Address ContractAddress = new("0x0000000000000000000000000000000000000c0d");
     private static readonly UInt256 Slot = 7;
+    private const long MaxEmptyClearsCacheBytes = 64;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
@@ -202,12 +203,31 @@ public class HistoryBackedPersistenceReaderTests
             "an account without storage or code takes the shared empty-hash instances; only a contract materializes its two hashes");
     }
 
+    [Test]
+    public void StorageClearsScopeCache_BeforeAnyStorageRead_AllocatesNoMemo()
+    {
+        long allocated = MeasureAllocatedBytes(static () => _ = new StorageClearsScopeCache());
+
+        Assert.That(allocated, Is.LessThan(MaxEmptyClearsCacheBytes),
+            "a scope that reads no storage must not build the per-account clears memos");
+    }
+
+    /// <remarks>
+    /// Takes the minimum over several calls: one call can also pay one-off runtime costs
+    /// (lazy thread-local or static initialization) that do not belong to the code under test.
+    /// </remarks>
     private static long MeasureAllocatedBytes(Action action)
     {
         action();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        action();
-        return GC.GetAllocatedBytesForCurrentThread() - before;
+        long min = long.MaxValue;
+        for (int i = 0; i < 5; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            action();
+            min = Math.Min(min, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        return min;
     }
 
     private HistoryBackedPersistenceReader Reader(ulong block) => Reader(block, new HistoryScopeGate());

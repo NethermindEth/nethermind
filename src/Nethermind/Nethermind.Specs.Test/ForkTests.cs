@@ -74,6 +74,19 @@ public class ForkTests
     }
 
     [Test]
+    public void Eip4758Prototype_enables_only_sendall_on_top_of_Amsterdam()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip4758Prototype.Instance.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(Eip4758Prototype.Instance.IsEip4758Enabled, Is.True);
+            Assert.That(Eip4758Prototype.Instance.IsEip7805Enabled, Is.False);
+            Assert.That(SpecNameParser.Parse("Eip4758Prototype"), Is.SameAs(Eip4758Prototype.Instance));
+            Assert.That(Bogota.Instance.IsEip4758Enabled, Is.False);
+        }
+    }
+
+    [Test]
     public void Frame_transaction_extension_prototypes_each_add_one_eip_to_Eip8141Prototype()
     {
         using (Assert.EnterMultipleScope())
@@ -103,6 +116,22 @@ public class ForkTests
             Assert.That(Fork.GetLatest().IsEip8250Enabled, Is.False);
             Assert.That(Fork.GetLatest().IsEip8272Enabled, Is.False);
             Assert.That(Fork.GetLatest().IsEip7906Enabled, Is.False);
+        }
+    }
+
+    [Test]
+    public void FramesDevnet1_enables_frame_transactions_with_all_their_extensions()
+    {
+        IReleaseSpec spec = SpecNameParser.Parse("FramesDevnet1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec, Is.SameAs(FramesDevnet1.Instance));
+            Assert.That(FramesDevnet1.Instance.Parent, Is.SameAs(Eip8141Prototype.Instance));
+            Assert.That(spec.IsEip8141Enabled, Is.True);
+            Assert.That(spec.IsEip8250Enabled, Is.True);
+            Assert.That(spec.IsEip8272Enabled, Is.True);
+            Assert.That(spec.IsEip7906Enabled, Is.True);
+            Assert.That(spec.IsEip7805Enabled, Is.False);
         }
     }
 

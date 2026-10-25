@@ -76,6 +76,7 @@ public class Eth72ProtocolHandler(
     private const int RequestToAnnouncementRatioThreshold = 5;
     private const int MinCellRequestsBeforeRatioDisconnect = 5;
     private const int MaxCountedBlobAnnouncements = 4096;
+    internal const int MaxUnansweredCellRequestRestores = 2;
     private const int MaxPendingCellRequests = 1024;
     internal const int MaxSentCellRequests = 2048;
     private const int MaxPendingCellRequestWork = 4096;
@@ -100,6 +101,8 @@ public class Eth72ProtocolHandler(
     private readonly Lazy<ClockCache<ValueHash256, BlobCellMask>> _announcedBlobTransactionMasks = new(
         static () => new(MemoryAllowance.TxHashCacheSize, lockPartition: 1));
     private readonly Lazy<ClockCache<ValueHash256, DateTimeOffset>> _partialCellResponseBackoff = new(
+        static () => new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1));
+    private readonly Lazy<ClockCache<ValueHash256, int>> _unansweredCellRequests = new(
         static () => new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1));
     private readonly Queue<CellStateKey> _pendingCellRequestOrder = new();
     private readonly Queue<CellStateKey> _sentCellRequestOrder = new();
@@ -343,7 +346,7 @@ public class Eth72ProtocolHandler(
         return true;
     }
 
-    protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
+    protected override void SendNewTransactionsCore(ReadOnlySpan<Transaction> txs, bool sendFullTx)
     {
         if (sendFullTx)
         {
@@ -351,7 +354,7 @@ public class Eth72ProtocolHandler(
             return;
         }
 
-        using ArrayPoolList<Transaction> pendingTransactions = new(NewPooledTransactionHashesMessage72.MaxCount);
+        using ArrayPoolList<Transaction> pendingTransactions = new(Math.Min(txs.Length, NewPooledTransactionHashesMessage72.MaxCount));
         BlobCellMask? pendingMask = null;
         foreach (Transaction tx in txs)
         {
@@ -472,7 +475,7 @@ public class Eth72ProtocolHandler(
             if (shouldRequestTx
                 && (_blobSupportEnabled || !supportsBlobs))
             {
-                TxShapeAnnouncements.Set(hash, (txSize, txType));
+                SetTxShape(in hash, (txSize, txType));
                 hashesToRequest ??= new(Math.Min(hashes.Length - i, 256));
 
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
@@ -806,6 +809,14 @@ public class Eth72ProtocolHandler(
             // retry without taking away what marks the peer as a provider.
             ParkCellRequest(key, availableMask, restoreMask: BlobCellMask.Empty);
             return;
+        }
+
+        if (_unansweredCellRequests.IsValueCreated)
+        {
+            lock (_cellStateLock)
+            {
+                _unansweredCellRequests.Value.Delete(key);
+            }
         }
 
         bool applied = _sparseBlobPoolPeerRegistry.TryApplyRecordedCells(hash);
@@ -1286,7 +1297,18 @@ public class Eth72ProtocolHandler(
                 ParkCellRequest(sentRequest.Hash, sentRequest.Mask, restoreMask: BlobCellMask.Empty);
                 break;
             case CellRequeueReason.PeerUnanswered:
-                BackOffAndParkCellRequest(requestedHash, sentRequest.Mask);
+                if (CountUnansweredCellRequest(sentRequest.Hash) > MaxUnansweredCellRequestRestores)
+                {
+                    // A peer that keeps announcing cells it never serves stops being a provider for
+                    // this transaction; the cells are still requested from other providers.
+                    _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, requestedHash);
+                    ParkCellRequest(sentRequest.Hash, sentRequest.Mask, restoreMask: BlobCellMask.Empty);
+                }
+                else
+                {
+                    BackOffAndParkCellRequest(requestedHash, sentRequest.Mask);
+                }
+
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(reason), reason, null);
@@ -1307,6 +1329,19 @@ public class Eth72ProtocolHandler(
     /// </remarks>
     private void BackOffAndParkCellRequest(Hash256 hash, BlobCellMask parkMask) =>
         ParkCellRequest(hash.ValueHash256, parkMask, _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash));
+
+    /// <summary>Records one more unanswered cell request for a transaction since the peer last delivered its cells.</summary>
+    /// <returns>The number of consecutive unanswered requests, including this one.</returns>
+    private int CountUnansweredCellRequest(ValueHash256 hash)
+    {
+        ClockCache<ValueHash256, int> unanswered = _unansweredCellRequests.Value;
+        lock (_cellStateLock)
+        {
+            int count = unanswered.TryGet(hash, out int previous) ? previous + 1 : 1;
+            unanswered.Set(hash, count);
+            return count;
+        }
+    }
 
     /// <summary>Holds cells back from the announcement re-request path until the retry falls due.</summary>
     /// <param name="key">The transaction whose cells are parked.</param>
@@ -1719,7 +1754,7 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        if (TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape)
+        if (TryTakeTxShape(tx.Hash!, out (int Size, TxType Type) txShape)
             && (!MatchesAnnouncedTransactionSize(tx, txShape.Size) || tx.Type != txShape.Type))
         {
             return false;

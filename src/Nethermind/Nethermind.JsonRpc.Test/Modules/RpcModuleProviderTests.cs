@@ -45,9 +45,6 @@ public class RpcModuleProviderTests
         _context = new JsonRpcContext(RpcEndpoint.Http);
     }
 
-    [TearDown]
-    public void TearDown() => _context?.Dispose();
-
     private static RpcModuleProvider CreateProvider(IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IReadOnlyList<RpcModuleInfo>? rpcModules = null) =>
         new(fileSystem ?? Substitute.For<IFileSystem>(), config ?? new JsonRpcConfig(), new EthereumJsonSerializer(), rpcModules ?? [], LimboLogs.Instance);
 

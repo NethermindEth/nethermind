@@ -185,7 +185,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip7934TransitionTimestamp { get; set; }
     public int? Eip7934MaxRlpBlockSize { get; set; }
 
-    public SortedSet<BlobScheduleSettings> BlobSchedule { get; set; } = [];
+    public List<BlobScheduleSettings>? BlobSchedule { get; set; } = [];
     public ulong? Eip7594TransitionTimestamp { get; set; }
     public ulong? Eip7939TransitionTimestamp { get; set; }
     public ulong? Eip8037TransitionTimestamp { get; set; }
@@ -197,6 +197,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip8024TransitionTimestamp { get; set; }
     public ulong? Eip8246TransitionTimestamp { get; set; }
     public ulong? Eip8253TransitionTimestamp { get; set; }
+    public ulong? Eip7709TransitionTimestamp { get; set; }
     public ulong? Eip8038TransitionTimestamp { get; set; }
     public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip8141TransitionTimestamp { get; set; }
@@ -204,10 +205,14 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? Eip8272TransitionTimestamp { get; set; }
     public ulong? Eip7906TransitionTimestamp { get; set; }
+    public ulong? Eip8151TransitionTimestamp { get; set; }
     public ulong? Eip7979TransitionTimestamp { get; set; }
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
     public ulong? Eip2780TransitionTimestamp { get; set; }
+    public ulong? Eip5920TransitionTimestamp { get; set; }
+    public ulong? Eip8116TransitionTimestamp { get; set; }
+    public ulong? Eip8360TransitionTimestamp { get; set; }
     public ulong? Eip3298TransitionTimestamp { get; set; }
     public ulong? Eip8131TransitionTimestamp { get; set; }
     public ulong? Eip8279TransitionTimestamp { get; set; }
@@ -215,6 +220,9 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip7805TransitionTimestamp { get; set; }
 
     public ulong? Eip8298TransitionTimestamp { get; set; }
+
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? Eip4758TransitionTimestamp { get; set; }
 
     /// <summary>
     /// Catch-all for top-level chainspec params keys that don't map to an explicit property —

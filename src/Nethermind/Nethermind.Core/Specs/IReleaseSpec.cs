@@ -342,6 +342,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7906Enabled { get; }
 
         /// <summary>
+        /// EIP-8151: ecRecover returns the recovered address only when its raw code is empty or an EIP-7702 delegation.
+        /// </summary>
+        bool IsEip8151Enabled { get; }
+
+        /// <summary>
         /// EIP-7979: call and return opcodes (<c>CALLSUB</c>, <c>CALLDEST</c>, <c>RETURNSUB</c>) with a per-frame return stack.
         /// </summary>
         /// <remarks>Assumes EIP-8024 is active: a <c>CALLDEST</c> byte in a valid EIP-8024 immediate is never a destination.</remarks>
@@ -522,6 +527,17 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-5920: PAY opcode (<c>0xfc</c>), transferring ether to an address without executing its code.
+        /// </summary>
+        /// <remarks>Requires EIP-2929 and EIP-7523; the opcode's access and new-account rules assume both.</remarks>
+        public bool IsEip5920Enabled { get; }
+
+        /// <summary>
+        /// EIP-8360: TCREATE opcode, creating contracts whose code, nonce and storage exist only for one transaction.
+        /// </summary>
+        bool IsEip8360Enabled { get; }
+
+        /// <summary>
         /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
         /// </summary>
         /// <remarks>
@@ -541,6 +557,15 @@ namespace Nethermind.Core.Specs
         /// EIP-8298: SETCODEFROM code reuse instruction
         /// </summary>
         public bool IsEip8298Enabled { get; }
+
+        /// <summary>
+        /// EIP-4758: Deactivate SELFDESTRUCT (SENDALL).
+        /// </summary>
+        /// <remarks>
+        /// SELFDESTRUCT only moves the executing account's whole balance to the beneficiary and halts. It never
+        /// destroys the account, removing the same-transaction deletion EIP-6780 kept and the EIP-8246 tombstone.
+        /// </remarks>
+        public bool IsEip4758Enabled => false;
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.

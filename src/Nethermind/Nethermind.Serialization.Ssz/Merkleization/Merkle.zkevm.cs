@@ -15,14 +15,14 @@ public static partial class Merkle
 {
     /// <summary>Hashes the 64-byte concatenation of two chunks with SHA-256 into <paramref name="parent"/>, which may alias either chunk.</summary>
     /// <remarks>
-    /// ZisK's SHA-256 compression precompile when the ZisK guest switches on <see cref="ZiskSha256FFlag"/>, SP1's
-    /// extend and compress precompiles when the SP1 guest switches on <see cref="Sp1Sha256Flag"/>, and the SHA-256
-    /// accelerator every zkVM provides otherwise.
+    /// The zkVM's SHA-256 compression when the ZisK guest switches on <see cref="ZiskSha256FFlag"/> or the OpenVM
+    /// guest <see cref="OpenVmSha256Flag"/>, SP1's extend and compress precompiles when the SP1 guest switches on
+    /// <see cref="Sp1Sha256Flag"/>, and the SHA-256 accelerator every zkVM provides otherwise.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void HashPair(in UInt256 left, in UInt256 right, out UInt256 parent)
     {
-        if (ZiskSha256FFlag.IsActive)
+        if (ZiskSha256FFlag.IsActive || OpenVmSha256Flag.IsActive)
             HashPairWithSha256F(in left, in right, out parent);
         else if (Sp1Sha256Flag.IsActive)
             HashPairWithSp1Sha256(in left, in right, out parent);
@@ -45,15 +45,99 @@ public static partial class Merkle
 
     /// <summary>Writes the parent of two nodes at <paramref name="level"/> into <paramref name="parent"/>, which may alias either child.</summary>
     /// <remarks>
-    /// Hashes two zero subtrees rather than looking them up as the host does: padding never forms such a pair
-    /// in the level loop, so only zero chunks in the data do, and testing every pair costs the guest more than
-    /// the rare hash it saves.
+    /// Padding never forms a pair of zero subtrees in the level loop, so only zero chunks in the data do.
+    /// ZisK looks such pairs up as the host does: its compressions fill Sha256f instances of fixed capacity,
+    /// so the two each pair saves can drop a whole instance from the proof. The other zkVMs hash them, as
+    /// testing every pair costs them more than the rare hash it saves.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void HashNodes(in UInt256 left, in UInt256 right, int level, out UInt256 parent) =>
-        HashPair(in left, in right, out parent);
+    private static void HashNodes(in UInt256 left, in UInt256 right, int level, out UInt256 parent)
+    {
+        if (ZiskSha256FFlag.IsActive && IsZeroSubtree(in left, level) && IsZeroSubtree(in right, level))
+        {
+            parent = ZeroHash(level + 1);
+            return;
+        }
 
-    /// <summary>Hashes the 64-byte concatenation of two chunks with ZisK's SHA-256 compression precompile.</summary>
+        HashPair(in left, in right, out parent);
+    }
+
+    /// <summary>Whether <paramref name="node"/> is the root of an all-zero subtree at <paramref name="level"/>.</summary>
+    /// <remarks>Compares in place, a limb at a time, so the usual node rejects on its first limb.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsZeroSubtree(in UInt256 node, int level)
+    {
+        ref readonly UInt256 zeroHash = ref Unsafe.Add(ref Unsafe.As<byte, UInt256>(ref MemoryMarshal.GetReference(ZeroHashData)), level);
+        return node.u0 == zeroHash.u0 && node.u1 == zeroHash.u1 && node.u2 == zeroHash.u2 && node.u3 == zeroHash.u3;
+    }
+
+    /// <summary>
+    /// Hashes the sibling pairs of <paramref name="leaves"/> into the first nodes of <paramref name="nodes"/>, then reduces
+    /// the <paramref name="nodeCount"/> nodes level by level up to <paramref name="depth"/>, leaving the root in the first.
+    /// </summary>
+    /// <returns><c>false</c>, having hashed nothing, unless ZisK's SHA-256 compression can read the leaves in place.</returns>
+    /// <remarks>
+    /// One loop owns the state and parameter block for the whole tree, so a pair costs its two compressions, the state
+    /// reset and the digest, without the per-pair call, setup and spills of <see cref="HashNodes"/>. A parent never
+    /// overwrites a node the level has yet to read, as parent <c>i</c> lies at or before child <c>2i</c>; and a lone last
+    /// node pairs with the zero hash written after it, so <paramref name="nodes"/> must hold one node more than an odd
+    /// <paramref name="nodeCount"/>.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static unsafe bool TryHashTree(ReadOnlySpan<UInt256> leaves, Span<UInt256> nodes, int nodeCount, int depth)
+    {
+        if (!ZiskSha256FFlag.IsActive)
+            return false;
+
+        // Nothing below allocates and the guest is single-threaded, so no GC can move the buffers: pinned locals
+        // would stay on the stack and spill around every compression.
+        UInt256* firstLeaf = (UInt256*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(leaves));
+        UInt256* firstNode = (UInt256*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(nodes));
+
+        // The precompile requires 8-byte aligned operands; the node buffer is.
+        if (((nuint)firstLeaf & 7) != 0)
+            return false;
+
+        ref readonly Sha256State initialState = ref Unsafe.As<ulong, Sha256State>(ref MemoryMarshal.GetReference(Sha256InitialState));
+        ulong* padding = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
+        Sha256State state;
+        Sha256FParameters parameters;
+        parameters.State = (ulong*)&state;
+
+        UInt256* children = firstLeaf;
+        int pairs = leaves.Length / 2;
+        for (int level = 0; ;)
+        {
+            UInt256* parent = firstNode;
+            for (UInt256* pair = children, end = children + 2 * pairs; pair != end; pair += 2, parent++)
+            {
+                if (IsZeroSubtree(in pair[0], level) && IsZeroSubtree(in pair[1], level))
+                {
+                    *parent = ZeroHash(level + 1);
+                    continue;
+                }
+
+                state = initialState;
+                parameters.Input = (ulong*)pair;
+                Sha256F(&parameters);
+                parameters.Input = padding;
+                Sha256F(&parameters);
+                *parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
+            }
+
+            if (++level >= depth)
+                return true;
+
+            if (nodeCount % 2 == 1)
+                nodes[nodeCount] = ZeroHash(level);
+
+            children = firstNode;
+            pairs = (nodeCount + 1) / 2;
+            nodeCount = pairs;
+        }
+    }
+
+    /// <summary>Hashes the 64-byte concatenation of two chunks with the zkVM's SHA-256 compression.</summary>
     /// <remarks>
     /// A 64-byte message is exactly one block, and the block after it is always the same padding, so the
     /// generic hash's alignment check, padding logic and result copies all drop out. Chunks that already lie
@@ -62,12 +146,7 @@ public static partial class Merkle
     [SkipLocalsInit]
     private static unsafe void HashPairWithSha256F(in UInt256 left, in UInt256 right, out UInt256 parent)
     {
-        ReadOnlySpan<ulong> initialState = Sha256InitialState;
-        Sha256State state;
-        state.Word0 = initialState[0];
-        state.Word1 = initialState[1];
-        state.Word2 = initialState[2];
-        state.Word3 = initialState[3];
+        Sha256State state = Unsafe.As<ulong, Sha256State>(ref MemoryMarshal.GetReference(Sha256InitialState));
 
         bool adjacent = Unsafe.AreSame(ref Unsafe.Add(ref Unsafe.AsRef(in left), 1), ref Unsafe.AsRef(in right));
         Sha256FParameters parameters;
@@ -75,7 +154,7 @@ public static partial class Merkle
         fixed (UInt256* pair = &left)
         {
             // The precompile requires 8-byte aligned operands; the locals and the RVA padding block are.
-            Sha256Block block;
+            NodePair block;
             if (adjacent && ((nuint)pair & 7) == 0)
             {
                 parameters.Input = (ulong*)pair;
@@ -87,27 +166,50 @@ public static partial class Merkle
                 parameters.Input = (ulong*)&block;
             }
 
-            Sha256F(&parameters);
+            Compress(&parameters);
         }
 
         parameters.Input = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
-        Sha256F(&parameters);
+        Compress(&parameters);
 
         parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
     }
 
+    /// <summary>Compresses the block <paramref name="parameters"/> names into its state.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void Compress(Sha256FParameters* parameters)
+    {
+        if (OpenVmSha256Flag.IsActive)
+            Accelerators.OpenVMSha256Compress(parameters->State, parameters->Input, parameters->State);
+        else
+            Sha256F(parameters);
+    }
+
     /// <summary>Two state words of the precompile, native 32-bit words packed low first, as the digest's next eight bytes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ToDigestWord(ulong state) => BitOperations.RotateRight(BinaryPrimitives.ReverseEndianness(state), 32);
+    private static ulong ToDigestWord(ulong state) =>
+        OpenVmSha256Flag.IsActive ? SwapBytesInHalves(state) : BitOperations.RotateRight(BinaryPrimitives.ReverseEndianness(state), 32);
+
+    /// <summary>Reverses the bytes of each 32-bit half of <paramref name="x"/>.</summary>
+    /// <remarks>
+    /// <see cref="ToDigestWord"/> for a zkVM without <c>rev8</c>, where reversing the whole word is a long software
+    /// sequence. The masked halves are disjoint, so they are added rather than or-ed: OpenVM's add rows are narrower.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong SwapBytesInHalves(ulong x)
+    {
+        x = ((x & 0x00FF00FF00FF00FFUL) << 8) + ((x >> 8) & 0x00FF00FF00FF00FFUL);
+        return ((x & 0x0000FFFF0000FFFFUL) << 16) + ((x >> 16) & 0x0000FFFF0000FFFFUL);
+    }
 
     /// <summary>The SHA-256 initial hash value (FIPS 180-4 5.3.3) in the precompile's state layout.</summary>
-    private static ReadOnlySpan<ulong> Sha256InitialState =>
+    internal static ReadOnlySpan<ulong> Sha256InitialState =>
     [
         0xbb67ae85_6a09e667UL, 0xa54ff53a_3c6ef372UL, 0x9b05688c_510e527fUL, 0x5be0cd19_1f83d9abUL
     ];
 
     /// <summary>The block that pads a 64-byte message (FIPS 180-4 5.1.1): the 0x80 marker and the 512-bit length.</summary>
-    private static ReadOnlySpan<ulong> Sha256PaddingOf64ByteMessage =>
+    internal static ReadOnlySpan<ulong> Sha256PaddingOf64ByteMessage =>
     [
         0x80UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0x0002_0000_0000_0000UL
     ];
@@ -136,12 +238,6 @@ public static partial class Merkle
         public ulong Word3;
     }
 
-    private struct Sha256Block
-    {
-        public UInt256 Left;
-        public UInt256 Right;
-    }
-
     internal const int Sp1Sha256ScheduleLength = 64;
     internal const int Sp1Sha256StateLength = 8;
 
@@ -158,9 +254,9 @@ public static partial class Merkle
         ulong* state = stackalloc ulong[Sp1Sha256StateLength];
         LoadSp1Sha256Block(in left, in right, schedule, state);
 
-        Sp1Sha256Extend(schedule);
-        Sp1Sha256Compress(schedule, state);
-        Sp1Sha256Compress((ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sp1Sha256PaddingSchedule)), state);
+        Accelerators.Sha256Extend(schedule);
+        Accelerators.Sp1Sha256Compress(schedule, state);
+        Accelerators.Sp1Sha256Compress((ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sp1Sha256PaddingSchedule)), state);
 
         parent = ReadSp1Sha256Digest(state);
     }
@@ -229,12 +325,4 @@ public static partial class Merkle
         0x69bc7ac4UL, 0xbd11375bUL, 0xe3ba71e5UL, 0x3b209ff2UL, 0x18feee17UL, 0xe25ad9e7UL, 0x13375046UL, 0x0515089dUL,
         0x4f0d0f04UL, 0x2627484eUL, 0x310128d2UL, 0xc668b434UL, 0x420841ccUL, 0x62d311b8UL, 0xe59ba771UL, 0x85a7a484UL
     ];
-
-    /// <summary>SP1's SHA-256 message schedule extension: fills slots 16 to 63 from the first sixteen.</summary>
-    [DllImport("__Internal", EntryPoint = "zkvm_sha256_extend", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void Sp1Sha256Extend(ulong* schedule);
-
-    /// <summary>SP1's SHA-256 compression of one extended schedule into <paramref name="state"/>.</summary>
-    [DllImport("__Internal", EntryPoint = "zkvm_sha256_compress", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void Sp1Sha256Compress(ulong* schedule, ulong* state);
 }

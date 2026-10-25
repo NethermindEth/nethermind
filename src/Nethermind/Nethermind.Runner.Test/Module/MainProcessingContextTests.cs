@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -23,8 +24,9 @@ namespace Nethermind.Runner.Test.Module;
 
 public class MainProcessingContextTests
 {
+    // The budget covers building the container and processing the first block, which take over 10 s on a stalled runner.
     [Test]
-    [CancelAfter(10000)]
+    [CancelAfter(60_000)]
     public async Task Block_tracer_registered_via_main_processing_module_is_attached_to_main_processor(CancellationToken cancellationToken)
     {
         RecordingBlockTracer recordingTracer = new();
@@ -52,7 +54,7 @@ public class MainProcessingContextTests
     }
 
     [Test]
-    [CancelAfter(10000)]
+    [CancelAfter(60_000)]
     public async Task Test_TransactionProcessed_EventIsFired(CancellationToken cancellationToken)
     {
         await using IContainer ctx = new ContainerBuilder()
@@ -81,5 +83,30 @@ public class MainProcessingContextTests
                 .TestObject);
 
         Assert.That(totalTransactionProcessed, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task HasSubscribers_follows_TransactionProcessed_subscriptions()
+    {
+        await using IContainer ctx = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Cancun.Instance))
+            .Build();
+
+        IMainProcessingContext mainProcessingContext = ctx.Resolve<IMainProcessingContext>();
+        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler handler =
+            (BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler)mainProcessingContext;
+        EventHandler<TxProcessedEventArgs> subscriber = static (_, _) => { };
+
+        bool before = handler.HasSubscribers;
+        mainProcessingContext.TransactionProcessed += subscriber;
+        bool subscribed = handler.HasSubscribers;
+        mainProcessingContext.TransactionProcessed -= subscriber;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.False);
+            Assert.That(subscribed, Is.True);
+            Assert.That(handler.HasSubscribers, Is.False);
+        }
     }
 }

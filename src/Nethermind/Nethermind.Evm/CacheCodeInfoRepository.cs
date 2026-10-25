@@ -47,7 +47,8 @@ public partial class CacheCodeInfoRepository : ICodeInfoRepository
         }
 
         CodeInfo? lastResolved = _lastResolved;
-        if (lastResolved is not null && lastResolved.CodeHash == codeHash && ++_memoHits < MemoHitsPerTickerRefresh)
+        if (lastResolved is not null && lastResolved.CodeHash == codeHash
+            && (MemoHitsPerTickerRefresh == int.MaxValue || ++_memoHits < MemoHitsPerTickerRefresh))
         {
             // A memo hit is a cache hit: keep cache.code.hits and the cached-contracts-used stats counting.
             Metrics.IncrementCodeDbCache();
@@ -91,6 +92,10 @@ public partial class CacheCodeInfoRepository : ICodeInfoRepository
             _codeCache.Set(in codeHash, new CodeInfo(code));
         }
     }
+
+    /// <remarks>Not added to the shared code cache: the code lives for one transaction, and a read caches it anyway.</remarks>
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        CodeInfoRepository.InsertTransientCode(_worldState, code, codeOwner, spec);
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
     {

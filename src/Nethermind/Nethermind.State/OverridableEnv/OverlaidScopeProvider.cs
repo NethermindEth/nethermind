@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -49,6 +50,10 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => inner.Prefetch(accounts, slots, cancellationToken);
+
+        public bool SupportsPrefetch => inner.SupportsPrefetch;
+
         public Account? Get(Address address)
         {
             IStateReadOverlay? overlay = slot.Current;
@@ -59,22 +64,16 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
             {
                 if (!cache.TryGetAccount(address, out underlying))
                 {
-                    underlying = GetParent(address);
+                    underlying = inner.Get(address);
                     cache.SetAccount(address, underlying);
                 }
             }
             else
             {
-                underlying = GetParent(address);
+                underlying = inner.Get(address);
             }
 
             return overlay is not null && overlay.TryGetAccount(address, underlying, out Account? overlaid) ? overlaid : underlying;
-        }
-
-        private Account? GetParent(Address address)
-        {
-            Account? account = inner.Get(address);
-            return slot.ParentState is { } parent && parent.TryGetAccount(address, account, out Account? overlaid) ? overlaid : account;
         }
 
         public void HintGet(Address address, Account? account) => inner.HintGet(address, account);
@@ -88,7 +87,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => inner.WriteBackCommittedState(takeSnapshot);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => inner.HintBal(bal, sink);
-        public void ApplyBal(ReadOnlyBlockAccessList bal) => inner.ApplyBal(bal);
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => inner.ApplyBal(bal, cancellationToken);
 
         public void Dispose() => inner.Dispose();
     }

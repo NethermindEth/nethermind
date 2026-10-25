@@ -37,18 +37,15 @@ internal sealed class GethTraceDeadline : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             _duration = duration;
             _started = _clock.GetTimestamp();
-            if (duration <= TimeSpan.Zero)
-                _request.Cancel();
-            else
-            {
-                // Go permits durations longer than a .NET timer's 32-bit millisecond range.
-                _timer = _clock.CreateTimer(static state => ((GethTraceDeadline)state!).Tick(), this,
-                    Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-                _timer.Change(Delay(duration), Timeout.InfiniteTimeSpan);
-            }
+            // Geth's traceTx watcher delivers even an already-expired deadline asynchronously.
+            _timer = _clock.CreateTimer(static state => ((GethTraceDeadline)state!).Tick(), this,
+                Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            _timer.Change(Delay(duration), Timeout.InfiniteTimeSpan);
         }
     }
-    private static TimeSpan Delay(TimeSpan remaining) => remaining > MaximumTimerDelay ? MaximumTimerDelay : remaining;
+    // Go permits durations longer than a .NET timer's 32-bit millisecond range.
+    private static TimeSpan Delay(TimeSpan remaining) => remaining <= TimeSpan.Zero ? TimeSpan.Zero
+        : remaining > MaximumTimerDelay ? MaximumTimerDelay : remaining;
     private void Tick()
     {
         lock (_gate)

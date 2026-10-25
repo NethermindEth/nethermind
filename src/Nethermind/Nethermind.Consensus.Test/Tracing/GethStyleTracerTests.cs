@@ -141,7 +141,7 @@ public class GethStyleTracerTests
     [TestCase("start")]
     public void Buffered_deadline_transfers_transaction_ownership_to_processor_using(string failure)
     {
-        DeadlineClock clock = new();
+        DeadlineClock clock = new() { DeliverWhenArmed = failure == "start" };
         DisposalCountingTracer transactionTracer = new();
         IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
         inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(transactionTracer);
@@ -252,15 +252,65 @@ public class GethStyleTracerTests
         Assert.That(deadline.Expired, Is.True);
     }
 
+    [Test]
+    public void Buffered_nonpositive_deadline_depends_on_watcher_delivery(
+        [Values(0, -1)] int seconds, [Values] bool deliver)
+    {
+        DeadlineClock clock = new();
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        DisposalCountingTracer transactionTracer = new();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(transactionTracer);
+        inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
+        using GethLikeBlockDeadlineTracer tracer = new(inner,
+            new() { Timeout = TimeSpan.FromSeconds(seconds), DeadlineClock = clock }, CancellationToken.None);
+        using (ITxTracer owned = tracer.StartNewTxTrace(Build.A.Transaction.TestObject))
+        {
+            Assert.That(clock.Timers[0].Due, Is.EqualTo(TimeSpan.Zero));
+            Assert.That(owned.IsCancelled, Is.False, "arming an expired deadline does not deliver its watcher");
+            if (deliver) clock.Advance(TimeSpan.Zero);
+            Assert.That(owned.IsCancelled, Is.EqualTo(deliver));
+            if (deliver) Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
+            else
+            {
+                Assert.That(tracer.EndTxTrace, Throws.Nothing);
+                Assert.That(tracer.BuildResult(), Is.Empty);
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            inner.Received(deliver ? 0 : 1).EndTxTrace();
+            Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+            Assert.That(transactionTracer.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Buffered_deadline_queued_watcher_cannot_cancel_after_disposal([Values(0, -1, 1)] int seconds)
+    {
+        DeadlineClock clock = new();
+        GethTraceDeadline deadline = new(clock: clock);
+        deadline.Start(TimeSpan.FromSeconds(seconds));
+        CancellationToken token = deadline.Token;
+        deadline.Dispose();
+        deadline.Dispose();
+        Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(token.IsCancellationRequested, Is.False);
+            Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+        }
+    }
+
     private sealed class DeadlineClock : TimeProvider
     {
         private long _timestamp;
+        internal bool DeliverWhenArmed { get; init; }
         internal List<DeadlineTimer> Timers { get; } = [];
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() => _timestamp;
         public override ITimer CreateTimer(TimerCallback callback, object state, TimeSpan dueTime, TimeSpan period)
         {
-            DeadlineTimer timer = new(callback, state) { Due = dueTime };
+            DeadlineTimer timer = new(callback, state, DeliverWhenArmed) { Due = dueTime };
             Timers.Add(timer);
             return timer;
         }
@@ -271,13 +321,20 @@ public class GethStyleTracerTests
         }
     }
 
-    private sealed class DeadlineTimer(TimerCallback callback, object state) : ITimer
+    private sealed class DeadlineTimer(TimerCallback callback, object state, bool deliverWhenArmed) : ITimer
     {
         internal TimeSpan Due { get; set; }
-        internal bool Disposed { get; private set; }
-        public bool Change(TimeSpan dueTime, TimeSpan period) { Due = dueTime; return !Disposed; }
+        internal int DisposeCount { get; private set; }
+        internal bool Disposed => DisposeCount != 0;
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            Due = dueTime;
+            if (deliverWhenArmed && dueTime == TimeSpan.Zero) Fire();
+            return !Disposed;
+        }
         internal void Fire() { if (!Disposed) callback(state); }
-        public void Dispose() => Disposed = true;
+        internal void FireQueued() => callback(state);
+        public void Dispose() => DisposeCount++;
         public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
     }
 

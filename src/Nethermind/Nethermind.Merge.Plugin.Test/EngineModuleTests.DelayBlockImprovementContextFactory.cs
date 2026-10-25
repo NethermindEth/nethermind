@@ -19,7 +19,7 @@ public partial class EngineModuleTests
     private class DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay, Action<CancellationToken>? onBuildStarted = null)
         : IBlockImprovementContextFactory
     {
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
+        public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
         UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
             new DelayBlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, delay, startDateTime, cts, onBuildStarted);
     }
@@ -34,7 +34,7 @@ public partial class EngineModuleTests
         private int _callCount;
 
         public IBlockImprovementContext StartBlockImprovementContext(
-            Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
+            Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
             DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             TimeSpan delay = Interlocked.Increment(ref _callCount) == 1
@@ -54,7 +54,7 @@ public partial class EngineModuleTests
         private CancellationTokenSource? _timeOutCancellation;
         private CancellationTokenSource? _linkedCancellation;
 
-        public DelayBlockImprovementContext(Block currentBestBlock,
+        public DelayBlockImprovementContext(Block? currentBestBlock,
             IBlockProducer blockProducer,
             TimeSpan timeout,
             BlockHeader parentHeader,

@@ -85,8 +85,5 @@ public static class TracerExtensions
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void TraceWord(this ITxTracer tracer, in EvmWord value) => tracer.ReportStackPush(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in value, 1)));
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
     public static void TraceBytes(this ITxTracer tracer, in byte value, int length) => tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(in value, length));
 }

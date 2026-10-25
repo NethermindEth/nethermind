@@ -198,7 +198,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null, IPersistence.IPersistenceReader? persistenceReader = null)
         {
             config ??= new FlatDbConfig();
 
@@ -259,6 +259,11 @@ public class FlatWorldStateScopeProviderTests
             if (trieNodeCache is not null)
             {
                 _containerBuilder.AddSingleton(trieNodeCache);
+            }
+
+            if (persistenceReader is not null)
+            {
+                _containerBuilder.AddSingleton(persistenceReader);
             }
 
             // Externally owned because snapshot bundle take ownership
@@ -620,42 +625,49 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void ApplyBal_WithAccountAndStorageChanges_WithVerifyWithTrie([Values] bool existingAccount)
+    public void ApplyBal_WithAccountAndStorageChanges_WithVerifyWithTrie([Values] bool existingAccount, [Values(1, 8)] int accountCount)
     {
         using TestContext ctx = new(config: new FlatDbConfig { VerifyWithTrie = true });
         FlatWorldStateScope scope = ctx.Scope;
-        Address address = TestItem.AddressA;
+        Address[] addresses = new Address[accountCount];
+        for (int i = 0; i < accountCount; i++) addresses[i] = Address.FromNumber((UInt256)(i + 1));
         if (existingAccount)
         {
-            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
-            writeBatch.Set(address, new Account(nonce: 1, balance: 5));
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accountCount);
+            foreach (Address address in addresses) writeBatch.Set(address, new Account(nonce: 1, balance: 5));
         }
 
         byte[] code = [0x60, 0x00];
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(address)
+        ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[accountCount];
+        for (int i = 0; i < accountCount; i++)
+        {
+            changes[i] = Build.An.AccountChanges
+                .WithAddress(addresses[i])
                 .WithBalanceChanges(new BalanceChange(1, 10))
                 .WithNonceChanges(new NonceChange(1, 2))
                 .WithCodeChanges(new CodeChange(1, code))
                 .WithStorageChanges(1, new StorageChange(1, 0xCAFE))
-                .TestObject)
-            .TestObject;
+                .TestObject;
+        }
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(changes).TestObject;
 
         scope.ApplyBal(bal);
         scope.UpdateRootHash();
 
-        Account? account = scope.Get(address);
-        Assert.That(account, Is.Not.Null);
-        scope.CreateStorageTree(address).Get((UInt256)1, out UInt256 value);
-        using (Assert.EnterMultipleScope())
+        foreach (Address address in addresses)
         {
-            Assert.That(account!.Nonce, Is.EqualTo(2ul));
-            Assert.That(account.Balance, Is.EqualTo((UInt256)10));
-            Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code)));
-            Assert.That(value, Is.EqualTo((UInt256)0xCAFE));
-            Assert.That(scope.RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+            Account? account = scope.Get(address);
+            Assert.That(account, Is.Not.Null);
+            scope.CreateStorageTree(address).Get((UInt256)1, out UInt256 value);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account!.Nonce, Is.EqualTo(2ul));
+                Assert.That(account.Balance, Is.EqualTo((UInt256)10));
+                Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code)));
+                Assert.That(value, Is.EqualTo((UInt256)0xCAFE));
+            }
         }
+        Assert.That(scope.RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
@@ -987,17 +999,31 @@ public class FlatWorldStateScopeProviderTests
 
         int ownerThread = Environment.CurrentManagedThreadId;
         bool backgroundRootLookup = false;
+        int rootLookups = 0;
+        bool OnLookup(TreePath path)
+        {
+            if (path.Length != 0) return false;
+            Interlocked.Increment(ref rootLookups);
+            if (Environment.CurrentManagedThreadId != ownerThread)
+            {
+                backgroundRootLookup = true;
+                // Dispose after the mutable lookup's guard, before it reads the snapshot list.
+                scope.Dispose();
+            }
+            return false;
+        }
+        // Both overloads: a substitute answers the precomputed-hash overload itself instead of running its default body.
         nodeCache.TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<Hash256>(), out Arg.Any<TrieNode?>())
             .Returns(call =>
             {
                 call[3] = null;
-                if (call.ArgAt<TreePath>(1).Length == 0 && Environment.CurrentManagedThreadId != ownerThread)
-                {
-                    backgroundRootLookup = true;
-                    // Dispose after the mutable lookup's guard, before it reads the snapshot list.
-                    scope.Dispose();
-                }
-                return false;
+                return OnLookup(call.ArgAt<TreePath>(1));
+            });
+        nodeCache.TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<Hash256>(), out Arg.Any<TrieNode?>())
+            .Returns(call =>
+            {
+                call[5] = null;
+                return OnLookup(call.ArgAt<TreePath>(1));
             });
         FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
 
@@ -1006,6 +1032,7 @@ public class FlatWorldStateScopeProviderTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(rootLookups, Is.GreaterThan(0), "the stub must see the root lookup, or the check below proves nothing");
             Assert.That(backgroundRootLookup, Is.False);
             Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1));
         }
@@ -1308,6 +1335,55 @@ public class FlatWorldStateScopeProviderTests
         // Verify
         Account? resultAccount = scope.Get(testAddress);
         Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void StorageClear_RemovesSlotsWrittenAfterAnEarlierClearInTheSameBlock([Values] bool setInTheClearingBatch)
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 value = 0xAA;
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Set(slot1, value);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Clear();
+            if (setInTheClearingBatch) storageBatch.Set(slot2, value);
+        }
+
+        if (!setInTheClearingBatch)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slot2, value);
+        }
+
+        // The slot written after the first clear must still be found by the second one.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 0))
+        {
+            storageBatch.Clear();
+        }
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        storageTree.Get(slot1, out UInt256 slot1Value);
+        storageTree.Get(slot2, out UInt256 slot2Value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slot1Value, Is.EqualTo(UInt256.Zero));
+            Assert.That(slot2Value, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -1879,6 +1955,48 @@ public class FlatWorldStateScopeProviderTests
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
+    /// <summary>A persistence reader that holds nothing and records the keys it is asked to prefetch.</summary>
+    private sealed class PrefetchRecordingReader : IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
+    {
+        private readonly IPersistence.IPersistenceReader _empty = Substitute.For<IPersistence.IPersistenceReader>();
+
+        public List<Address> Accounts { get; } = [];
+        public List<StorageCell> Slots { get; } = [];
+        public List<Address> AccountSamples { get; } = [];
+        public List<StorageCell> SlotSamples { get; } = [];
+        public bool SupportsPrefetch { get; init; } = true;
+        public IPersistence.PrefetchColumns Plan { get; init; } = IPersistence.PrefetchColumns.All;
+
+        public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples)
+        {
+            AccountSamples.AddRange(accountSamples);
+            SlotSamples.AddRange(slotSamples);
+            return Plan;
+        }
+
+        public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        {
+            lock (Accounts)
+            {
+                if ((columns & IPersistence.PrefetchColumns.Accounts) != 0) Accounts.AddRange(accounts);
+                if ((columns & IPersistence.PrefetchColumns.Slots) != 0) Slots.AddRange(slots);
+            }
+        }
+
+        public Account? GetAccount(Address address) => _empty.GetAccount(address);
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => _empty.TryGetSlot(address, slot, ref outValue);
+        public StateId CurrentState => _empty.CurrentState;
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => _empty.TryLoadStateRlp(path, flags);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => _empty.TryLoadStorageRlp(address, path, flags);
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => _empty.GetAccountRaw(addrHash);
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => _empty.TryGetStorageRaw(addrHash, slotHash, ref value);
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => _empty.CreateAccountIterator(startKey, endKey);
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
+            _empty.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
+        public bool IsPreimageMode => false;
+        public void Dispose() { }
+    }
+
     private static TestContext CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer)
     {
         warmer = new RecordingTrieWarmer(acceptSlotJob: true, acceptMpmcSlotJob: true);
@@ -1962,6 +2080,155 @@ public class FlatWorldStateScopeProviderTests
         scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.Empty);
+    }
+
+    // The BAL prefetch has the warmup's guard: a hint that is paused when its task starts sends nothing, so
+    // CancelHintBal never waits for a key collection and submission the block no longer needs.
+    [TestCase(false, TestName = "HintBal_CurrentHint_PrefetchesItsKeys")]
+    [TestCase(true, TestName = "HintBal_PausedHint_PrefetchesNothing")]
+    public async Task HintBal_PrefetchesOnlyWhileTheHintIsCurrent(bool paused)
+    {
+        PrefetchRecordingReader reader = new();
+        using TestContext ctx = new(persistenceReader: reader);
+        FlatWorldStateScope scope = ctx.Scope;
+        scope._pausePrewarmer = paused;
+
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, BalWriteKind.Storage), ReadOnlyAccount(TestItem.AddressB)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.Accounts, Is.EquivalentTo(paused ? Array.Empty<Address>() : new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(reader.Slots, Is.EquivalentTo(paused ? Array.Empty<StorageCell>() : new[] { new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressB, 1) }));
+        }
+    }
+
+    [Test]
+    public async Task HintBal_StoreThatCannotPrefetch_CollectsNoKeys()
+    {
+        PrefetchRecordingReader reader = new() { SupportsPrefetch = false };
+        using TestContext ctx = new(persistenceReader: reader);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, BalWriteKind.Storage), ReadOnlyAccount(TestItem.AddressB)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.SupportsPrefetch, Is.False, "the scope reports the store's prefetch support");
+            Assert.That(reader.Accounts, Is.Empty);
+            Assert.That(reader.Slots, Is.Empty);
+        }
+    }
+
+    // The plan sees samples spread over the access list; only the columns it chooses are collected and sent.
+    [Test]
+    public async Task HintBal_CollectsOnlyThePlannedColumns([Values(IPersistence.PrefetchColumns.None, IPersistence.PrefetchColumns.Accounts,
+        IPersistence.PrefetchColumns.Slots, IPersistence.PrefetchColumns.All)] IPersistence.PrefetchColumns plan)
+    {
+        PrefetchRecordingReader reader = new() { Plan = plan };
+        using TestContext ctx = new(persistenceReader: reader);
+
+        await ctx.Scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, BalWriteKind.Storage), ReadOnlyAccount(TestItem.AddressB)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.AccountSamples, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(reader.SlotSamples, Is.EquivalentTo(new[] { new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressB, 1) }));
+            Assert.That(reader.Accounts, (plan & IPersistence.PrefetchColumns.Accounts) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+            Assert.That(reader.Slots, (plan & IPersistence.PrefetchColumns.Slots) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+        }
+    }
+
+    // The address warmer's prefetch plans on samples of its keys and sends only the columns the plan chose.
+    [Test]
+    public void Prefetch_SendsOnlyThePlannedColumns([Values(IPersistence.PrefetchColumns.None, IPersistence.PrefetchColumns.Accounts,
+        IPersistence.PrefetchColumns.Slots, IPersistence.PrefetchColumns.All)] IPersistence.PrefetchColumns plan)
+    {
+        PrefetchRecordingReader reader = new() { Plan = plan };
+        using TestContext ctx = new(persistenceReader: reader);
+
+        ctx.Scope.Prefetch([TestItem.AddressA, TestItem.AddressB], [new StorageCell(TestItem.AddressA, 1)], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.AccountSamples, Has.Count.EqualTo(2));
+            Assert.That(reader.Accounts, (plan & IPersistence.PrefetchColumns.Accounts) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+            Assert.That(reader.Slots, (plan & IPersistence.PrefetchColumns.Slots) != 0 ? Has.Count.EqualTo(1) : Is.Empty);
+        }
+    }
+
+    // Planning may read sampled keys from disk, so a cancelled prefetch neither plans nor sends.
+    [Test]
+    public void Prefetch_CancelledBeforeItStarts_PlansAndSendsNothing([Values] bool cancelled)
+    {
+        PrefetchRecordingReader reader = new();
+        using TestContext ctx = new(persistenceReader: reader);
+        Address[] accounts = [TestItem.AddressA, TestItem.AddressB];
+        StorageCell[] slots = [new(TestItem.AddressA, 1)];
+
+        ctx.Scope.Prefetch(accounts, slots, new CancellationToken(cancelled));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.AccountSamples, cancelled ? Is.Empty : Has.Count.EqualTo(2));
+            Assert.That(reader.Accounts, cancelled ? Is.Empty : Has.Count.EqualTo(2));
+            Assert.That(reader.Slots, cancelled ? Is.Empty : Has.Count.EqualTo(1));
+        }
+    }
+
+    // Slot samples are the cells at the evenly spread ordinals of the collection order: per account, writes then reads.
+    [Test]
+    public void SampleBalSlots_TakesTheSpreadOrdinalsInCollectionOrder()
+    {
+        ReadOnlyAccountChanges first = new(TestItem.AddressA,
+            [new ReadOnlySlotChanges((UInt256)100, [new StorageChange(0, default)]), new ReadOnlySlotChanges((UInt256)101, [new StorageChange(0, default)])],
+            [(UInt256)102], [], [], []);
+        ReadOnlyAccountChanges empty = new(TestItem.AddressB, [], [], [], [], []);
+        UInt256[] reads = new UInt256[13];
+        for (int i = 0; i < reads.Length; i++) reads[i] = (UInt256)(200 + i);
+        ReadOnlyAccountChanges second = new(TestItem.AddressC, [], reads, [], [], []);
+        ReadOnlyAccountChanges[] changes = [first, empty, second];
+        StorageCell[] samples = new StorageCell[BasePersistence.PrefetchSamples];
+
+        int count = FlatWorldStateScope.SampleBalSlots(changes, 16, samples);
+
+        // 16 slots, 8 samples: ordinals 0, 2, 4, ..., 14; 0-2 are the first account's, 3-15 the third account's reads.
+        StorageCell[] expected = new StorageCell[8];
+        for (int k = 0; k < 8; k++)
+        {
+            int ordinal = 2 * k;
+            expected[k] = ordinal < 3
+                ? new StorageCell(TestItem.AddressA, (UInt256)(100 + ordinal))
+                : new StorageCell(TestItem.AddressC, (UInt256)(200 + ordinal - 3));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(8));
+            Assert.That(samples, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void CollectBalKeys_StopsWhenCancelled([Values] bool cancelled)
+    {
+        const int SlotCount = 3000;
+        UInt256[] reads = new UInt256[SlotCount];
+        for (int i = 0; i < reads.Length; i++) reads[i] = (UInt256)i;
+        using ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(2)
+        {
+            ReadOnlyAccount(TestItem.AddressA),
+            new ReadOnlyAccountChanges(TestItem.AddressB, [], reads, [], [], [])
+        };
+        Address[] accounts = new Address[accountChanges.Count];
+        StorageCell[] slots = new StorageCell[SlotCount + 1];
+
+        bool completed = FlatWorldStateScope.CollectBalKeys(accountChanges, accounts, slots, new CancellationToken(cancelled), out int accountCount, out int slotCount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.EqualTo(!cancelled));
+            Assert.That(accountCount, Is.EqualTo(cancelled ? 0 : 2));
+            Assert.That(slotCount, Is.EqualTo(cancelled ? 0 : SlotCount + 1));
+        }
     }
 
     [Test]
@@ -2062,13 +2329,13 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
         {
             SlotJobPushes++;
             return acceptSlotJob;
         }
 
-        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
         {
             MpmcSlotJobPushes++;
             return acceptMpmcSlotJob;
@@ -2096,13 +2363,13 @@ public class FlatWorldStateScopeProviderTests
         public int SlotJobs { get; private set; }
         public int LowestCountAfterCompletion { get; private set; } = int.MaxValue;
 
-        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
-            => PushSlotJobMpmc(storageTree, index, sequenceId);
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
+            => PushSlotJobMpmc(storageTree, index, sequenceId, isDelete);
 
-        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
         {
             // The mocked persistence holds no trie nodes; the real warmer drops the same exception.
-            try { storageTree.WarmUpStorageTrie(index, sequenceId); }
+            try { storageTree.WarmUpStorageTrie(index, sequenceId, isDelete); }
             catch (TrieNodeException) { }
             SlotJobs++;
             return Record();

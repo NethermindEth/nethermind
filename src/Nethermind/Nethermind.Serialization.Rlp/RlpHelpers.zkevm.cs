@@ -9,4 +9,6 @@ internal static partial class RlpHelpers
 {
     // Left to the compiler: with no call, the guest's byte-string decodes are 1.3M ziskemu steps cheaper.
     private const MethodImplOptions LargerByteArrayInlining = default;
+
+    internal static byte[][] SingleByteArrays => field ??= CreateSingleByteArrays();
 }

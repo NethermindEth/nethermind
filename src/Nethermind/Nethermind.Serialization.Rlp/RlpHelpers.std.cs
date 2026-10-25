@@ -9,4 +9,6 @@ internal static partial class RlpHelpers
 {
     // Cold path, kept out of line so the short-string case stays small.
     private const MethodImplOptions LargerByteArrayInlining = MethodImplOptions.NoInlining;
+
+    internal static readonly byte[][] SingleByteArrays = CreateSingleByteArrays();
 }

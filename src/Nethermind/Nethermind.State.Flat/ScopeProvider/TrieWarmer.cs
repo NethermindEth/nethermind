@@ -38,13 +38,15 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         object scopeOrStorageTree,
         Address? path,
         UInt256 index,
-        int sequenceId);
+        int sequenceId,
+        bool isDelete);
 
     // A slot hint from the main processing thread is called a lot, so it has its own dedicated queue with a smaller job struct.
     private readonly record struct SlotJob(
         ITrieWarmer.IStorageWarmer storageTree,
         UInt256 index,
-        int sequenceId);
+        int sequenceId,
+        bool isDelete);
 
     private readonly Processor[] _processors;
     private TaskCompletionSource<bool>? _processorsStopped;
@@ -55,7 +57,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount * 3 / 4, 1)
+            ? DefaultWorkerCount(Environment.ProcessorCount)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
@@ -65,6 +67,11 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             _processors[i] = new Processor(this);
         }
     }
+
+    /// <summary>The worker count when <see cref="IFlatDbConfig.TrieWarmerWorkerCount"/> is -1.</summary>
+    /// <remarks>The workers mostly wait on storage reads, so on a machine with few cores 3/4 of them keeps too few reads in flight.</remarks>
+    internal static int DefaultWorkerCount(int processorCount) =>
+        Math.Max(processorCount * 3 / 4, Math.Min(12, processorCount * 3 / 2));
 
     private sealed class Processor(TrieWarmer owner) : IThreadPoolWorkItem
     {
@@ -148,7 +155,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 slotJob.storageTree,
                 null,
                 slotJob.index,
-                slotJob.sequenceId);
+                slotJob.sequenceId,
+                slotJob.isDelete);
             return true;
         }
 
@@ -166,7 +174,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             else
             {
                 ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)job.scopeOrStorageTree;
-                storageTree.WarmUpStorageTrie(job.index, job.sequenceId);
+                storageTree.WarmUpStorageTrie(job.index, job.sequenceId, job.isDelete);
             }
         }
         // It can be missing when the warmer lags so much behind that the node is now gone.
@@ -193,27 +201,27 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         if (Volatile.Read(ref _isDisposed)) return false;
 
         // Address is not single threaded. In which case, might as well use the same buffer.
-        bool enqueued = _jobBufferMultiThreaded.TryEnqueue(new Job(scope, path, default, sequenceId));
+        bool enqueued = _jobBufferMultiThreaded.TryEnqueue(new Job(scope, path, default, sequenceId, isDelete: false));
         if (enqueued) KickProcessors();
         return enqueued;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+    public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
     {
         if (Volatile.Read(ref _isDisposed)) return false;
 
-        bool enqueued = _slotJobBuffer.TryEnqueue(new SlotJob(storageTree, index, sequenceId));
+        bool enqueued = _slotJobBuffer.TryEnqueue(new SlotJob(storageTree, index, sequenceId, isDelete));
         if (enqueued) KickProcessors();
         return enqueued;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+    public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
     {
         if (Volatile.Read(ref _isDisposed)) return false;
 
-        bool enqueued = _jobBufferMultiThreaded.TryEnqueue(new Job(storageTree, null, index, sequenceId));
+        bool enqueued = _jobBufferMultiThreaded.TryEnqueue(new Job(storageTree, null, index, sequenceId, isDelete));
         if (enqueued) KickProcessors();
         return enqueued;
     }
