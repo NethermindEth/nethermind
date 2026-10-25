@@ -18,6 +18,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -228,9 +230,11 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task executePayloadV1_accepts_previously_assembled_block_multiple_times([Values(1, 3)] int times)
+    public async Task executePayloadV1_accepts_previously_assembled_block_multiple_times([Values(1, 3)] int times, [Values] bool storeReceipts)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
+        using MergeTestBlockchain chain = await new ReceiptConfiguredMergeBlockchain(storeReceipts)
+            .BuildMergeTestBlockchain(builder => builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(London.Instance)));
+        if (!storeReceipts) Assert.That(chain.ReceiptStorage, Is.TypeOf<TransientReceiptStorage>());
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader startingBestSuggestedHeader = chain.BlockTree.BestSuggestedHeader!;
@@ -244,9 +248,17 @@ public partial class EngineModuleTests
             Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         }
 
+        Assert.That(chain.ReceiptStorage.HasBlock(getPayloadResult.BlockNumber, getPayloadResult.BlockHash), Is.True);
+
         Hash256 bestSuggestedHeaderHash = chain.BlockTree.BestSuggestedHeader!.Hash!;
         Assert.That(bestSuggestedHeaderHash, Is.EqualTo(getPayloadResult.BlockHash));
         Assert.That(bestSuggestedHeaderHash, Is.Not.EqualTo(startingBestSuggestedHeader!.Hash!));
+    }
+
+    private sealed class ReceiptConfiguredMergeBlockchain(bool storeReceipts) : MergeTestBlockchain
+    {
+        protected override IEnumerable<IConfig> CreateConfigs() =>
+            [.. base.CreateConfigs(), new ReceiptConfig { StoreReceipts = storeReceipts }];
     }
 
     [Test]
