@@ -4,7 +4,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace Nethermind.Monitoring;
+namespace Nethermind.Api.Monitoring;
 
 public class NoopMonitoringService : IMonitoringService
 {
