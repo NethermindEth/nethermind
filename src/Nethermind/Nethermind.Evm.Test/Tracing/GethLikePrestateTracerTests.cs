@@ -30,13 +30,30 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
-    [Test]
-    public void Write_WhenAccountPrimitivesArePresent_WritesHexBalanceAndDecimalNonce([Values] bool includeValues)
+    private static IEnumerable<TestCaseData> AccountPrimitiveCases()
+    {
+        yield return new TestCaseData(null, "{}").SetName("{m}: Omitted");
+        foreach (string nonce in new[]
+        {
+            "0",
+            "300",
+            "18446744073709551615",
+            "18446744073709551616",
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+        })
+        {
+            yield return new TestCaseData(UInt256.Parse(nonce), "{\"balance\":\"0xff\",\"nonce\":" + nonce + "}")
+                .SetName("{m}: " + nonce);
+        }
+    }
+
+    [TestCaseSource(nameof(AccountPrimitiveCases))]
+    public void Write_WhenAccountPrimitivesArePresent_WritesHexBalanceAndDecimalNonce(UInt256? nonce, string expected)
     {
         NativePrestateTracerAccount account = new()
         {
-            Balance = includeValues ? (UInt256)255 : null,
-            Nonce = includeValues ? (UInt256)300 : null
+            Balance = nonce is not null ? (UInt256)255 : null,
+            Nonce = nonce
         };
         NumberConversion previousValue = ForcedNumberConversion.Value;
         try
@@ -47,7 +64,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(json, Is.EqualTo(includeValues ? """{"balance":"0xff","nonce":300}""" : "{}"));
+                Assert.That(json, Is.EqualTo(expected));
                 Assert.That(ForcedNumberConversion.Value, Is.EqualTo(NumberConversion.Raw), "serialization must restore the caller's format");
             }
         }
