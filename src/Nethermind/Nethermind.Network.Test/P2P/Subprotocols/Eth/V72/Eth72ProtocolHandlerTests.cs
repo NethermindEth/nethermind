@@ -1076,8 +1076,25 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
-    /// <summary>Announces a sampler-role transaction in full from the handler peer, with its body known, so its cells wait for a second provider.</summary>
-    private Transaction AnnounceParkedSamplerTransaction()
+    [Test]
+    public void sampler_should_not_fetch_full_cells_when_two_providers_wait_for_transaction_body()
+    {
+        Transaction tx = AnnounceParkedSamplerTransaction(recordBody: false);
+        TestSparseBlobPeer secondProvider = new(TestItem.PublicKeyC);
+        _sparseBlobPoolPeerRegistry.AddPeer(secondProvider);
+        _sparseBlobPoolPeerRegistry.RecordAnnouncement(secondProvider, tx.Hash!, BlobCellMask.Full);
+
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + Eth72ProtocolHandler.SamplerProviderWait * 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_deliveredMessages.OfType<GetCellsMessage72>(), Is.Empty);
+            Assert.That(secondProvider.CellRequests, Is.Empty);
+        }
+    }
+
+    /// <summary>Announces a sampler-role transaction in full from the handler peer so its cells wait for a second provider.</summary>
+    private Transaction AnnounceParkedSamplerTransaction(bool recordBody = true)
     {
         _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
         Transaction tx = BuildSparseBlobTransaction(out _, out _, out _, 0);
@@ -1098,7 +1115,11 @@ public class Eth72ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
-        Assert.That(_sparseBlobPoolPeerRegistry.RecordTransaction((ISparseBlobPoolPeer)_handler, tx), Is.Null);
+        if (recordBody)
+        {
+            Assert.That(_sparseBlobPoolPeerRegistry.RecordTransaction((ISparseBlobPoolPeer)_handler, tx), Is.Null);
+        }
+
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
         return tx;
     }
@@ -1873,6 +1894,42 @@ public class Eth72ProtocolHandlerTests
         using GetCellsMessage72 abusiveRequest = new(2000, [HashFromInt(Eth72ProtocolHandler.CellRequestBurstAllowance - 1)], requestedMask.ToBytes());
         HandleZeroMessage(abusiveRequest, Eth72MessageCode.GetCells);
 
+        _session.Received(1).InitiateDisconnect(
+            DisconnectReason.UselessPeer,
+            Arg.Is<string>(details => details.Contains("request-to-announce ratio exceeded", StringComparison.Ordinal)));
+    }
+
+    [Test]
+    public void should_refill_cell_request_burst_allowance_over_time()
+    {
+        HandleIncomingStatusMessage();
+        typeof(Eth72ProtocolHandler)
+            .GetField("_requestRatioWarmupEndsAt", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(_handler, DateTimeOffset.MinValue);
+        BlobCellMask requestedMask = BlobCellMask.FromIndices([1]);
+        int hashIndex = 0;
+
+        void SendRequests(int count)
+        {
+            for (int i = 0; i < count; i++, hashIndex++)
+            {
+                using GetCellsMessage72 request = new(1000 + hashIndex, [HashFromInt(hashIndex)], requestedMask.ToBytes());
+                HandleZeroMessage(request, Eth72MessageCode.GetCells);
+            }
+        }
+
+        SendRequests(Eth72ProtocolHandler.CellRequestBurstAllowance - 1);
+        // Much longer than one burst takes to drain; the extra idle time must give no credit.
+        double idleSeconds = 10.0 * Eth72ProtocolHandler.CellRequestBurstAllowance / Eth72ProtocolHandler.CellRequestBurstRefillPerSecond;
+        typeof(Eth72ProtocolHandler)
+            .GetField("_cellRequestBurstRefilledAt", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(_handler, DateTimeOffset.UtcNow - TimeSpan.FromSeconds(idleSeconds));
+
+        // The first of these requests also drains, so the bucket holds one less than this batch.
+        SendRequests(Eth72ProtocolHandler.CellRequestBurstAllowance);
+        _session.DidNotReceive().InitiateDisconnect(DisconnectReason.UselessPeer, Arg.Any<string>());
+
+        SendRequests(1);
         _session.Received(1).InitiateDisconnect(
             DisconnectReason.UselessPeer,
             Arg.Is<string>(details => details.Contains("request-to-announce ratio exceeded", StringComparison.Ordinal)));

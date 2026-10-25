@@ -74,6 +74,7 @@ public class Eth72ProtocolHandler(
 {
     private const int RequestToAnnouncementRatioThreshold = 5;
     internal const int CellRequestBurstAllowance = MaxCellsRequestHashes;
+    internal const int CellRequestBurstRefillPerSecond = CellRequestBurstAllowance / 4;
     private const int MaxCountedBlobAnnouncements = 4096;
     internal const int MaxUnansweredCellRequestRestores = 2;
     private const int MaxPendingCellRequests = 1024;
@@ -113,6 +114,9 @@ public class Eth72ProtocolHandler(
     private readonly IBlobCustodyTracker _blobCustodyTracker = blobCustodyTracker;
     private readonly ISparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = EnsureNotNull(sparseBlobPoolPeerRegistry, nameof(sparseBlobPoolPeerRegistry));
     private DateTimeOffset _requestRatioWarmupEndsAt;
+    private readonly Lock _cellRequestRatioLock = new();
+    private DateTimeOffset _cellRequestBurstRefilledAt;
+    private long _forgivenCellRequests;
     private Func<ClaimedCellsResponse, CancellationToken, ValueTask>? _handleCells;
     /// <summary>Sentinel <c>RestoreEpoch</c> for a pending entry that owes no announcement restore.</summary>
     private const long NoRestoreEpoch = 0;
@@ -142,6 +146,7 @@ public class Eth72ProtocolHandler(
     public override void Init()
     {
         _requestRatioWarmupEndsAt = _timestamper.UtcNowOffset + RequestToAnnouncementWarmup;
+        _cellRequestBurstRefilledAt = _requestRatioWarmupEndsAt;
         _cellServeTokens = _cellServeTokenCapacity;
         _cellServeTokensUpdatedAt = _timestamper.UtcNowOffset;
         _handleCells = HandleCells;
@@ -692,14 +697,30 @@ public class Eth72ProtocolHandler(
         }
 
         long totalRequests = Interlocked.Add(ref _cellRequestsReceived, requestCount);
-        if (_timestamper.UtcNowOffset < _requestRatioWarmupEndsAt)
+        DateTimeOffset now = _timestamper.UtcNowOffset;
+        if (now < _requestRatioWarmupEndsAt)
         {
             return false;
         }
 
         long announcements = Volatile.Read(ref _blobAnnouncementsReceived);
-        // A peer that fetches full blobs announces them back only after admission, so a burst comes before any announcement.
-        if (totalRequests < announcements * RequestToAnnouncementRatioThreshold + CellRequestBurstAllowance)
+        long excess;
+        lock (_cellRequestRatioLock)
+        {
+            excess = totalRequests - _forgivenCellRequests - announcements * RequestToAnnouncementRatioThreshold;
+            // A peer that fetches full blobs announces them back only after admission, so its bursts come before the
+            // announcements. Excess requests drain over time, but idle time gives no credit beyond an empty bucket.
+            long refill = (long)((now - _cellRequestBurstRefilledAt).TotalSeconds * CellRequestBurstRefillPerSecond);
+            if (refill > 0)
+            {
+                _cellRequestBurstRefilledAt = now;
+                long forgiven = Math.Min(refill, Math.Max(0, excess));
+                _forgivenCellRequests += forgiven;
+                excess -= forgiven;
+            }
+        }
+
+        if (excess < CellRequestBurstAllowance)
         {
             return false;
         }
@@ -1887,10 +1908,11 @@ public class Eth72ProtocolHandler(
         BlobCellMask requestMask = pendingRequestState.Mask;
         if (!CanRequestCellsNow(hash, requestMask))
         {
-            // The sampler wait ended without a second provider: fetch all cells from the providers that announced.
+            // The sampler wait ended without a second provider: fetch all cells from the one that announced.
+            // With two providers only the transaction body is missing, and a slow validation must not cost a full fetch.
             if (!retryDue
                 || !pendingRequestState.FullFetchWhenDue
-                || _sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(hash) == 0)
+                || _sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(hash) is 0 or >= SparseBlobPoolPeerRegistry.MinSamplerFullProviderAnnouncements)
             {
                 return false;
             }
