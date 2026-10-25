@@ -30,7 +30,7 @@ public interface IBlockAccessListStore
         {
             Insert(block.Number, blockHash, block.EncodedBlockAccessList);
         }
-        else if (block.BlockAccessList is not null)
+        else if (block.BlockAccessList is not null && !Exists(block.Number, blockHash))
         {
             Insert(block.Number, blockHash, block.BlockAccessList);
         }

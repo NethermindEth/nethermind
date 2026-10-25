@@ -510,7 +510,18 @@ namespace Nethermind.Facade
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
 
-            return BuildCallOutput(result, outputTracer, accessTracer.AccessList);
+            CallOutput output = BuildCallOutput(result, outputTracer, accessTracer.AccessList);
+            if (result.TransactionExecuted && output.Error is not null && !output.ExecutionReverted)
+            {
+                // The transaction still carries the access list of the final run, so the rerun fails the same way.
+                BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
+                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, output.Error, cancellationToken, out string failureText))
+                {
+                    output.Error = failureText;
+                }
+            }
+
+            return output;
         }
 
         private static CallOutput BuildCallOutput(TransactionResult result, CallOutputTracer outputTracer, AccessList? accessList)
@@ -731,37 +742,27 @@ namespace Nethermind.Facade
                 return;
             }
 
-            using ArrayPoolList<Address?> storedSenders = new(transactions.Length);
-            int receiptCount = 0;
-            using (ReceiptsIterator receipts = iterator)
-            {
-                while (receipts.TryGetNext(out TxReceiptStructRef receipt))
-                {
-                    if (receiptCount < transactions.Length)
-                    {
-                        // An absent sender decodes to the shared zero address, which a stored one never aliases.
-                        storedSenders.Add(transactions[receiptCount].SenderAddress is null && receipt.Sender.Bytes != Address.Zero.Bytes
-                            ? receipt.Sender.ToAddress()
-                            : null);
-                    }
-
-                    receiptCount++;
-                }
-            }
-
-            if (receiptCount != transactions.Length)
+            using ReceiptsIterator receipts = iterator;
+            if (receipts.CountRemaining() != transactions.Length)
             {
                 RecoverEachTxSender(block);
                 return;
             }
 
             bool? useSignatureChainId = null;
-            for (int i = 0; i < transactions.Length; i++)
+            int i = 0;
+            for (; i < transactions.Length && receipts.TryGetNext(out TxReceiptStructRef receipt); i++)
             {
                 Transaction transaction = transactions[i];
-                transaction.SenderAddress ??= storedSenders[i]
-                    ?? RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
+                if (transaction.SenderAddress is not null) continue;
+
+                // An absent sender decodes to the shared zero address, which a stored one never aliases.
+                transaction.SenderAddress = receipt.Sender.Bytes != Address.Zero.Bytes
+                    ? receipt.Sender.ToAddress()
+                    : RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
             }
+
+            if (i < transactions.Length) RecoverEachTxSender(block);
         }
 
         private static bool HaveSenders(Transaction[] transactions)

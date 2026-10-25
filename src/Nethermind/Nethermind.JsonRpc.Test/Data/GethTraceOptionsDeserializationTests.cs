@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -146,7 +148,7 @@ public class GethTraceOptionsDeserializationTests
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GethTraceOptions>(json, CreateByNumberSerializerOptions()));
 
     [Test]
-    public void ByNumber_options_preserve_reader_options()
+    public void ByNumber_options_preserve_reader_options([Values] bool scalarNull)
     {
         JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
         serializerOptions.AllowTrailingCommas = true;
@@ -154,10 +156,49 @@ public class GethTraceOptionsDeserializationTests
         serializerOptions.MaxDepth = 128;
         string nested = new string('[', 65) + "0," + new string(']', 65);
 
-        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(
-            $$"""{"tracerConfig":{"value":{{nested}},/* retained by the raw nested value */},}""", serializerOptions)!;
+        string json = $$"""{"tracerConfig":{"value":{{nested}},/* retained by the raw nested value */},}""";
+        if (scalarNull) json = json.Insert(1, "\"disableStack\":null,");
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(json, serializerOptions)!;
 
         Assert.That(options.TracerConfig, Is.Not.Null);
+    }
+
+    [Test]
+    public void ByNumber_null_scan_preserves_segmented_reader_boundaries([Values] bool scalarNull, [Values] bool segmented)
+    {
+        string scalarOption = scalarNull ? ",\"\\u0064isableStack\":null" : string.Empty;
+        byte[] json = Encoding.UTF8.GetBytes($$"""[{"\u0064isableStack":true,"tracerConfig":{"nested":[null,{"limit":null}]}{{scalarOption}}},17]""");
+        BufferSegment first = new(json.AsMemory(0, 6));
+        BufferSegment last = first.Append(json.AsMemory(6));
+        ReadOnlySequence<byte> sequence = segmented ? new(first, 0, last, last.Memory.Length) : new(json);
+        Utf8JsonReader reader = new(sequence);
+        Assert.That(reader.Read(), Is.True);
+        Assert.That(reader.Read(), Is.True);
+
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(ref reader, CreateByNumberSerializerOptions())!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.DisableStack, Is.True);
+            Assert.That(options.TracerConfig, Is.Not.Null);
+            Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndObject));
+        }
+        Assert.That(reader.Read(), Is.True);
+        Assert.That(reader.GetInt32(), Is.EqualTo(17));
+        Assert.That(reader.Read(), Is.True);
+        Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndArray));
+    }
+
+    private sealed class BufferSegment : ReadOnlySequenceSegment<byte>
+    {
+        public BufferSegment(ReadOnlyMemory<byte> memory) => Memory = memory;
+
+        public BufferSegment Append(ReadOnlyMemory<byte> memory)
+        {
+            BufferSegment next = new(memory) { RunningIndex = RunningIndex + Memory.Length };
+            Next = next;
+            return next;
+        }
     }
 
     [Test]

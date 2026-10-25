@@ -13,23 +13,14 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
 {
     public override GethTraceOptions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        Utf8JsonReader originalReader = reader;
         JsonReaderOptions readerOptions = reader.CurrentState.Options;
+        StringComparison nameComparison = options.PropertyNameCaseInsensitive ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (reader.TokenType == JsonTokenType.StartObject && !RequiresNullFiltering(reader, options.GetTypeInfo(typeof(WireOptions)), nameComparison))
+            return JsonSerializer.Deserialize<WireOptions>(ref reader, options)!;
+
         using JsonDocument document = JsonDocument.ParseValue(ref reader);
         if (document.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("Trace options must be an object.");
-
         JsonTypeInfo wireTypeInfo = options.GetTypeInfo(typeof(WireOptions));
-        StringComparison nameComparison = options.PropertyNameCaseInsensitive ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        bool requiresFiltering = false;
-        foreach (JsonProperty property in document.RootElement.EnumerateObject())
-        {
-            if (property.Value.ValueKind == JsonValueKind.Null && IsNonNullableOption(property.Name, wireTypeInfo, nameComparison))
-            {
-                requiresFiltering = true;
-                break;
-            }
-        }
-        if (!requiresFiltering) return JsonSerializer.Deserialize<WireOptions>(ref originalReader, options)!;
 
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
@@ -46,6 +37,19 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
 
         Utf8JsonReader normalizedReader = new(buffer.WrittenSpan, readerOptions);
         return JsonSerializer.Deserialize<WireOptions>(ref normalizedReader, options)!;
+    }
+
+    private static bool RequiresNullFiltering(Utf8JsonReader reader, JsonTypeInfo typeInfo, StringComparison comparison)
+    {
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            Utf8JsonReader propertyReader = reader;
+            if (!reader.Read()) return false;
+            if (reader.TokenType == JsonTokenType.Null && IsNonNullableOption(propertyReader.GetString()!, typeInfo, comparison)) return true;
+            if (!reader.TrySkip()) return false;
+        }
+
+        return false;
     }
 
     private static bool IsNonNullableOption(string name, JsonTypeInfo typeInfo, StringComparison comparison)
