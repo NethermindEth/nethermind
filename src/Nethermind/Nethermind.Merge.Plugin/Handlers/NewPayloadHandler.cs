@@ -231,10 +231,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 bool hasExecutedCopy = await WriteReceivedIfWaiting(receivedLine, _processingQueue.WaitForExecutedCopyAsync(lastValidHash, RemainingBudget(deadline), _timeProvider));
                 if (!hasExecutedCopy || !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Syncing... Last valid ancestor {lastValidHash} is still in the processing queue.");
                     return NewPayloadV1Result.Syncing;
-                }
             }
 
             // Queue removal publishes invalidation before completing, so refresh the earlier snapshot.
