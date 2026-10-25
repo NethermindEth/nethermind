@@ -9,13 +9,13 @@ namespace Nethermind.Core.Memory;
 /// <summary>
 /// Wrapper around malloc apis
 /// </summary>
-public class MallocHelper
+public partial class MallocHelper
 {
-    [DllImport("libc")]
-    private static extern int mallopt(int opts, int value);
+    [LibraryImport("libc")]
+    private static partial int mallopt(int opts, int value);
 
-    [DllImport("libc")]
-    private static extern int malloc_trim(UIntPtr trailingSpace);
+    [LibraryImport("libc")]
+    private static partial int malloc_trim(UIntPtr trailingSpace);
 
     private static MallocHelper? _instance;
     public static MallocHelper Instance => _instance ??= new MallocHelper();
