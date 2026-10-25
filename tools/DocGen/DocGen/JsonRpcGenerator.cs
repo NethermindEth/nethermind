@@ -234,6 +234,13 @@ internal static class JsonRpcGenerator
         [typeof(ParityVmOperationTraceConverter)] = ["ex", "sub"],
     };
 
+    // The members of _knownConverterMembers, under the same key, that their converter leaves out in some cases
+    private static readonly Dictionary<Type, string[]> _knownConverterOmittedMembers = new()
+    {
+        [typeof(ParityTraceResultConverter)] = ["address", "code", "output"],
+        [typeof(ParityVmOperationTraceConverter)] = ["op"],
+    };
+
     // Members every concrete type writes, though the abstract base declares them nullable
     private static readonly HashSet<(Type DeclaringType, string Name)> _writtenNonNullMembers =
     [
@@ -739,9 +746,10 @@ internal static class JsonRpcGenerator
         if (_knownConverterMembers.TryGetValue(membersKey, out (string Name, Type Type, Type? Converter)[]? members))
         {
             string[] nullMembers = _knownConverterNullMembers.GetValueOrDefault(membersKey, []);
+            string[] omittedMembers = _knownConverterOmittedMembers.GetValueOrDefault(membersKey, []);
 
             return members.Select(m => (m.Name, m.Type, m.Converter, CanBeNull: nullMembers.Contains(m.Name),
-                CanBeOmitted: false));
+                CanBeOmitted: omittedMembers.Contains(m.Name)));
         }
 
         if (contract?.Kind is JsonTypeInfoKind.Object)

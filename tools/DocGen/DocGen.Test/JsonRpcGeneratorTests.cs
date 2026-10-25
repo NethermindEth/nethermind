@@ -157,6 +157,45 @@ public class JsonRpcGeneratorTests
         }
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Replay_response_documents_members_written_only_sometimes_as_optional(bool isCreate)
+    {
+        ParityTxTraceFromReplay trace = new()
+        {
+            TransactionHash = Keccak.Zero,
+            Action = new ParityTraceAction
+            {
+                Type = isCreate ? "create" : "call",
+                CallType = isCreate ? "create" : "call",
+                Result = isCreate ? new ParityTraceResult { Address = Address.Zero, Code = [] } : new ParityTraceResult { Output = [] }
+            },
+            // An operation outside the empty code is written without op
+            VmTrace = new ParityVmTrace { Code = [], Operations = [new ParityVmOperationTrace()] }
+        };
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        string response = ReadResponse("trace", "trace_replayTransaction");
+        string resultResponse = ReadPropertyBlock(ReadPropertyBlock(response, "trace", 2), "result", 4);
+        string opsResponse = ReadPropertyBlock(ReadPropertyBlock(response, "vmTrace", 2), "ops", 4);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertOmittedPropertiesOptional(wire.RootElement.GetProperty("trace")[0].GetProperty("result"), resultResponse, 6);
+            AssertOmittedPropertiesOptional(wire.RootElement.GetProperty("vmTrace").GetProperty("ops")[0], opsResponse, 6);
+        }
+    }
+
+    private static void AssertOmittedPropertiesOptional(JsonElement value, string response, int indentation)
+    {
+        string prefix = $"{new string(' ', indentation)}- `";
+        string[] omitted = [.. response.Split('\n')
+            .Where(l => l.StartsWith(prefix, StringComparison.Ordinal) && !value.TryGetProperty(l[prefix.Length..l.IndexOf('`', prefix.Length)], out _))];
+
+        AssertDocumentedProperties(value, response, indentation);
+        Assert.That(omitted, Is.Not.Empty);
+        Assert.That(omitted, Has.All.Contains("`: optional "));
+    }
+
     private static IEnumerable<TestCaseData> ResultsWithOmittedMembers()
     {
         ResourceAvailability disabled = new(true);
