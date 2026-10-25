@@ -394,6 +394,45 @@ public class PeerPoolTests
     }
 
     [Test]
+    public async Task StaticHostPeer_WithSession_StartsNewTimeoutWindowAfterSessionEnds()
+    {
+        INodeStats stats = Substitute.For<INodeStats>();
+        INodeStatsManager statsManager = Substitute.For<INodeStatsManager>();
+        statsManager.GetOrAdd(Arg.Any<Node>()).Returns(stats);
+        StaticHostFilter filter = new("1.2.3.0/24", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+        ManualTimestampProvider timeProvider = new();
+        PeerPool pool = new(new TestNodeSource(), statsManager, new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig { PeersPersistenceInterval = 10 }, LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), timeProvider, filter);
+
+        Peer hostPeer = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+        stats.DidEventHappen(NodeStatsEventType.Connecting).Returns(true);
+        TimeSpan almostTimeout = PeerPool.UnprovenStaticHostTimeout - TimeSpan.FromMinutes(1);
+        pool.Start();
+        try
+        {
+            Assert.That(() => hostPeer.Node.IsStatic, Is.True.After(200));
+            timeProvider.Advance(almostTimeout);
+
+            ISession session = Substitute.For<ISession>();
+            session.State.Returns(SessionState.Initialized);
+            hostPeer.InSession = session;
+            Assert.That(() => hostPeer.Node.IsStatic, Is.True.After(200));
+            hostPeer.InSession = null;
+            Assert.That(() => hostPeer.Node.IsStatic, Is.True.After(200));
+
+            timeProvider.Advance(almostTimeout);
+            Assert.That(() => hostPeer.Node.IsStatic, Is.True.After(200), "the session started a new window");
+
+            timeProvider.Advance(TimeSpan.FromMinutes(1));
+            Assert.That(() => hostPeer.Node.IsStatic, Is.False.After(5000, 10));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
     public async Task StaticHostPeer_LaterAddedAsConfiguredStaticPeer_IsNotDemoted()
     {
         StaticHostFilter filter = new("1.2.3.0/24", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());

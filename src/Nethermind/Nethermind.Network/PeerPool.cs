@@ -206,8 +206,19 @@ namespace Nethermind.Network
             {
                 Peer peer = kvp.Value;
                 Node node = peer.Node;
-                if (!node.IsStatic || !_staticHostFilter.IsPromoted(node) || peer.InSession is not null || peer.OutSession is not null
-                    || peer.IsAwaitingConnection || !FailedToProveKey(node))
+                if (!node.IsStatic || !_staticHostFilter.IsPromoted(node))
+                {
+                    continue;
+                }
+
+                // A live session or a proof starts a new window, so the node is not demoted right after the session ends.
+                if (IsHandshaked(peer.InSession) || IsHandshaked(peer.OutSession) || !FailedToProveKey(node))
+                {
+                    _unprovenSince.Remove(node);
+                    continue;
+                }
+
+                if (peer.InSession is not null || peer.OutSession is not null || peer.IsAwaitingConnection)
                 {
                     continue;
                 }
@@ -223,6 +234,10 @@ namespace Nethermind.Network
                 }
             }
         }
+
+        // An outbound session is attached before its handshake, so a failed dial must not count as a session.
+        private static bool IsHandshaked(ISession? session) =>
+            session is { State: >= SessionState.HandshakeComplete and < SessionState.DisconnectingProtocols };
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void DebugStaticHostMatch(Node node)
