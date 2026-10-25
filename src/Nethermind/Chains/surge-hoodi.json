@@ -5,6 +5,7 @@
       "ontakeTransition": "0x1",
       "pacayaTransition": "0x1",
       "UseSurgeGasPriceOracle": true,
+      "anchorV4WithSignalSlotsEnabled": true,
       "taikoL2Address": "0x7633750000000000000000000000000000010001"
     }
   },

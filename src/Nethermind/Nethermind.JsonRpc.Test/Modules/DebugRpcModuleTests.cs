@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -433,6 +435,38 @@ public partial class DebugRpcModuleTests
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
 
+    [Test]
+    public async Task Debug_traceCall_stops_after_the_call([Values("prestateTracer", "callTracer", null)] string? tracer)
+    {
+        int requestsProcessed = 0;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { Timeout = -1 })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddDecorator<IExecutionRequestsProcessor>((_, inner) => new CountingExecutionRequestsProcessor(inner, () => requestsProcessed++)));
+        requestsProcessed = 0;
+
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString(), value = "0x1", gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(requestsProcessed, Is.Zero, "nothing after the call reaches the trace, so the block must not be finalized");
+        }
+    }
+
+    private sealed class CountingExecutionRequestsProcessor(IExecutionRequestsProcessor inner, Action onProcess) : IExecutionRequestsProcessor
+    {
+        public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+        {
+            onProcess();
+            inner.ProcessExecutionRequests(block, state, receipts, spec);
+        }
+    }
+
     private class Context : IDisposable
     {
         public IDebugRpcModule DebugRpcModule { get; }
@@ -505,6 +539,8 @@ public partial class DebugRpcModuleTests
             ("overlap", "602a601f536002601f2000", """{"0x71378d9bd65a614e4926f9fa621eae99b3f2a1cf19e8c22e41594dc15c16dd33":"0x2a00"}""", 100_000),
             ("offset", "600160202000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
             ("duplicate", "6000600020600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("duplicate_before_memory_overwrite", "602a600053600160002050600160002050602b60005300", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
+            ("distinct_before_memory_overwrite", "602a6000536001600020506000600053600160002050602b60005300", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a","0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
             ("revert", "602a600053600160002060006000fd", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
             ("empty_stack", "20", """{}""", 100_000),
             ("short_stack", "600020", """{}""", 100_000),
@@ -891,8 +927,8 @@ public partial class DebugRpcModuleTests
         (string Json, string? Error, int? Code)[] cases =
         [
             ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput),
-            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", "block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput),
             ("{\"beaconRoot\":null,\"withdrawals\":null}", null, null)
         ];
         foreach ((string json, string? error, int? code) in cases)
@@ -1262,6 +1298,56 @@ public partial class DebugRpcModuleTests
         AssertTraceCallInputError(response, expectedCollision);
     }
 
+    [Test]
+    public async Task Debug_traceCall_validates_fees_with_null_account_override(
+        [Values] bool streaming, [Values("null", "{}")] string accountOverride, [Values(null, "0x0")] string? txIndex)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        object options = new
+        {
+            stateOverrides = new Dictionary<string, JsonElement>
+            {
+                ["0x0000000000000000000000000000000000000010"] = JsonSerializer.Deserialize<JsonElement>(accountOverride)
+            },
+            txIndex
+        };
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gasPrice = "0x1", maxFeePerGas = "0x2" }, "latest", options);
+
+        AssertTraceCallInputError(response, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified");
+    }
+
+    [Test]
+    public async Task Debug_traceCall_accepts_empty_account_override(
+        [Values] bool streaming, [Values("null", "{}")] string accountOverride,
+        [Values(null, "0x0")] string? txIndex, [Values("0x0000000000000000000000000000000000000010", "0x0000000000000000000000000000000000000004")] string address)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        object options = new
+        {
+            stateOverrides = new Dictionary<string, JsonElement>
+            {
+                [address] = JsonSerializer.Deserialize<JsonElement>(accountOverride)
+            },
+            txIndex
+        };
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = address, data = "0x1234" }, "latest", options);
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo("0x"), response);
+            Assert.That(json["result"]?["structLogs"], Is.Empty, response);
+        }
+    }
+
     private static void AssertTraceCallInputError(string response, string message)
     {
         JToken json = JToken.Parse(response);
@@ -1492,18 +1578,21 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
-        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals")] string selection, [Values] bool streaming, [Values] bool movePrecompile)
+        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals", "pending-with-withdrawals", "missing-with-withdrawals", "unavailable-parent-with-withdrawals")] string selection,
+        [Values] bool streaming, [Values] bool movePrecompile)
     {
+        bool withWithdrawals = selection.EndsWith("-with-withdrawals", StringComparison.Ordinal);
+        string blockSelection = withWithdrawals ? selection[..^"-with-withdrawals".Length] : selection;
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
-        if (selection is "unavailable" or "unavailable-with-withdrawals") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
-        if (selection == "unavailable-parent")
+        if (blockSelection == "unavailable") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
+        if (blockSelection == "unavailable-parent")
         {
             Block parent = chain.BlockTree.Head!;
             await chain.AddBlock();
             parent.Header.StateRoot = TestItem.KeccakA;
         }
-        string selector = selection switch
+        string selector = blockSelection switch
         {
             "pending" => "pending",
             "missing" => TestItem.KeccakA.ToString(),
@@ -1513,8 +1602,8 @@ public partial class DebugRpcModuleTests
             new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, selector,
             new
             {
-                txIndex = selection == "unavailable-parent" ? "0x0" : null,
-                blockOverrides = selection == "unavailable-with-withdrawals" ? new { withdrawals = Array.Empty<object>() } : null,
+                txIndex = blockSelection == "unavailable-parent" ? "0x0" : null,
+                blockOverrides = withWithdrawals ? new { withdrawals = Array.Empty<object>() } : null,
                 stateOverrides = new Dictionary<string, object>
                 {
                     [TestItem.AddressC.ToString()] = new
@@ -1525,9 +1614,8 @@ public partial class DebugRpcModuleTests
                     }
                 }
             });
-        (int code, string message) = selection switch
+        (int code, string message) = blockSelection switch
         {
-            "unavailable-with-withdrawals" => (ErrorCodes.InvalidParams, BlockOverride.WithdrawalsNotSupported),
             "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
             "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
             _ => (ErrorCodes.ResourceUnavailable, "No state available")

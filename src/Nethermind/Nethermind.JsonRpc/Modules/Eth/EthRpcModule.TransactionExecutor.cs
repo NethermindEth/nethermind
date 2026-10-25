@@ -81,9 +81,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 if (stateOverride is not null)
                 {
                     IReleaseSpec spec = specProvider.GetSpec(header);
-                    foreach ((Address address, AccountOverride accountOverride) in stateOverride)
+                    foreach ((Address address, AccountOverride? accountOverride) in stateOverride)
                     {
-                        if (accountOverride.MovePrecompileToAddress is not null &&
+                        if (accountOverride?.MovePrecompileToAddress is not null &&
                             spec.IsPrecompile(address) &&
                             accountOverride.MovePrecompileToAddress == address)
                         {

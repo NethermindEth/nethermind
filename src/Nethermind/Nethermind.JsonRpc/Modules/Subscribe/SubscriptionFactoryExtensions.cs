@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -34,23 +36,29 @@ public static class SubscriptionFactoryExtensions
         IReceiptMonitor receiptMonitor,
         FilterStore? filterStore,
         IBlockTree? blockTree,
-        ILogManager? logManager
-        ) => subscriptionFactory.RegisterSubscriptionType<Filter?>(
+        ILogManager? logManager)
+    {
+        ReceiptsEventPayloadCache<Filter> payloads = LogsSubscription.CreatePayloadCache();
+        subscriptionFactory.RegisterSubscriptionType<Filter?>(
             SubscriptionType.EthSubscription.Logs,
             (jsonRpcDuplexClient, filter) =>
-            new LogsSubscription(jsonRpcDuplexClient, receiptMonitor, filterStore, blockTree, logManager, filter)
+            new LogsSubscription(jsonRpcDuplexClient, receiptMonitor, filterStore, blockTree, logManager, payloads, filter)
             );
+    }
 
     public static void RegisterTransactionReceiptsSubscription(
         this ISubscriptionFactory subscriptionFactory,
         IReceiptMonitor receiptMonitor,
         IBlockTree? blockTree,
-        ILogManager? logManager
-        ) => subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
+        ILogManager? logManager)
+    {
+        ReceiptsEventPayloadCache<HashSet<ValueHash256>> payloads = TransactionReceiptsSubscription.CreatePayloadCache();
+        subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
             SubscriptionType.EthSubscription.TransactionReceipts,
             (jsonRpcDuplexClient, filter) =>
-            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, logManager, filter)
+            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, logManager, payloads, filter)
             );
+    }
 
     public static void RegisterNewPendingTransactionsSubscription(
         this ISubscriptionFactory subscriptionFactory,

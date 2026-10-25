@@ -26,6 +26,22 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
             get => ParsedTimeout;
             init => ParsedTimeout = value;
         }
+
+        // Nullable shadows treat a JSON null as not set, as Go's encoding/json does for non-pointer scalars.
+        public new bool? DisableStorage { get => base.DisableStorage; init { if (value is { } v) base.DisableStorage = v; } }
+
+        public new bool? DisableStack { get => base.DisableStack; init { if (value is { } v) base.DisableStack = v; } }
+
+        public new bool? EnableReturnData { get => base.EnableReturnData; init { if (value is { } v) base.EnableReturnData = v; } }
+
+#pragma warning disable CS0618
+        public new bool? DisableMemory { get => base.DisableMemory; set { if (value is { } v) base.DisableMemory = v; } }
+#pragma warning restore CS0618
+
+        public new bool? EnableMemory { get => base.EnableMemory; set { if (value is { } v) base.EnableMemory = v; } }
+
+        [JsonConverter(typeof(LimitConverter))]
+        public new long? Limit { get => base.Limit; init { if (value is { } v) base.Limit = v; } }
     }
 
     internal sealed class ParsedDurationConverter : JsonConverter<ParsedTraceDuration>
