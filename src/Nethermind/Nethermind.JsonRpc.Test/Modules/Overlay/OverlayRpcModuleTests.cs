@@ -180,12 +180,7 @@ public class OverlayRpcModuleTests
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Deployment deployment = await Deploy(chain);
-        Block head = chain.BlockTree.Head!;
-        BlockHeader header = head.Header.Clone();
-        header.ExtraData = [1];
-        header.Hash = header.CalculateHash();
-        Block sibling = new(header, new BlockBody([head.Transactions[0]], [], head.Withdrawals));
-        Assert.That(chain.BlockTree.SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+        Block sibling = AddSiblingOfHead(chain);
 
         using JsonDocument response = await Request(chain, "overlay_getLogs", new { blockHash = sibling.Hash }, Override(deployment.Contract, Emitter(TopicA, TopicB)));
 
@@ -196,6 +191,33 @@ public class OverlayRpcModuleTests
             Assert.That(logs, Has.Length.EqualTo(2));
             Assert.That(logs.Select(static l => l.GetProperty("blockHash").GetString()), Is.All.EqualTo(sibling.Hash!.ToString()));
         }
+    }
+
+    [Test]
+    public async Task GetLogs_fails_for_a_range_with_a_block_that_is_not_canonical([Values] bool toByHash)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Deployment deployment = await Deploy(chain);
+        Block sibling = AddSiblingOfHead(chain);
+
+        // By hash, both ends are at the same height but select two different blocks, so the range is not one block.
+        using JsonDocument response = await Request(chain, "overlay_getLogs", toByHash
+            ? new { fromBlock = sibling.Hash!.ToString(), toBlock = chain.BlockTree.Head!.Hash!.ToString() }
+            : new { fromBlock = sibling.Hash!.ToString(), toBlock = deployment.Last.ToHexString(true) });
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
+    [Test]
+    public async Task GetLogs_accepts_a_canonical_block_hash_as_a_range_end()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Deployment deployment = await Deploy(chain);
+
+        using JsonDocument response = await Request(chain, "overlay_getLogs",
+            new { fromBlock = chain.BlockTree.FindHeader(deployment.First)!.Hash!.ToString(), toBlock = deployment.Last.ToHexString(true) });
+
+        Assert.That(response.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(deployment.Calls));
     }
 
     [Test]
@@ -346,6 +368,18 @@ public class OverlayRpcModuleTests
         await chain.AddBlock(Call(chain.ReadOnlyState.GetNonce(TestItem.AddressA), factory));
         Assert.That(chain.ReadOnlyState.GetCode(child).Length, Is.GreaterThan(0), "precondition: the factory deployed the child");
         return child;
+    }
+
+    /// <summary>Adds a block at the head height with the first transaction of the head, without making it canonical.</summary>
+    private static Block AddSiblingOfHead(TestRpcBlockchain chain)
+    {
+        Block head = chain.BlockTree.Head!;
+        BlockHeader header = head.Header.Clone();
+        header.ExtraData = [1];
+        header.Hash = header.CalculateHash();
+        Block sibling = new(header, new BlockBody([head.Transactions[0]], [], head.Withdrawals));
+        Assert.That(chain.BlockTree.SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+        return sibling;
     }
 
     private static Transaction Deploy(ulong nonce, byte[] runtime) =>

@@ -94,6 +94,7 @@ public class OverlayRpcModule(
                 if (!creation.Value.IsZero)
                 {
                     // The creator can get the value in the same transaction, so it must hold it before the call.
+                    // The override applies to the parent state, so the transactions before it also see this balance.
                     BlockHeader? parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                     UInt256 balance = parent is not null && stateReader.TryGetAccount(parent, creation.Creator!, out AccountStruct creator) ? creator.Balance : UInt256.Zero;
                     stateOverride[creation.Creator!] = new AccountOverride { Balance = balance + creation.Value };
@@ -146,6 +147,11 @@ public class OverlayRpcModule(
         ulong to = toHeader.Number;
         if (from > to) return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
 
+        // Only a single-block range can target a side block: a longer range is replayed along the canonical chain.
+        bool singleBlock = fromHeader.Hash == toHeader.Hash;
+        if (!singleBlock && (!blockFinder.IsMainChain(fromHeader) || !blockFinder.IsMainChain(toHeader)))
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail("a block range must start and end on canonical blocks", ErrorCodes.InvalidParams);
+
         int maxRange = jsonRpcConfig.OverlayMaxBlockRange;
         if (maxRange > 0 && to - from >= (ulong)maxRange)
             return ResultWrapper<IEnumerable<FilterLog>>.Fail($"exceed maximum block range: {maxRange}", ErrorCodes.LimitExceeded);
@@ -160,11 +166,9 @@ public class OverlayRpcModule(
             for (ulong number = from; number <= to; number++)
             {
                 token.ThrowIfCancellationRequested();
-                // A block-hash filter can target a block that is not canonical, so the range ends are loaded by hash.
-                BlockHeader? end = number == from ? fromHeader : number == to ? toHeader : null;
-                Block? block = end is null
-                    ? blockFinder.FindBlock(number, BlockTreeLookupOptions.RequireCanonical)
-                    : blockFinder.FindBlock(end.Hash!, BlockTreeLookupOptions.None, number);
+                Block? block = singleBlock
+                    ? blockFinder.FindBlock(fromHeader.Hash!, BlockTreeLookupOptions.None, number)
+                    : blockFinder.FindBlock(number, BlockTreeLookupOptions.RequireCanonical);
                 if (block is null) return ResultWrapper<IEnumerable<FilterLog>>.Fail($"block {number} not found", ErrorCodes.ResourceNotFound);
                 if (block.Transactions.Length == 0) continue;
 
