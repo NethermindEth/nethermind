@@ -11,8 +11,10 @@ using NUnit.Framework;
 namespace Nethermind.Trie.ZkEvm.Test;
 
 /// <summary>Tests for the guest's leaf key, kept in hex-prefix form until read, and the raw-key read walk matching it.</summary>
-/// <remarks>Without hashing: in a ZK_EVM build the Keccak permutation is a zkVM precompile that throws outside the guest.</remarks>
-[Parallelizable(ParallelScope.All)]
+/// <remarks>Without hashing: in a ZK_EVM build the Keccak permutation is a zkVM precompile that throws outside the guest.
+/// Not parallel: a ZK_EVM build makes <c>[ThreadStatic]</c> a no-op, so concurrent writes share
+/// <see cref="PatriciaTree"/>'s traverse stack.</remarks>
+[NonParallelizable]
 public class GuestLeafKeyTests
 {
     [Test]
@@ -69,6 +71,7 @@ public class GuestLeafKeyTests
     }
 
     [Test]
+    [NonParallelizable]
     public void Raw_key_read_finds_every_value_and_no_other()
     {
         PatriciaTree tree = new();

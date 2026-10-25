@@ -27,8 +27,9 @@ public static class StateOverridesExtensions
         overridableCodeInfoRepository.ResetPrecompileOverrides(spec);
         if (overrides is not null)
         {
-            foreach ((Address address, AccountOverride accountOverride) in overrides)
+            foreach ((Address address, AccountOverride? value) in overrides)
             {
+                AccountOverride accountOverride = value ?? new AccountOverride();
                 if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
                     throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
 
