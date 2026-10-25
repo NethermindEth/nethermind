@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
@@ -16,9 +15,13 @@ namespace Nethermind.Blockchain.Blocks;
 /// <remarks>
 /// Each value is the block RLP, followed by the RLP of the suggested block access list when the block has one.
 /// The access list is returned as <see cref="Block.EncodedBlockAccessList"/> and is not decoded.
+/// An access list larger than <see cref="MaxBlockAccessListSize"/> is not kept.
 /// </remarks>
 public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDecoder = null) : IBadBlockStore
 {
+    // Every read of the store (hash lookups and debug_getBadBlocks) copies each kept access list, so the size is bounded.
+    public const int MaxBlockAccessListSize = 1024 * 1024;
+
     private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -32,7 +35,7 @@ public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDeco
         byte[]? bal = block.EncodedBlockAccessList
             ?? (block.BlockAccessList is { } blockAccessList ? BlockAccessListDecoder.EncodeToBytes(blockAccessList) : null);
 
-        if (bal is null)
+        if (bal is null || bal.Length > MaxBlockAccessListSize)
         {
             blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
         }
@@ -64,12 +67,11 @@ public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDeco
         int toDelete = (int)(blockDb.EstimatedCount - maxSize);
         if (toDelete > 0)
         {
-            foreach (Block blockToDelete in GetAll().Take(toDelete))
+            // The key is the block number followed by the hash, so the values do not need to be decoded.
+            foreach (byte[] key in blockDb.GetAllKeys(true).Take(toDelete))
             {
-                Delete(blockToDelete.Number, blockToDelete.Hash);
+                blockDb.Remove(key);
             }
         }
     }
-
-    private void Delete(ulong blockNumber, Hash256 blockHash) => blockDb.Delete(blockNumber, blockHash);
 }

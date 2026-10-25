@@ -62,6 +62,22 @@ public class BadBlockStoreTests
     }
 
     [Test]
+    public void Insert_drops_block_access_list_above_size_limit()
+    {
+        BadBlockStore badBlockStore = new(new TestMemDb(), 10);
+        Block block = Build.A.Block.WithNumber(1).WithEncodedBlockAccessList(new byte[BadBlockStore.MaxBlockAccessListSize + 1]).TestObject;
+
+        badBlockStore.Insert(block);
+
+        Block stored = badBlockStore.GetAll().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored.Hash, Is.EqualTo(block.Hash));
+            Assert.That(stored.EncodedBlockAccessList, Is.Null);
+        }
+    }
+
+    [Test]
     public void Test_LimitStoredBlock()
     {
         BadBlockStore badBlockStore = new(new TestMemDb(), 2);
