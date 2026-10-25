@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -246,6 +247,20 @@ public class BlockDecoderTests
             Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
             Assert.That(decoder.GetLength(blockWithEncoded, RlpBehaviors.None), Is.EqualTo(standard.Bytes.Length));
         }
+    }
+
+    [Test]
+    public void Encode_to_array_pool_span_matches_encode(
+        [ValueSource(nameof(BlockScenarios))] Block block, [Values] bool preEncodedTransactions)
+    {
+        BlockDecoder decoder = new();
+        Block target = preEncodedTransactions
+            ? new(block.Header, block.Body) { EncodedTransactions = block.Transactions.Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes).ToArray() }
+            : block;
+
+        using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(target);
+
+        Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(decoder.Encode(target).Bytes));
     }
 
     [Test]

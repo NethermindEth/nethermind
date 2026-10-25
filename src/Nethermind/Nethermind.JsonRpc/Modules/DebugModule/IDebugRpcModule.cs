@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -60,6 +61,9 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Replays a block and returns the world-state root after each transaction in execution order. EIP-4788/EIP-2935 system calls and withdrawals do not produce an entry. Failed transactions still produce a root (geth partial-result semantics). The block must be canonical or in the bad-block store.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null);
+
+    [JsonRpcMethod(Description = "Returns up to maxResult storage slots of an account as they are before the transaction at the given index of the block runs. Slots are in hashed-key order from the hashed key keyStart. nextKey is the hashed key to continue from, or null when no slots follow. Slot key preimages are not kept, so each key is null. At most 1024 slots are returned per call. Not supported on chains whose block processor cannot stop before a transaction, such as AuRa and Taiko.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<StorageRangeResult> debug_storageRangeAt(BlockParameter blockParameter, int txIndex, Address address, byte[] keyStart, int maxResult);
 
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null);
@@ -129,7 +133,8 @@ public interface IDebugRpcModule : IRpcModule
     /// </summary>
     /// <param name="file">Optional absolute local path (not a UNC or device path) of a new file to write the list to; an existing file is never overwritten.</param>
     /// <returns>The list of invalid blocks, or <c>null</c> when it was written to <paramref name="file"/>.</returns>
-    [JsonRpcMethod(Description = "Return list of invalid blocks. If an absolute local file path is given, writes the list to that new file and returns null.")]
+    [JsonRpcMethod(Description = "Return list of invalid blocks. If an absolute local file path is given, writes the list to that new file and returns null.",
+        ResponseDescription = "Each `block` carries full transaction objects.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null);
 
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks",

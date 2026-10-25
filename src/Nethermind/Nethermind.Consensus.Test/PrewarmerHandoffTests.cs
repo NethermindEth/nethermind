@@ -340,6 +340,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             preWarmer,
             new PrewarmerState(caches, isPrewarmer: false),
             ProcessingScope.Resolve<IWorldState>(),
+            ProcessingScope.Resolve<ICodeInfoRepository>(),
             LimboLogs.Instance);
 
         Assert.That(Handoff(ThreeIndependentTransactions(), preWarmer, adapter).Tally.Replayed, Is.EqualTo(3));
@@ -1982,6 +1983,7 @@ public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Ins
             preWarmer,
             new PrewarmerState(caches, isPrewarmer: false),
             ProcessingScope.Resolve<IWorldState>(),
+            ProcessingScope.Resolve<ICodeInfoRepository>(),
             LimboLogs.Instance);
         preWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, null), () => preWarmer.SpeculativeMarkerPublished);
         late.SenderAddress = null;

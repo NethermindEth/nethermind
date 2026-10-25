@@ -95,11 +95,8 @@
     <Content Include="nethermind.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Include="configs\*.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-    </None>
+    <Content Remove="configs\**" />
+    <None Include="configs\*.json" />
     <None Remove="keystore\**" />
     <Content Remove="runtimeconfig.template.json" />
     <None Include="runtimeconfig.template.json" />
