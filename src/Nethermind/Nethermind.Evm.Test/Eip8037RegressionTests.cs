@@ -2412,4 +2412,158 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(TestState.GetBalance(Sender), Is.EqualTo(senderBalanceBefore - spentGas));
         }
     }
+
+    [Test]
+    public void Eip8037_large_code_deposit_fails_only_the_create_of_a_gas_limited_callee(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL)] Instruction callType)
+    {
+        // PUSH2 0x6000 PUSH0 RETURN: returns 24,576 zero bytes, a code deposit of 37,601,280 state gas.
+        byte[] helperCode = Prepare.EvmCode
+            .Create(Bytes.FromHexString("0x6160005ff3"), UInt256.Zero)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        TestState.CreateAccount(TestItem.AddressD, 0);
+        TestState.InsertCode(TestItem.AddressD, helperCode, SpecProvider.GenesisSpec);
+
+        Prepare call = callType switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(TestItem.AddressD, 50_000),
+            Instruction.CALLCODE => Prepare.EvmCode.CallCode(TestItem.AddressD, 50_000),
+            _ => Prepare.EvmCode.DelegateCall(TestItem.AddressD, 50_000),
+        };
+        byte[] code = call
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        // The reservoir could pay the whole deposit; only the allowance of the create frame stops it. A failed
+        // deployment refills its account charge, so only the slot written by the caller stays in block state gas.
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + 40_000_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: 100_000_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
+        }
+    }
+
+    [Test]
+    public void Eip8037_top_level_frame_deploys_several_maximum_size_contracts_from_the_reservoir()
+    {
+        // PUSH2 0x6000 PUSH0 RETURN: 24,576 zero bytes. The top-level frame has no allowance, and each create frame
+        // gets one from the gas forwarded to it, so all deposits come from the reservoir. Four deployments draw about
+        // 151M, more than the 128M that an allowance derived from the top level's execution gas would permit.
+        const int deployments = 4;
+        byte[] initCode = Bytes.FromHexString("0x6160005ff3");
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 0; i < deployments; i++)
+        {
+            prepare = prepare.Create(initCode, UInt256.Zero).Op(Instruction.POP);
+        }
+
+        byte[] code = prepare.Op(Instruction.STOP).Done;
+
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + 160_000_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: 200_000_000);
+
+        UInt256 nonce = TestState.GetNonce(Recipient);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            for (int i = 1; i <= deployments; i++)
+            {
+                Assert.That(TestState.GetCode(ContractAddress.From(Recipient, nonce - (ulong)i)).Length, Is.EqualTo(24_576));
+            }
+
+            Assert.That(tracer.GasConsumedResult.BlockStateGas,
+                Is.EqualTo(deployments * (GasCostOf.CreateState + 24_576 * GasCostOf.CostPerStateByte)));
+        }
+    }
+
+    [Test]
+    public void Eip8037_callee_pays_from_gas_left_when_its_ancestor_used_the_allowance()
+    {
+        // PUSH2 0x0708 PUSH0 RETURN: deploys 1,800 zero bytes, a code deposit of 2,754,000 state gas.
+        byte[] deployAndCallCode = Prepare.EvmCode
+            .Create(Bytes.FromHexString("0x6107085ff3"), UInt256.Zero)
+            .Op(Instruction.POP)
+            .Call(TestItem.AddressE, 230_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] twoSlotsCode = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .PushData(1).PushData(1).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+        TestState.CreateAccount(TestItem.AddressD, 0);
+        TestState.InsertCode(TestItem.AddressD, deployAndCallCode, SpecProvider.GenesisSpec);
+        TestState.CreateAccount(TestItem.AddressE, 0);
+        TestState.InsertCode(TestItem.AddressE, twoSlotsCode, SpecProvider.GenesisSpec);
+        Address deployed = ContractAddress.From(TestItem.AddressD, TestState.GetNonce(TestItem.AddressD));
+
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressD, 400_000).Op(Instruction.STOP).Done;
+
+        // The deployment leaves about 142,400 of the 3,060,000 allowance, less than the two slots need from the
+        // reservoir. The callee pays the rest from its own gas instead of halting.
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + 10_000_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: 100_000_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(TestState.GetCode(deployed).Length, Is.EqualTo(1_800));
+            AssertStorage(new StorageCell(TestItem.AddressE, 0), UInt256.One);
+            AssertStorage(new StorageCell(TestItem.AddressE, 1), UInt256.One);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas,
+                Is.EqualTo(GasCostOf.CreateState + 1_800 * GasCostOf.CostPerStateByte + 2 * GasCostOf.SSetState));
+        }
+    }
+
+    [Test]
+    public void Eip8037_callee_cannot_drain_the_reservoir_of_a_later_callee()
+    {
+        byte[] newSlotCode = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        // PUSH2 0x0400 PUSH0 RETURN: deploys 1,024 zero bytes, a code deposit of 1,566,720 state gas.
+        byte[] deployerCode = Prepare.EvmCode
+            .Create(Bytes.FromHexString("0x6104005ff3"), UInt256.Zero)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, newSlotCode, SpecProvider.GenesisSpec);
+        TestState.CreateAccount(TestItem.AddressD, 0);
+        TestState.InsertCode(TestItem.AddressD, deployerCode, SpecProvider.GenesisSpec);
+        TestState.CreateAccount(TestItem.AddressE, 0);
+        TestState.InsertCode(TestItem.AddressE, newSlotCode, SpecProvider.GenesisSpec);
+        Address deployed = ContractAddress.From(TestItem.AddressD, TestState.GetNonce(TestItem.AddressD));
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 100_000)
+            .Op(Instruction.POP)
+            .Call(TestItem.AddressD, 100_000)
+            .Op(Instruction.POP)
+            .Call(TestItem.AddressE, 100_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        // The reservoir covers the first slot and the whole deployment, but not the last slot as well.
+        // Without an allowance, the deployment would empty it and the last callee would run out of gas.
+        long reservoir = (GasCostOf.SSetState - 10_000) + (GasCostOf.CreateState - Eip8037Constants.CreateLegacyShare) + 1_024 * GasCostOf.CostPerStateByte + 10_000;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + (ulong)reservoir;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: 100_000_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(TestItem.AddressC, 0), UInt256.One);
+            Assert.That(TestState.IsContract(deployed), Is.False);
+            AssertStorage(new StorageCell(TestItem.AddressE, 0), UInt256.One);
+        }
+    }
 }
