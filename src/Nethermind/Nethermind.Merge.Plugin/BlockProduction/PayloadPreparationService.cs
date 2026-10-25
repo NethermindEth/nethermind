@@ -97,7 +97,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
-        EmptyBlockPreparation preparation = new(new SharedCancellationTokenSource(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken)));
+        EmptyBlockPreparation preparation = new(new SharedCancellationTokenSource(CreateShutdownLinkedSource()));
         if (_emptyBlockPreparations.TryAdd(payloadId, preparation))
         {
             // A preparation that finished before the add published its payload first.
@@ -125,6 +125,24 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void LogMultiStartRequest(string payloadId, ulong number) => _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
+    }
+
+    private CancellationTokenSource CreateShutdownLinkedSource()
+    {
+        CancellationTokenSource? shutdown = Volatile.Read(ref _shutdown);
+        if (shutdown is not null)
+        {
+            try
+            {
+                return CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Dispose ran after the read, so the build starts cancelled like any build after shutdown.
+            }
+        }
+
+        return CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenExtensions.AlreadyCancelledToken);
     }
 
     private async Task PrepareEmptyBlockAndImprove(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, EmptyBlockPreparation preparation)

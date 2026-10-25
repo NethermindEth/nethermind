@@ -449,6 +449,25 @@ public class PayloadPreparationServiceTests
 
     [Test]
     [CancelAfter(30000)]
+    public async Task StartPreparingPayload_after_dispose_returns_an_id_without_a_payload()
+    {
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+            .Returns(Build.A.Block.WithNumber(1).TestObject);
+        using TestPayloadPreparationService service = CreateService(producer);
+        service.Dispose();
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await service.GetPayload(payloadId), Is.Null);
+            _ = producer.DidNotReceive().BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>());
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
     public async Task StartPreparingPayload_does_not_build_a_published_payload_again()
     {
         IBlockProducer producer = Substitute.For<IBlockProducer>();
