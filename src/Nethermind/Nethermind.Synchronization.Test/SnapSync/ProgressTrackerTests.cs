@@ -137,6 +137,7 @@ public class ProgressTrackerTests
     }
 
     [Test]
+    [NonParallelizable]
     public void Will_mark_range_phase_finished_when_ranges_drain()
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
@@ -148,8 +149,11 @@ public class ProgressTrackerTests
         progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
         progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
         request.Dispose();
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale - 1));
+
         bool finished = progressTracker.IsFinished(out _);
         Assert.That(finished, Is.True);
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
 
         snapTrieFactory.Received(1).MarkRangePhaseFinished();
         using (Assert.EnterMultipleScope())
@@ -157,6 +161,33 @@ public class ProgressTrackerTests
             Assert.That(logger.LogList, Has.Some.StartsWith("Snap         State Ranges (Phase 1 of 2): ("));
             Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) finished."));
         }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Will_publish_covered_account_key_space()
+    {
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 4, snapTrieFactory: snapTrieFactory);
+        Assert.That(Metrics.SnapRangesProgress, Is.Zero);
+
+        progressTracker.IsFinished(out SnapSyncBatch? request);
+        using (request)
+        {
+            ValueHash256 limit = request!.AccountRangeRequest!.LimitHash!.Value;
+            progressTracker.UpdateAccountRangePartitionProgress(limit, new Hash256("0x2000000000000000000000000000000000000000000000000000000000000000"), true);
+            Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(1250));
+
+            progressTracker.UpdateAccountRangePartitionProgress(limit, limit, false);
+            Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(2500));
+        }
+
+        snapTrieFactory.IsRangePhaseFinished().Returns(true);
+        progressTracker.LoadProgress();
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
+
+        progressTracker.Reset();
+        Assert.That(Metrics.SnapRangesProgress, Is.Zero);
     }
 
     [Test]

@@ -198,13 +198,6 @@ internal static class JsonRpcGenerator
             ("trace", typeof(ParityTraceAction[]), typeof(ParityTraceActionFromReplayJsonConverter)),
             ("transactionHash", typeof(Hash256), null), ("vmTrace", typeof(ParityVmTrace), null),
         ],
-        // Read by Filter.ReadJson rather than a converter, so keyed by the type
-        [typeof(Filter)] =
-        [
-            ("address", typeof(FilterAddress), null), ("blockHash", typeof(FilterBlockHash), null),
-            ("fromBlock", typeof(FilterBlockBound), null), ("toBlock", typeof(FilterBlockBound), null),
-            ("topics", typeof(FilterTopics), null), ("useIndex", typeof(bool), null),
-        ],
         [typeof(ProofJsonConverter)] =
         [
             ("accountProof", typeof(byte[][]), null), ("address", typeof(Address), null), ("balance", typeof(UInt256), null),
@@ -214,7 +207,17 @@ internal static class JsonRpcGenerator
         // Written only while syncing
         [typeof(SyncingResultJsonConverter)] =
         [
-            ("currentBlock", typeof(ulong), null), ("highestBlock", typeof(ulong), null), ("startingBlock", typeof(ulong), null),
+            ("currentBlock", typeof(ulong), null), ("healedBytecodes", typeof(ulong?), null), ("healedTrienodes", typeof(ulong?), null),
+            ("highestBlock", typeof(ulong), null), ("startingBlock", typeof(ulong), null), ("syncedAccounts", typeof(ulong?), null),
+            ("syncedBytecodes", typeof(ulong?), null), ("syncedStorage", typeof(ulong?), null), ("warpChunksAmount", typeof(ulong?), null),
+            ("warpChunksProcessed", typeof(ulong?), null),
+        ],
+        // Read by Filter.ReadJson rather than a converter, so keyed by the type
+        [typeof(Filter)] =
+        [
+            ("address", typeof(FilterAddress), null), ("blockHash", typeof(FilterBlockHash), null),
+            ("fromBlock", typeof(FilterBlockBound), null), ("toBlock", typeof(FilterBlockBound), null),
+            ("topics", typeof(FilterTopics), null), ("useIndex", typeof(bool), null),
         ],
     };
 

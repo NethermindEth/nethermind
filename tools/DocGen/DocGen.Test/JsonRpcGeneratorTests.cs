@@ -154,7 +154,17 @@ public class JsonRpcGeneratorTests
     private static IEnumerable<TestCaseData> ConverterWrittenResults()
     {
         yield return new TestCaseData("eth", "eth_getProof", new AccountProof());
-        yield return new TestCaseData("eth", "eth_syncing", new SyncingResult { IsSyncing = true });
+        yield return new TestCaseData("eth", "eth_syncing", new SyncingResult
+        {
+            IsSyncing = true,
+            SyncedAccounts = 0,
+            SyncedStorage = 0,
+            SyncedBytecodes = 0,
+            HealedTrienodes = 0,
+            HealedBytecodes = 0,
+            WarpChunksAmount = 0,
+            WarpChunksProcessed = 0
+        });
     }
 
     [TestCaseSource(nameof(ConverterWrittenResults))]
