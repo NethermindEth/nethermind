@@ -209,20 +209,18 @@ public class ExecutionProcessorTests
     }
 
     [Test]
-    public void ShouldProcessExecutionRequests()
+    public void ShouldProcessExecutionRequests([Values(0, 1, 3)] int depositCount)
     {
         TxReceipt[] txReceipts = [
-            Build.A.Receipt.WithLogs(
-                CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts),
-                CreateLogEntry(TestItem.ExecutionRequestB.RequestDataParts),
-                CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
-            ).TestObject
+            Build.A.Receipt.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject).TestObject,
+            Build.A.Receipt.WithLogs(_executionDepositRequests.Take(depositCount)
+                .Select(request => CreateLogEntry(request.RequestDataParts)).ToArray()).TestObject
         ];
 
         Hash256 requestsHash = ProcessBlockAndGetRequestsHash(1, txReceipts);
 
         Assert.That(requestsHash, Is.EqualTo(
-           CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
+           CalculateHash(_executionDepositRequests.Take(depositCount).ToArray(), _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
     }
 
