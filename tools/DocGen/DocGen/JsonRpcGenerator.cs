@@ -249,6 +249,7 @@ internal static class JsonRpcGenerator
         [nameof(IDebugRpcModule.debug_traceBlock)] = typeof(GethLikeTxTraceCollection),
         [nameof(IDebugRpcModule.debug_traceBlockByHash)] = typeof(GethLikeTxTraceCollection),
         [nameof(IDebugRpcModule.debug_traceBlockByNumber)] = typeof(GethLikeTxTraceCollection),
+        [nameof(IEthRpcModule.eth_config)] = typeof(ForkConfigSummary),
     };
 
     // Markers for the forms Filter.ReadJson accepts; its range bounds are parsed from their text, so they take no EIP-1898 object
@@ -538,7 +539,7 @@ internal static class JsonRpcGenerator
         if (IsOpaqueJson(type))
             return;
 
-        foreach ((string name, Type memberType, Type? memberConverter, bool canBeNull) in GetSerializedMembers(type, converterType))
+        foreach ((string name, Type memberType, Type? memberConverter, bool canBeNull, bool canBeOmitted) in GetSerializedMembers(type, converterType))
         {
             string memberJsonType = GetJsonTypeName(memberType, memberConverter);
             bool isObject = memberJsonType.Equals(_objectTypeName, StringComparison.Ordinal);
@@ -550,7 +551,7 @@ internal static class JsonRpcGenerator
             if (isObjectCollection && memberJsonType.EndsWith(_objectTypeName, StringComparison.Ordinal))
                 memberTypeName = memberJsonType[..^_objectTypeName.Length] + GetObjectTypeName(itemType!, memberConverter);
 
-            file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {memberTypeName}{(documentNull && canBeNull ? " or `null`" : string.Empty)}");
+            file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {(documentNull && canBeOmitted ? "optional " : string.Empty)}{memberTypeName}{(documentNull && canBeNull ? " or `null`" : string.Empty)}");
 
             if (isObject)
                 WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(nodeName), memberConverter, documentNull);
@@ -729,7 +730,7 @@ internal static class JsonRpcGenerator
             ? name
             : _objectTypeName;
 
-    private static IEnumerable<(string Name, Type Type, Type? Converter, bool CanBeNull)> GetSerializedMembers(Type type, Type? converterType)
+    private static IEnumerable<(string Name, Type Type, Type? Converter, bool CanBeNull, bool CanBeOmitted)> GetSerializedMembers(Type type, Type? converterType)
     {
         JsonTypeInfo? contract = GetContract(type);
         Type? shapeConverter = GetShapeConverter(type, converterType);
@@ -739,7 +740,8 @@ internal static class JsonRpcGenerator
         {
             string[] nullMembers = _knownConverterNullMembers.GetValueOrDefault(membersKey, []);
 
-            return members.Select(m => (m.Name, m.Type, m.Converter, CanBeNull: nullMembers.Contains(m.Name)));
+            return members.Select(m => (m.Name, m.Type, m.Converter, CanBeNull: nullMembers.Contains(m.Name),
+                CanBeOmitted: false));
         }
 
         if (contract?.Kind is JsonTypeInfoKind.Object)
@@ -747,7 +749,8 @@ internal static class JsonRpcGenerator
                 .Where(p => p.Get is not null && !IsNullForSpecialization(type, p))
                 .Select(p => (Name: p.Name, Type: p.PropertyType, Converter: MemberConverter(p.AttributeProvider),
                     CanBeNull: (p.IsGetNullable && IsWrittenWhenNull(p.AttributeProvider as MemberInfo)) ||
-                        WritesDefaultAsNull(p.PropertyType, MemberConverter(p.AttributeProvider), p.AttributeProvider as MemberInfo)))
+                        WritesDefaultAsNull(p.PropertyType, MemberConverter(p.AttributeProvider), p.AttributeProvider as MemberInfo),
+                    CanBeOmitted: IsOmitted(p.AttributeProvider as MemberInfo, p.IsGetNullable)))
                 .OrderBy(m => m.Name, StringComparer.Ordinal);
 
         // A hand-rolled converter exposes no contract members, leaving the CLR shape as the only guess
@@ -761,7 +764,8 @@ internal static class JsonRpcGenerator
             .Where(m => m.Member.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
             .Select(m => (Name: GetFallbackName(m.Member), Type: m.Type, Converter: MemberConverter(m.Member),
                 CanBeNull: (IsNullable(m.Member) && IsWrittenWhenNull(m.Member)) ||
-                    WritesDefaultAsNull(m.Type, MemberConverter(m.Member), m.Member)))
+                    WritesDefaultAsNull(m.Type, MemberConverter(m.Member), m.Member),
+                CanBeOmitted: IsOmitted(m.Member, IsNullable(m.Member))))
             .OrderBy(m => m.Name, StringComparer.Ordinal);
     }
 
@@ -773,16 +777,25 @@ internal static class JsonRpcGenerator
 
     // A null member is omitted under WhenWritingNull (the serializer default) and only reaches the wire under Never or WhenReading
     private static bool IsWrittenWhenNull(MemberInfo? member) =>
-        (member?.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition ?? EthereumJsonSerializer.JsonOptions.DefaultIgnoreCondition)
-            is JsonIgnoreCondition.Never or JsonIgnoreCondition.WhenReading;
+        GetIgnoreCondition(member) is JsonIgnoreCondition.Never or JsonIgnoreCondition.WhenReading;
+
+    private static bool IsOmitted(MemberInfo? member, bool isNullable) =>
+        GetIgnoreCondition(member) switch
+        {
+            JsonIgnoreCondition.WhenWritingDefault => true,
+            JsonIgnoreCondition.WhenWritingNull => isNullable,
+            _ => false
+        };
+
+    private static JsonIgnoreCondition GetIgnoreCondition(MemberInfo? member) =>
+        member?.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition ?? EthereumJsonSerializer.JsonOptions.DefaultIgnoreCondition;
 
     // The serializer never omits a struct as null, but some converters, such as those of Memory<byte> and CappedArray<T>,
     // write its default value as null
     private static bool WritesDefaultAsNull(Type type, Type? converterType, MemberInfo? member)
     {
         if (!type.IsValueType || Nullable.GetUnderlyingType(type) is not null ||
-            (member?.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition ?? EthereumJsonSerializer.JsonOptions.DefaultIgnoreCondition)
-                is JsonIgnoreCondition.WhenWritingDefault)
+            GetIgnoreCondition(member) is JsonIgnoreCondition.WhenWritingDefault)
             return false;
 
         try

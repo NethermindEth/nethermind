@@ -14,6 +14,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
@@ -49,7 +50,7 @@ public class JsonRpcGeneratorTests
     [TestCase("trace", "trace_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("debug", "debug_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("eth", "eth_simulateV1", "- `calls`:", "- `traces`:")]
-    [TestCase("eth", "eth_getBlockByHash", "- `transactions`: array of _string_ (hash), or array of _object_ (transaction, same as `result` in `eth_getTransactionByHash`) when full transactions are requested", "- `hashes`:")]
+    [TestCase("eth", "eth_getBlockByHash", "- `transactions`: optional array of _string_ (hash), or array of _object_ (transaction, same as `result` in `eth_getTransactionByHash`) when full transactions are requested", "- `hashes`:")]
     [TestCase("debug", "debug_getBadBlocks", "Each `block` carries full transaction objects.", "- `hashes`:")]
     [TestCase("eth", "eth_createAccessList", "- `accessList`: array of _object_", "- `accessList`: _object_")]
     [TestCase("eth", "eth_getProof", "- `storageHash`:", "- `storageRoot`:")]
@@ -57,6 +58,9 @@ public class JsonRpcGeneratorTests
     [TestCase("debug", "debug_getRawBlockAccessList", "`result`: _string_ (hex data)", "- `memory`:")]
     [TestCase("debug", "debug_traceTransaction", "- `structLogs`:", "- `customTracerResult`:")]
     [TestCase("eth", "eth_getHeaderByNumber", "- `nonce`: _string_ (8-byte hex data) or `null`", "- `baseFeePerGas`: _string_ (hex integer) or `null`")]
+    [TestCase("eth", "eth_capabilities", "- `deleteStrategy`: optional _object_", "- `deleteStrategy`: _object_")]
+    [TestCase("eth", "eth_config", "- `next`: _object_ or `null`", "- `next`: optional")]
+    [TestCase("eth", "eth_config", "- `precompiles`: map of _string_ (address)", "`result`: _object_\n\n")]
     [TestCase("trace", "trace_get", "- `from`: _string_ (address)\n", "- `from`: _string_ (address) or `null`")]
     [TestCase("debug", "debug_simulateV1", "- `traces`: array of _object_ (the tracer's own result instead when `tracer` is set)", "- `customTracerResult`:")]
     [TestCase("eth", "eth_getTransactionByHash", "- `gas`: _string_ (hex integer)\n", "(transaction type) or `null`")]
@@ -150,6 +154,38 @@ public class JsonRpcGeneratorTests
             AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0], traceResponse, 4);
             string actionResponse = ReadPropertyBlock(traceResponse, "action", 4);
             AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0].GetProperty("action"), actionResponse, 6);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ResultsWithOmittedMembers()
+    {
+        ResourceAvailability disabled = new(true);
+        yield return new TestCaseData("eth", "eth_capabilities", "state",
+            new EthCapabilities(new ChainHead(1, Keccak.Zero), disabled, disabled, disabled, disabled));
+        yield return new TestCaseData("eth", "eth_config", "current", new ForkConfigSummary
+        {
+            Current = new ForkConfig { ActivationTime = 1, BlobSchedule = null, ChainId = 1, ForkId = [0, 0, 0, 0], Precompiles = [], SystemContracts = [] },
+            Next = null,
+            Last = null
+        });
+    }
+
+    [TestCaseSource(nameof(ResultsWithOmittedMembers))]
+    public void Response_documents_members_omitted_from_wire_as_optional(string ns, string method, string property, object result)
+    {
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(result));
+        string response = ReadResponse(ns, method);
+        JsonElement value = wire.RootElement.GetProperty(property);
+        const string prefix = "    - `";
+        string[] lines = [.. ReadPropertyBlock(response, property, 2).Split('\n').Where(l => l.StartsWith(prefix, StringComparison.Ordinal))];
+        string[] omitted = [.. lines.Where(l => !value.TryGetProperty(l[prefix.Length..l.IndexOf('`', prefix.Length)], out _))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDocumentedProperties(wire.RootElement, response, 2);
+            AssertDocumentedProperties(value, string.Join('\n', lines), 4);
+            Assert.That(omitted, Is.Not.Empty);
+            Assert.That(omitted, Has.All.Contains("`: optional "));
         }
     }
 
