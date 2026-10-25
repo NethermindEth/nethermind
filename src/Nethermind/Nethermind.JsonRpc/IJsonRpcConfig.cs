@@ -225,7 +225,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
 
-    [ConfigItem(Description = "Whether the `eth_estimateGas` JSON-RPC method keeps searching when a nested call runs out of gas at the lowest gas limit that succeeds. The result is then the lowest gas limit at which no nested call runs out of gas, if the highest gas limit of the search has none. Such an estimate runs the transaction more times, at most about as many times again.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether the `eth_estimateGas` JSON-RPC method keeps searching when a nested call runs out of gas at the lowest gas limit that succeeds. The result is then the lowest gas limit at which no nested call runs out of gas, if the highest gas limit of the search has none. Such an estimate runs the transaction more times: the second search is a bisection between the first result and the highest gas limit.", DefaultValue = "false")]
     bool EstimateAvoidsNestedOutOfGas { get; set; }
 
     [ConfigItem(Description = "Maximum total tx fee (gasPrice * gasLimit, in wei) the node will sign in eth_signTransaction. 0 disables the cap. Default 1 ETH.", DefaultValue = "1000000000000000000")]
