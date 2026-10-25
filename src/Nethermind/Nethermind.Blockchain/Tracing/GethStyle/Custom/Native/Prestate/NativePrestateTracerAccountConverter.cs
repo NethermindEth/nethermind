@@ -27,8 +27,8 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
             if (value.Nonce is { } nonce)
             {
                 writer.WritePropertyName("nonce"u8);
-                if (nonce <= ulong.MaxValue)
-                    writer.WriteNumberValue((ulong)nonce);
+                if (nonce.IsUint64)
+                    writer.WriteNumberValue(nonce.u0);
                 else
                     writer.WriteRawValue(nonce.ToString(CultureInfo.InvariantCulture));
             }
