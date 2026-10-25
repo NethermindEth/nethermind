@@ -434,8 +434,8 @@ public partial class EngineModuleTests
         }
     }
 
-    // Values the JSON binder itself refuses get the generic message.
-    private const string BindingError = "Invalid params";
+    // Values the JSON binder itself refuses name the payload argument, as Geth does.
+    private const string BindingError = "invalid argument 0";
 
     private static readonly (string Field, string NullError, string OmittedError)[] ExecutionPayloadV3Fields =
     [

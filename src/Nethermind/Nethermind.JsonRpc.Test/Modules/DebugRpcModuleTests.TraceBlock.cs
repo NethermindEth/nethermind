@@ -133,6 +133,18 @@ public partial class DebugRpcModuleTests
         [Values] bool empty) =>
         await AssertNativeConfigError("debug_traceBlockByNumber", tracer, configuration, empty);
 
+    [TestCase("debug_traceBlock", "{\"diffMode\":[]}", false, false)]
+    [TestCase("debug_traceBlock", "{\"diffMode\":[]}", true, false)]
+    [TestCase("debug_traceBlock", "{}", false, false)]
+    [TestCase("debug_traceBlock", "{\"diffMode\":[]}", false, true)]
+    public async Task Debug_traceBlock_native_config_errors_are_execution_input_errors(
+        string method, string configuration, bool empty, bool invalidRlp) =>
+        await AssertNativeConfigError(method, "prestateTracer", configuration, empty, invalidRlp: invalidRlp);
+
+    [Test]
+    public async Task Debug_traceTransactionInBlockByHash_native_config_errors_remain_invalid_params() =>
+        await AssertNativeConfigError("debug_traceTransactionInBlockByHash", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidParams);
+
     [TestCase("callTracer", "{\"onlyTopCall\":17}", false, false)]
     [TestCase("prestateTracer", "{\"diffMode\":[]}", false, false)]
     [TestCase("prestateTracer", "17", false, false)]
@@ -140,13 +152,13 @@ public partial class DebugRpcModuleTests
     [TestCase("prestateTracer", "{\"diffMode\":[]}", false, true)]
     public async Task Debug_traceBlockByHash_native_config_errors_are_execution_input_errors(
         string tracer, string configuration, bool empty, bool unknown) =>
-        await AssertNativeConfigError("debug_traceBlockByHash", tracer, configuration, empty, unknown);
+        await AssertNativeConfigError("debug_traceBlockByHash", tracer, configuration, empty, unknown: unknown);
 
     [Test]
-    public async Task Debug_traceTransaction_native_config_errors_remain_invalid_params() =>
-        await AssertNativeConfigError("debug_traceTransaction", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidParams);
+    public async Task Debug_traceTransaction_native_config_errors_are_execution_input_errors() =>
+        await AssertNativeConfigError("debug_traceTransaction", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidInput);
 
-    private static async Task AssertNativeConfigError(string method, string tracer, string configuration, bool empty, bool unknown = false, int? expectedError = null, bool? streamMode = null)
+    private static async Task AssertNativeConfigError(string method, string tracer, string configuration, bool empty, bool invalidRlp = false, bool unknown = false, int? expectedError = null, bool? streamMode = null)
     {
         using Context context = await Context.Create();
         Block block = empty
@@ -154,14 +166,18 @@ public partial class DebugRpcModuleTests
             : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         using JsonDocument config = JsonDocument.Parse(configuration);
 
+        object options = new { tracer, tracerConfig = config.RootElement, timeout = "5s", streamMode };
         object target = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => unknown ? TestItem.KeccakD : block.Hash!,
             "debug_traceTransaction" => block.Transactions[0].Hash!,
-            _ => unknown ? TestItem.KeccakD : block.Hash!
+            _ => invalidRlp ? "0xc0" : Rlp.Encode(block).ToString()
         };
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, target,
-            new { tracer, tracerConfig = config.RootElement, timeout = "5s", streamMode });
+        object[] parameters = method == "debug_traceTransactionInBlockByHash"
+            ? [target, block.Transactions[0].Hash!, options]
+            : [target, options];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
 
         if (unknown)
@@ -173,19 +189,37 @@ public partial class DebugRpcModuleTests
                 Assert.That(json["result"], Is.Null, response);
             }
         }
-        else if (!empty && tracer != "noopTracer")
+        else if (expectedError is not null || invalidRlp || !empty && tracer != "noopTracer" && configuration != "{}")
         {
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedError ?? ErrorCodes.InvalidInput), response);
                 Assert.That(json["result"], Is.Null, response);
+                if (invalidRlp)
+                    Assert.That((string?)json["error"]?["message"], Does.Contain("Error decoding block RLP"), response);
             }
         }
         else
         {
             Assert.That(json["error"], Is.Null, response);
-            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(block.Transactions.Length), response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length), response);
+            if (method == "debug_traceBlock")
+                for (int i = 0; i < traces.Count; i++)
+                    Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
         }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Debug_native_tracer_host_errors_keep_existing_classification_when_buffered(
+        [Values("debug_traceBlock", "debug_traceBlockByNumber")] string method, [Values] bool jsonError)
+    {
+        string tracer = nameof(Debug_native_tracer_host_errors_keep_existing_classification_when_buffered) + method + jsonError;
+        Exception failure = jsonError ? new JsonException("host construction failure") : new FormatException("host construction failure");
+        GethLikeNativeTracerFactory.RegisterTracer(tracer, (_, _, _, _) => throw failure);
+        await AssertNativeConfigError(method, tracer, "{}", empty: false,
+            expectedError: jsonError ? ErrorCodes.InvalidParams : ErrorCodes.InternalError, streamMode: false);
     }
 
     [Test]
@@ -204,7 +238,23 @@ public partial class DebugRpcModuleTests
         [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
         [Values("callTracer", "prestateTracer")] string tracer,
         [Values(null, "bad", "5s")] string? timeout,
-        [Values("17", "[]")] string invalidValue)
+        [Values("17", "[]")] string invalidValue) =>
+        await AssertNativeConfigRouteClassification(method, tracer, timeout, invalidValue,
+            method == "debug_traceCall" ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput);
+
+    [TestCase("debug_traceBlockByHash", "callTracer", ErrorCodes.InvalidInput)]
+    [TestCase("debug_traceBlockByHash", "prestateTracer", ErrorCodes.InvalidInput)]
+    [TestCase("debug_traceBlock", "callTracer", ErrorCodes.InvalidInput)]
+    [TestCase("debug_traceBlock", "prestateTracer", ErrorCodes.InvalidInput)]
+    [TestCase("debug_traceTransaction", "callTracer", ErrorCodes.InvalidInput)]
+    [TestCase("debug_traceTransaction", "prestateTracer", ErrorCodes.InvalidInput)]
+    [TestCase("debug_traceCall", "callTracer", ErrorCodes.InvalidParams)]
+    [TestCase("debug_traceCall", "prestateTracer", ErrorCodes.InvalidParams)]
+    public async Task Debug_native_config_errors_preserve_route_classification(
+        string method, string tracer, int expectedCode) =>
+        await AssertNativeConfigRouteClassification(method, tracer, null, "17", expectedCode);
+
+    private static async Task AssertNativeConfigRouteClassification(string method, string tracer, string? timeout, string invalidValue, int expectedCode)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
@@ -220,7 +270,6 @@ public partial class DebugRpcModuleTests
         object[] parameters = method == "debug_traceCall" ? [selector, "latest", options] : [selector, options];
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
-        int expectedCode = method == "debug_traceBlockByHash" ? ErrorCodes.InvalidInput : ErrorCodes.InvalidParams;
         using (Assert.EnterMultipleScope())
         {
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
@@ -568,7 +617,31 @@ public partial class DebugRpcModuleTests
     }
 
     [TestCaseSource(nameof(BlockTimeoutRouteCases))]
-    public async Task Debug_traceBlock_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode, string duration, string method)
+    public async Task Debug_traceBlock_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode, string duration, string method) =>
+        await AssertBlockTimeoutRoute(scenario, streamMode, duration, method, "bad");
+
+    [TestCase("native", false)]
+    [TestCase("opcode", false)]
+    [TestCase("opcode", true)]
+    [TestCase("javascript", false)]
+    [TestCase("empty-native", false)]
+    [TestCase("empty-opcode", true)]
+    [TestCase("empty-javascript", false)]
+    [TestCase("unmatched-opcode", false)]
+    [TestCase("unmatched-opcode", true)]
+    [TestCase("javascript-valid", false)]
+    [TestCase("native-null-config", false)]
+    [TestCase("native-null-config-valid", false)]
+    [TestCase("native", false, "2562047.788015215502222222h")]
+    [TestCase("opcode", false, "2562047.788015215502222222h")]
+    [TestCase("opcode", true, "2562047.788015215502222222h")]
+    [TestCase("empty-native", false, "2562047.788015215502222222h")]
+    [TestCase("empty-opcode", true, "2562047.788015215502222222h")]
+    public async Task Debug_traceBlockByNumber_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode, string timeout = "bad") =>
+        await AssertBlockTimeoutRoute(scenario, streamMode, scenario.EndsWith("-valid", StringComparison.Ordinal) ? "valid" : "bad",
+            "debug_traceBlockByNumber", timeout);
+
+    private static async Task AssertBlockTimeoutRoute(string scenario, bool streamMode, string duration, string method, string timeout)
     {
         using Context context = await Context.Create();
         bool empty = scenario.StartsWith("empty", StringComparison.Ordinal);
@@ -579,7 +652,7 @@ public partial class DebugRpcModuleTests
         bool valid = duration == "valid";
         Dictionary<string, object> options = new()
         {
-            ["timeout"] = duration switch { "valid" => "5s", "type" => 7, "oversized" => new string('x', 65), _ => "bad" },
+            ["timeout"] = duration switch { "valid" => "5s", "type" => 7, "oversized" => new string('x', 65), _ => timeout },
             ["streamMode"] = streamMode
         };
         if (unmatched) options["txHash"] = TestItem.KeccakD;
@@ -617,7 +690,7 @@ public partial class DebugRpcModuleTests
             JArray traces = (JArray)json["result"]!;
             Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
             foreach (JToken trace in traces)
-                Assert.That((string?)trace["error"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+                Assert.That((string?)trace["error"], Does.Contain($"Cannot parse '{timeout}' as a duration"), response);
         }
         else if (valid)
         {
@@ -633,7 +706,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
                 Assert.That(json["result"], Is.Null, response);
-                Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain($"Cannot parse '{timeout}' as a duration"), response);
             }
         }
     }
@@ -1745,7 +1818,7 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
 
-        const string expected = """{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}""";
+        const string expected = """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 0"},"id":67}""";
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", "xxx");
 
         Assert.That(JsonElement.DeepEquals(
