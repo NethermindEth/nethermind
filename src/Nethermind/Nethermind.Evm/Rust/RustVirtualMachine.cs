@@ -6,6 +6,7 @@ using System;
 using System.Buffers;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -42,7 +43,7 @@ namespace Nethermind.Evm.Rust;
 /// answer is always there.
 /// </para>
 /// </remarks>
-public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager, IPrecompileProvider? precompileProvider = null) : IVirtualMachine
+public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager, IPrecompileProvider? precompileProvider = null) : IVirtualMachine, IDisposable
 {
     // The precompiles this client runs itself, when it does; see RustEvmNative.RunPrecompilesHere.
     private readonly FrozenDictionary<AddressAsKey, CodeInfo>? _precompiles = RustEvmNative.RunPrecompilesHere ? precompileProvider?.GetPrecompiles() : null;
@@ -55,9 +56,12 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     private IWorldState? _worldState;
     private IReleaseSpec? _spec;
     private BlockHeader? _header;
-    // Bytes handed to the interpreter — a precompile's output, an account's code — go through one
-    // pinned buffer, grown as needed, which it copies from before the callback's caller returns.
+    // Bytes handed to the interpreter — a precompile's output, an account's code — are bump-allocated
+    // in pinned buffers that stay alive until the frame returns, so a pointer the interpreter keeps
+    // is never overwritten by a later lend nor freed when the buffer grows.
     private byte[] _scratch = GC.AllocateUninitializedArray<byte>(64 * 1024, pinned: true);
+    private int _scratchUsed;
+    private readonly List<byte[]> _retiredScratch = [];
     // The interpreter's call data, shown to a precompile in place: it reads the input during the
     // call and holds no reference to it afterwards.
     private readonly NativeMemory _precompileInput = new();
@@ -66,8 +70,8 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     private IPrecompile? _lastPrecompile;
     private GCHandle _self;
     // A record the world state refused — on a stateless run, a witness without the code it was
-    // asked about. The frame then goes to the C# interpreter, which throws the exception the
-    // block is rejected for.
+    // asked about — or a precompile that threw. The frame then goes to the C# interpreter, which
+    // throws the exception the block is rejected for, or answers as it would without this binding.
     private bool _observerFailed;
     // What the world state threw at a callback: on a stateless run, the witness missing what was
     // asked for. It is thrown again once the interpreter has returned, as the C# interpreter's
@@ -81,15 +85,33 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     /// <summary>How many frames went to the Rust interpreter, and how many the C# one took.</summary>
     public static long RustFrames, CSharpFrames;
 
+#if RUST_EVM_STATS
     /// <summary>Ticks spent inside the interpreter's call, and in the write-back after it.</summary>
     public static long InsideTicks, WriteBackTicks;
 
     /// <summary>How often each callback was called, and the ticks the observer ones took.</summary>
+    /// <remarks>Not atomic: exact only when one machine runs at a time.</remarks>
     public static long AccountCalls, StorageCalls, CodeCalls, ObserverCalls, ObserverTicks;
+#endif
+
+    // Keyed by name, so a spec named after a fork but with its EIPs changed is run as the stock fork.
+    private static readonly FrozenDictionary<string, byte> ForkNumbers = new Dictionary<string, byte>
+    {
+        ["cancun"] = 0,
+        ["prague"] = 1,
+        ["osaka"] = 2,
+        ["bpo1"] = 3,
+        ["bpo2"] = 4,
+        ["bpo3"] = 5,
+        ["bpo4"] = 6,
+        ["bpo5"] = 7,
+        ["amsterdam"] = 8,
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     private static bool Probe()
     {
-        if (Environment.GetEnvironmentVariable("NETHERMIND_RUST_EVM") is "0" or "false")
+        if (Environment.GetEnvironmentVariable("NETHERMIND_RUST_EVM") is { } setting
+            && (setting == "0" || setting.Equals("false", StringComparison.OrdinalIgnoreCase)))
             return false;
         try
         {
@@ -111,18 +133,20 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     public int OpCodeCount => _inner.OpCodeCount;
     public void FlushMetricsCounters() => _inner.FlushMetricsCounters();
 
+    public void Dispose() => _inner.Dispose();
+
     public TransactionSubstate ExecuteTransaction<TTracingInst>(VmState<EthereumGasPolicy> state, IWorldState worldState, ITxTracer txTracer)
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        if (TTracingInst.IsActive || WantsToWatchTheFrame(txTracer) || ForkNumber(spec) is null)
+        if (TTracingInst.IsActive || WantsToWatchTheFrame(txTracer) || spec.Name is null || !ForkNumbers.TryGetValue(spec.Name, out byte fork))
         {
             CSharpFrames++;
             return _inner.ExecuteTransaction<TTracingInst>(state, worldState, txTracer);
         }
 
         RustFrames++;
-        return Run(state, worldState, spec, txTracer);
+        return Run(state, worldState, spec, fork, txTracer);
     }
 
     /// <summary>
@@ -135,22 +159,7 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         || tracer.IsTracingOpLevelStorage || tracer.IsTracingStack || tracer.IsTracingMemory
         || tracer.IsTracingLogs || tracer.IsTracingCode || tracer.IsTracingBlockHash || tracer.IsTracingAccess;
 
-    /// <summary>The number <c>nm-ffi</c> gives the fork, or null for one it does not know.</summary>
-    private static byte? ForkNumber(IReleaseSpec spec) => spec.Name?.ToLowerInvariant() switch
-    {
-        "cancun" => 0,
-        "prague" => 1,
-        "osaka" => 2,
-        "bpo1" => 3,
-        "bpo2" => 4,
-        "bpo3" => 5,
-        "bpo4" => 6,
-        "bpo5" => 7,
-        "amsterdam" => 8,
-        _ => null,
-    };
-
-    private TransactionSubstate Run(VmState<EthereumGasPolicy> state, IWorldState worldState, IReleaseSpec spec, ITxTracer txTracer)
+    private TransactionSubstate Run(VmState<EthereumGasPolicy> state, IWorldState worldState, IReleaseSpec spec, byte fork, ITxTracer txTracer)
     {
         ref readonly BlockExecutionContext block = ref BlockExecutionContext;
         ref readonly TxExecutionContext tx = ref TxExecutionContext;
@@ -158,19 +167,23 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         ExecutionEnvironment env = state.Env;
 
         // The warm sets, the blob hashes and the frame's bytes are pinned for the call.
-        List<Address> warmAddresses = [.. state.AccessTracker.AccessedAddresses];
-        List<StorageCell> warmCells = [.. state.AccessTracker.AccessedStorageCells];
-        RustEvmNative.FfiAddress[] addresses = new RustEvmNative.FfiAddress[warmAddresses.Count];
-        for (int i = 0; i < warmAddresses.Count; i++) addresses[i] = ToFfi(warmAddresses[i]);
-        RustEvmNative.FfiStorageCell[] cells = new RustEvmNative.FfiStorageCell[warmCells.Count];
-        for (int i = 0; i < warmCells.Count; i++)
-        {
-            UInt256 index = warmCells[i].Index;
-            cells[i].Address = ToFfi(warmCells[i].Address);
-            cells[i].Key = ToFfi(in index);
-        }
+        JournalSet<AddressAsKey> warmAddresses = state.AccessTracker.AccessedAddresses;
+        JournalSet<StorageCell> warmCells = state.AccessTracker.AccessedStorageCells;
         byte[]?[] blobHashes = tx.BlobVersionedHashes ?? [];
-        RustEvmNative.FfiHash[] hashes = new RustEvmNative.FfiHash[blobHashes.Length];
+        int addressCount = warmAddresses.Count;
+        int cellCount = warmCells.Count;
+        RustEvmNative.FfiAddress[] addresses = ArrayPool<RustEvmNative.FfiAddress>.Shared.Rent(addressCount);
+        RustEvmNative.FfiStorageCell[] cells = ArrayPool<RustEvmNative.FfiStorageCell>.Shared.Rent(cellCount);
+        RustEvmNative.FfiHash[] hashes = ArrayPool<RustEvmNative.FfiHash>.Shared.Rent(blobHashes.Length);
+        int filled = 0;
+        foreach (AddressAsKey address in warmAddresses) addresses[filled++] = ToFfi(address);
+        filled = 0;
+        foreach (StorageCell cell in warmCells)
+        {
+            UInt256 index = cell.Index;
+            cells[filled].Address = ToFfi(cell.Address);
+            cells[filled++].Key = ToFfi(in index);
+        }
         for (int i = 0; i < blobHashes.Length; i++)
         {
             hashes[i] = ToFfi(blobHashes[i]
@@ -197,8 +210,8 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             {
                 RustEvmNative.FfiRequest request = new()
                 {
-                    Fork = ForkNumber(spec)!.Value,
-                    Gnosis = (byte)(_chainId == 100 ? 1 : 0),
+                    Fork = fork,
+                    Gnosis = (byte)(_chainId is BlockchainIds.Gnosis or BlockchainIds.Chiado ? 1 : 0),
                     ChainId = ToFfi((UInt256)_chainId),
                     Block = new RustEvmNative.FfiBlock
                     {
@@ -219,7 +232,7 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                         Origin = ToFfi(new Address(in tx.Origin)),
                         GasPrice = ToFfi(in tx.GasPrice),
                         BlobVersionedHashes = hashesPtr,
-                        BlobVersionedHashCount = (nuint)hashes.Length,
+                        BlobVersionedHashCount = (nuint)blobHashes.Length,
                     },
                     Frame = new RustEvmNative.FfiFrame
                     {
@@ -239,9 +252,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                     Warm = new RustEvmNative.FfiWarm
                     {
                         Addresses = addressesPtr,
-                        AddressCount = (nuint)addresses.Length,
+                        AddressCount = (nuint)addressCount,
                         Cells = cellsPtr,
-                        CellCount = (nuint)cells.Length,
+                        CellCount = (nuint)cellCount,
                     },
                 };
                 RustEvmNative.FfiCallbacks callbacks = new()
@@ -253,13 +266,17 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                     BlockHash = &BlockHashCallback,
                     AccountRead = &AccountReadCallback,
                     BytecodeAccess = &BytecodeAccessCallback,
-                    AccountAccess = &AccountReadCallback,
+                    AccountAccess = &AccountAccessCallback,
                     Precompile = &PrecompileCallback,
                 };
 
+#if RUST_EVM_STATS
                 long started = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
                 int status = RustEvmNative.Execute(&request, &callbacks, &result);
+#if RUST_EVM_STATS
                 InsideTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+#endif
                 if (_readException is not null)
                 {
                     System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(_readException);
@@ -270,7 +287,6 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                     // The interpreter could not run this frame; the C# one can. Nothing was
                     // written on this side, so the state is as the processor left it.
                     if (_logger.IsDebug) _logger.Debug($"Rust EVM declined the frame with status {status}; running it here");
-                    RustEvmNative.Free(&result);
                     RustFrames--;
                     CSharpFrames++;
                     return _inner.ExecuteTransaction<OffFlag>(state, worldState, txTracer);
@@ -286,6 +302,11 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             _worldState = null;
             _spec = null;
             _header = null;
+            _scratchUsed = 0;
+            _retiredScratch.Clear();
+            ArrayPool<RustEvmNative.FfiAddress>.Shared.Return(addresses);
+            ArrayPool<RustEvmNative.FfiStorageCell>.Shared.Return(cells);
+            ArrayPool<RustEvmNative.FfiHash>.Shared.Return(hashes);
         }
     }
 
@@ -302,7 +323,7 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             return new TransactionSubstate(exception, isTracerConnected) { ShouldRestoreRipemdTouch = result.RestoreRipemdTouch != 0 };
         }
 
-        byte[] output = result.Output.Len == 0 ? [] : new ReadOnlySpan<byte>(result.Output.Ptr, (int)result.Output.Len).ToArray();
+        byte[] output = Copy(in result.Output);
 
         JournalCollection<LogEntry> logs = [];
         for (nuint i = 0; i < result.LogCount; i++)
@@ -314,7 +335,7 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                 RustEvmNative.FfiHash* topic = log.Topics + t;
                 topics[t] = new Hash256(new ReadOnlySpan<byte>(topic->Bytes, 32));
             }
-            byte[] data = log.Data.Len == 0 ? [] : new ReadOnlySpan<byte>(log.Data.Ptr, (int)log.Data.Len).ToArray();
+            byte[] data = Copy(in log.Data);
             logs.Add(new LogEntry(FromFfi(in log.Address), data, topics));
         }
 
@@ -327,9 +348,13 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
 
         if (!shouldRevert)
         {
+#if RUST_EVM_STATS
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             WriteBack(worldState, spec, resultPtr);
+#if RUST_EVM_STATS
             WriteBackTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+#endif
         }
 
         return new TransactionSubstate(output, result.Refund, destroyList, logs, shouldRevert, isTracerConnected)
@@ -392,8 +417,10 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
 
             if (change.HasCode != 0)
             {
-                byte[] code = change.Code.Len == 0 ? [] : new ReadOnlySpan<byte>(change.Code.Ptr, (int)change.Code.Len).ToArray();
-                ValueHash256 codeHash = new(new ReadOnlySpan<byte>((&result.Accounts[i])->CodeHash.Bytes, 32));
+                byte[] code = Copy(in change.Code);
+                RustEvmNative.FfiAccountChange* changePtr = result.Accounts + i;
+                ValueHash256 codeHash = new(new ReadOnlySpan<byte>(changePtr->CodeHash.Bytes, 32));
+                Debug.Assert(codeHash == ValueKeccak.Compute(code), "The interpreter reported a code hash that does not match the code");
                 worldState.InsertCode(address, in codeHash, code, spec);
             }
         }
@@ -402,10 +429,13 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         {
             ref RustEvmNative.FfiStorageChange change = ref result.Storage[i];
             StorageCell cell = new(FromFfi(in change.Address), FromFfi(in change.Key));
-            UInt256 value = FromFfi(in change.Value);
-            worldState.Set(in cell, value.IsZero ? VirtualMachineStatics.BytesZero : value.ToBigEndian().WithoutLeadingZeros().ToArray());
+            worldState.Set(in cell, FromFfi(in change.Value));
         }
     }
+
+    /// <summary>Copies bytes the interpreter owns; lengths are bounded by gas, the check is for an ABI skew.</summary>
+    private static byte[] Copy(in RustEvmNative.FfiBytes bytes) =>
+        bytes.Len == 0 ? [] : new ReadOnlySpan<byte>(bytes.Ptr, checked((int)bytes.Len)).ToArray();
 
     /* The callbacks */
 
@@ -416,7 +446,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     {
         try
         {
+#if RUST_EVM_STATS
             AccountCalls++;
+#endif
             RustVirtualMachine machine = Of(context);
             if (!machine._worldState!.TryGetAccount(FromFfi(in *address), out AccountStruct found))
             {
@@ -443,11 +475,12 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     {
         try
         {
+#if RUST_EVM_STATS
             StorageCalls++;
+#endif
             RustVirtualMachine machine = Of(context);
             StorageCell cell = new(FromFfi(in *address), FromFfi(in *key));
-            ReadOnlySpan<byte> bytes = machine._worldState!.Get(in cell);
-            UInt256 read = bytes.IsEmpty ? UInt256.Zero : new UInt256(bytes, isBigEndian: true);
+            machine._worldState!.Get(in cell, out UInt256 read);
             *value = ToFfi(in read);
             return 1;
         }
@@ -463,18 +496,20 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     {
         try
         {
+#if RUST_EVM_STATS
             CodeCalls++;
+#endif
             RustVirtualMachine machine = Of(context);
             ValueHash256 hash = new(new ReadOnlySpan<byte>(codeHash->Bytes, 32));
-            byte[]? found = machine._worldState!.GetCode(in hash);
-            if (found is null)
+            ReadOnlyMemory<byte> found = machine._worldState!.GetCode(in hash);
+            if (found.IsNull())
             {
                 // Code the state cannot produce: on a stateless run, a witness that left it out.
                 // The C# interpreter is the one to say so, with the exception the block is
                 // rejected for.
                 return -1;
             }
-            *code = machine.Lend(found);
+            *code = machine.Lend(found.Span);
             return 1;
         }
         catch (Exception exception)
@@ -503,21 +538,49 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         }
     }
 
+    // An observer that throws does not stop the interpreter; the frame is run again on the C# one,
+    // which meets the same failure where it would have.
     [UnmanagedCallersOnly]
     private static void AccountReadCallback(void* context, RustEvmNative.FfiAddress* address)
     {
         try
         {
+#if RUST_EVM_STATS
             ObserverCalls++;
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             Of(context)._worldState!.AddAccountRead(FromFfi(in *address));
+#if RUST_EVM_STATS
             ObserverTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+#endif
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            RustVirtualMachine machine = Of(context);
-            machine._readException ??= exception;
-            machine._observerFailed = true;
+            Of(context)._observerFailed = true;
+        }
+    }
+
+    /// <remarks>Mirrors <see cref="CodeInfoRepository"/>'s code lookup, which records both.</remarks>
+    [UnmanagedCallersOnly]
+    private static void AccountAccessCallback(void* context, RustEvmNative.FfiAddress* address)
+    {
+        try
+        {
+#if RUST_EVM_STATS
+            ObserverCalls++;
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
+            IWorldState worldState = Of(context)._worldState!;
+            Address accessed = FromFfi(in *address);
+            worldState.AddAccountRead(accessed);
+            worldState.RecordAccountAccess(accessed);
+#if RUST_EVM_STATS
+            ObserverTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+#endif
+        }
+        catch (Exception)
+        {
+            Of(context)._observerFailed = true;
         }
     }
 
@@ -526,19 +589,21 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     {
         try
         {
+#if RUST_EVM_STATS
             ObserverCalls++;
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             IWorldState worldState = Of(context)._worldState!;
             Address read = FromFfi(in *address);
             worldState.AddAccountRead(read);
             worldState.RecordBytecodeAccess(read);
+#if RUST_EVM_STATS
             ObserverTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+#endif
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            RustVirtualMachine machine = Of(context);
-            machine._readException ??= exception;
-            machine._observerFailed = true;
+            Of(context)._observerFailed = true;
         }
     }
 
@@ -563,29 +628,40 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                 machine._lastPrecompile = precompile;
             }
 
-            Result<byte[]> result = precompile.Run(machine._precompileInput.Over(input.Ptr, (int)input.Len), machine._spec!);
+            Result<byte[]> result = precompile.Run(machine._precompileInput.Over(input.Ptr, checked((int)input.Len)), machine._spec!);
             if (!result)
                 return 0;
 
             *output = machine.Lend(result.Data ?? []);
             return 1;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // The interpreter's own implementation answers instead.
+            // A fault in a precompile this client runs must not be answered by another
+            // implementation: the frame is run again on the C# interpreter.
+            RustVirtualMachine machine = Of(context);
+            if (machine._logger.IsDebug) machine._logger.Debug($"Precompile failed under the Rust EVM; running the frame here: {exception}");
+            machine._observerFailed = true;
             return -1;
         }
     }
 
-    /// <summary>Hands bytes to the interpreter through the pinned scratch buffer.</summary>
-    private RustEvmNative.FfiBytes Lend(byte[] bytes)
+    /// <summary>Hands bytes to the interpreter through the pinned scratch buffers, valid until the frame returns.</summary>
+    private RustEvmNative.FfiBytes Lend(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length == 0)
             return default;
-        if (_scratch.Length < bytes.Length)
+        if (_scratch.Length - _scratchUsed < bytes.Length)
+        {
+            // Kept alive, not dropped: the interpreter may still point into it.
+            _retiredScratch.Add(_scratch);
             _scratch = GC.AllocateUninitializedArray<byte>(Math.Max(bytes.Length, _scratch.Length * 2), pinned: true);
-        bytes.CopyTo(_scratch, 0);
-        return new RustEvmNative.FfiBytes { Ptr = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_scratch)), Len = (nuint)bytes.Length };
+            _scratchUsed = 0;
+        }
+        bytes.CopyTo(_scratch.AsSpan(_scratchUsed));
+        byte* pointer = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_scratch)) + _scratchUsed;
+        _scratchUsed += bytes.Length;
+        return new RustEvmNative.FfiBytes { Ptr = pointer, Len = (nuint)bytes.Length };
     }
 
     /// <summary>A window over unmanaged bytes, moved from call to call rather than allocated.</summary>

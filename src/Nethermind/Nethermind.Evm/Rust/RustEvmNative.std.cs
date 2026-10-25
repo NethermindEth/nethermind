@@ -6,7 +6,7 @@ namespace Nethermind.Evm.Rust;
 
 internal static unsafe partial class RustEvmNative
 {
-    /// <summary>On a host the interpreter is the shared library <c>libnm_ffi</c> beside the executable, or where <c>NETHERMIND_RUST_EVM_LIB</c> points.</summary>
+    /// <summary>On a host the interpreter is the shared library <c>libnm_ffi</c>, found on the runtime's default probing paths.</summary>
     private const string Lib = "nm_ffi";
 
     /// <summary>

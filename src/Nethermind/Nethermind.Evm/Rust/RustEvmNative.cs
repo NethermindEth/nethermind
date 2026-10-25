@@ -113,6 +113,7 @@ internal static unsafe partial class RustEvmNative
     public struct FfiFrame
     {
         public FfiGas Gas;
+        // The ordinal of ExecutionType: the crate depends on its declaration order, guarded by ExpectedAbiVersion.
         public byte ExecutionType;
         public byte IsStatic;
         public byte IsCreateStateGasCharged;
@@ -186,6 +187,7 @@ internal static unsafe partial class RustEvmNative
     public struct FfiResult
     {
         public int Status;
+        // The ordinal of EvmExceptionType, coupled the same way as FfiFrame.ExecutionType.
         public int Exception;
         public byte ShouldRevert;
         public byte RestoreRipemdTouch;

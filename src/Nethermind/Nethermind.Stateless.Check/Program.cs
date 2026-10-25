@@ -4,7 +4,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
+#if RUST_EVM
+using Nethermind.Evm.Rust;
+#endif
 using Nethermind.Stateless.Execution;
 
 namespace Nethermind.Stateless.Check;
@@ -26,8 +28,15 @@ static class Program
         }
 
         string dir = args[0];
-        int repeat = args.Length > 1 ? int.Parse(args[1]) : 1;
-        string[] inputs = Directory.GetFiles(dir, "*.in").OrderBy(f => f, StringComparer.Ordinal).ToArray();
+        int repeat = 1;
+        if (args.Length > 1 && (!int.TryParse(args[1], out repeat) || repeat < 1))
+        {
+            Console.Error.WriteLine($"repeat must be a positive integer, got '{args[1]}'");
+            return 2;
+        }
+
+        string[] inputs = Directory.GetFiles(dir, "*.in");
+        Array.Sort(inputs, StringComparer.Ordinal);
         int matched = 0, failed = 0;
         string? timesPath = Environment.GetEnvironmentVariable("NETHERMIND_CHECK_TIMES");
         using StreamWriter? times = timesPath is null ? null : new StreamWriter(timesPath);
@@ -40,7 +49,7 @@ static class Program
             long started = Stopwatch.GetTimestamp();
             for (int i = 0; i < repeat; i++)
             {
-                actual = StatelessExecutor.Execute(bytes).ToArray();
+                actual = StatelessExecutor.Execute(bytes);
             }
             TimeSpan took = Stopwatch.GetElapsedTime(started);
             times?.WriteLine($"{Path.GetFileNameWithoutExtension(input)} {took.TotalMilliseconds:F2}");
@@ -61,7 +70,11 @@ static class Program
         clock.Stop();
         Console.WriteLine($"{matched} of {inputs.Length} cases matched in {clock.Elapsed.TotalSeconds:F1}s");
 #if RUST_EVM
-        Console.WriteLine($"frames: rust {Nethermind.Evm.Rust.RustVirtualMachine.RustFrames}, csharp {Nethermind.Evm.Rust.RustVirtualMachine.CSharpFrames}, rust evm available: {Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable}, inside {Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.InsideTicks).TotalSeconds:F1}s write-back {Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.WriteBackTicks).TotalSeconds:F1}s, callbacks account {Nethermind.Evm.Rust.RustVirtualMachine.AccountCalls} storage {Nethermind.Evm.Rust.RustVirtualMachine.StorageCalls} code {Nethermind.Evm.Rust.RustVirtualMachine.CodeCalls} observer {Nethermind.Evm.Rust.RustVirtualMachine.ObserverCalls} ({Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.ObserverTicks).TotalSeconds:F1}s)");
+        Console.WriteLine($"frames: rust {RustVirtualMachine.RustFrames}, csharp {RustVirtualMachine.CSharpFrames}, rust evm available: {RustVirtualMachine.IsAvailable}");
+#endif
+#if RUST_EVM_STATS
+        Console.WriteLine($"inside {Stopwatch.GetElapsedTime(0, RustVirtualMachine.InsideTicks).TotalSeconds:F1}s, write-back {Stopwatch.GetElapsedTime(0, RustVirtualMachine.WriteBackTicks).TotalSeconds:F1}s");
+        Console.WriteLine($"callbacks: account {RustVirtualMachine.AccountCalls}, storage {RustVirtualMachine.StorageCalls}, code {RustVirtualMachine.CodeCalls}, observer {RustVirtualMachine.ObserverCalls} ({Stopwatch.GetElapsedTime(0, RustVirtualMachine.ObserverTicks).TotalSeconds:F1}s)");
 #endif
         return failed == 0 ? 0 : 1;
     }
