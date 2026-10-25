@@ -333,6 +333,25 @@ public class LogFinderTests
         Assert.That(() => _logFinder.FindLogs(logFilter), Throws.Nothing);
     }
 
+    private static (Block Block, Transaction Transaction, TxReceipt Receipt) BuildNonCanonicalTestBlock(Block parent, bool withReceiptsRoot = false)
+    {
+        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        var blockBuilder = Build.A.Block
+            .WithParent(parent)
+            .WithTransactions(transaction)
+            .WithBloom(new Bloom([log]))
+            .WithExtraData([1]);
+        Block block = (withReceiptsRoot ? blockBuilder.WithReceiptsRoot(TestItem.KeccakA) : blockBuilder).TestObject;
+        TxReceipt receipt = Build.A.Receipt
+            .WithLogs(log)
+            .WithTransactionHash(transaction.Hash)
+            .WithBlockHash(block.Hash)
+            .WithBlockNumber(block.Number)
+            .TestObject;
+        return (block, transaction, receipt);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void filter_by_block_hash_finds_logs_of_a_stored_block_that_is_not_canonical([Values] bool siblingOfCanonical, [Values] bool persistentReceipts)
     {
@@ -351,21 +370,9 @@ public class LogFinderTests
         }
 
         Block parent = siblingOfCanonical ? _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)! : _headTestBlock;
-        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
-        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-        Block block = Build.A.Block
-            .WithParent(parent)
-            .WithTransactions(transaction)
-            .WithBloom(new Bloom([log]))
-            .WithExtraData([1])
-            .TestObject;
+        (Block block, Transaction transaction, TxReceipt receipt) = BuildNonCanonicalTestBlock(parent);
         Assert.That(_rawBlockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
-        _receiptStorage.Insert(block, Build.A.Receipt
-            .WithLogs(log)
-            .WithTransactionHash(transaction.Hash)
-            .WithBlockHash(block.Hash)
-            .WithBlockNumber(block.Number)
-            .TestObject);
+        _receiptStorage.Insert(block, receipt);
         persistentStorage?.ClearCache();
         BlockParameter blockHash = new(block.Hash!);
         LogFilter logFilter = new(0, blockHash, blockHash, AddressFilter.AnyAddress, new SequenceTopicsFilter());
@@ -382,27 +389,14 @@ public class LogFinderTests
     public void processed_noncanonical_block_with_missing_receipts_is_not_unprocessed()
     {
         Block parent = _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
-        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
-        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-        Block orphan = Build.A.Block
-            .WithParent(parent)
-            .WithTransactions(transaction)
-            .WithReceiptsRoot(TestItem.KeccakA)
-            .WithBloom(new Bloom([log]))
-            .WithExtraData([1])
-            .TestObject;
+        (Block orphan, _, TxReceipt receipt) = BuildNonCanonicalTestBlock(parent, withReceiptsRoot: true);
 
         Assert.That(_rawBlockTree.SuggestBlock(orphan), Is.EqualTo(AddBlockResult.Added));
         _rawBlockTree.MarkChainAsProcessed([orphan]);
 
         // Match the history pruner's order: reclaim the receipts, then the block body.
         // Header and chain-level metadata remain available for hash-pinned RPC lookups.
-        _receiptStorage.Insert(orphan, [Build.A.Receipt
-            .WithLogs(log)
-            .WithTransactionHash(transaction.Hash)
-            .WithBlockHash(orphan.Hash)
-            .WithBlockNumber(orphan.Number)
-            .TestObject], ensureCanonical: false);
+        _receiptStorage.Insert(orphan, [receipt], ensureCanonical: false);
         _receiptStorage.RemoveReceipts(orphan);
         _rawBlockTree.DeleteOldBlock(orphan.Number, orphan.Hash!);
 
@@ -420,6 +414,28 @@ public class LogFinderTests
         Assert.That(() => _logFinder.FindLogs(filter),
             Throws.TypeOf<ResourceNotFoundException>()
                 .With.Message.Contains("Receipt not available"));
+    }
+
+    [Test]
+    public void indexed_block_hash_filter_reads_the_requested_orphan_instead_of_the_canonical_height()
+    {
+        Block parent = _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
+        (Block orphan, Transaction transaction, TxReceipt receipt) = BuildNonCanonicalTestBlock(parent);
+        Assert.That(_rawBlockTree.SuggestBlock(orphan), Is.EqualTo(AddBlockResult.Added));
+        _receiptStorage.Insert(orphan, receipt);
+
+        ILogIndexStorage index = CreateLogIndexStorage(0, (int)orphan.Number);
+        // The index can only name canonical heights; even a hit here must not redirect the hash query.
+        index.GetEnumerator(TestItem.AddressE, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => new[] { (int)orphan.Number }.AsEnumerable().GetEnumerator());
+
+        BlockParameter hash = new(orphan.Hash!);
+        LogFilter filter = new(0, hash, hash, new AddressFilter(TestItem.AddressE), new SequenceTopicsFilter());
+        FilterLog[] logs = CreateIndexedLogFinder(index).FindLogs(filter).ToArray();
+
+        Assert.That(logs.Select(static log => (log.BlockHash, log.TransactionHash)),
+            Is.EqualTo(new[] { (orphan.Hash, transaction.Hash) }));
+        index.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

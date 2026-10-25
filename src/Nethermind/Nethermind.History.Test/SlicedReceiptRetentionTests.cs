@@ -32,6 +32,80 @@ namespace Nethermind.History.Test;
 
 public class SlicedReceiptRetentionTests
 {
+    [TestCase(false, TestName = "Pruned_orphan_with_sliced_address_fails_closed_in_LogFinder")]
+    [TestCase(true, TestName = "Pruned_orphan_with_sliced_address_fails_closed_in_IndexedLogFinder")]
+    public async Task Pruned_orphan_receipts_are_not_covered_by_canonical_address_slices(bool indexedFinder)
+    {
+        Address slicedAddress = TestItem.AddressE;
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 1,
+            PruningInterval = 0
+        };
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = slicedAddress.ToString() };
+        ILogIndexStorage index = Substitute.For<ILogIndexStorage>();
+        index.Enabled.Returns(true);
+        index.MinBlockNumber.Returns(0);
+        index.MaxBlockNumber.Returns(int.MaxValue - 1);
+        // Canonical index has no entry for the orphan, even though its header bloom matches.
+        index.GetEnumerator(slicedAddress, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => Enumerable.Empty<int>().GetEnumerator());
+
+        using BasicTestBlockchain chain = await BuildBlockchain(historyConfig, flatDbConfig, index);
+        for (int i = 0; i < 20; i++) await chain.AddBlock();
+
+        IBlockTree tree = chain.BlockTree;
+        Block parent = tree.FindBlock(19UL, BlockTreeLookupOptions.None)!;
+        LogEntry log = Build.A.LogEntry.WithAddress(slicedAddress).WithTopics(TestItem.KeccakF).TestObject;
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block orphan = Build.A.Block
+            .WithParent(parent)
+            .WithTransactions(tx)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .WithBloom(new Bloom([log]))
+            .WithExtraData([1])
+            .TestObject;
+
+        Assert.That(tree.SuggestBlock(orphan, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+        tree.MarkChainAsProcessed([orphan]);
+        chain.ReceiptStorage.Insert(orphan, [Build.A.Receipt
+            .WithLogs(log)
+            .WithTransactionHash(tx.Hash)
+            .WithBlockHash(orphan.Hash)
+            .WithBlockNumber(orphan.Number)
+            .TestObject], ensureCanonical: false);
+
+        for (int i = 0; i < 80; i++) await chain.AddBlock();
+        tree.SyncPivot = (tree.Head!.Number, Hash256.Zero);
+
+        HistoryPruner pruner = (HistoryPruner)chain.Container.Resolve<IHistoryPruner>();
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        IPrunedLogsRetention retention = (IPrunedLogsRetention)chain.Container.Resolve<IPrunedReceiptRetention>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.IsMainChain(orphan.Header), Is.False);
+            Assert.That(tree.GetInfo(orphan.Number, orphan.Hash!).Info?.WasProcessed, Is.True);
+            Assert.That(chain.ReceiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.False);
+            Assert.That(tree.FindHeader(orphan.Hash, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(retention.RetainsLogsFor([slicedAddress], orphan.Number, orphan.Number), Is.True,
+                "the address/height retention gate must report coverage to reproduce the false-empty result");
+        }
+
+        LogFinder logFinder = indexedFinder
+            ? new IndexedLogFinder(tree, chain.ReceiptStorage, chain.ReceiptStorage, LimboLogs.Instance,
+                Substitute.For<IReceiptsRecovery>(), chain.SpecProvider, index, minBlocksToUseIndex: 1,
+                prunedLogsRetention: retention)
+            : new LogFinder(tree, chain.ReceiptStorage, chain.ReceiptStorage, LimboLogs.Instance,
+                Substitute.For<IReceiptsRecovery>(), chain.SpecProvider, prunedLogsRetention: retention);
+
+        BlockParameter hash = new(orphan.Hash!);
+        LogFilter filter = new(0, hash, hash, new AddressFilter(slicedAddress), new SequenceTopicsFilter());
+        Assert.That(() => logFinder.FindLogs(filter).ToArray(),
+            Throws.TypeOf<ResourceNotFoundException>().With.Message.Contains("Receipt not available"));
+    }
+
     // Both retention paths, because the pruner reclaims by range: with the index it answers for a whole span at
     // once, and without it falls back to asking block by block. A real sliced node runs the first.
     [TestCase(false, TestName = "Retains_receipts_for_a_sliced_address_asking_block_by_block")]

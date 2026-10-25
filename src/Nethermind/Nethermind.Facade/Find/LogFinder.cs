@@ -108,7 +108,13 @@ namespace Nethermind.Facade.Find
                     throw new BlockNotProcessedException(toBlock.Number);
                 }
 
-                if ((fromMissing || toMissing) && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+                // Sliced retention guarantees matching logs on the canonical chain by height, not receipts
+                // for a particular non-canonical block hash. A processed orphan with missing receipts must
+                // fail closed even when the same address is retained at this height.
+                if ((fromMissing || toMissing)
+                    && (!RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number)
+                        || (fromMissing && !_blockFinder.IsMainChain(fromBlock))
+                        || (toMissing && !_blockFinder.IsMainChain(toBlock))))
                 {
                     throw new ResourceNotFoundException(fromMissing
                         ? $"Receipt not available for From block {fromBlock.Number}."
