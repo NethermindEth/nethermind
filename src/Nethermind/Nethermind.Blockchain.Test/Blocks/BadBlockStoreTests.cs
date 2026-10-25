@@ -62,10 +62,12 @@ public class BadBlockStoreTests
     }
 
     [Test]
-    public void Insert_drops_block_access_list_above_size_limit()
+    public void Insert_drops_block_access_list_above_size_limit([Values] bool aboveLimit)
     {
-        BadBlockStore badBlockStore = new(new TestMemDb(), 10);
-        Block block = Build.A.Block.WithNumber(1).WithEncodedBlockAccessList(new byte[BadBlockStore.MaxBlockAccessListSize + 1]).TestObject;
+        const int limit = 100;
+        BadBlockStore badBlockStore = new(new TestMemDb(), 10, maxBlockAccessListSize: limit);
+        byte[] bal = new byte[aboveLimit ? limit + 1 : limit];
+        Block block = Build.A.Block.WithNumber(1).WithEncodedBlockAccessList(bal).TestObject;
 
         badBlockStore.Insert(block);
 
@@ -73,7 +75,28 @@ public class BadBlockStoreTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stored.Hash, Is.EqualTo(block.Hash));
-            Assert.That(stored.EncodedBlockAccessList, Is.Null);
+            Assert.That(stored.EncodedBlockAccessList, aboveLimit ? Is.Null : Is.EqualTo(bal));
+        }
+    }
+
+    [Test]
+    public void Insert_drops_oldest_block_access_lists_above_budget()
+    {
+        const int balSize = 100;
+        BadBlockStore badBlockStore = new(new TestMemDb(), 10, maxBlockAccessListSize: balSize, blockAccessListBudget: 2 * balSize);
+
+        for (ulong number = 1; number <= 4; number++)
+        {
+            byte[] bal = new byte[balSize];
+            bal[0] = (byte)number;
+            badBlockStore.Insert(Build.A.Block.WithNumber(number).WithEncodedBlockAccessList(bal).TestObject);
+        }
+
+        Block[] stored = badBlockStore.GetAll().ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored.Select(static b => b.Number), Is.EqualTo(new ulong[] { 1, 2, 3, 4 }));
+            Assert.That(stored.Select(static b => b.EncodedBlockAccessList?[0]), Is.EqualTo(new byte?[] { null, null, 3, 4 }));
         }
     }
 

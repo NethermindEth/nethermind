@@ -15,12 +15,22 @@ namespace Nethermind.Blockchain.Blocks;
 /// <remarks>
 /// Each value is the block RLP, followed by the RLP of the suggested block access list when the block has one.
 /// The access list is returned as <see cref="Block.EncodedBlockAccessList"/> and is not decoded.
-/// An access list larger than <see cref="MaxBlockAccessListSize"/> is not kept.
+/// An access list larger than <paramref name="maxBlockAccessListSize"/> is not kept. When the kept access lists are larger
+/// than <paramref name="blockAccessListBudget"/> in total, the access lists of the oldest entries are removed and their blocks stay.
 /// </remarks>
-public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDecoder = null) : IBadBlockStore
+public class BadBlockStore(
+    IDb blockDb,
+    long maxSize,
+    IHeaderDecoder? headerDecoder = null,
+    int maxBlockAccessListSize = BadBlockStore.MaxBlockAccessListSize,
+    long blockAccessListBudget = BadBlockStore.BlockAccessListBudget) : IBadBlockStore
 {
-    // Every read of the store (hash lookups and debug_getBadBlocks) copies each kept access list, so the size is bounded.
-    public const int MaxBlockAccessListSize = 1024 * 1024;
+    // EIP-7928 allows gas limit / ItemCost (2000) items. At about 64 bytes per item (a 32-byte slot and a 32-byte value
+    // with RLP overhead), 16 MiB holds about 260k items, which is the limit of a block with a gas limit of about 500M.
+    public const int MaxBlockAccessListSize = 16 * 1024 * 1024;
+
+    // Each read of the store copies every kept access list, so 100 entries at the per-entry limit would be too much.
+    public const long BlockAccessListBudget = 128 * 1024 * 1024;
 
     private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
@@ -35,7 +45,7 @@ public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDeco
         byte[]? bal = block.EncodedBlockAccessList
             ?? (block.BlockAccessList is { } blockAccessList ? BlockAccessListDecoder.EncodeToBytes(blockAccessList) : null);
 
-        if (bal is null || bal.Length > MaxBlockAccessListSize)
+        if (bal is null || bal.Length > maxBlockAccessListSize)
         {
             blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
         }
@@ -48,6 +58,7 @@ public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDeco
         }
 
         TruncateToMaxSize();
+        if (bal is not null) TrimBlockAccessLists(writeFlags);
     }
 
     public IEnumerable<Block> GetAll() => blockDb.GetAllValues(true).Select(bytes =>
@@ -72,6 +83,29 @@ public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDeco
             {
                 blockDb.Remove(key);
             }
+        }
+    }
+
+    private void TrimBlockAccessLists(WriteFlags writeFlags)
+    {
+        long total = 0;
+        using ArrayPoolList<(byte[] Key, int BlockLength, int BalLength)> entries = new((int)Math.Max(blockDb.EstimatedCount, 1));
+        foreach (KeyValuePair<byte[], byte[]> entry in blockDb.GetAll(true))
+        {
+            int blockLength = new RlpReader(entry.Value).PeekNextRlpLength();
+            int balLength = entry.Value.Length - blockLength;
+            total += balLength;
+            entries.Add((entry.Key, blockLength, balLength));
+        }
+
+        // Keys are ordered by block number, so the oldest blocks lose their access list first.
+        for (int i = 0; i < entries.Count && total > blockAccessListBudget; i++)
+        {
+            (byte[] key, int blockLength, int balLength) = entries[i];
+            if (balLength == 0 || blockDb.Get(key) is not { } value) continue;
+
+            blockDb.PutSpan(key, value.AsSpan(0, blockLength), writeFlags);
+            total -= balLength;
         }
     }
 }
