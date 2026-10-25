@@ -76,6 +76,9 @@ public class SlicedReceiptRetentionTests
             .WithBlockNumber(orphan.Number)
             .TestObject], ensureCanonical: false);
 
+        Assert.That(chain.ReceiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.True,
+            "the orphan's receipts must exist before the production pruner runs");
+
         for (int i = 0; i < 80; i++) await chain.AddBlock();
         tree.SyncPivot = (tree.Head!.Number, Hash256.Zero);
 
@@ -88,6 +91,7 @@ public class SlicedReceiptRetentionTests
             Assert.That(tree.IsMainChain(orphan.Header), Is.False);
             Assert.That(tree.GetInfo(orphan.Number, orphan.Hash!).Info?.WasProcessed, Is.True);
             Assert.That(chain.ReceiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.False);
+            Assert.That(tree.FindBlock(orphan.Hash, BlockTreeLookupOptions.None), Is.Null);
             Assert.That(tree.FindHeader(orphan.Hash, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(retention.RetainsLogsFor([slicedAddress], orphan.Number, orphan.Number), Is.True,
                 "the address/height retention gate must report coverage to reproduce the false-empty result");

@@ -112,9 +112,9 @@ namespace Nethermind.Facade.Find
                 // for a particular non-canonical block hash. A processed orphan with missing receipts must
                 // fail closed even when the same address is retained at this height.
                 if ((fromMissing || toMissing)
-                    && (!RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number)
-                        || (fromMissing && !_blockFinder.IsMainChain(fromBlock))
-                        || (toMissing && !_blockFinder.IsMainChain(toBlock))))
+                    && ((fromMissing && !_blockFinder.IsMainChain(fromBlock))
+                        || (toMissing && !_blockFinder.IsMainChain(toBlock))
+                        || !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number)))
                 {
                     throw new ResourceNotFoundException(fromMissing
                         ? $"Receipt not available for From block {fromBlock.Number}."

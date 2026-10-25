@@ -337,7 +337,7 @@ public class LogFinderTests
     {
         LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-        var blockBuilder = Build.A.Block
+        BlockBuilder blockBuilder = Build.A.Block
             .WithParent(parent)
             .WithTransactions(transaction)
             .WithBloom(new Bloom([log]))
@@ -389,7 +389,7 @@ public class LogFinderTests
     public void processed_noncanonical_block_with_missing_receipts_is_not_unprocessed()
     {
         Block parent = _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
-        (Block orphan, _, TxReceipt receipt) = BuildNonCanonicalTestBlock(parent, withReceiptsRoot: true);
+        (Block orphan, Transaction _, TxReceipt receipt) = BuildNonCanonicalTestBlock(parent, withReceiptsRoot: true);
 
         Assert.That(_rawBlockTree.SuggestBlock(orphan), Is.EqualTo(AddBlockResult.Added));
         _rawBlockTree.MarkChainAsProcessed([orphan]);
