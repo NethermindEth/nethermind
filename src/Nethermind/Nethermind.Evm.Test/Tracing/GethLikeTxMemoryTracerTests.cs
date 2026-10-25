@@ -151,7 +151,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         {
             Assert.That(trace.Failed, Is.False, "tracing diagnostics must preserve successful execution");
             Assert.That(trace.Entries.Where(entry => entry.Opcode == opcode.ToString()).Select(entry => entry.GasCost),
-                Is.EqualTo(new[] { coldCost, GasCostOf.WarmStateRead }), "the wrapped consumer must receive cold and warm access costs");
+                Is.EqualTo(new[] { coldCost, GasCostOf.WarmStateRead }), "the tracer must receive cold and warm access costs");
         }
     }
 
