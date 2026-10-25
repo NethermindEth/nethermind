@@ -33,6 +33,12 @@ public interface ITaikoReleaseSpec : IReleaseSpec
     FrozenDictionary<AddressAsKey, ushort> UnzenPrecompileZkGasMultipliers { get; }
 
     public bool UseSurgeGasPriceOracle { get; }
+
+    /// <summary>
+    /// Whether the Surge-only <c>anchorV4WithSignalSlots</c> selector is a valid Shasta anchor besides <c>anchorV4</c>.
+    /// </summary>
+    public bool IsAnchorV4WithSignalSlotsEnabled { get; }
+
     public Address TaikoL2Address { get; }
     public bool IsRip7728Enabled { get; }
     public bool IsL1StaticCallEnabled { get; }

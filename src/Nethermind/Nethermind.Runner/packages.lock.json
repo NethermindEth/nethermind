@@ -579,7 +579,6 @@
           "Nethermind.Facade": "[2.3.0-preview, )",
           "Nethermind.History": "[2.3.0-preview, )",
           "Nethermind.JsonRpc": "[2.3.0-preview, )",
-          "Nethermind.Monitoring": "[2.3.0-preview, )",
           "Nethermind.Network": "[2.3.0-preview, )",
           "Nethermind.Sockets": "[2.3.0-preview, )"
         }
@@ -804,7 +803,8 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Crypto": "[2.3.0-preview, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
-          "Nethermind.Specs": "[2.3.0-preview, )"
+          "Nethermind.Specs": "[2.3.0-preview, )",
+          "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.evm.precompiles": {
@@ -978,8 +978,8 @@
       "nethermind.monitoring": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.3.0-preview, )",
-          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
           "prometheus-net.AspNetCore": "[8.2.1, )"
         }
       },

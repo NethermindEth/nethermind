@@ -403,6 +403,8 @@ public partial class EngineModuleTests
             Assert.That(newPayload.Data.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
         }
 
+        // VALID comes before the commit, which the forkchoice waits for only a bounded time before answering SYNCING.
+        await chain.WaitForCommitted(executionPayload.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV2Result> finalFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash),
             payloadAttributes: null);
