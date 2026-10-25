@@ -42,6 +42,9 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public bool OutOfGas;
     /// <summary>When set, a state charge exceeding the reservoir halts rather than spilling into <see cref="Value"/> (EIP-8141: no EIP-8037 reservoir spill within a frame transaction).</summary>
     public bool IndependentStatePool;
+    /// <summary>Legacy shares that this frame and its completed children paid from <see cref="Value"/> under <see cref="IndependentStatePool"/>.</summary>
+    /// <remarks>EIP-8141 rebates them from the execution gas used of the frame transaction's frame at its exit. An exceptional halt discards them.</remarks>
+    public long LegacySharePaid;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy FromULong(ulong value) => new() { Value = value };
@@ -98,6 +101,10 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
 
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long GetLegacySharePaid(in EthereumGasPolicy gas) => gas.LegacySharePaid;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong CalculateStateGasSpill(in EthereumGasPolicy gas, long stateGasCost)
     {
@@ -140,7 +147,8 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// cannot create state with less gas than before because the reservoir pays for it. The reservoir pays at most the
     /// frame's remaining allowance and <paramref name="drawLimit"/>; the rest comes from <see cref="Value"/>. An
     /// EIP-8141 frame pays the whole state gas from its own pool, so its state use stays within its state limit, and
-    /// pays the legacy share from <see cref="Value"/> as an extra execution-gas charge.
+    /// pays the legacy share from <see cref="Value"/> as an extra execution-gas charge, which
+    /// <see cref="LegacySharePaid"/> rebates at frame exit.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryConsumeStateGas(ref EthereumGasPolicy gas, long stateGasCost, long legacyShare, long drawLimit = long.MaxValue)
@@ -158,6 +166,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             ConsumeRaw(ref gas, share);
             gas.StateReservoir -= stateGasCost;
             gas.StateGasUsed += stateGasCost;
+            gas.LegacySharePaid += (long)share;
             return true;
         }
 
@@ -189,6 +198,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
         gas.StateGasDrawn += childGas.StateGasDrawn;
+        gas.LegacySharePaid += childGas.LegacySharePaid;
     }
 
     // On explicit REVERT, restore the child's remaining state reservoir plus its reverted
@@ -201,6 +211,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // of the parent still burns it.
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed;
         parentGas.StateGasSpill += childGas.StateGasSpill;
+        parentGas.LegacySharePaid += childGas.LegacySharePaid;
     }
 
     // On a child exceptional halt state gas produced no durable growth: restore the child's
@@ -219,6 +230,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         parentGas.StateReservoir += childGas.StateGasUsed - childGas.StateGasSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
         parentGas.StateGasDrawn -= childGas.StateGasDrawn;
+        parentGas.LegacySharePaid -= childGas.LegacySharePaid;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

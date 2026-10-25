@@ -244,8 +244,8 @@ public class FrameTxBlockGasTests
     }
 
     /// <summary>
-    /// The legacy share of EIP-8037 is an extra execution-gas charge in a frame, and the frame's state pool pays
-    /// the whole state gas. So state use never exceeds the frame's state limit, the block's state reservation and
+    /// The legacy share of EIP-8037 is an extra execution-gas charge in a frame, rebated at frame exit, and the
+    /// frame's state pool pays the whole state gas. So state use never exceeds the frame's state limit, the block's state reservation and
     /// the approved maximum gas still bound the transaction, and the payer pays exactly the spent gas even when
     /// the calldata floor binds.
     /// </summary>
