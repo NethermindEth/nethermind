@@ -229,6 +229,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 if (cts.IsCancellationRequested)
                 {
                     published.DisposeAndCancelOngoingImprovements();
+                    // Dispose clears _shutdown before it empties the storage, so a publish it missed is removed here.
+                    if (Volatile.Read(ref _shutdown) is null) _payloadStorage.TryRemove(new KeyValuePair<string, IBlockImprovementContext>(payloadId, published));
                 }
 
                 return;
