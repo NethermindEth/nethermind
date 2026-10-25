@@ -880,7 +880,8 @@ scripts/perf-report.sh compare before.folded after.folded 30
 ```
 
 The node runs with `DOTNET_JitFramed=1`. This flag forces an RBP frame in each
-JIT method, so frame-pointer unwinding keeps every managed caller in the stack.
+JIT method, so frame-pointer unwinding keeps every JIT-compiled caller in the
+stack. Precompiled ReadyToRun code gets no frame until tiering recompiles it.
 It changes the code a small amount, so do not compare latencies of a `perf`
 run with latencies of a run without `perf`.
 
