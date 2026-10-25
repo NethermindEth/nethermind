@@ -226,7 +226,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, _rpcConfig.GasCap ?? 0, NoBaseFee, token);
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, _rpcConfig.GasCap ?? 0, NoBaseFee, _rpcConfig.EstimateAvoidsNestedOutOfGas, token);
 
                 // A transaction rejected before execution reports, as GasSpent, the gas limit it was rejected at.
                 string? errorMessage = result.InputError

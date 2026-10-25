@@ -335,15 +335,15 @@ namespace Nethermind.Facade
             }
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, bool noBaseFee, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, bool noBaseFee, bool avoidNestedOutOfGas, CancellationToken cancellationToken)
         {
             BlobFeeCapFill blobFeeCapFill = new(tx.SupportsBlobs && tx.MaxFeePerBlobGas is null, blobBaseFeeOverride);
             blobBaseFeeOverride = GetBlobBaseFeeOverride(tx, blobBaseFeeOverride);
             header = CloneForCall(header, noBaseFee);
 
             return HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
-                ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, blockOverride, gasCap, blobFeeCapFill, cancellationToken)
-                : EstimateGasShareable(header, tx, errorMargin, gasCap, blobFeeCapFill, cancellationToken);
+                ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, blockOverride, gasCap, blobFeeCapFill, avoidNestedOutOfGas, cancellationToken)
+                : EstimateGasShareable(header, tx, errorMargin, gasCap, blobFeeCapFill, avoidNestedOutOfGas, cancellationToken);
         }
 
         public Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
@@ -370,20 +370,20 @@ namespace Nethermind.Facade
                 fillExecution, fillState, gasCap, errorMargin, cancellationToken, out executionReverted);
         }
 
-        private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, ulong gasCap, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
+        private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, ulong gasCap, BlobFeeCapFill blobFeeCapFill, bool avoidNestedOutOfGas, CancellationToken cancellationToken)
         {
             if (!shareableTxProcessorSource.TryBuild(header, out IReadOnlyTxProcessingScope? scope)) return EstimateGasStateUnavailable(header, tx);
             using IDisposable _ = scope;
-            return RunEstimateGas(scope.TransactionProcessor, scope.WorldState, header, tx, errorMargin, gasCap, blobBaseFeeOverride: null, blobFeeCapFill, cancellationToken);
+            return RunEstimateGas(scope.TransactionProcessor, scope.WorldState, header, tx, errorMargin, gasCap, blobBaseFeeOverride: null, blobFeeCapFill, avoidNestedOutOfGas, cancellationToken);
         }
 
-        private CallOutput EstimateGasExclusive(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
+        private CallOutput EstimateGasExclusive(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, BlobFeeCapFill blobFeeCapFill, bool avoidNestedOutOfGas, CancellationToken cancellationToken)
         {
             if (!processingEnv.TryBuildAndOverride(header, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope)) return EstimateGasStateUnavailable(header, tx);
             using IDisposable _ = scope;
             BlockProcessingComponents components = scope.Component;
             components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-            return RunEstimateGas(components.TransactionProcessor, components.WorldState, header, tx, errorMargin, gasCap, blobBaseFeeOverride, blobFeeCapFill, cancellationToken);
+            return RunEstimateGas(components.TransactionProcessor, components.WorldState, header, tx, errorMargin, gasCap, blobBaseFeeOverride, blobFeeCapFill, avoidNestedOutOfGas, cancellationToken);
         }
 
         /// <summary>Whether the request left the blob fee cap to be filled, and the blob base fee override it carried.</summary>
@@ -420,13 +420,13 @@ namespace Nethermind.Facade
             return output;
         }
 
-        private CallOutput RunEstimateGas(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, ulong gasCap, UInt256? blobBaseFeeOverride, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
+        private CallOutput RunEstimateGas(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, ulong gasCap, UInt256? blobBaseFeeOverride, BlobFeeCapFill blobFeeCapFill, bool avoidNestedOutOfGas, CancellationToken cancellationToken)
         {
             // Before PrepareCall, which sets the header's blob gas used to the call's.
             FundedRunContext fundedRunContext = CreateFundedRunContext(header, blobFeeCapFill);
             BlockExecutionContext blockContext = PrepareCall(worldState, header, tx, blobBaseFeeOverride);
             GasEstimation estimation = new GasEstimator(txProcessor, worldState).Estimate(
-                tx, in blockContext, (ulong)errorMargin, gasCap, fundedRunContext, cancellationToken);
+                tx, in blockContext, (ulong)errorMargin, gasCap, fundedRunContext, avoidNestedOutOfGas, cancellationToken);
 
             return new CallOutput
             {

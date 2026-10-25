@@ -43,7 +43,7 @@ namespace Nethermind.Facade
 
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
         SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken);
-        CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, ulong gasCap = 0, bool noBaseFee = false, CancellationToken cancellationToken = default);
+        CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, ulong gasCap = 0, bool noBaseFee = false, bool avoidNestedOutOfGas = false, CancellationToken cancellationToken = default);
 
         /// <summary>Fills the omitted execution and state limits of a frame transaction's frames by replaying it.</summary>
         /// <remarks>Runs in <paramref name="header"/>'s state with the overrides applied. Every probe runs the whole
