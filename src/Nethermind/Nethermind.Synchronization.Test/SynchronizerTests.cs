@@ -191,7 +191,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public override PublicKey Id => Node.Id;
 
-        public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
+        public override void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) { }
 
         public void AddBlocksUpTo(ulong i, ulong branchStart = 0, byte branchIndex = 0)
         {
@@ -269,11 +269,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             ISyncConfig GetSyncConfig() =>
                 synchronizerType switch
                 {
-                    SynchronizerType.Fast => SyncConfig.WithFastSync,
+                    SynchronizerType.Fast => new SyncConfig { FastSync = true, SnapSync = true },
                     SynchronizerType.Full => SyncConfig.WithFullSyncOnly,
-                    SynchronizerType.Eth2MergeFastWithoutTTD => SyncConfig.WithFastSync,
+                    SynchronizerType.Eth2MergeFastWithoutTTD => new SyncConfig { FastSync = true, SnapSync = true },
                     SynchronizerType.Eth2MergeFullWithoutTTD => SyncConfig.WithFullSyncOnly,
-                    SynchronizerType.Eth2MergeFast => SyncConfig.WithFastSync,
+                    SynchronizerType.Eth2MergeFast => new SyncConfig { FastSync = true, SnapSync = true },
                     SynchronizerType.Eth2MergeFull => SyncConfig.WithFullSyncOnly,
                     _ => throw new ArgumentOutOfRangeException(nameof(synchronizerType), synchronizerType, null)
                 };

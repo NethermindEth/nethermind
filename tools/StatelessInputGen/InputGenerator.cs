@@ -4,13 +4,11 @@
 using System.Buffers.Binary;
 using System.Globalization;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -27,7 +25,7 @@ namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
-    internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk, CancellationToken cancellationToken = default)
+    internal static async Task<int> Generate(string blockParam, Uri host, Uri? beaconUrl, string output, bool forZisk, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
         ArgumentNullException.ThrowIfNull(host);
@@ -42,6 +40,8 @@ internal static class InputGenerator
         using (witness)
         {
             ISpecProvider specProvider = GetSpecProvider(chainId.Value);
+            if (beaconUrl is not null)
+                await TryFetchBeaconRequests(block, specProvider, beaconUrl, cancellationToken);
             data = await EncodeInput(block, witness, specProvider, cancellationToken);
         }
 
@@ -63,7 +63,7 @@ internal static class InputGenerator
         return 0;
     }
 
-    /// <summary>Encodes a block and its witness as a stateless input, recovering missing execution requests.</summary>
+    /// <summary>Encodes a block and its witness as a stateless input, recovering missing execution requests and the block access list.</summary>
     /// <remarks>Recovery mutates the supplied block: it fills transaction senders, marks the header post-merge,
     /// and attaches execution requests, generated access lists and account changes from replay.</remarks>
     internal static async Task<byte[]?> EncodeInput(
@@ -76,7 +76,7 @@ internal static class InputGenerator
             return null;
         }
 
-        await RecoverExecutionRequests(block, witness, specProvider, cancellationToken);
+        await RecoverByReplay(block, witness, specProvider, cancellationToken);
 
         // Only Amsterdam has a schema of its own; earlier forks share the current-fork schema.
         bool isAmsterdam = fork == ProtocolFork.Amsterdam;
@@ -99,23 +99,45 @@ internal static class InputGenerator
         {
             NewPayloadRequest = NewPayloadRequest<TExecutionPayload>.From(block, payload),
             Witness = ExecutionWitness.From(witness),
-            ChainId = chainId,
-            PublicKeys = RecoverPublicKeys(block.Transactions, chainId)
+            ChainId = chainId
         };
 
         return StatelessInput<TExecutionPayload>.Encode(input);
     }
 
-    private static async Task RecoverExecutionRequests(Block block, Witness witness, ISpecProvider specProvider, CancellationToken cancellationToken)
+    private static bool NeedsExecutionRequests(Block block) =>
+        block.ExecutionRequests is null && block.Header.RequestsHash is not null &&
+        block.Header.RequestsHash != ExecutionRequestExtensions.EmptyRequestsHash;
+
+    /// <summary>Attaches execution requests read from a beacon node, leaving the block untouched on any mismatch.</summary>
+    private static async Task TryFetchBeaconRequests(Block block, ISpecProvider specProvider, Uri beaconUrl, CancellationToken cancellationToken)
     {
-        // EIP-7685 request bodies are absent from block RLP; only their hash survives debug_getRawBlock.
-        if (block.ExecutionRequests is not null || block.Header.RequestsHash is null ||
-            block.Header.RequestsHash == ExecutionRequestExtensions.EmptyRequestsHash)
+        // Amsterdam inputs also need the access list that only the replay produces.
+        if (!NeedsExecutionRequests(block) ||
+            ProtocolForkExtensions.TryGetByName(specProvider.GetSpec(block.Header).Name, out ProtocolFork fork) && fork == ProtocolFork.Amsterdam)
+            return;
+
+        (block.ExecutionRequests, string? error) = await BeaconRequests.TryFetch(beaconUrl, block, cancellationToken);
+
+        if (error is null)
+            AnsiConsole.MarkupLine($"[green]✓[/] Fetched execution requests from the beacon node");
+        else
+            AnsiConsole.MarkupLine($"[yellow]Beacon requests unusable ({error.EscapeMarkup()}), recovering them by replay[/]");
+    }
+
+    private static async Task RecoverByReplay(Block block, Witness witness, ISpecProvider specProvider, CancellationToken cancellationToken)
+    {
+        // EIP-7685 request bodies and the EIP-7928 access list are absent from block RLP;
+        // only their hashes survive debug_getRawBlock.
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        bool needsRequests = NeedsExecutionRequests(block);
+        bool needsBlockAccessList = spec.BlockLevelAccessListsEnabled &&
+            block.EncodedBlockAccessList is null && block.BlockAccessList is null;
+        if (!needsRequests && !needsBlockAccessList)
             return;
 
         cancellationToken.ThrowIfCancellationRequested();
-        IReleaseSpec spec = specProvider.GetSpec(block.Header);
-        if (!spec.RequestsEnabled)
+        if (needsRequests && !spec.RequestsEnabled)
             throw new InvalidDataException($"Cannot recover execution requests for block {block.Number}: {spec.Name} does not enable execution requests. Check the configured fork schedule.");
 
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
@@ -131,11 +153,10 @@ internal static class InputGenerator
 
         // Requests are post-merge, but the RLP header does not carry this execution flag.
         block.Header.IsPostMerge = true;
-        StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance)
-        {
-            ExecutionRequestsProcessorFactory = ExecutionRequestsProcessorFactory.Instance
-        };
-        using IDisposable scope = env.WorldState.BeginScope(headers[^1]);
+        StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
+        if (!env.WorldState.TryBeginScope(headers[^1], out IDisposable? scope))
+            throw new InvalidDataException("Witness is missing the parent state root.");
+        using IDisposable _ = scope;
         // Normal processed-block validation checks the recovered requests hash against the original header.
         env.BlockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, spec, cancellationToken);
     }
@@ -268,21 +289,4 @@ internal static class InputGenerator
         ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? specProvider)
             ? specProvider
             : throw new ArgumentException($"Unknown chain id: {chainId}", nameof(chainId));
-
-    private static SszPublicKey[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
-    {
-        EthereumEcdsa ecdsa = new(chainId);
-        SszPublicKey[] publicKeys = new SszPublicKey[transactions.Length];
-
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            Transaction tx = transactions[i];
-            PublicKey publicKey = ecdsa.RecoverPublicKey(tx)
-                ?? throw new InvalidOperationException($"Failed to recover public key for transaction {tx.Hash}");
-
-            publicKeys[i] = SszPublicKey.FromSpan(publicKey.PrefixedBytes);
-        }
-
-        return publicKeys;
-    }
 }

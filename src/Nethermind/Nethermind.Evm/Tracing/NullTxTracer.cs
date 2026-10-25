@@ -41,7 +41,7 @@ public class NullTxTracer : TxTracer
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         => ThrowInvalidOperationException();
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         => ThrowInvalidOperationException();
 
     public override void SetOperationStack(TraceStack stack)
@@ -65,7 +65,7 @@ public class NullTxTracer : TxTracer
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         => ThrowInvalidOperationException();
 
-    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public override void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
         => ThrowInvalidOperationException();
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)

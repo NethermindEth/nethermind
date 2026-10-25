@@ -20,6 +20,10 @@ namespace Nethermind.Blockchain.Test.Validators;
 public class InclusionListValidatorTests
 {
     private static readonly ISpecProvider _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
+    // Bogota carries inclusion lists alone; a chain wanting frame transactions too schedules their
+    // transition alongside it. That combination is what makes a frame transaction reachable as an entry.
+    private static readonly ISpecProvider _frameSpecProvider = new CustomSpecProvider(
+        ((ForkActivation)0, new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true }));
     private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
 
@@ -48,10 +52,9 @@ public class InclusionListValidatorTests
             yield return Case("Same-nonce replacement advances nonce", [_validTx], true, blockTxs: [BuildTx(value: UInt256.One, to: TestItem.AddressC)], senderNonce: 1);
             // EIP-1559 fee check uses MaxFeePerGas (cap), not the tip: cap above baseFee → appendable.
             yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
-            // The blob carve-out applies to building an IL, not to judging one.
-            yield return Case("Blob tx", [BuildBlobTx()], false);
-            // Blob gas is paid up front, so a blob fee beyond the balance makes the tx unappendable.
-            yield return Case("Blob tx cannot afford blob fee", [BuildBlobTx(maxFeePerBlobGas: 100_000.GWei)], true);
+            yield return Case("Blob tx is ignored", [BuildBlobTx()], true);
+            yield return Case("Blob entry does not hide an omitted ordinary tx", [BuildBlobTx(), _validTx], false);
+            yield return Case("Blob entry is ignored after an included ordinary tx", [_validTx, BuildBlobTx()], true, blockTxs: [_validTx]);
             // A tx normal execution rejects must not be reported appendable.
             yield return Case("Malformed 1559 tx (tip > fee cap)", [BuildMalformed1559Tx()], true);
             // A tx whose GasLimit is below the intrinsic cost cannot execute.
@@ -75,6 +78,8 @@ public class InclusionListValidatorTests
             .WithGasUsed(gasUsed)
             .WithBaseFeePerGas(baseFee)
             .WithTransactions(blockTxs)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
             .WithInclusionListTransactions(il)
             .TestObject;
 
@@ -82,28 +87,61 @@ public class InclusionListValidatorTests
         Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
     }
 
-    // Withdrawals land after the block's transactions, so judging against the raw post-block balance
-    // would make an honest builder look like a censor.
-    [TestCase(0UL, ExpectedResult = false, TestName = "Sender funded before withdrawals is appendable")]
-    [TestCase(9_500_000_000UL, ExpectedResult = true, TestName = "Sender funded only by this block's withdrawal is not appendable")]
-    public bool Withdrawals_are_not_spendable_by_an_appended_tx(ulong withdrawnGwei)
+    // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
+    // is appendable even though it exceeds the header's max(execution, state). Numbers are those of
+    // test_preparation_rollback_restores_block_state_budget, where a 97_920-gas state total sits under a
+    // 513_317-gas execution total.
+    [TestCase(34_067_749UL, true, ExpectedResult = false, TestName = "Entry at the exact state budget is appendable")]
+    [TestCase(34_067_750UL, true, ExpectedResult = true, TestName = "Entry one gas past the state budget is not appendable")]
+    // Without the per-dimension totals — no in-memory copy of the executed block left — both fall back to that max.
+    [TestCase(34_067_749UL, false, ExpectedResult = true, TestName = "Entry is judged on the combined gas when dimensions are unknown")]
+    public bool Appendability_is_judged_per_block_gas_dimension(ulong ilGasLimit, bool dimensionsKnown)
     {
-        Withdrawal[] withdrawals = withdrawnGwei == 0
-            ? []
-            : [Build.A.Withdrawal.WithRecipient(TestItem.AddressA).WithAmount(withdrawnGwei).TestObject];
+        Block block = Build.A.Block
+            .WithGasLimit(34_165_669)
+            .WithGasUsed(513_317)
+            .WithBaseFeePerGas(UInt256.Zero)
+            .WithTransactions([])
+            .WithInclusionListTransactions([BuildTx(gasLimit: ilGasLimit, to: TestItem.AddressB)])
+            .TestObject;
+        if (dimensionsKnown) block.Header.GasUsedPerDimension = (513_317, 97_920);
 
+        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+    }
+
+    // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
+    // well-formedness assertion keeps the case honest: without it the entry could pass for being malformed.
+    [Test]
+    public void Omitted_frame_transaction_is_not_judged()
+    {
+        Transaction frameTx = BuildFrameTx();
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
-            .WithBaseFeePerGas(UInt256.Zero)
             .WithTransactions([])
-            .WithWithdrawals(withdrawals)
-            .WithInclusionListTransactions([_validTx])
+            .WithInclusionListTransactions([frameTx])
             .TestObject;
+        IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
 
-        // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
-        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
+            Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+        }
     }
+
+    private static Transaction BuildFrameTx() => new()
+    {
+        Type = TxType.FrameTx,
+        ChainId = TestBlockchainIds.ChainId,
+        SenderAddress = TestItem.AddressA,
+        Nonce = 0,
+        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        FrameSignatures = [],
+        GasLimit = 100_000,
+        GasPrice = 1.GWei,
+        DecodedMaxFeePerGas = 10.GWei,
+    };
 
     [Test]
     public void When_il_disabled_by_spec_then_accept_even_if_excluded()
@@ -124,13 +162,14 @@ public class InclusionListValidatorTests
     public bool Sender_with_code_appendability_depends_on_delegation(bool isDelegated)
     {
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        ValueHash256 codeHash = new("0x" + new string('a', 64));
         state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
         {
             // Any non-empty codehash → HasCode = true.
-            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
+            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, codeHash);
             return true;
         });
-        state.IsDelegatedCode(TestItem.AddressA).Returns(isDelegated);
+        state.IsDelegatedCode(codeHash).Returns(isDelegated);
 
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)

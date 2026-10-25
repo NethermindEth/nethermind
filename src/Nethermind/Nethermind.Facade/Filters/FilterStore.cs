@@ -137,6 +137,8 @@ namespace Nethermind.Facade.Filters
 
         public event EventHandler<FilterEventArgs>? FilterRemoved;
 
+        internal event EventHandler<FilterEventArgs>? FilterSaved;
+
         public void SaveFilter(FilterBase filter)
         {
             if (!_filters.TryAdd(filter.Id, filter))
@@ -148,6 +150,8 @@ namespace Nethermind.Facade.Filters
             {
                 _currentFilterId = Math.Max(filter.Id, _currentFilterId);
             }
+
+            FilterSaved?.Invoke(this, new FilterEventArgs(filter.Id));
         }
 
         private int GetFilterId(bool generateId)

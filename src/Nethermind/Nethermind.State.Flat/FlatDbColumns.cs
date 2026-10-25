@@ -22,4 +22,5 @@ public enum FlatHistoryColumns
     StorageClears,
     AccountCommitments,
     StorageCommitments,
+    TransactionChangesets,
 }

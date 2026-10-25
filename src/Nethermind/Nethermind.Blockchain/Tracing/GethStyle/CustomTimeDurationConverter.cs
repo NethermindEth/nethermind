@@ -3,12 +3,16 @@
 
 using System;
 using System.Buffers;
-using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
+
+internal sealed class TraceDurationFormatException(string message) : FormatException(message);
+
+internal readonly record struct ParsedTraceDuration(TimeSpan? Value, string? Error = null, string? RawText = null);
 
 /// <summary>
 /// Deserializes a JSON string as a <see cref="TimeSpan"/> using Go's time.ParseDuration format
@@ -33,47 +37,59 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     // Matches Go's int64 nanosecond range (positive values must be < MaxNs).
     private const ulong MaxNs = 1UL << 63;
 
-    // 18 decimal digits always fit in a ulong; extra fractional digits are dropped.
-    private const int MaxFractionalDigits = 18;
-
     // Largest possible Format output is "-256204778h59m59.999999999s" = 27 chars.
     private const int FormatBufferSize = 32;
 
-    private const int MaxInputChars = 64;
+    private const int MaxInputBytes = 64;
 
     private static readonly SearchValues<char> Digits = SearchValues.Create("0123456789");
     private static readonly SearchValues<char> UnitTerminators = SearchValues.Create(".0123456789");
 
-    private static ReadOnlySpan<ulong> Pow10 =>
-    [
-        1, 10, 100, 1_000, 10_000,
-        100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000,
-        10_000_000_000, 100_000_000_000, 1_000_000_000_000, 10_000_000_000_000,
-        100_000_000_000_000, 1_000_000_000_000_000, 10_000_000_000_000_000,
-        100_000_000_000_000_000, 1_000_000_000_000_000_000,
-    ];
+    // Go scales fractions by repeated *= 10; Math.Pow(10, k) can round differently once k > 22.
+    // Inputs are capped at MaxInputBytes, so a fraction never has that many digits.
+    private static readonly double[] FractionScales = CreateFractionScales();
+
+    private static double[] CreateFractionScales()
+    {
+        double[] scales = new double[MaxInputBytes];
+        scales[0] = 1;
+        for (int i = 1; i < scales.Length; i++) scales[i] = scales[i - 1] * 10;
+        return scales;
+    }
 
     public override TimeSpan? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null) return null;
         if (reader.TokenType != JsonTokenType.String) throw new JsonException("Expected string duration or null.");
 
+        ParsedTraceDuration parsed = ReadDuration(ref reader);
+        return parsed.Error is null ? parsed.Value : throw new JsonException(parsed.Error, new TraceDurationFormatException(parsed.Error));
+    }
+
+    internal static ParsedTraceDuration ReadDuration(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType == JsonTokenType.Null) return default;
+        if (reader.TokenType != JsonTokenType.String) throw new JsonException("Expected string duration or null.");
+
+        ValidateLength(ref reader);
+        Span<char> buffer = stackalloc char[MaxInputBytes];
+        return Parse(buffer[..reader.CopyString(buffer)]);
+    }
+
+    private static void ValidateLength(ref Utf8JsonReader reader)
+    {
         long byteLen = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
-        if (byteLen > MaxInputChars) throw new JsonException($"Duration string exceeds {MaxInputChars} characters.");
-
-        return ReadFromStackBuffer(ref reader);
+        if (byteLen > MaxInputBytes) throw new JsonException($"Duration string exceeds {MaxInputBytes} bytes.");
     }
 
-    private static TimeSpan ReadFromStackBuffer(ref Utf8JsonReader reader)
-    {
-        Span<char> stackBuf = stackalloc char[MaxInputChars];
-        return ParseOrThrow(stackBuf[..reader.CopyString(stackBuf)]);
-    }
+    internal static ParsedTraceDuration Parse(string value) => Encoding.UTF8.GetByteCount(value) > MaxInputBytes
+        ? new(null, $"Duration string exceeds {MaxInputBytes} bytes.")
+        : Parse(value.AsSpan());
 
-    private static TimeSpan ParseOrThrow(ReadOnlySpan<char> s)
+    private static ParsedTraceDuration Parse(ReadOnlySpan<char> value)
     {
-        if (TryParseGoDuration(s, out TimeSpan result) || TimeSpan.TryParse(s, CultureInfo.InvariantCulture, out result)) return result;
-        throw new JsonException($"Cannot parse '{s}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').");
+        if (TryParseGoDuration(value, out TimeSpan result) || TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out result)) return new(result);
+        return new(null, $"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').", new string(value));
     }
 
     public override void Write(Utf8JsonWriter writer, TimeSpan? value, JsonSerializerOptions options)
@@ -82,7 +98,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         else WriteFormatted(writer, value.Value);
     }
 
-    private static void WriteFormatted(Utf8JsonWriter writer, TimeSpan value)
+    internal static void WriteFormatted(Utf8JsonWriter writer, TimeSpan value)
     {
         Span<char> buf = stackalloc char[FormatBufferSize];
         writer.WriteStringValue(Format(value, buf));
@@ -214,7 +230,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         if (!TryTakeInteger(ref s, out ulong v, out bool hasInt)) return false;
 
         ulong f = 0;
-        ulong scale = 1;
+        double scale = 1;
         bool hasFrac = false;
         if (!s.IsEmpty && s[0] == '.')
         {
@@ -231,8 +247,8 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
 
         if (f > 0)
         {
-            // UInt128 keeps the fraction exact; Go uses float64 here.
-            ns += (ulong)((UInt128)f * unitNs / scale);
+            // Preserve Go's floating-point evaluation order before truncating to nanoseconds.
+            ns += (ulong)((double)f * ((double)unitNs / scale));
             if (ns > MaxNs) return false;
         }
         return true;
@@ -243,25 +259,30 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         ReadOnlySpan<char> digits = TakeDigits(ref s);
         hasInt = !digits.IsEmpty;
         if (!hasInt) { v = 0; return true; }
-        return ulong.TryParse(digits, out v) && v <= MaxNs;
+        return ulong.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out v) && v <= MaxNs;
     }
 
-    private static void TakeFraction(ref ReadOnlySpan<char> s, out ulong f, out ulong scale, out bool hasFrac)
+    private static void TakeFraction(ref ReadOnlySpan<char> s, out ulong f, out double scale, out bool hasFrac)
     {
         ReadOnlySpan<char> digits = TakeDigits(ref s);
         hasFrac = !digits.IsEmpty;
-        if (!hasFrac)
+        f = 0;
+        scale = 1;
+        int leadingZeros = digits.IndexOfAnyExcept('0');
+        if (leadingZeros < 0) return;
+
+        // Go's leadingFraction stops accumulating once the value would exceed 1<<63:
+        // 18 significant digits always fit, a 19th only if the result stays <= 1<<63.
+        ReadOnlySpan<char> significant = digits[leadingZeros..];
+        int taken = Math.Min(significant.Length, 19);
+        ulong.TryParse(significant[..taken], NumberStyles.None, CultureInfo.InvariantCulture, out f); // <= 19 ASCII digits always fit in ulong
+        if (f > MaxNs)
         {
-            f = 0;
-            scale = 1;
-            return;
+            f /= 10;
+            taken--;
         }
 
-        // Excess fractional digits are below the tick boundary — drop them.
-        int take = Math.Min(digits.Length, MaxFractionalDigits);
-        bool ok = ulong.TryParse(digits[..take], out f);
-        Debug.Assert(ok, "digits are ASCII 0-9 and fit in 18 chars");
-        scale = Pow10[take];
+        scale = FractionScales[leadingZeros + taken];
     }
 
     private static ReadOnlySpan<char> TakeDigits(ref ReadOnlySpan<char> s)

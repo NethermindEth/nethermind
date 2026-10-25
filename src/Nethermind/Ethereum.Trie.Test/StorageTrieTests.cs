@@ -5,6 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using NUnit.Framework;
@@ -14,6 +15,17 @@ namespace Ethereum.Trie.Test
     [TestFixture]
     public class StorageTrieTests
     {
+        [Test]
+        public void Storage_lookup_matches_individual_hash([Range(0, 1024)] int slot)
+        {
+            UInt256 index = (UInt256)(uint)slot;
+            byte[] encoded = new byte[Keccak.Size];
+            index.ToBigEndian(encoded);
+            ValueHash256 actual = default;
+            StorageTree.ComputeKeyWithLookup(index, ref actual);
+            Assert.That(actual, Is.EqualTo(ValueKeccak.Compute(encoded)));
+        }
+
         private StorageTree CreateStorageTrie() =>
             new(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance).GetTrieStore(TestItem.KeccakA), Keccak.EmptyTreeHash, LimboLogs.Instance);
 

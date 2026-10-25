@@ -13,6 +13,7 @@ internal sealed class SeriesPublisher(SeriesScope scope, TreePath path, SeriesKe
     private NodeViewKind _lastKind = NodeViewKind.Empty;
     private ValueHash256 _lastHash;
     private bool _published;
+    private int _scratchRowsSinceFullVector;
 
     public bool IsNew(in ValueHash256 hash) => !_published || hash != _lastHash;
 
@@ -24,8 +25,12 @@ internal sealed class SeriesPublisher(SeriesScope scope, TreePath path, SeriesKe
             ChildVector children = view.Children!;
             ushort presence = children.Presence;
             changed = _lastKind == NodeViewKind.Branch ? children.ChangedSince(_lastChildren) : presence;
-            if (key is { Scratch: true } branchKey) writer.WriteBranch(branchKey, block, presence, changed, children);
-            _lastChildren.CopyFrom(children);
+            if (key is { Scratch: true } branchKey)
+            {
+                bool fullVector = _scratchRowsSinceFullVector == 0;
+                _scratchRowsSinceFullVector = (_scratchRowsSinceFullVector + 1) % CommitmentDepthPolicy.FullVectorEvery;
+                writer.WriteBranch(branchKey, block, presence, fullVector ? presence : changed, children);
+            }
         }
         else if (key is { Scratch: true } otherKey)
         {
@@ -35,6 +40,12 @@ internal sealed class SeriesPublisher(SeriesScope scope, TreePath path, SeriesKe
 
         if (emitter is not null) scope.Record(emitter, path, view, changed);
 
+        Seed(view);
+    }
+
+    public void Seed(in NodeView view)
+    {
+        if (view.Kind == NodeViewKind.Branch) _lastChildren.CopyFrom(view.Children!);
         _lastKind = view.Kind;
         _lastHash = view.Hash;
         _published = true;

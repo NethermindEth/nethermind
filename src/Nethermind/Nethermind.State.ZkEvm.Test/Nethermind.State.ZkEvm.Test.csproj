@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <Import Project="../tests.props" />
+
+  <ItemGroup>
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Nethermind.Core.ZkEvm.Test\SeedGuestHashes.cs" Link="SeedGuestHashes.cs" />
+  </ItemGroup>
+
+  <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">
+    <Error Text="Build this project with EnableZkEvm=true." />
+  </Target>
+
+</Project>

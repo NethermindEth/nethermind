@@ -1,0 +1,38 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+  SPDX-License-Identifier: LGPL-3.0-only
+
+  Substitutions only this guest applies, on top of the shared
+  ../Nethermind.Stateless.Guest/substitutions.xml.
+-->
+<linker>
+  <assembly fullname="Nethermind.Evm">
+    <!-- mul.S multiplies on the uint256_mul precompile. -->
+    <type fullname="Nethermind.Evm.GuestMulFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+  <assembly fullname="Nethermind.Serialization.Ssz">
+    <!-- Only SP1's runtime exports the SHA-256 extend and compress precompiles merkleization hashes pairs with. -->
+    <type fullname="Nethermind.Serialization.Ssz.Merkleization.Sp1Sha256Flag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+  <assembly fullname="Nethermind.Core">
+    <!-- The shared build leaves the flag off and this guest turns it on, switching on what only SP1 offers:
+         MULMOD on the 256-bit modular multiplication precompile, and BLS12-381 points in the zkcrypto layout
+         SP1's libzkevm takes rather than EIP-2537's. -->
+    <type fullname="Nethermind.Core.Sp1Flag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+    <!-- SP1 rejects misaligned accesses, so its JIT guards every access it cannot prove aligned; the flag
+         rounds pointers already on a boundary down to it, which lets the JIT prove the accesses through them. -->
+    <type fullname="Nethermind.Core.Extensions.StrictAlignmentFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+    <!-- SP1 charges memory by the words a run first touches, so the guest reuses memory it has touched already. -->
+    <type fullname="Nethermind.Core.FirstTouchMemoryFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+</linker>

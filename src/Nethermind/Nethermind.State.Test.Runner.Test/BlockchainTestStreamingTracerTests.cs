@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -87,14 +88,14 @@ public class BlockchainTestStreamingTracerTests
         Assert.DoesNotThrow(tracer.Dispose); // Double dispose should be safe
     }
 
-    [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
-    [TestCase((Instruction)0xd0, "DATALOAD")]
-    [TestCase((Instruction)0x0f, "opcode 0xf not defined")]
-    public void Tracer_writes_geth_opcode_name(Instruction opcode, string expectedName)
+    [TestCase(Instruction.PREVRANDAO, "DIFFICULTY", false, 0, "[]")]
+    [TestCase((Instruction)0xd0, "DATALOAD", false, 1, "[\"0x0\"]")]
+    [TestCase((Instruction)0x0f, "opcode 0xf not defined", true, 0, "null")]
+    public void Tracer_writes_geth_opcode_name_and_stack(Instruction opcode, string expectedName, bool disableStack, int stackSize, string expectedStack)
     {
         using MemoryStream output = new();
         using BlockchainTestStreamingTracer tracer = new(
-            new GethTraceOptions(),
+            new GethTraceOptions { DisableStack = disableStack },
             new TestSingleReleaseSpecProvider(London.Instance),
             output);
         Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -104,12 +105,21 @@ public class BlockchainTestStreamingTracerTests
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             null!, Address.Zero, Address.Zero, null, callDepth: 0, value: default, inputData: ReadOnlyMemory<byte>.Empty);
         txTracer.StartOperation(0, opcode, 100, in environment);
+        if (!disableStack)
+            txTracer.SetOperationStack(new TraceStack(new byte[stackSize * EvmStack.WordSize]));
         txTracer.ReportOperationRemainingGas(100);
         tracer.EndTxTrace();
 
         string firstLine = Encoding.UTF8.GetString(output.ToArray()).Split(Environment.NewLine)[0];
         using JsonDocument operation = JsonDocument.Parse(firstLine);
-        Assert.That(operation.RootElement.GetProperty("opName").GetString(), Is.EqualTo(expectedName));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(operation.RootElement.GetProperty("opName").GetString(), Is.EqualTo(expectedName));
+            bool hasStack = operation.RootElement.TryGetProperty("stack", out JsonElement stack);
+            Assert.That(hasStack, Is.True);
+            if (hasStack)
+                Assert.That(stack.GetRawText(), Is.EqualTo(expectedStack));
+        }
     }
 
     [TestCase(0UL, BeforeTransitionDestroyRefund)]

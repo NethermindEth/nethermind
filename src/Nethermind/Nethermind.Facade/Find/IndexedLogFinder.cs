@@ -9,6 +9,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Db.LogIndex;
 using Nethermind.History;
 using Nethermind.Logging;
@@ -27,28 +28,40 @@ public class IndexedLogFinder(
     IReceiptStorage receiptStorage,
     ILogManager logManager,
     IReceiptsRecovery receiptsRecovery,
+    ISpecProvider specProvider,
     ILogIndexStorage logIndexStorage,
     int minBlocksToUseIndex = 32,
     IReceiptConfig? receiptConfig = null,
     IPrunedLogsRetention? prunedLogsRetention = null,
     IHistoryPruner? historyPruner = null)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, specProvider, receiptConfig, prunedLogsRetention)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
     // CS9107: a primary-ctor parameter that also flows to the base ctor cannot be used in a method body.
     private readonly IBlockFinder _blockFinder = blockFinder;
-    private readonly IHistoryPruner? _historyPruner = historyPruner;
 
-    public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
-        GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
+    public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+    {
+        // The index reads blocks by number, so it would answer for the canonical block in place of an unprocessed end.
+        if (fromBlock.Number < toBlock.Number)
+        {
+            ThrowIfNotProcessed(fromBlock);
+            ThrowIfNotProcessed(toBlock);
+        }
+
+        return GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
             ? base.FindLogs(filter, fromBlock, toBlock, cancellationToken)
-            : FindIndexedLogs(filter, fromBlock, toBlock, indexRange, cancellationToken);
+            : new FoundLogs(
+                FindIndexedLogs<BlockFilterLogs, FilterLog>(filter, fromBlock, toBlock, indexRange, cancellationToken),
+                FindIndexedLogs<BlockSerializedLogs, SerializedLogs>(filter, fromBlock, toBlock, indexRange, cancellationToken));
+    }
 
-    private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
+    private IEnumerable<TLog> FindIndexedLogs<TBlockLogs, TLog>(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
+        where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog>
     {
         if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
         {
-            foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
+            foreach (TLog log in TBlockLogs.From(base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken)))
                 yield return log;
         }
 
@@ -58,7 +71,7 @@ public class IndexedLogFinder(
             .EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
             .Select(static n => (ulong)n);
 
-        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken: cancellationToken))
+        foreach (TLog log in FilterLogsInBlocksParallel<TBlockLogs, TLog>(filter, indexBlockNumbers, cancellationToken: cancellationToken))
         {
             yield return log;
         }
@@ -67,17 +80,14 @@ public class IndexedLogFinder(
 
         if ((ulong)indexRange.to < toBlock.Number && FindHeaderOrLogError((ulong)(indexRange.to + 1), cancellationToken) is { } afterIndex)
         {
-            foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
+            foreach (TLog log in TBlockLogs.From(base.FindLogs(filter, afterIndex, toBlock, cancellationToken)))
                 yield return log;
         }
     }
 
     private (int from, int to)? GetLogIndexRange(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
     {
-        bool tryUseIndex = filter.UseIndex;
-        filter.UseIndex = false;
-
-        if (!tryUseIndex || !_logIndexStorage.Enabled || filter.AcceptsAnyBlock)
+        if (!filter.UseIndex || filter.AcceptsAnyBlock)
             return null;
 
         if (_logIndexStorage.MinBlockNumber is not { } indexFrom || _logIndexStorage.MaxBlockNumber is not { } indexTo)
@@ -91,12 +101,11 @@ public class IndexedLogFinder(
         // query confined to it (or reaching below on a never-pruned node) has nothing to lose. A topic-only
         // filter is held to this too - retention can never vouch for it, and a sliced index holds fabricated
         // empties below the reclaimed line, so answering it from the index would be silently short.
-        ulong lowestStored = _historyPruner?.OldestUnreclaimedBlockNumber ?? _blockFinder.GetLowestBlock();
+        ulong lowestStored = historyPruner?.OldestUnreclaimedBlockNumber ?? _blockFinder.GetLowestBlock();
         bool uncoveredBelowBoundary = fromBlock.Number < lowestStored
             && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number);
         if (uncoveredBelowBoundary && fromBlock.Number <= toBlock.Number && toBlock.Number != 0 && (fromBlock.Number != 0 || lowestStored != 1))
         {
-            filter.UseIndex = tryUseIndex;
             throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
         }
 
@@ -115,7 +124,6 @@ public class IndexedLogFinder(
         if (range.to - range.from + 1 < minBlocksToUseIndex)
             return null;
 
-        filter.UseIndex = true;
         return range;
     }
 }

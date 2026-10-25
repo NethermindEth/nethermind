@@ -405,6 +405,23 @@ namespace Nethermind.Evm.Test
             Assert.That(gas.Standard, Is.EqualTo(expectedStandard)); // 21760, still 68/non-zero byte
         }
 
+        [Test]
+        public void IntrinsicGasWithoutMemo_DoesNotCreateOrReplaceMemo([Values] bool existingMemo)
+        {
+            Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressA).WithData([0, 1]).TestObject;
+            if (existingMemo) EthereumGasPolicy.CalculateIntrinsicGas(tx, Cancun.Instance);
+            object? memo = tx.IntrinsicGasMemo;
+
+            IntrinsicGas<EthereumGasPolicy> gas = EthereumGasPolicy.CalculateIntrinsicGasWithoutMemo(tx, Prague.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gas.StandardGas, Is.EqualTo(21_020));
+                Assert.That(gas.MinRequiredGasLimit, Is.EqualTo(21_050));
+                Assert.That(tx.IntrinsicGasMemo, Is.SameAs(memo));
+            }
+        }
+
         [TestCase(true, true, true, TestName = "Memo_ForSameSpec_ServesTheCachedResult")]
         [TestCase(false, true, false, TestName = "Memo_ForDifferentSpec_Recomputes")]
         [TestCase(true, false, true, TestName = "Memo_ForDifferentBlockGasLimit_StillHits")]

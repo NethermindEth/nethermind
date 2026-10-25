@@ -5,15 +5,21 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
 
-public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
+public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     static abstract TSelf FromULong(ulong value);
+
+    /// <summary>Seeds a frame budget from EIP-8141 <c>limits = [execution, state]</c>; pre-EIP-8037 policies fall back to a single combined budget.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual TSelf FromFrameLimits(ulong executionGasLimit, ulong stateGasLimit) =>
+        TSelf.FromULong(executionGasLimit.SaturatingAdd(stateGasLimit));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual TSelf CreateSystemTransactionIntrinsicGas(ulong blockGasLimit) => TSelf.FromULong(0);
@@ -23,6 +29,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         TSelf.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsicGas, spec, out available);
 
     static abstract ulong GetRemainingGas(in TSelf gas);
+
+    /// <summary>Cold account-access cost (EIP-2929), repriced by EIP-8038.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual ulong GetColdAccountAccessCost(IReleaseSpec spec) => spec.GasCosts.ColdAccountAccessCost;
 
     /// <summary>Zeros execution gas without changing state-gas accounting.</summary>
     static abstract void ClearExecutionGas(ref TSelf gas);
@@ -124,12 +134,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         where TEip8037 : struct, IFlag
         where TOpCreate : struct, EvmInstructions.IOpCreate
     {
-        ulong baseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
-            : TEip8037.IsActive ? GasCostOf.CreateExecution
-            : GasCostOf.Create;
+        ulong baseCost = CreateGasCost.Base<TOpCreate>(spec.IsEip8038Enabled, TEip8037.IsActive);
         ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
-        ulong create2HashCost = typeof(TOpCreate) == typeof(EvmInstructions.OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
-        return TSelf.UpdateGas(ref gas, baseCost + initCodeWordCost + create2HashCost);
+        return TSelf.UpdateGas(ref gas, baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -337,7 +344,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         TSelf.CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
     static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit);
 
-    static abstract bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec, out TSelf available);
+    /// <param name="capExecutionGas">Whether EIP-8037 caps the execution gas at TX_MAX_GAS_LIMIT and moves the rest into the state gas reservoir.</param>
+    static abstract bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec, out TSelf available, bool capExecutionGas = true);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childExecutionGas) => TSelf.FromULong(childExecutionGas);
@@ -378,7 +386,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGasPolicy FloorGas)
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
+    public TGasPolicy MinimalGas => TGasPolicy.Max(Standard, FloorGas);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
 

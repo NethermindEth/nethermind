@@ -26,7 +26,7 @@ namespace Nethermind.HealthChecks
 
     public class NodeHealthService(
         ISyncServer syncServer,
-        IBlockchainProcessor blockchainProcessor,
+        IBlockProcessingQueue blockProcessingQueue,
         IBlockProducerRunner blockProducerRunner,
         IHealthChecksConfig healthChecksConfig,
         IHealthHintService healthHintService,
@@ -49,7 +49,7 @@ namespace Nethermind.HealthChecks
             [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
             IMiningConfig miningConfig) : this(
             syncServer,
-            mainProcessingContext.BlockchainProcessor,
+            mainProcessingContext.BlockProcessingQueue,
             blockProducerRunner,
             healthChecksConfig,
             healthHintService,
@@ -207,7 +207,7 @@ namespace Nethermind.HealthChecks
         private bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
             ulong? maxIntervalHint = GetBlockProcessorIntervalHint();
-            bool processingBlocks = blockchainProcessor.IsProcessingBlocks(maxIntervalHint);
+            bool processingBlocks = blockProcessingQueue.IsProcessingBlocks(maxIntervalHint);
             if (!processingBlocks)
             {
                 errors.Add(ErrorStrings.NotProcessingBlocks);

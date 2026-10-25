@@ -25,15 +25,27 @@ namespace Nethermind.Merge.Plugin
         // https://eips.ethereum.org/EIPS/eip-3675#constants
         private const int MaxExtraDataBytes = 32;
 
-        protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+        protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash)
         {
             error = null;
+            // Archive imports omit TD; the local parent still constrains the consensus transition (EIP-3675).
+            if (header.Difficulty != 0 && parent is not null)
+            {
+                (bool isTerminalParent, bool isPostMergeParent) = poSSwitcher.GetBlockConsensusInfo(parent);
+                if (isTerminalParent || isPostMergeParent)
+                {
+                    error = "A proof-of-work block cannot follow a terminal or proof-of-stake parent.";
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - {error}");
+                    return false;
+                }
+            }
+
             return poSSwitcher.IsPostMerge(header)
-                ? ValidateTheMergeChecks(header) && base.Validate<TOrphaned>(header, parent, isUncle, out error)
+                ? ValidateTheMergeChecks(header) && base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash)
                 : ValidatePoWTotalDifficulty(header) && (
                     typeof(TOrphaned) == typeof(OnFlag)
                         ? preMergeHeaderValidator.ValidateOrphaned(header, out error)
-                        : preMergeHeaderValidator.Validate(header, parent!, isUncle, out error)
+                        : preMergeHeaderValidator.Validate(header, parent!, isUncle, out error, validateHash)
                 );
         }
 

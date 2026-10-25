@@ -18,6 +18,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
+using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
 namespace Nethermind.Benchmarks.State;
 
@@ -404,48 +405,4 @@ public class ReadOnlySnapshotBundleBenchmark
         return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
     }
 
-    private static Address DeriveAddress(int index) =>
-        new(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
-
-    private sealed class NullTrieNodeCache : ITrieNodeCache
-    {
-        public bool TryGet(Hash256 address, in TreePath path, Hash256 hash, out TrieNode node)
-        {
-            node = null;
-            return false;
-        }
-
-        public void Add(TransientResource transientResource) { }
-
-        public void Clear() { }
-    }
-
-    private sealed class CapturingCommitTarget : IFlatCommitTarget
-    {
-        public FlatSnapshot LastSnapshot { get; private set; }
-        public TransientResource LastResource { get; private set; }
-
-        public void AddSnapshot(FlatSnapshot snapshot, TransientResource transientResource)
-        {
-            LastSnapshot = snapshot;
-            LastResource = transientResource;
-        }
-    }
-
-    private sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
-    {
-        public byte[] GetCode(in ValueHash256 codeHash) => null;
-
-        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
-            => NullCodeSetter.Instance;
-
-        private sealed class NullCodeSetter : IWorldStateScopeProvider.ICodeSetter
-        {
-            public static readonly NullCodeSetter Instance = new();
-
-            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) { }
-
-            public void Dispose() { }
-        }
-    }
 }

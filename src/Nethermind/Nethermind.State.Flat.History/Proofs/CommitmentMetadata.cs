@@ -26,6 +26,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private static ReadOnlySpan<byte> DemotedThroughEpochKey => [Marker, 0x0A];
     private static ReadOnlySpan<byte> WalkVerifiedKey => [Marker, 0x0B];
     private static ReadOnlySpan<byte> CarriedEpochKey => [Marker, 0x0C];
+    private static ReadOnlySpan<byte> WalkModeKey => [Marker, 0x0D];
     private const byte WalkItemMarker = 0x05;
     private const int WalkItemKeyLength = 4;
     private const byte WalkItemProgressMarker = 0x06;
@@ -44,6 +45,9 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private volatile bool _disposed;
     private long _droppedThroughEpoch = -1;
     private long _demotedThroughEpoch = -1;
+    private long _retainedFromEpoch = -1;
+    private Stamp? _stamp;
+    private Coverage? _coverage;
 
     public object WindowWriteLock { get; } = new();
 
@@ -88,7 +92,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool TryReadStamp(CommitmentDepthPolicy policy, out bool matches)
     {
-        byte[]? stamp = _column.Get(StampKey);
+        byte[]? stamp = (Volatile.Read(ref _stamp) ?? LoadStamp()).Value;
         if (stamp is null)
         {
             matches = false;
@@ -97,6 +101,19 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
         matches = stamp.Length == CommitmentDepthPolicy.StampLength + 1 && stamp[0] == FormatVersion && policy.MatchesStamp(stamp.AsSpan(1));
         return true;
+    }
+
+    private Stamp LoadStamp()
+    {
+        lock (_lock)
+        {
+            Stamp? stamp = _stamp;
+            if (stamp is not null) return stamp;
+
+            stamp = new Stamp(_column.Get(StampKey));
+            Volatile.Write(ref _stamp, stamp);
+            return stamp;
+        }
     }
 
     public void EnsureLayout(CommitmentDepthPolicy policy, bool discardMismatched, ILogger logger)
@@ -125,6 +142,17 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         }
     }
 
+    /// <summary>Deletes every commitment row and record, for a history restarting at a snap pivot; the layout stamp
+    /// is rewritten on the next build.</summary>
+    public void DiscardForPivot()
+    {
+        lock (_lock)
+        {
+            DiscardAll();
+            _layoutEnsured = false;
+        }
+    }
+
     private void DiscardAll()
     {
         ReadOnlySpan<byte> first = [0x00];
@@ -135,6 +163,9 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         _storageTrieDepths.Clear();
         Volatile.Write(ref _droppedThroughEpoch, -1);
         Volatile.Write(ref _demotedThroughEpoch, -1);
+        Volatile.Write(ref _retainedFromEpoch, -1);
+        Volatile.Write(ref _stamp, null);
+        Volatile.Write(ref _coverage, null);
     }
 
     private static void Discard(IDb column, ReadOnlySpan<byte> first, ReadOnlySpan<byte> last)
@@ -152,21 +183,49 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         lock (_lock)
         {
             _column.PutSpan(StampKey, stamp);
+            Volatile.Write(ref _stamp, new Stamp(stamp.ToArray()));
         }
     }
 
     public bool TryGetCoverage(out ulong fromInclusive, out ulong toInclusive)
     {
-        if (!TryReadRange(CoverageKey, out fromInclusive, out toInclusive)) return false;
+        if (!TryReadCoverage(out fromInclusive, out toInclusive)) return false;
 
         ulong floor = policy.EpochStart(RetainedFromEpoch);
         if (floor > fromInclusive) fromInclusive = floor;
         return fromInclusive <= toInclusive;
     }
 
-    public ulong RetainedFromEpoch => ReadEpoch(RetainedFromEpochKey);
+    private bool TryReadCoverage(out ulong fromInclusive, out ulong toInclusive)
+    {
+        Coverage coverage = Volatile.Read(ref _coverage) ?? LoadCoverage();
+        fromInclusive = coverage.From;
+        toInclusive = coverage.To;
+        return coverage.Exists;
+    }
 
-    public bool TryRaiseRetainedFromEpoch(ulong epoch) => TryRaiseEpoch(RetainedFromEpochKey, epoch);
+    private Coverage LoadCoverage()
+    {
+        lock (_lock)
+        {
+            Coverage? coverage = _coverage;
+            if (coverage is not null) return coverage;
+
+            coverage = TryReadRange(CoverageKey, out ulong from, out ulong to) ? new Coverage(true, from, to) : Coverage.None;
+            Volatile.Write(ref _coverage, coverage);
+            return coverage;
+        }
+    }
+
+    private void WriteCoverage(ulong fromInclusive, ulong toInclusive)
+    {
+        WriteRange(CoverageKey, fromInclusive, toInclusive);
+        Volatile.Write(ref _coverage, toInclusive >= fromInclusive ? new Coverage(true, fromInclusive, toInclusive) : Coverage.None);
+    }
+
+    public ulong RetainedFromEpoch => ReadMirroredEpoch(ref _retainedFromEpoch, RetainedFromEpochKey);
+
+    public bool TryRaiseRetainedFromEpoch(ulong epoch) => TryRaiseMirroredEpoch(ref _retainedFromEpoch, RetainedFromEpochKey, epoch);
 
     public ulong FineFromEpoch => ReadEpoch(FineFromEpochKey);
 
@@ -306,7 +365,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         {
             coveredFrom = fromInclusive;
             coveredTo = toInclusive;
-            if (TryReadRange(CoverageKey, out ulong from, out ulong to) && to >= policy.EpochStart(RetainedFromEpoch))
+            if (TryReadCoverage(out ulong from, out ulong to) && to >= policy.EpochStart(RetainedFromEpoch))
             {
                 if ((to != ulong.MaxValue && fromInclusive > to + 1) || (toInclusive != ulong.MaxValue && toInclusive + 1 < from))
                 {
@@ -334,7 +393,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
             }
 
             WriteRange(WalkVerifiedKey, walkFrom, walkTo);
-            WriteRange(CoverageKey, coveredFrom, coveredTo);
+            WriteCoverage(coveredFrom, coveredTo);
             return true;
         }
     }
@@ -360,19 +419,32 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
             if (start == 0)
             {
-                ulong published = TryReadRange(CoverageKey, out ulong _, out ulong coveredTo) ? Math.Max(coveredTo, reached) : reached;
-                WriteRange(CoverageKey, 0, published);
+                ulong published = TryReadCoverage(out ulong _, out ulong coveredTo) ? Math.Max(coveredTo, reached) : reached;
+                WriteCoverage(0, published);
             }
-            else if (TryReadRange(CoverageKey, out ulong from, out ulong to) && to + 1 >= start && reached > to)
+            else if (TryReadCoverage(out ulong from, out ulong to) && to + 1 >= start && reached > to)
             {
-                WriteRange(CoverageKey, from, reached);
+                WriteCoverage(from, reached);
             }
         }
     }
 
     public bool TryGetWalkInProgress(out ulong fromInclusive, out ulong toInclusive) => TryReadRange(WalkRangeKey, out fromInclusive, out toInclusive);
 
-    public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items, CancellationToken token = default)
+    /// <summary>Whether the checkpoint records the requested walk mode.</summary>
+    /// <remarks>Missing or invalid mode records match neither mode; legacy checkpoints must be restarted.</remarks>
+    internal bool WalkModeMatches(bool buildCommitments) =>
+        TryGetWalkMode(out bool recordedBuild) && recordedBuild == buildCommitments;
+
+    /// <summary>Reads the checkpoint mode, returning false when it is missing or invalid.</summary>
+    internal bool TryGetWalkMode(out bool buildCommitments)
+    {
+        byte[]? mode = _column.Get(WalkModeKey);
+        buildCommitments = mode is [1];
+        return mode is [0] or [1];
+    }
+
+    public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items, bool buildCommitments, CancellationToken token = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _reclaimTurn.Wait(token);
@@ -380,9 +452,12 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         {
             lock (_lock)
             {
-                if (TryReadRange(WalkRangeKey, out ulong from, out ulong to) && from == fromInclusive && to == toInclusive) return;
+                if (TryReadRange(WalkRangeKey, out ulong from, out ulong to) && from == fromInclusive && to == toInclusive
+                    && WalkModeMatches(buildCommitments)) return;
 
+                _column.Remove(WalkRangeKey);
                 ClearWalkItems(items);
+                _column.PutSpan(WalkModeKey, [buildCommitments ? (byte)1 : (byte)0]);
                 WriteRange(WalkRangeKey, fromInclusive, toInclusive);
             }
         }
@@ -491,6 +566,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         {
             ClearWalkItems(items);
             _column.Remove(WalkRangeKey);
+            _column.Remove(WalkModeKey);
         }
     }
 
@@ -542,5 +618,12 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         _disposed = true;
         _reclaimTurn.Wait();
         _reclaimTurn.Dispose();
+    }
+
+    private sealed record Stamp(byte[]? Value);
+
+    private sealed record Coverage(bool Exists, ulong From, ulong To)
+    {
+        public static Coverage None { get; } = new(false, 0, 0);
     }
 }

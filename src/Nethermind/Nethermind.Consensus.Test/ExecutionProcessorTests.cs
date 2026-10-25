@@ -6,6 +6,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
@@ -14,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -146,6 +148,52 @@ public class ExecutionProcessorTests
         return block.Header.RequestsHash;
     }
 
+    private static IEnumerable<TestCaseData> AccessListHintCases()
+    {
+        yield return new TestCaseData(Cancun.Instance, 1UL, Array.Empty<Address>()) { TestName = "GetAccessList_BeforeAnyRequestFork_IsNull" };
+        yield return new TestCaseData(Prague.Instance, 0UL, Array.Empty<Address>()) { TestName = "GetAccessList_ForGenesis_IsNull" };
+        yield return new TestCaseData(Prague.Instance, 1UL, new[]
+        {
+            Eip7002Constants.WithdrawalRequestPredeployAddress,
+            Eip7251Constants.ConsolidationRequestPredeployAddress
+        })
+        { TestName = "GetAccessList_AtPrague_CoversTheWithdrawalAndConsolidationQueues" };
+        yield return new TestCaseData(Amsterdam.Instance, 1UL, new[]
+        {
+            Eip7002Constants.WithdrawalRequestPredeployAddress,
+            Eip7251Constants.ConsolidationRequestPredeployAddress,
+            Eip8282Constants.BuilderDepositRequestPredeployAddress,
+            Eip8282Constants.BuilderExitRequestPredeployAddress
+        })
+        { TestName = "GetAccessList_AtAmsterdam_AlsoCoversTheBuilderQueues" };
+    }
+
+    [TestCaseSource(nameof(AccessListHintCases))]
+    public void GetAccessList_AtGivenFork_HintsTheQueueWordsOfEveryDequeuedContract(
+        IReleaseSpec spec, ulong blockNumber, Address[] expectedAddresses)
+    {
+        Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
+
+        AccessList accessList = ((IHasAccessList)new ExecutionRequestsProcessor(_transactionProcessor)).GetAccessList(block, spec);
+
+        if (expectedAddresses.Length == 0)
+        {
+            Assert.That(accessList, Is.Null);
+            return;
+        }
+
+        Assert.That(accessList, Is.Not.Null);
+        List<Address> hintedAddresses = [];
+        foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
+        {
+            hintedAddresses.Add(address);
+            Assert.That(storageKeys, Is.EqualTo(new UInt256[] { 0, 1, 2, 3 }),
+                $"{address} must have its excess, count, queue head and queue tail words hinted");
+        }
+
+        Assert.That(hintedAddresses, Is.EquivalentTo(expectedAddresses));
+    }
+
     [Test]
     public void ShouldNotProcessExecutionRequestsForGenesisBlock()
     {
@@ -176,6 +224,44 @@ public class ExecutionProcessorTests
         Assert.That(requestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
+    }
+
+    [Test]
+    public void ShouldCallTheRequestContractsConfiguredBySpec()
+    {
+        Address customWithdrawals = TestItem.AddressA;
+        Address customConsolidations = TestItem.AddressB;
+        _stateProvider.CreateAccount(customWithdrawals, AccountBalance);
+        _stateProvider.CreateAccount(customConsolidations, AccountBalance);
+        _stateProvider.InsertCode(customWithdrawals, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, Prague.Instance);
+        _stateProvider.InsertCode(customConsolidations, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, Prague.Instance);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _spec.Eip7002ContractAddress.Returns(customWithdrawals);
+        _spec.Eip7251ContractAddress.Returns(customConsolidations);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, [], _spec);
+
+        _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => t.To == customWithdrawals), Arg.Any<CallOutputTracer>());
+        _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => t.To == customConsolidations), Arg.Any<CallOutputTracer>());
+        _transactionProcessor.DidNotReceive().Execute(Arg.Is<Transaction>(t => t.To == eip7002Account || t.To == eip7251Account), Arg.Any<CallOutputTracer>());
+    }
+
+    [Test]
+    public void ListSystemContracts_reports_the_request_contracts_configured_by_spec()
+    {
+        _spec.Eip7002ContractAddress.Returns(TestItem.AddressA);
+        _spec.Eip7251ContractAddress.Returns(TestItem.AddressB);
+
+        OrderedDictionary<string, Address> systemContracts = _spec.ListSystemContracts();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(systemContracts[Eip7002Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressA));
+            Assert.That(systemContracts[Eip7251Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressB));
+        }
     }
 
     private static LogEntry CreateLogEntry(byte[][] requestDataParts) =>

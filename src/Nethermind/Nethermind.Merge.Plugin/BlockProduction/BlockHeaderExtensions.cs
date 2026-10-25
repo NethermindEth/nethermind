@@ -16,6 +16,10 @@ internal static class BlockHeaderExtensions
             ParentBeaconBlockRoot = parentHeader.ParentHash, // it doesn't matter
             PrevRandao = parentHeader.ParentHash ?? Keccak.Zero, // it doesn't matter
             Withdrawals = [],
-            SuggestedFeeRecipient = Address.Zero
+            SuggestedFeeRecipient = Address.Zero,
+            // EIP-7843: once the fork is active the simulated block needs a slot, and without a CL the
+            // next one after the parent's is the only grounded value. Like the timestamp above it must
+            // be strictly greater than the parent's, or the attributes fail their own validation.
+            SlotNumber = parentHeader.SlotNumber + 1
         };
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -10,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
@@ -42,12 +44,11 @@ public partial class BlockAccessListManager
 
         ulong totalExecutionGas = 0;
         ulong totalStateGas = 0;
+        ulong totalReceiptGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
-            if (token.IsCancellationRequested)
-            {
-                return;
-            }
+            // Throws rather than returns: an early return would read as a validated block.
+            token.ThrowIfCancellationRequested();
 
             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
             for (int j = chunkStart; j < chunkEnd; j++)
@@ -67,9 +68,8 @@ public partial class BlockAccessListManager
                 totalStateGas += gasResult.BlockStateGasUsed;
                 SpendGas(gasResult.BlockGasUsed);
 
-                CheckGasUsed(j, block, totalExecutionGas, totalStateGas);
-
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
+                ulong headerGasUsed = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
+                CheckGasUsed(j, block, headerGasUsed);
 
                 // Worker for tx (j+1) has stashed its BAL into _perTxBal[j+1] via Return as
                 // soon as the tx finished — no contention with the validator. Merge it into
@@ -78,16 +78,27 @@ public partial class BlockAccessListManager
                 bool validateStorageReads = j == chunkEnd - 1;
                 MergeAndReturnBal((uint)(j + 1));
                 ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
+
+                if (transactionProcessedEventHandler is not null)
+                {
+                    TxReceipt receipt = receiptsTracers[j].TxReceipts[0];
+                    // IncrementalValidation also supports direct handlers, which observe the receipt
+                    // before the executor combines and canonicalizes the per-transaction tracers.
+                    receipt.Index = j;
+                    totalReceiptGas += receipt.GasUsed;
+                    receipt.GasUsedTotal = totalReceiptGas;
+                    transactionProcessedEventHandler.OnTransactionProcessed(
+                        new TxProcessedEventArgs(j, tx, block.Header, receipt) { HeaderGasUsed = headerGasUsed });
+                }
             }
         }
 
         // EIP-8037: 2D gas accounting — block gasUsed = max(sum_execution, sum_state)
         _blockExecutionContext.Value.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
+        _blockExecutionContext.Value.Header.GasUsedPerDimension = (totalExecutionGas, totalStateGas);
 
-        static void CheckGasUsed(int index, Block block, ulong totalExecutionGas, ulong totalStateGas)
+        static void CheckGasUsed(int index, Block block, ulong effectiveGas)
         {
-            // EIP-8037: block gasUsed = max(sum_execution, sum_state)
-            ulong effectiveGas = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
             if (effectiveGas > block.Header.GasLimit)
             {
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");
@@ -101,11 +112,26 @@ public partial class BlockAccessListManager
     {
         if (!spec.IsEip8037Enabled) return;
 
-        Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            block.Header.GasLimit,
-            cumulativeExecution,
-            cumulativeState,
-            tx.GasLimit);
+        Eip8037BlockGasInclusionCheck.Outcome outcome;
+        if (Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation))
+        {
+            outcome = Eip8037BlockGasInclusionCheck.Validate(
+                block.Header.GasLimit,
+                cumulativeExecution,
+                cumulativeState,
+                executionReservation,
+                stateReservation);
+        }
+        else
+        {
+            // Defensive: a decoded block carries its frames, so an unpriceable transaction cannot reach
+            // here. The scalar limit sums both dimensions, so were it reached it would only over-reject.
+            outcome = Eip8037BlockGasInclusionCheck.Validate(
+                block.Header.GasLimit,
+                cumulativeExecution,
+                cumulativeState,
+                tx.GasLimit);
+        }
 
         if (outcome != Eip8037BlockGasInclusionCheck.Outcome.Ok)
         {
@@ -122,6 +148,9 @@ public partial class BlockAccessListManager
         if (block.BlockAccessList is null) return;
 
         CheckInitialized();
+
+        // A mismatch throws and rejects the block, so counting before the checks is safe.
+        if (index == _validatedRowCount) _validatedRowCount++;
 
         if (TryFastPath(block, index, validateStorageReads)) return;
 
@@ -326,19 +355,74 @@ public partial class BlockAccessListManager
     private static bool IsSystemUserReadAt0(AccountChangesAtIndex ac, uint index)
         => index == 0 && ac.Address == Address.SystemUser && !HasStateChanges(ac) && ac.StorageReads.Count == 0;
 
+    private static readonly Address[] SystemContracts =
+    [
+        Eip7002Constants.WithdrawalRequestPredeployAddress,
+        Eip7251Constants.ConsolidationRequestPredeployAddress,
+        Eip8282Constants.BuilderDepositRequestPredeployAddress,
+        Eip8282Constants.BuilderExitRequestPredeployAddress,
+    ];
+
     private static bool IsSystemContract(Address address)
-        => address == Eip7002Constants.WithdrawalRequestPredeployAddress
-        || address == Eip7251Constants.ConsolidationRequestPredeployAddress
-        || address == Eip8282Constants.BuilderDepositRequestPredeployAddress
-        || address == Eip8282Constants.BuilderExitRequestPredeployAddress;
+    {
+        foreach (Address systemContract in SystemContracts)
+        {
+            if (address == systemContract) return true;
+        }
+
+        return false;
+    }
+
+    private static ulong SystemContractStorageReads(ReadOnlyBlockAccessList blockAccessList)
+    {
+        ulong reads = 0;
+        foreach (Address address in SystemContracts)
+        {
+            reads += (ulong)(blockAccessList.GetAccountChanges(address)?.StorageReads.Length ?? 0);
+        }
+
+        return reads;
+    }
 
     private static bool IsToleratedGeneratedOnlyAccount(Address address, uint index, bool hasNoChangesAtIndex, bool hasChargeableReads)
         => hasNoChangesAtIndex
         && ((index == 0 && address == Address.SystemUser && !hasChargeableReads) || hasChargeableReads);
 
+    /// <summary>
+    /// Upper bound on the chargeable storage reads the post-execution request calls can add without spending block gas.
+    /// </summary>
+    /// <remarks>
+    /// EIP-7928: an early surplus-reads rejection must not reject a valid block, and system-call reads are not paid
+    /// for by block gas. Canonical request bytecode at its predeploy reads only its own storage, which the budget
+    /// excludes; any other code may read up to its execution grant at the cold <c>SLOAD</c> cost.
+    /// </remarks>
+    private ulong PostExecutionReadAllowance(IReleaseSpec spec)
+    {
+        if (!spec.RequestsEnabled) return 0ul;
+
+        ulong calls = 0ul;
+        if (spec.WithdrawalRequestsEnabled && !IsCanonicalPredeploy(spec.Eip7002ContractAddress, Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002Constants.CodeHash)) calls++;
+        if (spec.ConsolidationRequestsEnabled && !IsCanonicalPredeploy(spec.Eip7251ContractAddress, Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251Constants.CodeHash)) calls++;
+        if (spec.BuilderRequestsEnabled)
+        {
+            // EIP-8282 predeploy addresses are fixed; the spec has no override for them.
+            if (!HasCanonicalCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282Constants.BuilderDepositCodeHash)) calls++;
+            if (!HasCanonicalCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282Constants.BuilderExitCodeHash)) calls++;
+        }
+
+        return calls * (Eip8037Constants.SystemCallBaseGasLimit / GasCostOf.ColdSLoad);
+    }
+
+    private bool IsCanonicalPredeploy(Address? contract, Address predeploy, in ValueHash256 canonicalCodeHash)
+        => contract == predeploy && HasCanonicalCode(predeploy, in canonicalCodeHash);
+
+    private bool HasCanonicalCode(Address predeploy, in ValueHash256 canonicalCodeHash)
+        => stateProvider.GetCodeHash(predeploy) == canonicalCodeHash;
+
     private void ThrowIfStorageReadBudgetExceeded(Block block, ulong surplusReads, bool validateStorageReads)
     {
-        if (validateStorageReads && surplusReads > 0ul && _gasRemaining < surplusReads * Eip7928Constants.ItemCost)
+        if (validateStorageReads && surplusReads > _postExecutionReadAllowance
+            && _gasRemaining < (surplusReads - _postExecutionReadAllowance) * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
@@ -355,6 +439,74 @@ public partial class BlockAccessListManager
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSurplusChanges(Block block, Address address, uint index)
         => throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained surplus changes for {address} at index {index}.");
+
+    /// <summary>
+    /// Counterpart of <see cref="ValidateStructuralEquivalence"/> for a constructed <see cref="GeneratedBlockAccessList"/>:
+    /// checks the account set and the exact storage_reads per account against the suggested BAL.
+    /// </summary>
+    /// <remarks>
+    /// Reads the constructed list's per-account read sets directly, so the generated index does not have to
+    /// track and sort the reads. The decoder rejects duplicate suggested reads, so equal counts plus containment
+    /// mean equal sets.
+    /// </remarks>
+    private void ValidateGeneratedStructuralEquivalence(Block block)
+    {
+        if (_generatedValidationIndex!.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex))
+        {
+            ThrowIncorrectChanges(block, overflowAddress, overflowIndex);
+        }
+
+        GeneratedBlockAccessList generated = GeneratedBlockAccessList;
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
+        if (generated.AccountChanges.Count != suggested.AccountChanges.Count)
+        {
+            ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch, null, generated.AccountChanges.Count);
+        }
+
+        foreach (ReadOnlyAccountChanges suggestedAccount in suggested.AccountChanges)
+        {
+            Address address = suggestedAccount.Address;
+            GeneratedAccountChanges? generatedAccount = generated.GetAccountChanges(address);
+            if (generatedAccount is null)
+            {
+                ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated, address, generated.AccountChanges.Count);
+            }
+
+            IReadOnlySet<UInt256> generatedReads = generatedAccount.StorageReads;
+            ReadOnlySpan<UInt256> suggestedReads = suggestedAccount.StorageReads;
+            if (generatedReads.Count != suggestedReads.Length)
+            {
+                ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch, address, generated.AccountChanges.Count);
+            }
+
+            foreach (UInt256 slot in suggestedReads)
+            {
+                if (!generatedReads.Contains(slot))
+                {
+                    ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch, address, generated.AccountChanges.Count);
+                }
+            }
+        }
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStructuralMismatch(Block block, BlockAccessListValidationIndex.StructuralMismatchKind mismatch, Address? address, int generatedAccountCount)
+    {
+        string error = mismatch switch
+        {
+            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
+                => $"Account-set size mismatch: suggested={block.BlockAccessList!.AccountChanges.Count}, generated={generatedAccountCount}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
+                => $"Suggested BAL declares account {address} which execution did not touch.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
+                => $"storage_reads count mismatch for {address}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
+                => $"storage_reads mismatch for {address}.",
+            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
+        };
+
+        throw new InvalidBlockLevelAccessListException(block.Header, error);
+    }
 
     /// <summary>
     /// Closes the gap between the column-index per-row validation and what the end-of-block
@@ -383,21 +535,11 @@ public partial class BlockAccessListManager
         BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
             generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress, out int generatedAccountCount);
 
-        string? error = mismatch switch
+        if (mismatch is not BlockAccessListValidationIndex.StructuralMismatchKind.None)
         {
-            BlockAccessListValidationIndex.StructuralMismatchKind.None => null,
-            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
-                => $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedAccountCount}.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
-                => $"Suggested BAL declares account {mismatchAddress} which execution did not touch.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
-                => $"storage_reads count mismatch for {mismatchAddress}.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
-                => $"storage_reads mismatch for {mismatchAddress}.",
-            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
-        };
+            ThrowStructuralMismatch(block, mismatch, mismatchAddress, generatedAccountCount);
+        }
 
-        if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
         // EIP-7928: coverage rejects unused declared reads; BlockAccessListBasedWorldState.Get/GetOriginal
         // reject undeclared storage accesses, while incremental validation checks the write lanes.
         if (_readPlan?.TryFindUncovered(out Address? uncovered) == true)

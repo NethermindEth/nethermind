@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -41,7 +42,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
         }
     }
 
-    public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig) : Module, IMainProcessingModule
+    public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig, ICodeCache codeCache) : Module, IMainProcessingModule
     {
         protected override void Load(ContainerBuilder builder)
         {
@@ -56,6 +57,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBeaconBlockRootHandler>())
                 // Chains may bind their own IBlockhashStore; only hint-capable stores contribute.
                 .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBlockhashStore>() as IHasAccessList ?? NoAccessList.Instance)
+                // Taiko binds its own IExecutionRequestsProcessor; only hint-capable processors contribute.
+                .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IExecutionRequestsProcessor>() as IHasAccessList ?? NoAccessList.Instance)
 
                 .Add<PrewarmerEnvFactory>()
 
@@ -65,10 +68,23 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
                         ctx.Resolve<IPrewarmerState>(),
-                        ctx.Resolve<ILogManager>()
+                        ctx.Resolve<ILogManager>(),
+                        ctx.ResolveOptional<ICodeCache>(),
+                        blocksConfig.PrefetchBlockAccessListCode
                     );
                 })
-                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
+                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
+
+                // Envs that must send every lookup to the world state, as witness generation does, register their own.
+                .AddSingleton<BlockCodeCache>(_ => new BlockCodeCache(codeCache))
+                .Bind<ICodeCache, BlockCodeCache>()
+                // On the factory rather than the adapter, as parallel execution builds its adapters from it.
+                .AddDecorator<TransactionProcessorAdapterFactory>(static (ctx, inner) =>
+                {
+                    if (ctx.Resolve<IPrewarmerState>().IsPrewarmer) return inner;
+                    BlockCodeCache blockCodeCache = ctx.Resolve<BlockCodeCache>();
+                    return transactionProcessor => new BlockCodeCacheTxAdapter(inner(transactionProcessor), blockCodeCache);
+                });
 
             if (blocksConfig.PrecompileCacheMaxKilobytes > 0)
             {

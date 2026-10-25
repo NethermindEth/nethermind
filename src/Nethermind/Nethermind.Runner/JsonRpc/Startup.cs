@@ -18,6 +18,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -34,10 +36,8 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
-using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
@@ -59,7 +59,7 @@ public class Startup : IStartup
     private const string RequestBodyTimeoutMessage = "Request body read timed out.";
 
     private JsonRpcProcessor _jsonRpcProcessor = null!;
-    private JsonRpcService _jsonRpcService = null!;
+    private IJsonRpcService _jsonRpcService = null!;
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
     private EthereumJsonSerializer _jsonSerializer = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
@@ -70,7 +70,7 @@ public class Startup : IStartup
 
     internal Startup(
         JsonRpcProcessor jsonRpcProcessor,
-        JsonRpcService jsonRpcService,
+        IJsonRpcService jsonRpcService,
         IJsonRpcLocalStats jsonRpcLocalStats,
         EthereumJsonSerializer jsonSerializer,
         IJsonRpcConfig jsonRpcConfig,
@@ -103,6 +103,7 @@ public class Startup : IStartup
                 .Select(static u => u.Port)
                 .ToHashSet();
 
+        services.AddSingleton<IMemoryPoolFactory<byte>, TransportMemoryPoolFactory>();
         services.Configure<KestrelServerOptions>(options =>
         {
             options.AddServerHeader = false;
@@ -132,10 +133,7 @@ public class Startup : IStartup
 
         services.AddSingleton<MatcherPolicy, LocalPortMatcherPolicy>();
 
-        services.AddCors(options => options.AddDefaultPolicy(builder => builder
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .WithOrigins(jsonRpcConfig.CorsOrigins)));
+        services.AddCors(options => options.AddDefaultPolicy(CreateCorsPolicy(jsonRpcConfig)));
 
         services.AddResponseCompression(options =>
         {
@@ -148,6 +146,12 @@ public class Startup : IStartup
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
 
+    internal static CorsPolicy CreateCorsPolicy(IJsonRpcConfig jsonRpcConfig) => new CorsPolicyBuilder()
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .WithOrigins(jsonRpcConfig.CorsOrigins)
+        .Build();
+
     public void Configure(IApplicationBuilder app)
     {
         IServiceProvider services = app.ApplicationServices;
@@ -155,17 +159,14 @@ public class Startup : IStartup
             app,
             services.GetRequiredService<IWebHostEnvironment>(),
             services.GetRequiredService<JsonRpcProcessor>(),
-            services.GetRequiredService<JsonRpcService>(),
+            services.GetRequiredService<IJsonRpcService>(),
             services.GetRequiredService<IJsonRpcLocalStats>(),
             services.GetRequiredService<EthereumJsonSerializer>(),
             services.GetRequiredService<ApplicationLifetime>());
     }
 
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, JsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
-        EthereumJsonSerializer.AddTypeInfoResolver(FacadeJsonContext.Default, JsonTypeInfoResolverPriority.Facade);
-        EthereumJsonSerializer.AddTypeInfoResolver(EthRpcJsonContext.Default, JsonTypeInfoResolverPriority.EthRpc);
-        EthereumJsonSerializer.AddTypeInfoResolver(JsonRpcResponseJsonContext.Default, JsonTypeInfoResolverPriority.JsonRpcResponse);
 
         EthereumJsonSerializer.WarmupSerializer(
             new JsonRpcSuccessResponse { Id = 0 },
@@ -208,7 +209,7 @@ public class Startup : IStartup
         {
             if (!TryGetTrustedHttpJsonRpcUrl(ctx, jsonRpcUrlCollection, additionalTrustedNetworks, out JsonRpcUrl? jsonRpcUrl))
             {
-                return next();
+                return next(ctx);
             }
 
             return ProcessJsonRpcRequestCoreAsync(ctx, jsonRpcUrl);
@@ -228,12 +229,7 @@ public class Startup : IStartup
 
         if (initConfig.WebSocketsEnabled)
         {
-            app.UseWebSockets(new WebSocketOptions());
-            app.UseWhen(ctx =>
-                ctx.WebSockets.IsWebSocketRequest &&
-                jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
-                jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-            builder => builder.UseWebSocketsModules());
+            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection, logger);
         }
 
         IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
@@ -280,6 +276,25 @@ public class Startup : IStartup
         }
     }
 
+    /// <summary>
+    /// Serves WebSockets on the ports that enable them. Clients that send an <c>Origin</c> that
+    /// <see cref="IJsonRpcConfig.CorsOrigins"/> does not allow are turned away before a socket is accepted.
+    /// </summary>
+    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogger logger)
+    {
+        CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
+        app.UseWebSockets(new WebSocketOptions());
+        app.UseWhen(ctx =>
+            ctx.WebSockets.IsWebSocketRequest &&
+            jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+            jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
+        builder =>
+        {
+            builder.UseWebSocketOriginFilter(corsPolicy, logger);
+            builder.UseWebSocketsModules();
+        });
+    }
+
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp);
 
@@ -305,16 +320,16 @@ public class Startup : IStartup
         return false;
     }
 
-    internal Task HandleJsonRpcHttpRequestAsync(HttpContext ctx, Func<Task> next, IJsonRpcUrlCollection jsonRpcUrlCollection)
+    internal Task HandleJsonRpcHttpRequestAsync(HttpContext ctx, RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection)
     {
         if (ctx.GetEndpoint() is not null)
         {
-            return next();
+            return next(ctx);
         }
 
         if (!IsJsonContentType(ctx.Request.ContentType))
         {
-            return next();
+            return next(ctx);
         }
 
         string method = ctx.Request.Method;
@@ -488,7 +503,11 @@ public class Startup : IStartup
         try
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
-            using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
+            JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
+            {
+                RemoteAddress = ctx.Connection.RemoteIpAddress,
+                ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
+            };
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 
             await _jsonRpcProcessor.ProcessAsync(
@@ -497,6 +516,13 @@ public class Startup : IStartup
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
+        }
+        catch (Exception e) when (responseSink is { BytesWritten: > 0 })
+        {
+            bool responseStarted = ctx.Response.HasStarted;
+            responseSink.Abort(abortTransport: responseStarted);
+            if (!responseStarted || (e is not OperationCanceledException && e.InnerException is not OperationCanceledException)) throw;
+            if (_logger.IsDebug) _logger.Debug("Aborted an incomplete JSON-RPC response after cancellation.");
         }
         catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
         {

@@ -64,6 +64,10 @@ namespace Nethermind.Blockchain
             // hacky while there is not special tree for RPC
             _wrapped.UpdateHeadBlock(blockHash);
 
+        /// <inheritdoc/>
+        public bool TryRewindHead(Hash256 blockHash) =>
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(TryRewindHead)} calls");
+
         public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 
         public ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlockAsync)} calls");
@@ -92,6 +96,9 @@ namespace Nethermind.Blockchain
         public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
 
         public BlockHeader FindHeader(ulong blockNumber, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockNumber, options);
+
+        public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
+            _wrapped.FindCanonicalHeaderIfBloomMatches(blockNumber, bloomMatches, out found);
         public Hash256 FindBlockHash(ulong blockNumber) => _wrapped.FindBlockHash(blockNumber);
 
         public bool IsMainChain(BlockHeader blockHeader) => _wrapped.IsMainChain(blockHeader);

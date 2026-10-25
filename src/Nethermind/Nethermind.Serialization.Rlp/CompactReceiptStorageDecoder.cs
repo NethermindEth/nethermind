@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using static Nethermind.Serialization.Rlp.Rlp;
 
@@ -34,6 +35,11 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
+                if (firstItem.Length != 0 && firstItem.Length != Hash256.Size)
+                {
+                    ThrowUnexpectedPostStateLength(firstItem.Length);
+                }
+
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
@@ -65,15 +71,34 @@ namespace Nethermind.Serialization.Rlp
                 RlpHelpers.Check(decoderContext.Position, lastCheck);
             }
 
+            // EIP-8141: only frame receipts carry data past the logs sequence — a trailing extension holding the
+            // payer and per-frame receipts. Pre-fork receipts end at the logs, so the branch never fires for them.
+            if (decoderContext.Position < receiptEnd)
+            {
+                txReceipt.TxType = TxType.FrameTx;
+                // Null-tolerant like the sender above: an earlier build wrote a payer-less receipt, and
+                // refusing to parse it would take the whole block's receipt array with it.
+                txReceipt.Payer = decoderContext.DecodeAddressOrNull();
+                txReceipt.FrameReceipts = FrameReceiptRlp.DecodeStoredFrames(ref decoderContext, CompactLogEntryDecoder.Instance);
+            }
+
             // Handle any remaining extra bytes
             if (decoderContext.Position < receiptEnd && allowExtraBytes)
             {
                 decoderContext.Position = receiptEnd;
             }
 
-            txReceipt.Bloom = new Bloom(txReceipt.Logs);
+            // EIP-7668: the bloom would be discarded. Otherwise TxReceipt computes it from the logs on first read.
+            if ((rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0)
+            {
+                txReceipt.Bloom = Bloom.ZeroLength;
+            }
 
             return txReceipt;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedPostStateLength(int length)
+                => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
         }
 
         public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors,
@@ -112,10 +137,10 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            // Handle any remaining extra bytes
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (decoderContext.Position < receiptEnd && allowExtraBytes)
+            // EIP-8141: skip a frame-tx receipt's trailing extension so the next receipt in the array stays aligned.
+            if (decoderContext.Position < receiptEnd)
             {
+                item.TxType = TxType.FrameTx;
                 decoderContext.Position = receiptEnd;
             }
         }
@@ -161,6 +186,13 @@ namespace Nethermind.Serialization.Rlp
             {
                 CompactLogEntryDecoder.Instance.Encode(ref writer, logs[i]);
             }
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                // Repeats the logs the top-level union already holds, at the cost noted above: DecodeStructRef
+                // hands eth_getLogs one contiguous LogsRlp span, which N per-frame sequences cannot supply.
+                FrameReceiptRlp.EncodeStoredExtension(ref writer, item, CompactLogEntryDecoder.Instance);
+            }
         }
 
         private static (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -186,6 +218,11 @@ namespace Nethermind.Serialization.Rlp
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                contentLength += FrameReceiptRlp.GetStoredExtensionLength(item, CompactLogEntryDecoder.Instance);
+            }
 
             return (contentLength, logsLength);
         }

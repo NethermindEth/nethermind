@@ -13,6 +13,29 @@ namespace Nethermind.Network.Enr.Test;
 public class NodeRecordTests
 {
     [Test]
+    public void Entry_order_and_replacement_preserve_canonical_content([Values] bool reverse)
+    {
+        EnrContentEntry[] entries = [new UdpEntry(1), new IpEntry(IPAddress.Loopback), new TcpEntry(2)];
+        if (reverse) Array.Reverse(entries);
+        NodeRecord record = new();
+        foreach (EnrContentEntry entry in entries) record.SetEntry(entry);
+        record.Signature = new Signature(new byte[64], 0);
+        Assert.That(record.ContentHash, Is.EqualTo(Keccak.Compute(Convert.FromHexString(
+            "d980826964827634826970847f00000183746370028375647001"))));
+
+        record.SetEntry(new UdpEntry(3));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(record.EnrSequence, Is.EqualTo(1));
+            Assert.That(record.Signature, Is.Null);
+            Assert.That(record.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(3));
+            Assert.That(record.ContentHash, Is.EqualTo(Keccak.Compute(Convert.FromHexString(
+                "d901826964827634826970847f00000183746370028375647003"))));
+        }
+    }
+
+    [Test]
     public void Get_value_or_obj_can_return_when_not_null()
     {
         NodeRecord nodeRecord = new();

@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
@@ -55,22 +56,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public async Task Can_request_and_handle_receipts()
         {
             const int count = NethermindSyncLimits.MaxReceiptFetch;
-            TxReceipt[][]? receipts = Enumerable.Repeat(
-                Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray(),
-                count).ToArray(); // TxReceipt[1000][100]
-
-            using ReceiptsMessage receiptsMsg = new(receipts.ToPooledList());
-            Packet receiptsPacket =
-                new("eth", Eth63MessageCode.Receipts, _ctx._receiptMessageSerializer.Serialize(receiptsMsg));
+            GetReceiptsMessage? request = null;
+            _ctx.Session
+                .When(session => session.DeliverMessage(Arg.Any<GetReceiptsMessage>()))
+                .Do(info => request = (GetReceiptsMessage)info[0]);
 
             Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts(
                 Enumerable.Repeat(Keccak.Zero, count).ToArray(),
                 CancellationToken.None);
 
-            _ctx.ProtocolHandler.HandleMessage(receiptsPacket);
+            int requested = request!.Hashes.Count;
+            _ctx.ProtocolHandler.HandleMessage(ReceiptsPacket(requested, 100));
 
             using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-            Assert.That(result, Has.Count.EqualTo(count));
+            Assert.That(result, Has.Count.EqualTo(requested));
         }
 
         [Test]
@@ -78,15 +77,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             const int count = NethermindSyncLimits.MaxReceiptFetch;
 
-            TxReceipt[] oneBlockReceipt = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray();
-            Packet smallReceiptsPacket =
-                new("eth", Eth63MessageCode.Receipts, _ctx._receiptMessageSerializer.Serialize(
-                    new(RepeatPooled(oneBlockReceipt, 10))
-                ));
-            Packet largeReceiptsPacket =
-                new("eth", Eth63MessageCode.Receipts, _ctx._receiptMessageSerializer.Serialize(
-                    new(RepeatPooled(oneBlockReceipt, count))
-                ));
+            // Peers answer with at most the requested blocks, so the large response grows by receipts per block.
+            const int smallBlockReceipts = 100;
+            const int largeBlockReceipts = 2_000;
 
             GetReceiptsMessage? receiptsMessage = null;
 
@@ -98,7 +91,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 .GetReceipts(RepeatPooled(Keccak.Zero, count), CancellationToken.None)
                 .AddResultTo(_disposables);
 
-            _ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
+            _ctx.ProtocolHandler.HandleMessage(ReceiptsPacket(receiptsMessage!.Hashes.Count, smallBlockReceipts));
             await receiptsTask;
 
             Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
@@ -107,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 .GetReceipts(RepeatPooled(Keccak.Zero, count), CancellationToken.None)
                 .AddResultTo(_disposables);
 
-            _ctx.ProtocolHandler.HandleMessage(largeReceiptsPacket);
+            _ctx.ProtocolHandler.HandleMessage(ReceiptsPacket(receiptsMessage!.Hashes.Count, largeBlockReceipts));
             await receiptsTask;
 
             Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(12));
@@ -117,15 +110,37 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 .GetReceipts(RepeatPooled(Keccak.Zero, count), CancellationToken.None)
                 .AddResultTo(_disposables);
 
-            _ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
+            _ctx.ProtocolHandler.HandleMessage(ReceiptsPacket(receiptsMessage!.Hashes.Count, smallBlockReceipts));
             await receiptsTask;
 
             Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
             receiptsMessage.Dispose();
         }
 
+        [Test]
+        public async Task Receipts_response_is_checked_against_expected_receipt_counts([Values] bool exceedsCount)
+        {
+            const int count = 3;
+            Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts([Keccak.Zero], new[] { count }, CancellationToken.None);
+
+            if (exceedsCount)
+            {
+                UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_ctx.ProtocolHandler.HandleMessage, UndecodableResponse.CreateReceipts(null, count + 1), Eth63MessageCode.Receipts);
+                return;
+            }
+
+            _ctx.ProtocolHandler.HandleMessage(ReceiptsPacket(1, count));
+
+            using IOwnedReadOnlyList<TxReceipt[]> result = await task;
+            Assert.That(result[0], Has.Length.EqualTo(count));
+        }
+
         private ArrayPoolList<T> RepeatPooled<T>(T txReceipts, int count) =>
             Enumerable.Repeat(txReceipts, count).ToPooledList(count).AddTo(_disposables);
+
+        private Packet ReceiptsPacket(int blocks, int receiptsPerBlock) =>
+            new("eth", Eth63MessageCode.Receipts, _ctx._receiptMessageSerializer.Serialize(
+                new(RepeatPooled(Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, receiptsPerBlock).ToArray(), blocks))));
 
         [Test]
         public void Should_not_exceed_soft_message_size_limit_for_receipts()
@@ -141,6 +156,73 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
             _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Count == expectedCount));
+        }
+
+        [Test]
+        public void Should_not_exceed_message_size_limits_for_receipts_with_sparse_logs()
+        {
+            // Logs without topics or data are the cheapest way to build a receipt whose encoded size is
+            // dominated by bytes a per-field heuristic does not see.
+            LogEntry[] logs = new LogEntry[512];
+            for (int i = 0; i < logs.Length; i++)
+            {
+                logs[i] = new LogEntry(TestItem.AddressA, [], []);
+            }
+
+            ReceiptsMessage response = ServeReceipts([Build.A.Receipt.WithLogs(logs).TestObject]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.TxReceipts, Is.Not.Empty);
+                Assert.That(_ctx._receiptMessageSerializer.GetLength(response, out _),
+                    Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+            }
+        }
+
+        [Test]
+        public void Should_serve_nothing_when_a_single_block_exceeds_hard_message_size_limit()
+        {
+            // eth/63-69 cannot page a block's receipts, so one above the hard limit is unservable.
+            byte[] logData = new byte[1.KiB];
+            LogEntry[] logs = new LogEntry[11 * 1024];
+            for (int i = 0; i < logs.Length; i++)
+            {
+                logs[i] = new LogEntry(TestItem.AddressA, logData, []);
+            }
+
+            TxReceipt[] receipts = [Build.A.Receipt.WithLogs(logs).TestObject];
+            Assert.That(MessageSizeEstimator.EstimateSize(receipts),
+                Is.GreaterThan(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+
+            Assert.That(ServeReceipts(receipts).TxReceipts, Is.Empty);
+        }
+
+        [Test]
+        public void Should_bound_receipt_lookups_for_blocks_without_transactions()
+        {
+            // A block with no transactions has no receipts, and an empty receipt array adds nothing
+            // to the size estimate, so the soft size limit alone never ends the loop.
+            ServeReceipts([]);
+
+            _ctx.SyncServer.Received(2 * NethermindSyncLimits.MaxReceiptFetch).GetReceipts(Arg.Any<Hash256>());
+        }
+
+        private ReceiptsMessage ServeReceipts(TxReceipt[] receipts)
+        {
+            _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+            ReceiptsMessage? response = null;
+            _ctx.Session.When(s => s.DeliverMessage(Arg.Any<ReceiptsMessage>())).Do(c => response = (ReceiptsMessage)c[0]);
+
+            using GetReceiptsMessage getReceiptsMessage = new(
+                RepeatPooled(Keccak.Zero, NethermindSyncLimits.MaxHashesFetch));
+            Packet getReceiptsPacket =
+                new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
+
+            _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
+
+            Assert.That(response, Is.Not.Null);
+            return response;
         }
 
         private class Context

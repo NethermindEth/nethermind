@@ -57,7 +57,8 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        if ((flags & ReaderFlags.Sync) != 0)
+        // The cached reader is created flagless, so flagged requests must go to the inner persistence directly.
+        if ((flags & (ReaderFlags.Sync | ReaderFlags.FullScan)) != 0)
             return _inner.CreateReader(flags);
 
         RefCountingPersistenceReader? cachedReader = _cachedReader;
@@ -99,8 +100,12 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
     public void Clear()
     {
+        // Drop the cached snapshot first so it does not pin the data being wiped, and again afterwards: a read
+        // during the wipe re-caches a reader whose snapshot predates the end of the wipe (so it can still report the
+        // pre-wipe CurrentState), which would otherwise be served until the next write batch or timer tick.
         ClearReaderCache();
         _inner.Clear();
+        ClearReaderCache();
     }
 
     private void ClearReaderCache()

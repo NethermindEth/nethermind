@@ -7,6 +7,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
+using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -39,6 +41,47 @@ namespace Nethermind.Core.Test
         public void does_not_match_not_added_item(int count, int topicMax) => MatchingTest(() => GetLogEntries(count, topicMax),
                 addedEntries => GetLogEntries(count, topicMax,
                 addedEntries.Sum(a => a.Topics.Length)), false);
+
+        [Test]
+        public void ZeroLength_matches_any_item()
+        {
+            LogEntry[] entries = GetLogEntries(10, 3);
+            Assert.That(entries.Select(static e => Bloom.ZeroLength.Matches(e)), Is.All.True);
+        }
+
+        [Test]
+        public void ZeroLength_is_zero_length_and_distinct_from_empty()
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Bloom.ZeroLength.ReadOnlyBytes.Length, Is.Zero);
+                Assert.That(Bloom.ZeroLength, Is.Not.EqualTo(Bloom.Empty));
+                Assert.That(Bloom.ZeroLength.Clone(), Is.SameAs(Bloom.ZeroLength));
+            }
+        }
+
+        [Test]
+        public void ZeroLength_ssz_encodes_and_merkleizes_as_zero_bloom()
+        {
+            byte[] buffer = new byte[Bloom.ByteLength];
+            Array.Fill(buffer, byte.MaxValue);
+            BloomSszVectorTypeConverter.ToSpan(buffer, Bloom.ZeroLength);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(buffer, Is.All.Zero);
+                Assert.That(Root(Bloom.ZeroLength), Is.EqualTo(Root(Bloom.Empty)));
+            }
+
+            static UInt256 Root(Bloom bloom)
+            {
+                Span<UInt256> chunks = stackalloc UInt256[2];
+                Merkleizer merkleizer = new(chunks);
+                BloomSszVectorTypeConverter.Feed(ref merkleizer, bloom);
+                merkleizer.CalculateRoot(out UInt256 root);
+                return root;
+            }
+        }
 
         [Test]
         public void empty_does_not_match_any_item() => MatchingTest(Array.Empty<LogEntry>, static addedEntries => GetLogEntries(100, 10), false);

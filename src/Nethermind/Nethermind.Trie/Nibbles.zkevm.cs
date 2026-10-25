@@ -19,8 +19,8 @@ namespace Nethermind.Trie
         /// among the most expensive memory accesses in the zkVM cost model.
         /// Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes.
         /// Little-endian only: the lane order reaches memory as ascending nibbles solely because the
-        /// 64-bit store writes the low byte first. riscv64 is little-endian; the host keeps the plain
-        /// loop in <c>Nibbles.std.cs</c>, which is endian-neutral.
+        /// 64-bit store writes the low byte first. riscv64 is little-endian, and so is every host the
+        /// runner starts on.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void ExpandNibbles(ref byte bytes, ref byte nibbles, int count)
@@ -32,23 +32,25 @@ namespace Nethermind.Trie
             ulong m8 = Unsafe.Add(ref masks, 1);
             ulong mNibble = Unsafe.Add(ref masks, 2);
             ulong mLow = Unsafe.Add(ref masks, 3);
-            int i = 0;
+            // Native-width counters: an int one is re-extended on RV64 at every step and address.
+            nint length = count;
+            nint i = 0;
             // Eight source bytes per read: the zkVM charges a four-byte load roughly eight times an
             // aligned word read, and one load, loop test and address computation now serve two spreads.
-            for (; i + sizeof(ulong) <= count; i += sizeof(ulong))
+            for (; i + sizeof(ulong) <= length; i += sizeof(ulong))
             {
                 ulong src = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, i));
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, i * 2), Spread(src & mLow, m16, m8, mNibble));
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, (i * 2) + sizeof(ulong)), Spread(src >> 32, m16, m8, mNibble));
             }
 
-            for (; i + sizeof(uint) <= count; i += sizeof(uint))
+            for (; i + sizeof(uint) <= length; i += sizeof(uint))
             {
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, i * 2),
                     Spread(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes, i)), m16, m8, mNibble));
             }
 
-            for (; i < count; i++)
+            for (; i < length; i++)
             {
                 int value = Unsafe.Add(ref bytes, i);
                 Unsafe.Add(ref nibbles, i * 2) = (byte)(value >> 4);
@@ -66,8 +68,7 @@ namespace Nethermind.Trie
         /// and that <paramref name="bytes"/> has room for <paramref name="count"/>. The range matters more
         /// here than in the scalar form: a wider source byte spills out of its lane and the gather step
         /// then ORs the spill into the neighbouring output byte, where the scalar form truncates locally.
-        /// Little-endian only, for the reason given at <see cref="ExpandNibbles"/>; the host keeps the
-        /// plain loop in <c>Nibbles.std.cs</c>.
+        /// Little-endian only, for the reason given at <see cref="ExpandNibbles"/>.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void PackNibbles(ref byte nibbles, ref byte bytes, int count)
@@ -75,8 +76,9 @@ namespace Nethermind.Trie
             ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwarMasks);
             ulong m16 = masks;
             ulong m8 = Unsafe.Add(ref masks, 1);
-            int i = 0;
-            for (; i + sizeof(uint) <= count; i += sizeof(uint))
+            nint length = count;
+            nint i = 0;
+            for (; i + sizeof(uint) <= length; i += sizeof(uint))
             {
                 ulong v = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref nibbles, i * 2));
                 // Each 16-bit lane ends up holding one output byte: its high nibble shifted up, its low
@@ -88,7 +90,7 @@ namespace Nethermind.Trie
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, i), (uint)packed);
             }
 
-            for (; i < count; i++)
+            for (; i < length; i++)
             {
                 Unsafe.Add(ref bytes, i) =
                     (byte)((Unsafe.Add(ref nibbles, i * 2) << 4) | Unsafe.Add(ref nibbles, i * 2 + 1));
@@ -106,6 +108,35 @@ namespace Nethermind.Trie
             return ((v >> 4) & mNibble) | ((v & mNibble) << 8);
         }
 
+        /// <summary>Nibble <paramref name="index"/> of <paramref name="bytes"/>, high nibble first.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int NibbleAt(ReadOnlySpan<byte> bytes, int index) => (bytes[index >> 1] >> ((~index & 1) << 2)) & 0xF;
+
+        /// <summary>Length of the common prefix, at most <paramref name="count"/>, of the nibbles of <paramref name="left"/> from
+        /// nibble <paramref name="leftStart"/> and those of <paramref name="right"/> from nibble <paramref name="rightStart"/>.</summary>
+        /// <remarks>Starts of the same parity, as for a leaf and a key of equal length, compare whole bytes.</remarks>
+        internal static int CommonPrefixLength(ReadOnlySpan<byte> left, int leftStart, ReadOnlySpan<byte> right, int rightStart, int count)
+        {
+            int i = 0;
+            if (((leftStart ^ rightStart) & 1) == 0)
+            {
+                if ((leftStart & 1) != 0)
+                {
+                    if (count == 0 || ((left[leftStart >> 1] ^ right[rightStart >> 1]) & 0xF) != 0) return 0;
+                    i = 1;
+                }
+
+                int byteCount = (count - i) >> 1;
+                i += 2 * CommonPrefixLength(left.Slice((leftStart + i) >> 1, byteCount), right.Slice((rightStart + i) >> 1, byteCount));
+                // The high nibble of the first unequal byte, or of a last half byte, may still match.
+                if (i < count && ((left[(leftStart + i) >> 1] ^ right[(rightStart + i) >> 1]) & 0xF0) == 0) i++;
+                return i;
+            }
+
+            while (i < count && NibbleAt(left, leftStart + i) == NibbleAt(right, rightStart + i)) i++;
+            return i;
+        }
+
         /// <summary>Length of the common prefix of two nibble keys.</summary>
         /// <remarks>Word-at-a-time: the BCL scalar fallback compares byte by byte, and no vector
         /// path is available on riscv64. The mismatch position falls out of the XOR's low set bit,
@@ -113,17 +144,25 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int CommonPrefixLength(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
         {
-            int length = Math.Min(left.Length, right.Length);
+            nint length = Math.Min(left.Length, right.Length);
             ref byte l = ref MemoryMarshal.GetReference(left);
             ref byte r = ref MemoryMarshal.GetReference(right);
-            int i = 0;
+            nint i = 0;
             for (; i + sizeof(ulong) <= length; i += sizeof(ulong))
             {
                 ulong diff = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref l, i)) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref r, i));
                 if (diff != 0)
                 {
-                    return i + (BitOperations.TrailingZeroCount(diff) >> 3);
+                    return (int)i + (BitOperations.TrailingZeroCount(diff) >> 3);
                 }
+            }
+
+            if (i < length && length >= sizeof(ulong))
+            {
+                // The tail as the last word, overlapping bytes already found equal, which XOR to zero.
+                nint last = length - sizeof(ulong);
+                ulong diff = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref l, last)) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref r, last));
+                return diff == 0 ? (int)length : (int)last + (BitOperations.TrailingZeroCount(diff) >> 3);
             }
 
             for (; i < length; i++)
@@ -131,7 +170,7 @@ namespace Nethermind.Trie
                 if (Unsafe.Add(ref l, i) != Unsafe.Add(ref r, i)) break;
             }
 
-            return i;
+            return (int)i;
         }
     }
 }

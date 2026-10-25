@@ -12,11 +12,18 @@ using Snappier;
 
 namespace Nethermind.Network.Rlpx;
 
+/// <summary>
+/// Compresses messages for the split-pipeline test oracle.
+/// </summary>
+/// <remarks>Production channels use the combined <see cref="ZeroPacketSplitter"/> encoder.</remarks>
 public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IByteBuffer>
 {
     private readonly ILogger _logger = logManager?.GetClassLogger<ZeroSnappyEncoder>() ?? throw new ArgumentNullException(nameof(logManager));
 
     protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
+        => Compress(input, output, _logger);
+
+    internal static void Compress(IByteBuffer input, IByteBuffer output, ILogger logger)
     {
         RlpReader reader = new(input.AsSpan());
         int packetTypeLen = reader.PeekNextRlpLength();
@@ -25,7 +32,7 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
         output.EnsureWritable(packetTypeLen + maxLength);
         output.WriteBytes(input, packetTypeLen);
 
-        if (_logger.IsTrace) TraceCompressing(input.ReadableBytes);
+        if (logger.IsTrace) TraceCompressing(input.ReadableBytes);
 
         int length = Snappy.Compress(
             input.Array.AsSpan(input.ArrayOffset + input.ReaderIndex, input.ReadableBytes),
@@ -35,6 +42,6 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
         output.SetWriterIndex(output.WriterIndex + length);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceCompressing(int readableBytes) => _logger.Trace($"Compressing with Snappy a message of length {readableBytes}");
+        void TraceCompressing(int readableBytes) => logger.Trace($"Compressing with Snappy a message of length {readableBytes}");
     }
 }

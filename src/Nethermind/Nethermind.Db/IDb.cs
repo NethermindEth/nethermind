@@ -29,6 +29,12 @@ namespace Nethermind.Db
 
         /// <summary>Syncs the write-ahead log to durable storage, throwing on failure (<see cref="Flush"/> swallows).</summary>
         void SyncWal() => Flush(onlyWal: true);
+
+        /// <summary>
+        /// Flushes the memtable to durable storage, throwing on failure where <see cref="Flush"/> swallows. The RocksDB
+        /// column store implements it for its own column family; the default serves stores whose flush cannot fail.
+        /// </summary>
+        void FlushOrThrow() => Flush();
         void Clear() { }
         void Compact() { }
 
@@ -45,6 +51,12 @@ namespace Nethermind.Db
         /// and <see cref="Compact"/> never works again for the process's life - shutdown only, never a pause.</summary>
         void InterruptCompactions() { }
         void SetWriteBuffer(long sizeBytes) { }
+
+        /// <summary>True when this store ran RocksDB repair during the current process open, or a persisted <c>repaired.marker</c> was found.</summary>
+        bool WasRepairedOnOpen => false;
+
+        /// <summary>Clears <see cref="WasRepairedOnOpen"/> and deletes <c>repaired.marker</c>.</summary>
+        void AcknowledgeRepair() { }
 
         readonly struct DbMetric
         {

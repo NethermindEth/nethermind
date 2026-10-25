@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,6 +49,19 @@ namespace Nethermind.Blockchain.Synchronization
         void NotifyOfNewBlock(Block block, SendBlockMode mode);
         void NotifyOfNewRange(BlockHeader earliest, BlockHeader latest) { }
         Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token);
+
+        /// <summary>
+        /// Asks the peer for the receipts of <paramref name="blockHashes"/>, rejecting a response that holds more receipts
+        /// for a block than <paramref name="expectedReceiptCounts"/> allows.
+        /// </summary>
+        /// <param name="blockHashes">The blocks to get the receipts of.</param>
+        /// <param name="expectedReceiptCounts">
+        /// Per block in <paramref name="blockHashes"/>, its transaction count, or a negative value when unknown;
+        /// blocks past its end have no known count. It must stay unchanged until the returned task completes.
+        /// </param>
+        /// <param name="token">Cancels the request.</param>
+        Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token) =>
+            GetReceipts(blockHashes, token);
         Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
         Task<IOwnedReadOnlyList<byte[]?>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
             Task.FromResult(IOwnedReadOnlyList<byte[]?>.Empty);

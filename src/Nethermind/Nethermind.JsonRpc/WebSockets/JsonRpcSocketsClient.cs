@@ -4,12 +4,13 @@
 using System;
 using System.Buffers;
 using System.IO;
-using System.IO.Pipelines;
+using System.Net;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Json;
@@ -26,7 +27,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly long? _maxBatchResponseBodySize;
     private readonly JsonRpcContext _jsonRpcContext;
 
-    private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
+    private readonly SocketSendLock _sendLock = new();
+    private readonly CancellationTokenSource _sendFailure = new();
     private readonly Channel<ProcessRequest> _processChannel;
 
     private sealed record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
@@ -41,6 +43,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     }
 
     private readonly int _workerTaskCount = 1;
+    private int _disposed;
 
     public JsonRpcSocketsClient(
         string clientName,
@@ -51,13 +54,16 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IJsonSerializer jsonSerializer,
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null,
-        int concurrency = 1)
-        : base(clientName, stream, jsonSerializer)
+        int concurrency = 1,
+        long? maxRequestBodySize = null,
+        IPAddress? remoteAddress = null,
+        StringValues forwardedFor = default)
+        : base(clientName, stream, jsonSerializer, RequestSizeLimit(maxRequestBodySize))
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
-        _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
+        _jsonRpcContext = new JsonRpcContext(endpointType, this, url) { RemoteAddress = remoteAddress, ForwardedFor = forwardedFor };
         _processChannel = Channel.CreateBounded<ProcessRequest>(new BoundedChannelOptions(concurrency)
         {
             SingleWriter = true
@@ -65,11 +71,22 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         _workerTaskCount = concurrency;
     }
 
+    private static int RequestSizeLimit(long? maxRequestBodySize) =>
+        (int)Math.Min(maxRequestBodySize ?? MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+
+    public bool IsClosed => Volatile.Read(ref _disposed) == 1;
+
+    /// <remarks>Idempotent: a subscription can disconnect a lagging client while its owner still holds it.</remarks>
     public override void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
         base.Dispose();
-        _sendSemaphore.Dispose();
-        _jsonRpcContext.Dispose();
+        _sendLock.Dispose();
+        lock (_sendFailure)
+        {
+            _sendFailure.Dispose();
+        }
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -86,9 +103,10 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public override async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
-        using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
+        using AutoCancelTokenSource cts = new(CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _sendFailure.Token));
 
         using ArrayPoolList<Task> allTasks = new(_workerTaskCount + 1);
+        bool sendFailedBeforeClose = false;
         allTasks.Add(Task.Run(async () =>
         {
             try
@@ -97,6 +115,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             }
             finally
             {
+                // A send that failed only after the transport closed is a consequence of the close, not its cause.
+                sendFailedBeforeClose = _sendLock.IsFaulted;
                 _processChannel.Writer.Complete();
             }
         }));
@@ -106,7 +126,28 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             allTasks.Add(Task.Run(() => WorkerLoop(cts.Token)));
         }
 
-        await cts.WhenAllSucceed(allTasks);
+        try
+        {
+            await cts.WhenAllSucceed(allTasks);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && _sendLock.Failure is { } failure
+            && (ex is OperationCanceledException || ex.InnerException == failure))
+        {
+            // Surface the failed send itself: the cancellation it caused, or a later sender's rejection wrapping it,
+            // would hide a client reset from disconnect filters.
+            ExceptionDispatchInfo.Throw(failure);
+        }
+        finally
+        {
+            // Only after the workers finish: a client that closes its send side still waits for the pending responses.
+            await _stream.DisposeAsync();
+        }
+
+        // The failed send's cancellation can close the transport before a worker observes it, ending every task cleanly.
+        if (sendFailedBeforeClose && !cancellationToken.IsCancellationRequested && _sendLock.Failure is { } sendFailure)
+        {
+            ExceptionDispatchInfo.Throw(sendFailure);
+        }
     }
 
     private async Task WorkerLoop(CancellationToken cancellationToken)
@@ -120,16 +161,15 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
-        PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         using SocketJsonRpcResponseSink<TStream> sink = new(
             _stream,
             _jsonRpcLocalStats,
             _maxBatchResponseBodySize,
-            _sendSemaphore,
+            _sendLock,
             _jsonRpcContext);
 
         await _jsonRpcProcessor.ProcessAsync(
-            request,
+            data,
             _jsonRpcContext,
             sink,
             new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments),
@@ -152,16 +192,31 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default)
     {
-        await _sendSemaphore.WaitAsync(cancellationToken);
+        JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
+        await _sendLock.WaitAsync(cancellationToken);
+        bool faulted = false;
         try
         {
-            JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
-            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
+            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, _sendLock, response, cancellationToken);
             return (int)responseSize;
+        }
+        catch
+        {
+            // Only a failure that left part of the message on the stream faults the lock.
+            faulted = _sendLock.IsFaulted;
+            throw;
         }
         finally
         {
-            _sendSemaphore.Release();
+            _sendLock.Release();
+            // A notification has no worker to fail, so an incomplete message ends the receive loop here.
+            if (faulted)
+            {
+                lock (_sendFailure)
+                {
+                    if (_disposed == 0) _sendFailure.Cancel();
+                }
+            }
         }
     }
 }

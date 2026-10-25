@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,7 +27,7 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         int hashesLength = GetHashesContentLength(message.Hashes);
         writer.StartSequence(hashesLength);
 
-        foreach (Hash256 hash in message.Hashes)
+        foreach (ValueHash256 hash in message.Hashes)
         {
             writer.Encode(hash);
         }
@@ -45,12 +46,11 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         int hashesCheckPosition = ctx.ReadSequenceLength() + ctx.Position;
         int hashCount = ctx.PeekNumberOfItemsRemaining(hashesCheckPosition, HashesRlpLimit.Limit + 1);
         ctx.GuardLimit(hashCount, HashesRlpLimit);
-        int retainedHashCount = System.Math.Min(hashCount, Eth72ProtocolHandler.MaxCellsRequestHashes);
-        Hash256[] hashes = new Hash256[retainedHashCount];
+        int retainedHashCount = Math.Min(hashCount, Eth72ProtocolHandler.MaxCellsRequestHashes);
+        ValueHash256[] hashes = new ValueHash256[retainedHashCount];
         for (int i = 0; i < retainedHashCount; i++)
         {
-            hashes[i] = ctx.DecodeKeccak()
-                ?? throw new RlpException($"Null transaction hash in {nameof(GetCellsMessage72)}.");
+            hashes[i] = ctx.DecodeValueKeccakNonNull();
         }
 
         for (int i = retainedHashCount; i < hashCount; i++)
@@ -73,14 +73,6 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static int GetHashesContentLength(Hash256[] hashes)
-    {
-        int contentLength = 0;
-        for (int i = 0; i < hashes.Length; i++)
-        {
-            contentLength += Rlp.LengthOf(hashes[i]);
-        }
-
-        return contentLength;
-    }
+    private static int GetHashesContentLength(ValueHash256[] hashes)
+        => checked(hashes.Length * Rlp.LengthOfKeccakRlp);
 }

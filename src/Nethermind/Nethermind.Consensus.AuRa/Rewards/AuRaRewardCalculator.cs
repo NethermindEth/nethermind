@@ -104,14 +104,6 @@ namespace Nethermind.Consensus.AuRa.Rewards
             return blockRewards;
         }
 
-        public class AuRaRewardCalculatorSource(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder) : IRewardCalculatorSource
-        {
-            private readonly AuRaChainSpecEngineParameters _auRaParameters = auRaParameters;
-            private readonly IAbiEncoder _abiEncoder = abiEncoder;
-
-            public IRewardCalculator Get(ITransactionProcessor processor) => new AuRaRewardCalculator(_auRaParameters, _abiEncoder, processor);
-        }
-
         public static class BenefactorKind
         {
             public const ushort Author = 0;

@@ -22,6 +22,8 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     private readonly HistoryScopeGate _scopeGate;
     private readonly StorageClearsScopeCache _clearsCache = new();
     private readonly long _scopeToken;
+    // Must remain mutable: readonly would run scope transitions and disposal on defensive copies.
+    private HistoryReader.ReadScopeState _readScope;
 
     // Non-null only below the general floor, where per-address slices are all that remains.
     private readonly ScopeFloor[]? _sliceScopes;
@@ -39,10 +41,11 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
             bool available = restrictToSlices ? historyReader.IsCoveredAndRootMatches(block) : historyReader.IsAvailable(block);
             if (!available)
             {
-                throw StateUnavailable(new StateUnavailableException(
+                throw StateUnavailable(new StateNotRetainedException(
                     $"Historical state for block {block.BlockNumber} is unavailable" +
                     (!restrictToSlices && historyReader.IsPrunedBelowFloor(block.BlockNumber) ? " (below the flat history retention floor)." : ".")));
             }
+            _readScope = historyReader.CreateReadScopeState();
         }
         catch
         {
@@ -58,9 +61,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account)
-                ? new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment())
-                : null;
+            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account, _readScope.GetScope()) ? account.ToAccount() : null;
         }
         catch (StateUnavailableException e)
         {
@@ -73,7 +74,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out UInt256 value, _clearsCache)) return false;
+            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out UInt256 value, _clearsCache, _readScope.GetScope())) return false;
             outValue = value;
             return true;
         }
@@ -93,15 +94,19 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
             if (_block.BlockNumber >= scope.Floor && scope.Key.AsSpan().SequenceEqual(key)) return;
         }
 
-        throw StateUnavailable(new StateUnavailableException(
+        throw StateUnavailable(new StateNotRetainedException(
             $"Historical state for block {_block.BlockNumber} is unavailable for {address} - it is below the general retention floor and not covered by any retained slice."));
     }
 
-    /// <summary>The hash-based reader's contract: JSON-RPC maps this to resource-not-found.</summary>
+    /// <summary>The hash-based reader's contract; JSON-RPC answers resource-unavailable (-32002) for a <see cref="StateNotRetainedException"/> inner and resource-not-found otherwise.</summary>
     private MissingTrieNodeException StateUnavailable(StateUnavailableException inner) =>
         new($"Historical state for block {_block.BlockNumber} is unavailable", null, TreePath.Empty, _block.StateRoot.ToCommitment(), inner);
 
-    public void Dispose() => _scopeGate.ExitScope(_scopeToken);
+    public void Dispose()
+    {
+        _readScope.Dispose();
+        _scopeGate.ExitScope(_scopeToken);
+    }
 
     public bool IsPreimageMode => false;
 

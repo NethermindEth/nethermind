@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
@@ -154,28 +155,84 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             Assert.That(result.ReturnValue.ToUInt256(), Is.EqualTo(value));
             Assert.That(result.GasSpent, Is.EqualTo(GasCostOf.Transaction + 2 * GasCostOf.TStore + GasCostOf.TLoad + 10 * GasCostOf.VeryLow));
             Assert.That(result.LoadedBytes, Is.EqualTo(value.IsZero ? new byte[] { 0 } : value.ToBigEndian()));
-            Assert.That(result.Writes, Is.EqualTo(2));
-            Assert.That(result.NewValue, Is.EqualTo((UInt256)value));
-            Assert.That(result.CurrentValue, Is.EqualTo((UInt256)value));
+            Assert.That(result.Changes, Is.EqualTo(new (UInt256 NewValue, UInt256 CurrentValue)[]
+            {
+                (value, UInt256.Zero),
+                (value, value),
+            }));
         }
     }
 
-    private sealed class TransientStoreTracer : TestAllTracerWithOutput
+    [Test]
+    public void tstore_tracing_reports_previous_value([Values] bool tracing)
     {
+        byte[] code = Prepare.EvmCode
+            .StoreDataInTransientStorage(1, 8)
+            .StoreDataInTransientStorage(1, 9)
+            .LoadDataFromTransientStorage(1)
+            .DataOnStackToMemory(0)
+            .Return(32, 0)
+            .Done;
+
+        TransientStoreTracer result = Execute(new TransientStoreTracer(tracing), code);
+        (UInt256 NewValue, UInt256 CurrentValue)[] expectedChanges = tracing
+            ? [((UInt256)8, UInt256.Zero), ((UInt256)9, (UInt256)8)]
+            : [];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.ReturnValue.ToUInt256(), Is.EqualTo((UInt256)9));
+            Assert.That(result.Changes, Is.EqualTo(expectedChanges));
+        }
+    }
+
+    [Test]
+    public void tstore_tracing_reports_restored_value_after_revert()
+    {
+        byte[] revertedCode = Prepare.EvmCode
+            .StoreDataInTransientStorage(1, 8)
+            .Revert(0, 0)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
+        TestState.InsertCode(TestItem.AddressD, revertedCode, Spec);
+
+        byte[] code = Prepare.EvmCode
+            .StoreDataInTransientStorage(1, 7)
+            .DynamicCallWithInput(Instruction.DELEGATECALL, TestItem.AddressD, 50000, new byte[32])
+            .StoreDataInTransientStorage(1, 9)
+            .LoadDataFromTransientStorage(1)
+            .DataOnStackToMemory(0)
+            .Return(32, 0)
+            .Done;
+
+        TransientStoreTracer result = Execute(new TransientStoreTracer(), code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.ReturnValue.ToUInt256(), Is.EqualTo((UInt256)9));
+            Assert.That(result.Changes, Is.EqualTo(new (UInt256 NewValue, UInt256 CurrentValue)[]
+            {
+                ((UInt256)7, UInt256.Zero),
+                ((UInt256)8, (UInt256)7),
+                ((UInt256)9, (UInt256)7),
+            }));
+        }
+    }
+
+    private sealed class TransientStoreTracer(bool isTracingOpLevelStorage = true) : TestAllTracerWithOutput
+    {
+        public override bool IsTracingOpLevelStorage => isTracingOpLevelStorage;
         public byte[]? LoadedBytes { get; private set; }
-        public int Writes { get; private set; }
+        public List<(UInt256 NewValue, UInt256 CurrentValue)> Changes { get; } = [];
 
         public override void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
             => LoadedBytes = value.ToArray();
-        public UInt256 NewValue { get; private set; }
-        public UInt256 CurrentValue { get; private set; }
 
         public override void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-        {
-            Writes++;
-            NewValue = new UInt256(newValue, isBigEndian: true);
-            CurrentValue = new UInt256(currentValue, isBigEndian: true);
-        }
+            => Changes.Add((new UInt256(newValue, isBigEndian: true), new UInt256(currentValue, isBigEndian: true)));
     }
 
     /// <summary>

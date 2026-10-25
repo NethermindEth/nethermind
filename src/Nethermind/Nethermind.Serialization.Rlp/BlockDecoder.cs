@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using System;
 using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
@@ -21,13 +22,10 @@ namespace Nethermind.Serialization.Rlp
         {
             int headerLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
 
-            (int txs, int uncles, int? withdrawals) = _blockBodyDecoder.GetBodyComponentLength(item.Body);
-
             byte[][]? encodedTxs = item.EncodedTransactions;
-            if (encodedTxs is not null)
-            {
-                txs = GetPreEncodedTxLength(item.Transactions, encodedTxs);
-            }
+            (int txs, int uncles, int? withdrawals) = encodedTxs is null
+                ? _blockBodyDecoder.GetBodyComponentLength(item.Body)
+                : _blockBodyDecoder.GetBodyComponentLength(item.Body, GetPreEncodedTxLength(item.Transactions, encodedTxs));
 
             int contentLength =
                 headerLength +
@@ -66,7 +64,8 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.Position = position;
 
             BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
-            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
+            // Blocks retain transactions without the return path provided by OwnedBlockBodies.Dispose.
+            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck, usePooledTransactions: false);
 
             Block block = new(header, body)
             {
@@ -83,10 +82,28 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptyList;
             }
 
-            byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+            (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(item, rlpBehaviors);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(lengths.Total));
             RlpWriter writer = new(bytes);
-            Encode(ref writer, item, rlpBehaviors);
+            EncodeContent(ref writer, item, lengths);
             return new(bytes);
+        }
+
+        public ArrayPoolSpan<byte> EncodeToArrayPoolSpan(Block block, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(block, rlpBehaviors);
+            ArrayPoolSpan<byte> buffer = new(Rlp.LengthOfSequence(lengths.Total));
+            try
+            {
+                RlpWriter writer = new(buffer);
+                EncodeContent(ref writer, block, lengths);
+                return buffer;
+            }
+            catch
+            {
+                buffer.Dispose();
+                throw;
+            }
         }
 
         public override void Encode<TWriter>(ref TWriter writer, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -97,7 +114,13 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = GetContentLength(item, rlpBehaviors);
+            EncodeContent(ref writer, item, GetContentLength(item, rlpBehaviors));
+        }
+
+        private void EncodeContent<TWriter>(ref TWriter writer, Block item, (int Total, int Txs, int Uncles, int? Withdrawals) lengths)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        {
+            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = lengths;
             writer.StartSequence(contentLength);
             _headerDecoder.Encode(ref writer, item.Header);
             writer.StartSequence(txsLength);

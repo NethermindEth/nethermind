@@ -19,8 +19,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
-    bool EnablePreimageRecording { get; set; }
+    [ConfigItem(Description = "What happens after a RocksDB repair of the flat DB. Resync wipes flat columns (headers, bodies, and receipts are kept) and re-enters state sync. Ignore keeps the repaired DB (escape hatch; may diverge). Ignore acknowledges the repair on the first start, so switching to Resync afterwards has no effect; a resync then requires wiping the flat DB directory. Resync refills state only through snap/state sync (Sync.FastSync with peers that serve it); a node that cannot state-sync, e.g. an archive synced from genesis, is left without state for its head, so set Ignore there or plan a resync from scratch. The flatHistory DB is not wiped: with HistoryEnabled and a windowed HistoryRetention (Rolling or SinceBlock), the resync fails to finish when its pivot falls inside the already-captured history window, so wipe the flatHistory directory too.", DefaultValue = "Resync")]
+    FlatDbOnRepair OnRepair { get; set; }
 
     [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
@@ -52,6 +52,27 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "History rows one verification worker holds in memory for the subtree it is replaying. A subtree with more rows is split into its children and a single key with more rows is streamed, so any value works on any archive; larger values mean fewer, bigger subtrees. Sized so that one mainnet depth-2 account subtree fits without splitting; each worker holds about 400 bytes per row plus its replayed trie. 0 uses the built-in default of 5 million.", DefaultValue = "0")]
     long HistoryVerifyMaxRows { get; set; }
 
+    [ConfigItem(Description = "Index, per transaction, what each transaction of a block wrote, so that a trace of one transaction resolves the state before it instead of replaying the transactions ahead of it. Captured inline while syncing, when the node executes each block anyway, and re-executed in the background behind the history watermark at the tip and for the retrofit; never on the tip's processing path. Pre-Amsterdam only: BAL-enabled blocks are neither indexed nor seeded. Kept in its own column. Off by default; a node that leaves it off pays nothing.", DefaultValue = "false")]
+    bool HistoryTransactionIndexEnabled { get; set; }
+
+    [ConfigItem(Description = "Deprecated. Use `JsonRpc.TraceBlockParallelism` instead. `0`, the default, leaves the node-wide parallel block trace budget to `JsonRpc.TraceBlockParallelism`. Any other value sizes that budget in its place, clamped to 1-16.", DefaultValue = "0", HiddenFromDocs = true)]
+    int HistoryTransactionIndexTraceParallelism { get; set; }
+
+    [ConfigItem(Description = "Share of its wall clock the transaction index builder may spend working; it sleeps out the rest so that re-executing blocks stays invisible to the RPC the node is serving. 100 lets it run flat out.", DefaultValue = "25")]
+    int HistoryTransactionIndexDutyCyclePercent { get; set; }
+
+    [ConfigItem(Description = "Once the transaction index has caught up with the tip, also index backwards down to this block, so an archive that already exists gains coverage without a resync. 0 indexes forward from the moment the index is turned on and nothing older; 1 covers the whole chain, since genesis carries no transactions. Never goes below the flat-history floor.", DefaultValue = "0")]
+    ulong HistoryTransactionIndexRetrofitFromBlock { get; set; }
+
+    [ConfigItem(Description = "Threads re-executing blocks for the backwards retrofit of the transaction index, each on its own block range with its own processing environment. The tip is always followed by one thread regardless. 1 runs the retrofit on that same thread. Each worker holds the state its current 128-block chunk wrote, a few hundred thousand entries on mainnet, so the count is a memory knob as well as a throughput one.", DefaultValue = "1")]
+    int HistoryTransactionIndexWorkers { get; set; }
+
+    [ConfigItem(Description = "Experimental mainnet v2 archive retrofit using one isolated disk-backed replay state. Replaces retrofit workers, not tip following. Requires a nonzero HistoryTransactionIndexRetrofitFromBlock; coverage joins only after the ascending range completes.", DefaultValue = "false")]
+    bool HistoryTransactionIndexBulkFillEnabled { get; set; }
+
+    [ConfigItem(Description = "Maximum scratch database size in GiB for bulk transaction-index replay. Reaching the limit pauses replay without dropping its checkpoint.", DefaultValue = "1024")]
+    int HistoryTransactionIndexBulkFillMaxGiB { get; set; }
+
     [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]
     bool ArchiveProofServeEnabled { get; set; }
 
@@ -79,8 +100,11 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Number of most recent commitment epochs to keep the per-block rows for. Older epochs keep only their checkpoint rows: proofs there are still served and still verified, rebuilt from the window rows, which costs about a second instead of a hundred milliseconds and is most of the column's size. 0 keeps the per-block rows for every epoch.", DefaultValue = "0")]
     int ArchiveProofFineEpochs { get; set; }
 
-    [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
+    [ConfigItem(Description = "Import from pruning trie state db. When enabled, the node runs the import and exits instead of starting, as with the `import-flat-db` command, and fails if there is nothing to import. Remove the setting once the import has finished.", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
+
+    [ConfigItem(Description = "Delete the patricia-trie state DB on start once the flat DB owns the state, reclaiming its disk space. The kept trie is what a switch back to the patricia backend restarts from, replaying from the conversion block, so this is irreversible: switching back afterwards requires a resync.", DefaultValue = "false")]
+    bool DropPruningTrieState { get; set; }
 
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
@@ -94,6 +118,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max reorg depth — the force-persist backstop used when EnableLongFinality is off: once the in-memory depth exceeds it while finality is stalled, persistence is forced to bound memory.", DefaultValue = "256")]
     ulong MaxReorgDepth { get; set; }
 
+    [ConfigItem(Description = "Byte budget for the in-memory snapshot window. When positive and the estimated in-memory snapshot bytes exceed it, conversion to the persisted-snapshot tier is attempted and persistence is forced even when finality stalls, always leaving at least MinReorgDepth blocks above the persisted base — bounding memory by size rather than block count, so heavy blocks shrink the retained window instead of exhausting memory. Only in-memory snapshots are flushed for byte pressure, so with EnableLongFinality the persisted-snapshot tier is kept and the in-memory window does not shrink below MaxInMemoryBaseSnapshotCount blocks once that tier holds the oldest state. 0 disables.", DefaultValue = "0")]
+    ulong MaxInMemorySnapshotBytes { get; set; }
+
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     ulong MinReorgDepth { get; set; }
 
@@ -106,11 +133,20 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     ulong TrieCacheMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
+    [ConfigItem(Description = "Trie warmer worker count (-1 for the larger of 3/4 of the processor count and 1.5 per processor up to 12, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
+
+    [ConfigItem(Description = "Cache flat account and slot reads across heads in the persistence layer, so a new head does not re-read the working set from the database. `false` reads every persistence miss from the database.", DefaultValue = "true")]
+    bool EnableCarryForwardCache { get; set; }
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Only hash the storage tries before a block is reported valid, and write their nodes when the block commits, as the state trie already does. `false` writes each storage trie's nodes before the block is reported valid.", DefaultValue = "true")]
+    bool DeferStorageTrieCommit { get; set; }
+
+    [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
+    bool ApplyStorageWritesOnIdleThread { get; set; }
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
@@ -139,9 +175,44 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Validate persisted snapshots against in-memory snapshots after conversion (debug/diagnostic only)", DefaultValue = "false")]
     bool ValidatePersistedSnapshot { get; set; }
 
-    [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter. One unified filter covers address/slot/self-destruct keys plus state-trie and storage-trie node paths. Higher = lower false-positive rate but more RAM. 0 disables the filter (lookups behave as full sweeps).", DefaultValue = "14.0")]
+    [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter. One unified filter covers address/slot/self-destruct keys plus state-trie and storage-trie node paths. Higher = lower false-positive rate but more RAM. 0 disables the filter (lookups behave as full sweeps).", DefaultValue = "14")]
     double PersistedSnapshotBloomBitsPerKey { get; set; }
+
+    /// <summary>Gets or sets the bits per storage key in the in-memory snapshot filter used by read-only execution.</summary>
+    /// <remarks>Defaults to 14 bits per key. Set to 0 to disable the filter. Block processing does not use it.</remarks>
+    [ConfigItem(Description = "Bits per key for the negative filter over the slots written by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution (eth_call, eth_estimateGas, eth_createAccessList, eth_simulateV1, eth_getProof, debug and trace calls, Flashbots block validation, receipt regeneration and the transaction changeset index), and lets those reads skip the per-snapshot lookups for a slot no in-memory snapshot wrote. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14")]
+    double InMemorySnapshotBloomBitsPerKey { get; set; }
 
     [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]
     int WarmReadConcurrency { get; set; }
+
+    [ConfigItem(Description = "Write trie nodes (StateTopNodes, StateNodes and StorageNodes; FallbackNodes stays direct) through an append-only trie node log (with an in-memory index) that is merged into RocksDB one generation at a time, so nodes rewritten within a generation are written to RocksDB once. Experimental: a self-destruct only removes the storage trie nodes already in RocksDB, nodes still in the log are left as unreachable orphans.", DefaultValue = "false")]
+    bool TrieNodeLogEnabled { get; set; }
+
+    [ConfigItem(Description = "Byte budget of the state partition of the trie node log (StateTopNodes and StateNodes), split evenly over its shards: each shard's generation, i.e. its deduplication window before it is merged into RocksDB, is this divided by the partition's shard count. Each live generation also keeps an in-memory index of 1/64 of its size (1/32 for the storage partition).", DefaultValue = "524288000")]
+    long TrieNodeLogStateBytes { get; set; }
+
+    [ConfigItem(Description = "Byte budget of the storage partition of the trie node log (StorageNodes), split evenly over its shards like TrieNodeLogStateBytes.", DefaultValue = "524288000")]
+    long TrieNodeLogStorageBytes { get; set; }
+
+    [ConfigItem(Description = "Number of shards of the state partition of the trie node log, a power of two. Nodes are sharded by the first byte of their column key (the first path nibbles for state nodes, the first byte of the address hash for storage nodes); shards are appended to and merged in parallel.", DefaultValue = "2")]
+    int TrieNodeLogStateShardCount { get; set; }
+
+    [ConfigItem(Description = "Number of shards of the storage partition of the trie node log, a power of two.", DefaultValue = "2")]
+    int TrieNodeLogStorageShardCount { get; set; }
+
+    [ConfigItem(Description = "Maximum number of trie node log generation merges (across all shards) running at the same time; each merge is one RocksDB write batch.", DefaultValue = "2")]
+    int TrieNodeLogMaxConcurrentMerges { get; set; }
+
+    [ConfigItem(Description = "Sealed trie node log generations a shard may accumulate beyond TrieNodeLogMergeLag before starting a new generation waits for a merge to finish, which stalls persistence until the merges catch up.", DefaultValue = "2")]
+    int TrieNodeLogMergeBacklogMargin { get; set; }
+
+    [ConfigItem(Description = "Merge the whole trie node log into RocksDB at shutdown. The log otherwise persists across restarts, keeping its deduplication window; mainly for debugging.", DefaultValue = "false")]
+    bool TrieNodeLogDrainOnShutdown { get; set; }
+
+    [ConfigItem(Description = "Number of sealed trie node log generations kept unmerged behind the newest one. A generation is merged into RocksDB only once this many newer generations are sealed, and keys rewritten in those are skipped, so the effective deduplication window is (1 + this) generations at the cost of that many extra generation files and in-memory indexes.", DefaultValue = "1")]
+    int TrieNodeLogMergeLag { get; set; }
+
+    [ConfigItem(Description = "TrieNodeLogMergeLag of the second-level trie node log, or -1 to disable it. Each merged trie node log generation is copied, deduplicated, into the second-level log instead of RocksDB; it has the same size and backlog settings as the first, an in-memory index of 1/16 of its size for both partitions, and merges its own generations into RocksDB once this many newer ones are sealed. The surviving nodes are less likely to be rewritten, and the log's index answers their reads faster than RocksDB.", DefaultValue = "1")]
+    int TrieNodeLogSecondLevelMergeLag { get; set; }
 }

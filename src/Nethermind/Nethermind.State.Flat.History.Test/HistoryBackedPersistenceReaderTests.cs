@@ -18,7 +18,9 @@ namespace Nethermind.State.Flat.History.Test;
 public class HistoryBackedPersistenceReaderTests
 {
     private static readonly Address Address = new("0x0000000000000000000000000000000000000abc");
+    private static readonly Address ContractAddress = new("0x0000000000000000000000000000000000000c0d");
     private static readonly UInt256 Slot = 7;
+    private const long MaxEmptyClearsCacheBytes = 64;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
@@ -83,7 +85,8 @@ public class HistoryBackedPersistenceReaderTests
         HistoryColumnsWriter.RecordRawAccountRow(_historyColumns, Address, 6, new byte[300]);
 
         Assert.That(() => Reader(10).GetAccount(Address),
-            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.TypeOf<StateUnavailableException>(),
+            "a corrupt row is not state the node legitimately lacks; the exact base type keeps it on the -32000 + WARN path");
     }
 
     [Test]
@@ -95,7 +98,8 @@ public class HistoryBackedPersistenceReaderTests
         {
             UInt256 value = default;
             Reader(10).TryGetSlot(Address, Slot, ref value);
-        }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+        }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.TypeOf<StateUnavailableException>(),
+            "a corrupt row is not state the node legitimately lacks; the exact base type keeps it on the -32000 + WARN path");
     }
 
     [Test]
@@ -123,7 +127,7 @@ public class HistoryBackedPersistenceReaderTests
     {
         HistoryScopeGate gate = new();
 
-        Assert.That(() => Reader(11, gate), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+        Assert.That(() => Reader(11, gate), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }
@@ -133,7 +137,7 @@ public class HistoryBackedPersistenceReaderTests
     {
         HistoryScopeGate gate = new();
 
-        Assert.That(() => Reader(10, gate, TestItem.KeccakA), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+        Assert.That(() => Reader(10, gate, TestItem.KeccakA), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }
@@ -171,12 +175,59 @@ public class HistoryBackedPersistenceReaderTests
             "a Normal-mode reader must never consult the scope list at all - its per-call allocation must be identical whether zero or many scopes are configured");
     }
 
+    [Test]
+    public void GetAccount_ForAContract_KeepsStorageRootAndCodeHash()
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, ContractAddress, 5, new Account(1, 100, TestItem.KeccakA, TestItem.KeccakB));
+
+        Account? contract = Reader(10).GetAccount(ContractAddress);
+
+        Assert.That(contract, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contract!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(contract.CodeHash, Is.EqualTo(TestItem.KeccakB));
+        }
+    }
+
+    [Test]
+    public void GetAccount_ForAnAccountWithoutStorageOrCode_AllocatesLessThanAContract()
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, ContractAddress, 5, new Account(1, 100, TestItem.KeccakA, TestItem.KeccakB));
+        HistoryBackedPersistenceReader reader = Reader(10);
+
+        long eoaAllocated = MeasureAllocatedBytes(() => reader.GetAccount(Address));
+        long contractAllocated = MeasureAllocatedBytes(() => reader.GetAccount(ContractAddress));
+
+        Assert.That(eoaAllocated, Is.LessThan(contractAllocated),
+            "an account without storage or code takes the shared empty-hash instances; only a contract materializes its two hashes");
+    }
+
+    [Test]
+    public void StorageClearsScopeCache_BeforeAnyStorageRead_AllocatesNoMemo()
+    {
+        long allocated = MeasureAllocatedBytes(static () => _ = new StorageClearsScopeCache());
+
+        Assert.That(allocated, Is.LessThan(MaxEmptyClearsCacheBytes),
+            "a scope that reads no storage must not build the per-account clears memos");
+    }
+
+    /// <remarks>
+    /// Takes the minimum over several calls: one call can also pay one-off runtime costs
+    /// (lazy thread-local or static initialization) that do not belong to the code under test.
+    /// </remarks>
     private static long MeasureAllocatedBytes(Action action)
     {
         action();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        action();
-        return GC.GetAllocatedBytesForCurrentThread() - before;
+        long min = long.MaxValue;
+        for (int i = 0; i < 5; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            action();
+            min = Math.Min(min, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        return min;
     }
 
     private HistoryBackedPersistenceReader Reader(ulong block) => Reader(block, new HistoryScopeGate());
@@ -237,12 +288,12 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
     [Test]
     public void GetAccount_ForAnAddressNotCoveredByAnySliceScope_ThrowsMissingTrieNode() =>
         Assert.That(() => Reader(3).GetAccount(NonSlicedAddress),
-            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
     [Test]
     public void GetAccount_ForAnAddressWhoseSliceFloorIsDeeperThanTheQueriedBlock_ThrowsMissingTrieNode() =>
         Assert.That(() => Reader(3, sliceFloor: 4).GetAccount(SlicedAddress),
-            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>(),
+            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>(),
             "the scope's own floor (4) is still above the query (3) - the address is retained only from block 4 onward");
 
     [Test]
@@ -261,7 +312,7 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         {
             UInt256 value = default;
             Reader(3).TryGetSlot(NonSlicedAddress, Slot, ref value);
-        }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+        }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
     [Test]
     public void Constructor_ForANonCanonicalStateRoot_ThrowsMissingTrieNode_AndReleasesTheScope_EvenBelowTheFloor()
@@ -269,7 +320,7 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         HistoryScopeGate gate = new();
 
         Assert.That(() => Reader(3, sliceFloor: 0, gate, TestItem.KeccakA),
-            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }

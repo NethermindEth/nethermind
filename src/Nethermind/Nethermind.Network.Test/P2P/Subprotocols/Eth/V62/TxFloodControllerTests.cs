@@ -142,6 +142,101 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(_controller.IsDowngraded, Is.True);
         }
 
+        // FrameTxPeerFloodMeasurement derives r_attack from these exact boundaries for an EVM-shape frame tx.
+        [Test]
+        public void Failed_frame_simulation_downgrades_past_600_and_disconnects_past_6000()
+        {
+            ReportTimes(AcceptTxResult.FrameSimulationFailed, 600);
+            Assert.That(_controller.IsDowngraded, Is.False);
+
+            ReportTimes(AcceptTxResult.FrameSimulationFailed, 1);
+            Assert.That(_controller.IsDowngraded, Is.True);
+
+            ReportTimes(AcceptTxResult.FrameSimulationFailed, 6_000 - 601);
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+
+            ReportTimes(AcceptTxResult.FrameSimulationFailed, 1);
+            _session.Received(1).InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
+
+            void ReportTimes(AcceptTxResult result, int times)
+            {
+                for (int i = 0; i < times; i++)
+                {
+                    _controller.Report(result);
+                }
+            }
+        }
+
+        [Test]
+        public void Local_verification_headroom_rejections_do_not_penalize_the_peer([Values] bool stateGasRejection)
+        {
+            for (int i = 0; i < 6001; i++)
+            {
+                _controller.Report(AcceptTxResult.FrameTxVerifyGasTooHigh);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_controller.IsDowngraded, Is.False);
+                _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+            }
+
+            AcceptTxResult rejection = stateGasRejection ? AcceptTxResult.FrameTxVerifyStateGasTooHigh : AcceptTxResult.NonceGap;
+            for (int i = 0; i < 600; i++) _controller.Report(rejection);
+            Assert.That(_controller.IsDowngraded, Is.False);
+            _controller.Report(rejection);
+            Assert.That(_controller.IsDowngraded, Is.True);
+            for (int i = 601; i < 6000; i++) _controller.Report(rejection);
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+            _controller.Report(rejection);
+            _session.Received(1).InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
+        }
+
+        [Test]
+        public void Deferred_frame_simulation_throttles_but_never_disconnects()
+        {
+            // The peer does not choose when this node sheds simulation load, so a deferral must not
+            // escalate to a disconnect — but a flood through a shedding window is still throttled.
+            // One past the flood threshold, so the same volume disconnects for any other rejection.
+            for (int i = 0; i < 6001; i++)
+            {
+                _controller.Report(AcceptTxResult.FrameSimulationDeferred);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_controller.IsDowngraded, Is.True);
+                _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+            }
+        }
+
+        [Test]
+        public void Spent_peer_validation_budget_disconnects_a_flooding_peer()
+        {
+            // The peer's own failing validations spent the budget, so its drops count like any other rejection.
+            for (int i = 0; i < 6001; i++)
+            {
+                _controller.Report(AcceptTxResult.FramePeerValidationBudgetSpent);
+            }
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
+        }
+
+        [Test]
+        public void Deferred_frame_simulations_do_not_count_towards_a_later_rejection()
+        {
+            // The disconnect branch compares the not-accepted total, so a shedding window that inflated it
+            // would have the peer's next ordinary rejection disconnect it on volume this node generated.
+            for (int i = 0; i < 6001; i++)
+            {
+                _controller.Report(AcceptTxResult.FrameSimulationDeferred);
+            }
+
+            _controller.Report(AcceptTxResult.AlreadyKnown);
+
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+        }
+
         [Test]
         public void Enabled_by_default() => Assert.That(_controller.IsEnabled, Is.True);
 
@@ -482,7 +577,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             for (int start = 0; start < hashes.Length; start += maxHashesPerRequest)
             {
                 int count = Math.Min(maxHashesPerRequest, hashes.Length - start);
-                _controller.ReportPooledTransactionRequest(hashes.Slice(start, count));
+                ValueHash256[] values = new ValueHash256[count];
+                for (int i = 0; i < count; i++) values[i] = hashes[start + i];
+                _controller.ReportPooledTransactionRequest(values);
             }
         }
 

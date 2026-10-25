@@ -356,7 +356,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     public void Call_depth_exceeded_create_does_not_credit_state_gas_refund()
     {
         byte[] code = Prepare.EvmCode.Create([], UInt256.Zero).Done;
-        CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code);
+        CodeInfo codeInfo = new(code);
         ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo,
             executingAccount: Recipient,

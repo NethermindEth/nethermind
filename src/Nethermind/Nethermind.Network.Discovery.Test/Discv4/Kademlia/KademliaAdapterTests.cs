@@ -5,20 +5,25 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
+using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
@@ -146,7 +151,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
         }
 
-        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null)
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null, int maxOutgoingMessagePerSecond = 500)
         {
             if (listenerState is null)
             {
@@ -164,7 +169,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     EnrTimeout = requestTimeoutMs,
                     PingTimeout = requestTimeoutMs,
                     SendNodeTimeout = requestTimeoutMs,
-                    BondWaitTime = 1,
+                    BondWaitTime = bondWaitTime,
+                    MaxOutgoingMessagePerSecond = maxOutgoingMessagePerSecond,
                 },
                 _kademliaConfig,
                 _nodeRecordProvider,
@@ -172,7 +178,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 _nodeStatsManager,
                 _timestamper,
                 Substitute.For<IProcessExitSource>(),
-                new Ecdsa(),
+                ecdsa ?? new Ecdsa(),
                 _logManager,
                 listenerState)
             {
@@ -289,7 +295,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             ulong responseSequence,
             int? tcpPort = null,
             IPAddress? ipAddress = null,
-            Action<NodeRecord>? configureExtras = null)
+            Action<NodeRecord>? configureExtras = null,
+            IPEndPoint? responseEndpoint = null)
         {
             NodeRecord remoteRecord = TestEnrBuilder.BuildSigned(
                 TestItem.PrivateKeyB,
@@ -322,7 +329,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
                     ValueHash256 requestHash = TestItem.KeccakA.ValueHash256;
                     sent.Hash = requestHash;
-                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(_receiver.Address, remoteRecord, new Hash256(requestHash)));
+                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(responseEndpoint ?? _receiver.Address, remoteRecord, new Hash256(requestHash)));
                     return _adapter.OnIncomingMsg(response);
                 });
 
@@ -341,6 +348,30 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             forgedRecord.SetEntry(new TcpEntry(30305));
             forgedRecord.Signature = validSignature;
             return forgedRecord;
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Repeated_publication_does_not_reverify_an_already_published_candidate(CancellationToken token)
+        {
+            IEcdsa ecdsa = Substitute.For<IEcdsa>();
+            Ecdsa real = new();
+            ecdsa.RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>())
+                .Returns(ci => real.RecoverCompressedPublicKey(ci.Arg<Signature>(), ci.Arg<ValueHash256>()));
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, ecdsa: ecdsa);
+            _receiver.Enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyB,
+                _receiver.Address.Address, tcpPort: 30303, udpPort: 30303);
+            ConfigureBondCallback();
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+            Assert.That((await ReadPeerCandidate(token)).Id, Is.EqualTo(_receiver.Id));
+            ecdsa.Received().RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>());
+            ecdsa.ClearReceivedCalls();
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+            await AssertNoPeerCandidate(token);
+            ecdsa.DidNotReceive().RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>());
         }
 
         [Test]
@@ -396,6 +427,38 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 Assert.That(wirePing?.SourceAddress, Is.EqualTo(expectedSourceText is null ? null : new IPEndPoint(IPAddress.Parse(expectedSourceText), 30304)));
                 Assert.That(wirePing?.SourceTcpPort, Is.EqualTo(expectedSourceText is null ? null : expectedTcpPort));
             }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_uses_the_current_resolved_source_after_address_rotation(CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton(_ipResolver)
+                .Build();
+            NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
+            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            IPAddress firstAddress = IPAddress.Parse("2001:db8::10");
+            IPAddress secondAddress = IPAddress.Parse("2001:db8::20");
+            _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(
+                new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.IPv6Any, firstAddress)),
+                new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.IPv6Any, secondAddress)));
+            _receiver = new Node(TestItem.PublicKeyB, "2001:db8::2", 30303);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
+            List<IPEndPoint> sourceAddresses = [];
+            ConfigureBondCallback(onWirePing: ping => sourceAddresses.Add(ping.SourceAddress!));
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            Assert.That(sourceAddresses, Is.EqualTo(new[]
+            {
+                new IPEndPoint(firstAddress, _kademliaConfig.CurrentNodeId.DiscoveryPort),
+                new IPEndPoint(secondAddress, _kademliaConfig.CurrentNodeId.DiscoveryPort)
+            }));
         }
 
         [Test]
@@ -662,9 +725,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
-        public async Task Ping_should_not_bond_requested_endpoint_when_pong_source_differs(CancellationToken token)
+        public async Task Ping_should_not_bond_either_endpoint_when_pong_source_differs(
+            [Values("192.168.1.4:30303", "192.168.1.2:30304")] string pongSource,
+            [Values] bool findNodeFromPongSource,
+            CancellationToken token)
         {
-            IPEndPoint pongFarAddress = new(IPAddress.Parse("192.168.1.4"), _receiver.Address.Port);
+            await UseExpiringRequestTimeouts();
+            IPEndPoint pongFarAddress = IPEndPoint.Parse(pongSource);
             ConfigureBondCallback(pongFarAddress, pongEnrSequence: 42);
 
             bool result = await _adapter.Ping(_receiver, token);
@@ -672,7 +739,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _msgSender.DidNotReceive().SendMsg(Arg.Any<EnrRequestMsg>());
             _msgSender.ClearReceivedCalls();
 
-            FindNodeMsg findNodeMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _testPublicKey.Bytes);
+            FindNodeMsg findNodeMsg = new(findNodeFromPongSource ? pongFarAddress : _receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _testPublicKey.Bytes);
             findNodeMsg = AddReceiverFarAddress(findNodeMsg);
 
             Node[] expectedNodes = [new(TestItem.PublicKeyD, "192.168.1.3", 30303)];
@@ -684,6 +751,24 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _adapter.OnIncomingMsg(findNodeMsg);
 
             await _msgSender.DidNotReceive().SendMsg(Arg.Any<NeighborsMsg>());
+        }
+
+        [Test]
+        public void Pong_handler_should_wait_for_pong_from_pinged_endpoint_after_one_from_elsewhere()
+        {
+            PingMsg ping = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address)
+            {
+                Mdc = TestItem.KeccakA.ValueHash256
+            };
+            PongMsgHandler handler = new(ping);
+
+            PongMsg Pong(IPEndPoint from) => new(from, _timestamper.UnixTime.SecondsLong + 20, TestItem.KeccakA.ValueHash256);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(handler.Handle(Pong(new IPEndPoint(_receiver.Address.Address, _receiver.Address.Port + 1))), Is.False);
+                Assert.That(handler.Handle(Pong(_receiver.Address)), Is.True);
+            }
         }
 
         [Test]
@@ -712,6 +797,48 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             Node[]? result = await _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, token);
             Assert.That(result, Is.EquivalentTo(expected));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Authenticated_requests_reuse_only_usable_endpoint_bonds(
+            [Values("none", "expiry", "endpoint", "failures")] string invalidation,
+            [Values] bool receivedPing, CancellationToken token)
+        {
+            NodeSession session = _adapter.GetSession(_receiver);
+            session.OnPongReceived(_receiver.DiscoveryAddress);
+            if (receivedPing) session.OnPingReceived(_receiver.DiscoveryAddress);
+            ConfigureBondCallback();
+            _msgSender.SendMsg(Arg.Any<EnrRequestMsg>()).Returns(ci =>
+            {
+                EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
+                sent.Hash = TestItem.KeccakA.ValueHash256;
+                return _adapter.OnIncomingMsg(AddReceiverFarAddress(
+                    new EnrResponseMsg(_receiver.Address, _selfNodeRecord, TestItem.KeccakA)));
+            });
+
+            Assert.That(await _adapter.SendEnrRequest(_receiver, token), Is.Not.Null);
+            Assert.That(await _adapter.SendEnrRequest(_receiver, token), Is.Not.Null);
+            await _msgSender.Received(receivedPing ? 0 : 2).SendMsg(Arg.Any<PingMsg>());
+
+            switch (invalidation)
+            {
+                case "expiry":
+                    DateTime later = _timestamper.UtcNow + NodeSession.BondTimeout + TimeSpan.FromSeconds(1);
+                    _timestamper.UtcNow.Returns(later);
+                    _timestamper.UnixTime.Returns(new UnixTime(later));
+                    break;
+                case "endpoint":
+                    _receiver = new Node(_receiver.Id, "192.168.1.3", 30304);
+                    break;
+                case "failures":
+                    for (int i = 0; i <= NodeSession.AuthenticatedRequestFailureLimit; i++) session.OnAuthenticatedRequestFailure();
+                    break;
+            }
+
+            Assert.That(await _adapter.SendEnrRequest(_receiver, token), Is.Not.Null);
+            await _msgSender.Received(receivedPing ? (invalidation == "none" ? 0 : 1) : 3).SendMsg(Arg.Any<PingMsg>());
+            await _msgSender.Received(3).SendMsg(Arg.Any<EnrRequestMsg>());
         }
 
         [Test]
@@ -785,6 +912,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             bool result = await _adapter.Ping(_receiver, token);
 
             Assert.That(result, Is.True);
+            await _msgSender.Received(shouldRequestEnr ? 2 : 1).SendMsg(Arg.Any<PingMsg>());
             if (shouldRequestEnr)
             {
                 await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
@@ -877,14 +1005,80 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _msgSender.DidNotReceive().SendMsg(Arg.Is<DiscoveryMsg>(m => m is FindNodeMsg));
         }
 
+        public enum CancellationStage { WaitingForPong, BondDelay, EnrRefresh }
+
         [Test]
         [CancelAfter(10000)]
-        public void Ping_should_throw_on_lifecycle_cancellation(CancellationToken token)
+        public async Task Cancelled_request_throws_only_at_public_boundary(
+            [Values(NoResponseRequest.FindNeighbours, NoResponseRequest.SendEnrRequest)] NoResponseRequest request,
+            [Values] CancellationStage stage,
+            CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs,
+                bondWaitTime: stage == CancellationStage.EnrRefresh ? 0 : FailsafeRequestTimeoutMs);
+            if (stage != CancellationStage.WaitingForPong)
+            {
+                ConfigureBondCallback(pongEnrSequence: stage == CancellationStage.EnrRefresh ? 2UL : null);
+            }
+            TaskCompletionSource enrSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _msgSender.SendMsg(Arg.Any<EnrRequestMsg>()).Returns(_ =>
+            {
+                enrSent.TrySetResult();
+                return Task.CompletedTask;
+            });
+
+            NodeSession session = _adapter.GetSession(_receiver);
+            for (int i = 0; i < NodeSession.AuthenticatedRequestFailureLimit; i++) session.OnAuthenticatedRequestFailure();
+            Assert.That(session.NotTooManyFailure, Is.True);
+
+            using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+            AsyncLocal<bool> observing = new() { Value = true };
+            int exceptions = 0;
+            void OnException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+            {
+                if (observing.Value && args.Exception is OperationCanceledException) Interlocked.Increment(ref exceptions);
+            }
+
+            Task operation;
+            AppDomain.CurrentDomain.FirstChanceException += OnException;
+            try
+            {
+                operation = request == NoResponseRequest.FindNeighbours
+                    ? _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, caller.Token)
+                    : _adapter.SendEnrRequest(_receiver, caller.Token);
+                if (stage == CancellationStage.EnrRefresh) await enrSent.Task.WaitAsync(token);
+                Assert.That(operation.IsCompleted, Is.False);
+                await caller.CancelAsync();
+                await operation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
+            finally
+            {
+                observing.Value = false;
+                AppDomain.CurrentDomain.FirstChanceException -= OnException;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(operation.IsCanceled, Is.True);
+                Assert.That(exceptions, Is.EqualTo(1));
+                Assert.That(session.NotTooManyFailure, Is.True);
+                Assert.That(session.HasPendingBondingPing(_receiver.DiscoveryAddress), Is.False);
+                Assert.That(_receiver.RequestingEnrSequence, Is.Zero);
+            }
+            _nodeHealthTracker.DidNotReceive().OnRequestFailed(Arg.Any<Node>());
+            await _msgSender.DidNotReceive().SendMsg(Arg.Any<FindNodeMsg>());
+            await _msgSender.Received(stage == CancellationStage.EnrRefresh ? 1 : 0).SendMsg(Arg.Any<EnrRequestMsg>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_should_throw_on_lifecycle_cancellation(CancellationToken token)
         {
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             cts.Cancel();
 
-            Assert.CatchAsync<OperationCanceledException>(async () => await _adapter.Ping(_receiver, cts.Token));
+            await Assert.CatchAsync<OperationCanceledException>(async () => await _adapter.Ping(_receiver, cts.Token));
         }
 
         [Test]
@@ -898,7 +1092,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 return Task.FromException(new InvalidOperationException("send failed"));
             });
 
-            Assert.ThrowsAsync<InvalidOperationException>(async () => await _adapter.Ping(_receiver, token));
+            await Assert.ThrowsAsync<InvalidOperationException>(async () => await _adapter.Ping(_receiver, token));
             Assert.That(sent, Is.Not.Null);
             sent = AddReceiverFarAddress(sent!);
 
@@ -945,6 +1139,43 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 n.Id == _receiver.Id &&
                 n.Port == 30303 &&
                 n.DiscoveryPort == 30304));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_from_endpoint_that_fails_bonding_is_not_added_to_the_routing_table(CancellationToken token)
+        {
+            // The pong is sent, but the sender never answers our bonding ping (spoofed source).
+            _adapter = CreateAdapter(ExpiringRequestTimeoutMs);
+            PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address);
+            pingMsg.FarAddress = _receiver.Address;
+            pingMsg = AddReceiverFarAddress(pingMsg);
+
+            await _adapter.OnIncomingMsg(pingMsg);
+
+            await _msgSender.Received(1).SendMsg(Arg.Any<PongMsg>());
+            _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_flood_drops_pongs_instead_of_queueing_them_past_the_request_timeout(CancellationToken token)
+        {
+            // 1 response per second; a pong queued behind the first one would leave after the 100 ms ping timeout.
+            _adapter = CreateAdapter(ExpiringRequestTimeoutMs, maxOutgoingMessagePerSecond: 2);
+            ConfigureBondCallback();
+
+            for (int i = 0; i < 20; i++)
+            {
+                PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address);
+                pingMsg.FarAddress = _receiver.Address;
+                pingMsg = AddReceiverFarAddress(pingMsg);
+                _ = _adapter.OnIncomingMsg(pingMsg);
+            }
+
+            // Past the second response slot: a queued pong would have been sent by now.
+            await Task.Delay(1500, token);
+            await _msgSender.Received(1).SendMsg(Arg.Any<PongMsg>());
         }
 
         [TestCase(30303, true)]
@@ -1020,10 +1251,70 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             }
         }
 
+        [TestCase("192.168.1.9", 30303)]
+        [TestCase("192.168.1.2", 30304)]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_should_keep_verified_enr_when_bonded_endpoint_differs(
+            string pingAddress,
+            int pingPort,
+            CancellationToken token)
+        {
+            const ulong advertisedSequence = 2;
+            IPAddress ipv6Address = IPAddress.Parse("fd00::2");
+            _receiver = new Node(TestItem.PublicKeyB, pingAddress, 30303, pingPort);
+            IPEndPoint discoveryEndpoint = _receiver.DiscoveryAddress;
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
+                advertisedSequence,
+                advertisedSequence,
+                tcpPort: 30303,
+                configureExtras: record =>
+                {
+                    record.SetEntry(new Ip6Entry(ipv6Address));
+                    record.SetEntry(new Tcp6Entry(30305));
+                    record.SetEntry(new Udp6Entry(30306));
+                },
+                responseEndpoint: discoveryEndpoint);
+            PingMsg pingMsg = new(
+                discoveryEndpoint,
+                _timestamper.UnixTime.SecondsLong + 20,
+                discoveryEndpoint,
+                30303,
+                0)
+            {
+                FarAddress = discoveryEndpoint,
+                EnrSequence = advertisedSequence
+            };
+            pingMsg = AddReceiverFarAddress(pingMsg);
+
+            await _adapter.OnIncomingMsg(pingMsg);
+
+            Node peerNode = await ReadPeerCandidate(token);
+            NodeRecord peerEnr = peerNode.Enr
+                ?? throw new AssertionException("Expected the signed-PING candidate to retain the verified ENR.");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peerNode.Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse(pingAddress), 30303)));
+                Assert.That(peerNode.DiscoveryAddress, Is.EqualTo(discoveryEndpoint));
+                Assert.That(peerNode.IsVerifiedEnr(peerEnr), Is.True);
+                Assert.That(peerEnr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
+            }
+
+            if (Socket.OSSupportsIPv6)
+            {
+                Assert.That(RlpxHost.TryCreateAlternateDialNode(peerNode, true, out Node? alternate), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(ipv6Address, 30305)));
+                    Assert.That(alternate.DiscoveryAddress, Is.EqualTo(new IPEndPoint(ipv6Address, 30306)));
+                }
+            }
+        }
+
         [Test]
         [CancelAfter(10000)]
         public async Task OnIncomingMsg_ping_should_not_publish_when_exact_endpoint_bond_fails(CancellationToken token)
         {
+            await UseExpiringRequestTimeouts();
             IPEndPoint discoveryEndpoint = new(_receiver.Address.Address, 30304);
             ConfigureBondCallback(new IPEndPoint(IPAddress.Parse("192.168.1.9"), discoveryEndpoint.Port));
             PingMsg pingMsg = new(

@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-#if !ZK_EVM
-using System.Buffers.Binary;
-#endif
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -13,8 +11,13 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class TreePathTests
+public partial class TreePathTests
 {
+    // A hash and a length; 64 bytes if ValueHash256 were 32-byte aligned again.
+    [Test]
+    public void TreePath_holds_its_hash_without_alignment_padding() =>
+        Assert.That(Unsafe.SizeOf<TreePath>(), Is.EqualTo(40));
+
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(true, true)]
@@ -42,39 +45,6 @@ public class TreePathTests
         for (int bit = 0; bit < 32; bit++)
             Assert.That(path.GetChainedHashCode(seed ^ (1u << bit)), Is.Not.EqualTo(original), $"bit {bit}");
     }
-
-#if !ZK_EVM
-    [TestCase(0u)]
-    [TestCase(0x55555555u)]
-    [TestCase(uint.MaxValue)]
-    public void Tiny_path_chaining_breaks_raw_crc_collision_family(uint seed)
-    {
-        const int count = 256;
-        // Shifted copies of the reflected CRC32C generator leave the checksum unchanged.
-        const ulong crcKernel = 0x105EC76F1UL;
-        HashSet<int> rawHashes = [];
-        HashSet<int> chainedHashes = [];
-        for (int value = 0; value < count; value++)
-        {
-            ulong data = (ulong)TinyTreePath.MaxNibbleLength << 56;
-            for (int bit = 0; bit < 8; bit++)
-                if ((value & (1 << bit)) != 0) data ^= crcKernel << bit;
-
-            ValueHash256 hash = Keccak.Zero;
-            BinaryPrimitives.WriteUInt64LittleEndian(hash.BytesAsSpan, data);
-            TinyTreePath path = new(new TreePath(hash, TinyTreePath.MaxNibbleLength));
-            rawHashes.Add(SpanExtensions.CombineHash(seed, data));
-            chainedHashes.Add(path.GetChainedHashCode(seed));
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rawHashes.Count, Is.EqualTo(1));
-            Assert.That(chainedHashes.Count, Is.GreaterThan(count - 4));
-        }
-    }
-
-#endif
 
     [Test]
     public void TestAppend()
@@ -106,6 +76,14 @@ public class TreePathTests
         {
             Assert.That(path[i], Is.EqualTo((byte)(i % 16)));
         }
+    }
+
+    [Test]
+    public void Index_outside_the_path_throws([Values(-2, -1, 64)] int index)
+    {
+        TreePath path = new(Keccak.Zero, 64);
+        Assert.Throws<IndexOutOfRangeException>(() => _ = path[index]);
+        Assert.Throws<IndexOutOfRangeException>(() => path[index] = 1);
     }
 
     [Test]

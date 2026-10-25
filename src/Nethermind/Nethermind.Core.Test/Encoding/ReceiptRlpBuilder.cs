@@ -18,6 +18,12 @@ public static class ReceiptRlpBuilder
     /// <summary>The smallest log the decoders accept: an address, no topics and no data.</summary>
     public static LogEntry MinimalLog() => new(Address.Zero, [], []);
 
+    /// <summary>A log whose encoding clears the log-count guard's per-entry floor with a whole entry to
+    /// spare, so the guard's byte arm cannot reject it on its own.</summary>
+    /// <remarks>Two uses: beside a one-byte null placeholder it buys the placeholder its budget, and alone
+    /// it survives a one-byte under-declaration of the list header - which only an end-of-list check catches.</remarks>
+    public static LogEntry PaddedLog() => new(Address.Zero, new byte[23], []);
+
     /// <summary>Builds a log list of identical entries.</summary>
     /// <param name="logCount">Number of items to write into the receipt's log sequence.</param>
     /// <param name="log">
@@ -33,13 +39,21 @@ public static class ReceiptRlpBuilder
 
     /// <summary>Builds an eth/63 receipt body: status, cumulative gas, bloom, then the logs.</summary>
     public static byte[] EncodeReceipt(ReadOnlySpan<LogEntry?> logs) =>
-        Encode(logs, txType: null, includeBloom: true);
+        Encode(logs, txType: null, includeBloom: true, new byte[] { 1 });
 
     /// <summary>Builds an eth/69 receipt body: tx type, status, cumulative gas, then the logs - no bloom.</summary>
     public static byte[] EncodeReceipt69(TxType txType, ReadOnlySpan<LogEntry?> logs) =>
-        Encode(logs, txType, includeBloom: false);
+        Encode(logs, txType, includeBloom: false, new byte[] { 1 });
 
-    private static byte[] Encode(ReadOnlySpan<LogEntry?> logs, TxType? txType, bool includeBloom)
+    /// <summary>Builds an eth/63 receipt body with a caller-supplied first item.</summary>
+    public static byte[] EncodeReceiptWithFirstItem(ReadOnlySpan<byte> firstItem) =>
+        Encode([], txType: null, includeBloom: true, firstItem);
+
+    /// <summary>Builds an eth/69 receipt body with a caller-supplied first item.</summary>
+    public static byte[] EncodeReceipt69WithFirstItem(TxType txType, ReadOnlySpan<byte> firstItem) =>
+        Encode([], txType, includeBloom: false, firstItem);
+
+    private static byte[] Encode(ReadOnlySpan<LogEntry?> logs, TxType? txType, bool includeBloom, ReadOnlySpan<byte> firstItem)
     {
         LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
         int logsLength = 0;
@@ -49,7 +63,7 @@ public static class ReceiptRlpBuilder
         }
 
         int contentLength = (txType is null ? 0 : Rlp.LengthOf((byte)txType.Value))
-                            + Rlp.LengthOf((byte)1)
+                            + Rlp.LengthOf(firstItem)
                             + Rlp.LengthOf(GasUsedTotal)
                             + (includeBloom ? Rlp.LengthOf(Bloom.Empty) : 0)
                             + Rlp.LengthOfSequence(logsLength);
@@ -62,7 +76,7 @@ public static class ReceiptRlpBuilder
             writer.Encode((byte)txType.Value);
         }
 
-        writer.Encode((byte)1);
+        writer.Encode(firstItem);
         writer.Encode(GasUsedTotal);
         if (includeBloom)
         {

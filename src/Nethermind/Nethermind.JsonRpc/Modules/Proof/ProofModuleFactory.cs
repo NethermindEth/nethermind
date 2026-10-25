@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
@@ -15,12 +15,25 @@ using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
+    /// <param name="readOnlyQueryModules">The <see cref="ReadOnlyQueryKind.Trace"/> modules among them configure the
+    /// environment that replays blocks for proof_getTransactionReceipt.</param>
+    [method: Experimental("NMEVM0001")]
     public class ProofModuleFactory(
         ILifetimeScope rootLifetimeScope,
         IOverridableEnvFactory overridableEnvFactory,
-        IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules
+        IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules,
+        IReadOnlyQueryModule[] readOnlyQueryModules
     ) : ModuleFactoryBase<IProofRpcModule>
     {
+        /// <summary>A factory whose environment loads no read-only query modules.</summary>
+        public ProofModuleFactory(
+            ILifetimeScope rootLifetimeScope,
+            IOverridableEnvFactory overridableEnvFactory,
+            IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules)
+            : this(rootLifetimeScope, overridableEnvFactory, validationBlockProcessingModules, [])
+        {
+        }
+
         private static ITransactionProcessorAdapter CreateTraceAdapter(ITransactionProcessor transactionProcessor)
             => new TraceTransactionProcessorAdapter(transactionProcessor);
 
@@ -34,15 +47,16 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 // Standard read only chain setting
                 .AddModule(validationBlockProcessingModules)
                 .AddScoped<TransactionProcessorAdapterFactory>(CreateTraceAdapter)
-                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
                 // Specific for proof rpc
                 .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
                 .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
 
-                .AddScoped<ITracer, Tracer>());
+                .AddScoped<ITracer, Tracer>()
+
+                // Only the receipt replay runs here: proof_call generates its witness in an environment of its own.
+                .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace));
 
             // The tracer need a in memory receipts while the proof RPC does not.
             // Eh, its a good idea to separate what need block processing and what does not anyway.

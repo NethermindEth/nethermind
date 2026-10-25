@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#pragma warning disable NETH003 // Build variant: only one of EthereumEcdsa.std.cs / EthereumEcdsa.zkevm.cs is compiled per build
-
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,6 +32,21 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
     }
 
     public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => throw new NotSupportedException();
+
+    /// <summary>Recovers the signer's SEC1 uncompressed public key, <c>0x04</c> prefix included.</summary>
+    /// <remarks>The accelerator returns the 64-byte body only, so the prefix is written here to give callers the
+    /// same shape the standard build produces.</remarks>
+    public static bool RecoverPublicKeyRaw(
+        ReadOnlySpan<byte> signature64,
+        byte recoveryId,
+        ReadOnlySpan<byte> message,
+        Span<byte> publicKey65)
+    {
+        if (!RecoverAddressRaw(signature64, recoveryId, message, publicKey65[1..])) return false;
+
+        publicKey65[0] = 0x04;
+        return true;
+    }
 
     public static bool RecoverAddressRaw(
         ReadOnlySpan<byte> signature,

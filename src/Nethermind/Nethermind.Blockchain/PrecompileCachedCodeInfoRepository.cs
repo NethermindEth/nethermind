@@ -71,8 +71,19 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
         return _cachedPrecompile.TryGetValue(codeSource, out cachedCodeInfo);
     }
 
+    public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
+        vmSpec.IsPrecompile(codeSource) && TryGetCachedPrecompile(codeSource, out CodeInfo? cachedCodeInfo)
+            ? cachedCodeInfo.Precompile
+            : _baseCodeInfoRepository.GetPrecompile(codeSource, vmSpec);
+
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        _baseCodeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
+
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         _baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
+
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        _baseCodeInfoRepository.InsertTransientCode(code, codeOwner, spec);
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         _baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);

@@ -77,7 +77,8 @@ namespace Nethermind.Core.Test.Builders
                         _specProvider,
                         SyncConfig,
                         StateBoundary,
-                        _logManager);
+                        _logManager,
+                        new BlockTreeMutationLock());
                 }
 
                 return _blockTree;

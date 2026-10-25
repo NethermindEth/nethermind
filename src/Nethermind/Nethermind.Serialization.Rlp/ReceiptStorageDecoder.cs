@@ -5,12 +5,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 #pragma warning disable 618
 
 namespace Nethermind.Serialization.Rlp
 {
+    // EIP-8141: frame receipts append [payer, [frame_receipt, ...]] after the standard storage fields. Only
+    // TxType.FrameTx receipts carry the extension, so pre-fork data round-trips unchanged.
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
     public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpDecoder<TxReceipt>, IReceiptRefDecoder
@@ -45,6 +48,11 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
+                if (firstItem.Length != 0 && firstItem.Length != Hash256.Size)
+                {
+                    ThrowUnexpectedPostStateLength(firstItem.Length);
+                }
+
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
@@ -78,29 +86,47 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
+            position = decoderContext.Position;
+            if (!allowExtraBytes)
             {
-                position = decoderContext.Position;
                 RlpHelpers.Check(position, lastCheck);
+            }
 
-                // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
-                if (isStorage && supportTxHash && position < receiptEnd && rlp.Data[position] == MarkTxHashByte)
-                {
-                    position++;
-                    txReceipt.TxHash = rlp.DecodeKeccakOrNull(ref position);
-                }
+            // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
+            if (isStorage && supportTxHash && position < receiptEnd && rlp.Data[position] == MarkTxHashByte)
+            {
+                position++;
+                txReceipt.TxHash = rlp.DecodeKeccakOrNull(ref position);
+            }
 
-                // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
-                if (position < receiptEnd)
-                {
-                    txReceipt.Error = rlp.DecodeString(ref position);
-                }
+            // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
+            if (position < receiptEnd)
+            {
+                txReceipt.Error = rlp.DecodeString(ref position);
+            }
 
-                decoderContext.Position = position;
+            decoderContext.Position = position;
+
+            if (txReceipt.TxType == TxType.FrameTx && position < receiptEnd)
+            {
+                // Null-tolerant like every other address here: an earlier build wrote a payer-less receipt,
+                // and refusing to parse it would take the whole block's receipt array with it.
+                txReceipt.Payer = decoderContext.DecodeAddressOrNull();
+                txReceipt.FrameReceipts = FrameReceiptRlp.DecodeStoredFrames(ref decoderContext, LogEntryDecoder.Instance);
+            }
+
+            if (decoderContext.Position < receiptEnd && allowExtraBytes)
+            {
+                decoderContext.Position = receiptEnd;
             }
 
             txReceipt.Logs = logEntries.ToArray();
             return txReceipt;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedPostStateLength(int length)
+                => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
         }
 
         public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -180,6 +206,13 @@ namespace Nethermind.Serialization.Rlp
 
                 writer.Encode(item.Error);
             }
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                // Repeats the logs the top-level union already holds: DecodeStructRef hands eth_getLogs one
+                // contiguous LogsRlp span, which N per-frame sequences cannot supply.
+                FrameReceiptRlp.EncodeStoredExtension(ref writer, item, LogEntryDecoder.Instance);
+            }
         }
 
         private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -222,6 +255,11 @@ namespace Nethermind.Serialization.Rlp
             }
 
             contentLength += Rlp.LengthOf(item.Error);
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                contentLength += FrameReceiptRlp.GetStoredExtensionLength(item, LogEntryDecoder.Instance);
+            }
 
             return (contentLength, logsLength);
         }
@@ -318,24 +356,27 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (!allowExtraBytes)
+            if (isStorage && supportTxHash && decoderContext.Position < receiptEnd)
             {
-                if (isStorage && supportTxHash && decoderContext.Position < receiptEnd)
+                // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
+                if (decoderContext.PeekByte() == MarkTxHashByte)
                 {
-                    // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
-                    if (decoderContext.PeekByte() == MarkTxHashByte)
-                    {
-                        decoderContext.ReadByte();
-                        decoderContext.DecodeKeccakStructRef(out item.TxHash);
-                    }
+                    decoderContext.ReadByte();
+                    decoderContext.DecodeKeccakStructRef(out item.TxHash);
                 }
+            }
 
-                // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
-                if (decoderContext.Position < receiptEnd)
-                {
-                    item.Error = decoderContext.DecodeString();
-                }
+            // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
+            if (decoderContext.Position < receiptEnd)
+            {
+                item.Error = decoderContext.DecodeString();
+            }
+
+            // EIP-8141: realign to the receipt's end so the next receipt in an array stays aligned; for a frame tx
+            // this skips the trailing [payer, per-frame receipts].
+            if (decoderContext.Position < receiptEnd)
+            {
+                decoderContext.Position = receiptEnd;
             }
         }
 

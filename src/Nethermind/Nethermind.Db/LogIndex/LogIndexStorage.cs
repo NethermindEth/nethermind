@@ -548,11 +548,11 @@ namespace Nethermind.Db.LogIndex
                 throw new ArgumentException($"Unexpected blocks batch order: ({batch[0]} to {batch[^1]}).");
 
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
-                return new(batch);
+                return new(batch, isBackwardSync);
 
             long timestamp = Stopwatch.GetTimestamp();
 
-            LogIndexAggregate aggregate = new(batch);
+            LogIndexAggregate aggregate = new(batch, isBackwardSync);
             foreach ((int blockNumber, TxReceipt[] receipts) in batch)
             {
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
@@ -702,7 +702,7 @@ namespace Nethermind.Db.LogIndex
 
             long totalTimestamp = Stopwatch.GetTimestamp();
 
-            bool isBackwardSync = aggregate.LastBlockNum < aggregate.FirstBlockNum;
+            bool isBackwardSync = aggregate.IsBackwardSync;
             SemaphoreSlim semaphore = isBackwardSync ? _backwardWriteSemaphore : _forwardWriteSemaphore;
             await LockRunAsync(semaphore);
 

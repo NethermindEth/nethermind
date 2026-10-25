@@ -24,7 +24,7 @@ namespace Nethermind.TxPool
         InvalidCells,
     }
 
-    public interface ITxPool
+    public interface ITxPool : IPendingTxsBySender
     {
         int GetPendingTransactionsCount();
         int GetPendingBlobTransactionsCount();
@@ -39,6 +39,19 @@ namespace Nethermind.TxPool
         IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default);
 
         /// <summary>
+        /// Non-blob txs grouped by sender address, limited to senders holding a non-frame transaction the next
+        /// block could include. Kept buckets come back whole, frame transactions included.
+        /// </summary>
+        /// <param name="baseFee">Base fee the next block will charge.</param>
+        /// <remarks>For a caller that discards EIP-8141 frame transactions anyway: judging a bucket's frames too
+        /// costs an EIP-8250 NONCE_MANAGER state read per nonce key they select, and hands back senders holding
+        /// nothing such a caller can use.
+        /// <para>The default body only approximates that: it falls back to the full readiness filter, so an
+        /// implementation that does not override it pays those reads and may return frame-only senders.</para></remarks>
+        IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256 baseFee) =>
+            GetPendingTransactionsBySender(filterToReadyTx: true, baseFee);
+
+        /// <summary>
         /// Blob txs light equivalences grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
@@ -51,21 +64,11 @@ namespace Nethermind.TxPool
             bool filterToReadyTx,
             UInt256 baseFee = default) => GetPendingLightBlobTransactionsBySender();
 
-        /// <summary>
-        /// from a specific sender, sorted by nonce and later tx pool sorting
-        /// </summary>
-        /// <returns></returns>
-        Transaction[] GetPendingTransactionsBySender(Address address);
-
-        /// <summary>
-        /// Blob txs light equivalences from a specific sender, sorted by nonce.
-        /// </summary>
-        Transaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
+        Transaction[] IPendingTxsBySender.GetPendingLightBlobTransactionsBySender(Address address) =>
             GetPendingLightBlobTransactionsBySender().TryGetValue(address, out Transaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
-        bool ContainsTx(Hash256 hash, TxType txType);
-        AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
+        AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         /// <summary>
         /// Validates a sparse blob transaction before sampler cell retrieval without inserting it
@@ -76,17 +79,55 @@ namespace Nethermind.TxPool
         /// Allows a rejected sparse blob transaction to be retried with a different sidecar proof tuple.
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);
+        /// <summary>
+        /// Forgets <paramref name="hash"/> only if a copy of it was rejected in the current block with
+        /// <see cref="AcceptTxResult.InvalidBlobProofs"/>, so a copy carrying another sidecar can be judged.
+        /// </summary>
+        /// <returns><c>true</c> if the hash was forgotten.</returns>
+        bool ForgetInvalidBlobProofs(Hash256 hash);
         bool RemoveTransaction(Hash256? hash);
+
+        /// <summary>
+        /// Drops <paramref name="tx"/> as unbuildable, so later blocks stop re-burning its validation prefix.
+        /// </summary>
+        /// <remarks>
+        /// Everything <see cref="RemoveTransaction"/> does, plus: <see cref="EvictedPending"/> is raised after
+        /// <see cref="RemovedPending"/>, and the hash leaves the long-term known-hash cache so the same
+        /// transaction may be resubmitted. That last part is what makes this a drop rather than a verdict —
+        /// the reasons block production evicts for turn on head state and can reverse — so callers must not
+        /// use it to blacklist a transaction. For the same reason a frame transaction the pool still holds may
+        /// be granted a retry budget of <see cref="ITxPoolConfig.FrameTxEvictionRetryBudget"/> distinct chain
+        /// heads: it is kept while it has failed on fewer heads than that, and those calls report
+        /// <see langword="false"/> and retain it. The budget is counted per head, so repeated calls against the
+        /// same head spend a single unit; a budget of one (the default) drops on the first failed attempt. It is
+        /// also counted per pool residency, so a transaction resubmitted after this dropped it starts a fresh one.
+        /// Removal is atomic and the rest of the work follows it, so repeated calls are idempotent: only the
+        /// call that removes the transaction reports <see langword="true"/>, raises the events and counts the
+        /// eviction, and a call for a transaction the pool does not hold changes nothing.
+        /// Runs without the pool's head lock, so it may land at any point of a concurrent head update.
+        /// Required rather than defaulted, unlike its defaulted neighbours here, and neither candidate default
+        /// works: <c>RemoveTransaction(tx.Hash)</c> leaves the hash known, turning the drop into the blacklist this
+        /// contract forbids, and it ignores the retry budget and raises no <see cref="EvictedPending"/>, while
+        /// <c>false</c> is also the ordinary "retained, budget not yet spent" answer, so an
+        /// unimplemented member would read as a deliberate retention while every later block re-burns a prefix that
+        /// can never be paid. Declining is said outright, as <see cref="NullTxPool"/> does.
+        /// </remarks>
+        /// <param name="tx">The transaction to drop. The instance is what the events carry, so it must be the
+        /// pooled one rather than a re-decoded copy sharing its hash.</param>
+        /// <returns><see langword="true"/> if this call removed the transaction from the pool.</returns>
+        bool EvictTransaction(Transaction tx);
         Transaction? GetBestTx();
         IEnumerable<Transaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
-        bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
+        /// <summary>Checks whether a transaction hash is already known.</summary>
+        bool IsKnown(in ValueHash256 hash);
+        bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction);
 
         /// <summary>
         /// Gets a pending transaction for metadata-only consumers. Blob and cell payloads are
         /// elided from returned blob transactions while commitments and proofs are preserved.
         /// </summary>
-        bool TryGetPendingTransactionWithoutBlobs(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+        bool TryGetPendingTransactionWithoutBlobs(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction)
         {
             if (TryGetPendingTransaction(hash, out transaction) && transaction is not null)
             {
@@ -127,7 +168,7 @@ namespace Nethermind.TxPool
         /// Gets the cell availability mask of a pending blob transaction without materializing blobs or cells.
         /// </summary>
         /// <returns><c>true</c> when the transaction is present in the blob pool.</returns>
-        bool TryGetPendingBlobCellMask(Hash256 hash, out BlobCellMask availableMask);
+        bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask);
 
         /// <summary>
         /// Gets blob-cell serving metadata without materializing blob payloads or touching persistent storage.
@@ -159,6 +200,34 @@ namespace Nethermind.TxPool
             out BlobCellMask availableMask,
             [NotNullWhen(true)] out byte[][]? cells,
             [NotNullWhen(true)] out byte[][]? proofs);
+
+        /// <summary>
+        /// Gets locally available cells and V1 proofs for each of <paramref name="requestedBlobVersionedHashes"/>.
+        /// </summary>
+        /// <remarks>
+        /// The output arrays are indexed as <paramref name="requestedBlobVersionedHashes"/>, and the entry of an unknown blob hash
+        /// is set to <see langword="null"/> in <paramref name="cells"/> and <paramref name="proofs"/>. Implementations can share
+        /// work between blobs of the same transaction; this default looks each hash up on its own.
+        /// </remarks>
+        /// <returns>The number of known blob hashes, including those for which none of the requested cells are available.</returns>
+        int TryGetBlobCellsAndProofsV1(
+            byte[][] requestedBlobVersionedHashes,
+            BlobCellMask requestedMask,
+            BlobCellMask[] availableMasks,
+            byte[][]?[] cells,
+            byte[][]?[] proofs)
+        {
+            int found = 0;
+            for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
+            {
+                if (TryGetBlobCellsAndProofsV1(requestedBlobVersionedHashes[i], requestedMask, out availableMasks[i], out cells[i], out proofs[i]))
+                {
+                    found++;
+                }
+            }
+
+            return found;
+        }
 
         /// <summary>
         /// Verifies and merges newly received cells into a pending sparse blob transaction.

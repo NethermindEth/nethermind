@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Text;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -31,6 +32,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     private readonly ILogger _logger;
     private readonly TimeSpan _pollDelay;
     private readonly CancellationTokenSource _cts = new();
+    private readonly bool _verifyEveryBlock;
     private Task _loop = Task.CompletedTask;
     private HistoryWalkVerdict? _verdict;
     private bool _disposed;
@@ -68,8 +70,10 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         _logger = logManager.GetClassLogger<HistoryWalkVerificationCoordinator>();
         _pollDelay = pollDelay ?? DefaultPollDelay;
 
-        Started = config.HistoryVerifyEveryBlock;
+        _verifyEveryBlock = config.HistoryVerifyEveryBlock;
         _retrofit = retrofit.Enabled ? retrofit : null;
+        // A history started at a snap pivot builds its commitments with the walk, from the pivot's image up.
+        Started = _verifyEveryBlock || (_retrofit is not null && !rowFormat.IsV3);
 
         // Constructed only when the flag is on: the verifier refuses a windowed database in its constructor, and
         // that refusal must fire exactly when the operator asked for a verification the mode cannot deliver -
@@ -77,7 +81,8 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         if (Started)
         {
             HistoryWalkVerifier.RequireUnwindowed(rowFormat);
-            _verifierFactory = rows => new HistoryWalkVerifier(db, history, headers, rowFormat, logManager, rows, _retrofit, _metadata);
+            IHistoryHeaderSource walkHeaders = new PivotImageHeaderSource(headers, availability);
+            _verifierFactory = rows => new HistoryWalkVerifier(db, history, walkHeaders, rowFormat, logManager, rows, _retrofit, _metadata);
         }
     }
 
@@ -91,6 +96,15 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
             return;
         }
 
+        // Started only to build a snap pivot's commitments: a checkpoint without a pivot image is from a run with the
+        // flag on, and this run will never resume it. A history that already has a watermark but no image started at
+        // genesis, so no image will ever come and there is nothing to wait for.
+        if (!_verifyEveryBlock && !_availability.TryGetPivotImageBlock(out _))
+        {
+            AbandonLeftoverWalk();
+            if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0) return;
+        }
+
         if (!ReferenceEquals(_loop, Task.CompletedTask)) return;
         _loop = RunAsync();
     }
@@ -100,22 +114,20 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         if (!_metadata.TryGetWalkInProgress(out ulong from, out ulong to)) return;
 
         DiscardWalk();
+        _retrofit?.ResumeReclaim();
         if (_logger.IsInfo) _logger.Info($"History walk verification is off, so the run interrupted over [{from}, {to}] is abandoned: its checkpoint and scratch series are deleted and commitment reclaim no longer waits for it. Turning FlatDb.HistoryVerifyEveryBlock back on starts a new walk.");
     }
 
     private void DiscardWalk()
     {
         _metadata.ClearWalk(HistoryWalkRun.WorkItems);
-        using (SeriesWriter scratch = new(_history))
-        {
-            scratch.DeleteAllScratch();
-        }
-
-        _retrofit?.ResumeReclaim();
+        using SeriesWriter scratch = new(_history);
+        scratch.DeleteAllScratch();
     }
 
-    /// <summary>Whether this instance actually started its background verification - false means
-    /// <c>FlatDb.HistoryVerifyEveryBlock</c> is off and this coordinator is a permanent no-op.</summary>
+    /// <summary>Whether this instance runs the walk: with <c>FlatDb.HistoryVerifyEveryBlock</c> on, or with archive
+    /// proofs built on unwindowed history, where it builds the commitments of a snap pivot. False means a permanent
+    /// no-op.</summary>
     public bool Started { get; }
 
     /// <summary>The completed run's verdict, or <c>null</c> while none has finished.</summary>
@@ -131,7 +143,8 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         {
             while (!token.IsCancellationRequested)
             {
-                if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0)
+                if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0
+                    && (_verifyEveryBlock || _availability.TryGetPivotImageBlock(out _)))
                 {
                     WalkResources resources = WalkResources.Resolve(_config);
                     int workers = resources.Workers;
@@ -140,8 +153,13 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                     _retrofit?.Prepare();
                     ulong from = _retrofit?.FirstBlockToBuild(watermark) ?? 0;
+                    // A history started at a snap pivot has no rows below its image, so the walk starts there.
+                    bool fromPivot = _availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock >= from;
+                    if (fromPivot) from = imageBlock;
                     ulong to = watermark;
-                    if (from > 0 && _logger.IsInfo) _logger.Info(
+                    if (fromPivot && _logger.IsInfo) _logger.Info(
+                        $"History walk will cover [{from}, {to}]: history starts at the snap-sync pivot, whose state was recorded at block {from}; it builds the proof commitments from there.");
+                    else if (from > 0 && _logger.IsInfo) _logger.Info(
                         $"History walk verification will cover [{from}, {to}] rather than the whole chain: only the most recent commitment epochs are kept, so the blocks below that are neither built nor served, and the walk is a fraction of the work.");
 
                     if (!_metadata.TryGetWalkInProgress(out _, out _) && _metadata.TryGetWalkVerified(out ulong verifiedFrom, out ulong verifiedTo) && verifiedFrom <= from && verifiedTo >= from
@@ -161,17 +179,41 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                     if (_metadata.TryGetWalkInProgress(out ulong pendingFrom, out ulong pendingTo))
                     {
-                        if (TipCovers(pendingFrom, pendingTo) && VerifiedReaches(pendingFrom))
+                        if (TipCovers(pendingFrom, pendingTo) && VerifiedReaches(pendingFrom)
+                            && (_retrofit is null || CoverageIncludes(from, pendingTo)))
                         {
                             DiscardWalk();
+                            _retrofit?.ResumeReclaim();
                             if (_logger.IsInfo) _logger.Info(
                                 $"History walk verification dropped its unfinished run over [{pendingFrom}, {pendingTo}]: the tip has committed those blocks itself, and a walk over them would scan the whole key space to find them.");
                             return;
                         }
 
-                        from = pendingFrom;
-                        to = pendingTo;
-                        if (_logger.IsInfo) _logger.Info($"History walk verification resuming the interrupted run over [{from}, {to}].");
+                        string? restartReason = GetRestartReason(from, pendingFrom);
+                        if (restartReason is not null)
+                        {
+                            DiscardWalk();
+                            if (TryGetCompletedPrefix(from, out ulong completedTo))
+                            {
+                                if (completedTo >= to || TipCovers(completedTo + 1, to))
+                                {
+                                    _retrofit?.ResumeReclaim();
+                                    if (_logger.IsWarn) _logger.Warn($"History walk discarded checkpoint [{pendingFrom}, {pendingTo}]: {restartReason}; the requested range [{from}, {to}] is already complete.");
+                                    return;
+                                }
+
+                                ulong granularity = _retrofit?.WindowGranularity ?? 1;
+                                ulong next = completedTo + 1;
+                                from = Math.Max(from, next - next % granularity);
+                            }
+                            if (_logger.IsWarn) _logger.Warn($"History walk restarting over [{from}, {to}]: {restartReason} in the interrupted range [{pendingFrom}, {pendingTo}].");
+                        }
+                        else
+                        {
+                            from = pendingFrom;
+                            to = pendingTo;
+                            if (_logger.IsInfo) _logger.Info($"History walk verification resuming the interrupted run over [{from}, {to}].");
+                        }
                     }
                     while (true)
                     {
@@ -231,8 +273,68 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         }
     }
 
+    /// <summary>A history started at a snap pivot records the pivot's state at the start of its checkpoint window, so
+    /// the rows rebuild the pivot's root at every block from there up to the pivot; those blocks are below the floor
+    /// and never served, and the walk compares them against the pivot's own root. Both blocks are published together
+    /// and an unwindowed floor never moves, so they are read once.</summary>
+    private sealed class PivotImageHeaderSource(IHistoryHeaderSource inner, HistoryAvailability availability) : IHistoryHeaderSource
+    {
+        // A reference, so the walk's workers never see half of it.
+        private ImageRange? _image;
+
+        public ValueHash256? TryGetStateRoot(ulong block) =>
+            TryGetImage(out ulong imageBlock, out ulong floor) && block >= imageBlock && block < floor
+                ? inner.TryGetStateRoot(floor)
+                : inner.TryGetStateRoot(block);
+
+        private bool TryGetImage(out ulong imageBlock, out ulong floor)
+        {
+            ImageRange? range = Volatile.Read(ref _image);
+            if (range is null && availability.TryGetPivotImageBlock(out ulong image) && availability.TryGetGlobalFloor(out ulong published))
+            {
+                range = new ImageRange(image, published);
+                Volatile.Write(ref _image, range);
+            }
+
+            imageBlock = range?.ImageBlock ?? 0;
+            floor = range?.Floor ?? 0;
+            return range is not null;
+        }
+
+        private sealed record ImageRange(ulong ImageBlock, ulong Floor);
+    }
+
+    private string? GetRestartReason(ulong from, ulong pendingFrom)
+    {
+        if (!_metadata.TryGetWalkMode(out bool buildCommitments)) return "checkpoint mode is missing or invalid (legacy checkpoints require a one-time restart)";
+        if (buildCommitments != (_retrofit is not null)) return "checkpoint mode differs from the requested mode";
+        if (_retrofit is null) return null;
+        if (pendingFrom % _retrofit.WindowGranularity != 0) return "checkpoint start is not aligned for proof building";
+        return pendingFrom > from && !CoverageIncludes(from, pendingFrom - 1) ? "checkpoint leaves an unbuilt proof prefix" : null;
+    }
+
+    /// <summary>Finds a completed contiguous prefix of the requested range.</summary>
+    /// <remarks>A verified prefix is required even when tip capture has published coverage from genesis:
+    /// tip capture alone does not replace the first walk and its epoch snapshots. In build mode, published coverage
+    /// must contain the requested start; its frontier may trail verification or extend past it with contiguous
+    /// tip commitments. Verification alone cannot stand in for unbuilt proofs.</remarks>
+    private bool TryGetCompletedPrefix(ulong from, out ulong completedTo)
+    {
+        if (!_metadata.TryGetWalkVerified(out ulong verifiedFrom, out completedTo)
+            || verifiedFrom > from || completedTo < from) return false;
+        if (_retrofit is null) return true;
+        if (!_metadata.TryGetCoverage(out ulong coveredFrom, out ulong coveredTo)
+            || coveredFrom > from || coveredTo < from) return false;
+
+        completedTo = coveredTo;
+        return true;
+    }
+
     private bool TipCovers(ulong fromInclusive, ulong toInclusive) =>
         _metadata.TryGetTipSeries(out ulong start, out ulong frontier) && start <= fromInclusive && frontier >= toInclusive;
+
+    private bool CoverageIncludes(ulong fromInclusive, ulong toInclusive) =>
+        _metadata.TryGetCoverage(out ulong start, out ulong frontier) && start <= fromInclusive && frontier >= toInclusive;
 
     private bool VerifiedReaches(ulong fromInclusive) =>
         fromInclusive > 0 && _metadata.TryGetWalkVerified(out ulong _, out ulong verified) && verified >= fromInclusive - 1;

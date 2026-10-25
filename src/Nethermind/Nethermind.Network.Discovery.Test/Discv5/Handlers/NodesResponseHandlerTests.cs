@@ -115,6 +115,32 @@ public class NodesResponseHandlerTests
         AssertUniqueNodeIds(nodes);
     }
 
+    [Test]
+    public void ShouldFilterInvalidEndpointsDuplicatesAndUnrequestedDistancesAcrossBatches()
+    {
+        Node receiver = new(TestItem.PublicKeyA, "8.8.8.8", 30303);
+        NodeRecord invalid = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
+        NodeRecord valid = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.4.4"));
+        NodeRecord duplicate = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("1.1.1.1"));
+        NodeRecord self = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
+        using Distances distances = CreateDistances(receiver, valid);
+        using NodesResponseHandler handler = new(receiver, distances, ValueHash256KademliaDistance.Instance, IPAddress.Any);
+        using NodesMsg first = new([1], 2, [invalid, valid, self]);
+        using NodesMsg second = new([1], 2, [duplicate, valid]);
+
+        handler.Handle(first);
+        handler.Handle(second);
+
+        Node[] nodes = handler.GetNodes();
+        Assert.That(nodes, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes[0].Id, Is.EqualTo(TestItem.PublicKeyB));
+            Assert.That(nodes[0].Host, Is.EqualTo("8.8.4.4"));
+            Assert.That(nodes[0].DiscoveryPort, Is.EqualTo(30303));
+        }
+    }
+
     private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, bool includeEth2 = false) =>
         TestEnrBuilder.BuildSigned(
             privateKey,

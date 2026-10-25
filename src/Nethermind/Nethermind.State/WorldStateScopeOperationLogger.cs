@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -22,17 +23,44 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasRoot(BlockHeader? baseBlock) =>
         baseScopeProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
+        baseScopeProvider.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
+        if (!baseScopeProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
+        {
+            scope = null;
+            return false;
+        }
+
         long scopeId = Interlocked.Increment(ref _currentScopeId);
-        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
+        scope = new ScopeWrapper(innerScope, scopeId, _logger);
+        return true;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!baseScopeProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        long scopeId = Interlocked.Increment(ref _currentScopeId);
+        scope = new ScopeWrapper(innerScope, scopeId, _logger);
+        return true;
     }
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
     {
-        public void HintWarmAccount(in ValueAddress address) => innerScope.HintWarmAccount(in address);
+        public void HintWarmAccount(Address address) => innerScope.HintWarmAccount(address);
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => innerScope.HintWarmSlot(in address, in index);
+        public void HintWarmSlot(Address address, in UInt256 index) => innerScope.HintWarmSlot(address, in index);
+
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => innerScope.Prefetch(accounts, slots, cancellationToken);
+
+        public bool SupportsPrefetch => innerScope.SupportsPrefetch;
 
         public void Dispose()
         {
@@ -41,6 +69,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
 
         public Hash256 RootHash => innerScope.RootHash;
+        public bool StorageRootsAreAuthoritative => innerScope.StorageRootsAreAuthoritative;
 
         public void UpdateRootHash()
         {
@@ -59,6 +88,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => innerScope.HintBal(bal, sink);
+
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
+            => innerScope.ApplyBal(bal, cancellationToken);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 
@@ -96,6 +128,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
 
         public void HintSet(in UInt256 index) => storageTree.HintSet(in index);
+
+        public void HintSet(in UInt256 index, in UInt256 value) => storageTree.HintSet(in index, in value);
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch

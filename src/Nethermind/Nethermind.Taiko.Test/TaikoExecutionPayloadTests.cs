@@ -2,14 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Taiko.TaikoSpec;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Taiko.Test;
 
@@ -24,6 +35,37 @@ namespace Nethermind.Taiko.Test;
 [Parallelizable(ParallelScope.All)]
 public class TaikoExecutionPayloadTests
 {
+    [Test]
+    public async Task GetPayloadV2_keeps_Taiko_fork_rules_and_block_value([Values] bool unzenEnabled)
+    {
+        TaikoReleaseSpec spec = new()
+        {
+            IsUnzenEnabled = unzenEnabled,
+            IsEip4844Enabled = unzenEnabled,
+            TaikoL2Address = Address.Zero
+        };
+        Block block = Build.A.Block.WithDifficulty(7).TestObject;
+        IPayloadPreparationService payloadService = Substitute.For<IPayloadPreparationService>();
+        payloadService.GetPayload(Arg.Any<string>()).Returns(new BlockProductionSnapshot(block, UInt256.One));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new TaikoModule())
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec))
+            .AddSingleton<IPayloadPreparationService>(payloadService)
+            .Build();
+        IAsyncHandler<byte[], GetPayloadV2Result?> handler = container.Resolve<IAsyncHandler<byte[], GetPayloadV2Result?>>();
+
+        ResultWrapper<GetPayloadV2Result?> result = await handler.HandleAsync(new byte[8]);
+
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.ExecutionPayload, Is.TypeOf<TaikoExecutionPayload>());
+            Assert.That(result.Data.BlockValue, Is.EqualTo(unzenEnabled ? block.Difficulty : UInt256.One));
+        }
+    }
+
     /// <summary>Builds a minimal payload that exercises the empty-block branch of <see cref="TaikoExecutionPayload.TryGetBlock"/>.</summary>
     private static TaikoExecutionPayload BuildEmptyPayload() => new()
     {
@@ -66,6 +108,7 @@ public class TaikoExecutionPayloadTests
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
         Assert.That(result.Data.Header.RequestsHash, Is.EqualTo(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash));
+        Assert.That(result.Data.Withdrawals, Is.Empty);
         // A strict V2 driver (Rust) omits the blob gas fields; Unzen must still pin them to 0
         // so the reconstructed hash matches the producer's.
         Assert.That(result.Data.Header.BlobGasUsed, Is.EqualTo(0UL));

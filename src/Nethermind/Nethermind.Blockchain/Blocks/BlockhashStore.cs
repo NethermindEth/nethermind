@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText:2023 Demerzel Solutions Limited
 // SPDX-License-Identifier:LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -17,7 +17,6 @@ namespace Nethermind.Blockchain.Blocks;
 
 public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAccessList
 {
-
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
         if (!TryGetParentHashCell(blockHeader, spec, out StorageCell blockHashStoreCell)) return;
@@ -31,29 +30,32 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAcces
             ? AccessList.ForSingleStorageCell(in blockHashStoreCell)
             : null;
 
-    private bool TryGetParentHashCell(BlockHeader header, IReleaseSpec spec, out StorageCell blockHashStoreCell)
+    /// <summary>
+    /// Resolves the EIP-2935 history contract that must record <paramref name="header"/>'s parent hash.
+    /// </summary>
+    /// <returns><c>false</c> when the block records no parent hash: EIP-2935 is off, the block is genesis, or no contract is deployed.</returns>
+    public bool TryGetHistoryContract(BlockHeader header, IReleaseSpec spec, [NotNullWhen(true)] out Address? historyContract)
     {
-        blockHashStoreCell = default;
+        historyContract = null;
         if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null) return false;
 
         Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         if (!worldState.IsContract(eip2935Account)) return false;
 
+        historyContract = eip2935Account;
+        return true;
+    }
+
+    private bool TryGetParentHashCell(BlockHeader header, IReleaseSpec spec, out StorageCell blockHashStoreCell)
+    {
+        if (!TryGetHistoryContract(header, spec, out Address? eip2935Account))
+        {
+            blockHashStoreCell = default;
+            return false;
+        }
+
         blockHashStoreCell = new StorageCell(eip2935Account, new UInt256((ulong)(header.Number - 1) % spec.Eip2935RingBufferSize));
         return true;
     }
 
-    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec)
-    {
-        if (requiredBlockNumber >= currentHeader.Number ||
-            requiredBlockNumber + spec.Eip2935RingBufferSize < currentHeader.Number)
-        {
-            return null;
-        }
-        UInt256 blockIndex = new(requiredBlockNumber % spec.Eip2935RingBufferSize);
-        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        worldState.Get(blockHashStoreCell, out UInt256 data);
-        return data.IsZero ? null : new Hash256(data.ToBigEndian());
-    }
 }

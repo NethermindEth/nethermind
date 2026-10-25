@@ -10,7 +10,9 @@ internal sealed class BlobProofsTxFilter : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (tx is not { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper })
+        // EIP-8141: a blob-carrying frame tx (type 6) shares the EIP-7594 wrapper with type-3, and
+        // MalformedTxFilter skips proofs, so gating on the type alone would leave type-6 unverified.
+        if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper wrapper } || !(tx.SupportsBlobs || tx.CarriesBlobs))
         {
             return AcceptTxResult.Accepted;
         }

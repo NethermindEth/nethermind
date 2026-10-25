@@ -59,7 +59,15 @@ namespace Nethermind.JsonRpc
         /// The execution-apis block access list methods use a dedicated code while keeping
         /// <c>Resource not found</c> as the error message.
         /// </remarks>
-        public const int BlockAccessListResourceNotFound = -32001;
+        public const int BlockAccessListResourceNotFound = StandardResourceNotFound;
+
+        /// <summary>
+        /// Requested resource not found, with the code EIP-1474 and the execution-apis specification assign
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ResourceNotFound"/> keeps <see cref="Default"/> for the methods that already return it.
+        /// </remarks>
+        public const int StandardResourceNotFound = -32001;
 
         /// <summary>
         /// Transaction creation failed
@@ -85,6 +93,12 @@ namespace Nethermind.JsonRpc
         /// Request exceeds defined timeout limit
         /// </summary>
         public const int Timeout = -32016;
+
+        /// <summary>
+        /// Transaction was added to the pool but not included before the <c>eth_sendRawTransactionSync</c> timeout
+        /// </summary>
+        /// <remarks>See <see href="https://eips.ethereum.org/EIPS/eip-7966">EIP-7966</see>.</remarks>
+        public const int TxSyncTimeout = 4;
 
         /// <summary>
         /// Request exceeds defined timeout limit
@@ -177,9 +191,11 @@ namespace Nethermind.JsonRpc
         public const int VMError = -32015;
 
         /// <summary>
-        /// True for the JSON-RPC 2.0 pre-defined request errors (<see cref="ParseError"/>, <see cref="InvalidRequest"/>,
-        /// <see cref="MethodNotFound"/>, <see cref="InvalidParams"/>): the request itself was wrong, which is the
-        /// caller's fault rather than a condition of this node.
+        /// True for errors whose volume a single unauthenticated caller controls, and which no operator
+        /// action would prevent: the JSON-RPC 2.0 pre-defined request errors
+        /// (<see cref="ParseError"/>, <see cref="InvalidRequest"/>, <see cref="MethodNotFound"/>,
+        /// <see cref="InvalidParams"/>) and the application guard rails (<see cref="ResourceUnavailable"/>,
+        /// <see cref="LimitExceeded"/>, <see cref="PrunedHistoryUnavailable"/>).
         /// <para>
         /// The code alone is not always enough: <see cref="InvalidRequest"/> is also returned for a namespace that
         /// is disabled for the requested URL or endpoint, which is a condition of this node. Those errors set
@@ -187,6 +203,7 @@ namespace Nethermind.JsonRpc
         /// </para>
         /// </summary>
         public static bool IsRequestError(int code) =>
-            code is ParseError or InvalidRequest or MethodNotFound or InvalidParams;
+            code is ParseError or InvalidRequest or MethodNotFound or InvalidParams
+                or ResourceUnavailable or LimitExceeded or PrunedHistoryUnavailable;
     }
 }

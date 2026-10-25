@@ -13,6 +13,13 @@ public enum ReaderFlags
 {
     None = 0,
     Sync = 1,
+
+    /// <summary>
+    /// The reader serves long sequential scans (e.g. flat-trie verification): backing snapshots may enable
+    /// readahead iterators for <see cref="ReadFlags.HintReadAhead"/> reads, and the shared reader cache in
+    /// <see cref="CachedReaderPersistence"/> is bypassed so the hint reaches the storage layer.
+    /// </summary>
+    FullScan = 2,
 }
 
 public interface IPersistence
@@ -42,6 +49,46 @@ public interface IPersistence
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         bool IsPreimageMode { get; }
+    }
+
+    /// <summary>A persistence reader that can start reading accounts and slots from its store ahead of use.</summary>
+    /// <remarks>
+    /// An optional capability, so readers that cannot prefetch, test doubles included, need not implement it. The spans
+    /// are the caller's scratch: readers filter them in place, so their contents may change.
+    /// </remarks>
+    public interface IPrefetchingReader
+    {
+        /// <summary>
+        /// Decides from a few sampled keys which columns of a block are worth prefetching, before the caller collects
+        /// every key, so a block that needs no prefetch pays only for the samples.
+        /// </summary>
+        /// <param name="accountSamples">Up to <see cref="BasePersistence.PrefetchSamples"/> accounts spread over the block's accounts; may be filtered in place.</param>
+        /// <param name="slotSamples">Up to <see cref="BasePersistence.PrefetchSamples"/> slots spread over the block's slots; may be filtered in place.</param>
+        PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples);
+
+        /// <summary>Starts reading the <paramref name="columns"/> of <paramref name="accounts"/> and <paramref name="slots"/> from the store so later reads find them in memory.</summary>
+        /// <param name="columns">The columns <see cref="PlanPrefetch"/> chose; the others are not read.</param>
+        /// <param name="accounts">The accounts to read ahead. The reader may reorder, filter or overwrite them in place.</param>
+        /// <param name="slots">The slots to read ahead. The reader may reorder, filter or overwrite them in place.</param>
+        /// <remarks>
+        /// Best effort: the call returns without waiting for the reads, never reports a failed read, and does not change
+        /// what later reads return. The spans are used only during the call and are not kept.
+        /// </remarks>
+        void Prefetch(PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken);
+
+        /// <summary>Whether <see cref="Prefetch"/> reads anything ahead. A wrapper reports what the reader it wraps reports,
+        /// so a caller that gets false skips collecting the keys.</summary>
+        bool SupportsPrefetch { get; }
+    }
+
+    /// <summary>The columns of one block that <see cref="IPrefetchingReader.PlanPrefetch"/> decided to prefetch.</summary>
+    [Flags]
+    public enum PrefetchColumns
+    {
+        None = 0,
+        Accounts = 1,
+        Slots = 2,
+        All = Accounts | Slots,
     }
 
     public interface IWriteBatch : IDisposable
@@ -79,6 +126,12 @@ public interface IPersistence
     /// <summary>
     /// Iterator for iterating over flat storage key-value pairs. This is mainly used in verifytrie.
     /// </summary>
+    /// <remarks>
+    /// <see cref="CurrentValue"/> may point into the underlying store's buffer and is only valid
+    /// until the next <see cref="MoveNext"/> or <see cref="IDisposable.Dispose"/> call.
+    /// Reading <see cref="CurrentKey"/> or <see cref="CurrentValue"/> before the first
+    /// <see cref="MoveNext"/>, or after one returned <c>false</c>, is undefined.
+    /// </remarks>
     public interface IFlatIterator : IDisposable
     {
         bool MoveNext();

@@ -3,7 +3,9 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
@@ -13,14 +15,16 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.State.Flat.History.Changesets;
+using Nethermind.Core.Container;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Api;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -38,6 +42,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
+            .AddSingleton<FlatTrieVerifier, IFlatDbManager, IPersistence, ILogManager, IInitConfig>((flatDbManager, persistence, logManager, initConfig) =>
+                new FlatTrieVerifier(flatDbManager, persistence, logManager, Path.Combine(initConfig.BaseDbPath, "verify-trie")))
             .AddSingleton<FlatStateBoundary>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.
@@ -93,7 +99,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatFullStateFinder>()
 
             // Persistences
-            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat, static settings => settings.PersistRepairMarkerUntilAcknowledged = true)
             .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx => ctx
                 .Resolve<IDbFactory>()
                 .CreateDb(new DbSettings(
@@ -101,11 +107,21 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     Path.Combine("persistedSnapshot", "catalog"))))
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
+            .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, IFileSystem, ILogManager>((cfg, initConfig, db, fileSystem, logManager) =>
+            {
+                string basePath = fileSystem.Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog");
+                // The log is recovered across restarts, keeping its deduplication window, unless it is now disabled or
+                // its shard layout changed; then whatever the previous run left is merged into RocksDB first.
+                if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, fileSystem, cfg))
+                    TrieNodeLog.MergeAllOnDisk(basePath, fileSystem, db, logManager);
+                return cfg.TrieNodeLogEnabled
+                    ? new TrieNodeLog(basePath, fileSystem, db, cfg, logManager)
+                    : NullTrieNodeLog.Instance;
+            })
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
+            .Add<CarryForwardCachingPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
-
-            .AddDatabase(DbNames.Preimage)
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {
@@ -114,18 +130,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
-                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout),
+                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout, ctx.Resolve<ITrieNodeLog>()),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
-                if (flatDbConfig.EnablePreimageRecording)
-                {
-                    IDb preimageDb = ctx.ResolveKeyed<IDb>(DbNames.Preimage);
-                    persistence = new PreimageRecordingPersistence(persistence, preimageDb);
-                }
-
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
-                return new CarryForwardCachingPersistence(cachedReader);
+                return flatDbConfig.EnableCarryForwardCache
+                    ? ctx.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(cachedReader))
+                    : cachedReader;
             })
             ;
 
@@ -137,11 +149,19 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
         }
 
+        // Registered unconditionally so `nethermind import-flat-db` can always find it. Carrying
+        // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
+        builder
+            .AddSingleton<Importer>()
+            .AddStep(typeof(ImportFlatDb));
+
         if (flatDbConfig.ImportFromPruningTrieState)
+            builder.SelectStepTarget(typeof(ImportFlatDb));
+
+        // Only pulls the state DB open during init; PruningTrieStoreModule still decides.
+        if (flatDbConfig.DropPruningTrieState)
         {
-            builder
-                .AddSingleton<Importer>()
-                .AddStep(typeof(ImportFlatDb));
+            builder.AddStep(typeof(DropPruningTrieState));
         }
 
         builder.RegisterInstance(NullHistoricalTrieVisitor.Instance)
@@ -184,16 +204,26 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());
+            if (flatDbConfig.HistoryTransactionIndexEnabled)
+            {
+                builder
+                    .AddSingleton<IInlineCapturePolicy, InlineCapturePolicy>()
+                    .AddSingleton<InlineChangesetCapture>()
+                    .AddSingleton<IMainProcessingModule, InlineChangesetCaptureModule>();
+            }
         }
         else if (flatDbConfig.IsHistoryWindowed()
             || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
             || flatDbConfig.HistoryVerifyEveryBlock
             || flatDbConfig.ArchiveProofBuildEnabled
-            || flatDbConfig.ArchiveProofServeEnabled)
+            || flatDbConfig.ArchiveProofServeEnabled
+            || flatDbConfig.HistoryTransactionIndexEnabled
+            || flatDbConfig.HistoryTransactionIndexRetrofitFromBlock != 0)
         {
             throw new InvalidConfigurationException(
                 "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses, FlatDb.HistoryVerifyEveryBlock, " +
-                "FlatDb.ArchiveProofBuildEnabled and FlatDb.ArchiveProofServeEnabled all require FlatDb.HistoryEnabled: " +
+                "FlatDb.ArchiveProofBuildEnabled, FlatDb.ArchiveProofServeEnabled, FlatDb.HistoryTransactionIndexEnabled and " +
+                "FlatDb.HistoryTransactionIndexRetrofitFromBlock all require FlatDb.HistoryEnabled: " +
                 "with it off no history is captured, so these settings would be silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
     }

@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
@@ -30,6 +31,12 @@ public static class JsonRpcResponseWriter
         SkipValidation = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
+    private static readonly ArrayBufferWriter<byte> DetachedOutput = new(1);
+
+    [ThreadStatic] private static Utf8JsonWriter? _cachedWriter;
+    [ThreadStatic] private static JsonSerializerOptions? _cachedWriterOptions;
+    [ThreadStatic] private static ArrayBufferWriter<byte>? _payloadBuffer;
+    private const int MaxCachedPayloadBufferSize = 16 * 1024;
 
     /// <summary>Writes <paramref name="response"/> as a JSON-RPC response envelope.</summary>
     public static void Write(IBufferWriter<byte> writer, JsonRpcResponse response, JsonSerializerOptions options)
@@ -40,8 +47,40 @@ public static class JsonRpcResponseWriter
             return;
         }
 
-        using Utf8JsonWriter jsonWriter = new(writer, CreateWriterOptions(options));
-        response.WriteTo(jsonWriter, options);
+        Utf8JsonWriter jsonWriter = RentWriter(writer, options);
+        try
+        {
+            response.WriteTo(jsonWriter, options);
+            jsonWriter.Flush();
+        }
+        catch
+        {
+            jsonWriter.Dispose();
+            throw;
+        }
+
+        ReturnWriter(jsonWriter, options);
+    }
+
+    private static void ReturnWriter(Utf8JsonWriter writer, JsonSerializerOptions options)
+    {
+        // Detach so the cached writer does not keep the transport buffer alive.
+        writer.Reset(DetachedOutput);
+        _cachedWriter = writer;
+        _cachedWriterOptions = options;
+    }
+
+    private static Utf8JsonWriter RentWriter(IBufferWriter<byte> output, JsonSerializerOptions options)
+    {
+        Utf8JsonWriter? cached = _cachedWriter;
+        if (cached is null || !ReferenceEquals(_cachedWriterOptions, options))
+        {
+            return new Utf8JsonWriter(output, CreateWriterOptions(options));
+        }
+
+        _cachedWriter = null;
+        cached.Reset(output);
+        return cached;
     }
 
     /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>
@@ -49,15 +88,94 @@ public static class JsonRpcResponseWriter
         => WriteAsync(writer, response, options, isBatch: false, cancellationToken);
 
     /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>
+    /// <remarks>
+    /// Only a deferred execution result is staged for recovery; any other streamable result is written directly into
+    /// <paramref name="writer"/>. A replaced failure is reported through <see cref="JsonRpcResponseWriteOutcome.Of"/>.
+    /// </remarks>
     public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch, CancellationToken cancellationToken)
     {
-        if (response.TryGetStreamableResult(out IStreamableResult? streamable))
+        if (!response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
-            return WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+            Write(writer, response, options);
+            return ValueTask.CompletedTask;
         }
 
-        Write(writer, response, options);
-        return ValueTask.CompletedTask;
+        if (response.StreamedResultObservation is { } observation)
+        {
+            return WriteObservedAsync(writer, response, observation, streamable, options, isBatch, cancellationToken);
+        }
+
+        if (response.Streaming is { } streaming)
+        {
+            return WriteDeferredAsync(writer, response, streaming, streamable, options, isBatch, cancellationToken);
+        }
+
+        return cancellationToken.IsCancellationRequested
+            ? CancelledAsync(cancellationToken)
+            : WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+    }
+
+    /// <summary>Writes a streamed result as <see cref="WriteAsync(PipeWriter, JsonRpcResponse, JsonSerializerOptions, bool, CancellationToken)"/> does, reporting it to its observer.</summary>
+    private static async ValueTask WriteObservedAsync(
+        PipeWriter writer,
+        JsonRpcResponse response,
+        StreamedResultObservation observation,
+        IStreamableResult streamable,
+        JsonSerializerOptions options,
+        bool isBatch,
+        CancellationToken cancellationToken)
+    {
+        bool written = false;
+        try
+        {
+            if (response.Streaming is { } streaming)
+            {
+                await WriteDeferredAsync(writer, response, streaming, streamable, options, isBatch, cancellationToken);
+                written = streaming.Replacement is null;
+            }
+            else
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+                written = true;
+            }
+        }
+        finally
+        {
+            observation.Complete(written);
+        }
+    }
+
+    /// <summary>Completes as cancelled with the <see cref="OperationCanceledException"/> itself, as an async method does.</summary>
+    private static async ValueTask CancelledAsync(CancellationToken cancellationToken) =>
+        await ValueTask.FromException(new OperationCanceledException(cancellationToken));
+
+    private static async ValueTask WriteDeferredAsync(
+        PipeWriter writer,
+        JsonRpcResponse response,
+        JsonRpcService.StreamingContext streaming,
+        IStreamableResult streamable,
+        JsonSerializerOptions options,
+        bool isBatch,
+        CancellationToken cancellationToken)
+    {
+        bool? success = null;
+        try
+        {
+            streaming.Replacement = writer is RewindableStreamPipeWriter buffered
+                ? await WriteRewindableStreamableAsync(buffered, response, streamable, options, isBatch, cancellationToken)
+                : await WriteStreamableWithErrorHandlingAsync(writer, response, streamable, options, isBatch, cancellationToken);
+            success = streaming.Replacement?.Success ?? true;
+        }
+        catch when (!cancellationToken.IsCancellationRequested)
+        {
+            success = false;
+            throw;
+        }
+        finally
+        {
+            streaming.Complete(success);
+        }
     }
 
     /// <summary>Writes the opening token for a JSON-RPC batch response.</summary>
@@ -85,6 +203,65 @@ public static class JsonRpcResponseWriter
     public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>
         response?.IsResourceUnavailableError == true;
 
+    /// <returns>The outcome of the error that replaced a failure, or <see langword="null"/> after success.</returns>
+    private static async ValueTask<JsonRpcResponseWriteOutcome?> WriteStreamableWithErrorHandlingAsync(
+        PipeWriter writer,
+        JsonRpcResponse response,
+        IStreamableResult streamable,
+        JsonSerializerOptions options,
+        bool isBatch,
+        CancellationToken cancellationToken)
+    {
+        StagingPipeWriter staged = new(writer);
+        try
+        {
+            await WriteStreamableAsync(staged, response, streamable, isBatch, cancellationToken);
+        }
+        // Nothing reaches the transport before commitment, so an uncommitted failure is never a transport failure.
+        catch (Exception ex) when (!staged.IsCommitted)
+        {
+            staged.Discard();
+            if (cancellationToken.IsCancellationRequested) throw;
+            return WriteReplacementError(writer, response, ex, options);
+        }
+        staged.Commit();
+        return null;
+    }
+
+    /// <summary>Writes into a writer that buffers the whole response, replacing the current response on failure.</summary>
+    /// <remarks>
+    /// A failure rewinds the writer to where the current response began, keeping preceding batch items, so the
+    /// response is not staged a second time.
+    /// </remarks>
+    /// <returns>The outcome of the error that replaced a failure, or <see langword="null"/> after success.</returns>
+    private static async ValueTask<JsonRpcResponseWriteOutcome?> WriteRewindableStreamableAsync(
+        RewindableStreamPipeWriter writer,
+        JsonRpcResponse response,
+        IStreamableResult streamable,
+        JsonSerializerOptions options,
+        bool isBatch,
+        CancellationToken cancellationToken)
+    {
+        long checkpoint = writer.WrittenCount;
+        try
+        {
+            await WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            writer.Rewind(checkpoint);
+            return WriteReplacementError(writer, response, ex, options);
+        }
+        return null;
+    }
+
+    private static JsonRpcResponseWriteOutcome WriteReplacementError(PipeWriter writer, JsonRpcResponse response, Exception exception, JsonSerializerOptions options)
+    {
+        using JsonRpcErrorResponse error = response.Streaming!.MapException(exception);
+        Write(writer, error, options);
+        return JsonRpcResponseWriteOutcome.Of(error);
+    }
+
     private static async ValueTask WriteStreamableAsync(
         PipeWriter writer,
         JsonRpcResponse response,
@@ -93,23 +270,26 @@ public static class JsonRpcResponseWriter
         CancellationToken cancellationToken)
     {
         writer.Write(SuccessEnvelopeStart);
+        StreamedResultObservation? observation = response.StreamedResultObservation;
+        PipeWriter resultWriter = observation?.Wrap(writer) ?? writer;
         StreamableResultStatus? status = null;
         if (streamable is IBatchAwareStreamableResultWithStatus batchAwareStatusStreamable)
         {
-            status = await batchAwareStatusStreamable.WriteToWithStatusAsync(writer, isBatch, cancellationToken);
+            status = await batchAwareStatusStreamable.WriteToWithStatusAsync(resultWriter, isBatch, cancellationToken);
         }
         else if (streamable is IStreamableResultWithStatus statusStreamable)
         {
-            status = await statusStreamable.WriteToWithStatusAsync(writer, cancellationToken);
+            status = await statusStreamable.WriteToWithStatusAsync(resultWriter, cancellationToken);
         }
         else if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
         {
-            await batchAwareStreamable.WriteToAsync(writer, isBatch, cancellationToken);
+            await batchAwareStreamable.WriteToAsync(resultWriter, isBatch, cancellationToken);
         }
         else
         {
-            await streamable.WriteToAsync(writer, cancellationToken);
+            await streamable.WriteToAsync(resultWriter, cancellationToken);
         }
+        observation?.ResultWritten(status);
         if (status is not null)
         {
             writer.Write(StreamStatusSeparator);
@@ -172,6 +352,55 @@ public static class JsonRpcResponseWriter
 
         Type runtimeType = value!.GetType();
         return runtimeType == typeof(TValue) ? null : RpcPayloadTypeInfo.Get(options, runtimeType);
+    }
+
+    /// <summary>Writes a response payload the way every response writes its result.</summary>
+    internal static void WritePayload<T>(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
+    {
+        if (TryWriteSimpleValue(writer, value))
+        {
+            return;
+        }
+
+        JsonTypeInfo? runtimeTypeInfo = GetRuntimePayloadTypeInfo(options, value);
+        if (runtimeTypeInfo is not null)
+        {
+            JsonSerializer.Serialize(writer, (object)value!, runtimeTypeInfo);
+        }
+        else
+        {
+            JsonSerializer.Serialize(writer, value, RpcPayloadTypeInfo<T>.Get(options));
+        }
+    }
+
+    /// <summary>Serializes a payload once, byte for byte as <see cref="WritePayload{T}"/> writes it in a response.</summary>
+    /// <remarks>
+    /// Writes through the thread's cached writer and buffer, so only the returned array is allocated; a buffer grown
+    /// beyond <see cref="MaxCachedPayloadBufferSize"/> by a large payload is not kept.
+    /// </remarks>
+    internal static byte[] SerializePayload<T>(T value, JsonSerializerOptions options)
+    {
+        ArrayBufferWriter<byte> buffer = _payloadBuffer ?? new(MaxCachedPayloadBufferSize);
+        _payloadBuffer = null;
+        buffer.ResetWrittenCount();
+
+        Utf8JsonWriter writer = RentWriter(buffer, options);
+        try
+        {
+            WritePayload(writer, value, options);
+            writer.Flush();
+        }
+        catch
+        {
+            writer.Dispose();
+            throw;
+        }
+
+        ReturnWriter(writer, options);
+
+        byte[] payload = buffer.WrittenSpan.ToArray();
+        if (buffer.Capacity <= MaxCachedPayloadBufferSize) _payloadBuffer = buffer;
+        return payload;
     }
 
     internal static bool TryWriteSimpleValue<T>(Utf8JsonWriter writer, T value)
@@ -271,4 +500,94 @@ public static class JsonRpcResponseWriter
 internal interface IJsonRpcRawResponse
 {
     void WriteRaw(IBufferWriter<byte> writer);
+}
+
+internal readonly record struct JsonRpcResponseWriteOutcome(bool Success, bool IsResourceUnavailable)
+{
+    /// <summary>Returns the outcome of a written response, including an error that replaced a failed deferred result.</summary>
+    internal static JsonRpcResponseWriteOutcome Of(JsonRpcResponse response) =>
+        response.Streaming?.Replacement ?? new(!response.TryGetError(out Error? error) || error is null, response.IsResourceUnavailableError);
+
+    internal RpcReport ApplyTo(RpcReport report) => report with { Success = Success };
+}
+
+/// <summary>Stages the beginning of a response until deferred execution succeeds or exceeds the staging limit.</summary>
+/// <remarks>
+/// Flushes below the limit remain local, so their results never report a completed or cancelled reader. Once
+/// committed, bytes may have reached the transport and the caller must abort on failure.
+/// </remarks>
+internal sealed class StagingPipeWriter : CountingWriter
+{
+    private const int Limit = StreamableResultWriter.FlushThresholdBytes;
+    private readonly PipeWriter _writer;
+    private byte[]? _buffer = ArrayPool<byte>.Shared.Rent(Limit);
+    private int _buffered;
+
+    internal StagingPipeWriter(PipeWriter writer)
+    {
+        _writer = writer;
+        WrittenCount = (writer as CountingWriter)?.WrittenCount ?? 0;
+    }
+
+    internal bool IsCommitted => _buffer is null;
+    public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
+    public override long UnflushedBytes => _writer.UnflushedBytes + _buffered;
+
+    internal void Commit()
+    {
+        if (_buffer is not { } buffer) return;
+        _buffer = null;
+        int buffered = _buffered;
+        _buffered = 0;
+        _writer.Write(buffer.AsSpan(0, buffered));
+        ArrayPool<byte>.Shared.Return(buffer);
+    }
+
+    internal void Discard()
+    {
+        byte[]? buffer = _buffer;
+        _buffer = null;
+        _buffered = 0;
+        if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
+    }
+
+    public override Memory<byte> GetMemory(int sizeHint = 0)
+    {
+        if (sizeHint < 0) throw new ArgumentOutOfRangeException(nameof(sizeHint));
+        if (_buffer is { } buffer)
+        {
+            int remaining = Limit - _buffered;
+            if (Math.Max(sizeHint, 1) <= remaining)
+                return buffer.AsMemory(_buffered, remaining);
+            Commit();
+        }
+        return _writer.GetMemory(sizeHint);
+    }
+
+    public override Span<byte> GetSpan(int sizeHint = 0) => GetMemory(sizeHint).Span;
+
+    public override void Advance(int bytes)
+    {
+        if (_buffer is not null)
+        {
+            if ((uint)bytes > (uint)(Limit - _buffered)) throw new ArgumentOutOfRangeException(nameof(bytes));
+            _buffered += bytes;
+        }
+        else _writer.Advance(bytes);
+        WrittenCount += bytes;
+    }
+
+    public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return IsCommitted ? _writer.FlushAsync(cancellationToken) : new(new FlushResult(false, false));
+    }
+
+    public override void CancelPendingFlush() => _writer.CancelPendingFlush();
+
+    public override void Complete(Exception? exception = null)
+    {
+        Commit();
+        _writer.Complete(exception);
+    }
 }

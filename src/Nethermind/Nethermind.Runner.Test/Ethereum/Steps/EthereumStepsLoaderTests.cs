@@ -11,6 +11,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Init;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Snapshot;
@@ -40,7 +41,7 @@ public class EthereumStepsLoaderTests
             .. LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly),
         ];
 
-        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb), typeof(SeedFlatHistoryGenesis), typeof(StartHistoryWindowPruner), typeof(StartHistoryWalkVerification), typeof(StartCommitmentReclaimer)];
+        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb), typeof(DropPruningTrieState), typeof(SeedFlatHistoryGenesis), typeof(StartHistoryWindowPruner), typeof(StartHistoryWalkVerification), typeof(StartCommitmentReclaimer), typeof(StartTransactionChangesetBuilder), typeof(StartPivotHistoryImage), typeof(EraStep), typeof(EraEStep)];
         steps = steps.Where((s) => !optionalSteps.Contains(s.StepBaseType)).ToHashSet();
 
         using IContainer container = new ContainerBuilder()
@@ -74,8 +75,24 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(StepCAuRa)),
                 new StepInfo(typeof(StepCStandard)),
                 new StepInfo(typeof(StepE)),
+                new StepInfo(typeof(CommandStep)),
+                new StepInfo(typeof(SelfCancellingStep)),
                 new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep)),
+                new StepInfo(typeof(StepObservingCancellation)),
+                new StepInfo(typeof(FailingOptionalStep)),
+                new StepInfo(typeof(RequiredDependentStep)),
         ]);
+
+    [Test]
+    public void Command_names_are_unique()
+    {
+        string[] commands = [.. LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly)
+            .Concat(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly))
+            .Select(static s => s.Command)
+            .Where(static c => c is not null)!];
+
+        Assert.That(commands, Is.Unique);
+    }
 
     private void CheckPlugin(INethermindPlugin plugin)
     {
@@ -88,14 +105,15 @@ public class EthereumStepsLoaderTests
     }
 
     private static void AssertStepInfosEquivalent(IEnumerable<StepInfo> actual, IEnumerable<StepInfo> expected) =>
-        Assert.That(actual.Select(StepInfoKey).Order().ToArray(), Is.EqualTo(expected.Select(StepInfoKey).Order().ToArray()));
+        Assert.That(actual.Select(StepInfoKey).Order(), Is.SequenceEqualTo(expected.Select(StepInfoKey).Order()));
 
     private static string StepInfoKey(StepInfo stepInfo) =>
         string.Join("|",
             stepInfo.StepType.FullName,
             stepInfo.StepBaseType.FullName,
             string.Join(",", stepInfo.Dependencies.Select(static t => t.FullName).Order()),
-            string.Join(",", stepInfo.Dependents.Select(static t => t.FullName).Order()));
+            string.Join(",", stepInfo.Dependents.Select(static t => t.FullName).Order()),
+            stepInfo.Command);
 
     private static IEnumerable<StepInfo> LoadStepInfoFromAssembly(Assembly assembly)
     {

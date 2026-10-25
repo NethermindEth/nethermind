@@ -43,6 +43,7 @@ public class P2PProtocolHandler(
     private TaskCompletionSource<Packet> _pongCompletionSource;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
     private bool _sentHello;
+    private bool _receivedHello;
     private readonly List<Capability> _agreedCapabilities = [];
     private List<Capability> _availableCapabilities = [];
 
@@ -105,6 +106,13 @@ public class P2PProtocolHandler(
         {
             case P2PMessageCode.Hello:
                 {
+                    if (_receivedHello)
+                    {
+                        DisconnectBreachOfProtocol("Repeated Hello message");
+                        break;
+                    }
+
+                    _receivedHello = true;
                     using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
                     HandleHello(helloMessage);
                     ReportIn(helloMessage, size);
@@ -224,9 +232,11 @@ public class P2PProtocolHandler(
             => Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void DisconnectUnhandledPacket(int packetType)
+        void DisconnectUnhandledPacket(int packetType) => DisconnectBreachOfProtocol($"Unknown P2P message type {packetType}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void DisconnectBreachOfProtocol(string details)
         {
-            string details = $"Unknown P2P message type {packetType}";
             if (Logger.IsDebug) Logger.Debug($"{Session.RemoteNodeId} {details}");
             Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
         }

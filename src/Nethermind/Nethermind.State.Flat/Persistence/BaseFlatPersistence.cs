@@ -145,8 +145,61 @@ public static class BaseFlatPersistence
         bool fullAddressStorageKey = false
     ) : BasePersistence.IHashedFlatReader
     {
+        // One native batch per this many keys keeps the key scratch on the stack.
+        private const int PrefetchBatchSize = 64;
+
         public bool IsPreimageMode => isPreimageMode;
 
+        /// <summary>True when a store reads ahead; preimage keys are not hashed, so the hashed prefetch keys do not apply.</summary>
+        public bool SupportsPrefetch => !isPreimageMode && (state is IReadPrefetcher || storage is IReadPrefetcher);
+
+        [SkipLocalsInit]
+        public bool IsAccountCached(in ValueHash256 account) =>
+            state is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], account));
+
+        [SkipLocalsInit]
+        public bool IsSlotCached(in ValueHash256 account, in ValueHash256 slot) =>
+            storage is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeStorageKey(stackalloc byte[StorageKeyLength], account, slot, fullAddressStorageKey));
+
+        [SkipLocalsInit]
+        public void Prefetch<TKeys>(ref TKeys keys, CancellationToken cancellationToken) where TKeys : struct, BasePersistence.IHashedPrefetchKeys, allows ref struct
+        {
+            int accounts = keys.AccountCount;
+            if (accounts != 0 && state is IReadPrefetcher accountPrefetcher)
+            {
+                Span<byte> batch = stackalloc byte[PrefetchBatchSize * AccountKeyLength];
+                for (int start = 0; start < accounts; start += PrefetchBatchSize)
+                {
+                    if (cancellationToken.IsCancellationRequested) return;
+                    int count = Math.Min(PrefetchBatchSize, accounts - start);
+                    for (int i = 0; i < count; i++)
+                    {
+                        keys.GetAccount(start + i, out ValueHash256 account);
+                        EncodeAccountKeyHashed(batch.Slice(i * AccountKeyLength, AccountKeyLength), account);
+                    }
+                    accountPrefetcher.Prefetch(batch[..(count * AccountKeyLength)], AccountKeyLength);
+                }
+            }
+
+            int slots = keys.SlotCount;
+            if (slots != 0 && storage is IReadPrefetcher storagePrefetcher)
+            {
+                Span<byte> batch = stackalloc byte[PrefetchBatchSize * StorageKeyLength];
+                for (int start = 0; start < slots; start += PrefetchBatchSize)
+                {
+                    if (cancellationToken.IsCancellationRequested) return;
+                    int count = Math.Min(PrefetchBatchSize, slots - start);
+                    for (int i = 0; i < count; i++)
+                    {
+                        keys.GetSlot(start + i, out ValueHash256 account, out ValueHash256 slot);
+                        EncodeStorageKey(batch.Slice(i * StorageKeyLength, StorageKeyLength), account, slot, fullAddressStorageKey);
+                    }
+                    storagePrefetcher.Prefetch(batch[..(count * StorageKeyLength)], StorageKeyLength);
+                }
+            }
+        }
+
+        [SkipLocalsInit]
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
             ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], address);
@@ -213,7 +266,6 @@ public static class BaseFlatPersistence
     public struct AccountIterator(ISortedView view) : IPersistence.IFlatIterator
     {
         private ValueHash256 _currentKey = default;
-        private byte[]? _currentValue = null;
 
         public bool MoveNext()
         {
@@ -225,12 +277,13 @@ public static class BaseFlatPersistence
             // Build 32-byte ValueHash256 from 20-byte key (zero-padded)
             _currentKey = ValueKeccak.Zero;
             view.CurrentKey.CopyTo(_currentKey.BytesAsSpan);
-            _currentValue = view.CurrentValue.ToArray();
             return true;
         }
 
         public ValueHash256 CurrentKey => _currentKey;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+
+        // Not copied: valid only until the next MoveNext, per IFlatIterator contract.
+        public ReadOnlySpan<byte> CurrentValue => view.CurrentValue;
 
         public void Dispose() => view.Dispose();
     }
@@ -239,7 +292,6 @@ public static class BaseFlatPersistence
     {
         // 16-byte suffix to match
         private ValueHash256 _currentKey = default;
-        private byte[]? _currentValue = null;
 
         public bool MoveNext()
         {
@@ -254,21 +306,26 @@ public static class BaseFlatPersistence
 
                 // Extract the 32-byte slot hash from the middle of the key
                 _currentKey = new ValueHash256(view.CurrentKey.Slice(slotOffset, StorageSlotKeySize));
-                ReadOnlySpan<byte> slotValue = rlpWrapSlots
-                    ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
-                    : view.CurrentValue;
+                ReadOnlySpan<byte> slotValue = DecodeCurrentValue();
                 // Mirror TryGetStorage: a slot value over 32 bytes means the encoding is mismatched (e.g. a
                 // marker-less DB read as raw). Fail loudly here too, rather than handing snap-sync healing a
                 // bad value that would build wrong trie nodes.
                 if (slotValue.Length > StorageValueSize) ThrowSlotValueTooLong(slotValue.Length, rlpWrapSlots);
-                _currentValue = slotValue.ToArray();
                 return true;
             }
             return false;
         }
 
         public ValueHash256 CurrentKey => _currentKey;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+
+        // Re-derived per access instead of copied per slot; valid only until the next MoveNext,
+        // per IFlatIterator contract.
+        public ReadOnlySpan<byte> CurrentValue => DecodeCurrentValue();
+
+        private readonly ReadOnlySpan<byte> DecodeCurrentValue() =>
+            rlpWrapSlots
+                ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
+                : view.CurrentValue;
 
         public void Dispose() => view.Dispose();
     }

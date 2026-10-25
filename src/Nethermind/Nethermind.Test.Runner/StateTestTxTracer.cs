@@ -92,6 +92,8 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         EvmExceptionType.OutOfGas => "OutOfGas",
         EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
         EvmExceptionType.AccessViolation => "AccessViolation",
+        EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
+        EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
         EvmExceptionType.StaticCallViolation => "StaticCallViolation",
         _ => "Error"
     };
@@ -162,7 +164,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         }
     }
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
     }
 
@@ -170,7 +172,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     {
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
     }
 
@@ -191,7 +193,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
-    public void ReportCodeChange(Address address, byte[]? before, byte[]? after) => throw new NotSupportedException();
+    public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after) => throw new NotSupportedException();
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 

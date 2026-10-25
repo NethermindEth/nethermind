@@ -181,7 +181,7 @@ public class TraceStreamingBenchmarks
         {
             tracer.StartOperation(op, Instruction.SSTORE, (ulong)(1_000_000 - op), _env);
             tracer.ReportStackPush(value);
-            tracer.ReportStorageChange(value, value);
+            tracer.ReportOperationStorageChange(value, value);
             tracer.ReportOperationRemainingGas((ulong)(900_000 - op));
         }
         tracer.ReportActionEnd(0, default);

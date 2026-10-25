@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.History.Changesets;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -397,7 +398,8 @@ public class SliceScopeTests
             writer, _historyColumns, config,
             gate ?? new HistoryScopeGate(),
             availability, rowFormat,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new TransactionChangesetIndex(_historyColumns, config));
 
         return (availability, writer, pruner);
     }

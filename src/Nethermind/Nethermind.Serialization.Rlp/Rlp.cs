@@ -17,7 +17,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -42,23 +41,6 @@ namespace Nethermind.Serialization.Rlp
 
         internal const int LengthOfNull = 1;
 
-        public static readonly Rlp OfEmptyByteArray = new(EmptyByteArrayByte);
-
-        public static readonly Rlp OfZero = OfEmptyByteArray;
-
-        public static readonly Rlp OfEmptyList = new(EmptyListByte);
-
-        internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
-
-        internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
-
-        internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        static Rlp()
-        {
-            RegisterDecoders(typeof(Rlp).Assembly);
-            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
-        }
-
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
         /// </summary>
@@ -75,17 +57,12 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
-        private static readonly Lock _decoderLock = new();
-        private static readonly CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
-
         public static void ResetDecoders()
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
             Volatile.Write(ref _decodersSnapshot, null);
-            RegisterDecoders(typeof(Rlp).Assembly);
-            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+            RegisterDefaultDecoders();
         }
 
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
@@ -258,7 +235,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static CappedArray<byte> EncodeToCappedArray(int item, ICappedArrayPool? bufferPool = null)
         {
-            CappedArray<byte>[] cache = s_intPreEncodes;
+            CappedArray<byte>[] cache = IntPreEncodes.Cache;
             if ((uint)item < (uint)cache.Length)
             {
                 return cache[item];
@@ -286,17 +263,19 @@ namespace Nethermind.Serialization.Rlp
             // produced after padding with 0xff.
             if (value >= 0) return Encode((long)value);
 
-            byte[] bytes = new byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32BigEndian(bytes, value);
-            return Encode(bytes);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(1 + sizeof(int));
+            bytes[0] = EmptyByteArrayByte + sizeof(int);
+            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(1), value);
+            return new Rlp(bytes);
         }
 
         // The eight-byte two's complement, which is what the BigInteger path produced after padding.
         private static Rlp EncodeNegative(long value)
         {
-            byte[] bytes = new byte[sizeof(long)];
-            BinaryPrimitives.WriteInt64BigEndian(bytes, value);
-            return Encode(bytes);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(1 + sizeof(long));
+            bytes[0] = EmptyByteArrayByte + sizeof(long);
+            BinaryPrimitives.WriteInt64BigEndian(bytes.AsSpan(1), value);
+            return new Rlp(bytes);
         }
 
         public static Rlp Encode(long value) => value switch
@@ -413,7 +392,7 @@ namespace Nethermind.Serialization.Rlp
                 position += SerializeLength(input.Length, buffer[position..]);
             }
 
-            input.CopyTo(buffer.Slice(position, input.Length));
+            Core.Extensions.Bytes.Copy(input, buffer.Slice(position, input.Length));
             position += input.Length;
 
             return position;
@@ -488,14 +467,14 @@ namespace Nethermind.Serialization.Rlp
             if (length < RlpHelpers.SmallPrefixBarrier)
             {
                 output[0] = (byte)(0x80 + length);
-                input.CopyTo(output[1..]);
+                Core.Extensions.Bytes.Copy(input, output[1..]);
                 return 1 + length;
             }
 
             int lengthOfLength = LengthOfLength(length);
             output[0] = (byte)(0xb7 + lengthOfLength);
             SerializeLength(length, output.Slice(1, lengthOfLength));
-            input.CopyTo(output[(1 + lengthOfLength)..]);
+            Core.Extensions.Bytes.Copy(input, output[(1 + lengthOfLength)..]);
             return 1 + lengthOfLength + length;
         }
 
@@ -785,7 +764,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(Address? item) => item is null ? 1 : 21;
 
-        public static int LengthOf(Bloom? bloom) => bloom is null ? 1 : 259;
+        public static int LengthOf(Bloom? bloom) => bloom is null || bloom.IsZeroLength ? 1 : 259;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfSequence(int contentLength)
@@ -881,17 +860,26 @@ namespace Nethermind.Serialization.Rlp
             public string Key { get; } = key;
         }
 
-        private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
-
         [StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
-            RlpLimit l = limit ?? RlpLimit.DefaultLimit;
+            // Equal to RlpLimit.DefaultLimit; constructing it spares every inlined guard the static read and its
+            // type initialization check.
+            RlpLimit l = limit ?? new RlpLimit();
             // First test rejects either bound being negative.
             if ((bytesLeft | l.Limit) < 0 || (uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
-                ThrowCountOverLimit((uint)count, bytesLeft, l);
+                // A limit handed to the throw is a struct holding references, so every inlined guard would keep a
+                // stack copy that the caller's prologue zeroes; the default limit is rebuilt behind the call instead.
+                if (limit is null)
+                {
+                    ThrowCountOverDefaultLimit((uint)count, bytesLeft);
+                }
+                else
+                {
+                    ThrowCountOverLimit((uint)count, bytesLeft, l);
+                }
             }
         }
 
@@ -905,6 +893,12 @@ namespace Nethermind.Serialization.Rlp
                 ThrowUnexpectedCount(actual, expected);
             }
         }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowCountOverDefaultLimit(uint count, int bytesLeft) =>
+            ThrowCountOverLimit(count, bytesLeft, new RlpLimit());
 
         [DoesNotReturn]
         [StackTraceHidden]
@@ -949,6 +943,14 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return cache;
+        }
+
+        /// <remarks>
+        /// A separate type so the table is built on first use rather than by the <see cref="Rlp"/> type initializer.
+        /// </remarks>
+        private static class IntPreEncodes
+        {
+            public static readonly CappedArray<byte>[] Cache = CreatePreEncodes();
         }
     }
 

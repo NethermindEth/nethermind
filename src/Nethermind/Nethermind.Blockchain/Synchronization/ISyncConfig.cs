@@ -24,6 +24,9 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
+    [ConfigItem(Description = "Whether to catch up consensus-finalized blocks by applying their EIP-7928 block access lists instead of executing them. State and receipts roots are verified; unfinalized blocks, and blocks whose data is unavailable or mismatched, execute normally.", DefaultValue = "false")]
+    bool ReconstructFinalizedStateFromBlockAccessLists { get; set; }
+
     [Obsolete]
     [ConfigItem(Description = "Deprecated. Long range catch-up sync has been removed.", DefaultValue = "8192", HiddenFromDocs = true)]
     long? FastSyncCatchUpHeightDelta { get; set; }
@@ -148,7 +151,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = nameof(ITunableDb.TuneType.EnableBlobFiles), HiddenFromDocs = true)]
     ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
 
-    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors.", DefaultValue = "0")]
+    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors. Snap and state sync allow up to twice this many in-flight requests while limiting concurrent response processing to this value.", DefaultValue = "0")]
     public int MaxProcessingThreads { get; set; }
 
     [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]
@@ -202,7 +205,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong HeaderStateDistance { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "128000000", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }
 
     [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -211,9 +214,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Enable double write check during snap sync for debugging.", DefaultValue = "false", HiddenFromDocs = true)]
     bool EnableSnapDoubleWriteCheck { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Estimated size of memory for storing blocks during download.", DefaultValue = "200000000", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Estimated size of memory for storing blocks during download.", DefaultValue = "209715200", HiddenFromDocs = true)]
     long ForwardSyncDownloadBufferMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "200000000", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "209715200", HiddenFromDocs = true)]
     long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; }
 }

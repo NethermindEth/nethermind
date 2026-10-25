@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -29,22 +28,21 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
 {
     protected ZkEvmBlockchainTestFixture() : base(parallel: false, batchRead: false) { }
 
-    private static readonly Lazy<IReadOnlyList<BlockchainTest>> _tests = new(() =>
-        ZkEvmMutatedWitnessIndex.StampMutatedBlocks(
-            new TestsSourceLoader(
-                new LoadPyspecTestsStrategy { ArchiveVersion = Constants.ArchiveVersion, ArchiveName = Constants.ArchiveName },
-                "fixtures/blockchain_tests").LoadTests<BlockchainTest>()).ToList());
+    private static readonly LoadPyspecTestsStrategy _strategy = new() { ArchiveVersion = Constants.ArchiveVersion, ArchiveName = Constants.ArchiveName };
+    private const string TestsDir = "fixtures/blockchain_tests";
 
     [TestCaseSource(nameof(LoadWitnessTests))]
-    public async Task WitnessMatchesFixture(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task WitnessMatchesFixture(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadZkEvmTest(testRef))).Pass, Is.True);
 
     // Execute publishes the process-wide StatelessExecutor.FailureOutput, and this fixture inherits
     // ParallelScope.All, so concurrent cases would otherwise overwrite each other's sentinel. (The
     // hash seed the decode installs is a no-op here: this assembly builds without EnableZkEvm.)
     [NonParallelizable]
     [TestCaseSource(nameof(LoadStatelessTests))]
-    public void StatelessExecutorOutputMatchesFixture(string inputBytes, string expectedOutputBytes)
+    public void StatelessExecutorOutputMatchesFixture(PyspecStatelessRef testRef)
     {
+        (string inputBytes, string expectedOutputBytes) = PyspecLoader.LoadZkEvmStatelessBytes(testRef);
+
         if (!inputBytes.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"StatelessInputBytes must be 0x-prefixed.");
 
@@ -58,30 +56,11 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
             $"Expected {expectedOutput.ToHexString(true)}, got {actualOutput.ToHexString(true)}");
     }
 
-    private static IEnumerable<TestCaseData> LoadWitnessTests() => PyspecLoader.ToTestCases(_tests.Value);
+    private static IEnumerable<TestCaseData> LoadWitnessTests() =>
+        PyspecLoader.LoadCases<BlockchainTest>(_strategy, TestsDir);
 
-    private static IEnumerable<TestCaseData> LoadStatelessTests()
-    {
-        foreach (BlockchainTest test in _tests.Value)
-        {
-            if (test.Blocks is not { Length: > 0 } blocks)
-                continue;
-
-            for (int i = 0; i < blocks.Length; i++)
-            {
-                TestBlockJson block = blocks[i];
-
-                if (block.StatelessInputBytes is null && block.StatelessOutputBytes is null)
-                    continue;
-
-                if (block.StatelessInputBytes is null || block.StatelessOutputBytes is null)
-                    throw new InvalidDataException($"Incomplete stateless fixture data in {test.Name}, block {i}.");
-
-                yield return new TestCaseData(block.StatelessInputBytes, block.StatelessOutputBytes)
-                    .SetName($"{test.Name}_stateless_block_{i}");
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> LoadStatelessTests() =>
+        PyspecLoader.LoadZkEvmStatelessCases(_strategy, TestsDir);
 }
 
 [TestFixture]
@@ -108,75 +87,6 @@ public class StatelessSchemaTests
             Assert.That(payload.ChainId, Is.EqualTo(ChainId));
             Assert.That(payload.GetBlock().Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash));
         }
-    }
-
-    /// <summary>
-    /// Pins the wire bytes a non-empty public-key list produces, and that they decode back unchanged.
-    /// </summary>
-    /// <remarks>
-    /// The write-side assertion is the guard that matters: a round-trip alone passes when
-    /// <see cref="SszPublicKeyVectorTypeConverter"/>'s write and read sides are perturbed together.
-    /// It is expressed against the region under test rather than a hash of the whole input, so
-    /// unrelated schema churn cannot send a reader off to re-derive a baseline.
-    /// </remarks>
-    [Test]
-    public void Public_key_vector_encoding_is_pinned()
-    {
-        SszPublicKey[] publicKeys = DeterministicPublicKeys(5);
-
-        byte[] encoded = EncodeInput(new SszExecutionPayload(), InputDecoder.CurrentForkSchemaId, publicKeys: publicKeys);
-        ReadOnlySpan<SszPublicKey> decoded = InputDecoder.Decode(encoded).PublicKeys.Span;
-
-        // PublicKeys is the container's last variable-size field and a list of fixed-size items is a
-        // bare concatenation, so the keys occupy exactly the trailing count * 65 bytes.
-        byte[] expectedTail = new byte[publicKeys.Length * SszPublicKey.PublicKeyLength];
-        for (int i = 0; i < publicKeys.Length; i++)
-            publicKeys[i].AsSpan().CopyTo(expectedTail.AsSpan(i * SszPublicKey.PublicKeyLength));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(encoded[^expectedTail.Length..], Is.EqualTo(expectedTail));
-            Assert.That(decoded.Length, Is.EqualTo(publicKeys.Length));
-        }
-
-        for (int i = 0; i < publicKeys.Length; i++)
-            Assert.That(decoded[i].AsSpan().ToArray(), Is.EqualTo(publicKeys[i].AsSpan().ToArray()));
-    }
-
-    /// <remarks>
-    /// The inherited <see cref="ValueType"/> members throw on <c>[InlineArray]</c>-backed structs,
-    /// so equality has to be declared for <see cref="SszPublicKey"/> to be usable as a value.
-    /// </remarks>
-    [Test]
-    public void Public_keys_compare_by_value()
-    {
-        SszPublicKey[] publicKeys = DeterministicPublicKeys(2);
-        SszPublicKey copy = SszPublicKey.FromSpan(publicKeys[0].AsSpan());
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(copy, Is.EqualTo(publicKeys[0]));
-            Assert.That(copy.GetHashCode(), Is.EqualTo(publicKeys[0].GetHashCode()));
-            Assert.That(publicKeys[1], Is.Not.EqualTo(publicKeys[0]));
-        }
-    }
-
-    private static SszPublicKey[] DeterministicPublicKeys(int count)
-    {
-        SszPublicKey[] publicKeys = new SszPublicKey[count];
-
-        for (int i = 0; i < count; i++)
-        {
-            byte[] bytes = new byte[SszPublicKey.PublicKeyLength];
-            bytes[0] = 0x04;
-
-            for (int j = 1; j < bytes.Length; j++)
-                bytes[j] = (byte)(i * 31 + j);
-
-            publicKeys[i] = SszPublicKey.FromSpan(bytes);
-        }
-
-        return publicKeys;
     }
 
     /// <summary>
@@ -364,8 +274,7 @@ public class StatelessSchemaTests
     private static SszProgressiveBytes[] MalformedTransaction => [new() { Bytes = [0xff, 0xff] }];
 
     private static byte[] EncodeInput<TExecutionPayload>(
-        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null,
-        SszPublicKey[] publicKeys = null)
+        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null)
         where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
     {
         executionPayload.BlockNumber = BlockNumber;
@@ -396,8 +305,7 @@ public class StatelessSchemaTests
                 Codes = [],
                 Headers = []
             },
-            ChainId = ChainId,
-            PublicKeys = publicKeys ?? []
+            ChainId = ChainId
         };
         byte[] payload = StatelessInput<TExecutionPayload>.Encode(input);
         byte[] encoded = new byte[sizeof(ushort) + payload.Length];

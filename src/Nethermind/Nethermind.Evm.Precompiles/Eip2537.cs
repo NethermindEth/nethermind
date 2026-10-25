@@ -202,7 +202,7 @@ internal static partial class Eip2537
             return Result.Success;
 
         p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..]);
-        return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
+        return p.OnCurve() ? Result.Success : Errors.NotOnCurve;
     }
 
     // as above, decoding into affine layout
@@ -217,7 +217,7 @@ internal static partial class Eip2537
             return Result.Success;
 
         p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..]);
-        return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
+        return p.OnCurve() ? Result.Success : Errors.NotOnCurve;
     }
 
     // decodes and checks point is on curve
@@ -233,7 +233,7 @@ internal static partial class Eip2537
 
         p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..(2 * LenFp)],
             raw[(2 * LenFp + LenFpPad)..(3 * LenFp)], raw[(3 * LenFp + LenFpPad)..]);
-        return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
+        return p.OnCurve() ? Result.Success : Errors.NotOnCurve;
     }
 
     // as above, decoding into affine layout
@@ -249,7 +249,7 @@ internal static partial class Eip2537
 
         p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..(2 * LenFp)],
             raw[(2 * LenFp + LenFpPad)..(3 * LenFp)], raw[(3 * LenFp + LenFpPad)..]);
-        return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
+        return p.OnCurve() ? Result.Success : Errors.NotOnCurve;
     }
 
     internal static byte[] EncodeRaw(this G1 p)
@@ -296,7 +296,7 @@ internal static partial class Eip2537
         // check that fp < base field order
         return fp[LenFpPad..].SequenceCompareTo(_baseFieldOrder.AsSpan()) < 0
             ? Result.Success
-            : Errors.G1PointSubgroup;
+            : Errors.InvalidFieldElementEncoding;
     }
 
     internal static Result TryDecodeG1ToBuffer(

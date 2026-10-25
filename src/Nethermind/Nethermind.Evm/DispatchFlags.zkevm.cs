@@ -15,6 +15,12 @@ internal static partial class DispatchFlags
     /// <summary>The guest runs to completion or fails; there is nothing to cancel it.</summary>
     public const bool ConstCancelable = false;
 
+    /// <summary>The guest publishes no metrics and cannot be cancelled, so nothing reads an opcode count.</summary>
+    public static bool CountOpcodes => false;
+
+    /// <summary>The guest's dispatch handlers run no fast paths, so its tables need no plain copy to fall back on.</summary>
+    public static bool UntracedFastPaths => false;
+
     public static bool Tracing(bool isTracing) => ConstTracing;
 
     public static bool Cancelable(bool tracerIsCancelable) => ConstCancelable;

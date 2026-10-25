@@ -14,7 +14,9 @@ public class KeyedNonceStorageSlotBenchmarks
     private readonly UInt256[] _keys = new UInt256[Eip8250Constants.MaxNonceKeys];
     private readonly UInt256[] _indices = new UInt256[Eip8250Constants.MaxNonceKeys];
 
-    [Params(8, Eip8250Constants.MaxNonceKeys)]
+    // 2 is the smallest set the AVX-512 gate admits, where an 8-lane permutation serves two keys and the
+    // fixed per-call setup is least amortised, so it is the size that decides whether batching still pays.
+    [Params(2, 8, Eip8250Constants.MaxNonceKeys)]
     public int Count { get; set; }
 
     [GlobalSetup]

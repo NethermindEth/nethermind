@@ -31,7 +31,7 @@ runs:
         echo "rid=$rid" >> "$GITHUB_OUTPUT"
 
     - name: Download test binaries
-      uses: actions/download-artifact@v4
+      uses: ./.github/actions/download-artifact
       with:
         name: test-bin-${{ inputs.variant }}-${{ steps.rid.outputs.rid }}
 

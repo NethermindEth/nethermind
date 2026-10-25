@@ -7,7 +7,6 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Evm;
@@ -35,7 +34,7 @@ namespace Nethermind.Test.Runner
         private readonly bool _suppressOutput;
         private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        /// <summary>Creates a runner for <see cref="RunSingleTest"/> callers that supply tests directly.</summary>
+        /// <summary>Creates a runner for <see cref="RunSingleTestAsync"/> callers that supply tests directly.</summary>
         public StateTestsRunner(WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null, bool enableWarmup = false, bool suppressOutput = false)
         {
             _whenTrace = whenTrace;
@@ -92,10 +91,10 @@ namespace Nethermind.Test.Runner
             return builder.ToString();
         }
 
-        public IEnumerable<EthereumTestResult> RunTests()
+        public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
         {
             if (_testsSource is null)
-                throw new InvalidOperationException("RunTests requires a test source; use the constructor that accepts ITestSourceLoader.");
+                throw new InvalidOperationException("RunTestsAsync requires a test source; use the constructor that accepts ITestSourceLoader.");
 
             List<EthereumTestResult> results = [];
             IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
@@ -105,7 +104,7 @@ namespace Nethermind.Test.Runner
                     continue;
                 test.ChainId = _chainId;
 
-                results.Add(ExecuteWithOptionalTrace(test));
+                results.Add(await ExecuteWithOptionalTraceAsync(test));
             }
 
             WriteOut(results);
@@ -113,19 +112,24 @@ namespace Nethermind.Test.Runner
             return results;
         }
 
-        public EthereumTestResult RunSingleTest(GeneralStateTest test)
+        public Task<EthereumTestResult> RunSingleTestAsync(GeneralStateTest test)
         {
             test.ChainId = _chainId;
-            return ExecuteWithOptionalTrace(test);
+            return ExecuteWithOptionalTraceAsync(test);
         }
 
-        private EthereumTestResult ExecuteWithOptionalTrace(GeneralStateTest test)
+        private async Task<EthereumTestResult> ExecuteWithOptionalTraceAsync(GeneralStateTest test)
         {
+            // A fixture that failed to parse carries no transaction to execute; reporting it here
+            // mirrors BlockchainTestsRunner and keeps it out of RunTest, which asserts on it.
+            if (test.LoadFailure is not null)
+                return new EthereumTestResult(test.Name, test.LoadFailure);
+
             EthereumTestResult? result = null;
             if (_whenTrace != WhenTrace.Always)
             {
-                WarmUp(test);
-                result = RunTest(test, NullTxTracer.Instance);
+                await WarmUpAsync(test);
+                result = await RunTest(test, NullTxTracer.Instance);
             }
 
             if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
@@ -145,7 +149,7 @@ namespace Nethermind.Test.Runner
                 // EIP-3155 always needs stack; IsTracingStack controls whether
                 // the EVM calls SetOperationStack at all.
                 txTracer.IsTracingStack = _traceStack;
-                result = RunTest(test, txTracer);
+                result = await RunTest(test, txTracer);
 
                 StateTestTxTrace txTrace = txTracer.BuildResult();
                 txTrace.Result.Time = result.TimeInMs;
@@ -156,19 +160,16 @@ namespace Nethermind.Test.Runner
             return result!;
         }
 
-        private void WarmUp(GeneralStateTest test)
+        private async Task WarmUpAsync(GeneralStateTest test)
         {
             if (!_enableWarmup)
                 return;
 
             // Warm up only when benchmarking.
-            Parallel.For(0, 30, (i, s) =>
-            {
-                _ = RunTest(test, NullTxTracer.Instance);
-            });
+            await Parallel.ForAsync(0, 30, async (_, _) => await RunTest(test, NullTxTracer.Instance));
 
             // Give time to JIT optimized version.
-            Thread.Sleep(20);
+            await Task.Delay(20);
             GC.Collect(GC.MaxGeneration);
         }
     }

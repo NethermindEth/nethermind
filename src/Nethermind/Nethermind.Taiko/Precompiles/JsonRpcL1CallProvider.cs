@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Nodes;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -31,9 +32,9 @@ public class JsonRpcL1CallProvider(IJsonRpcClient rpcClient, ILogManager logMana
             // Acceptable for devnet; async precompile pipeline needed for production load.
             DebugTraceCallResult? response = rpcClient.Post<DebugTraceCallResult>("debug_traceCall", new object[]
             {
-                new { from = Address.Zero.ToString(), to = contractAddress.ToString(), data = calldataHex, gas = gasHex },
+                new JsonObject { ["from"] = Address.Zero.ToString(), ["to"] = contractAddress.ToString(), ["data"] = calldataHex, ["gas"] = gasHex },
                 blockHex,
-                new { } // default tracer options
+                new JsonObject() // default tracer options
             }).GetAwaiter().GetResult();
 
             if (response is null)

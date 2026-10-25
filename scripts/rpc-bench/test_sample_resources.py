@@ -32,6 +32,8 @@ class FakeCgroup:
         self.cpu_usec = 0
         self.throttled_usec = 0
         self.memory_current = 0
+        self.memory_anon = 0
+        self.memory_file = 0
         self.read_bytes = 0
         self.write_bytes = 0
         self.write()
@@ -40,6 +42,8 @@ class FakeCgroup:
         (self.root / "cpu.stat").write_text(
             f"usage_usec {self.cpu_usec}\nthrottled_usec {self.throttled_usec}\n", encoding="utf-8")
         (self.root / "memory.current").write_text(f"{self.memory_current}\n", encoding="utf-8")
+        (self.root / "memory.stat").write_text(
+            f"anon {self.memory_anon}\nfile {self.memory_file}\nkernel 4096\n", encoding="utf-8")
         (self.root / "memory.peak").write_text("999999999999\n", encoding="utf-8")
         (self.root / "io.stat").write_text(
             f"8:0 rbytes={self.read_bytes} wbytes={self.write_bytes}\n", encoding="utf-8")
@@ -98,6 +102,25 @@ class SamplerArithmeticTests(unittest.TestCase):
         ])
         self.assertEqual(summary["memory_peak_bytes"], 700)
         self.assertEqual(summary["memory_avg_bytes"], (100 + 700 + 300) // 3)
+
+    def test_process_memory_is_sampled_apart_from_the_page_cache(self):
+        """memory.current mixes the node's own memory with cached DB pages; anon is the former."""
+        def tick(anon, file):
+            return lambda c: (setattr(c, "memory_anon", anon), setattr(c, "memory_file", file),
+                              setattr(c, "memory_current", anon + file))
+        summary = self._run([tick(100, 1000), tick(400, 1200), tick(250, 1100)])
+        self.assertEqual(summary["memory_anon_avg_bytes"], (100 + 400 + 250) // 3)
+        self.assertEqual(summary["memory_anon_peak_bytes"], 400)
+        self.assertEqual(summary["memory_file_avg_bytes"], (1000 + 1200 + 1100) // 3)
+
+    def test_missing_memory_stat_reports_null_not_zero(self):
+        """Zero would read as a real measurement; null says the kernel did not provide it."""
+        (self.dir / "memory.stat").unlink()
+        self.cgroup.write = lambda: None
+        summary = self._run([lambda c: None])
+        self.assertIsNone(summary["memory_anon_avg_bytes"])
+        self.assertIsNone(summary["memory_anon_peak_bytes"])
+        self.assertIsNone(summary["memory_file_avg_bytes"])
 
     def test_sampler_leaves_per_request_costs_to_normalize(self):
         summary = self._run([lambda c: setattr(c, "cpu_usec", 1000)])

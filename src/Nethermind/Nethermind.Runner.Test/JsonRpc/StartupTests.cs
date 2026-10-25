@@ -9,8 +9,11 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -25,15 +28,20 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Memory;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Serialization.Json;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -46,8 +54,14 @@ public class StartupTests
 {
     private const string GetBlobsV1Method = "engine_getBlobsV1";
     private const string GetBlobsV2Method = "engine_getBlobsV2";
+    private const string AllowedOrigin = "https://app.example";
+    private const string OtherOrigin = "https://evil.example";
 
+    private static readonly GCKeeper GcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
     private static readonly Startup Startup;
+
+    [OneTimeTearDown]
+    public void DisposeGcKeeper() => GcKeeper.Dispose();
 
     static StartupTests() => Startup = CreateStartup();
 
@@ -55,7 +69,8 @@ public class StartupTests
         IRpcAuthentication? rpcAuthentication = null,
         IEngineRpcModule? engineModule = null,
         JsonRpcConfig? rpcConfig = null,
-        IJsonRpcLocalStats? jsonRpcLocalStats = null)
+        IJsonRpcLocalStats? jsonRpcLocalStats = null,
+        ILogManager? processorLogManager = null)
     {
         rpcConfig ??= new JsonRpcConfig { EnabledModules = [ModuleType.Engine] };
         engineModule ??= CreateEngineModule();
@@ -65,8 +80,8 @@ public class StartupTests
 
         EthereumJsonSerializer jsonSerializer = new();
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
-        JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig);
-        JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig, GcKeeper);
+        JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), processorLogManager ?? LimboLogs.Instance);
 
         return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication);
     }
@@ -385,6 +400,246 @@ public class StartupTests
     }
 
     [Test]
+    public async Task ProcessJsonRpcRequest_StreamingFailureRecoversOrAbortsAccordingToCommitment(
+        [Values(0, 32 * 1024)] int payloadSize,
+        [Values] bool flush,
+        [Values] bool bufferResponse,
+        [Values] bool batch,
+        [Values] bool jsonFailure)
+    {
+        DeferredProbeBlobStreamableResult result = new(async (writer, token) =>
+        {
+            writer.Write(Encoding.UTF8.GetBytes("[\"" + new string('x', payloadSize)));
+            if (flush) await writer.FlushAsync(token);
+            if (jsonFailure) throw new JsonException("deferred serialization failure");
+            throw new OperationCanceledException();
+        });
+        IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
+        stats.IsEnabled.Returns(true);
+        Startup startup = CreateStreamingStartup(result, bufferResponse, stats);
+        string request = CreateJsonRpcRequest(GetBlobsV2Method);
+        if (batch) request = "[" + CreateJsonRpcRequest(idJson: "2") + "," + request + "]";
+        using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(request));
+        using MemoryStream responseBody = new();
+        DefaultHttpContext context = new();
+        context.Request.Method = "POST";
+        context.Request.ContentType = "application/json";
+        context.Request.Body = requestBody;
+        context.Request.ContentLength = requestBody.Length;
+        context.Request.Protocol = "HTTP/1.1";
+        IHttpRequestLifetimeFeature lifetime = Substitute.For<IHttpRequestLifetimeFeature>();
+        context.Features.Set(lifetime);
+        IHttpResponseBodyFeature responseFeature = Substitute.For<IHttpResponseBodyFeature>();
+        responseFeature.Stream.Returns(responseBody);
+        PipeWriter responseWriter = PipeWriter.Create(responseBody, new StreamPipeWriterOptions(leaveOpen: true));
+        responseFeature.Writer.Returns(responseWriter);
+        responseFeature.CompleteAsync().Returns(Task.CompletedTask);
+        context.Features.Set(responseFeature);
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
+
+        try
+        {
+            bool committed = payloadSize > 16 * 1024 && !bufferResponse;
+            if (committed && jsonFailure)
+                await Assert.ThrowsAsync<JsonException>(() => startup.ProcessJsonRpcRequestCoreAsync(context, url));
+            else if (committed)
+                await Assert.ThrowsAsync<OperationCanceledException>(() => startup.ProcessJsonRpcRequestCoreAsync(context, url));
+            else
+                await startup.ProcessJsonRpcRequestCoreAsync(context, url);
+            string response = Encoding.UTF8.GetString(responseBody.ToArray());
+            if (committed)
+            {
+                lifetime.DidNotReceive().Abort();
+                await responseFeature.DidNotReceive().CompleteAsync();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(response, Does.Not.Contain("\"error\""));
+                    Assert.That(context.Response.ContentLength, Is.Null);
+                }
+            }
+            else
+            {
+                lifetime.DidNotReceive().Abort();
+                await responseFeature.Received(1).CompleteAsync();
+                AssertJsonResponse(response, root =>
+                {
+                    JsonElement envelope = batch ? root[1] : root;
+                    using (Assert.EnterMultipleScope())
+                    {
+                        if (batch) Assert.That(root[0].GetProperty("id").GetInt32(), Is.EqualTo(2));
+                        Assert.That(envelope.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(jsonFailure ? ErrorCodes.InternalError : ErrorCodes.Timeout));
+                        Assert.That(envelope.GetProperty("id").GetInt32(), Is.EqualTo(1));
+                    }
+                });
+            }
+            stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == GetBlobsV2Method && !report.Success), Arg.Any<long>(), Arg.Any<long?>());
+            Assert.That(result.DisposeCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            await responseWriter.CompleteAsync();
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_LargeStreamingFailureRecoversOrFailsAccordingToResponseState(
+        [Values] bool bufferResponse, [Values] bool flush, [Values] bool timeout, [Values] bool batch)
+    {
+        DeferredProbeBlobStreamableResult result = new(async (writer, token) =>
+        {
+            writer.Write(Encoding.UTF8.GetBytes("[\"" + new string('x', 32 * 1024)));
+            if (flush) await writer.FlushAsync(token);
+            if (timeout) throw new OperationCanceledException();
+            throw new InvalidOperationException("deferred execution failure");
+        });
+        Startup startup = CreateStreamingStartup(result, bufferResponse);
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
+        await using KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(startup, url);
+
+        string request = CreateJsonRpcRequest(GetBlobsV2Method);
+        if (batch) request = "[" + CreateJsonRpcRequest(idJson: "2") + "," + request + "]";
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        if (bufferResponse)
+        {
+            (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
+            using JsonDocument document = JsonDocument.Parse(response);
+            JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+                Assert.That(envelope.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(timeout ? ErrorCodes.Timeout : ErrorCodes.InternalError));
+                if (batch) Assert.That(document.RootElement[0].GetProperty("id").GetInt32(), Is.EqualTo(2));
+            }
+        }
+        else if (flush)
+        {
+            await Assert.ThrowsAsync<HttpRequestException>(() => host.PostAsync(request, deadline.Token));
+        }
+        else
+        {
+            (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(statusCode, Is.EqualTo(StatusCodes.Status500InternalServerError));
+                Assert.That(response, Is.Empty);
+            }
+        }
+        Assert.That(result.DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_BufferedStreamedResponseIsComplete(
+        [Values(0, 32 * 1024)] int payloadSize, [Values] bool batch, [Values] bool fail)
+    {
+        string payload = new('x', payloadSize);
+        DeferredProbeBlobStreamableResult result = new(async (writer, token) =>
+        {
+            writer.Write(Encoding.UTF8.GetBytes("[\"" + payload + "\""));
+            await writer.FlushAsync(token);
+            if (fail) throw new InvalidOperationException("deferred execution failure");
+            writer.Write("]"u8);
+        });
+        Startup startup = CreateStreamingStartup(result, bufferResponse: true);
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
+        await using KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(startup, url);
+        string request = CreateJsonRpcRequest(GetBlobsV2Method);
+        if (batch) request = "[" + CreateJsonRpcRequest(idJson: "2") + "," + request + "]";
+
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        string response = await host.PostAsync(request, deadline.Token);
+
+        AssertJsonResponse(response, root =>
+        {
+            JsonElement envelope = batch ? root[1] : root;
+            using (Assert.EnterMultipleScope())
+            {
+                if (batch) Assert.That(root[0].GetProperty("id").GetInt32(), Is.EqualTo(2));
+                if (fail) Assert.That(envelope.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+                else Assert.That(envelope.GetProperty("result")[0].GetString(), Is.EqualTo(payload));
+            }
+        });
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task ProcessJsonRpcRequest_Deferred_resource_error_reports_failure_and_service_unavailable(
+        [Values] bool bufferResponse, [Values] bool batch,
+        [Values(ErrorCodes.LimitExceeded, ErrorCodes.ModuleTimeout)] int errorCode)
+    {
+        Exception failure = errorCode == ErrorCodes.LimitExceeded
+            ? new LimitExceededException("limit")
+            : new ModuleRentalTimeoutException("module timeout");
+        DeferredProbeBlobStreamableResult result = new((_, _) => throw failure);
+        IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
+        stats.IsEnabled.Returns(true);
+        Startup startup = CreateStreamingStartup(result, bufferResponse, stats);
+        string request = CreateJsonRpcRequest(GetBlobsV2Method);
+        if (batch) request = "[" + request + "]";
+        long successes = JsonRpcMetrics.JsonRpcSuccesses;
+        long errors = JsonRpcMetrics.JsonRpcErrors;
+
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
+        await using KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(startup, url);
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement envelope = batch ? document.RootElement[0] : document.RootElement;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(batch ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable));
+            Assert.That(envelope.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(errorCode));
+            Assert.That(JsonRpcMetrics.JsonRpcSuccesses - successes, Is.Zero);
+            Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.EqualTo(1));
+            Assert.That(result.WriteCount, Is.EqualTo(1));
+            Assert.That(result.DisposeCount, Is.EqualTo(1));
+        }
+        stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == GetBlobsV2Method && !report.Success), Arg.Any<long>(), Arg.Any<long?>());
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task ProcessJsonRpcRequest_Streamed_success_records_final_outcome([Values] bool bufferResponse, [Values] bool batch)
+    {
+        DeferredProbeBlobStreamableResult result = new((writer, _) =>
+        {
+            writer.Write("[null]"u8);
+            return ValueTask.CompletedTask;
+        });
+        IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
+        stats.IsEnabled.Returns(true);
+        Startup startup = CreateStreamingStartup(result, bufferResponse, stats);
+        string request = CreateJsonRpcRequest(GetBlobsV2Method);
+        if (batch) request = "[" + request + "]";
+        long successes = JsonRpcMetrics.JsonRpcSuccesses;
+        long errors = JsonRpcMetrics.JsonRpcErrors;
+
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(request, startup: startup);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((batch ? document.RootElement[0] : document.RootElement).GetProperty("result").GetArrayLength(), Is.EqualTo(1));
+            Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(JsonRpcMetrics.JsonRpcSuccesses - successes, Is.EqualTo(1));
+            Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.Zero);
+        }
+        stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == GetBlobsV2Method && report.Success), Arg.Any<long>(), Arg.Any<long?>());
+    }
+
+    private static Startup CreateStreamingStartup(ProbeBlobStreamableResult result, bool bufferResponse, IJsonRpcLocalStats? stats = null)
+    {
+        IEngineRpcModule engineModule = CreateEngineModule();
+        engineModule.engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(result)));
+        return CreateStartup(engineModule: engineModule, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = bufferResponse
+        }, jsonRpcLocalStats: stats);
+    }
+
+    [Test]
     public async Task HttpJsonRpcResponseSink_SerializesHexBytesResult()
     {
         byte[] bytes = GC.AllocateUninitializedArray<byte>(32 * 1024);
@@ -576,7 +831,7 @@ public class StartupTests
         ctx.SetEndpoint(new Endpoint(static _ => Task.CompletedTask, new EndpointMetadataCollection(), "health"));
         bool nextCalled = false;
 
-        await new Startup().HandleJsonRpcHttpRequestAsync(ctx, () =>
+        await new Startup().HandleJsonRpcHttpRequestAsync(ctx, _ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -598,6 +853,116 @@ public class StartupTests
         bool isJson = Startup.IsJsonContentType(contentType);
 
         Assert.That(isJson, Is.EqualTo(expected));
+    }
+
+    [TestCase(null, "")]
+    [TestCase(new[] { "198.51.100.1" }, " (X-Forwarded-For: 198.51.100.1)")]
+    [TestCase(new[] { "198.51.100.1", "192.0.2.4" }, " (X-Forwarded-For: 198.51.100.1,192.0.2.4)", TestName = "Repeated X-Forwarded-For header lines are all logged")]
+    public async Task Http_request_debug_log_includes_remote_address(string[]? forwardedFor, string expectedForwardedSuffix)
+    {
+        TestLogger logger = new();
+        byte[] request = Encoding.UTF8.GetBytes(CreateJsonRpcRequest());
+
+        await ProcessJsonRpcRequestWithStatus(
+            new MemoryStream(request),
+            request.Length,
+            startup: CreateStartup(processorLogManager: new OneLoggerLogManager(new(logger))),
+            configureContext: ctx =>
+            {
+                ctx.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.7");
+                if (forwardedFor is not null) ctx.Request.Headers["X-Forwarded-For"] = new StringValues(forwardedFor);
+            });
+
+        Assert.That(logger.LogList, Has.Member($"JSON RPC request {GetBlobsV1Method} from 203.0.113.7{expectedForwardedSuffix}"),
+            string.Join(" | ", logger.LogList));
+    }
+
+    [TestCase(new[] { AllowedOrigin }, AllowedOrigin, ExpectedResult = true, TestName = "WebSocket origin: accepts an allowed origin")]
+    [TestCase(new[] { AllowedOrigin }, OtherOrigin, ExpectedResult = false, TestName = "WebSocket origin: rejects another origin")]
+    [TestCase(new[] { AllowedOrigin }, "", ExpectedResult = true, TestName = "WebSocket origin: accepts a request without an origin")]
+    [TestCase(new[] { "https://App.Example" }, AllowedOrigin, ExpectedResult = true, TestName = "WebSocket origin: ignores the case of a configured origin")]
+    [TestCase(new[] { "*" }, OtherOrigin, ExpectedResult = true, TestName = "WebSocket origin: accepts any origin with the wildcard")]
+    [TestCase(new string[0], OtherOrigin, ExpectedResult = false, TestName = "WebSocket origin: rejects every origin with no CORS origins")]
+    public bool WebSocketOriginFilter_follows_the_cors_policy(string[] corsOrigins, string origin) =>
+        WebSocketOriginFilter.IsAllowed(origin, Startup.CreateCorsPolicy(new JsonRpcConfig { CorsOrigins = corsOrigins }));
+
+    [Test]
+    public async Task UseJsonRpcWebSockets_refuses_another_origin_before_the_socket_is_accepted()
+    {
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(30));
+        TestLogger logger = new();
+        await using WebApplication app = await StartWebSocketHostAsync(new JsonRpcConfig { CorsOrigins = [AllowedOrigin] }, logger, deadline.Token);
+        Uri uri = new UriBuilder(ServerUri(app)) { Scheme = "ws" }.Uri;
+
+        using (ClientWebSocket allowed = await ConnectWebSocketAsync(uri, AllowedOrigin, deadline.Token))
+        {
+            Assert.That(allowed.State, Is.EqualTo(WebSocketState.Open));
+        }
+
+        using (ClientWebSocket nonBrowser = await ConnectWebSocketAsync(uri, origin: null, deadline.Token))
+        {
+            Assert.That(nonBrowser.State, Is.EqualTo(WebSocketState.Open));
+        }
+
+        Assert.That(logger.LogList, Is.Empty);
+
+        WebSocketException? refused = await Assert.ThrowsAsync<WebSocketException>(() => ConnectWebSocketAsync(uri, OtherOrigin, deadline.Token));
+        Assert.That(refused!.Message, Does.Contain("403"));
+        // The node logs the refused origin before it answers, so the line is there once the client sees 403.
+        Assert.That(logger.LogList, Has.Exactly(1).Items);
+        Assert.That(logger.LogList[0], Does.Contain(OtherOrigin).And.Contain("JsonRpc.CorsOrigins"));
+    }
+
+    /// <summary>
+    /// Serves WebSockets through <see cref="Startup.UseJsonRpcWebSockets"/>, the pipeline <see cref="Startup"/> builds,
+    /// with a module that accepts every socket.
+    /// </summary>
+    private static async Task<WebApplication> StartWebSocketHostAsync(IJsonRpcConfig config, TestLogger logger, CancellationToken cancellationToken)
+    {
+        WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
+        builder.Services.AddLogging();
+        builder.Services.AddSingleton(AcceptingWebSocketsManager());
+        builder.WebHost.UseKestrelCore().ConfigureKestrel(static options => options.Listen(IPAddress.Loopback, 0));
+
+        WebApplication app = builder.Build();
+        TestJsonRpcUrlCollection urls = new();
+        Startup.UseJsonRpcWebSockets(app, config, urls, new ILogger(logger));
+
+        await app.StartAsync(cancellationToken);
+        // The port is known only once Kestrel has bound it; the pipeline looks it up per request.
+        int port = ServerUri(app).Port;
+        urls.Add(port, new JsonRpcUrl(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), port, RpcEndpoint.Ws, false, [ModuleType.Eth]));
+        return app;
+    }
+
+    private static IWebSocketsManager AcceptingWebSocketsManager()
+    {
+        ISocketsClient client = Substitute.For<ISocketsClient>();
+        client.Id.Returns("test");
+        IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
+        module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(ValueTask.FromResult(client));
+        IWebSocketsManager manager = Substitute.For<IWebSocketsManager>();
+        manager.GetModule(Arg.Any<string>()).Returns(module);
+        return manager;
+    }
+
+    private static Uri ServerUri(WebApplication app) =>
+        new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First());
+
+    private static async Task<ClientWebSocket> ConnectWebSocketAsync(Uri uri, string? origin, CancellationToken cancellationToken)
+    {
+        ClientWebSocket socket = new();
+        if (origin is not null) socket.Options.SetRequestHeader("Origin", origin);
+        try
+        {
+            await socket.ConnectAsync(uri, cancellationToken);
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     private static async Task<string> ProcessJsonRpcRequest(
@@ -628,7 +993,8 @@ public class StartupTests
         long? contentLength,
         long? maxRequestBodySize = null,
         Startup? startup = null,
-        bool isAuthenticated = false)
+        bool isAuthenticated = false,
+        Action<DefaultHttpContext>? configureContext = null)
     {
         DefaultHttpContext ctx = new()
         {
@@ -642,6 +1008,7 @@ public class StartupTests
         if (contentLength is not null) ctx.Request.ContentLength = contentLength;
 
         ctx.Request.Headers.Authorization = "Bearer test";
+        configureContext?.Invoke(ctx);
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
@@ -780,7 +1147,7 @@ public class StartupTests
         new TestCaseData(1UL, "\"0x1\"").SetName("ulong")
     ];
 
-    private sealed class ProbeBlobStreamableResult : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
+    private class ProbeBlobStreamableResult(Func<PipeWriter, CancellationToken, ValueTask>? write = null) : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
     {
         public int WriteCount { get; private set; }
         public int DisposeCount { get; private set; }
@@ -792,6 +1159,7 @@ public class StartupTests
         public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         {
             WriteCount++;
+            if (write is not null) return write(writer, cancellationToken);
             writer.Write("[null]"u8);
             return ValueTask.CompletedTask;
         }
@@ -803,6 +1171,9 @@ public class StartupTests
 
         public void Dispose() => DisposeCount++;
     }
+
+    private sealed class DeferredProbeBlobStreamableResult(Func<PipeWriter, CancellationToken, ValueTask> write)
+        : ProbeBlobStreamableResult(write), IDeferredExecutionResult;
 
     private sealed class FlushingStreamableResult(Action? onFlushed = null) : IStreamableResult
     {
@@ -865,6 +1236,17 @@ public class StartupTests
             }
 
             return new KestrelJsonRpcHost(host, port);
+        }
+
+        public async Task<string> PostAsync(string request, CancellationToken cancellationToken) =>
+            (await PostWithStatusAsync(request, cancellationToken)).Body;
+
+        public async Task<(int StatusCode, string Body)> PostWithStatusAsync(string request, CancellationToken cancellationToken)
+        {
+            using HttpClient client = new() { Timeout = ResponseTimeout };
+            using StringContent content = new(request, Encoding.UTF8, "application/json");
+            using HttpResponseMessage response = await client.PostAsync($"http://127.0.0.1:{port}/", content, cancellationToken);
+            return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
         }
 
         public async Task<(int StatusCode, string Body)> SendRawAsync(byte[] request)
@@ -946,13 +1328,11 @@ public class StartupTests
 
     private sealed class TestJsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection
     {
-        public TestJsonRpcUrlCollection(JsonRpcUrl url)
-            : base(capacity: 1)
-        {
-            Add(url.Port, url);
-            Urls = [url.ToString()];
-        }
+        public TestJsonRpcUrlCollection() { }
 
-        public string[] Urls { get; }
+        public TestJsonRpcUrlCollection(JsonRpcUrl url)
+            : base(capacity: 1) => Add(url.Port, url);
+
+        public string[] Urls => Values.Select(static url => url.ToString()).ToArray();
     }
 }

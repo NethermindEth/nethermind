@@ -17,6 +17,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Xdc.P2P;
 using NSubstitute;
@@ -88,7 +89,8 @@ public class XdcProtocolValidatorTests
 
         XdcConsensusMessageHandler.Factory consensusMessages = new(
             Substitute.For<ITimeoutCertificateManager>(), Substitute.For<IVotesManager>(),
-            Substitute.For<ISyncInfoManager>(), Substitute.For<IBlockTree>(), LimboLogs.Instance);
+            Substitute.For<ISyncInfoManager>(), Substitute.For<IBlockTree>(),
+            Substitute.For<ISyncPeerPool>(), LimboLogs.Instance);
 
         return version == XdcProtocolVersions.Legacy
             ? new XdcProtocolHandler(consensusMessages, session, Substitute.For<IMessageSerializationService>(),

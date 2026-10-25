@@ -27,7 +27,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         int checkPosition = ctx.Position + sequenceLength;
         ArrayPoolList<byte>? types = null;
         ArrayPoolList<int>? sizes = null;
-        ArrayPoolList<Hash256>? hashes = null;
+        ArrayPoolList<ValueHash256>? hashes = null;
 
         try
         {
@@ -78,7 +78,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         return size;
     }
 
-    private static Hash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeKeccak();
+    private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
     public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage72 message)
     {
@@ -88,11 +88,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
             sizesLength += Rlp.LengthOf(size);
         }
 
-        int hashesLength = 0;
-        foreach (Hash256 hash in message.Hashes.AsSpan())
-        {
-            hashesLength += Rlp.LengthOf(hash);
-        }
+        int hashesLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
 
         int contentLength = Rlp.LengthOf(message.Types.AsSpan())
                             + Rlp.LengthOfSequence(sizesLength)
@@ -112,7 +108,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         }
 
         writer.StartSequence(hashesLength);
-        foreach (Hash256 hash in message.Hashes.AsSpan())
+        foreach (ValueHash256 hash in message.Hashes.AsSpan())
         {
             writer.Encode(hash);
         }

@@ -85,7 +85,7 @@ public class EthereumBeaconApi : IBeaconApi
         return default;
     }
 
-    private class GetBlobSidecarsResponse
+    internal class GetBlobSidecarsResponse
     {
         public required BlobSidecar[] Data { get; init; }
     }

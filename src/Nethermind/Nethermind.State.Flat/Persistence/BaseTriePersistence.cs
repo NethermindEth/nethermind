@@ -79,6 +79,15 @@ public static class BaseTriePersistence
     private const int ShortenedStorageNodesKeyLength = StoragePrefixPortion + ShortenedPathLength + (StorageHashPrefixLength - StoragePrefixPortion);
     private const int FullStorageNodesKeyLength = 1 + StorageHashPrefixLength + FullPathLength + PathLengthLength;
 
+    /// <summary>The trie column a node key of <paramref name="keyLength"/> bytes belongs to; the column key layouts have distinct lengths.</summary>
+    internal static FlatDbColumns ColumnOfNodeKey(int keyLength) => keyLength switch
+    {
+        StateNodesTopPathLength => FlatDbColumns.StateTopNodes,
+        ShortenedPathLength => FlatDbColumns.StateNodes,
+        ShortenedStorageNodesKeyLength => FlatDbColumns.StorageNodes,
+        _ => FlatDbColumns.FallbackNodes,
+    };
+
     private static ReadOnlySpan<byte> EncodeStateTopNodeKey(Span<byte> buffer, in TreePath path)
     {
         path.EncodeWith3Byte(buffer);
@@ -158,6 +167,7 @@ public static class BaseTriePersistence
                 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }
 
+        [SkipLocalsInit]
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp)
         {
             switch (path.Length)
@@ -174,6 +184,7 @@ public static class BaseTriePersistence
             }
         }
 
+        [SkipLocalsInit]
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp)
         {
             switch (path.Length)
@@ -308,6 +319,7 @@ public static class BaseTriePersistence
         IReadOnlyKeyValueStore fallbackNodes
     ) : BasePersistence.ITrieReader
     {
+        [SkipLocalsInit]
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             path.Length switch
             {
@@ -316,6 +328,7 @@ public static class BaseTriePersistence
                 _ => fallbackNodes.Get(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags: flags)
             };
 
+        [SkipLocalsInit]
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             path.Length <= ShortenedPathThreshold
                 ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags)

@@ -3,6 +3,8 @@
 
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -13,13 +15,15 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
+[assembly: InternalsVisibleTo("Nethermind.State.Flat")]
+
 namespace Nethermind.State
 {
-    public class StateTree : PatriciaTree
+    public partial class StateTree : PatriciaTree
     {
         private static readonly AccountDecoder _decoder = new();
 
-        public static readonly Rlp EmptyAccountRlp = _decoder.Encode(Account.TotallyEmpty);
+        public static Rlp EmptyAccountRlp => field ??= _decoder.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
@@ -35,6 +39,7 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
+        [SkipLocalsInit]
         public Account? Get(Address address, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
@@ -76,8 +81,30 @@ namespace Nethermind.State
         public void Set(Address address, Account? account)
         {
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
-            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account));
+            Set(keccak.BytesAsSpan, account is null ? CappedArray<byte>.Empty
+                : new CappedArray<byte>(account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account)));
         }
+
+        [SkipLocalsInit]
+        internal void SetAccounts(Dictionary<AddressAsKey, Account?> accounts)
+        {
+            using ArrayPoolListRef<BulkSetEntry> entries = new(accounts.Count);
+            Unsafe.SkipInit(out KeyHashBatch batch);
+            batch.Initialize(Address.Size);
+            foreach (KeyValuePair<AddressAsKey, Account?> entry in accounts)
+            {
+                batch.Add(entry.Key.Value.Bytes, entries.Count, out ValueHash256 hash);
+                Account? account = entry.Value;
+                byte[]? encoded = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account);
+                entries.Add(new(in hash, encoded));
+                if (batch.IsFull) batch.Flush(entries.AsSpan());
+            }
+            batch.Flush(entries.AsSpan());
+            BulkSet(entries);
+        }
+
+        /// <summary>Writes the changed accounts into the tree.</summary>
+        internal partial void WriteAccounts(Dictionary<AddressAsKey, Account?> accounts);
 
         public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);
 

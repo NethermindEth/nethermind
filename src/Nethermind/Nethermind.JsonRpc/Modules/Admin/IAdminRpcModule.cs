@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Admin;
 public interface IAdminRpcModule : IContextAwareRpcModule
 {
     [JsonRpcMethod(Description = "Pauses local block processing. Blocks received from the network or consensus client are still queued but not processed; call `admin_resumeBlockProcessing` to process the accumulated backlog. Use `admin_isBlockProcessingPaused` to query the state. Intended for testing and diagnostics.",
-        EdgeCaseHint = "Idempotent: pausing an already-paused processor is a no-op. While paused the node is reported as healthy (a deliberate pause is not treated as a processing stall).",
+        EdgeCaseHint = "Idempotent: pausing an already-paused processor is a no-op. While paused the node is reported as healthy (a deliberate pause is not treated as a processing stall). Forkchoice updates return SYNCING, including requests with payload attributes, so the node cannot propose blocks until resumed.",
         ResponseDescription = "`true` if block processing is paused after the call (the request succeeded); `false` if it did not take effect.",
         ExampleResponse = "true",
         IsImplemented = true)]

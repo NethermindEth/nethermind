@@ -17,28 +17,35 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = $"The external IP address used for the legacy enode string, discovery, and peer filtering. Use only when the external IP cannot be resolved automatically. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries. On platforms with dual-mode wildcard support, keep this address IPv4 (or let it resolve automatically), set `{nameof(ExternalIpV6)}`, and leave `{nameof(LocalIp)}` unset or set it to `::` for dual-stack ENR advertisement.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently when `{nameof(EnableExternalIpResolution)}` is enabled; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
 
     /// <summary>
     /// Gets or sets the external IPv4 address to advertise.
     /// </summary>
     /// <remarks>
-    /// When unset, the resolved <see cref="ExternalIp"/> is used if it is an IPv4 address.
+    /// When unset and <see cref="EnableExternalIpResolution"/> is enabled, the external IPv4 address is resolved automatically.
     /// This address is advertised only when every currently bound inbound transport serves IPv4.
-    /// On platforms with dual-mode wildcard support, set this together with <see cref="ExternalIpV6"/>
-    /// and leave <see cref="LocalIp"/> unset or set it to <c>::</c> to advertise both families.
+    /// On platforms with dual-mode wildcard support, leave <see cref="LocalIp"/> unset or set it to
+    /// <c>::</c> to advertise both automatically resolved families.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv4 address to advertise. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries. On platforms with dual-mode wildcard support, use with `{nameof(ExternalIpV6)}` and leave `{nameof(LocalIp)}` unset or set it to `::` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv4 address to advertise. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIpV4 { get; set; }
 
     /// <remarks>
     /// User-facing override only. Code that needs the actual external IPv6 address must resolve it
-    /// through <c>IIPResolver.Resolve</c>. When unset, the resolved <see cref="ExternalIp"/> is used
-    /// if it is an IPv6 address.
+    /// through <c>IIPResolver.Resolve</c>. When unset and <see cref="EnableExternalIpResolution"/> is enabled,
+    /// the external IPv6 address is resolved automatically.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries. On platforms with dual-mode wildcard support, use with `{nameof(ExternalIpV4)}` and leave `{nameof(LocalIp)}` unset or set it to `::` for dual-stack advertisement. On an IPv6-only node, set `{nameof(ExternalIp)}` instead so existing consumers also use IPv6.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIpV6 { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether missing external IPv4 and IPv6 addresses available on active local interfaces are
+    /// resolved through public HTTPS services.
+    /// </summary>
+    [ConfigItem(Description = "Whether to resolve missing external IPv4 and IPv6 addresses available on active local interfaces through public HTTPS services. Disable this for restricted networks; explicit external IP overrides are still used.", DefaultValue = "true")]
+    bool EnableExternalIpResolution { get; set; }
 
     /// <remarks>
     /// User-facing override only. Code that needs the actual local IP must resolve it through
@@ -51,7 +58,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null")]
     string? StaticPeers { get; set; }
 
-    [ConfigItem(Description = "Use tree is available through a DNS name. For the default of `<chain name>.ethdisco.net`, leave unspecified.", DefaultValue = "null")]
+    [ConfigItem(Description = "The EIP-1459 node list to discover peers from, as `enrtree://<signer public key>@<domain>`. A bare domain is also accepted, but then the list signature is not verified. For the default of `all.<chain name>.ethdisco.net`, leave unspecified.", DefaultValue = "null")]
     string? DiscoveryDns { get; set; }
 
     [ConfigItem(Description = "Whether to use static peers only.", DefaultValue = "false")]
@@ -132,7 +139,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
     bool DisableDiscV4DnsFeeder { get; set; }
 
-    [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
+    [ConfigItem(DefaultValue = "1000", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
 
     [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{versionPostfix}` `{os}` `{runtime}`.")]

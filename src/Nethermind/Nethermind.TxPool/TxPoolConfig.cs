@@ -8,6 +8,9 @@ namespace Nethermind.TxPool;
 
 public class TxPoolConfig : ITxPoolConfig
 {
+    /// <summary>The node verification budget used by default and when the static ceiling is disabled.</summary>
+    public const ulong DefaultFrameTxMaxVerifyGas = 300_000;
+
     public int PeerNotificationThreshold { get; set; } = 5;
     public int MinBaseFeeThreshold { get; set; } = 70;
     public int Size { get; set; } = 2048;
@@ -19,7 +22,18 @@ public class TxPoolConfig : ITxPoolConfig
     public int BlobCacheSize { get; set; } = 256;
     public int InMemoryBlobPoolSize { get; set; } = 512; // it is used when persistent pool is disabled
     public int MaxPendingTxsPerSender { get; set; } = 0;
+    public ulong FrameTxMaxVerifyGas { get; set; } = DefaultFrameTxMaxVerifyGas;
+    public ulong FrameTxMaxVerifyStateGas { get; set; } = 500_000;
+    public int FrameTxMaxPendingPerDelegatingCode { get; set; } = 16;
+    public int FrameTxSimulationTimeoutMs { get; set; } = 250;
+    public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
+    public bool FrameTxPeerSimulationFairShare { get; set; } = false;
+    public int FrameTxEvictionRetryBudget { get; set; } = 1;
+    public int FrameTxRevalidationDeferralBudget { get; set; } = 2;
     public int MaxPendingBlobTxsPerSender { get; set; } = 16;
+    public bool FrameTxWidthEnabled { get; set; } = false;
+    public ulong FrameTxWidthSafetyFactorPermille { get; set; } = 1000;
+    public ulong FrameTxWidthCap { get; set; } = 0;
     public int HashCacheSize { get; set; } = 512 * 1024;
     public ulong? GasLimit { get; set; } = null;
     public long? MaxTxSize { get; set; } = 128.KiB;

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -16,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Evm.Precompiles.Metrics;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -27,6 +29,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
     private static readonly Address OtherPrecompileAddress = Address.FromNumber(101);
 
     private const long UnconstrainedMaxBytes = 32 * 1024 * 1024;
+
+    private const string MetricLabel = "TEST_METRIC_LABEL";
 
     // budget tests below feed 4-byte inputs, and TestPrecompile echoes them
     private const int EntryCost = 4 * 2 + PrecompileCaches.EntryOverheadBytes;
@@ -52,7 +56,10 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     private static PrecompileCachedCodeInfoRepository BuildRepository(PrecompileCaches? caches, IPrecompileProvider provider) =>
-        new(Substitute.For<IWorldState>(), provider, Substitute.For<ICodeInfoRepository>(), caches);
+        BuildRepository(caches, provider, Substitute.For<IWorldState>());
+
+    private static PrecompileCachedCodeInfoRepository BuildRepository(PrecompileCaches? caches, IPrecompileProvider provider, IWorldState worldState) =>
+        new(worldState, provider, Substitute.For<ICodeInfoRepository>(), caches);
 
     private static IPrecompile Resolve(PrecompileCachedCodeInfoRepository repository, Address address, params Address[] otherPrecompiles) =>
         repository.GetCachedCodeInfo(address, false, CreateSpecWithPrecompiles([address, .. otherPrecompiles]), out _).Precompile!;
@@ -159,6 +166,21 @@ public class PrecompileCachedCodeInfoRepositoryTests
             Assert.That(sha256, Is.Not.SameAs(Sha256Precompile.Instance), "sha256 supports caching and must be wrapped");
             Assert.That(identity, Is.SameAs(IdentityPrecompile.Instance), "identity does not support caching and must stay unwrapped");
         }
+    }
+
+    [Test]
+    public void GetPrecompile_ForPrecompileAddress_SharesCachedInstanceWithoutRecordingAccountRead()
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        IPrecompileProvider provider = CreateProvider((PrecompileAddress, new TestPrecompile(supportsCaching: true)));
+        PrecompileCachedCodeInfoRepository repository = BuildRepository(CreateCaches(provider), provider, worldState);
+        IReleaseSpec spec = CreateSpecWithPrecompiles(PrecompileAddress);
+
+        IPrecompile? resolved = repository.GetPrecompile(PrecompileAddress, spec);
+
+        worldState.DidNotReceive().AddAccountRead(Arg.Any<Address>());
+        Assert.That(resolved, Is.SameAs(repository.GetCachedCodeInfo(PrecompileAddress, false, spec, out _).Precompile),
+            "frame-tx signature validation must share the block-cache-decorated instance with EVM calls");
     }
 
     [TestCase(true, 1, 1, TestName = "Run_ForRepeatedInputWhenCaching_ComputesOnce")]
@@ -499,8 +521,132 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Assert.That(caches.BlockCacheCount, Is.EqualTo(1), "the reclaimed budget must admit a new entry");
     }
 
-    private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
+    [Test]
+    public void Key_FromEqualDataInDifferentBuffers_IsEqualAndHashEqualIncludingCopies()
     {
+        Address address = new("0x0000000000000000000000000000000000000002");
+        byte[] buffer = [9, 1, 2, 3, 9];
+        PrecompileCaches.Key key = new(address, new byte[] { 1, 2, 3 }, Prague.Instance);
+        PrecompileCaches.Key sliced = new(address, buffer.AsMemory(1, 3), Prague.Instance);
+        PrecompileCaches.Key copied = sliced.WithCopiedData();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sliced, Is.EqualTo(key), "keys over equal bytes must be equal whatever buffer holds them");
+            Assert.That(sliced.GetHashCode(), Is.EqualTo(key.GetHashCode()), "keys over equal bytes must hash equal");
+            Assert.That(copied, Is.EqualTo(key), "a copy must stay equal to the key it was built from");
+            Assert.That(copied.GetHashCode(), Is.EqualTo(key.GetHashCode()), "a copy must carry the hash of the key it was built from");
+        }
+
+        buffer[2] = 7;
+        Assert.That(copied, Is.EqualTo(key), "a copy must own its data, not follow later writes to the source buffer");
+    }
+
+    private const int MaxUnpaidKeyLength = 1024;
+
+    private static IEnumerable<TestCaseData> CachedFlatFeePrecompiles()
+    {
+        byte[] oversized = new byte[1024 * 1024];
+        oversized.AsSpan().Fill(1);
+
+        foreach (KeyValuePair<AddressAsKey, CodeInfo> entry in new EthereumPrecompileProvider().GetPrecompiles())
+        {
+            IPrecompile precompile = entry.Value.Precompile!;
+            if (precompile.SupportsCaching && precompile.DataGasCost(oversized, Osaka.Instance) == 0)
+                yield return new TestCaseData(precompile, oversized).SetArgDisplayNames(precompile.Name);
+        }
+    }
+
+    /// <remarks>
+    /// The cache hashes the normalized input before the precompile runs, so a precompile charging nothing per
+    /// input byte must not let the key grow with the input, or the caller gets that hashing unpaid.
+    /// </remarks>
+    [TestCaseSource(nameof(CachedFlatFeePrecompiles))]
+    public void NormalizeInput_OfFlatFeePrecompile_BoundsTheKeyAndKeepsTheResult(IPrecompile precompile, byte[] oversized)
+    {
+        ReadOnlyMemory<byte> normalized = precompile.NormalizeInput(oversized);
+        Result<byte[]> expected = precompile.Run(oversized, Osaka.Instance);
+        Result<byte[]> actual = precompile.Run(normalized, Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(normalized.Length, Is.LessThanOrEqualTo(MaxUnpaidKeyLength));
+            Assert.That(actual.Error, Is.EqualTo(expected.Error));
+            Assert.That(actual.Data, Is.EqualTo(expected.Data));
+        }
+    }
+
+    [Test]
+    public void Run_ThroughEveryCacheOutcome_ReportsMetrics()
+    {
+        bool detailedMetrics = DetailedMetricsEnabled;
+        DetailedMetricsEnabled = true; // probes are a detailed metric
+        try
+        {
+            const int inputLength = 3;
+            const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
+
+            (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, name: MetricLabel), maxBytes: entryCost);
+
+            resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // miss, admitted to both tiers
+            resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // per-block hit
+            resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance); // miss, budget full, so only the surviving tier takes it
+
+            caches.ClearBlockCache();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ProbeMetric("miss"), Is.EqualTo(2));
+                Assert.That(ProbeMetric("block_hit"), Is.EqualTo(1));
+                Assert.That(RejectedFullMetric(), Is.EqualTo(1), "the exhausted byte budget must be visible");
+                Assert.That(UsedBytesMetric(), Is.EqualTo(entryCost), "the gauge must report the block's high point");
+                Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
+            }
+
+            resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // surviving tier outlives the block
+            caches.ClearBlockCache();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ProbeMetric("surviving_hit"), Is.EqualTo(1));
+                Assert.That(UsedBytesMetric(), Is.Zero, "a block that only hit the surviving tier holds no budget");
+                Assert.That(EntriesMetric(), Is.Zero, "a block that only hit the surviving tier holds no entries");
+            }
+        }
+        finally
+        {
+            DetailedMetricsEnabled = detailedMetrics;
+        }
+    }
+
+    [Test]
+    public void PrepareFor_AfterBlockEnd_KeepsTheLastBlockMetrics()
+    {
+        const string label = "TEST_RESET_METRIC_LABEL";
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, name: label));
+        PreBlockCaches preBlockCaches = new(new PreBlockCachesConfig(), caches);
+
+        resolved.Run(new byte[] { 1, 2, 3, 4 }, Prague.Instance);
+        preBlockCaches.ClearPrecompileCache();
+        preBlockCaches.PrepareFor(stateRoot: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.BlockCacheCount, Is.Zero, "precondition: the reset still empties the cache");
+            Assert.That(PrecompileCacheUsedBytes[label], Is.EqualTo(EntryCost), "a reset must not overwrite the last block's occupancy");
+            Assert.That(PrecompileCacheEntries[label], Is.EqualTo(1), "a reset must not overwrite the last block's entry count");
+        }
+    }
+
+    private static long ProbeMetric(string result) => PrecompileCacheProbes.TryGetValue((MetricLabel, result), out long count) ? count : 0;
+    private static long RejectedFullMetric() => PrecompileCacheRejectedFull.TryGetValue(MetricLabel, out long count) ? count : 0;
+    private static long UsedBytesMetric() => PrecompileCacheUsedBytes.TryGetValue(MetricLabel, out long bytes) ? bytes : 0;
+    private static long EntriesMetric() => PrecompileCacheEntries.TryGetValue(MetricLabel, out long entries) ? entries : 0;
+
+    private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null, string? name = null) : IPrecompile
+    {
+        public string Name => name ?? nameof(TestPrecompile);
+
         public bool SupportsCaching => supportsCaching;
 
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;

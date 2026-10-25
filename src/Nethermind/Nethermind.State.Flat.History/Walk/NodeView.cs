@@ -63,18 +63,18 @@ internal readonly struct NodeView
         return new NodeView(NodeViewKind.Branch, rlp, length, children, ValueKeccak.Compute(rlp.AsSpan(0, length)));
     }
 
-    public static NodeView Branch(ChildVector children, ReadOnlySpan<byte> rlp, Hash256? knownHash)
+    public static NodeView Branch(ChildVector children, ReadOnlySpan<byte> rlp, ValueHash256? knownHash)
     {
         byte[] copy = ArrayPool<byte>.Shared.Rent(rlp.Length);
         rlp.CopyTo(copy);
-        return new NodeView(NodeViewKind.Branch, copy, rlp.Length, children, knownHash is null ? ValueKeccak.Compute(rlp) : knownHash.ValueHash256);
+        return new NodeView(NodeViewKind.Branch, copy, rlp.Length, children, knownHash ?? ValueKeccak.Compute(rlp));
     }
 
-    public static NodeView Whole(ReadOnlySpan<byte> rlp, Hash256? knownHash = null)
+    public static NodeView Whole(ReadOnlySpan<byte> rlp, ValueHash256? knownHash = null)
     {
         byte[] copy = ArrayPool<byte>.Shared.Rent(rlp.Length);
         rlp.CopyTo(copy);
-        return new NodeView(NodeViewKind.Whole, copy, rlp.Length, null, knownHash is null ? ValueKeccak.Compute(rlp) : knownHash.ValueHash256);
+        return new NodeView(NodeViewKind.Whole, copy, rlp.Length, null, knownHash ?? ValueKeccak.Compute(rlp));
     }
 
     public static NodeView Leaf(ReadOnlySpan<byte> nibbles, ReadOnlySpan<byte> value) => Short(nibbles, isLeaf: true, value, payloadIsString: true);

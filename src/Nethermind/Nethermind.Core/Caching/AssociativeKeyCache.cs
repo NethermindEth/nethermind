@@ -18,7 +18,7 @@ namespace Nethermind.Core.Caching;
 /// 8-way set-associative cache with lock-free reads and 3-random eviction.
 /// See <see cref="AssociativeCache{TKey,TValue}"/> for full design notes and tradeoff comparison.
 /// </summary>
-public sealed class AssociativeKeyCache<TKey>
+public sealed partial class AssociativeKeyCache<TKey>
     where TKey : struct, IHash64bit<TKey>
 {
     private const int Ways = 8;
@@ -87,7 +87,6 @@ public sealed class AssociativeKeyCache<TKey>
 
             if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
 
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e.Key;
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
@@ -106,7 +105,11 @@ public sealed class AssociativeKeyCache<TKey>
                 // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
                 // not key/value correctness — the "losing" ticker value is simply slightly stale.
                 if (TRefreshTicker.IsActive)
-                    e.Ticker = Stopwatch.GetTimestamp();
+                {
+                    bool newest = false;
+                    CheckNewestInSet(ref entries, baseIdx, i, e.Ticker, ref newest);
+                    if (!newest) e.Ticker = Stopwatch.GetTimestamp();
+                }
                 return true;
             }
         }
@@ -194,7 +197,7 @@ public sealed class AssociativeKeyCache<TKey>
             bool evictingLive = (existing & EpochOccMask) == epochOccTag;
 
             WriteEntry(ref te, existing, in key, tagToStore, timestamp);
-            AdjustCountIfEpoch(ref _epochAndCount, epochTag, evictingLive ? 0 : 1);
+            if (!evictingLive) AdjustCountIfEpoch(ref _epochAndCount, epochTag, 1);
 
             // Final check: if Clear() raced after the write, the entry has a stale epoch
             // tag and is invisible to readers. AdjustCountIfEpoch already skipped the
@@ -334,6 +337,17 @@ public sealed class AssociativeKeyCache<TKey>
     // sample per call without reintroducing a shared write. It seeds only the choice of ways; the
     // stamp written into the entry is still the raw timestamp.
     [ThreadStatic] private static int _evictProbe;
+
+    /// <summary>
+    /// Sets <paramref name="newest"/> when <paramref name="ticker"/> is newer than every other ticker in the set, so
+    /// refreshing the entry at <paramref name="way"/> cannot change its rank; a tie is not newest.
+    /// </summary>
+    /// <remarks>
+    /// Implemented only for the host, where a refresh's clock read and ticker write are what threads hitting one entry
+    /// contend on. The zkEVM guest runs single-threaded, where the scan only adds work, so without an implementation the
+    /// compiler drops the call and every hit refreshes.
+    /// </remarks>
+    static partial void CheckNewestInSet(ref Entry entries, int baseIdx, int way, long ticker, ref bool newest);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Pick3RandomEvictEntry(ref Entry entries, int baseIdx, long now, int probe)

@@ -11,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -141,20 +142,63 @@ public class XdcMasternodeEthModuleTests
         }
     }
 
-    [TestCase(true, 50u, TestName = "Canonical block reports the share of masternodes that signed it")]
-    [TestCase(false, 0u, TestName = "Block off the canonical chain never gains finality")]
-    public void eth_getBlockFinalityByNumber_reports_the_signed_share_of_the_canonical_chain(bool isMainChain, uint expected)
+    [TestCase(true, true, 50u, TestName = "Canonical block reports the share of masternodes that signed it")]
+    [TestCase(false, true, 0u, TestName = "Block off the canonical chain never gains finality")]
+    [TestCase(false, false, 0u, TestName = "Block off the canonical chain never gains finality, even without its epoch masternodes")]
+    public void eth_getBlockFinalityByNumber_reports_the_signed_share_of_the_canonical_chain(bool isMainChain, bool knowsEpochMasternodes, uint expected)
     {
         XdcBlockHeader queried = AddCanonicalHeader(800);
         XdcBlockHeader signed = AddCanonicalHeader(810);
         SetHead();
-        SetMasternodes(signed, TestItem.AddressA, TestItem.AddressB);
+        if (knowsEpochMasternodes)
+        {
+            SetMasternodes(signed, TestItem.AddressA, TestItem.AddressB);
+        }
         AddSigningBlock(811, signed.Hash!, TestItem.AddressA);
         _blockTree.IsMainChain(queried.Hash!, false).Returns(isMainChain);
 
         ResultWrapper<uint> result = _module.eth_getBlockFinalityByNumber(new BlockParameter(queried.Number));
 
-        Assert.That(result.Data, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.EqualTo(expected));
+        }
+    }
+
+    /// <remarks>
+    /// Without the epoch's masternodes, reporting no signers or 0% would claim nobody signed the block. A node lacks
+    /// them for epochs before its sync pivot, and V1 blocks have none.
+    /// </remarks>
+    [TestCase(false, ErrorCodes.ResourceUnavailable, TestName = "Unknown epoch masternodes fail instead of reporting no signers")]
+    [TestCase(true, ErrorCodes.InternalError, TestName = "A V1 block fails instead of reporting no signers")]
+    public void Signers_and_finality_fail_when_the_masternodes_cannot_be_resolved(bool isV1Block, int expectedErrorCode)
+    {
+        XdcBlockHeader queried = AddCanonicalHeader(800);
+        XdcBlockHeader signed = AddCanonicalHeader(810);
+        SetHead();
+        if (isV1Block)
+        {
+            _spec.SwitchBlock = 900;
+            SetMasternodes(signed, TestItem.AddressA);
+        }
+
+        IResultWrapper[] results =
+        [
+            _module.eth_getBlockSignersByNumber(new BlockParameter(queried.Number)),
+            _module.eth_getBlockSignersByHash(queried.Hash!),
+            _module.eth_getBlockFinalityByNumber(new BlockParameter(queried.Number)),
+            _module.eth_getBlockFinalityByHash(queried.Hash!),
+        ];
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (IResultWrapper result in results)
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+                Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
+            }
+        }
     }
 
     [Test]
@@ -411,7 +455,7 @@ public class XdcMasternodeEthModuleTests
         scope.WorldState.Returns(worldState);
         scope.TransactionProcessor.Returns(transactionProcessor);
         IReadOnlyTxProcessorSource source = Substitute.For<IReadOnlyTxProcessorSource>();
-        source.Build(Arg.Any<BlockHeader>()).Returns(scope);
+        source.TryBuild(Arg.Any<BlockHeader>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(call => call.Succeed(1, scope));
         IReadOnlyTxProcessingEnvFactory factory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         factory.Create().Returns(source);
         return factory;
@@ -453,6 +497,7 @@ public class XdcMasternodeEthModuleTests
         _blockTree.FindHeader(header.Hash!).Returns(header);
         _blockTree.FindHeader(header.Hash!, number).Returns(header);
         _blockTree.FindHeader(Arg.Is<BlockParameter>(p => p.BlockNumber == number), Arg.Any<bool>()).Returns(header);
+        _blockTree.IsMainChain(header.Hash!, false).Returns(true);
         return header;
     }
 

@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
 using IResettable = Nethermind.Core.Resettables.IResettable;
@@ -111,25 +109,46 @@ public class ResourcePool : IResourcePool
     }
 
     // Using stack for better cpu cache effectiveness
-    private class ConcurrentStackPool<T>(int maxCapacity = 16) where T : notnull, IDisposable, IResettable
+    private sealed class ConcurrentStackPool<T>(int maxCapacity = 16) where T : class, IDisposable, IResettable
     {
-        private readonly ConcurrentStack<T> _queue = new();
-        public double PooledItemCount => _queue.Count;
+        private readonly T?[] _items = new T?[maxCapacity];
+        private readonly Lock _lock = new();
+        private int _count;
 
-        public bool TryGet([NotNullWhen(true)] out T? item) => _queue.TryPop(out item);
+        public double PooledItemCount => Volatile.Read(ref _count);
+
+        public bool TryGet([NotNullWhen(true)] out T? item)
+        {
+            lock (_lock)
+            {
+                if (_count == 0)
+                {
+                    item = null;
+                    return false;
+                }
+
+                int top = --_count;
+                item = _items[top]!;
+                _items[top] = null;
+                return true;
+            }
+        }
 
         public bool Return(T item)
         {
             item.Reset();
-            if (_queue.Count >= maxCapacity)
+            lock (_lock)
             {
-                item.Dispose();
-                return false;
+                if (_count < _items.Length)
+                {
+                    _items[_count++] = item;
+                    return true;
+                }
             }
-            _queue.Push(item);
-            return true;
-        }
 
+            item.Dispose();
+            return false;
+        }
     }
 
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int cachedResourcePoolSize)
@@ -138,80 +157,117 @@ public class ResourcePool : IResourcePool
         private readonly ConcurrentStackPool<SortedSnapshotContent> _sortedPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
         private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
-        private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
-        private readonly PooledResourceLabel _sortedLabel = new(usage.ToString(), "SortedSnapshotContent");
-        private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
+        private readonly PooledResourceMetrics _snapshotMetrics = new(usage, "SnapshotContent");
+        private readonly PooledResourceMetrics _sortedMetrics = new(usage, "SortedSnapshotContent");
+        private readonly PooledResourceMetrics _cachedResourceMetrics = new(usage, "CachedResource");
 
         public SnapshotContent GetSnapshotContent()
         {
-            Metrics.ActivePooledResource.AddBy(_snapshotLabel, 1);
             if (_snapshotPool.TryGet(out SnapshotContent? snapshotContent))
             {
-                Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
+                _snapshotMetrics.OnRented(_snapshotPool.PooledItemCount);
                 return snapshotContent;
             }
 
-            Metrics.CreatedPooledResource.AddBy(_snapshotLabel, 1);
+            _snapshotMetrics.OnCreated(_snapshotPool.PooledItemCount);
             return new SnapshotContent();
         }
 
         public void ReturnSnapshotContent(SnapshotContent snapshotContent)
         {
-            Metrics.ActivePooledResource.AddBy(_snapshotLabel, -1);
-            if (!_snapshotPool.Return(snapshotContent))
-            {
-            }
-
-            Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
+            _snapshotPool.Return(snapshotContent);
+            _snapshotMetrics.OnReturned(_snapshotPool.PooledItemCount);
         }
 
         public SortedSnapshotContent GetSortedSnapshotContent()
         {
-            Metrics.ActivePooledResource.AddBy(_sortedLabel, 1);
             if (_sortedPool.TryGet(out SortedSnapshotContent? sortedContent))
             {
-                Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
+                _sortedMetrics.OnRented(_sortedPool.PooledItemCount);
                 return sortedContent;
             }
 
-            Metrics.CreatedPooledResource.AddBy(_sortedLabel, 1);
+            _sortedMetrics.OnCreated(_sortedPool.PooledItemCount);
             return new SortedSnapshotContent();
         }
 
         public void ReturnSortedSnapshotContent(SortedSnapshotContent sortedContent)
         {
-            Metrics.ActivePooledResource.AddBy(_sortedLabel, -1);
             _sortedPool.Return(sortedContent);
-            Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
+            _sortedMetrics.OnReturned(_sortedPool.PooledItemCount);
         }
 
         public TransientResource GetCachedResource()
         {
-            Metrics.ActivePooledResource.AddBy(_cachedResourceLabel, 1);
             if (_cachedResourcePool.TryGet(out TransientResource? cachedResource))
             {
-                Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
+                _cachedResourceMetrics.OnRented(_cachedResourcePool.PooledItemCount);
                 return cachedResource;
             }
 
-            Metrics.CreatedPooledResource.AddBy(_cachedResourceLabel, 1);
+            _cachedResourceMetrics.OnCreated(_cachedResourcePool.PooledItemCount);
             return new TransientResource(_lastCachedResourceSize);
         }
 
         public void ReturnCachedResource(TransientResource transientResource)
         {
-            Metrics.ActivePooledResource.AddBy(_cachedResourceLabel, -1);
             if (!_cachedResourcePool.Return(transientResource))
             {
                 _lastCachedResourceSize = transientResource.GetSize();
             }
 
-            Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
+            _cachedResourceMetrics.OnReturned(_cachedResourcePool.PooledItemCount);
+        }
+    }
+
+    /// <summary>Counts one pooled resource type, writing the shared metric dictionaries only when detailed metrics are enabled.</summary>
+    private sealed class PooledResourceMetrics(Usage usage, string resourceType)
+    {
+        private readonly PooledResourceLabel _label = new(usage.ToString(), resourceType);
+        private long _active;
+        private long _created;
+
+        public void OnRented(double pooledCount)
+        {
+            Interlocked.Increment(ref _active);
+            Publish(pooledCount);
+        }
+
+        public void OnCreated(double pooledCount)
+        {
+            Interlocked.Increment(ref _active);
+            Interlocked.Increment(ref _created);
+            Publish(pooledCount);
+        }
+
+        public void OnReturned(double pooledCount)
+        {
+            Interlocked.Decrement(ref _active);
+            Publish(pooledCount);
+        }
+
+        private void Publish(double pooledCount)
+        {
+            if (!Metrics.DetailedMetricsEnabled) return;
+
+            // Racing publishers may leave a gauge one operation stale until the next rent or return.
+            Metrics.ActivePooledResource[_label] = Volatile.Read(ref _active);
+            Metrics.CreatedPooledResource[_label] = Volatile.Read(ref _created);
+            Metrics.CachedPooledResource[_label] = (long)pooledCount;
         }
     }
 
     public record PooledResourceLabel(string Category, string ResourceType) : IMetricLabels
     {
+        // Get-only rather than init, so a `with` copy cannot change a value under the cached hash.
+        public string Category { get; } = Category;
+        public string ResourceType { get; } = ResourceType;
+
+        // Every rent and return keys a metric by this label on the block processing thread; hash its fixed strings once.
+        private readonly int _hashCode = HashCode.Combine(Category, ResourceType);
+
         public string[] Labels => [Category, ResourceType];
+
+        public override int GetHashCode() => _hashCode;
     }
 }

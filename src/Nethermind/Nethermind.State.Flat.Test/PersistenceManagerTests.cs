@@ -5,10 +5,12 @@ using System;
 using System.Threading;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -17,7 +19,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -402,7 +403,8 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_InsufficientInMemoryDepth_ReturnsNull()
     {
-        // Gate passes (60+16=76 > 64) but GetFinalizedStateRootAt(16) is not configured → seed = null.
+        // Two independent reasons for null: the depth above the fold target (60-16=44) is under
+        // MinReorgDepth (64), and no seed is configured at 16.
         StateId persisted = Block0;
         StateId latest = CreateStateId(60);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -610,6 +612,169 @@ public class PersistenceManagerTests
         toPersist?.Dispose();
     }
 
+    [TestCase(0UL, 40UL, false, TestName = "DetermineSnapshotAction_ByteBudgetDisabled_FinalizedBelowFloor_ReturnsNull")]
+    [TestCase(1UL, 40UL, false, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedBelowFloor_ReturnsNull")]
+    [TestCase(1UL, 79UL, false, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedOneBelowFloor_ReturnsNull")]
+    [TestCase(1UL, 80UL, true, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedAtFloor_Persists")]
+    public void DetermineSnapshotAction_ByteBudget_FinalizedTriggerKeepsMinReorgDepth(ulong byteBudget, ulong latestBlock, bool expectPersist)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget, enableLongFinality: false);
+
+        StateId target = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(Block0, target, compacted: true);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.GreaterThan(0));
+
+        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        AssertPersistKeepsMinReorgDepth(toPersist, latestBlock, expectPersist);
+    }
+
+    private static void AssertPersistKeepsMinReorgDepth(Snapshot? toPersist, ulong latestBlock, bool expectPersist)
+    {
+        Assert.That(toPersist is not null, Is.EqualTo(expectPersist));
+        if (toPersist is not null)
+        {
+            Assert.That(latestBlock - toPersist.To.BlockNumber, Is.GreaterThanOrEqualTo(ByteBudgetMinReorgDepth));
+            toPersist.Dispose();
+        }
+    }
+
+    private const ulong ByteBudgetMinReorgDepth = 64;
+
+    private PersistenceManager CreateByteBudgetManager(ulong byteBudget, bool enableLongFinality, int maxInMemoryBaseSnapshotCount = 160, IFlatPersistenceCaptureHook? captureHook = null)
+    {
+        _config.MinReorgDepth = ByteBudgetMinReorgDepth;
+        _config.EnableLongFinality = enableLongFinality;
+        _config.MaxInMemoryBaseSnapshotCount = maxInMemoryBaseSnapshotCount;
+        _config.MaxInMemorySnapshotBytes = byteBudget;
+
+        _persistenceManager.Dispose();
+        _tier.Dispose();
+        _tier = new FlatTestContainer(_config, finalizedStateProvider: _finalizedStateProvider, configure: builder =>
+        {
+            builder
+                .AddSingleton(_persistence)
+                .AddSingleton(_persistedSnapshotCompactor);
+            if (captureHook is not null) builder.AddSingleton<IFlatPersistenceCaptureHook>(captureHook);
+        });
+        _snapshotRepository = _tier.Repository;
+        _persistenceManager = (PersistenceManager)_tier.Resolve<IPersistenceManager>();
+        return _persistenceManager;
+    }
+
+    // The byte budget is the one persist that fires with finality stalled and the depth far below the backstop.
+    [Test]
+    public void DetermineSnapshotAction_OverByteBudget_WhileTheCaptureHookHoldsTheFlatPersist_PersistsNothing()
+    {
+        RecordingCaptureHook hook = new();
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true, maxInMemoryBaseSnapshotCount: 1, hook);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        hook.Hold();
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null, "a byte-budget persist would move the state the pivot image reads");
+        }
+
+        toPersist?.Dispose();
+    }
+
+    [TestCase(0, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_AboveInMemoryFloor_PrefersConversion")]
+    [TestCase(1, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_AtInMemoryFloor_KeepsWindowAndPersists")]
+    public void DetermineSnapshotAction_FinalityStalled_OverByteBudget_ConversionRespectsInMemoryFloor(int maxInMemoryBaseSnapshotCount, bool expectConversion)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true, maxInMemoryBaseSnapshotCount);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+
+        (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        Assert.That(toConvert is not null, Is.EqualTo(expectConversion));
+        AssertPersistKeepsMinReorgDepth(toPersist, 100, !expectConversion);
+        toConvert?.Compacted?.Dispose();
+        toConvert?.Base?.Dispose();
+    }
+
+    [TestCase(0UL, 100UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_NoByteBudget_ReturnsNull")]
+    [TestCase(1UL, 100UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_ForcesPersistAboveFloor")]
+    [TestCase(1UL, 50UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsBelowMinReorgDepth")]
+    [TestCase(1UL, 65UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsAfterFold")]
+    [TestCase(1UL, 79UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsOneBelowBoundary")]
+    [TestCase(1UL, 80UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_PersistsAtBoundary")]
+    [TestCase(1UL, 80UL, false, 79UL, TestName = "DetermineSnapshotAction_OverByteBudget_QueuedHeightAboveCommittedHead_KeepsFloor")]
+    [TestCase(1UL, 81UL, true, 80UL, TestName = "DetermineSnapshotAction_OverByteBudget_QueuedHeightAboveCommittedHead_PersistsAtFloor")]
+    public void DetermineSnapshotAction_ByteBudget_ForcesBackstopWhenFinalityStalled(ulong byteBudget, ulong latestBlock, bool expectPersist, ulong? committedBlock = null)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget, enableLongFinality: false);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        if (committedBlock is { } headBlock)
+        {
+            StateId head = CreateStateId(headBlock);
+            CreateSnapshot(tierTip, head);
+            _snapshotRepository.SetLastCommittedStateId(head);
+        }
+        string leasesBefore = expected.ToString();
+
+        (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        Assert.That(toConvert, Is.Null);
+        AssertPersistKeepsMinReorgDepth(toPersist, committedBlock ?? latestBlock, expectPersist);
+        Assert.That(expected.ToString(), Is.EqualTo(leasesBefore), "a rejected or returned candidate must not keep a lease");
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_FinalityStalled_OverByteBudget_NeverPersistsPersistedTierCandidate()
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true);
+
+        StateId persistedTierTip = CreateStateId(16);
+        PersistBase(Block0, persistedTierTip);
+        using Snapshot inMemory = CreateSnapshot(persistedTierTip, CreateStateId(32), compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        Assert.That(_snapshotRepository.TryLeaseBasePersistedSnapshot(persistedTierTip, out PersistedSnapshot? persistedTierSnapshot), Is.True);
+        string leasesBefore = persistedTierSnapshot!.ToString();
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert, Is.Null);
+            Assert.That(persistedTierSnapshot.ToString(), Is.EqualTo(leasesBefore), "the rejected persisted-tier candidate must be released");
+        }
+
+        persistedToPersist?.Dispose();
+        toPersist?.Dispose();
+        persistedTierSnapshot.Dispose();
+    }
+
+    [Test]
+    public void SnapshotRepository_InMemoryBytes_ReturnsToZeroAfterRemove([Values] bool compacted)
+    {
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.EqualTo(0));
+
+        Snapshot snapshot = CreateSnapshot(Block0, CreateStateId(1), compacted);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.GreaterThan(0));
+
+        _snapshotRepository.RemoveAndReleaseInMemoryKnownState(snapshot.To, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.EqualTo(0));
+    }
+
     [Test]
     public void DetermineSnapshotAction_FinalizedGatePassesButSeedMissing_BackstopStillForcesPersist()
     {
@@ -641,7 +806,7 @@ public class PersistenceManagerTests
             Substitute.For<IProcessExitSource>());
 
         // Finalized at/above the next boundary so the finalized branch IS entered, but leave
-        // GetFinalizedStateRootAt(16) unset so its seed resolves to null. Depth (90017) exceeds the
+        // GetFinalizedHeader(16) unset so its seed resolves to null. Depth (90017) exceeds the
         // effective backstop (MinReorgDepth + CompactSize = 90016), so the backstop must persist.
         StateId tierTip = CreateStateId(config.CompactSize);
         using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
@@ -660,7 +825,7 @@ public class PersistenceManagerTests
     public void DetermineSnapshotAction_FinalizedBeyondHead_SeedsAtBoundary()
     {
         // Catch-up sync: CL reports a finalized block far beyond the local chain head.
-        // GetFinalizedStateRootAt(finalizedBlockNumber) would return null, but the boundary
+        // GetFinalizedHeader(finalizedBlockNumber) would return null, but the boundary
         // block (persisted + CompactSize) IS locally synced, so the canonical-root lookup
         // resolves there. Phase 1 must seed at the boundary and persist the boundary snapshot.
         StateId persisted = Block0;
@@ -668,7 +833,7 @@ public class PersistenceManagerTests
         StateId boundary = CreateStateId(_config.CompactSize);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(25_128_361);
-        // Deliberately leave GetFinalizedStateRootAt(25_128_361) unset → returns null;
+        // Deliberately leave GetFinalizedHeader(25_128_361) unset → returns null;
         // only the boundary block has a known canonical state root.
         _finalizedStateProvider.SetFinalizedStateRootAt(_config.CompactSize, new Hash256(boundary.StateRoot.Bytes));
 
@@ -727,9 +892,11 @@ public class PersistenceManagerTests
         // ConvertCompactedRange persists the gathered snapshot into the real persisted tier.
         // The converted/boundary snapshots are disposed by it (via RemoveAndRelease + the
         // pre-leased candidate), so they are NOT wrapped in `using`. Only the survivor is.
+        PersistBase(Block0, compactedFrom);
         CreateSnapshot(compactedFrom, compactedTo, compacted: true);
         CreateSnapshot(compactedFrom, baseA, compacted: false);
         CreateSnapshot(baseA, baseB, compacted: false);
+        CreateSnapshot(baseB, compactedTo, compacted: false);
         using Snapshot outsiderSnap = CreateSnapshot(Block0, outsider, compacted: false);
 
         Assert.That(_snapshotRepository.HasState(outsider), Is.True);
@@ -746,6 +913,31 @@ public class PersistenceManagerTests
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseB, SnapshotTier.InMemoryBase, out _), Is.False, "baseB removed from the in-memory tier");
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out _), Is.False, "boundary compacted removed");
         });
+    }
+
+    [Test]
+    public void ConvertCompactedRange_ForkWithInMemoryParent_StaysAssemblable()
+    {
+        // The fork's parent sits below the range and is still in memory, so converting the fork would put
+        // a persisted snapshot on top of an in-memory one, which no assembly walk can follow back to disk.
+        StateId forkPoint = CreateStateId(15);
+        StateId compactedFrom = CreateStateId(16);
+        StateId compactedTo = CreateStateId(16 + _config.CompactSize);
+        StateId forkParent = CreateStateId(16, rootByte: 1);
+        StateId forkTip = CreateStateId(17, rootByte: 1);
+
+        PersistBase(Block0, forkPoint);
+        PersistBase(forkPoint, compactedFrom);
+        CreateSnapshot(compactedFrom, compactedTo, compacted: true);
+        CreateSnapshot(compactedFrom, CreateStateId(17));
+        CreateSnapshot(forkPoint, forkParent);
+        CreateSnapshot(forkParent, forkTip);
+
+        _snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out Snapshot? compactedForConvert);
+        InvokeConvertCompactedRange(compactedForConvert!);
+
+        using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(forkTip, Block0, estimatedSize: 4);
+        Assert.That(assembled.SnapshotCount, Is.GreaterThan(0), "the fork tip must still assemble down to the persisted state");
     }
 
     [TestCase(1)]
@@ -1019,7 +1211,7 @@ public class PersistenceManagerTests
 
         Assert.That(persistedToPersist, Is.Null);
         Assert.That(toPersist, Is.Not.Null);
-        Assert.That(toPersist!.To.StateRoot.Bytes.ToArray(), Is.EqualTo(target2.StateRoot.Bytes.ToArray()));
+        Assert.That(toPersist!.To.StateRoot.Bytes, Is.SequenceEqualTo(target2.StateRoot.Bytes));
 
         toPersist.Dispose();
     }
@@ -1068,8 +1260,8 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_ExactlyAtMinimumBoundary_ReturnsNull()
     {
-        // Gate passes (79+16=95 > 64), but GetFinalizedStateRootAt(16) is not configured →
-        // returns null → seed = null. No backstop (79 << LongFinalityMaxReorgDepth). Result: null.
+        // One block short of the fold threshold (79-16=63 < MinReorgDepth). No seed at 16 and no
+        // backstop (79 << LongFinalityMaxReorgDepth) either, so all three paths yield null.
         StateId persisted = Block0;
         StateId latest = CreateStateId(79);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -1084,8 +1276,8 @@ public class PersistenceManagerTests
     public void DetermineSnapshotAction_OneAboveMinimumBoundary_ReturnsSnapshot()
     {
         // Setup: persisted at Block0, latest at 80, finalized at the candidate block (16) so the
-        // single-seed BFS lands directly on it. Depth (80) + CompactSize (16) = 96 > MinReorgDepth
-        // (64) — passes the normal-trigger gate.
+        // single-seed BFS lands directly on it. Folding to 16 leaves 80-16=64 reachable, exactly
+        // MinReorgDepth — the first head at which the normal-trigger gate opens.
         StateId persisted = Block0;
         StateId latest = CreateStateId(80);
         StateId target = CreateStateId(16);
@@ -1100,6 +1292,29 @@ public class PersistenceManagerTests
         Assert.That(toPersist, Is.Not.Null);
 
         toPersist!.Dispose();
+    }
+
+    // Folding must leave MinReorgDepth reachable above the new base, so the gate opens only once the
+    // head is that far past the fold target (block 16 here) — at head 80, not 79.
+    [TestCase(79u, false, TestName = "DetermineSnapshotAction_FoldKeepsMinReorgDepth_BelowFloorHolds")]
+    [TestCase(80u, true, TestName = "DetermineSnapshotAction_FoldKeepsMinReorgDepth_AtFloorFolds")]
+    public void DetermineSnapshotAction_FoldNeverDropsBelowMinReorgDepth(ulong latestBlock, bool expectFold)
+    {
+        StateId target = CreateStateId(_config.CompactSize);
+        _finalizedStateProvider.SetFinalizedBlockNumber(_config.CompactSize);
+        _finalizedStateProvider.SetFinalizedStateRootAt(_config.CompactSize, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot seed = CreateSnapshot(Block0, target, compacted: true);
+
+        (_, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        Assert.That(toPersist is not null, Is.EqualTo(expectFold));
+        if (toPersist is not null)
+        {
+            Assert.That(latestBlock - toPersist.To.BlockNumber, Is.GreaterThanOrEqualTo(_config.MinReorgDepth),
+                "folding left less than MinReorgDepth reachable above the new base");
+            toPersist.Dispose();
+        }
     }
 
     [Test]
@@ -1227,6 +1442,126 @@ public class PersistenceManagerTests
         Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
     }
 
+    [Test]
+    public void FlushToPersistence_WhenEveryBlockHasABase_PersistsFullChunks()
+    {
+        StateId previous = Block0;
+        for (ulong block = 1; block <= 32; block++)
+        {
+            StateId next = CreateStateId(block);
+            CreateSnapshot(previous, next);
+            previous = next;
+        }
+        CreateSnapshot(Block0, CreateStateId(16), compacted: true);
+        CreateSnapshot(CreateStateId(16), CreateStateId(32), compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(CreateStateId(32));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(CreateStateId(32)), "the connected chain must be drained");
+        _persistence.Received(2).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void FlushToPersistence_WhenBacklogIsPersistedOnly_DrainsConvertedChunks()
+    {
+        PersistBase(Block0, CreateStateId(16));
+        PersistBase(CreateStateId(16), CreateStateId(32));
+        _snapshotRepository.SetLastCommittedStateId(CreateStateId(32));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(CreateStateId(32)), "persisted-only candidates must remain visible to the committed seed");
+        _persistence.Received(2).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void FlushToPersistence_WhenCommittedChunkConflictsWithFinality_PersistsOnlyCanonicalPrefix()
+    {
+        StateId narrow = CreateStateId(1);
+        StateId head = CreateStateId(16);
+        CreateSnapshot(Block0, narrow);
+        CreateSnapshot(narrow, head);
+        CreateSnapshot(Block0, head, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(head);
+        _finalizedStateProvider.SetFinalizedBlockNumber(32);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(narrow.StateRoot.Bytes));
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, TestItem.KeccakA);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(narrow), "a missing finalized-tip root must not permit a conflicting committed chunk");
+        _persistence.Received(1).CreateWriteBatch(Block0, narrow);
+        _persistence.Received(1).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void FindSnapshotToPersist_WhenWideChunkIsNonCanonical_UsesNarrowChunkOnSameChain()
+    {
+        StateId narrow = CreateStateId(1);
+        StateId head = CreateStateId(16);
+        CreateSnapshot(Block0, narrow);
+        CreateSnapshot(narrow, head);
+        CreateSnapshot(Block0, head, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(head);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(narrow.StateRoot.Bytes));
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, TestItem.KeccakA);
+
+        (PersistedSnapshot? persisted, Snapshot? inMemory) =
+            _snapshotRepository.FindSnapshotToPersist(head, Block0, (ulong)_config.CompactSize);
+        using (persisted)
+        using (inMemory)
+        {
+            Assert.That(persisted?.To ?? inMemory?.To, Is.EqualTo(narrow), "rejecting a wide edge must not reject the entire connected seed");
+        }
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_WhenBackstopHasNoCandidate_WarnsOnlyIfConversionAlsoFails([Values] bool enableConversion)
+    {
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 0,
+            MaxReorgDepth = 32,
+            LongFinalityMaxReorgDepth = 32,
+            MaxInMemoryBaseSnapshotCount = 0,
+            EnableLongFinality = enableConversion
+        };
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<PersistenceManager>().Returns(wrappedLogger);
+        using PersistenceManager manager = new(config, _tier.Resolve<ICompactionSchedule>(), _finalizedStateProvider,
+            _persistence, _snapshotRepository, NullStatePersistenceBarrier.Instance, logManager,
+            _persistedSnapshotCompactor, _tier.Loader, Substitute.For<IProcessExitSource>());
+        StateId head = CreateStateId(64);
+        CreateSnapshot(Block0, head);
+        _snapshotRepository.SetLastCommittedStateId(head);
+
+        (PersistedSnapshot? persisted, Snapshot? inMemory, PersistenceManager.ConversionCandidate? conversion) =
+            manager.DetermineSnapshotAction(head);
+        using (persisted)
+        using (inMemory)
+        using (conversion?.Base)
+        using (conversion?.Compacted)
+        {
+            Assert.That(conversion is not null, Is.EqualTo(enableConversion), "conversion must be considered before warning");
+            logger.Received(enableConversion ? 0 : 1).Warn(Arg.Is<string>(message => message.Contains("neither persistence nor conversion")));
+        }
+        (PersistedSnapshot? repeatedPersisted, Snapshot? repeatedInMemory, PersistenceManager.ConversionCandidate? repeatedConversion) =
+            manager.DetermineSnapshotAction(head);
+        using (repeatedPersisted)
+        using (repeatedInMemory)
+        using (repeatedConversion?.Base)
+        using (repeatedConversion?.Compacted)
+            logger.Received(enableConversion ? 0 : 1).Warn(Arg.Is<string>(message => message.Contains("neither persistence nor conversion")));
+    }
+
     // FlushToPersistence prunes both tiers as it drains, so a flush without capture would leave the flushed
     // range permanently absent from history on every shutdown.
     [Test]
@@ -1260,6 +1595,95 @@ public class PersistenceManagerTests
             Assert.That(hook.CapturedUpTo, Is.EqualTo(to), "the flushed range must be captured before it is pruned");
         }
     }
+
+    [Test]
+    public async Task AddToPersistence_WhileTheCaptureHookHoldsTheFlatPersist_PersistsNothingUntilReleased()
+    {
+        RecordingCaptureHook hook = new();
+        using ILifetimeScope scope = CreateManagerScope(hook);
+        PersistenceManager manager = scope.Resolve<PersistenceManager>();
+
+        StateId to = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        hook.Hold();
+        await manager.AddToPersistence(latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+            Assert.That(hook.CapturedUpTo, Is.Null);
+        }
+
+        hook.Release();
+        await manager.AddToPersistence(latest);
+
+        Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
+    }
+
+    [Test]
+    public async Task AddToPersistence_HeldPastTheBackstop_WaitsForTheReleaseInsteadOfForcingAPersist()
+    {
+        RecordingCaptureHook hook = new();
+        using ILifetimeScope scope = CreateManagerScope(hook);
+        PersistenceManager manager = scope.Resolve<PersistenceManager>();
+
+        StateId latest = CreateStateId(95000);
+        StateId tierTip = CreateStateId(_config.CompactSize);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+        _ = CreateSnapshot(Block0, tierTip, compacted: false);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        hook.Hold();
+        Task persist = manager.AddToPersistence(latest);
+        await hook.ReleaseAwaited.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persist.IsCompleted, Is.False, "block processing must wait while the hold keeps the flat state in place");
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+        }
+
+        hook.Release();
+        await persist.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(hook.CapturedUpTo, Is.EqualTo(tierTip), "the forced persist runs once the hold is released");
+    }
+
+    [Test]
+    public void FlushToPersistence_WhileTheCaptureHookHoldsTheFlatPersist_KeepsThePersistedState()
+    {
+        RecordingCaptureHook hook = new();
+        using ILifetimeScope scope = CreateManagerScope(hook);
+        PersistenceManager manager = scope.Resolve<PersistenceManager>();
+
+        StateId to = CreateStateId(16);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        hook.Hold();
+        StateId flushed = manager.FlushToPersistence(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flushed, Is.EqualTo(Block0));
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+            Assert.That(hook.CapturedUpTo, Is.Null);
+        }
+    }
+
+    // The production registration over the shared tier, with this fixture's persistence and compactor and the given hook.
+    private ILifetimeScope CreateManagerScope(IFlatPersistenceCaptureHook hook) => _tier.BeginScope(builder => builder
+        .AddSingleton<IPersistence>(_persistence)
+        .AddSingleton<IPersistedSnapshotCompactor>(_persistedSnapshotCompactor)
+        .AddSingleton<IFlatPersistenceCaptureHook>(hook)
+        .AddSingleton<IPersistenceManager, PersistenceManager>());
 
     // The flush path (genesis-loader / shutdown) must uphold the same capture-before-persist invariant.
     [Test]
@@ -1317,7 +1741,7 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
 
-        Assert.ThrowsAsync<System.InvalidOperationException>(() => manager.AddToPersistence(latest));
+        await Assert.ThrowsAsync<System.InvalidOperationException>(() => manager.AddToPersistence(latest));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "the barrier must not advance past a failed capture");
@@ -1547,7 +1971,7 @@ public class PersistenceManagerTests
 
         StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
-        Assert.That(result.StateRoot.Bytes.ToArray(), Is.EqualTo(finalizedState.StateRoot.Bytes.ToArray()));
+        Assert.That(result.StateRoot.Bytes, Is.SequenceEqualTo(finalizedState.StateRoot.Bytes));
     }
 
     [Test]
@@ -1601,6 +2025,38 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
+    // Chain Block0->1->2->3->4 plus a fork (3)->(4,1); `remaining` lists the main-chain blocks still held afterwards
+    // (the fork survives exactly when block 4 does).
+    [TestCase(0ul, 3ul, 0, new ulong[] { 1, 2, 3 }, TestName = "known head above the persisted state")]
+    [TestCase(0ul, 3ul, 7, new ulong[] { 1, 2, 3, 4 }, TestName = "unknown head is refused")]
+    [TestCase(2ul, 2ul, 0, new ulong[] { 1, 2 }, TestName = "head at the persisted state")]
+    [TestCase(5ul, 5ul, 0, new ulong[] { }, TestName = "head at a persisted state nothing is keyed at drops everything")]
+    [TestCase(3ul, 2ul, 0, new ulong[] { 1, 2, 3, 4 }, TestName = "head below the persisted state is refused")]
+    public void DropStateNotReachableFrom_KeepsHeadAncestryOnly(ulong persistedBlock, ulong headBlock, int headRootByte, ulong[] remaining)
+    {
+        StateId persisted = persistedBlock == 0 ? Block0 : CreateStateId(persistedBlock);
+        _persistence.CreateReader().CurrentState.Returns(persisted);
+        StateId previous = Block0;
+        for (ulong block = 1; block <= 4; block++)
+        {
+            CreateSnapshot(previous, CreateStateId(block));
+            previous = CreateStateId(block);
+        }
+        StateId fork4 = CreateStateId(4, rootByte: 1);
+        CreateSnapshot(CreateStateId(3), fork4);
+
+        _persistenceManager.DropStateNotReachableFrom(CreateStateId(headBlock, rootByte: (byte)headRootByte));
+
+        HashSet<ulong> kept = [.. remaining];
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong block = 1; block <= 4; block++)
+                Assert.That(_snapshotRepository.HasState(CreateStateId(block)), Is.EqualTo(kept.Contains(block)), $"block {block}");
+            Assert.That(_snapshotRepository.HasState(fork4), Is.EqualTo(kept.Contains(4)), "fork");
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(persisted));
+        }
+    }
+
     private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
     {
         // TryFindSnapshotToConvert is private; reach it via reflection so we can unit-test the
@@ -1621,7 +2077,7 @@ public class PersistenceManagerTests
         method.Invoke(_persistenceManager, [compacted]);
     }
 
-    private class TestFinalizedStateProvider : IFinalizedStateProvider
+    private class TestFinalizedStateProvider : IStateHeaderProvider
     {
         private ulong _finalizedBlockNumber;
         private readonly Dictionary<ulong, Hash256> _finalizedStateRoots = [];
@@ -1637,24 +2093,63 @@ public class PersistenceManagerTests
 
         public int GetLookupCount(ulong blockNumber) => _lookupCounts.GetValueOrDefault(blockNumber);
 
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber)
         {
             _lookupCounts[blockNumber] = GetLookupCount(blockNumber) + 1;
             if (blockNumber > RootLookupCeiling) return null;
-            return _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+            return _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root)
+                ? new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, Address.Zero, UInt256.Zero, blockNumber, 30_000_000, 0, []) { StateRoot = root }
+                : null;
         }
+
+        public BlockHeader? FindParentHeader(BlockHeader target) => null;
     }
 
     private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook
     {
+        private readonly TaskCompletionSource _releaseAwaited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public RecordingCaptureHook() => _released.SetResult();
+
+        /// <summary>Completes once the persistence manager takes <see cref="FlatPersistReleased"/> to wait on it.</summary>
+        public Task ReleaseAwaited => _releaseAwaited.Task;
+
         public StateId? CapturedUpTo { get; private set; }
+
+        public bool HoldsFlatPersist { get; private set; }
+
+        public Task FlatPersistReleased
+        {
+            get
+            {
+                _releaseAwaited.TrySetResult();
+                return _released.Task;
+            }
+        }
 
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
             CapturedUpTo = persistedHead;
+
+        public void Hold()
+        {
+            _released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            HoldsFlatPersist = true;
+        }
+
+        public void Release()
+        {
+            HoldsFlatPersist = false;
+            _released.TrySetResult();
+        }
     }
 
     private sealed class FlakyCaptureHook(int failures) : IFlatPersistenceCaptureHook
     {
+        public bool HoldsFlatPersist => false;
+
+        public Task FlatPersistReleased => Task.CompletedTask;
+
         private int _remainingFailures = failures;
 
         public StateId? CapturedUpTo { get; private set; }
@@ -1668,6 +2163,10 @@ public class PersistenceManagerTests
 
     private sealed class BarrierObservingCaptureHook(System.Func<StateId> readBarrier) : IFlatPersistenceCaptureHook
     {
+        public bool HoldsFlatPersist => false;
+
+        public Task FlatPersistReleased => Task.CompletedTask;
+
         public StateId BarrierAtCapture { get; private set; }
 
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>

@@ -74,6 +74,7 @@ public class PluginDisposalTests
             new ConfigProvider(),
             Substitute.For<IProcessExitSource>(),
             new INethermindPlugin[] { _consensusPlugin, plugin },
+            null,
             LimboLogs.Instance))
         .Build();
 }

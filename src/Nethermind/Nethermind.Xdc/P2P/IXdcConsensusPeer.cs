@@ -32,5 +32,9 @@ internal interface IXdcConsensusPeer : IXdcMessageContext
             Dispatch(new TimeoutMsg { Timeout = timeout });
     }
 
-    void SendSyncInfo(SyncInfo syncInfo) => Dispatch(new SyncInfoMsg { SyncInfo = syncInfo });
+    void SendSyncInfo(SyncInfo syncInfo)
+    {
+        if (ConsensusMessages.ShouldNotify(syncInfo))
+            Dispatch(new SyncInfoMsg { SyncInfo = syncInfo });
+    }
 }

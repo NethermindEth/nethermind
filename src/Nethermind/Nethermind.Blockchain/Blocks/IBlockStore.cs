@@ -38,5 +38,11 @@ public interface IBlockStore
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash);
     void Cache(Block block);
+
+    /// <summary>Whether the block is stored, or queued for a write that will store it.</summary>
+    /// <remarks>Answers about durability, not readability: a block an implementation can merely serve right now -
+    /// one held only in an evictable cache - must report <c>false</c>. Callers decide from this whether a body
+    /// still has to be downloaded, and the fast-blocks bodies descent never revisits a block it was told exists,
+    /// so a block reported present and later evicted is lost for good.</remarks>
     bool HasBlock(ulong blockNumber, Hash256 blockHash);
 }

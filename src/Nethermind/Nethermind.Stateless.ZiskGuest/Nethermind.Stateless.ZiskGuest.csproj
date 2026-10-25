@@ -1,19 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+  <Import Project="..\Nethermind.Stateless.Guest\Guest.props" />
 
   <ItemGroup>
     <PackageReference Include="Nethermind.ZiskOS.Runtime" />
-    <PackageReference Include="Nethermind.Zkvm.Abstractions" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Stateless.Executor\Nethermind.Stateless.Executor.csproj" />
   </ItemGroup>
 
 </Project>

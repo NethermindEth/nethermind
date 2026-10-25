@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using CkzgLib;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
@@ -70,7 +72,7 @@ public class Eth72MessageSerializerTests
         byte[] cellMask = Convert.FromHexString("01000000000000000000000000000080");
         byte[] expected = Convert.FromHexString(
             "f401e1a0000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f9001000000000000000000000000000080");
-        using GetCellsMessage72 message = new(1, [new Hash256(hashBytes)], cellMask);
+        using GetCellsMessage72 message = new(1, [new ValueHash256(hashBytes)], cellMask);
 
         using DisposableByteBuffer serialized = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(serialized, message);
@@ -117,7 +119,7 @@ public class Eth72MessageSerializerTests
         byte[][] blobMajorCells = [CreateCell(0x11), CreateCell(0x13), CreateCell(0x21), CreateCell(0x23)];
         byte[][] wireCells = [blobMajorCells[0], blobMajorCells[2], blobMajorCells[1], blobMajorCells[3]];
         byte[] expected = BuildCanonicalCellsVector(hashBytes, cellMask, wireCells);
-        using CellsMessage72 message = new(1, [new Hash256(hashBytes)], [blobMajorCells], cellMask);
+        using CellsMessage72 message = new(1, [new ValueHash256(hashBytes)], [blobMajorCells], cellMask);
 
         using DisposableByteBuffer serialized = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(serialized, message);
@@ -146,7 +148,7 @@ public class Eth72MessageSerializerTests
     [TestCase(0, 1)]
     public void CellsMessageSerializer_should_reject_mismatched_hash_and_cell_group_counts(int hashCount, int groupCount)
     {
-        Hash256[] hashes = new Hash256[hashCount];
+        ValueHash256[] hashes = new ValueHash256[hashCount];
         Array.Fill(hashes, Hash256.Zero);
         byte[][][] cells = new byte[groupCount][][];
         for (int i = 0; i < cells.Length; i++)
@@ -238,7 +240,7 @@ public class Eth72MessageSerializerTests
     public void CellsMessageSerializer_should_reject_more_than_response_hash_limit()
     {
         CellsMessageSerializer72 serializer = new();
-        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsResponseHashes + 1];
+        ValueHash256[] hashes = new ValueHash256[Eth72ProtocolHandler.MaxCellsResponseHashes + 1];
         Array.Fill(hashes, Hash256.Zero);
         byte[][][] cells = new byte[hashes.Length][][];
         Array.Fill(cells, [[]]);
@@ -274,7 +276,7 @@ public class Eth72MessageSerializerTests
     public void GetCellsMessageSerializer_should_accept_soft_limit_request_batch()
     {
         GetCellsMessageSerializer72 serializer = new();
-        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsRequestHashes];
+        ValueHash256[] hashes = new ValueHash256[Eth72ProtocolHandler.MaxCellsRequestHashes];
         Array.Fill(hashes, Hash256.Zero);
         using GetCellsMessage72 message = new(hashes, BlobCellMask.FromIndices([1]).ToBytes());
 
@@ -289,7 +291,7 @@ public class Eth72MessageSerializerTests
     public void GetCellsMessageSerializer_should_discard_hashes_beyond_local_processing_limit()
     {
         GetCellsMessageSerializer72 serializer = new();
-        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsRequestHashes + 1];
+        ValueHash256[] hashes = new ValueHash256[Eth72ProtocolHandler.MaxCellsRequestHashes + 1];
         Array.Fill(hashes, Hash256.Zero);
 
         using GetCellsMessage72 message = new(hashes, BlobCellMask.FromIndices([1]).ToBytes());
@@ -305,40 +307,34 @@ public class Eth72MessageSerializerTests
     }
 
     [Test]
-    public void GetCellsMessageSerializer_should_reject_null_transaction_hash()
+    public void Serializers_should_require_32_byte_transaction_hashes(
+        [Values("announcement", "request", "response")] string messageType,
+        [Values(0, 31, 32, 33)] int hashLength)
     {
-        GetCellsMessageSerializer72 serializer = new();
-        using GetCellsMessage72 message = new([null!], BlobCellMask.FromIndices([1]).ToBytes());
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
-        serializer.Serialize(buffer, message);
+        Rlp hashes = Rlp.Encode([Rlp.Encode(new byte[hashLength])]);
+        Rlp mask = Rlp.Encode(BlobCellMask.FromIndices([1]).ToBytes());
+        byte[] wire = messageType switch
+        {
+            "announcement" => Rlp.Encode(Rlp.Encode([(byte)TxType.Blob]), Rlp.Encode([Rlp.Encode(1)]), hashes, mask).Bytes,
+            "request" => Rlp.Encode(Rlp.Encode(1), hashes, mask).Bytes,
+            _ => Rlp.Encode(Rlp.Encode(1), hashes, Rlp.Encode([Rlp.Encode([Rlp.Encode(CreateCell(1))])]), mask).Bytes,
+        };
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(wire).AsDisposable();
+        Action deserialize = messageType switch
+        {
+            "announcement" => () => new NewPooledTransactionHashesMessageSerializer72().Deserialize(buffer).Dispose(),
+            "request" => () => new GetCellsMessageSerializer72().Deserialize(buffer).Dispose(),
+            _ => () => new CellsMessageSerializer72().Deserialize(buffer).Dispose(),
+        };
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
-    }
-
-    [Test]
-    public void CellsMessageSerializer_should_reject_null_transaction_hash()
-    {
-        CellsMessageSerializer72 serializer = new();
-        using CellsMessage72 message = new([null!], [[CreateCell(1)]], BlobCellMask.FromIndices([1]).ToBytes());
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
-        serializer.Serialize(buffer, message);
-
-        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
-    }
-
-    [Test]
-    public void NewPooledTransactionHashesMessageSerializer_should_reject_null_transaction_hash()
-    {
-        NewPooledTransactionHashesMessageSerializer72 serializer = new();
-        using NewPooledTransactionHashesMessage72 message = new(
-            [(byte)TxType.Blob],
-            [1],
-            [null!],
-            BlobCellMask.Full.ToBytes());
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
-        serializer.Serialize(buffer, message);
-
-        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
+        if (hashLength == Hash256.Size)
+        {
+            Assert.That(deserialize, Throws.Nothing);
+        }
+        else
+        {
+            Assert.That(deserialize, Throws.InstanceOf<RlpException>());
+        }
     }
 
     [Test]
@@ -383,7 +379,7 @@ public class Eth72MessageSerializerTests
         Array.Fill<byte>(types, 1);
         int[] sizes = new int[sizeCount];
         Array.Fill(sizes, 1);
-        Hash256[] hashes = new Hash256[hashCount];
+        ValueHash256[] hashes = new ValueHash256[hashCount];
         Array.Fill(hashes, Hash256.Zero);
         using NewPooledTransactionHashesMessage72 message = new(types, sizes, hashes, BlobCellMask.Empty.ToBytes());
 
@@ -454,6 +450,115 @@ public class Eth72MessageSerializerTests
         Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
     }
 
+    [Test]
+    public void Announcement_matches_canonical_wire_vector()
+    {
+        const string hashHex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+        const string maskHex = "01000000000000000000000000000080";
+        byte[] wire = Convert.FromHexString("f603c101e1a0" + hashHex + "90" + maskHex);
+        ValueHash256 hash = new(Convert.FromHexString(hashHex));
+        byte[] mask = Convert.FromHexString(maskHex);
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+        using NewPooledTransactionHashesMessage72 message = new(new byte[] { 3 }, new int[] { 1 }, new[] { hash }, mask);
+        using DisposableByteBuffer encoded = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(encoded, message);
+        byte[] actual = new byte[encoded.ReadableBytes];
+        encoded.ReadBytes(actual);
+        Assert.That(actual, Is.EqualTo(wire));
+
+        using DisposableByteBuffer input = Unpooled.WrappedBuffer(wire).AsDisposable();
+        using NewPooledTransactionHashesMessage72 decoded = serializer.Deserialize(input);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Types, Is.EqualTo(new byte[] { 3 }));
+            Assert.That(decoded.Sizes, Is.EqualTo(new int[] { 1 }));
+            Assert.That(decoded.Hashes, Is.EqualTo(new[] { hash }));
+            Assert.That(decoded.CellMask, Is.EqualTo(mask));
+            Assert.That(input.ReadableBytes, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Announcement_disposal_returns_each_rented_array_once()
+    {
+        ArrayPool<byte> typesPool = Substitute.For<ArrayPool<byte>>();
+        ArrayPool<int> sizesPool = Substitute.For<ArrayPool<int>>();
+        ArrayPool<ValueHash256> hashesPool = Substitute.For<ArrayPool<ValueHash256>>();
+        byte[] typesArray = new byte[1];
+        int[] sizesArray = new int[1];
+        ValueHash256[] hashesArray = new ValueHash256[1];
+        typesPool.Rent(1).Returns(typesArray);
+        sizesPool.Rent(1).Returns(sizesArray);
+        hashesPool.Rent(1).Returns(hashesArray);
+        using NewPooledTransactionHashesMessage72 message = new(
+            new ArrayPoolList<byte>(typesPool, 1) { 3 },
+            new ArrayPoolList<int>(sizesPool, 1) { 1 },
+            new ArrayPoolList<ValueHash256>(hashesPool, 1) { Hash256.Zero }, new byte[16]);
+
+        typesPool.DidNotReceive().Return(Arg.Any<byte[]>(), Arg.Any<bool>());
+        sizesPool.DidNotReceive().Return(Arg.Any<int[]>(), Arg.Any<bool>());
+        hashesPool.DidNotReceive().Return(Arg.Any<ValueHash256[]>(), Arg.Any<bool>());
+        message.Dispose();
+        message.Dispose();
+        typesPool.Received(1).Return(typesArray, Arg.Any<bool>());
+        sizesPool.Received(1).Return(sizesArray, Arg.Any<bool>());
+        hashesPool.Received(1).Return(hashesArray, Arg.Any<bool>());
+    }
+
+    [Test, NonParallelizable]
+    public void Announcement_decoding_and_reading_hashes_has_bounded_allocations([Values(128, 4096)] int count)
+    {
+        long baseline = MeasureAnnouncementAllocations(1);
+        long allocated = MeasureAnnouncementAllocations(count);
+
+        TestContext.Out.WriteLine($"Allocated bytes per {count}-hash announcement: {allocated}; one-hash baseline: {baseline}");
+        // DEBUG list wrappers capture stack traces; compare growth through the same decoder path.
+        Assert.That(allocated - baseline, Is.LessThan((count - 1) * 16), "Decoding and consuming hashes must not allocate an object per hash.");
+    }
+
+    private static long MeasureAnnouncementAllocations(int count)
+    {
+        byte[] types = new byte[count];
+        int[] sizes = new int[count];
+        ValueHash256[] hashes = new ValueHash256[count];
+        Array.Fill(types, (byte)TxType.EIP1559);
+        Array.Fill(sizes, 100);
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            byte[] bytes = new byte[Hash256.Size];
+            BitConverter.TryWriteBytes(bytes.AsSpan(), i);
+            hashes[i] = new ValueHash256(bytes);
+        }
+
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+        using NewPooledTransactionHashesMessage72 source = new(types, sizes, hashes, BlobCellMask.Empty.ToBytes());
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(buffer, source);
+        for (int i = 0; i < 100; i++)
+        {
+            DecodeAndReadHashes();
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++)
+        {
+            DecodeAndReadHashes();
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        return allocated / 100;
+
+        void DecodeAndReadHashes()
+        {
+            buffer.SetReaderIndex(0);
+            using NewPooledTransactionHashesMessage72 message = serializer.Deserialize(buffer);
+            for (int i = 0; i < count; i++)
+            {
+                if (message.Hashes[i] != hashes[i]) throw new InvalidOperationException("Hash changed during decoding.");
+            }
+        }
+    }
+
     private static byte[] CreateCell(byte value)
     {
         byte[] cell = new byte[Ckzg.BytesPerCell];
@@ -461,7 +566,7 @@ public class Eth72MessageSerializerTests
         return cell;
     }
 
-    private static void AssertCellsMessageRejected(Hash256[] hashes, byte[][][] cells, byte[] cellMask)
+    private static void AssertCellsMessageRejected(ValueHash256[] hashes, byte[][][] cells, byte[] cellMask)
     {
         CellsMessageSerializer72 serializer = new();
         using CellsMessage72 message = new(hashes, cells, cellMask);

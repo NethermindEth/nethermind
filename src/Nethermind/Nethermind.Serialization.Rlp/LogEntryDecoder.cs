@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
@@ -41,7 +42,7 @@ namespace Nethermind.Serialization.Rlp
             int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd, maxLogs + 1);
             Rlp.GuardLimit(logCount, maxLogs, logsRlpLimit);
 
-            LogEntry[] logs = new LogEntry[logCount];
+            LogEntry[] logs = logCount == 0 ? [] : new LogEntry[logCount];
             for (int i = 0; i < logCount; i++)
             {
                 logs[i] = Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
@@ -57,6 +58,7 @@ namespace Nethermind.Serialization.Rlp
             rlp.ReadSequenceLength(ref position, out int logEntryLength);
             Rlp.GuardLimit(logEntryLength, rlp.Data.Length - position, RlpLimit);
             int logEntryCheck = position + logEntryLength;
+            rlp = new(rlp.Data[..logEntryCheck]);
 
             rlp.DecodeAddress(ref position, out Address address);
             rlp.ReadSequenceLength(ref position, out int topicsLength);
@@ -64,8 +66,13 @@ namespace Nethermind.Serialization.Rlp
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
             Rlp.GuardLimit(topicCount, rlp.Data.Length - position, RlpLimit.L4);
 
-            Hash256[] topics = new Hash256[topicCount];
-            for (int i = 0; i < topics.Length; i++)
+            Hash256[] topics = topicCount == 0 ? [] : new Hash256[topicCount];
+            if (topics.Length > 0)
+            {
+                rlp.DecodeLogTopic0(ref position, out topics[0]);
+            }
+
+            for (int i = 1; i < topics.Length; i++)
             {
                 rlp.DecodeKeccak(ref position, out topics[i]);
             }
@@ -127,20 +134,11 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, topicsLength);
         }
 
-        private static int GetTopicsLength(LogEntry? item)
+        // Every topic is a 32-byte word, as the decoder's topic count also assumes.
+        private static int GetTopicsLength(LogEntry item)
         {
-            if (item is null)
-            {
-                return 0;
-            }
-
-            int topicsLength = 0;
-            for (int i = 0; i < item.Topics.Length; i++)
-            {
-                topicsLength += Rlp.LengthOf(item.Topics[i]);
-            }
-
-            return topicsLength;
+            Debug.Assert(Array.TrueForAll(item.Topics, static topic => topic is not null), "A null topic encodes shorter than the length counted for it.");
+            return item.Topics.Length * Rlp.LengthOfKeccakRlp;
         }
 
         public static void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors storage, out LogEntryStructRef item)

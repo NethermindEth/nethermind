@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -56,8 +57,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
         _maxCacheMemoryThreshold = maxCacheMemoryThreshold;
     }
 
+    /// <summary>The shard and hash a node is cached under, here and in every <see cref="ChildCache"/>, so a caller
+    /// that probes several caches for one node computes them once.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (int, int) GetShardAndHashCode(Hash256? address, in TreePath path)
+    internal static (int ShardIdx, int HashCode) GetShardAndHashCode(Hash256? address, in TreePath path)
     {
         int h1;
 
@@ -85,6 +88,17 @@ public sealed class TrieNodeCache : ITrieNodeCache
     public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
+        return TryGet(shardIdx, hashCode, hash, out node);
+    }
+
+    public bool TryGet(Hash256? address, in TreePath path, int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        Debug.Assert(GetShardAndHashCode(address, in path) == (shardIdx, hashCode), "The shard and hash must come from GetShardAndHashCode(address, path).");
+        return TryGet(shardIdx, hashCode, hash, out node);
+    }
+
+    private bool TryGet(int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
         int bucketIdx = hashCode & _bucketMask;
 
         TrieNode? maybeNode = _cacheShards[shardIdx][bucketIdx];
@@ -134,12 +148,13 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         static TrieNode? TryMaterializeResolvedWarmerNode(TrieNode source)
         {
-            if (!source.IsWarmerResolved) return null;
+            if (source.NodeType == NodeType.Unknown) return null;
 
             CappedArray<byte> fullRlp = source.FullRlp;
             if (fullRlp.IsNull) return null;
 
             Hash256? keccak = source.Keccak;
+            // A warmer can race a writer, so reverify the bytes before promoting them to the shared cache.
             if (keccak is not null && ValueKeccak.Compute(fullRlp.AsSpan()) != keccak) return null;
 
             TrieNode detached = keccak is null
@@ -147,18 +162,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 : new TrieNode(NodeType.Unknown, keccak, fullRlp);
             TreePath path = TreePath.Empty;
 
-            try
-            {
-                return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
-            }
-            catch (IndexOutOfRangeException)
-            {
-                return null;
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return null;
-            }
+            return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
         }
 
         Parallel.For(0, ShardCount, (i) =>
@@ -168,8 +172,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
             {
                 if (shard[j].node is not { } source) continue;
 
-                TrieNode? newNode = source.IsWarmerOwned
-                    ? TryMaterializeResolvedWarmerNode(source)
+                TrieNode? newNode = source.IsWarmerOwned ? TryMaterializeResolvedWarmerNode(source)
+                    : source.IsHashOnlyPlaceholder() ? null
                     : source;
                 if (newNode is not null)
                 {
@@ -259,6 +263,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         public void Reset()
         {
+            // Every write counts, so a cache no trie node was loaded into (most read-only calls) has nothing to clear.
+            if (_count == 0) return;
+
             if (_count / UtilRatio > ShardCount * _shardSize)
             {
                 int newTarget = (int)(_count / UtilRatio);
@@ -281,6 +288,12 @@ public sealed class TrieNodeCache : ITrieNodeCache
         public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
             (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
+            return TryGet(shardIdx, hashCode, hash, out node);
+        }
+
+        /// <summary>Looks a node up by the shard and hash from <see cref="GetShardAndHashCode"/>.</summary>
+        public bool TryGet(int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        {
             int idx = hashCode & _mask;
             (int hashCode, TrieNode? node) entry = _shards[shardIdx][idx]; // Copy struct once
 
@@ -314,6 +327,12 @@ public sealed class TrieNodeCache : ITrieNodeCache
         public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode trieNode)
         {
             (int shard, int hashCode) = GetShardAndHashCode(address, path);
+            return GetOrAdd(shard, hashCode, trieNode);
+        }
+
+        /// <summary>Same as <see cref="GetOrAdd(Hash256?, in TreePath, TrieNode)"/>, by the shard and hash from <see cref="GetShardAndHashCode"/>.</summary>
+        public TrieNode GetOrAdd(int shard, int hashCode, TrieNode trieNode)
+        {
             int idx = hashCode & _mask;
 
             ref (int hashCode, TrieNode? node) entry = ref _shards[shard][idx];

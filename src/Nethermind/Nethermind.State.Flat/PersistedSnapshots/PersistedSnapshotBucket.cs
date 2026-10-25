@@ -56,6 +56,24 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     public bool TryGet(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
         _byTo.TryGetValue(to, out snapshot);
 
+    public bool TryLease(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
+    {
+        if (!_byTo.TryGetValue(to, out snapshot)) return false;
+        return TryAcquire(to, ref snapshot);
+    }
+
+    /// <summary>Acquires the observed entry, or retries its replacement under the mutation lock.</summary>
+    /// <remarks>Writers must unpublish an entry before releasing its bucket lease.</remarks>
+    internal bool TryAcquire(in StateId to, [NotNullWhen(true)] ref PersistedSnapshot? snapshot)
+    {
+        if (snapshot is not null && snapshot.TryAcquire()) return true;
+        if (_byTo.TryGetValue(to, out snapshot) && snapshot.TryAcquire()) return true;
+        using Lock.Scope scope = _lock.EnterScope();
+        if (_byTo.TryGetValue(to, out snapshot) && snapshot.TryAcquire()) return true;
+        snapshot = null;
+        return false;
+    }
+
     public bool ContainsKey(in StateId to) => _byTo.ContainsKey(to);
 
     /// <summary>
@@ -97,9 +115,9 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
             PersistedSnapshotLabel oldLabel = LabelFor(old);
             Metrics.PersistedSnapshotMemory.AddBy(oldLabel, -old.Size);
             Metrics.PersistedSnapshotCount.AddBy(oldLabel, -1);
-            old.Dispose();
         }
         _byTo[to] = snapshot;
+        old?.Dispose();
         _ordered.Add(to);
         Interlocked.Add(ref _memoryBytes, snapshot.Size);
         Interlocked.Increment(ref _count);
@@ -167,14 +185,15 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     {
         using Lock.Scope scope = _lock.EnterScope();
         if (logger.IsDebug && _byTo.Count > 0) logger.Debug($"Releasing {_byTo.Count} persisted snapshot(s) ({_tierName}) on teardown");
-        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
+        KeyValuePair<StateId, PersistedSnapshot>[] snapshots = _byTo.ToArray();
+        _byTo.Clear();
+        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in snapshots)
         {
             PersistedSnapshotLabel label = LabelFor(kv.Value);
             Metrics.PersistedSnapshotMemory.AddBy(label, -kv.Value.Size);
             Metrics.PersistedSnapshotCount.AddBy(label, -1);
             kv.Value.Dispose();
         }
-        _byTo.Clear();
         _ordered.Clear();
         Interlocked.Exchange(ref _memoryBytes, 0);
         Interlocked.Exchange(ref _count, 0);

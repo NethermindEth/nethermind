@@ -78,6 +78,8 @@ public class EthashSealEngineTests
         EthashSealer ethashSealer = new(ethash, NullSigner.Instance, LimboLogs.Instance);
         await ethashSealer.MineAsync(CancellationToken.None, block, 7217048144105167954);
 
+        // Mine builds its data set directly, so validation needs the epoch hinted explicitly.
+        ethash.HintRange(Guid.NewGuid(), block.Number, block.Number);
         Assert.That(ethash.Validate(block.Header), Is.True);
 
         Console.WriteLine(block.Header.Nonce);

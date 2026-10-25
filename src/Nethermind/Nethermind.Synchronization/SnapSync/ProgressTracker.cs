@@ -41,7 +41,11 @@ namespace Nethermind.Synchronization.SnapSync
         // In any case, all partition will be touched when calculating progress, so we can't really put like 1024 for this.
         private readonly int _accountRangePartitionCount;
 
+        public const long RangesProgressScale = 10_000;
+        private const long AccountKeySpace = 1L << 32;
+
         private long _reqCount;
+        private long _coveredAccountKeySpace;
         private int _activeAccountRequests;
         private int _activeStorageRequests;
         private readonly ConcurrentDictionary<ValueHash256, LargeProgressStatus> _largeStorageProgress = new();
@@ -101,7 +105,8 @@ namespace Nethermind.Synchronization.SnapSync
         private void SetupAccountRangePartition()
         {
             uint curStartingPath = 0;
-            uint partitionSize = (uint)(((ulong)uint.MaxValue + 1) / (ulong)_accountRangePartitionCount);
+            uint partitionSize = (uint)(AccountKeySpace / _accountRangePartitionCount);
+            SetCoveredAccountKeySpace(0);
 
             for (int i = 0; i < _accountRangePartitionCount; i++)
             {
@@ -112,6 +117,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 partition.NextAccountPath = startingPath;
                 partition.AccountPathStart = startingPath;
+                partition.KeySpaceWidth = i == _accountRangePartitionCount - 1 ? AccountKeySpace - curStartingPath : partitionSize;
 
                 curStartingPath += partitionSize;
 
@@ -235,8 +241,9 @@ namespace Nethermind.Synchronization.SnapSync
                 bool rangePhaseFinished = IsSnapGetRangesFinished();
                 if (rangePhaseFinished)
                 {
-                    _logger.Info("Snap - State Ranges (Phase 1) finished.");
+                    _logger.Info("Snap - State Ranges (Phase 1 of 2) finished.");
                     _snapTrieFactory.MarkRangePhaseFinished();
+                    PublishCoveredAccountKeySpace(AccountKeySpace);
                 }
 
                 LogRequest(NO_REQUEST);
@@ -492,7 +499,24 @@ namespace Nethermind.Synchronization.SnapSync
 
             partition.NextAccountPath = nextPath;
             partition.MoreAccountsToRight = moreChildrenToRight && nextPath < hashLimit;
+
+            long covered = partition.MoreAccountsToRight
+                ? Math.Clamp((long)BinaryPrimitives.ReadUInt32BigEndian(nextPath.Bytes) - BinaryPrimitives.ReadUInt32BigEndian(partition.AccountPathStart.Bytes), 0, partition.KeySpaceWidth)
+                : partition.KeySpaceWidth;
+            long delta = covered - partition.CoveredKeySpace;
+            partition.CoveredKeySpace = covered;
+            // Storage, code and refresh requests can run after the last account range; only the range phase end publishes the full scale.
+            PublishCoveredAccountKeySpace(Math.Min(Interlocked.Add(ref _coveredAccountKeySpace, delta), AccountKeySpace - 1));
         }
+
+        private void SetCoveredAccountKeySpace(long covered)
+        {
+            Volatile.Write(ref _coveredAccountKeySpace, covered);
+            PublishCoveredAccountKeySpace(covered);
+        }
+
+        private static void PublishCoveredAccountKeySpace(long covered) =>
+            Metrics.SnapRangesProgress = covered * RangesProgressScale / AccountKeySpace;
 
         public bool IsSnapGetRangesFinished() => AccountRangeReadyForRequest.IsEmpty
                    && StoragesToRetrieve.IsEmpty
@@ -519,11 +543,13 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (!_snapTrieFactory.IsRangePhaseFinished()) return;
 
-            _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
+            _logger.Info($"Snap - State Ranges (Phase 1 of 2) is finished.");
             foreach (KeyValuePair<ValueHash256, AccountRangePartition> partition in AccountRangePartitions)
             {
                 partition.Value.MoreAccountsToRight = false;
+                partition.Value.CoveredKeySpace = partition.Value.KeySpaceWidth;
             }
+            SetCoveredAccountKeySpace(AccountKeySpace);
             AccountRangeReadyForRequest.Clear();
         }
 
@@ -537,20 +563,11 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (_reqCount % 100 == 0 || _lastLogTime < DateTimeOffset.Now - _maxTimeBetweenLog)
             {
-                int totalPathProgress = 0;
-                foreach (KeyValuePair<ValueHash256, AccountRangePartition> kv in AccountRangePartitions)
-                {
-                    AccountRangePartition? partition = kv.Value;
-                    int nextAccount = partition.NextAccountPath.Bytes[0] * 256 + partition.NextAccountPath.Bytes[1];
-                    int startAccount = partition.AccountPathStart.Bytes[0] * 256 + partition.AccountPathStart.Bytes[1];
-                    totalPathProgress += nextAccount - startAccount;
-                }
-
-                float progress = (float)(totalPathProgress / (double)(256 * 256));
+                float progress = (float)(Volatile.Read(ref _coveredAccountKeySpace) / (double)AccountKeySpace);
 
                 if (_logger.IsInfo)
                 {
-                    string stateRangesReport = $"Snap         State Ranges (Phase 1): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
+                    string stateRangesReport = $"Snap         State Ranges (Phase 1 of 2): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                     if (progress >= 0.995)
                     {
                         long queuedStorage = StoragesToRetrieve.Count;
@@ -665,6 +682,8 @@ namespace Nethermind.Synchronization.SnapSync
             public ValueHash256 AccountPathStart { get; set; } = ValueKeccak.Zero; // Not really needed, but useful
             public ValueHash256 AccountPathLimit { get; set; } = ValueKeccak.MaxValue;
             public bool MoreAccountsToRight { get; set; } = true;
+            public long KeySpaceWidth { get; set; }
+            public long CoveredKeySpace { get; set; }
         }
 
         public void Dispose()

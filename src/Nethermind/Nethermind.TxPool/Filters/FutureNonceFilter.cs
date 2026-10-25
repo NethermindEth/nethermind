@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool.Filters;
@@ -12,7 +13,14 @@ public class FutureNonceFilter(ITxPoolConfig txPoolConfig) : IIncomingTxFilter
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        int relevantMaxPendingTxsPerSender = (tx.SupportsBlobs
+        if (KeyedNonceManager.UsesKeyedNonce(tx))
+        {
+            // A nonce-distance bound is meaningless across independent domains; KeyedNonceFilter applies
+            // the same configured limit as a pending count.
+            return AcceptTxResult.Accepted;
+        }
+
+        int relevantMaxPendingTxsPerSender = (tx.CarriesBlobs
             ? _txPoolConfig.MaxPendingBlobTxsPerSender
             : _txPoolConfig.MaxPendingTxsPerSender);
 

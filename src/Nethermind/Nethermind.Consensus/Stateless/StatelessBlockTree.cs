@@ -3,10 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -17,14 +17,22 @@ namespace Nethermind.Consensus.Stateless;
 /// <summary>
 /// This class is part of the StatelessExecution tool. It's intended to be used only inside the processing pipeline.
 /// </summary>
-public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
-    : IBlockTree, IBlockhashCache
+public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
 {
-    private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader =
-        headers.ToDictionary(header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), header => header);
+    private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader;
+    private readonly Dictionary<ulong, BlockHeader> _numberToHeader;
 
-    private readonly Dictionary<ulong, BlockHeader> _numberToHeader =
-        headers.ToDictionary(header => header.Number, header => header);
+    public StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
+    {
+        _hashToHeader = new(headers.Count);
+        _numberToHeader = new(headers.Count);
+
+        foreach (BlockHeader header in headers)
+        {
+            _hashToHeader.Add(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash)), header);
+            _numberToHeader.Add(header.Number, header);
+        }
+    }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         throw new NotSupportedException();
@@ -40,6 +48,9 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
 
     public BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options)
         => _numberToHeader.GetValueOrDefault(blockNumber);
+
+    public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null)
+        => _hashToHeader.GetValueOrDefault(blockHash);
 
     public Hash256? FindBlockHash(ulong blockNumber)
         => _numberToHeader.GetValueOrDefault(blockNumber)?.Hash;
@@ -104,6 +115,9 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
         WriteFlags bodiesWriteFlags = WriteFlags.None)
         => throw new NotSupportedException();
+
+    /// <inheritdoc/>
+    public bool TryRewindHead(Hash256 blockHash) => throw new NotSupportedException();
 
     public void UpdateHeadBlock(Hash256 blockHash)
         => throw new NotSupportedException();

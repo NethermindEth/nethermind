@@ -119,19 +119,24 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             if (tx.Type == TxType.DepositTx)
                 continue;
 
-            UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
-            UInt256 daUsageEstimate = DaFootprintScale.IsZero ?
-                default :
-                UInt256.Max(
-                    MinTransactionSizeScaled,
-                    flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
-                ) / DaFootprintScale;
-
-            footprint += daUsageEstimate * daFootprintScalar;
+            footprint += ComputeDaUsageEstimate(tx) * daFootprintScalar;
         }
 
         return footprint;
     }
+
+    internal static UInt256 ComputeDaUsageEstimate(Transaction tx)
+    {
+        UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
+        return DaUsageFromEstimatedSize(UInt256.Max(
+            MinTransactionSizeScaled,
+            flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
+        ));
+    }
+
+    /// <summary>Scales the Fjord estimated size that <see cref="ComputeL1CostFjord"/> reports down to the DA usage estimate.</summary>
+    internal static UInt256 DaUsageFromEstimatedSize(in UInt256 estimatedSize) =>
+        DaFootprintScale.IsZero ? default : estimatedSize / DaFootprintScale;
 
     [SkipLocalsInit]
     public static UInt256 ComputeDataGas(Transaction tx, bool isRegolith)
@@ -279,7 +284,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
     // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
     // https://specs.optimism.io/protocol/jovian/l1-attributes.html
-    private static UInt256 GetDaFootprintScalar(Block block)
+    internal static UInt256 GetDaFootprintScalar(Block block)
     {
         Transaction? firstTx = block.Transactions.FirstOrDefault();
         if (firstTx?.Type is not TxType.DepositTx)

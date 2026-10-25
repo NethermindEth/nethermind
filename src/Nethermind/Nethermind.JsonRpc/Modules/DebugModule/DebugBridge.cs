@@ -14,22 +14,31 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.TxPool;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugBridge : IDebugBridge
 {
+    private readonly BlockTreeMutationLock _mutationLock;
+    private readonly IBlockProcessingPauseControl _pauseControl;
+    private readonly IBlockProcessingQueue _processingQueue;
+    private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
     private readonly IBlockTree _blockTree;
@@ -38,8 +47,12 @@ public class DebugBridge : IDebugBridge
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly ISyncProgressResolver _syncProgressResolver;
+    private readonly ISyncPointers _syncPointers;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
+    private readonly IWorldStateManager _worldStateManager;
+    private readonly ITxPool _txPool;
     private readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
@@ -53,8 +66,23 @@ public class DebugBridge : IDebugBridge
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
-        IBlockStore blockStore)
+        IBlockStore blockStore,
+        IWorldStateManager worldStateManager,
+        ILogManager logManager,
+        BlockTreeMutationLock mutationLock,
+        IBlockProcessingPauseControl pauseControl,
+        IBlockProcessingQueue processingQueue,
+        ISyncProgressResolver syncProgressResolver,
+        ISyncPointers syncPointers,
+        ITxPool txPool)
     {
+        _logger = logManager.GetClassLogger<DebugBridge>();
+        _txPool = txPool;
+        _mutationLock = mutationLock;
+        _pauseControl = pauseControl;
+        _processingQueue = processingQueue;
+        _syncProgressResolver = syncProgressResolver;
+        _syncPointers = syncPointers;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -67,6 +95,7 @@ public class DebugBridge : IDebugBridge
         // Use the shared singleton store, not a private one over the raw DB, so debug reads observe the
         // deferred-body overlay (a private store would miss a block whose body write is still queued).
         _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
+        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
@@ -96,9 +125,183 @@ public class DebugBridge : IDebugBridge
 
     public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 
-    public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
+    public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
+    {
+        ResultWrapper<int>? deletionError = GetDeletionError(startNumber, out _);
+        if (deletionError is not null) return deletionError;
+        if (!CanMutateChain()) return NotDrained();
 
-    public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
+        if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot delete the chain slice from {startNumber}: chain mutation contention or overlapping maintenance; retry the request.");
+            return ResultWrapper<int>.Fail("Chain mutation contention or overlapping maintenance; retry the request.", ErrorCodes.ResourceUnavailable);
+        }
+        using BlockTreeMutationLock.Scope mutationScope = mutation;
+        if (!CanMutateChain()) return NotDrained();
+        deletionError = GetDeletionError(startNumber, out ulong endNumber);
+        if (deletionError is not null) return deletionError;
+
+        bool replacesHead = _blockTree.Head?.Number >= startNumber;
+        bool replacesPivot = startNumber <= _blockTree.SyncPivot.BlockNumber &&
+                             _blockTree.SyncPivot.BlockNumber <= endNumber;
+        Block? target = replacesHead
+            ? _blockTree.FindBlock(startNumber - 1, BlockTreeLookupOptions.RequireCanonical)
+            : _blockTree.Head;
+        if ((replacesHead || replacesPivot) && (target is null || !HasProcessingState(target.Header)))
+            return ResultWrapper<int>.Fail("The new head body or state is unavailable for block processing.", ErrorCodes.ResourceUnavailable);
+
+        if (replacesPivot && HasHistoricalProgressAbove(target!.Number))
+            return ResultWrapper<int>.Fail("Historical sync progress is above the replacement head; rewind less deeply before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+
+        bool replacesPreForkAccessListProgress = target is not null &&
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber >= startNumber &&
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber <= endNumber &&
+            LowestRequiredBlockAccessListNumber is null;
+        int deleted = _blockTree.DeleteChainSlice(startNumber, endNumber, force);
+        // Completed history remains contiguous from its retained floors to target, below the deleted range.
+        // Relocate only after deletion succeeds so a rejected deletion leaves the pivot unchanged.
+        if (replacesPivot) _blockTree.SyncPivot = (target!.Number, target.Hash!);
+        // Deletion removes the header proving this floor predates EIP-7928; retain that proof at the new head.
+        if (deleted > 0 && replacesPreForkAccessListProgress)
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber = target!.Number;
+        return ResultWrapper<int>.Success(deleted);
+
+        static ResultWrapper<int> NotDrained() =>
+            ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+    }
+
+    private ResultWrapper<int>? GetDeletionError(ulong startNumber, out ulong endNumber)
+    {
+        endNumber = _blockTree.BestKnownNumber;
+        if (startNumber == 0 || startNumber > endNumber)
+            return ResultWrapper<int>.Fail($"startNumber must be positive and cannot exceed the known chain high-water mark ({endNumber}).", ErrorCodes.InvalidParams);
+        if (endNumber - startNumber > IBlockTree.MaxDeletionSpan)
+            return ResultWrapper<int>.Fail($"The deletion range cannot span more than {IBlockTree.MaxDeletionSpan + 1} chain levels.", ErrorCodes.InvalidParams);
+
+        SyncMode mode = _syncModeSelector.Current;
+        if (IsInitialSyncActive(mode))
+            return ResultWrapper<int>.Fail("Initial synchronization is active; wait for it to complete before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+        if (startNumber <= _blockTree.SyncPivot.BlockNumber)
+        {
+            if ((mode & SyncMode.FastBlocks) != 0)
+                return ResultWrapper<int>.Fail("Ancient backfill is running below the sync pivot; choose a startNumber above it.", ErrorCodes.ResourceUnavailable);
+            if (!IsHistoricalSyncFinished())
+                return ResultWrapper<int>.Fail("Historical sync is unfinished; wait for it to complete or choose a startNumber above the sync pivot.", ErrorCodes.ResourceUnavailable);
+        }
+
+        ulong validatedEnd = endNumber;
+        return IsDeleted(_blockTree.LowestInsertedHeader?.Number) ||
+               IsDeleted(_syncPointers.LowestInsertedBodyNumber) ||
+               IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) ||
+               IsDeleted(LowestRequiredBlockAccessListNumber)
+            ? ResultWrapper<int>.Fail("Historical sync progress lies in the deletion range; choose a higher startNumber.", ErrorCodes.ResourceUnavailable)
+            : null;
+
+        bool IsDeleted(ulong? number) => number >= startNumber && number <= validatedEnd;
+    }
+
+    public bool UpdateHeadBlock(Hash256 blockHash) => UpdateHeadBlock(new BlockParameter(blockHash));
+
+    public bool UpdateHeadBlock(BlockParameter blockParameter)
+    {
+        if (!CanRewindChain()) return false;
+
+        if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: chain mutation contention or overlapping maintenance; retry the request.");
+            return false;
+        }
+        using BlockTreeMutationLock.Scope mutationScope = mutation;
+        if (!CanRewindChain()) return false;
+
+        BlockHeader? header = _blockTree.FindHeader(blockParameter);
+        if (header is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: block is unknown.");
+            return false;
+        }
+
+        if (!HasProcessingState(header))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: state is unavailable for block processing.");
+            return false;
+        }
+
+        bool rewindPivot = header.Number < _blockTree.SyncPivot.BlockNumber;
+        if (rewindPivot && ((_syncModeSelector.Current & SyncMode.FastBlocks) != 0 ||
+                            !IsHistoricalSyncFinished() || HasHistoricalProgressAbove(header.Number)))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: the sync pivot cannot follow it; rewind less deeply.");
+            return false;
+        }
+        if (!_blockTree.TryRewindHead(header.Hash!)) return false;
+        // Keep completed sync aligned with the rewound head before state cleanup can yield to the selector.
+        if (rewindPivot) _blockTree.SyncPivot = (header.Number, header.Hash!);
+
+        _worldStateManager.DropStateNotReachableFrom(header);
+        return true;
+    }
+
+    private static bool IsInitialSyncActive(SyncMode mode) => (mode &
+        (SyncMode.BeaconHeaders | SyncMode.StateNodes | SyncMode.FastSync | SyncMode.UpdatingPivot | SyncMode.DbLoad)) != 0;
+
+    private bool IsHistoricalSyncFinished() =>
+        _syncProgressResolver.IsFastBlocksHeadersFinished() &&
+        _syncProgressResolver.IsFastBlocksBodiesFinished() &&
+        _syncProgressResolver.IsFastBlocksReceiptsFinished() &&
+        _syncProgressResolver.IsFastBlockAccessListsFinished();
+
+    private bool HasHistoricalProgressAbove(ulong number) =>
+        _blockTree.LowestInsertedHeader?.Number > number ||
+        _syncPointers.LowestInsertedBodyNumber > number ||
+        _syncPointers.LowestInsertedReceiptBlockNumber > number ||
+        LowestRequiredBlockAccessListNumber > number;
+
+    /// <summary>
+    /// Gets the lowest block access list sync progress, or <see langword="null"/> when every block at or below it predates EIP-7928.
+    /// </summary>
+    /// <remarks>
+    /// Blocks before EIP-7928 activation have no access lists, so the sync stops at the activation and the progress it
+    /// leaves there does not bound how deep the chain can be rewound or deleted.
+    /// </remarks>
+    private ulong? LowestRequiredBlockAccessListNumber
+    {
+        get
+        {
+            ulong? progress = _syncPointers.LowestInsertedBlockAccessListBlockNumber;
+            if (progress is not { } lowest || lowest == 0) return progress;
+            if (_blockTree.FindHeader(lowest, BlockTreeLookupOptions.RequireCanonical) is { } canonical)
+                return canonical.BlockAccessListHash is null ? null : progress;
+
+            // Rewind clears canonical markers above the head; every retained candidate must prove the floor is pre-fork.
+            if (_blockTree.Head is not { } head || lowest <= head.Number ||
+                _blockTree.FindLevel(lowest)?.BlockInfos is not { Length: > 0 } candidates)
+                return progress;
+            foreach (BlockInfo candidate in candidates)
+                if (_blockTree.FindHeader(candidate.BlockHash, blockNumber: lowest) is not { BlockAccessListHash: null })
+                    return progress;
+            return null;
+        }
+    }
+
+    private bool CanRewindChain()
+    {
+        if (!CanMutateChain()) return false;
+        if (!IsInitialSyncActive(_syncModeSelector.Current)) return true;
+        if (_logger.IsWarn) _logger.Warn("Cannot rewind the head while initial synchronization is active; wait for synchronization to complete.");
+        return false;
+    }
+
+    private bool CanMutateChain()
+    {
+        if (_pauseControl.IsPaused && _processingQueue.IsEmpty && !_blockTree.IsProcessingBlock) return true;
+        if (_logger.IsWarn) _logger.Warn("Cannot mutate the chain: pause block processing and wait for it to drain.");
+        return false;
+    }
+
+    private bool HasProcessingState(BlockHeader header) =>
+        // The scope provider rejects read-only flat history; the reader enforces trie pruning retention.
+        _worldStateManager.GlobalWorldState.HasRoot(header) && _worldStateManager.GlobalStateReader.HasStateForBlock(header);
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);
 
@@ -122,19 +325,16 @@ public class DebugBridge : IDebugBridge
 
     public GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
-    public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam)
-    {
-        SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParam);
-        if (searchResult.IsError)
-        {
-            throw new InvalidDataException(searchResult.Error);
-        }
 
-        Block block = searchResult.Object;
-        return _receiptFinder.Get(block);
-    }
+    public GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+        _tracer.Trace(blockHash, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
-    public Transaction? GetTransactionFromHash(Hash256 txHash)
+    public TxReceipt[] GetReceiptsForBlock(Block block) => _receiptFinder.Get(block);
+
+    public Transaction? GetTransactionFromHash(Hash256 txHash) =>
+        GetMinedTransaction(txHash) ?? (_txPool.TryGetPendingTransaction(txHash, out Transaction? pending) ? pending : null);
+
+    private Transaction? GetMinedTransaction(Hash256 txHash)
     {
         Hash256 blockHash = _receiptStorage.FindBlockHash(txHash);
         if (blockHash is null)
@@ -145,10 +345,11 @@ public class DebugBridge : IDebugBridge
             throw new InvalidDataException(searchResult.Error);
         }
         Block block = searchResult.Object;
-        TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-        return block?.Transactions[txReceipt.Index];
+        int index = block.GetTransactionIndex(txHash.ValueHash256);
+        return index < 0 ? null : block.Transactions[index];
     }
 
+    [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
     public GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
@@ -175,6 +376,9 @@ public class DebugBridge : IDebugBridge
 
     public IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlockIntermediateRoots(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public StorageRangeVisitor GetStorageRange(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken) =>
+        _tracer.StorageRangeAt(block, txIndex, address, startKey, limit, cancellationToken);
 
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {
@@ -220,18 +424,21 @@ public class DebugBridge : IDebugBridge
 
     public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
+        BlockHeader? header = _blockTree.FindHeader(blockParameter);
+        // Bundles without their own block overrides run on the header with the trace options' overrides applied.
+        IReleaseSpec? spec = header is null ? null : _specProvider.GetSpec(gethTraceOptions?.BlockOverrides?.ApplyTo(header) ?? header);
         foreach (TransactionBundle bundle in bundles)
         {
-            yield return GetBundleTrace(bundle, blockParameter, gasCap, cancellationToken, gethTraceOptions);
+            yield return GetBundleTrace(bundle, blockParameter, gasCap, spec, cancellationToken, gethTraceOptions);
         }
     }
 
-    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
+    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, ulong? gasCap, IReleaseSpec? spec, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
     {
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
-            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: gasCap);
+            Result<Transaction> txResult = txForRpc.ToCallTransaction(spec, gasCap);
             if (txResult.IsError)
             {
                 trace = CreateFailTrace(txForRpc.Gas);

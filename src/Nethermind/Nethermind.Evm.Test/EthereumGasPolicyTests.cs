@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -16,6 +17,152 @@ namespace Nethermind.Evm.Test;
 
 public class EthereumGasPolicyTests
 {
+    /// <summary>A cell warmed after a snapshot must read cold again once that snapshot is restored.</summary>
+    /// <remarks>
+    /// <see cref="StackAccessTracker.IsCold(in StorageCell)"/> remembers the last cell it found warm, so a
+    /// repeated read answers without probing the set. Only a restore or the pooled reset can take a cell
+    /// back out, and this pins that the memo is dropped there — were it not, a reverted warm-up would keep
+    /// reporting warm and the next access would be charged warm gas instead of cold.
+    /// </remarks>
+    [Test]
+    public void Reverted_warm_up_is_cold_again()
+    {
+        StorageCell cell = new(TestItem.AddressA, UInt256.One);
+        StorageCell other = new(TestItem.AddressB, UInt256.One);
+        using StackAccessTracker tracker = new();
+
+        tracker.TakeSnapshot();
+        tracker.WarmUp(in cell);
+
+        // Read it twice: the second read is the one served from the memo.
+        Assert.That(tracker.IsCold(in cell), Is.False);
+        Assert.That(tracker.IsCold(in cell), Is.False);
+
+        tracker.Restore();
+
+        Assert.That(tracker.IsCold(in cell), Is.True, "the warm-up was reverted");
+        Assert.That(tracker.IsCold(in other), Is.True);
+    }
+
+    /// <summary>Returning a tracker to the pool must drop the remembered warm cell, or the next rental
+    /// serves a cold cell as warm across a transaction boundary — a genuinely cold SLOAD charged 100
+    /// instead of 2100.</summary>
+    /// <remarks>The pool's localCapacity is 1, so a same-thread dispose-then-rent reuses the one state
+    /// deterministically; this pins the Clear() -> ForgetWarm() path that Restore()'s test does not.</remarks>
+    [Test]
+    public void Pooled_reset_drops_the_remembered_cell()
+    {
+        StorageCell cell = new(TestItem.AddressA, UInt256.One);
+        object returnedState;
+        using (StackAccessTracker first = new())
+        {
+            returnedState = first.AccessedAddresses;
+            first.WarmUp(in cell);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.IsCold(in cell), Is.False, "sets the memo");
+                Assert.That(first.WarmUp(TestItem.AddressA), Is.True);
+            }
+        }
+
+        using StackAccessTracker second = new();
+        // Without this the assertions below also hold for a fresh state, so they could not fail if the
+        // reuse they claim to exercise ever stopped happening.
+        Assert.That(second.AccessedAddresses, Is.SameAs(returnedState), "precondition: the pool reused the state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.IsCold(in cell), Is.True, "a pooled reset must forget the warm cell");
+            Assert.That(second.WarmUp(TestItem.AddressA), Is.True, "a pooled reset must forget the warm address");
+        }
+    }
+
+    /// <summary>The memo must answer for the cell it remembers, not for a different one.</summary>
+    [Test]
+    public void Warm_cell_does_not_make_other_cells_warm()
+    {
+        StorageCell warm = new(TestItem.AddressA, UInt256.One);
+        StorageCell sameAddressOtherSlot = new(TestItem.AddressA, new UInt256(2));
+        StorageCell otherAddressSameSlot = new(TestItem.AddressB, UInt256.One);
+        using StackAccessTracker tracker = new();
+
+        tracker.WarmUp(in warm);
+        Assert.That(tracker.IsCold(in warm), Is.False);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.IsCold(in sameAddressOtherSlot), Is.True);
+            Assert.That(tracker.IsCold(in otherAddressSameSlot), Is.True);
+            Assert.That(tracker.IsCold(in warm), Is.False, "still warm after the misses");
+        }
+    }
+
+    [Test]
+    public void Address_warm_up_matches_by_value_in_insertion_order()
+    {
+        using StackAccessTracker tracker = new();
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.WarmUp(new Address(TestItem.AddressA.Bytes)), Is.False, "an equal instance is warm");
+            Assert.That(tracker.WarmUp(TestItem.AddressB), Is.True, "another address is still cold");
+            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "and the first stays warm");
+            Assert.That(tracker.AccessedAddresses.Select(static key => key.Value), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        }
+    }
+
+    /// <summary>
+    /// Unwinding nested frames one at a time keeps each parent's accesses and drops the unwound frame's, unless
+    /// access is traced, when every access stays warm so the generated access list covers it.
+    /// </summary>
+    /// <remarks>Each frame holds its own copy of the tracker over one shared state, as the VM's frames do.</remarks>
+    [Test]
+    public void Nested_frame_restore_preserves_parent_accesses([Values(1, 4, 16)] int depth, [Values] bool tracing)
+    {
+        using StackAccessTracker parent = new(tracing);
+        parent.WarmUp(TestItem.AddressA);
+        StackAccessTracker[] frames = new StackAccessTracker[depth];
+        Address[] addresses = new Address[depth];
+        StorageCell[] cells = new StorageCell[depth];
+        for (int level = 0; level < depth; level++)
+        {
+            byte[] bytes = new byte[20];
+            bytes[19] = (byte)(level + 1);
+            addresses[level] = new Address(bytes);
+            cells[level] = new StorageCell(addresses[level], (UInt256)(uint)level);
+            frames[level] = parent;
+            frames[level].TakeSnapshot();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frames[level].WarmUp(addresses[level]), Is.True);
+                Assert.That(frames[level].WarmUp(addresses[level]), Is.False);
+                Assert.That(frames[level].WarmUp(in cells[level]), Is.True);
+                Assert.That(frames[level].WarmUp(in cells[level]), Is.False);
+            }
+        }
+
+        for (int level = depth - 1; level >= 0; level--)
+        {
+            frames[level].Restore();
+            for (int entry = 0; entry < depth; entry++)
+            {
+                bool expectedCold = !tracing && entry >= level;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(parent.IsCold(addresses[entry]), Is.EqualTo(expectedCold), $"address {entry}, restored level {level}");
+                    Assert.That(parent.IsCold(in cells[entry]), Is.EqualTo(expectedCold), $"cell {entry}, restored level {level}");
+                }
+            }
+            Assert.That(parent.WarmUp(TestItem.AddressA), Is.False);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parent.WarmUp(addresses[^1]), Is.EqualTo(!tracing));
+            Assert.That(parent.WarmUp(in cells[^1]), Is.EqualTo(!tracing));
+        }
+    }
+
     [Test]
     public void Memory_cost_preserves_preexpanded_range_and_full_width_validation(
         [Values(0UL, 1UL, 31UL, 32UL, 33UL, ulong.MaxValue)] ulong offset,
@@ -283,10 +430,10 @@ public class EthereumGasPolicyTests
         spec.ClearReceivedCalls();
         bool actual = (eip3860, eip8038) switch
         {
-            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038On>>(ref specializedGas, spec, eip8037, create2, words),
-            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038Off>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038On>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038Off>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038On, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038Off, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038On, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038Off, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
         };
 
         using (Assert.EnterMultipleScope())
@@ -395,6 +542,19 @@ public class EthereumGasPolicyTests
     }
 
     [Test]
+    public void CreateAvailableFromIntrinsic_moves_gas_above_the_execution_cap_to_the_reservoir_only_when_capped([Values] bool capExecutionGas)
+    {
+        EthereumGasPolicy intrinsic = new() { Value = 21_000 };
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2;
+
+        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, Amsterdam.Instance, out EthereumGasPolicy available, capExecutionGas), Is.True);
+
+        ulong expectedRemaining = capExecutionGas ? Eip7825Constants.DefaultTxGasLimitCap - 21_000 : gasLimit - 21_000;
+        Assert.That((EthereumGasPolicy.GetRemainingGas(in available), EthereumGasPolicy.GetStateReservoir(in available)),
+            Is.EqualTo((expectedRemaining, (long)(gasLimit - 21_000 - expectedRemaining))));
+    }
+
+    [Test]
     public void MinRequiredGasLimit_includes_state_reservoir_unlike_state_blind_minimal_gas()
     {
         EthereumGasPolicy standard = new() { Value = 30_000, StateReservoir = 183_600 };
@@ -415,6 +575,23 @@ public class EthereumGasPolicyTests
 
         Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(30_000UL));
         Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas)));
+    }
+
+    [TestCase(20_000UL, false)]
+    [TestCase(30_000UL, false)]
+    [TestCase(40_000UL, true)]
+    public void MinimalGas_preserves_selected_policy(ulong floorValue, bool selectFloor)
+    {
+        EthereumGasPolicy standard = new() { Value = 30_000, StateReservoir = 100, StateGasUsed = 200, StateGasSpill = 300, StateGasSpillRefunded = 400 };
+        EthereumGasPolicy floor = new() { Value = floorValue, StateReservoir = 500, StateGasUsed = 600, StateGasSpill = 700, StateGasSpillRefunded = 800 };
+        IntrinsicGas<EthereumGasPolicy> intrinsic = new(standard, floor);
+        EthereumGasPolicy expected = selectFloor ? floor : standard;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsic.MinimalGas, Is.EqualTo(expected));
+            Assert.That((EthereumGasPolicy)intrinsic, Is.EqualTo(expected));
+        }
     }
 
     [TestCase(100UL, 40UL, 10L, 50UL, TestName = "positive_reservoir_is_subtracted")]

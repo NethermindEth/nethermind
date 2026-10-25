@@ -21,7 +21,7 @@ namespace Nethermind.Core.Test.Modules;
 /// </summary>
 public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
 {
-    private IBlockchainProcessor? _blockchainProcessor;
+    private IBlockProcessingQueue? _blockProcessingQueue;
     private IBlockProducerRunner? _blockProducerRunner;
     private IRlpxHost? _rlpxHost;
     private ISessionMonitor? _sessionMonitor;
@@ -35,15 +35,15 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
         _blockProducerRunner.Start();
 
         IMainProcessingContext mainBlockProcessingContext = ctx.Resolve<IMainProcessingContext>();
-        _blockchainProcessor = mainBlockProcessingContext.BlockchainProcessor;
-        _blockchainProcessor.Start();
+        _blockProcessingQueue = mainBlockProcessingContext.BlockProcessingQueue;
+        _blockProcessingQueue.Start();
 
         await PrepareGenesis(cancellationToken);
     }
 
     private async Task PrepareGenesis(CancellationToken cancellation)
     {
-        if (_blockchainProcessor is null) await StartBlockProcessing(cancellation);
+        if (_blockProcessingQueue is null) await StartBlockProcessing(cancellation);
 
         IBlockTree blockTree = ctx.Resolve<IBlockTree>();
         if (blockTree.Genesis is not null) return;
@@ -97,7 +97,7 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+        await (_blockProcessingQueue?.StopAsync() ?? Task.CompletedTask);
         await (_blockProducerRunner?.StopAsync() ?? Task.CompletedTask);
         await (_rlpxHost?.Shutdown() ?? Task.CompletedTask);
 

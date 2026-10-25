@@ -15,8 +15,6 @@ namespace Nethermind.State.Flat;
 /// <summary>The sorted, pooled counterpart of <see cref="SnapshotContent"/> used for compacted snapshots.</summary>
 public sealed class SortedSnapshotContent : IDisposable, IResettable
 {
-    private const int NodeSizeEstimate = 650;
-
     private readonly SortedMergeDictionary<HashedKey<Address>, Account?> _accounts = new();
     private readonly SortedMergeDictionary<HashedKey<(Address, UInt256)>, UInt256?> _storages = new();
     private readonly SortedMergeDictionary<HashedKey<Address>, bool> _selfDestructedStorageAddresses = new();
@@ -46,19 +44,17 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node) => _stateNodes.TryGetValue(key, out node!);
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node) => _storageNodes.TryGetValue(key, out node!);
 
-    public long EstimateMemory() =>
-        _accounts.Count * 172 +
-            _storages.Count * 136 +
-            _selfDestructedStorageAddresses.Count * 64 +
-            _stateNodes.Count * (NodeSizeEstimate + 76) +
-            _storageNodes.Count * (NodeSizeEstimate + 84);
+    public long EstimateMemory() => CaptureCounts().EstimateMemory();
 
-    public long EstimateCompactedMemory() =>
-        _accounts.Count * 68 +
-            _storages.Count * 136 +
-            _selfDestructedStorageAddresses.Count * 64 +
-            _stateNodes.Count * 76 +
-            _storageNodes.Count * 84;
+    /// <inheritdoc cref="SnapshotContentCounts.EstimateCompactedMemory"/>
+    public long EstimateCompactedMemory() => CaptureCounts().EstimateCompactedMemory();
+
+    private SnapshotContentCounts CaptureCounts() => new(
+        _accounts.Count,
+        _storages.Count,
+        _selfDestructedStorageAddresses.Count,
+        _stateNodes.Count,
+        _storageNodes.Count);
 
     public void Reset()
     {

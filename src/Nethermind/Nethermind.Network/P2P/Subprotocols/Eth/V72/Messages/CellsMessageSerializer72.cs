@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using CkzgLib;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -44,10 +43,10 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         writer.StartSequence(contentLength);
         writer.Encode(message.RequestId);
 
-        int hashesLength = Rlp.LengthOf(message.Hashes);
+        int hashesLength = checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp);
         writer.StartSequence(hashesLength);
 
-        foreach (Hash256 hash in message.Hashes)
+        foreach (ValueHash256 hash in message.Hashes)
         {
             writer.Encode(hash);
         }
@@ -74,7 +73,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         int checkPosition = ctx.Position + sequenceLength;
         long requestId = ctx.DecodeLong();
 
-        using ArrayPoolList<Hash256> hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
+        using ArrayPoolList<ValueHash256> hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
 
         int cellsSequenceLength = ctx.ReadSequenceLength();
         if (cellsSequenceLength > Eth72ProtocolHandler.MaxCellsMessageBytes)
@@ -83,40 +82,42 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         }
 
         int cellsEnd = ctx.Position + cellsSequenceLength;
-        List<byte[][]> cellsByTx = new(hashes.Count);
+        byte[][][] cellsByTx = hashes.Count == 0 ? [] : new byte[hashes.Count][][];
+        int cellGroupCount = 0;
         while (ctx.Position < cellsEnd)
         {
-            if (cellsByTx.Count >= hashes.Count)
+            if (cellGroupCount >= hashes.Count)
             {
                 throw new RlpException($"Too many cell groups in {nameof(CellsMessage72)}. Expected {hashes.Count}.");
             }
 
-            cellsByTx.Add(ctx.DecodeByteArrays(_cellsPerTransactionRlpLimit, innerSize: Ckzg.BytesPerCell));
+            cellsByTx[cellGroupCount] = ctx.DecodeByteArrays(_cellsPerTransactionRlpLimit, innerSize: Ckzg.BytesPerCell);
+            cellGroupCount++;
         }
 
         byte[] cellMask = ctx.DecodeByteArray(size: BlobCellMask.FixedByteLength);
 
         ctx.Check(checkPosition);
-        if (cellsByTx.Count != hashes.Count)
+        if (cellGroupCount != hashes.Count)
         {
-            throw new RlpException($"Wrong number of cell groups in {nameof(CellsMessage72)}. Expected {hashes.Count}, got {cellsByTx.Count}.");
+            throw new RlpException($"Wrong number of cell groups in {nameof(CellsMessage72)}. Expected {hashes.Count}, got {cellGroupCount}.");
         }
 
         int cellIndexCount = BlobCellMask.FromBytes(cellMask).Count;
-        for (int i = 0; i < cellsByTx.Count; i++)
+        for (int i = 0; i < cellsByTx.Length; i++)
         {
             cellsByTx[i] = ToBlobMajor(cellsByTx[i], cellIndexCount);
         }
 
-        return new CellsMessage72(requestId, hashes.AsSpan().ToArray(), cellsByTx.ToArray(), cellMask);
+        return new CellsMessage72(requestId, hashes.AsSpan().ToArray(), cellsByTx, cellMask);
     }
 
-    private static Hash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeKeccak();
+    private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
     public int GetLength(CellsMessage72 message, out int contentLength)
     {
         contentLength = Rlp.LengthOf(message.RequestId)
-            + Rlp.LengthOfSequence(Rlp.LengthOf(message.Hashes))
+            + Rlp.LengthOfSequence(checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp))
             + Rlp.LengthOfSequence(GetCellsContentLength(message.Cells))
             + Rlp.LengthOf(message.CellMask);
         return Rlp.LengthOfSequence(contentLength);

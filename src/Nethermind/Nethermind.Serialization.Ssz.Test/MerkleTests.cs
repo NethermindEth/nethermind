@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
@@ -25,11 +26,12 @@ public static class UInt256Extensions
 public class MerkleTests
 {
     [Test]
-    public void Merkleize_matches_padded_binary_tree([Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33)] int count)
+    public void Merkleize_matches_padded_binary_tree(
+        [Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33, 64, 65, 100)] int count, [Values(1, 256)] int minimumWidth, [Values] bool zeroChunks)
     {
         UInt256[] chunks = new UInt256[count];
-        for (int i = 0; i < count; i++) chunks[i] = (UInt256)(i + 1);
-        int width = 1;
+        if (!zeroChunks) for (int i = 0; i < count; i++) chunks[i] = (UInt256)(i + 1);
+        int width = minimumWidth;
         while (width < count) width *= 2;
         UInt256[] tree = new UInt256[width];
         chunks.CopyTo(tree, 0);
@@ -121,7 +123,7 @@ public class MerkleTests
         for (int level = 0; level < 64; level++)
         {
             Merkle.ZeroHashes[level].ToLittleEndian(actual);
-            Assert.That(actual.ToArray(), Is.EqualTo(expected), $"ZeroHashes[{level}]");
+            Assert.That(actual, Is.SequenceEqualTo(expected), $"ZeroHashes[{level}]");
             expected = HashUtility.Hash(expected, expected);
         }
     }
@@ -264,7 +266,7 @@ public class MerkleTests
     [TestCase(64, 6)]
     public void Feed_test(int leafs, int depth)
     {
-        Merkleizer merkleizer = new(depth);
+        Merkleizer merkleizer = new(new UInt256[depth + 1]);
         for (int i = 0; i < leafs; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -286,7 +288,7 @@ public class MerkleTests
         UInt256 result = UInt256.Zero;
         for (int j = 0; j < leafs; j++)
         {
-            Merkleizer merkleizer = new(depth);
+            Merkleizer merkleizer = new(new UInt256[depth + 1]);
             for (int i = j; i < leafs; i++)
             {
                 merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -301,7 +303,7 @@ public class MerkleTests
     [Test]
     public void Fill()
     {
-        Merkleizer merkleizer = new(6);
+        Merkleizer merkleizer = new(new UInt256[7]);
         for (int i = 0; i < 7; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -316,7 +318,7 @@ public class MerkleTests
 
     private static UInt256 MerkleizeWithConverter<T>(T value, FeedItem<T> feed)
     {
-        Merkleizer merkleizer = new(0);
+        Merkleizer merkleizer = new(new UInt256[1]);
         feed(ref merkleizer, value);
         merkleizer.CalculateRoot(out UInt256 root);
         return root;

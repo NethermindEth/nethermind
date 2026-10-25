@@ -96,7 +96,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
             BloomFilter oldFilter = Interlocked.Exchange(ref PrewarmedAddresses, newFilter);
             oldFilter.Dispose();
         }
-        else
+        else if (PrewarmedAddresses.Count != 0)
         {
             PrewarmedAddresses.Clear();
         }
@@ -104,8 +104,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     }
 
     public bool ShouldPrewarm(Address address, UInt256? slot) => ShouldPrewarm(address.Bytes, slot);
-
-    public bool ShouldPrewarm(in ValueAddress address, UInt256? slot) => ShouldPrewarm(address.AsSpan, slot);
 
     private bool ShouldPrewarm(ReadOnlySpan<byte> addressBytes, UInt256? slot)
     {
@@ -141,6 +139,12 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
 
     public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
+
+    /// <summary>Looks a state or storage node up by the shard and hash from <see cref="TrieNodeCache.GetShardAndHashCode"/>.</summary>
+    public bool TryGetNode(int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(shardIdx, hashCode, hash, out node);
+
+    /// <summary>Adds a state or storage node by the shard and hash from <see cref="TrieNodeCache.GetShardAndHashCode"/>, or returns the one already cached with the same hash.</summary>
+    public TrieNode GetOrAddNode(int shardIdx, int hashCode, TrieNode trieNode) => Nodes.GetOrAdd(shardIdx, hashCode, trieNode);
 
     public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
 

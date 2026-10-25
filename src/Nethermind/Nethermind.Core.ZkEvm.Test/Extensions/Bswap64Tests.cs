@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.ZkEvm.Test.Extensions;
@@ -40,4 +42,38 @@ public class Bswap64Tests
     [Test]
     public void Every_byte_lands_in_its_mirrored_position([Range(0, 7)] int index)
         => Assert.That(Bytes.Bswap64(0xA5UL << (index * 8)), Is.EqualTo(0xA5UL << ((7 - index) * 8)));
+
+    [Test]
+    public void Reads_a_big_endian_word_at_any_offset([ValueSource(nameof(Values))] ulong value, [Range(0, 7)] int offset)
+    {
+        byte[] buffer = new byte[16];
+        BinaryPrimitives.WriteUInt64BigEndian(buffer.AsSpan(offset), value);
+
+        Assert.That(ZkEvmBitOperations.ReadUInt64BigEndian(ref buffer[offset]), Is.EqualTo(value));
+    }
+
+    [Test]
+    public void Writes_a_big_endian_word_at_any_offset([ValueSource(nameof(Values))] ulong value, [Range(0, 7)] int offset)
+    {
+        byte[] buffer = new byte[16];
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref buffer[offset], value);
+
+        byte[] expected = new byte[16];
+        BinaryPrimitives.WriteUInt64BigEndian(expected.AsSpan(offset), value);
+        Assert.That(buffer, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Reads_a_big_endian_uint256_at_any_offset([Range(0, 7)] int offset)
+    {
+        byte[] buffer = new byte[40];
+        for (int i = 0; i < 32; i++) buffer[offset + i] = (byte)(0xA0 + i);
+        ReadOnlySpan<byte> word = buffer.AsSpan(offset, 32);
+
+        Assert.That(Bytes.ReadUInt256BigEndian(word), Is.EqualTo(new UInt256(word, isBigEndian: true)));
+    }
+
+    [Test]
+    public void Rejects_a_uint256_span_that_is_not_32_bytes([Values(0, 31, 33)] int length) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => Bytes.ReadUInt256BigEndian(new byte[length]));
 }

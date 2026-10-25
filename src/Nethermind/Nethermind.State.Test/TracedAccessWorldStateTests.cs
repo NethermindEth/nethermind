@@ -54,8 +54,8 @@ public class TracedAccessWorldStateTests(bool parallel)
         return (tws, scope);
     }
 
-    [Test]
-    public void Mutation_without_generating_block_access_list_throws_actionable_exception()
+    /// <summary>Builds an untraced decorator — one that was never handed a slice — over an account A at nonce 0.</summary>
+    private (TracedAccessWorldState tws, IWorldState inner, IDisposable scope) CreateIdleState()
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
         Hash256 stateRoot;
@@ -69,13 +69,87 @@ public class TracedAccessWorldStateTests(bool parallel)
 
         TracedAccessWorldState tws = new(inner, parallel);
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
-        using IDisposable scope = tws.BeginScope(baseBlock);
+        return (tws, inner, tws.BeginScope(baseBlock));
+    }
 
-        Assert.That(
-            () => tws.SetNonce(TestItem.AddressA, 1),
-            Throws.InvalidOperationException.With.Message.EqualTo(
+    [TestCase("SetIndex")]
+    [TestCase("IncrementIndex")]
+    [TestCase("Clear")]
+    public void Control_member_without_generating_block_access_list_throws_actionable_exception(string member)
+    {
+        (TracedAccessWorldState tws, _, IDisposable scope) = CreateIdleState();
+        using (scope)
+        {
+            Action call = member switch
+            {
+                "SetIndex" => () => tws.SetIndex(0),
+                "IncrementIndex" => tws.IncrementIndex,
+                _ => tws.Clear
+            };
+
+            Assert.That(call, Throws.InvalidOperationException.With.Message.EqualTo(
                 "Block access list tracing requires a generating block access list to be set."));
-        Assert.That(inner.GetNonce(TestItem.AddressA), Is.Zero);
+        }
+    }
+
+    [TestCase("SetNonce")]
+    [TestCase("SubtractFromBalanceAndSetNonce")]
+    [TestCase("CreateAccount")]
+    [TestCase("CreateAccountIfNotExists")]
+    [TestCase("DeleteAccount")]
+    public void Mutation_without_generating_block_access_list_delegates_without_recording(string member)
+    {
+        (TracedAccessWorldState tws, IWorldState inner, IDisposable scope) = CreateIdleState();
+        using (scope)
+        {
+            (Action mutate, Func<bool> applied) = member switch
+            {
+                "SetNonce" => ((Action)(() => tws.SetNonce(TestItem.AddressA, 1)), (Func<bool>)(() => inner.GetNonce(TestItem.AddressA) == 1)),
+                "SubtractFromBalanceAndSetNonce" => (() =>
+                {
+                    inner.AddToBalance(TestItem.AddressA, 5, Spec);
+                    tws.SubtractFromBalanceAndSetNonce(TestItem.AddressA, 2, 1, Spec);
+                }, () => inner.GetBalance(TestItem.AddressA) == 3 && inner.GetNonce(TestItem.AddressA) == 1),
+                "CreateAccount" => (() => tws.CreateAccount(TestItem.AddressB, 5), () => inner.GetBalance(TestItem.AddressB) == 5),
+                "CreateAccountIfNotExists" => (() => tws.CreateAccountIfNotExists(TestItem.AddressB, 5), () => inner.GetBalance(TestItem.AddressB) == 5),
+                _ => (() => tws.DeleteAccount(TestItem.AddressA), () => !inner.AccountExists(TestItem.AddressA))
+            };
+
+            mutate();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(applied(), Is.True);
+                Assert.That(tws.GetGeneratingBlockAccessList(), Is.Null);
+            }
+        }
+    }
+
+    [Test]
+    public void Balance_create_returns_true_only_for_first_creation(
+        [Values] bool initiallyExists, [Values(0u, 1u)] uint balanceChange)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+        {
+            if (initiallyExists) ws.CreateAccount(TestItem.AddressA, 0);
+        });
+        using (scope)
+        {
+            bool created = tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out UInt256 oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.EqualTo(!initiallyExists));
+                Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+            }
+
+            created = tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.False);
+                Assert.That(oldBalance, Is.EqualTo((UInt256)balanceChange));
+                Assert.That(tws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)(2 * balanceChange)));
+            }
+        }
     }
 
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
@@ -130,6 +204,52 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.NonceChange, Is.Not.Null);
                 Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(expectedNonce));
+            }
+        }
+    }
+
+    [Test]
+    public void SubtractFromBalanceAndSetNonce_RecordsBalanceAndNonceChanges()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            tws.SubtractFromBalanceAndSetNonce(TestItem.AddressA, 30, 1, Spec);
+
+            AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac, Is.Not.Null);
+                Assert.That(ac!.BalanceChange!.Value.Value, Is.EqualTo((UInt256)70));
+                Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(1UL));
+                Assert.That(tws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)70));
+                Assert.That(tws.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+            }
+        }
+    }
+
+    [TestCase(1ul, 1ul, false, TestName = "SetNonce_UnchangedValue_RecordsNoNonceChange")]
+    [TestCase(1ul, 2ul, true, TestName = "SetNonce_ChangedValue_RecordsNonceChange")]
+    public void SetNonce_RecordsNonceChange_OnlyWhenValueChanges(
+        ulong initialNonce, ulong newNonce, bool expectRecorded)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 0, initialNonce));
+        using (scope)
+        {
+            tws.SetNonce(TestItem.AddressA, newNonce);
+
+            AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
+            if (expectRecorded)
+            {
+                Assert.That(ac, Is.Not.Null);
+                Assert.That(ac!.NonceChange, Is.Not.Null);
+                Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(newNonce));
+            }
+            else
+            {
+                Assert.That(ac, Is.Null);
             }
         }
     }
@@ -295,6 +415,80 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
+    private static void ReadSlot(TracedAccessWorldState tws, int slot) => tws.Get(new StorageCell(TestItem.AddressA, (UInt256)slot), out _);
+
+    private static void WriteSlot(TracedAccessWorldState tws, int slot, ulong value) => tws.Set(new StorageCell(TestItem.AddressA, (UInt256)slot), value);
+
+    private static IEnumerable<TestCaseData> StorageAccessOrderCases()
+    {
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws => { ReadSlot(ws, 1); WriteSlot(ws, 1, 5); }), new[] { 1 }, Array.Empty<int>())
+            .SetName("ReadThenWrite_RecordsOnlyChange");
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws => { WriteSlot(ws, 1, 5); ReadSlot(ws, 2); ReadSlot(ws, 1); ReadSlot(ws, 2); }), new[] { 1 }, new[] { 2 })
+            .SetName("WriteThenRead_RecordsOnlyChange");
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws => { WriteSlot(ws, 1, 5); ReadSlot(ws, 1); WriteSlot(ws, 1, 0); ReadSlot(ws, 2); }), Array.Empty<int>(), new[] { 1, 2 })
+            .SetName("WriteBackToOriginal_RecordsRead");
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws =>
+            {
+                WriteSlot(ws, 3, 7);
+                Snapshot snapshot = ws.TakeSnapshot();
+                WriteSlot(ws, 1, 5);
+                ReadSlot(ws, 1);
+                ReadSlot(ws, 2);
+                ws.Restore(snapshot);
+                ReadSlot(ws, 3);
+            }), new[] { 3 }, new[] { 1, 2 })
+            .SetName("RevertedWrite_KeepsReads");
+    }
+
+    [TestCaseSource(nameof(StorageAccessOrderCases))]
+    public void Storage_access_order_records_each_slot_once(Action<TracedAccessWorldState> access, int[] changedSlots, int[] readSlots)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            access(tws);
+
+            AccountChangesAtIndex ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac.StorageChanges.Keys, Is.EquivalentTo(changedSlots.Select(static s => (UInt256)s)));
+                Assert.That(ac.StorageReads, Is.EquivalentTo(readSlots.Select(static s => (UInt256)s)));
+            }
+        }
+    }
+
+    [Test]
+    public void Storage_reads_and_writes_merge_across_transactions()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            GeneratedBlockAccessList block = new();
+
+            WriteSlot(tws, 1, 5);
+            ReadSlot(tws, 2);
+            ReadSlot(tws, 1);
+            block.Merge(tws.GetGeneratingBlockAccessList()!);
+            tws.Commit(Spec);
+            tws.Clear();
+            tws.IncrementIndex();
+
+            ReadSlot(tws, 1);
+            ReadSlot(tws, 3);
+            WriteSlot(tws, 3, 7);
+            ReadSlot(tws, 4);
+            block.Merge(tws.GetGeneratingBlockAccessList()!);
+
+            GeneratedAccountChanges account = block.GetAccountChanges(TestItem.AddressA)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account.StorageChanges.Select(static s => (s.Key, s.Changes.Single())),
+                    Is.EquivalentTo(new[] { ((UInt256)1, new StorageChange(0, 5)), ((UInt256)3, new StorageChange(1, 7)) }));
+                Assert.That(account.StorageReads, Is.EquivalentTo(new UInt256[] { 2, 4 }));
+            }
+        }
+    }
+
     private static IEnumerable<TestCaseData> ReadRecordsAccountReadCases()
     {
         byte[] codeForCodeOp = [0x60, 0x01];
@@ -324,7 +518,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(codeForCodeOp), codeForCodeOp, Spec);
             }),
             (Action<TracedAccessWorldState>)(tws =>
-                Assert.That(tws.GetCode(TestItem.AddressA), Is.EqualTo(codeForCodeOp))))
+                Assert.That(tws.GetCode(TestItem.AddressA), Is.SequenceEqualTo(codeForCodeOp))))
             .SetName("GetCode_RecordsAccountRead");
 
         yield return new TestCaseData(
@@ -485,11 +679,12 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
-    [TestCase(true, true, TestName = "AddToBalance suppressed")]
-    [TestCase(true, false, TestName = "AddToBalanceAndCreateIfNotExists suppressed")]
-    [TestCase(false, true, TestName = "AddToBalance not suppressed")]
-    [TestCase(false, false, TestName = "AddToBalanceAndCreateIfNotExists not suppressed")]
-    public void Zero_balance_credit_to_system_user_recorded_only_outside_suppression(bool suppressed, bool plainAdd)
+    /// <summary>A zero-balance operation on <see cref="Address.SystemUser"/> that would create its BAL entry.</summary>
+    public enum SystemUserTouch { AddToBalance, AddToBalanceAndCreateIfNotExists, CreateAccount, CreateAccountIfNotExists }
+
+    [Test]
+    public void Zero_balance_touch_of_system_user_recorded_only_outside_suppression(
+        [Values] bool suppressed, [Values] SystemUserTouch touch)
     {
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
             ws.CreateAccount(Address.SystemUser, 0));
@@ -497,13 +692,20 @@ public class TracedAccessWorldStateTests(bool parallel)
         {
             using IDisposable? systemAccountReadSuppression = suppressed ? tws.BeginSystemAccountReadSuppression() : null;
 
-            if (plainAdd)
+            switch (touch)
             {
-                tws.AddToBalance(Address.SystemUser, 0u, Spec, out _);
-            }
-            else
-            {
-                tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
+                case SystemUserTouch.AddToBalance:
+                    tws.AddToBalance(Address.SystemUser, 0u, Spec, out _);
+                    break;
+                case SystemUserTouch.AddToBalanceAndCreateIfNotExists:
+                    tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
+                    break;
+                case SystemUserTouch.CreateAccount:
+                    tws.CreateAccount(Address.SystemUser, 0u);
+                    break;
+                case SystemUserTouch.CreateAccountIfNotExists:
+                    tws.CreateAccountIfNotExists(Address.SystemUser, 0u);
+                    break;
             }
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(Address.SystemUser);

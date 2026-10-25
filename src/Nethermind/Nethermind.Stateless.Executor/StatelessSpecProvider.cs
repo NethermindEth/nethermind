@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.GnosisForks;
 using Nethermind.Stateless.Execution.IO;
@@ -21,7 +20,7 @@ namespace Nethermind.Stateless.Execution;
 /// Merge transition metadata (<see cref="MergeBlockNumber"/>, <see cref="TerminalTotalDifficulty"/>)
 /// stays delegated to the base provider, describing the underlying chain rather than the pinned fork.
 /// </remarks>
-internal sealed class StatelessSpecProvider(
+internal sealed partial class StatelessSpecProvider(
     ISpecProvider baseProvider,
     ulong chainId,
     ForkActivation payloadActivation,
@@ -62,10 +61,24 @@ internal sealed class StatelessSpecProvider(
     /// <param name="payloadActivation">The activation of the payload's own block.</param>
     public static StatelessSpecProvider Create(ulong chainId, ProtocolFork protocolFork, ForkActivation payloadActivation)
     {
-        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? baseProvider);
+        IForkAwareSpecProvider? baseProvider = GetKnownProvider(chainId);
 
         // Unknown chains (e.g. devnets) fall back to Mainnet — for ProtocolFork.Current, to its schedule too.
         baseProvider ??= MainnetSpecProvider.Instance;
+
+        // A schema may pin a fork the chain has not scheduled yet: that is how devnets and spec fixtures
+        // replay future rules on a mainnet-shaped chain. Pinning one the chain has already left is the
+        // opposite case and would validate the payload under superseded rules, so reject it. Unreachable
+        // while the newest fork is the only pinnable one, but the schema id is chosen by the prover.
+        // A scheduled fork with no ProtocolFork is let through: mainnet parks unscheduled forks at
+        // far-future placeholder timestamps, and spec fixtures pin Amsterdam at exactly those.
+        if (protocolFork != ProtocolFork.Current &&
+            ProtocolForkExtensions.TryGetByName(baseProvider.GetSpec(payloadActivation).Name, out ProtocolFork scheduledFork) &&
+            protocolFork < scheduledFork)
+        {
+            throw new InvalidDataException(
+                $"The input pins {protocolFork.GetName()}, superseded by {scheduledFork.GetName()} at this payload's activation");
+        }
 
         return new(baseProvider, chainId, payloadActivation, GetPayloadSpec(baseProvider, chainId, protocolFork, payloadActivation));
     }

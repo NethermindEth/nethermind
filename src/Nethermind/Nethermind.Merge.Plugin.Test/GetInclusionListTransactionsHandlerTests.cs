@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Handlers;
@@ -21,7 +22,7 @@ public class GetInclusionListTransactionsHandlerTests
     private static GetInclusionListTransactionsHandler BuildHandler(bool focilScheduled)
     {
         ITxPool pool = Substitute.For<ITxPool>();
-        pool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>()).Returns(new Dictionary<AddressAsKey, Transaction[]>());
+        pool.GetPendingTransactionsBySenderWithReadyNonFrameTx(Arg.Any<UInt256>()).Returns(new Dictionary<AddressAsKey, Transaction[]>());
 
         IReleaseSpec preBogota = Substitute.For<IReleaseSpec>();
         preBogota.IsEip7805Enabled.Returns(false);
@@ -32,7 +33,10 @@ public class GetInclusionListTransactionsHandlerTests
         specProvider.GetSpec(Arg.Any<ForkActivation>())
             .Returns(ci => focilScheduled && ci.ArgAt<ForkActivation>(0).Timestamp >= BogotaTimestamp ? bogota : preBogota);
 
-        return new GetInclusionListTransactionsHandler(pool, Substitute.For<IBlockTree>(), specProvider);
+        IChainHeadInfoProvider chainHeadInfo = Substitute.For<IChainHeadInfoProvider>();
+        chainHeadInfo.ReadOnlyStateProvider.Returns(Substitute.For<IReadOnlyStateProvider>());
+
+        return new GetInclusionListTransactionsHandler(pool, Substitute.For<IBlockTree>(), specProvider, chainHeadInfo);
     }
 
     // The list is built before its block exists and a missed slot moves the timestamp, so only whether

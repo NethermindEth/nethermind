@@ -59,9 +59,9 @@ internal static class InputDecoder
         return new(
             GetBlock: () => newPayloadRequest.ToBlock(requestsEnabled)!,
             Witness: input.Witness,
+            EncodedTransactions: executionPayload.AsExecutionPayload().Transactions,
             ChainId: input.ChainId,
             SchemaId: schemaId,
-            PublicKeys: input.PublicKeys,
             VersionedHashes: input.NewPayloadRequest.VersionedHashes,
             NewPayloadRequestRoot: new Hash256(root.ToLittleEndian()),
             SpecProvider: specProvider

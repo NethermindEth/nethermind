@@ -23,7 +23,7 @@ internal class EraReaderTests
         public string FilePath => _tmpFile.Path;
         public List<(Block, TxReceipt[])> AddedContents { get; }
 
-        public static async Task<PopulatedTestFile> Create()
+        public static async Task<PopulatedTestFile> Create(Transaction? transaction = null)
         {
             TempPath tmpFile = TempPath.GetTempFile();
             using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
@@ -41,6 +41,7 @@ internal class EraReaderTests
 
             await AddBlock(
                 Build.A.Block.WithNumber(0)
+                    .WithTransactions(transaction is null ? [] : [transaction])
                     .WithDifficulty(0)
                     .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
                 [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
@@ -69,6 +70,23 @@ internal class EraReaderTests
         }
 
         public void Dispose() => _tmpFile.Dispose();
+    }
+
+    [Test, NonParallelizable]
+    public async Task Imported_transactions_do_not_consume_the_network_pool()
+    {
+        Transaction source = Build.A.Transaction.Signed().TestObject;
+        using PopulatedTestFile file = await PopulatedTestFile.Create(source);
+        HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
+
+        using EraReader reader = new(file.FilePath);
+        (Block block, _) = await reader.GetBlockByNumber(0);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions[0].Hash, Is.EqualTo(source.Hash));
+            Assert.That(pooled.Contains(block.Transactions[0]), Is.False);
+        }
     }
 
     [Test]
@@ -115,6 +133,14 @@ internal class EraReaderTests
         using EraReader sut = new(tmpFile.FilePath);
         ValueHash256 fileRoot = await sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid, default);
         Assert.That(root, Is.EqualTo(fileRoot));
+    }
+
+    [Test]
+    public async Task CalculateAccumulator_MainnetFile_MatchesStoredAccumulator(
+        [Values("mainnet-00000-5ec1ffb8.era1", "mainnet-00001-a5364e9a.era1", "mainnet-00002-98cbd8a9.era1")] string fileName)
+    {
+        using EraReader sut = new(Path.Combine("testdata/mainnet", fileName));
+        Assert.That(await sut.CalculateAccumulator(), Is.EqualTo(sut.ReadAccumulator()));
     }
 
     [Test]

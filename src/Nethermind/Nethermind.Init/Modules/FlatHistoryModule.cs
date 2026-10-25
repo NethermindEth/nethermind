@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing;
 using Nethermind.History;
 using Nethermind.Init.Steps;
-using Nethermind.Monitoring.Config;
+using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
+using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.Flat.History.Proofs;
 
 namespace Nethermind.Init.Modules;
@@ -33,6 +36,9 @@ public class FlatHistoryModule : Module
             .AddSingleton<HistoryRowFormat>(ctx =>
                 HistoryRowFormat.Resolve(ctx.Resolve<HistoryAvailability>(), ctx.Resolve<IFlatDbConfig>()))
             .AddSingleton<HistoryReader>()
+            .AddSingleton<PivotHistoryImageWriter>()
+            .AddSingleton<IPivotStateSource, PersistedStateAccountSource>()
+            .AddStep(typeof(StartPivotHistoryImage))
             .AddSingleton<HistoryWriter>()
             .AddSingleton<HistoryScopeGate>()
             .AddSingleton<HistoryWindowPruner>()
@@ -48,7 +54,8 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<ITrieNodeCache>(),
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
-                ctx.Resolve<HistoryScopeGate>()))
+                ctx.Resolve<HistoryScopeGate>(),
+                ctx.Resolve<ILogManager>()))
             .AddStep(typeof(SeedFlatHistoryGenesis))
             .AddStep(typeof(StartHistoryWindowPruner))
             // Only a node configuring slices tells the history pruner to keep any receipts; everyone else keeps
@@ -66,5 +73,13 @@ public class FlatHistoryModule : Module
             .AddSingleton<ArchiveProofSource>()
             .Bind<IHistoricalTrieVisitor, ArchiveProofSource>()
             .AddSingleton<HistoryWalkVerificationCoordinator>()
-            .AddStep(typeof(StartHistoryWalkVerification));
+            .AddStep(typeof(StartHistoryWalkVerification))
+            .AddSingleton<TransactionChangesetIndex>()
+            .AddSingleton<IHistoryBlockExecutorFactory, ProcessingHistoryBlockExecutorFactory>()
+            .AddSingleton<BulkFillSessionFactory>()
+            .AddSingleton<TransactionIndexGenesisBootstrap>()
+            .AddSingleton<ITransactionIndexBulkFill, ProcessingTransactionIndexBulkFill>()
+            .AddSingleton<TransactionChangesetBuilder>()
+            .AddStep(typeof(StartTransactionChangesetBuilder))
+            .AddSingleton<IPrefixStateSeedSource, ChangesetPrefixStateSeedSource>();
 }

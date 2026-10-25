@@ -11,17 +11,31 @@ namespace Nethermind.Network
 {
     public interface IIPResolver
     {
+        /// <summary>Raised after a cached resolution refresh changes an address.</summary>
+        event EventHandler? Changed
+        {
+            add { }
+            remove { }
+        }
+
         /// <summary>
         /// Resolves the node's local and external IP addresses.
         /// </summary>
         /// <remarks>
-        /// The result is resolved once and cached; concurrent callers await the same in-flight
-        /// resolution. Explicit local, primary, IPv4, and IPv6 overrides are honored when set;
-        /// otherwise the primary address is auto-detected.
+        /// Results containing automatically detected addresses are refreshed in the background once they are
+        /// five minutes old, while callers keep receiving the cached result; the initial resolution makes up to
+        /// five attempts two seconds apart before it completes, because some consumers read it only once. If all of
+        /// them fail, or a refresh loses every previously resolved address, background retries follow every ten
+        /// seconds for up to four more attempts. Fully configured results do not expire.
+        /// Refresh is scheduled independently of subsequent calls. Concurrent callers await the
+        /// same initial in-flight resolution. Explicit local, primary, IPv4, and IPv6 overrides are honored when
+        /// set. Otherwise, enabled automatic resolution independently detects missing address families supported
+        /// by an active local interface. Periodic refresh lets ENR publication replace an
+        /// automatically detected address when the host's public address changes.
         /// </remarks>
         /// <param name="cancellationToken">
-        /// Cancels only the caller's wait for the result, not the shared cached resolution (which always
-        /// runs to completion so it can still serve other callers).
+        /// Cancels only the caller's wait for the result, not the shared cached resolution.
+        /// Disposing the resolver cancels its outstanding lookups.
         /// </param>
         ValueTask<NethermindIp> Resolve(CancellationToken cancellationToken = default);
 
@@ -36,34 +50,34 @@ namespace Nethermind.Network
         /// <param name="ExternalIp">The primary external address used by existing consumers.</param>
         public readonly record struct NethermindIp(IPAddress LocalIp, IPAddress ExternalIp)
         {
-            private readonly IPAddress? _externalIpV4Override;
-            private readonly IPAddress? _externalIpV6Override;
+            private readonly IPAddress? _externalIpV4;
+            private readonly IPAddress? _externalIpV6;
 
             /// <summary>
-            /// Creates resolved node addresses with optional family-specific advertisement overrides.
+            /// Creates resolved node addresses with optional family-specific external addresses.
             /// </summary>
             /// <param name="localIp">The local address used for network listeners.</param>
             /// <param name="externalIp">The primary external address used by existing consumers.</param>
-            /// <param name="externalIpV4">The optional IPv4 advertisement override.</param>
-            /// <param name="externalIpV6">The optional IPv6 advertisement override.</param>
+            /// <param name="externalIpV4">The optional resolved IPv4 address.</param>
+            /// <param name="externalIpV6">The optional resolved IPv6 address.</param>
             public NethermindIp(IPAddress localIp, IPAddress externalIp, IPAddress? externalIpV4, IPAddress? externalIpV6)
                 : this(localIp, externalIp)
             {
-                _externalIpV4Override = NormalizeExternalIp(externalIpV4, AddressFamily.InterNetwork);
-                _externalIpV6Override = NormalizeExternalIp(externalIpV6, AddressFamily.InterNetworkV6);
+                _externalIpV4 = NormalizeExternalIp(externalIpV4, AddressFamily.InterNetwork);
+                _externalIpV6 = NormalizeExternalIp(externalIpV6, AddressFamily.InterNetworkV6);
             }
 
             /// <summary>
-            /// Gets the external IPv4 address to advertise. An explicit IPv4 override takes precedence;
+            /// Gets the resolved external IPv4 address. A family-specific value takes precedence;
             /// otherwise the value is derived from <see cref="ExternalIp"/>.
             /// </summary>
-            public IPAddress? ExternalIpV4 => _externalIpV4Override ?? NormalizeExternalIp(ExternalIp, AddressFamily.InterNetwork);
+            public IPAddress? ExternalIpV4 => _externalIpV4 ?? NormalizeExternalIp(ExternalIp, AddressFamily.InterNetwork);
 
             /// <summary>
-            /// Gets the external IPv6 address to advertise. An explicit IPv6 override takes precedence;
+            /// Gets the resolved external IPv6 address. A family-specific value takes precedence;
             /// otherwise the value is derived from <see cref="ExternalIp"/>.
             /// </summary>
-            public IPAddress? ExternalIpV6 => _externalIpV6Override ?? NormalizeExternalIp(ExternalIp, AddressFamily.InterNetworkV6);
+            public IPAddress? ExternalIpV6 => _externalIpV6 ?? NormalizeExternalIp(ExternalIp, AddressFamily.InterNetworkV6);
 
             public bool Equals(NethermindIp other) =>
                 LocalIp.Equals(other.LocalIp) &&

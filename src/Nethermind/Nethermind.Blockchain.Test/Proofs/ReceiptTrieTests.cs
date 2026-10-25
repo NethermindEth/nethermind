@@ -8,9 +8,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -23,21 +25,24 @@ namespace Nethermind.Blockchain.Test.Proofs;
 public class ReceiptTrieTests
 {
     private static readonly ReceiptMessageDecoder _decoder = new();
-    private static readonly int[] RootCounts = [0, 1, 2, 15, 16, 17, 63, 64, 65, 127, 128, 129, 255, 256, 257, 4096];
-    private static readonly int[] InlineCounts = [1, 2, 3, 4, 8, 16, 128, 129];
+    private static readonly int[] RootCounts = [0, 1, 2, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 79, 80, 81, 127, 128, 129, 143, 144, 145, 255, 256, 257, 271, 272, 273, 4096];
+    private static readonly int[] InlineCounts = [1, 2, 3, 4, 8, 16, 128, 129, 144, 257];
 
     [Test]
     public void Direct_root_matches_mutable_trie(
         [ValueSource(nameof(RootCounts))] int count,
         [Values] bool eip658,
-        [Values] bool skipStateAndStatus)
+        [Values] bool skipStateAndStatus,
+        [Values(99, 2176)] int dataLengthRange,
+        [Values(0, 2)] int workers)
     {
+        using ParallelUnbalancedWork.WorkerScope? scope = workers == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(workers);
         IReleaseSpec spec = eip658 ? Osaka.Instance : Frontier.Instance;
         TxReceipt[] receipts = new TxReceipt[count];
         Random random = new(42);
         for (int i = 0; i < count; i++)
         {
-            byte[] data = new byte[i % 99];
+            byte[] data = new byte[i % dataLengthRange];
             random.NextBytes(data);
             receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal((ulong)(i + 1) * 21000)
                 .WithStatusCode((byte)(i & 1)).WithTxType(eip658 ? (TxType)(i % 5) : TxType.Legacy)
@@ -65,6 +70,17 @@ public class ReceiptTrieTests
                 receipts[i] = Build.A.Receipt.WithAllFieldsFilled.TestObject;
         }
         AssertRootMatches(Osaka.Instance, receipts, _decoder);
+    }
+
+    [Test]
+    public void Eip7668_root_encodes_zero_length_blooms([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        TxReceipt[] receipts = [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject];
+        TxReceipt[] zeroLength = [Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.ZeroLength).TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.ZeroLength).TestObject];
+
+        AssertRootMatches(spec, receipts, _decoder);
+        Assert.That(ReceiptTrie.CalculateRoot(spec, receipts, _decoder) == ReceiptTrie.CalculateRoot(Bogota.Instance, zeroLength, _decoder), Is.EqualTo(eip7668));
     }
 
     [Test]

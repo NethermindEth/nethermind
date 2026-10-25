@@ -25,6 +25,18 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether to compact receipts database size at the expense of RPC performance.", DefaultValue = "true")]
     bool CompactReceiptStore { get; set; }
 
+    /// <summary>
+    /// Whether compact receipts store the block's transaction hashes, so that log queries do not read the block body.
+    /// Default: <see langword="true"/>.
+    /// </summary>
+    /// <remarks>
+    /// When <see langword="true"/>, new receipts are written with the hashes and a background pass adds them to older
+    /// receipts. A version without this option cannot read those values. When <see langword="false"/>, receipts are
+    /// written in the earlier format and the pass does not run.
+    /// </remarks>
+    [ConfigItem(Description = "Whether to store the transaction hashes with compact receipts, so that `eth_getLogs` does not read block bodies. Older receipts get them in the background; the pass yields to block processing and continues after a restart. When disabled, receipts are written in the format that earlier versions read.", DefaultValue = "true")]
+    bool StoreTxHashes { get; set; }
+
     [ConfigItem(Description = "Whether to compact receipts transaction index database size at the expense of RPC performance.", DefaultValue = "true")]
     bool CompactTxIndex { get; set; }
 
@@ -39,9 +51,10 @@ public interface IReceiptConfig : IConfig
 
     [ConfigItem(Description =
         """
-        The maximum block range (toBlock - fromBlock + 1) allowed in a single `eth_getLogs` request.
-        Requests exceeding this range are rejected with an "invalid params" (-32602) error.
-        Set to 0 to disable the limit. Value is ignored (no limits) if log index is enabled.
-        """, DefaultValue = "1000")]
+        The maximum number of blocks a single `eth_getLogs` or `eth_getFilterLogs` request may read receipts of
+        one by one. Blocks the log index can answer for do not count towards it, so on an indexed node the limit
+        only bounds what falls back to a sequential read. Requests exceeding it are rejected with an
+        "invalid params" (-32602) error. Set to 0 to disable the limit.
+        """, DefaultValue = "10000")]
     int MaxBlockDepth { get; set; }
 }

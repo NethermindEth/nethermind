@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -15,17 +17,27 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -53,7 +65,7 @@ public class HistoryPrunerTests
         const uint blocks = 100;
 
         yield return new TestCaseData(
-            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 },
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 },
             /*syncPivot:*/ blocks,
             /*primeWithOldestRead:*/ true,
             /*expectedPruneBelow:*/ 36UL,
@@ -61,7 +73,7 @@ public class HistoryPrunerTests
         ).SetName("Can_prune_blocks_older_than_specified_epochs");
 
         yield return new TestCaseData(
-            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 },
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 },
             /*syncPivot:*/ blocks,
             /*primeWithOldestRead:*/ false, // regression: pruner must self-bootstrap without external OldestBlockHeader call
             /*expectedPruneBelow:*/ 36UL,
@@ -97,27 +109,27 @@ public class HistoryPrunerTests
 
     private static IEnumerable<TestCaseData> BalPruningCases()
     {
-        // head=100, SlotsPerEpoch=32 → cutoff = 100 - retentionEpochs*32 (clamped at 0)
+        // head=100, SlotsPerEpoch=32 → block cutoff = 100 - (retentionEpochs + 1)*32, BAL cutoff = 100 - (balRetentionEpochs + 1)*32 (clamped at 0)
         yield return new TestCaseData(
-            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, BalRetentionEpochs = 1, PruningInterval = 0 },
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, BalRetentionEpochs = 0, PruningInterval = 0 },
             /*expectedBlocksPointer:*/ 36UL,
             /*expectedBalsPointer:*/ 68UL
         ).SetName("Bals_pruned_past_block_cutoff_when_bal_retention_is_shorter");
 
         yield return new TestCaseData(
-            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, BalRetentionEpochs = 2, PruningInterval = 0 },
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, BalRetentionEpochs = 1, PruningInterval = 0 },
             /*expectedBlocksPointer:*/ 36UL,
             /*expectedBalsPointer:*/ 36UL
-        ).SetName("Bals_pruned_alongside_blocks_when_retentions_equal");
+        ).SetName("Bals_pruned_alongside_blocks_when_cutoffs_equal");
 
         yield return new TestCaseData(
-            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, BalRetentionEpochs = 2, PruningInterval = 0 },
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 0, BalRetentionEpochs = 1, PruningInterval = 0 },
             /*expectedBlocksPointer:*/ 68UL,
             /*expectedBalsPointer:*/ 68UL
         ).SetName("Bals_forced_forward_when_block_retention_is_shorter");
 
         yield return new TestCaseData(
-            new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, BalRetentionEpochs = 1, PruningInterval = 0 },
+            new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, BalRetentionEpochs = 0, PruningInterval = 0 },
             /*expectedBlocksPointer:*/ BeaconGenesisBlockNumber,
             /*expectedBalsPointer:*/ 68UL
         ).SetName("Bals_use_separate_rolling_cutoff_in_ancient_barriers_mode");
@@ -141,12 +153,219 @@ public class HistoryPrunerTests
             Assert.That(historyPruner.OldestBlockHeader, Is.Not.Null, "OldestBlockHeader should not be null");
             Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(expectedBlocksPointer));
             Assert.That(historyPruner.BalsDeletePointer, Is.EqualTo(expectedBalsPointer));
+            Assert.That(historyPruner.BalCutoffBlockNumber, Is.GreaterThanOrEqualTo(expectedBalsPointer));
         }
     }
 
-    [TestCase(100UL, 1u, 68UL)]
+    private const ulong BalOnlyHead = 500_000;
+
+    // Head 500_000, plus one epoch of slack: the 14299-epoch chain floor keeps 457_600 blocks, a one-epoch retention keeps 64.
+    [TestCase(null, PruningMode.Hybrid, true, 42_400UL)]
+    [TestCase(1u, PruningMode.Hybrid, true, 499_936UL)]
+    [TestCase(uint.MaxValue, PruningMode.Hybrid, true, 0UL)] // keeps them all
+    [TestCase(null, PruningMode.None, true, 42_400UL)]
+    [TestCase(1u, PruningMode.None, true, 499_936UL)]
+    [TestCase(uint.MaxValue, PruningMode.None, true, 0UL)]
+    [TestCase(null, PruningMode.Hybrid, false, null)]
+    [TestCase(null, PruningMode.None, false, null)]
+    public void Bals_are_pruned_when_history_pruning_is_disabled(uint? balRetentionEpochs, PruningMode stateMode, bool chainHasAccessLists, ulong? expectedCutoff)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        using IContainer container = CreateBalOnlyContainer(blockTree, receiptStorage, balStore, balRetentionEpochs, stateMode, chainHasAccessLists);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+        IDb metadataDb = container.Resolve<IDbProvider>().MetadataDb;
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(expectedCutoff));
+            Assert.That(pruner.CutoffBlockNumber, Is.Null);
+            if (expectedCutoff is > 1 and { } cutoff)
+            {
+                balStore.Received(1).DeleteRange(1, cutoff);
+                Assert.That(pruner.BalsDeletePointer, Is.EqualTo(cutoff));
+                Assert.That(new RlpReader(metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer)!).DecodeULong(), Is.EqualTo(cutoff));
+            }
+            else
+            {
+                balStore.DidNotReceive().DeleteRange(Arg.Any<ulong>(), Arg.Any<ulong>());
+            }
+
+            receiptStorage.DidNotReceive().RemoveReceiptsRange(Arg.Any<ulong>(), Arg.Any<ulong>());
+            blockTree.DidNotReceive().DeleteOldBlockRange(Arg.Any<ulong>(), Arg.Any<ulong>());
+            Assert.That(metadataDb.KeyExists(MetadataDbKeys.HistoryPruningDeletePointer), Is.False);
+        }
+    }
+
+    [Test]
+    public void Bal_only_pruning_resumes_from_persisted_pointer()
+    {
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        using IContainer container = CreateBalOnlyContainer(Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore);
+        container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(30_000UL).Bytes);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        balStore.Received(1).DeleteRange(30_000, 42_400);
+        balStore.DidNotReceive().DeleteRange(Arg.Is<ulong>(static from => from < 30_000), Arg.Any<ulong>());
+    }
+
+    [Test]
+    public void Bal_admission_floor_survives_rewind_before_pruning_pointer_is_saved()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        using IContainer container = CreateBalOnlyContainer(blockTree, Substitute.For<IReceiptStorage>(), balStore);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+        balStore.When(static store => store.DeleteRange(1, 42_400)).Do(_ =>
+        {
+            blockTree.Head.Returns(Build.A.Block.WithNumber(BalOnlyHead - 1).TestObject);
+            Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(42_400UL));
+        });
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(42_400UL));
+    }
+
+    [Test]
+    public void Delayed_bal_response_after_pruning_and_head_rewind_is_skipped()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        balStore.WriteLock.Returns(new Lock());
+        using IContainer container = CreateBalOnlyContainer(blockTree, Substitute.For<IReceiptStorage>(), balStore, balRetentionEpochs: 0);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(32).TestObject);
+        blockTree.SyncPivot.Returns((3UL, TestItem.KeccakA));
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+        byte[] encodedBal = [0xc0];
+        BlockHeader header = Build.A.BlockHeader.WithNumber(2).WithBlockAccessListHash(Keccak.Compute(encodedBal)).TestObject;
+        blockTree.FindHeader(header.Hash!, blockNumber: 2).Returns(header);
+        SyncConfig syncConfig = new() { FastSync = true, PivotNumber = 3 };
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+            .AddModule(new SynchronizerModule(syncConfig))
+            .AddSingleton<ISyncConfig>(syncConfig)
+            .AddSingleton(Substitute.For<ISyncPointers>())
+            .AddSingleton(Substitute.For<ISyncPeerPool>())
+            .AddSingleton<ISyncReport>(new NullSyncReport()));
+        BlockAccessListsSyncFeed feed = (BlockAccessListsSyncFeed)scope.Resolve<ISyncFeed<BlockAccessListsSyncBatch>>();
+        feed.InitializeFeed();
+        using BlockAccessListsSyncBatch batch = new([new BlockInfo(header.Hash!, 0) { BlockNumber = 2 }])
+        {
+            Response = new ArrayPoolList<byte[]>([encodedBal])
+        };
+
+        blockTree.Head.Returns(Build.A.Block.WithNumber(35).TestObject);
+        pruner.TryPruneHistory(CancellationToken.None);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(34).TestObject);
+        feed.HandleResponse(batch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            balStore.Received(1).DeleteRange(1, 3);
+            balStore.DidNotReceive().Insert(2UL, header.Hash!, Arg.Any<byte[]>());
+        }
+    }
+
+    [Test]
+    public void Persisted_bal_admission_floor_respects_chain_support_before_first_pruning_pass([Values] bool chainHasAccessLists)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        using IContainer container = CreateBalOnlyContainer(blockTree, Substitute.For<IReceiptStorage>(), balStore, chainHasAccessLists: chainHasAccessLists);
+        container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(42_400UL).Bytes);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(BalOnlyHead - 1).TestObject);
+
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(chainHasAccessLists ? 42_400UL : (ulong?)null));
+            balStore.DidNotReceive().DeleteRange(Arg.Any<ulong>(), Arg.Any<ulong>());
+        }
+    }
+
+    [Test]
+    public void Bal_only_pruning_stops_at_the_sync_pivot()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        using IContainer container = CreateBalOnlyContainer(blockTree, Substitute.For<IReceiptStorage>(), balStore, balRetentionEpochs: 1);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+        blockTree.SyncPivot.Returns((400_000UL, Keccak.Zero));
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            balStore.Received(1).DeleteRange(1, 400_000);
+            Assert.That(pruner.BalsDeletePointer, Is.EqualTo(400_000UL));
+        }
+    }
+
+    [Test]
+    public async Task Scheduled_pass_prunes_bals_when_history_pruning_is_disabled()
+    {
+        TaskCompletionSource deleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        balStore.When(static s => s.DeleteRange(Arg.Any<ulong>(), Arg.Any<ulong>())).Do(_ => deleted.TrySetResult());
+        await using BackgroundTaskScheduler scheduler = new(Substitute.For<IBranchProcessor>(), Substitute.For<IChainHeadInfoProvider>(), 1, 16, LimboLogs.Instance);
+        using IContainer container = CreateBalOnlyContainer(Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore, scheduler: scheduler);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+
+        pruner.SchedulePruneHistory();
+
+        await deleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        balStore.Received(1).DeleteRange(1, 42_400);
+    }
+
+    [TestCase(HistoryRetentionConstants.HistoryPruneEpochs, 42_400UL)]
+    [TestCase(15_000UL, 19_968UL)]
+    public void Default_bal_retention_is_the_chain_floor(ulong minBalRetentionEpochs, ulong expectedCutoff)
+    {
+        using IContainer container = CreateBalOnlyContainer(Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), Substitute.For<IBlockAccessListStore>(), minBalRetentionEpochs: minBalRetentionEpochs);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+
+        Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(expectedCutoff));
+    }
+
+    private static IContainer CreateBalOnlyContainer(
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        IBlockAccessListStore balStore,
+        uint? balRetentionEpochs = null,
+        PruningMode stateMode = PruningMode.Hybrid,
+        bool chainHasAccessLists = true,
+        IBackgroundTaskScheduler scheduler = null,
+        ulong minBalRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs)
+    {
+        blockTree.SyncPivot.Returns((BalOnlyHead, Keccak.Zero));
+        blockTree.Head.Returns(Build.A.Block.WithNumber(BalOnlyHead).TestObject);
+        // Lowered to an explicit retention so short windows pass the floor check.
+        minBalRetentionEpochs = ulong.Min(minBalRetentionEpochs, balRetentionEpochs ?? ulong.MaxValue);
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule(
+                new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = balRetentionEpochs, PruningInterval = 0 },
+                new PruningConfig { Mode = stateMode },
+                BlocksConfig,
+                SyncConfig))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = chainHasAccessLists, MinBalRetentionEpochs = minBalRetentionEpochs }))
+            .AddSingleton(blockTree)
+            .AddSingleton(receiptStorage)
+            .AddSingleton(balStore)
+            .AddSingleton(scheduler ?? Substitute.For<IBackgroundTaskScheduler>())
+            .AddSingleton(Substitute.For<IBlockProcessingQueue>())
+            .AddSingleton<IPrunedReceiptRetention>(NullPrunedReceiptRetention.Instance)
+            .Build();
+    }
+
+    [TestCase(100UL, 1u, 36UL)]
     [TestCase(100UL, 4u, 0UL)] // negative pre-clamp
-    [TestCase(100UL, 0u, 100UL)]
+    [TestCase(100UL, 0u, 68UL)] // the extra epoch of slack
     public async Task Bal_cutoff_block_number_uses_separate_retention(ulong head, uint balRetentionEpochs, ulong expectedCutoff)
     {
         IHistoryConfig historyConfig = new HistoryConfig
@@ -218,7 +437,7 @@ public class HistoryPrunerTests
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.Rolling,
-            RetentionEpochs = 2,
+            RetentionEpochs = 1,
             PruningInterval = 0
         };
 
@@ -235,18 +454,19 @@ public class HistoryPrunerTests
         CheckOldestAndCutoff(cutoff, cutoff, historyPruner);
     }
 
-    [Test]
-    public async Task Does_not_prune_when_disabled()
+    [TestCase(PruningModes.Disabled, 100UL)]
+    [TestCase(PruningModes.Rolling, 0UL)]
+    public async Task Does_not_prune_when_pruning_is_disabled_or_sync_pivot_is_missing(PruningModes pruning, ulong syncPivot)
     {
-        const int blocks = 10;
+        const int blocks = 100;
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            Pruning = PruningModes.Disabled,
-            PruningInterval = 0
+            Pruning = pruning,
+            RetentionEpochs = 2
         };
         List<Hash256> blockHashes = [];
-        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, blockHashes: blockHashes);
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: syncPivot, blockHashes: blockHashes);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.TryPruneHistory(CancellationToken.None);
@@ -261,11 +481,108 @@ public class HistoryPrunerTests
         CheckHeadPreserved(testBlockchain, blocks);
     }
 
+    [Test]
+    public async Task Initial_pruning_pass_remains_pending_after_missing_sync_pivot()
+    {
+        const int blocks = 100;
+
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 2 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: 0);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(testBlockchain.BlockTree.FindBlock(1UL, BlockTreeLookupOptions.None), Is.Null,
+            "a missing sync pivot must not consume the initial pass's interval bypass");
+    }
+
+    [Test]
+    public async Task Initial_pruning_pass_bypasses_interval_once()
+    {
+        const int blocks = 100;
+        const ulong initialCutoff = 36;
+        const ulong laterCutoff = 68;
+
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 1 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(initialCutoff));
+            Assert.That(testBlockchain.BlockTree.FindBlock(initialCutoff - 1, BlockTreeLookupOptions.None), Is.Null);
+        }
+
+        historyConfig.RetentionEpochs = 0;
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(historyPruner.CutoffBlockNumber, Is.EqualTo(laterCutoff));
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(initialCutoff));
+            Assert.That(testBlockchain.BlockTree.FindBlock(50UL, BlockTreeLookupOptions.None), Is.Not.Null,
+                "a same-head pass remains interval-throttled after the initial pass");
+        }
+    }
+
+    // Cutoff = head - (retention + 1) * 32: one epoch of slack below the CL's serving window.
+    [TestCase(33024UL, null, 2_000_000UL, 33024UL, 943_200UL)] // the chain floor
+    [TestCase(15000UL, null, 2_000_000UL, 15000UL, 1_519_968UL)] // another floor
+    [TestCase(33024UL, 40000u, 2_000_000UL, 40000UL, 719_968UL)]
+    [TestCase(33024UL, null, 2_000_031UL, 33024UL, 943_231UL)] // last slot of an epoch
+    public void Rolling_retention_defaults_to_the_chain_floor(ulong floor, uint? retentionEpochs, ulong head, ulong expectedEpochs, ulong expectedCutoff)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(head).TestObject);
+
+        HistoryPruner pruner = CreatePruner(
+            blockTree,
+            new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = floor }),
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = retentionEpochs });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.RetentionEpochs, Is.EqualTo(expectedEpochs));
+            Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(expectedCutoff));
+            // The CL serves from the start of epoch (head epoch - N).
+            Assert.That(pruner.CutoffBlockNumber, Is.LessThanOrEqualTo((head / 32 - expectedEpochs) * 32));
+        }
+    }
+
+    [Test]
+    public void Geth_retention_upper_bound_preserves_history([Values("4294967295", "\"0xffffffff\"")] string retentionEpochs)
+    {
+        using MemoryStream genesis = new(Encoding.UTF8.GetBytes($$"""
+            { "config": { "chainId": 1, "minHistoryRetentionEpochs": {{retentionEpochs}} }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }
+            """));
+        ChainSpecBasedSpecProvider specProvider = new(new GethGenesisLoader(new EthereumJsonSerializer()).Load(genesis));
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(2_000_000).TestObject);
+
+        HistoryPruner pruner = CreatePruner(blockTree, specProvider, new HistoryConfig { Pruning = PruningModes.Rolling });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.RetentionEpochs, Is.EqualTo((ulong)uint.MaxValue));
+            Assert.That(pruner.GetRetentionBlocks(pruner.RetentionEpochs), Is.EqualTo(137_438_953_440UL));
+            Assert.That(pruner.CutoffBlockNumber, Is.Zero);
+        }
+    }
+
     [TestCase(0UL, 100000u, 0UL, 3533u, false)]
     [TestCase(100UL, 10u, 0UL, 3533u, true)]      // block retention below min
     [TestCase(0UL, 100000u, 3533UL, 3000u, true)] // BAL retention below min
     [TestCase(0UL, 100000u, 3533UL, 3533u, false)] // BAL retention exactly at min
-    public void Validates_config(ulong minHistoryRetentionEpochs, uint retentionEpochs, ulong minBalRetentionEpochs, uint balRetentionEpochs, bool shouldThrow)
+    [TestCase(0UL, 100000u, 14299UL, null, false)] // unset BAL retention defaults to the chain floor
+    [TestCase(0UL, 100000u, 20000UL, null, false)]
+    [TestCase(14299UL, null, 0UL, 3533u, false)] // unset block retention defaults to the floor
+    [TestCase(14299UL, 14298u, 0UL, 3533u, true)]
+    public void Validates_config(ulong minHistoryRetentionEpochs, uint? retentionEpochs, ulong minBalRetentionEpochs, uint? balRetentionEpochs, bool shouldThrow)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {
@@ -278,11 +595,21 @@ public class HistoryPrunerTests
             MinHistoryRetentionEpochs = minHistoryRetentionEpochs,
             MinBalRetentionEpochs = minBalRetentionEpochs,
         });
+        Action action = () => CreatePruner(Substitute.For<IBlockTree>(), specProvider, historyConfig);
+
+        if (shouldThrow)
+            Assert.Throws<HistoryPruner.HistoryPrunerException>(action);
+        else
+            Assert.DoesNotThrow(action);
+    }
+
+    private static HistoryPruner CreatePruner(IBlockTree blockTree, ISpecProvider specProvider, IHistoryConfig historyConfig, ILogManager logManager = null)
+    {
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
 
-        Action action = () => new HistoryPruner(
-            Substitute.For<IBlockTree>(),
+        return new HistoryPruner(
+            blockTree,
             Substitute.For<IReceiptStorage>(),
             Substitute.For<IBlockAccessListStore>(),
             specProvider,
@@ -296,12 +623,52 @@ public class HistoryPrunerTests
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
             NullPrunedReceiptRetention.Instance,
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
+    }
 
-        if (shouldThrow)
-            Assert.Throws<HistoryPruner.HistoryPrunerException>(action);
-        else
-            Assert.DoesNotThrow(action);
+    [TestCase(null, true, true)]
+    [TestCase(100u, true, false)]
+    [TestCase(uint.MaxValue, true, false)]
+    [TestCase(null, false, false)]
+    public void Bal_only_default_retention_is_logged_before_pruning(uint? retentionEpochs, bool chainHasAccessLists, bool logs)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryPruner>().Returns(wrappedLogger);
+
+        CreatePruner(
+            Substitute.For<IBlockTree>(),
+            new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = chainHasAccessLists, MinBalRetentionEpochs = 100 }),
+            new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = retentionEpochs },
+            logManager);
+
+        logger.Received(logs ? 1 : 0).Info("Pruning block access lists older than 100 epochs. Set History.BalRetentionEpochs to 4294967295 to keep all of them.");
+    }
+
+    // No pointer is persisted until the first pass, so a node switching to Rolling falls back to the oldest stored block.
+    [TestCase(3_000_000UL, 0UL, true, TestName = "Rolling_default_warns_about_a_backlog_when_no_pointer_is_persisted")]
+    [TestCase(2_000_000UL, 0UL, false, TestName = "Rolling_default_does_not_warn_about_less_than_a_window")]
+    [TestCase(3_000_000UL, 1_000_000UL, false, TestName = "Rolling_default_does_not_warn_below_the_lowest_stored_block")]
+    public void Rolling_default_warns_about_a_backlog_when_no_pointer_is_persisted(ulong head, ulong lowestBlock, bool warns)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(head).TestObject);
+        blockTree.GetLowestBlock().Returns(lowestBlock);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryPruner>().Returns(wrappedLogger);
+
+        CreatePruner(
+            blockTree,
+            new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = 33024 }),
+            new HistoryConfig { Pruning = PruningModes.Rolling },
+            logManager);
+
+        logger.Received(warns ? 1 : 0).Warn(Arg.Is<string>(m => m.Contains("History.RetentionEpochs is not set")));
     }
 
     [TestCase(null, false, TestName = "SetDeletePointerToOldestBlock_never_searches_while_no_body_was_inserted")]
@@ -493,6 +860,35 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public void Initial_pruning_pass_remains_pending_while_ancient_backfill_is_held()
+    {
+        (HistoryPruner pruner, TestMemDb metadataDb, IPrunedReceiptRetention retention) = CreateFrontierFixture(
+            synchronizationEnabled: true,
+            pruningInterval: 256);
+
+        pruner.TryPruneHistory(CancellationToken.None);
+        retention.DidNotReceive().OnPruningPassStarting(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<ulong>());
+        Assert.That(metadataDb.KeyExists(MetadataDbKeys.HistoryPruningDeletePointer), Is.False,
+            "the ancient backfill hold must leave the pruning state unloaded");
+
+        metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(1UL).Bytes);
+        ulong cutoff = pruner.CutoffBlockNumber!.Value;
+        retention.RetainedHeights(Arg.Any<ulong>(), Arg.Any<ulong>(), out Arg.Any<ulong>(), out Arg.Any<ulong>())
+            .Returns(callInfo =>
+            {
+                callInfo[2] = callInfo.ArgAt<ulong>(0);
+                callInfo[3] = callInfo.ArgAt<ulong>(1);
+                return new HashSet<ulong>();
+            });
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(new RlpReader(metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer)!).DecodeULong(),
+            Is.EqualTo(cutoff));
+        retention.Received().OnPruningPassStarting(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<ulong>());
+    }
+
+    [Test]
     public void A_discovered_boundary_is_persisted_by_a_pruning_pass_when_synchronization_is_enabled()
     {
         (HistoryPruner pruner, TestMemDb metadataDb, IPrunedReceiptRetention retention) = CreateFrontierFixture(synchronizationEnabled: true, markerPresent: true);
@@ -505,7 +901,7 @@ public class HistoryPrunerTests
         retention.Received().OnPruningPassStarting(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<ulong>());
     }
 
-    private static (HistoryPruner Pruner, TestMemDb MetadataDb, IPrunedReceiptRetention Retention) CreateFrontierFixture(bool synchronizationEnabled, bool markerPresent = false)
+    private static (HistoryPruner Pruner, TestMemDb MetadataDb, IPrunedReceiptRetention Retention) CreateFrontierFixture(bool synchronizationEnabled, bool markerPresent = false, ulong pruningInterval = 0)
     {
         TestMemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(9000UL).Bytes);
@@ -522,11 +918,11 @@ public class HistoryPrunerTests
         chainLevels.LoadLevel(Arg.Is<ulong>(static n => n >= 9_000)).Returns(new ChainLevelInfo(true, new BlockInfo(oldest.Hash!, 0)));
         IPrunedReceiptRetention retention = Substitute.For<IPrunedReceiptRetention>();
 
-        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, synchronizationEnabled: synchronizationEnabled, oldestBlock: oldest, balRetentionEpochs: 1, retention: retention);
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, synchronizationEnabled: synchronizationEnabled, oldestBlock: oldest, balRetentionEpochs: 1, retention: retention, pruningInterval: pruningInterval);
         return (pruner, metadataDb, retention);
     }
 
-    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, bool synchronizationEnabled = true, Block oldestBlock = null, uint balRetentionEpochs = 3533, IPrunedReceiptRetention retention = null, ulong lowestBlock = 0)
+    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, bool synchronizationEnabled = true, Block oldestBlock = null, uint balRetentionEpochs = 3533, IPrunedReceiptRetention retention = null, ulong lowestBlock = 0, ulong pruningInterval = 0)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
@@ -546,7 +942,7 @@ public class HistoryPrunerTests
             chainLevels,
             Substitute.For<IHeaderStore>(),
             dbProvider,
-            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 100, PruningInterval = 0, BalRetentionEpochs = balRetentionEpochs },
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 100, PruningInterval = pruningInterval, BalRetentionEpochs = balRetentionEpochs },
             BlocksConfig,
             new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true, SynchronizationEnabled = synchronizationEnabled },
             new ProcessExitSource(new()),
@@ -556,8 +952,11 @@ public class HistoryPrunerTests
             LimboLogs.Instance);
     }
 
-    [Test]
-    public async Task SchedulePruneHistory_passes_configured_timeout_to_scheduler([Values(5u, 0u)] uint pruningTimeoutSeconds)
+    // Runs through the real scheduler, which replaces a missing timeout with its own 2 s default. The observation
+    // window outlasts that default, so a disabled timeout must still leave the pass uncancelled at its end.
+    [TestCase(1u, true)]
+    [TestCase(0u, false)]
+    public async Task SchedulePruneHistory_cancels_the_pass_only_when_the_configured_timeout_elapses(uint pruningTimeoutSeconds, bool expectCancelled)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {
@@ -567,15 +966,15 @@ public class HistoryPrunerTests
             PruningInterval = 0
         };
 
-        CapturingScheduler scheduler = new();
+        await using BackgroundTaskScheduler realScheduler = new(Substitute.For<IBranchProcessor>(), Substitute.For<IChainHeadInfoProvider>(), 1, 16, LimboLogs.Instance);
+        DeadlineObservingScheduler scheduler = new(realScheduler, TimeSpan.FromSeconds(3));
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
 
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.SchedulePruneHistory();
 
-        await scheduler.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        TimeSpan? expected = pruningTimeoutSeconds == 0 ? null : TimeSpan.FromSeconds(pruningTimeoutSeconds);
-        Assert.That(scheduler.CapturedTimeout, Is.EqualTo(expected));
+        bool cancelled = await scheduler.CancelledWithinWindow.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(cancelled, Is.EqualTo(expectCancelled));
     }
 
     // Pointer = max(genesis block number, persisted DB value) — persisted value wins when above genesis
@@ -608,7 +1007,7 @@ public class HistoryPrunerTests
         const int blocks = 100;
         const ulong expectedBoundary = 36;
 
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         List<Hash256> blockHashes = [];
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
 
@@ -632,7 +1031,7 @@ public class HistoryPrunerTests
     {
         const int blocks = 100;
 
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
@@ -653,7 +1052,7 @@ public class HistoryPrunerTests
     {
         const int blocks = 100;
 
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         // What the scheduler hands a pass that waited behind others, the deadline being stamped at enqueue.
@@ -676,7 +1075,7 @@ public class HistoryPrunerTests
     {
         const int blocks = 100;
 
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         const ulong boundary = 36;
@@ -706,7 +1105,7 @@ public class HistoryPrunerTests
     {
         const int blocks = 100;
 
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         // Blocks and access lists caught up, a sweep left half-finished. The sweep is then the only work owed, so a
@@ -727,7 +1126,7 @@ public class HistoryPrunerTests
     {
         const int blocks = 100;
 
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         ((HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>()).TryPruneHistory(CancellationToken.None);
@@ -745,7 +1144,7 @@ public class HistoryPrunerTests
         const int blocks = 100;
         const ulong storedBoundary = 50;
 
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         // A database pruned by the per-block code has a boundary and no cursor, and everything below it is gone.
@@ -767,7 +1166,7 @@ public class HistoryPrunerTests
     {
         const int blocks = 100;
 
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
@@ -789,7 +1188,7 @@ public class HistoryPrunerTests
         const int blocks = 100;
         const ulong retainedHeight = 10;
 
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         MutableRetention retention = new();
@@ -818,7 +1217,7 @@ public class HistoryPrunerTests
     public async Task Sweep_lookup_falls_back_to_the_header_bloom_where_the_retention_cannot_answer()
     {
         const int blocks = 20;
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         NeverAnsweringRetention retention = new(retainedHeight: 5);
@@ -848,7 +1247,7 @@ public class HistoryPrunerTests
     [Test]
     public async Task Pruning_hands_the_retention_the_receipts_frontier_not_the_bodies_one()
     {
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, 100, syncPivot: 100);
 
         IDb receiptsDefault = testBlockchain.Container.Resolve<IDbProvider>().ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
@@ -865,7 +1264,7 @@ public class HistoryPrunerTests
     [Test]
     public async Task Stamps_are_validated_on_the_first_call_after_startup_not_the_first_interval_boundary()
     {
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 1000 };
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 1000 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, 100, syncPivot: 100);
 
         IDb receiptsDefault = testBlockchain.Container.Resolve<IDbProvider>().ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
@@ -1034,18 +1433,17 @@ public class HistoryPrunerTests
         return bc;
     }
 
-    private sealed class CapturingScheduler : IBackgroundTaskScheduler
+    private sealed class DeadlineObservingScheduler(IBackgroundTaskScheduler inner, TimeSpan window) : IBackgroundTaskScheduler
     {
-        public TimeSpan? CapturedTimeout { get; private set; }
-        public TaskCompletionSource Invoked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> CancelledWithinWindow { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
             where TReq : notnull, IBackgroundTaskRequest<TReq>
-        {
-            CapturedTimeout = timeout;
-            Invoked.TrySetResult();
-            return true;
-        }
+            => inner.TryScheduleTask(request, (req, token) =>
+            {
+                CancelledWithinWindow.TrySetResult(token.WaitHandle.WaitOne(window));
+                return fulfillFunc(req, token);
+            }, timeout);
     }
 
     private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null)

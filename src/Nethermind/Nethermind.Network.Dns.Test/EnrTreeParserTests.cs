@@ -10,6 +10,7 @@ namespace Nethermind.Network.Dns.Test;
 public class EnrTreeParserTests
 {
     [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=2779 sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE")]
+    [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=4102444800 sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "seq past 2038 (beyond int.MaxValue)")]
     public void Can_parse_sample_root_texts(string enrTreeRootText)
     {
         EnrTreeRoot root = EnrTreeParser.ParseEnrRoot(enrTreeRootText);

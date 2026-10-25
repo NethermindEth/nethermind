@@ -8,42 +8,50 @@ using Ethereum.Test.Base;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 
-public class LoadPyspecTestsStrategy : ITestLoadStrategy
+public class LoadPyspecTestsStrategy
 {
     public string ArchiveVersion { get; init; } = Constants.DEFAULT_ARCHIVE_VERSION;
     public string ArchiveName { get; init; } = Constants.DEFAULT_ARCHIVE_NAME;
 
-    public IEnumerable<EthereumTest> Load(string testsDir, string wildcard = null)
+    /// <summary>
+    /// Downloads (if needed) and resolves the fixture root for <paramref name="testsDir"/>.
+    /// </summary>
+    internal string ResolveTestsRoot(string testsDir)
     {
         string testsDirectoryName = TestFixtureDownloader.EnsureDownloaded(
             "PyTests", Constants.ARCHIVE_URL_TEMPLATE, ArchiveVersion, ArchiveName);
 
-        TestType testType = TestType.Blockchain;
+        return !string.IsNullOrEmpty(testsDir)
+            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
+            : testsDirectoryName;
+    }
+
+    internal static TestType GetTestType(string testsDir)
+    {
         foreach (TestType type in Enum.GetValues<TestType>())
         {
             if (testsDir.Contains($"{type}_tests", StringComparison.OrdinalIgnoreCase))
             {
-                testType = type;
-                break;
+                return type;
             }
         }
 
-        string rootDir = !string.IsNullOrEmpty(testsDir)
-            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
-            : testsDirectoryName;
+        return TestType.Blockchain;
+    }
 
-        // Skip absent fork fixtures instead of throwing
-        if (!Directory.Exists(rootDir))
-            return [];
-
-        IEnumerable<string> directories = Directory.EnumerateDirectories(rootDir, "*", new EnumerationOptions { RecurseSubdirectories = true });
-        List<string> testDirs = [];
-        foreach (string testDir in directories)
+    /// <summary>
+    /// Enumerates fixture files in filesystem enumeration order: recursive subdirectories
+    /// of <paramref name="rootDir"/> (excluding the root itself), then top-level files per directory.
+    /// </summary>
+    internal static IEnumerable<(string File, string Directory)> EnumerateTestFiles(string rootDir)
+    {
+        foreach (string testDir in Directory.EnumerateDirectories(rootDir, "*", new EnumerationOptions { RecurseSubdirectories = true }))
         {
-            testDirs.Add(testDir);
+            foreach (string testFile in Directory.EnumerateFiles(testDir))
+            {
+                yield return (testFile, testDir);
+            }
         }
-
-        return TestLoadStrategy.LoadTestsFromDirectories(testDirs, wildcard, testType);
     }
 
     private static string ResolveTestsDirectory(string testsDirectoryName, string testsDir)

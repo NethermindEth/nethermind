@@ -35,8 +35,7 @@ namespace Nethermind.State
         {
             // Cannot use key as both in and out to KeccakCache.ComputeTo,
             // so create another 32-byte buffer
-            Unsafe.SkipInit(out ValueHash256 buffer);
-            index.ToBigEndian(buffer.BytesAsSpan);
+            ValueHash256 buffer = index.ToValueHash();
             KeccakCache.ComputeTo(buffer.Bytes, out key);
         }
 
@@ -52,6 +51,21 @@ namespace Nethermind.State
             }
 
             ComputeKey(index, out key);
+        }
+
+        /// <summary>Looks up a slot key, returning its preimage on a cache miss.</summary>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool TryGetCachedKey(in UInt256 index, out ValueHash256 key, out ValueHash256 preimage)
+        {
+            Unsafe.SkipInit(out preimage);
+            if (index.IsUint64 && index.u0 < (uint)Lookup.Length)
+            {
+                key = Lookup[(int)index.u0];
+                return true;
+            }
+            index.ToBigEndian(preimage.BytesAsSpan);
+            return KeccakCache.TryGet(preimage.BytesAsSpan, out key);
         }
 
         private static byte[] EncodeNonZeroValue(ReadOnlySpan<byte> value)
@@ -109,7 +123,11 @@ namespace Nethermind.State
             RlpReader reader = new(encoded);
             ReadOnlySpan<byte> decoded = reader.DecodeByteArraySpan();
             if (decoded.Length > 32) throw new TrieException("Storage value exceeds 256 bits");
-            value = new UInt256(decoded, isBigEndian: true);
+            // Right-aligned into a full word first: UInt256 assembles a shorter value a byte at a time.
+            EvmWord padded = default;
+            decoded.CopyTo(MemoryMarshal.AsBytes(new Span<EvmWord>(ref padded))[(32 - decoded.Length)..]);
+            padded = padded.ByteSwap();
+            value = Unsafe.As<EvmWord, UInt256>(ref padded);
         }
 
         public void HintSet(in UInt256 index)

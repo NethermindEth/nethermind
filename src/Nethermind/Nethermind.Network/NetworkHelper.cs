@@ -13,6 +13,14 @@ namespace Nethermind.Network;
 
 public static class NetworkHelper
 {
+    /// <summary>Formats an IP endpoint as a TCP multiaddress.</summary>
+    public static string ToTcpMultiaddress(IPAddress address, int port)
+    {
+        IPAddress normalized = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+        string protocol = normalized.AddressFamily == AddressFamily.InterNetworkV6 ? "ip6" : "ip4";
+        return $"/{protocol}/{normalized}/tcp/{port}";
+    }
+
     /// <summary>
     /// Selects the address to bind inbound listeners to.
     /// </summary>
@@ -52,19 +60,26 @@ public static class NetworkHelper
         }
     }
 
-    private static PortInUseException MapOrRethrow(Exception exception, int[]? ports = null, string[]? urls = null)
+    private static ListenerBindException MapOrRethrow(Exception exception, int[]? ports = null, string[]? urls = null)
     {
         if (exception is AggregateException)
             exception = exception.InnerException!;
 
-        switch (exception)
+        // Kestrel wraps the socket error as IOException -> AddressInUseException -> SocketException.
+        bool isSocketError = false;
+        for (Exception? current = exception; current is not null; current = current.InnerException)
         {
-            case SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse or SocketError.AccessDenied }:
-                return ports != null ? new(exception, ports) : new(exception, urls!);
-            default:
-                ExceptionDispatchInfo.Throw(exception);
-                throw exception; // Make compiler happy, should never execute
+            if (current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse or SocketError.AccessDenied })
+                return ports is not null ? new PortInUseException(exception, ports) : new PortInUseException(exception, urls!);
+
+            isSocketError |= current is SocketException;
         }
+
+        if (isSocketError)
+            return ports is not null ? new ListenerBindException(exception, ports) : new ListenerBindException(exception, urls!);
+
+        ExceptionDispatchInfo.Throw(exception);
+        throw exception; // Make compiler happy, should never execute
     }
 
     public static T HandlePortTakenError<T>(Func<T> action, params int[] ports)

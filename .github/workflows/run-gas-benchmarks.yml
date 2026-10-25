@@ -121,16 +121,12 @@ jobs:
     needs: [resolve-inputs]
     if: needs.resolve-inputs.outputs.should-run == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     outputs:
       image-label: ${{ steps.publish-docker.outputs.image-label }}
     steps:
-      - name: Free up disk space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -142,8 +138,8 @@ jobs:
           tag: ""
           dockerfile: "Dockerfile"
           build-config: "release"
-          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          docker-hub-password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          docker-hub-organization: ${{ vars.DOCKERHUB_ORGANIZATION }}
+          docker-hub-oidc-connection-id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
 
   post-start-comment:
     needs: [resolve-inputs]
@@ -155,7 +151,7 @@ jobs:
       issues: write
     steps:
       - name: Post starting comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           FILTER: ${{ needs.resolve-inputs.outputs.filter }}
         with:
@@ -239,7 +235,7 @@ jobs:
           lfs: true
 
       - name: Set up Docker
-        uses: docker/setup-docker-action@v4
+        uses: docker/setup-docker-action@v5
 
       - name: Run gas-benchmarks composite action
         uses: ./.github/actions/gas-benchmark-action
@@ -272,7 +268,7 @@ jobs:
       issues: write
     steps:
       - name: Post results comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           FILTER: ${{ needs.resolve-inputs.outputs.filter }}
           BENCHMARK_STATUS: ${{ needs.gas-benchmark.result }}

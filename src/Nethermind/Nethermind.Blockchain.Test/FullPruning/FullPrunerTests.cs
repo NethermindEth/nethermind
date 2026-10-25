@@ -11,7 +11,6 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -146,6 +145,47 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         }
     }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(false, PruningStatus.Starting, 0, TestName = "available_space_check_disabled_skips_the_probe_and_starts_pruning_despite_low_space")]
+    [TestCase(true, PruningStatus.NotEnoughDiskSpace, 1, TestName = "available_space_check_enabled_probes_and_blocks_pruning_on_low_space")]
+    public async Task available_space_check_enabled_controls_whether_disk_space_is_probed(bool availableSpaceCheckEnabled, PruningStatus expectedStatus, int expectedWarnings)
+    {
+        IChainEstimations chainEstimations = Substitute.For<IChainEstimations>();
+        chainEstimations.PruningSize.Returns(1000L);
+        TestLogger logger = new();
+
+        TestContext test = new(
+            true,
+            false,
+            FullPruningCompletionBehavior.None,
+            fullPrunerMemoryBudgetMb,
+            degreeOfParallelism,
+            availableSpaceCheckEnabled: availableSpaceCheckEnabled,
+            chainEstimations: chainEstimations,
+            logManager: new OneLoggerLogManager(new(logger)));
+        test.DriveInfo.AvailableFreeSpace.Returns(500L); // below the 1300-byte requirement (1000 * 130 / 100)
+
+        PruningTriggerEventArgs? capturedArgs = null;
+        test.PruningTrigger.Prune += (_, e) => capturedArgs = e;
+
+        if (availableSpaceCheckEnabled)
+        {
+            test.TriggerPruningViaEvent();
+        }
+        else
+        {
+            // Skipping the probe actually starts pruning, so run it to the end: an abandoned run
+            // parks on WaitForMainChainChange forever, keeping the databases and the logger alive.
+            await test.RunFullPruning();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedArgs!.Status, Is.EqualTo(expectedStatus));
+            Assert.That(logger.LogList, Has.Exactly(expectedWarnings).Contains("Not enough disk space to run full pruning"), "disk space warning");
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task can_not_start_pruning_when_other_is_in_progress()
     {
@@ -178,9 +218,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestFullPruningDb.TestPruningContext ctx = await test.WaitForPruningStart();
         byte[] key = { 1, 2, 3 };
         test.FullPruningDb[key] = key;
-        test.FullPruningDb.Context.WaitForFinish.Set();
 
-        await test.WaitForPruningEnd(ctx);
+        Assert.That(await test.WaitForPruningEnd(ctx), Is.True);
         Assert.That(test.FullPruningDb[key], Is.EqualTo(key));
     }
 
@@ -238,7 +277,10 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             int fullScanMemoryBudgetMb = 0,
             int degreeOfParallelism = 0,
             INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
-            INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
+            INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current,
+            bool availableSpaceCheckEnabled = true,
+            IChainEstimations? chainEstimations = null,
+            ILogManager? logManager = null)
         {
             BlockTree.OnUpdateMainChain += (_, e) => _head = e.Headers[^1].Number;
             _clearPrunedDb = clearPrunedDb;
@@ -267,17 +309,18 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 {
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
-                    FullPruningCompletionBehavior = completionBehavior
+                    FullPruningCompletionBehavior = completionBehavior,
+                    AvailableSpaceCheckEnabled = availableSpaceCheckEnabled
                 },
                 BlockTree,
                 Substitute.For<IStateBoundaryWriter>(),
                 StateBoundary,
                 StateReader,
                 ProcessExitSource,
-                _chainEstimations,
+                chainEstimations ?? _chainEstimations,
                 DriveInfo,
                 trieStore,
-                LimboLogs.Instance);
+                logManager ?? LimboLogs.Instance);
         }
 
         public async Task RunFullPruning()
@@ -291,12 +334,12 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
         public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
         {
-            while (!await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(1), CancellationToken.None))
+            while (await Task.WhenAny(context.WaitForFinish.Task, Task.Delay(1)) != context.WaitForFinish.Task)
             {
                 AddBlocks(1);
             }
             AddBlocks(1);
-            return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
+            return await Task.WhenAny(context.DisposeEvent.Task, Task.Delay(Timeout.MaxWaitTime * 5)) == context.DisposeEvent.Task;
         }
 
         public async Task<TestFullPruningDb.TestPruningContext> WaitForPruningStart()
@@ -390,13 +433,13 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             private readonly IPruningContext _context = context;
             private readonly bool _successfulPruning = successfulPruning;
 
-            public ManualResetEvent DisposeEvent { get; } = new(false);
-            public ManualResetEvent WaitForFinish { get; } = new(false);
+            public TaskCompletionSource DisposeEvent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            public TaskCompletionSource WaitForFinish { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             public void Dispose()
             {
                 _context.Dispose();
-                DisposeEvent.Set();
+                DisposeEvent.TrySetResult();
                 CancellationTokenSource.Dispose();
             }
 
@@ -414,7 +457,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
             public void Commit()
             {
-                WaitForFinish.Set();
+                WaitForFinish.TrySetResult();
                 if (_successfulPruning)
                 {
                     _context.Commit();

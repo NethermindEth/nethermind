@@ -177,6 +177,7 @@ public class BeaconHeadersSyncTests
     public async Task Finishes_when_all_downloaded()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
         blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
         ISyncReport report = Substitute.For<ISyncReport>();
@@ -281,6 +282,36 @@ public class BeaconHeadersSyncTests
     }
 
     [Test]
+    public async Task Feed_does_not_join_at_known_level_whose_header_was_lost()
+    {
+        BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
+        BlockTreeBuilder persisted = Build.A.BlockTree();
+        BlockTree beforeCrash = persisted.TestObject;
+        for (ulong i = 0; i <= 6; i++)
+        {
+            beforeCrash.SuggestBlock(syncedBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!);
+        }
+
+        // Crash after block 6's chain level persisted but before its deferred header and body writes landed.
+        Hash256 lostHash = syncedBlockTree.FindHeader(6, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
+        persisted.HeaderStore.Delete(lostHash);
+        persisted.BlockStore.Delete(6, lostHash);
+
+        BlockTree blockTree = Build.A.BlockTree().WithDatabaseFrom(persisted).TestObject;
+        Assert.That(blockTree.IsKnownBlock(6, lostHash), Is.True);
+        Assert.That(blockTree.FindHeader(lostHash, BlockTreeLookupOptions.None, 6), Is.Null);
+
+        BlockHeader? pivotHeader = syncedBlockTree.FindHeader(500, BlockTreeLookupOptions.None);
+        IBeaconPivot pivot = PreparePivot(500, new SyncConfig(), blockTree, pivotHeader);
+        Context ctx = new() { BlockTree = blockTree, BeaconPivot = pivot };
+
+        await BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 6);
+        using HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
+        Assert.That(result, Is.Null);
+        Assert.That(blockTree.FindHeader(lostHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, 6), Is.Not.Null);
+    }
+
+    [Test]
     public void Feed_connect_invalid_chain()
     {
         Context ctx = new();
@@ -310,6 +341,7 @@ public class BeaconHeadersSyncTests
         // PivotDestinationNumber rising above _lowestRequestedHeaderNumber mid-sync must not produce
         // a batch with negative RequestSize.
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
         blockTree.LowestInsertedBeaconHeader.Returns((BlockHeader?)null);
 

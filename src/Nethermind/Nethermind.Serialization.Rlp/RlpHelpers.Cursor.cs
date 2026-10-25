@@ -8,7 +8,9 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp;
@@ -214,11 +216,7 @@ internal static partial class RlpHelpers
         return DecodeLargerByteArraySpan(data, position, prefix, limit, size, out value);
     }
 
-#if !ZK_EVM
-    // Cold path, kept out of line so the short-string case above stays small. The guest wants the
-    // opposite: with no call, its byte-string decodes are 1.3M ziskemu steps cheaper.
-    [MethodImpl(MethodImplOptions.NoInlining)]
-#endif
+    [MethodImpl(LargerByteArrayInlining)]
     private static int DecodeLargerByteArraySpan(
         ReadOnlySpan<byte> data, int position, int prefix, RlpLimit? limit, int size, out ReadOnlySpan<byte> value)
     {
@@ -433,7 +431,7 @@ internal static partial class RlpHelpers
             ThrowNonCanonicalInteger(start);
         }
 
-        position = DecodeByteArraySpan(data, position, out byteSpan, RlpLimit.L32);
+        position = DecodeByteArraySpanUpTo32(data, position, out byteSpan);
         if (byteSpan.Length > UInt256Bytes)
         {
             ThrowUnexpectedIntegerLength(start, byteSpan.Length);
@@ -454,6 +452,41 @@ internal static partial class RlpHelpers
         return position;
     }
 
+    /// <summary>Decodes a byte string of at most 32 bytes, as <see cref="DecodeByteArraySpan"/> does under <see cref="RlpLimit.L32"/>.</summary>
+    /// <returns>The position past the byte string.</returns>
+    /// <remarks>
+    /// The forms that fit are read here, clear of the limit's plumbing, which inlined would give every caller a
+    /// large, zeroed frame; every other prefix, and so every failure, takes that decode out of line.
+    /// </remarks>
+    internal static int DecodeByteArraySpanUpTo32(ReadOnlySpan<byte> data, int position, out ReadOnlySpan<byte> value)
+    {
+        int prefix = data[position];
+        int length = prefix - ShortStringOffset;
+        if (prefix < ShortStringOffset)
+        {
+            value = SingleBytes.Slice(prefix, 1);
+            return position + 1;
+        }
+
+        if (length == 0)
+        {
+            value = default;
+            return position + 1;
+        }
+
+        if (length <= UInt256Bytes && length < data.Length - position && (length > 1 || data[position + 1] >= ShortStringOffset))
+        {
+            value = data.Slice(position + 1, length);
+            return position + 1 + length;
+        }
+
+        return DecodeLimitedByteArraySpan(data, position, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int DecodeLimitedByteArraySpan(ReadOnlySpan<byte> data, int position, out ReadOnlySpan<byte> value) =>
+        DecodeByteArraySpan(data, position, out value, RlpLimit.L32);
+
     private const int UInt256Bytes = sizeof(ulong) * 4;
 
     /// <summary>Builds a <see cref="UInt256"/> from a big-endian RLP integer payload.</summary>
@@ -461,8 +494,8 @@ internal static partial class RlpHelpers
     /// Canonical RLP integers are minimal, so a balance, fee or total difficulty is nearly always
     /// shorter than the full 32 bytes. <see cref="UInt256"/>'s constructor sends every other length
     /// through a loop that runs eight iterations per word whatever length it was handed, so those are
-    /// built here instead, touching each byte once. A full-width value is left to the constructor,
-    /// whose whole-word path vectorises.
+    /// built here instead, touching each byte once. A full-width value is read whole by
+    /// <see cref="Bytes.ReadUInt256BigEndian"/>.
     /// </remarks>
     private static UInt256 ToUInt256(ReadOnlySpan<byte> byteSpan)
     {
@@ -474,7 +507,7 @@ internal static partial class RlpHelpers
 
         if (length == UInt256Bytes)
         {
-            return new UInt256(byteSpan, true);
+            return Bytes.ReadUInt256BigEndian(byteSpan);
         }
 
         int end1 = length - sizeof(ulong);
@@ -654,12 +687,43 @@ internal static partial class RlpHelpers
         return position;
     }
 
+    /// <summary>Decodes a bloom like <see cref="DecodeBloom(ReadOnlySpan{byte}, int, out Bloom)"/>, but reads an RLP null as <see cref="Bloom.ZeroLength"/>.</summary>
+    /// <remarks>
+    /// For decoders that check EIP-7668 activation once the header is decoded; any other length fails exactly as in
+    /// <see cref="DecodeBloom(ReadOnlySpan{byte}, int, out Bloom)"/>.
+    /// </remarks>
+    /// <returns>The position past the item.</returns>
+    /// <exception cref="RlpException">The item is neither a 256-byte nor an empty string.</exception>
+    public static int DecodeBloomOrZeroLength(ReadOnlySpan<byte> data, int position, out Bloom bloom)
+    {
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> bloomBytes, RlpLimit.Bloom);
+        if (bloomBytes.IsEmpty)
+        {
+            bloom = Bloom.ZeroLength;
+            return position;
+        }
+
+        Rlp.GuardSize(actual: bloomBytes.Length, expected: Bloom.ByteLength);
+        bloom = CreateBloom(bloomBytes);
+        return position;
+    }
+
     /// <inheritdoc cref="DecodeBloomOrNull"/>
     /// <exception cref="RlpException">The item is an RLP null.</exception>
     public static int DecodeBloomNonNull(ReadOnlySpan<byte> data, int position, out Bloom bloom)
     {
         position = DecodeBloomOrNull(data, position, out Bloom? value);
         bloom = value ?? ThrowNullDecodedValue<Bloom>();
+        return position;
+    }
+
+    /// <inheritdoc cref="DecodeBloomOrNull"/>
+    /// <remarks>An RLP null decodes as <see cref="Bloom.ZeroLength"/> only when <paramref name="rlpBehaviors"/> has <see cref="RlpBehaviors.Eip7668Receipts"/>.</remarks>
+    /// <exception cref="RlpException">The item is an RLP null and EIP-7668 blooms are not allowed.</exception>
+    public static int DecodeBloomNonNull(ReadOnlySpan<byte> data, int position, out Bloom bloom, RlpBehaviors rlpBehaviors)
+    {
+        position = DecodeBloomOrNull(data, position, out Bloom? value);
+        bloom = value ?? ((rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0 ? Bloom.ZeroLength : ThrowNullDecodedValue<Bloom>());
         return position;
     }
 
@@ -756,12 +820,48 @@ internal static partial class RlpHelpers
             return position + 1;
         }
 
-        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> span, RlpLimit.L32);
         Span<byte> bytes = stackalloc byte[Hash256.Size];
-        bytes.Clear();
-        span.CopyTo(bytes[(Hash256.Size - span.Length)..]);
+        position = DecodeZeroPrefixKeccakBytes(data, position, bytes);
         keccak = new Hash256(bytes);
         return position;
+    }
+
+    /// <summary>Decodes a log's topic 0 stored without its leading zero bytes, sharing the instance through <see cref="LogTopicCache"/>.</summary>
+    /// <returns>The position past the item.</returns>
+    /// <exception cref="RlpException">The item is an RLP null.</exception>
+    public static int DecodeZeroPrefixLogTopic0(ReadOnlySpan<byte> data, int position, out Hash256 topic)
+    {
+        if (data[position] == Rlp.EmptyByteArrayByte)
+        {
+            ThrowNullDecodedValue<Hash256>();
+        }
+
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        position = DecodeZeroPrefixKeccakBytes(data, position, bytes);
+        topic = LogTopicCache.Get(bytes);
+        return position;
+    }
+
+    private static int DecodeZeroPrefixKeccakBytes(ReadOnlySpan<byte> data, int position, Span<byte> bytes)
+    {
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> span, RlpLimit.L32);
+        bytes.Clear();
+        span.CopyTo(bytes[(Hash256.Size - span.Length)..]);
+        return position;
+    }
+
+    /// <summary>Decodes a log's topic 0, sharing the instance through <see cref="LogTopicCache"/>.</summary>
+    /// <returns>The position past the hash.</returns>
+    public static int DecodeLogTopic0(ReadOnlySpan<byte> data, int position, out Hash256 topic)
+    {
+        int prefix = data[position++];
+        if (prefix != KeccakRlpPrefix)
+        {
+            ThrowKeccakDecode(prefix, position, data.Length);
+        }
+
+        topic = LogTopicCache.Get(data.Slice(position, Hash256.Size));
+        return position + Hash256.Size;
     }
 
     /// <summary>Decodes a 32-byte hash that must be present.</summary>

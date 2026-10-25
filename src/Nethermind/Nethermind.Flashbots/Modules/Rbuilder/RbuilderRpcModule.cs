@@ -29,7 +29,12 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             return ResultWrapper<Hash256>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
-        using IReadOnlyTxProcessingScope worldScope = txProcessorSource.Build(blockHeader);
+        if (!txProcessorSource.TryBuild(blockHeader, out IReadOnlyTxProcessingScope? worldScope))
+        {
+            return ResultWrapper<Hash256>.Fail($"No state available for block {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+        }
+
+        using IReadOnlyTxProcessingScope _ = worldScope;
         IWorldState worldState = worldScope.WorldState;
         IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
 

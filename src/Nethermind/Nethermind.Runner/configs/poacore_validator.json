@@ -28,6 +28,9 @@
   "Merge": {
     "Enabled": false
   },
+  "FlatDb": {
+    "Enabled": false
+  },
   "Mining":
   {
     "Enabled": true

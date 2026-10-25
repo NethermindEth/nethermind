@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
@@ -16,21 +14,17 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
     public const ulong OsakaTimestamp = 0x69011118;
     public const ulong BPO1Timestamp = 0x690b9118;
     public const ulong BPO2Timestamp = 0x69149118;
-
-    private static IReleaseSpec? _prague;
-
-    private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
-        static () => new Prague { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress });
+    public const ulong BeaconChainGenesisTimestampConst = 0x67d81118;
 
     private HoodiSpecProvider() : this(new ForkSchedule
     {
         [GenesisBlockNumber] = London.Instance,
         [ShanghaiTimestamp] = Shanghai.Instance,
         [CancunTimestamp] = Cancun.Instance,
-        [PragueTimestamp] = Prague,
-        [OsakaTimestamp] = Osaka.Instance,
-        [BPO1Timestamp] = BPO1.Instance,
-        [BPO2Timestamp] = BPO2.Instance,
+        [PragueTimestamp] = new Prague { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress },
+        [OsakaTimestamp] = new Osaka { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress },
+        [BPO1Timestamp] = new BPO1 { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress },
+        [BPO2Timestamp] = new BPO2 { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress },
     })
     { }
 
@@ -42,7 +36,7 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
 
     public override ulong TimestampFork => ShanghaiTimestamp;
     public override ulong NetworkId => BlockchainIds.Hoodi;
-    public override ulong? BeaconChainGenesisTimestamp => GenesisTimestamp;
+    public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
 
-    public static readonly HoodiSpecProvider Instance = new();
+    public static HoodiSpecProvider Instance => field ??= new();
 }

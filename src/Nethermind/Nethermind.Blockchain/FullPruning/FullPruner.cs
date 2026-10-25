@@ -107,8 +107,7 @@ namespace Nethermind.Blockchain.FullPruning
             // If we are already pruning, we don't need to do anything
             else if (CanStartNewPruning())
             {
-                // Check if we have enough disk space to run pruning
-                if (!HaveEnoughDiskSpaceToRun() && _pruningConfig.AvailableSpaceCheckEnabled)
+                if (_pruningConfig.AvailableSpaceCheckEnabled && !HaveEnoughDiskSpaceToRun())
                 {
                     e.Status = PruningStatus.NotEnoughDiskSpace;
                 }
@@ -202,17 +201,22 @@ namespace Nethermind.Blockchain.FullPruning
 
         private const long ChainSizeThresholdFactor = 130;
 
+        /// <summary>
+        /// Free disk space, in bytes, that full pruning requires before it starts.
+        /// </summary>
+        /// <returns><c>null</c> when the chain has no pruning-size estimate.</returns>
+        public static long? GetRequiredFreeSpace(IChainEstimations chainEstimations) =>
+            chainEstimations.PruningSize * ChainSizeThresholdFactor / 100;
+
         private bool HaveEnoughDiskSpaceToRun()
         {
-            long? currentChainSize = _chainEstimations.PruningSize;
-            if (currentChainSize is null)
+            if (GetRequiredFreeSpace(_chainEstimations) is not long required)
             {
                 if (_logger.IsInfo) _logger.Info("Full Pruning: Chain size estimation is unavailable.");
                 return true;
             }
 
             long available = _driveInfo?.AvailableFreeSpace ?? 0;
-            long required = currentChainSize.Value * ChainSizeThresholdFactor / 100;
             if (available < required)
             {
                 if (_logger.IsWarn)

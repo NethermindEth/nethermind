@@ -2,15 +2,21 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -40,6 +46,7 @@ public class SnapStateServerTests
         int PersistedNodeCount { get; }
 
         IWriteBatch BeginWriteBatch();
+        void SetRawAccount(Hash256 accountPath, byte[] accountRlp);
         Hash256 GetStorageRoot(Hash256 storagePath);
     }
 
@@ -69,6 +76,11 @@ public class SnapStateServerTests
         }
 
         public IWriteBatch BeginWriteBatch() => new WriteBatch(this);
+        public void SetRawAccount(Hash256 accountPath, byte[] accountRlp)
+        {
+            _tree.Set(accountPath.Bytes, accountRlp);
+            _tree.Commit();
+        }
         public Hash256 GetStorageRoot(Hash256 accountPath) => _tree.Get(accountPath)!.StorageRoot;
         public void Dispose() => ((IDisposable)_store).Dispose();
 
@@ -351,6 +363,67 @@ public class SnapStateServerTests
         Assert.That(result.Count, Is.EqualTo(1));
     }
 
+    private static IEnumerable<TestCaseData> AccountPayloads()
+    {
+        yield return new TestCaseData(Array.Empty<byte>()).SetName("{m}: AbsentAccount");
+        yield return new TestCaseData(new byte[] { 0xc1, 0x80 }).SetName("{m}: PlaceholderAccount");
+        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(Account.TotallyEmpty)).SetName("{m}: EmptyAccount");
+        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(
+            new Account(1).WithChangedCodeHash(TestItem.KeccakA))).SetName("{m}: AccountWithCode");
+        yield return new TestCaseData(new byte[] { 0xc4, 0x80, 0x80, 0x80, 0x80 }).SetName("{m}: NullHashes");
+        yield return new TestCaseData(Rlp.Encode(Rlp.Encode(0), Rlp.Encode(0), Rlp.Encode(Keccak.EmptyTreeHash), Rlp.OfEmptyByteArray).Bytes)
+            .SetName("{m}: NullCodeHash");
+        yield return new TestCaseData(new byte[] { 0xc4, 0x80, 0x80, 0xa0 }).SetName("{m}: TruncatedStorageHash");
+        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(Account.TotallyEmpty)[..^1]).SetName("{m}: TruncatedCodeHash");
+    }
+
+    [TestCaseSource(nameof(AccountPayloads))]
+    public void GetStorageResponses_AccountPayload_PreservesDecodeBehavior(byte[] accountRlp)
+    {
+        using ISnapServerContext context = CreateContext();
+        Hash256 accountPath = TestItem.Tree.AccountAddress0;
+        context.SetRawAccount(accountPath, accountRlp);
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
+            [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
+        PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
+        RlpException? expectedException = null;
+        Account? expected = null;
+        if (accountRlp.Length > 0)
+        {
+            try
+            {
+                expected = AccountDecoder.Instance.Decode(accountRlp);
+            }
+            catch (RlpException exception)
+            {
+                expectedException = exception;
+            }
+        }
+
+        if (expectedException is not null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => context.Server.GetTrieNodes(pathSet, context.RootHash, default),
+                    Throws.TypeOf(expectedException.GetType()).With.Message.EqualTo(expectedException.Message), "malformed trie payloads retain the account decoder error");
+                Assert.That(() => context.Server.GetStorageRanges(context.RootHash, accounts, null, null, 4000, default),
+                    Throws.TypeOf(expectedException.GetType()).With.Message.EqualTo(expectedException.Message), "malformed range payloads retain the account decoder error");
+            }
+            return;
+        }
+
+        using IByteArrayList nodes = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
+            context.Server.GetStorageRanges(context.RootHash, accounts, null, null, 4000, default);
+        using (slots)
+        using (proofs)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes.Count, Is.EqualTo(expected is null ? 0 : 1), "only present accounts produce a storage trie lookup");
+            Assert.That(slots, Is.Empty, "an absent account or empty storage root has no storage slots");
+        }
+    }
+
     [Test]
     public void TestGetTrieNodes_RespectsHardResponseByteLimit()
     {
@@ -365,7 +438,34 @@ public class SnapStateServerTests
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
-        Assert.That(result.Count, Is.LessThan(requestCount));
+        // Below the lookup cap too, so this asserts the byte limit rather than that cap.
+        Assert.That(result.Count, Is.LessThan(ISnapStateServer.MaxTrieNodeLookups));
+    }
+
+    [Test]
+    public void TestGetTrieNodes_BoundsLookupsForPathsThatResolveToNothing()
+    {
+        using ISnapServerContext context = CreateContext();
+        FillAccountWithDefaultStorage(context);
+
+        // Nibbles a,b,c,d in compact form. The storage trie is only two levels deep, so every one
+        // of these resolves to no node at all and contributes nothing to the response size.
+        byte[] absentStoragePath = [0x00, 0xab, 0xcd];
+
+        const int requestCount = 5000;
+        byte[][] group = new byte[requestCount + 1][];
+        group[0] = TestItem.Tree.AccountAddress0.BytesToArray();
+        for (int i = 1; i <= requestCount; i++) group[i] = absentStoragePath;
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = group }]);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The account lookup takes the first of the budget, the storage lookups the rest.
+            Assert.That(result.Count, Is.EqualTo(ISnapStateServer.MaxTrieNodeLookups - 1));
+            Assert.That(result[0].Length, Is.Zero);
+        }
     }
 
     [Test]
@@ -711,5 +811,34 @@ public class SnapStateServerTests
 
         slots.DisposeRecursive();
         proofs?.Dispose();
+    }
+
+    [Test]
+    public async Task TestGetAccountRange_AtSnapServingDepthBoundary_IsServable()
+    {
+        const int chainLength = 200;
+
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = true })
+            .AddSingleton<ISyncConfig>(new SyncConfig { SnapServingEnabled = true }));
+
+        await chain.BuildSomeBlocks(chainLength);
+
+        ISyncConfig syncConfig = chain.Container.Resolve<ISyncConfig>();
+        ISnapStateServer server = chain.WorldStateManager.SnapStateServer!;
+
+        ulong depth = syncConfig.SnapServingMaxDepth - 1;
+        ulong boundaryNumber = chain.BlockTree.Head!.Number - depth;
+        BlockHeader boundary = chain.BlockTree.FindHeader(boundaryNumber, BlockTreeLookupOptions.None)!;
+
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = server.GetAccountRanges(
+            boundary.StateRoot!, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
+
+        using (accounts)
+        using (proofs)
+        {
+            Assert.That(accounts, Is.Not.Empty,
+                $"state root of block {boundaryNumber} (head-{depth}) was not servable");
+        }
     }
 }

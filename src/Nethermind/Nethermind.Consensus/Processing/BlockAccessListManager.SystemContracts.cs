@@ -1,13 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -32,7 +34,39 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
+        BlockhashStore blockhashStore = new(preExecution.WorldState);
+        if (!spec.IsEip8037Enabled)
+        {
+            blockhashStore.ApplyBlockhashStateChanges(header, spec);
+            return;
+        }
+
+        if (!blockhashStore.TryGetHistoryContract(header, spec, out Address? historyContract)) return;
+
+        // EIP-2935 runs whatever code the account holds; a direct storage write matches only the canonical bytecode.
+        SystemCall transaction = new()
+        {
+            GasLimit = Eip8037Constants.SystemCallGasLimit,
+            Data = header.ParentHash!.Bytes.ToArray(),
+            To = historyContract,
+            SenderAddress = Address.SystemUser,
+        };
+        preExecution.TxProcessor.Execute(transaction, NullTxTracer.Instance);
+    }
+
+    public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
+    {
+        if (!spec.IsEip8253Enabled) return;
+
+        ZeroNonceStorageAccountsTransition transition = zeroNonceStorageAccountsTransition
+            ?? throw new InvalidOperationException($"EIP-8253 is enabled but no {nameof(ZeroNonceStorageAccountsTransition)} was provided.");
+        transition.ApplyIfForkBlock(header, spec, Enabled ? GetPreExecutionWorldState() : stateProvider);
+    }
+
+    private IWorldState GetPreExecutionWorldState()
+    {
+        CheckInitialized();
+        return _txProcessorWithWorldStateManager.GetPreExecution().WorldState;
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
@@ -53,8 +87,6 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        IExecutionRequestsProcessor executionRequestsProcessor =
-            (executionRequestsProcessorFactory ?? ExecutionRequestsProcessorFactory.Instance).Create(postExecution.TxProcessor);
-        executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+        postExecution.ExecutionRequests.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

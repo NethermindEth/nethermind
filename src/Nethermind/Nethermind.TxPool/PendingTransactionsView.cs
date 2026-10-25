@@ -13,7 +13,7 @@ namespace Nethermind.TxPool;
 /// <remarks>
 /// The transactions and <see cref="IsRevalidated"/> are read as one, so nothing accepted or evicted while the
 /// producer works can make the flag describe a different set of transactions than the one handed out. The
-/// default value is an empty view that claims nothing.
+/// default value is an empty view that claims nothing. Bucket arrays may be shared with later views and must not be modified.
 /// </remarks>
 public readonly struct PendingTransactionsView(
     IDictionary<AddressAsKey, Transaction[]> transactions,
