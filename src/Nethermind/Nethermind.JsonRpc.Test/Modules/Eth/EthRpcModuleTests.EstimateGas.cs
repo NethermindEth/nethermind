@@ -21,6 +21,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -1011,6 +1012,34 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
 
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Estimate_gas_avoiding_nested_out_of_gas_covers_a_caught_call_that_runs_out_of_gas()
+    {
+        // The caller forwards all its gas to a callee that writes a new slot, and returns the success flag of the call
+        // without checking it, so the transaction succeeds also when the callee runs out of gas.
+        const string request = """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""";
+        object stateOverride = JsonSerializer.Deserialize<object>("""{"0xc200000000000000000000000000000000000000":{"code":"0x6000600060006000600073c3000000000000000000000000000000000000005af160005260206000f3"},"0xc300000000000000000000000000000000000000":{"code":"0x600160005500"}}""")!;
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        ctx.Test.RpcConfig.EstimateErrorMargin = 0;
+
+        ulong plain = ParseGas(await ctx.Test.TestEthRpc("eth_estimateGas", Request(), "latest", stateOverride));
+        ulong avoiding = ParseGas(await ctx.Test.TestEthRpc("eth_estimateGas", Request(), "latest", stateOverride, null, new EstimateGasOptions { AvoidNestedOutOfGas = true }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await NestedCallSucceeds(plain), Is.False, "the plain estimate lands where the nested call fails");
+            Assert.That(await NestedCallSucceeds(avoiding), Is.True);
+            Assert.That(await NestedCallSucceeds(avoiding - 1), Is.False, "no lower gas limit lets the nested call succeed");
+        }
+
+        static object Request(ulong? gas = null) => JsonSerializer.Deserialize<object>(gas is null ? request : request.Replace("}", $",\"gas\":\"0x{gas:x}\"}}"))!;
+
+        static ulong ParseGas(string response) => Convert.ToUInt64(JToken.Parse(response)["result"]!.Value<string>(), 16);
+
+        async Task<bool> NestedCallSucceeds(ulong gas) =>
+            JToken.Parse(await ctx.Test.TestEthRpc("eth_call", Request(gas), "latest", stateOverride))["result"]!.Value<string>()!.EndsWith('1');
     }
 
     [TestCase(
