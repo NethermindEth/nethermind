@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -21,6 +23,7 @@ using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -41,8 +44,10 @@ public class FrameTxParallelBalValidationTests
     [Test]
     public async Task Frame_transaction_invalidity_outranks_its_own_accesses_missing_from_the_list([Values] bool parallelExecution)
     {
+        ConcurrentQueue<(Hash256? Block, ProcessingOptions Options)> attempts = new();
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(FramesDevnet1.Instance))
+            .AddDecorator<IBlockProcessor>((_, inner) => new AttemptRecordingBlockProcessor(inner, attempts))
             .Intercept<IBlocksConfig>(blocksConfig => blocksConfig.ParallelExecution = parallelExecution)
             .WithGenesisPostProcessor((_, state, specProvider) =>
             {
@@ -67,6 +72,23 @@ public class FrameTxParallelBalValidationTests
         Action process = () => chain.BranchProcessor.Process(parent, [suggested], ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
 
         Assert.That(process, Throws.InstanceOf<InvalidBlockException>().With.Message.Contains("never set a payer"));
+        bool[] forcedSequential = [.. attempts.Where(a => a.Block == suggested.Hash).Select(static a => a.Options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList))];
+        Assert.That(forcedSequential, Is.EqualTo(parallelExecution ? new[] { false, true } : new[] { false }));
+    }
+
+    private sealed class AttemptRecordingBlockProcessor(IBlockProcessor inner, ConcurrentQueue<(Hash256? Block, ProcessingOptions Options)> attempts) : IBlockProcessor
+    {
+        public event Action<Block>? TransactionsExecuted
+        {
+            add => inner.TransactionsExecuted += value;
+            remove => inner.TransactionsExecuted -= value;
+        }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
+        {
+            attempts.Enqueue((suggestedBlock.Hash, options));
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        }
     }
 
     private static Transaction FrameTx()
