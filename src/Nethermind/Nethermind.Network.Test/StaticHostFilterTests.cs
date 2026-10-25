@@ -166,9 +166,11 @@ public class StaticHostFilterTests
         StaticHostFilter filter = Create("1.2.3.4:30303");
         Node matching = new(TestItem.PublicKeyA, "1.2.3.4", 30303);
         Node otherPort = new(TestItem.PublicKeyB, "1.2.3.4", 30304);
+        Node alternateDial = new(TestItem.PublicKeyC, "1.2.3.4", 30303);
 
-        filter.MarkProven(matching);
-        filter.MarkProven(otherPort);
+        filter.MarkProven(matching, new IPEndPoint(IPAddress.Parse("1.2.3.4").MapToIPv6(), 30303));
+        filter.MarkProven(otherPort, otherPort.Address);
+        filter.MarkProven(alternateDial, new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30303));
 
         using (Assert.EnterMultipleScope())
         {
@@ -177,6 +179,8 @@ public class StaticHostFilterTests
             Assert.That(filter.IsProven(matching), Is.True);
             Assert.That(otherPort.IsStatic, Is.False);
             Assert.That(filter.IsProven(otherPort), Is.True);
+            Assert.That(alternateDial.IsStatic, Is.False, "a handshake at another address of the record proves nothing");
+            Assert.That(filter.IsProven(alternateDial), Is.False);
             Assert.That(StaticHostFilter.Empty.IsProven(matching), Is.False);
         }
     }

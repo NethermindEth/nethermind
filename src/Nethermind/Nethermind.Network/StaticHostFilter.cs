@@ -99,9 +99,12 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
 
     public bool IsPromoted(Node node) => _promoted.TryGetValue(node, out _);
 
-    public void MarkProven(Node node)
+    public bool IsUnproven(Node node) => _promoted.TryGetValue(node, out Promotion? promotion) && promotion.MatchPort && !IsProven(node);
+
+    public void MarkProven(Node node, IPEndPoint remote)
     {
-        if (_fixedRules.Length == 0 && _hosts.Length == 0) return;
+        // A dial can fall back to another address of the node record, which proves nothing about the pooled address.
+        if ((_fixedRules.Length == 0 && _hosts.Length == 0) || !SameEndPoint(remote, node.Address)) return;
 
         _proven.AddOrUpdate(node, node.Address);
         TryPromote(node, matchPort: true);
@@ -244,6 +247,8 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
     }
 
     private static IPAddress Normalize(IPAddress address) => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+
+    private static bool SameEndPoint(IPEndPoint a, IPEndPoint b) => a.Port == b.Port && Normalize(a.Address).Equals(Normalize(b.Address));
 
     private static IPNetwork SingleAddress(IPAddress address)
     {

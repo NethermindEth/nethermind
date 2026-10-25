@@ -1345,7 +1345,7 @@ namespace Nethermind.Network
                     }
 
                     peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
-                    _staticHostFilter.MarkProven(peer.Node);
+                    _staticHostFilter.MarkProven(peer.Node, session.Node.Address);
                 }
 
                 if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeInitialized);

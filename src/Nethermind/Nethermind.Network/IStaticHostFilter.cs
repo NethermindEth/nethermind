@@ -34,8 +34,13 @@ public interface IStaticHostFilter
     /// <summary>Returns <c>true</c> when the static flag of the node was set by <see cref="TryPromote"/>.</summary>
     bool IsPromoted(Node node);
 
+    /// <summary>Returns <c>true</c> when the node was promoted from its discovered address and no outbound handshake to that address completed.</summary>
+    bool IsUnproven(Node node);
+
     /// <summary>Records that an outbound handshake to the node address completed, and promotes the node when it matches.</summary>
-    void MarkProven(Node node);
+    /// <param name="node">The pooled node.</param>
+    /// <param name="remote">The dialed address. Nothing is recorded when it is not the node address.</param>
+    void MarkProven(Node node, IPEndPoint remote);
 
     /// <summary>Returns <c>true</c> when an outbound handshake to the current node address completed.</summary>
     bool IsProven(Node node);

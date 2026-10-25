@@ -38,6 +38,7 @@ namespace Nethermind.Network
         private readonly ConditionalWeakTable<Node, StrongBox<long>> _unprovenSince = [];
 
         internal static readonly TimeSpan UnprovenStaticHostTimeout = TimeSpan.FromMinutes(10);
+        internal const int MaxUnprovenStaticHosts = 32;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -191,7 +192,24 @@ namespace Nethermind.Network
         }
 
         private bool IsStaticHostCandidate(Node node) =>
-            !node.IsStatic && _staticHostFilter.IsMatch(node.Address) && !FailedToProveKey(node);
+            !node.IsStatic && _staticHostFilter.IsMatch(node.Address) && !FailedToProveKey(node)
+            && (_staticHostFilter.IsProven(node) || HasRoomForUnprovenStaticHost());
+
+        // Discovery records with new keys at a matching host would otherwise grow the pool without a limit before any dial.
+        // A node over the cap is still an ordinary candidate and becomes static when its outbound handshake completes.
+        private bool HasRoomForUnprovenStaticHost()
+        {
+            int unproven = 0;
+            foreach (KeyValuePair<PublicKeyAsKey, Peer> kvp in Peers)
+            {
+                if (_staticHostFilter.IsUnproven(kvp.Value.Node) && ++unproven >= MaxUnprovenStaticHosts)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         // A discovery record can claim any address, so a host match alone does not prove that the node
         // runs there. Only an outbound handshake to that address proves it; an inbound one can come from anywhere.
@@ -211,8 +229,8 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                // A live session or a proof starts a new window, so the node is not demoted right after the session ends.
-                if (IsHandshaked(peer.InSession) || IsHandshaked(peer.OutSession) || !FailedToProveKey(node))
+                // A proof starts a new window if the node later moves. A session does not: an inbound one can come from any address.
+                if (!FailedToProveKey(node))
                 {
                     _unprovenSince.Remove(node);
                     continue;
@@ -234,10 +252,6 @@ namespace Nethermind.Network
                 }
             }
         }
-
-        // An outbound session is attached before its handshake, so a failed dial must not count as a session.
-        private static bool IsHandshaked(ISession? session) =>
-            session is { State: >= SessionState.HandshakeComplete and < SessionState.DisconnectingProtocols };
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void DebugStaticHostMatch(Node node)
