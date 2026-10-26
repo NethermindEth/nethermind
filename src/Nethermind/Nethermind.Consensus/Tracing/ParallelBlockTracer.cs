@@ -23,7 +23,7 @@ using Nethermind.State.OverridableEnv;
 namespace Nethermind.Consensus.Tracing;
 
 /// <summary>Traces covered blocks concurrently and returns or emits results in transaction order.</summary>
-/// <remarks>Runs the transactions of a covered block on as many processing environments as there are workers. Each
+/// <remarks>The per-transaction entry points run a covered block on as many processing environments as there are workers. Each
 /// transaction is traced alone through the same seeded path a single-transaction trace takes: the worker's seed
 /// source arms the writes of the transactions before it, only the target executes, and its trace is byte for byte
 /// what the replay would have produced. Workers take transactions in ascending order off one cursor, so each folds
@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Tracing;
 /// and the degree is enforced per transaction by a semaphore, so two blocks traced at once interleave transaction by
 /// transaction instead of the second waiting for the whole of the first. The calling thread is one of the workers.
 /// Every block draws on the one node-wide budget, whichever seed it stands on, so the setting bounds all its workers.</remarks>
-public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
+public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 {
     private readonly ShareableOverridableEnvSource<Components> _environments;
     private readonly IPrefixStateSeedSource _seeds;
@@ -73,7 +73,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
         CancellationToken token,
         [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces) =>
-        Run(block, parent, forTransaction, afterTransactions, emit: null, token, out traces);
+        Run<TTrace, TransactionTraceFactory<TTrace>>(block, parent, new(forTransaction), afterTransactions, emit: null, token, out traces);
 
     /// <inheritdoc />
     public bool TryStream<TTrace>(
@@ -83,16 +83,17 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
         Action<IReadOnlyCollection<TTrace>> emit,
         CancellationToken token) =>
-        Run(block, parent, forTransaction, afterTransactions, emit, token, out _);
+        Run<TTrace, TransactionTraceFactory<TTrace>>(block, parent, new(forTransaction), afterTransactions, emit, token, out _);
 
-    private bool Run<TTrace>(
+    private bool Run<TTrace, TFactory>(
         Block block,
         BlockHeader parent,
-        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+        TFactory factory,
         Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
         Action<IReadOnlyCollection<TTrace>>? emit,
         CancellationToken token,
         out IReadOnlyList<TTrace>? traces)
+        where TFactory : struct, ITraceFactory<TTrace>
     {
         traces = null;
         if (!_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
@@ -109,7 +110,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             using ICoveredBlock coverage = covered;
 
             Transaction[] transactions = block.Transactions;
-            IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[transactions.Length + 1];
+            int batchSize = factory.BatchSize(transactions.Length, slots.Degree);
+            int batchCount = 1 + (transactions.Length - 1 + batchSize - 1) / batchSize;
+            IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[batchCount + 1];
             Emitter<TTrace> emitter = new(results, emit);
             int workers;
             try
@@ -118,9 +121,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 Cursor cursor = new();
 
                 IPrefixStateSeedSource callerSeeds = covered.CreateWorkerSeeds();
-                if (!TraceOne(block, parent, transactions, cursor.Next(), slots, callerSeeds, forTransaction, results, emitter, stop.Token)) return false;
+                if (!TraceOne(block, parent, transactions, cursor.Next(), slots, callerSeeds, factory, results, emitter, stop.Token)) return false;
 
-                int helpers = Math.Min(slots.Degree, transactions.Length - 1) - 1;
+                int helpers = Math.Min(slots.Degree, results.Length - 2) - 1;
                 Task[] tasks = new Task[Math.Max(0, helpers)];
                 workers = tasks.Length + 1;
                 int queued = 0;
@@ -130,10 +133,10 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     for (; queued < tasks.Length; queued++)
                     {
                         IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
-                        tasks[queued] = QueueWorker(() => TraceMany(block, parent, transactions, cursor, slots, seeds, forTransaction, results, emitter, stop), stop.Token);
+                        tasks[queued] = QueueWorker(() => TraceMany(block, parent, transactions, cursor, slots, seeds, factory, results, emitter, stop), stop.Token);
                     }
 
-                    TraceMany(block, parent, transactions, cursor, slots, callerSeeds, forTransaction, results, emitter, stop);
+                    TraceMany(block, parent, transactions, cursor, slots, callerSeeds, factory, results, emitter, stop);
                 }
                 catch (Exception exception)
                 {
@@ -149,7 +152,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 // and no permit or environment either.
                 if (afterTransactions is not null && Volatile.Read(ref _rewardCalculator)?.MayReward(block.Header) != false)
                 {
-                    results[transactions.Length] = TraceAfterTransactions(block, parent, slots, covered.CreateWorkerSeeds(), afterTransactions, token);
+                    results[^1] = TraceAfterTransactions(block, parent, slots, covered.CreateWorkerSeeds(), afterTransactions, token);
                     emitter.Publish();
                 }
 
@@ -159,7 +162,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             {
                 // Every worker has returned by now: Await let the failure out only once they had. What they finished
                 // and nobody received is this run's to release.
-                DisposeUnpublished(results);
+                DisposeUnpublished(results, factory);
                 throw;
             }
 
@@ -190,7 +193,8 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     /// <summary>A run that fails owns whatever its workers finished: a result the caller never received, or the
     /// emitter never wrote, holds the tracer's frames and pooled buffers, and nothing else will let go of them.
     /// A result the emitter did write was cleared from its slot as it went, so the caller keeps what it was handed.</summary>
-    private static void DisposeUnpublished<TTrace>(IReadOnlyCollection<TTrace>?[] results)
+    private void DisposeUnpublished<TTrace, TFactory>(IReadOnlyCollection<TTrace>?[] results, TFactory factory)
+        where TFactory : struct, ITraceFactory<TTrace>
     {
         for (int i = 0; i < results.Length; i++)
         {
@@ -198,8 +202,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             if (result is null) continue;
 
             results[i] = null;
-            foreach (TTrace trace in result) trace.TryDispose();
-            result.TryDispose();
+            factory.DisposeResult(result, _logger);
         }
     }
 
@@ -227,14 +230,15 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
     }
 
-    private void TraceMany<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, Cursor cursor, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
-        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationTokenSource stop)
+    private void TraceMany<TTrace, TFactory>(Block block, BlockHeader parent, Transaction[] transactions, Cursor cursor, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
+        TFactory factory, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationTokenSource stop)
+        where TFactory : struct, ITraceFactory<TTrace>
     {
         try
         {
-            for (int i = cursor.Next(); i < transactions.Length; i = cursor.Next())
+            for (int i = cursor.Next(); i < results.Length - 1; i = cursor.Next())
             {
-                if (!TraceOne(block, parent, transactions, i, slots, seeds, forTransaction, results, emitter, stop.Token))
+                if (!TraceOne(block, parent, transactions, i, slots, seeds, factory, results, emitter, stop.Token))
                     throw new InvalidOperationException("The tracer bounded the first transaction and refused a later one.");
             }
         }
@@ -246,11 +250,14 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     }
 
     /// <summary>False when the environment cannot seed or the tracer cannot be bounded; the caller replays the block.</summary>
-    private bool TraceOne<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, int index, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
-        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationToken token)
+    private bool TraceOne<TTrace, TFactory>(Block block, BlockHeader parent, Transaction[] transactions, int index, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
+        TFactory factory, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationToken token)
+        where TFactory : struct, ITraceFactory<TTrace>
     {
         token.ThrowIfCancellationRequested();
-        Hash256 hash = transactions[index].Hash!;
+        int batchSize = factory.BatchSize(transactions.Length, slots.Degree);
+        int first = index == 0 ? 0 : 1 + (index - 1) * batchSize;
+        int last = index == 0 ? 0 : Math.Min(first + batchSize, transactions.Length) - 1;
         slots.Wait(token);
         try
         {
@@ -259,26 +266,26 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             // reward pass is considered.
             Volatile.Write(ref _rewardCalculator, scope.Component.RewardCalculator);
             if (scope.Component.Executor?.CanSeed != true) return false;
-            IBlockTracer<TTrace> tracer = forTransaction(scope.Component.WorldState, hash);
+            IBlockTracer<TTrace> tracer = factory.Create(scope.Component.WorldState, transactions[first].Hash!);
             try
             {
-                IBlockTracer bounded = TransactionTraceBoundary.Wrap(tracer.WithCancellation(token), hash, seeds);
+                IBlockTracer bounded = factory.Bound(tracer.WithCancellation(token), transactions, first, last, seeds, token);
                 if (bounded is not TransactionTraceBoundary boundary)
                 {
-                    tracer.TryDispose();
+                    factory.DisposeFailed(tracer, _logger);
                     return false;
                 }
 
                 boundary.IsExecutionRequired = true;
 
                 scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, bounded, token);
-                if (!boundary.HasExecuted)
+                if (!boundary.HasExecuted || (first != last && !boundary.IsComplete))
                     throw new InvalidOperationException("The indexed trace bypassed transaction prefix execution.");
                 results[index] = tracer.BuildResult();
             }
             catch
             {
-                tracer.TryDispose();
+                factory.DisposeFailed(tracer, _logger);
                 throw;
             }
         }

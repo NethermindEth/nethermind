@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -50,6 +53,12 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     /// transaction left, as in the replay. A refused seed replays transactions without forwarding their traces.</summary>
     public static TransactionTraceBoundary AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new(tracer, null, seeds) { IsExecutionRequired = true };
 
+    internal static IBlockTracer BetweenTransactions(IBlockTracer tracer, Transaction[] transactions, int first, int last, IPrefixStateSeedSource seeds, CancellationToken token) =>
+        tracer.IsTracingRewards
+            ? tracer
+            : new TransactionTraceBoundary(tracer, transactions[last].Hash,
+                first == 0 && last == 0 ? seeds : new RangeSeeds(seeds, first, transactions[first].Hash!, token));
+
     /// <summary>Wraps a tracer that does not trace rewards so that the replay completes just before transaction
     /// <paramref name="index"/>; for index 0 that is after the pre-execution system calls.</summary>
     internal static TransactionTraceBoundary BeforeTransaction(IBlockTracer tracer, Block block, int index) =>
@@ -60,6 +69,8 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     internal int IndexOf(Block block)
     {
         Transaction[] transactions = block.Transactions;
+        if (_seeds is RangeSeeds range)
+            return (uint)range.First < (uint)transactions.Length && transactions[range.First].Hash == range.FirstHash ? range.First : -1;
         if (_transactionHash is null) return transactions.Length;
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -88,12 +99,18 @@ public sealed class TransactionTraceBoundary : IBlockTracer
         HasExecuted = false;
         _isTarget = false;
         _suppressed = false;
+        if (_seeds is RangeSeeds range) range.Reset();
         _inner.StartNewBlockTrace(block);
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         // Reward placeholders have no transaction and must reach the inner tracer even during a reward-only pass.
+        if (_seeds is RangeSeeds range && !range.Reached(tx))
+        {
+            _suppressed = true;
+            return range.SuppressedTracer;
+        }
         _suppressed = SkipsTransactions && tx is not null;
         if (_suppressed) return NullTxTracer.Instance;
         _isTarget = _transactionHash is not null && tx?.Hash == _transactionHash;
@@ -113,4 +130,23 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     }
 
     public void EndBlockTrace() => _inner.EndBlockTrace();
+
+    private sealed class RangeSeeds(IPrefixStateSeedSource inner, int first, Hash256 firstHash, CancellationToken token) : IPrefixStateSeedSource
+    {
+        private bool _reached;
+        private CancellationTxTracer? _suppressedTracer;
+
+        public int First => first;
+        public Hash256 FirstHash => firstHash;
+        public bool Enabled => inner.Enabled;
+        public ITxTracer SuppressedTracer => _suppressedTracer ??= NullTxTracer.Instance.WithCancellation(token);
+
+        public void Reset() => _reached = false;
+
+        public bool Reached(Transaction? transaction) => _reached |= transaction?.Hash == firstHash;
+
+        public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot) => inner.TrySeed(block, transactionIndex, slot);
+
+        public bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered) => inner.TryOpenBlock(block, out covered);
+    }
 }

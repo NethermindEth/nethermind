@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Blockchain.Test" />
+    <InternalsVisibleTo Include="Nethermind.JsonRpc.Benchmark" />
     <PackageReference Include="Collections.Pooled" />
   </ItemGroup>
 

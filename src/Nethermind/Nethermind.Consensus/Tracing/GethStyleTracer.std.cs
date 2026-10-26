@@ -29,6 +29,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
@@ -471,21 +472,40 @@ public class GethStyleTracer(
         if (allowIndexed && (writer is null || streamsNative) && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
             && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex))
         {
-            Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction =
-                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex);
-            if (writer is null)
+            if (options.Tracer is NativeCallTracer.CallTracer or NativePrestateTracer.PrestateTracer
+                && parallelTracer is ParallelBlockTracer batches && batches.CanBatch(block.Transactions.Length))
             {
-                if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
-                    return new GethLikeTxTraceCollection(parallel);
-            }
-            else if (parallelTracer.TryStream(block, FindParent(block), forTransaction, afterTransactions: null,
-                traces =>
+                Func<IWorldState, IBlockTracer<GethLikeTxTrace>> forTransactions =
+                    state => CreateOptionsTracer(block.Header, options, state, specProvider, parallelLogIndex);
+                if (writer is null)
                 {
-                    foreach (GethLikeTxTrace trace in traces) GethLikeBlockNativeStreamingTracer.Write(writer, pipeWriter, trace, cancellationToken);
-                },
-                cancellationToken))
+                    if (batches.TryTraceBatches(block, FindParent(block), forTransactions, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
+                        return new GethLikeTxTraceCollection(parallel);
+                }
+                else if (batches.TryStreamBatches(block, FindParent(block), forTransactions, afterTransactions: null,
+                    traces => GethLikeBlockNativeStreamingTracer.WriteBatch(writer, pipeWriter, traces, cancellationToken), cancellationToken))
+                {
+                    return Array.Empty<GethLikeTxTrace>();
+                }
+            }
+            else
             {
-                return Array.Empty<GethLikeTxTrace>();
+                Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction =
+                    (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex);
+                if (writer is null)
+                {
+                    if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
+                        return new GethLikeTxTraceCollection(parallel);
+                }
+                else if (parallelTracer.TryStream(block, FindParent(block), forTransaction, afterTransactions: null,
+                    traces =>
+                    {
+                        foreach (GethLikeTxTrace trace in traces) GethLikeBlockNativeStreamingTracer.Write(writer, pipeWriter, trace, cancellationToken);
+                    },
+                    cancellationToken))
+                {
+                    return Array.Empty<GethLikeTxTrace>();
+                }
             }
         }
 

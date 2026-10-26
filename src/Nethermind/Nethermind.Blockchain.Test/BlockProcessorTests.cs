@@ -4,6 +4,7 @@
 using Autofac;
 using Module = Autofac.Module;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Container;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
@@ -53,6 +54,7 @@ using System.Runtime.ExceptionServices;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Security;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -748,6 +750,193 @@ public partial class BlockProcessorTests
         }
     }
 
+    public static IEnumerable<TestCaseData> BatchTraceCases()
+    {
+        yield return Case(3, "callTracer", false, false);
+        yield return Case(17, "callTracer", false, true);
+        yield return Case(35, "callTracer", false, false);
+        yield return Case(65, "callTracer", false, true);
+        yield return Case(35, "callTracer", true, false);
+        yield return Case(35, "callTracer", true, true);
+        yield return Case(35, "prestateTracer", false, false);
+        yield return Case(35, "prestateTracer", false, true);
+        yield return Case(35, null, false, false);
+
+        static TestCaseData Case(int count, string? tracer, bool withLog, bool stream) =>
+            new TestCaseData(count, tracer, withLog, stream).SetName(
+                $"ParallelBlockTracer_WhenTracingBatches_MatchesFullBlockReplay({count},{tracer ?? "structLogs"},withLog={withLog},stream={stream})");
+    }
+
+    [TestCaseSource(nameof(BatchTraceCases))]
+    public Task ParallelBlockTracer_WhenTracingBatches_MatchesFullBlockReplay(int count, string? tracer, bool withLog, bool stream) =>
+        AssertBatchedTraceMatchesReplay(count, tracer, withLog, stream, useAccessList: false, refuseNonEmpty: false);
+
+    [Test]
+    public Task ParallelBlockTracer_WhenBatchSeedIsRefused_ExcludesReplayedPrefix([Values] bool stream) =>
+        AssertBatchedTraceMatchesReplay(35, "prestateTracer", withLog: false, stream, useAccessList: false, refuseNonEmpty: true);
+
+    [Test]
+    public async Task ParallelBlockTracer_WhenBatchFails_ReleasesCompletedAndPartialResults([Values] bool cancel, [Values] bool owningCollection)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds, ConfigureBatchTraceContract);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddBatchTraceBlock(chain, 35);
+        IndexThroughTheCapture(chain, index, block, parent, Prague.Instance);
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
+        using CancellationTokenSource cancellation = new();
+        ConcurrentBag<DisposalCounter> completed = [];
+
+        Action trace = () => parallel.TryTraceBatches(block, parent, state => new FailingBatchResultTracer(
+            GethStyleTracer.CreateOptionsTracer(block.Header, new GethTraceOptions { Tracer = "callTracer" }, state, chain.SpecProvider),
+            block.Transactions[2], completed, owningCollection, () =>
+            {
+                if (cancel)
+                {
+                    cancellation.Cancel();
+                    cancellation.Token.ThrowIfCancellationRequested();
+                }
+                throw new InvalidOperationException("simulated batch execution failure");
+            }), null, cancellation.Token, out _);
+
+        if (cancel) Assert.That(trace, Throws.InstanceOf<OperationCanceledException>());
+        else Assert.That(trace, Throws.InvalidOperationException.With.Message.EqualTo("simulated batch execution failure"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed.Count, Is.GreaterThanOrEqualTo(2), "the first result and one result in the failing batch must exist before failure");
+            Assert.That(completed.Select(static counter => counter.Disposals), Is.All.EqualTo(1),
+                "a failed run must release both published result slots and partial batch collections exactly once");
+        }
+    }
+
+    [Test]
+    public async Task TransactionTraceBoundary_WhenCancelledInSuppressedPrefix_StopsBeforeItsNextStorageWrite()
+    {
+        using CancellationTokenSource cancellation = new();
+        PrefixCancellation prefix = new(cancellation);
+        RefusingSeedSource seeds = new(prefix.Arm);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds, builder =>
+            builder.WithGenesisPostProcessor((_, state) =>
+            {
+                state.CreateAccount(SharedContract, 0);
+                state.InsertCode(SharedContract,
+                [
+                    0x60, 0x01, 0x60, 0x00, 0x55,
+                    0x61, 0x02, 0x00, 0x5b, 0x60, 0x01, 0x90, 0x03, 0x80, 0x60, 0x08, 0x57, 0x50,
+                    0x60, 0x02, 0x60, 0x01, 0x55, 0x00,
+                ], Prague.Instance);
+            }));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain, SharedContract);
+        using ParallelBlockTracer.OwnedEnvironment environment = BuildParallelEnvironment(chain, prefixCancellation: prefix);
+        using Scope<ParallelBlockTracer.Components> scope = environment.BuildAndOverride(parent);
+        IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header,
+            new GethTraceOptions { Tracer = "callTracer" }, scope.Component.WorldState, chain.SpecProvider);
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.BetweenTransactions(
+            tracer.WithCancellation(cancellation.Token), block.Transactions, first: 1, last: 2, seeds, cancellation.Token);
+        boundary.IsExecutionRequired = true;
+
+        Assert.That(() => scope.Component.Processor.Process(block.WithReplacedHeader(block.Header.Clone()),
+                TraceProcessingOptions.ReadOnlyReplay, boundary, cancellation.Token), Throws.InstanceOf<OperationCanceledException>(),
+            "a suppressed prefix must still poll cancellation while it executes EVM opcodes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.AskedFor, Is.EqualTo(1), "the two-transaction range starts after a refused prefix seed");
+            Assert.That(prefix.Writes, Is.EqualTo(1), "cancellation at the first SSTORE must stop the finite opcode loop before the second SSTORE");
+            Assert.That(tracer.BuildResult(), Is.Empty, "the prefix never belongs to the requested range");
+        }
+    }
+
+    private static async Task AssertBatchedTraceMatchesReplay(int count, string? tracerName, bool withLog, bool stream, bool useAccessList, bool refuseNonEmpty)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource changesets = new(index);
+        using BasicTestBlockchain chain = useAccessList
+            ? await CreateAccessListSeedChain(ConfigureBatchTraceContract)
+            : await CreatePrefixReplayChain(Prague.Instance, changesets, ConfigureBatchTraceContract);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddBatchTraceBlock(chain, count);
+        if (useAccessList) block = Historical(block);
+        else IndexThroughTheCapture(chain, index, block, parent, Prague.Instance);
+        IPrefixStateSeedSource seeds = useAccessList ? chain.Container.Resolve<IPrefixStateSeedSource>() : changesets;
+        using JsonDocument config = JsonDocument.Parse(withLog ? "{\"withLog\":true}" : "{}");
+        GethTraceOptions options = new() { Tracer = tracerName!, TracerConfig = config.RootElement.Clone() };
+        string expected = SerializeGeth(chain, TraceWholeBlockThroughTraceEnvironment(chain, parent, block, state =>
+        {
+            BlockLogIndex logIndex = new();
+            return GethStyleTracer.CreateOptionsTracer(block.Header, options, state, chain.SpecProvider,
+                withLog ? (_, _) => logIndex : null);
+        }));
+        ExecutionCounter executions = new();
+        ExecutionCounter preparations = new();
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(
+            () => BuildParallelEnvironment(chain, refuseNonEmpty: refuseNonEmpty, executions: executions, preparations: preparations),
+            seeds, Budgets(chain, budget), LimboLogs.Instance);
+        Func<Block, Transaction, BlockLogIndex>? logIndices = withLog
+            ? (_, tx) =>
+            {
+                int position = Array.FindIndex(block.Transactions, candidate => candidate.Hash == tx.Hash);
+                return new BlockLogIndex(position - position / 4);
+            }
+            : null;
+        Func<IWorldState, IBlockTracer<GethLikeTxTrace>> forTransactions =
+            state => GethStyleTracer.CreateOptionsTracer(block.Header, options, state, chain.SpecProvider, logIndices);
+        List<GethLikeTxTrace> emitted = [];
+        IReadOnlyList<GethLikeTxTrace>? traces = null;
+        bool accepted = stream
+            ? parallel.TryStreamBatches(block, parent, forTransactions, null, batch => emitted.AddRange(batch), CancellationToken.None)
+            : parallel.TryTraceBatches(block, parent, forTransactions, null, CancellationToken.None, out traces);
+        if (stream) traces = emitted;
+
+        Assert.That(accepted, Is.True, "precondition: the captured changesets or access list must serve this block");
+        Assert.That(traces, Is.Not.Null, "every accepted batch run must return its complete trace set");
+        string actual = SerializeGeth(chain, traces!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected), "dependent writes, reverted writes and logs must match one full-block execution");
+            Assert.That(traces!.Select(static trace => trace.TxHash), Is.EqualTo(block.Transactions.Select(static tx => tx.Hash)),
+                "the response must contain every transaction in canonical body order");
+            Assert.That(executions.Calls, refuseNonEmpty ? Is.GreaterThan(count) : Is.EqualTo(count),
+                "accepted seeds execute each transaction once; refused seeds replay the prefix without returning its traces");
+            Assert.That(preparations.Calls, count == 3 ? Is.EqualTo(count) : Is.LessThan(count),
+                "consecutive transactions must share block preparation once batching is possible");
+        }
+    }
+
+    private static void ConfigureBatchTraceContract(ContainerBuilder builder) => builder.WithGenesisPostProcessor((block, state, specProvider) =>
+    {
+        if (!state.AccountExists(SharedContract)) state.CreateAccount(SharedContract, 0);
+        state.InsertCode(SharedContract,
+        [
+            0x60, 0x00, 0x54, 0x60, 0x01, 0x01, 0x80, 0x60, 0x00, 0x55,
+            0x60, 0x00, 0x52, 0x60, 0x2a, 0x60, 0x00, 0x60, 0x00, 0xa1,
+            0x36, 0x15, 0x60, 0x1e, 0x57, 0x60, 0x20, 0x60, 0x00, 0xfd,
+            0x5b, 0x60, 0x20, 0x60, 0x00, 0xf3,
+        ], specProvider.GetSpec(block.Header));
+    });
+
+    private static async Task<Block> AddBatchTraceBlock(BasicTestBlockchain chain, int count)
+    {
+        Transaction[] transactions = new Transaction[count];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithTo(SharedContract).WithNonce((ulong)i)
+                .WithData(i % 4 == 3 ? [1] : []).WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(count), "precondition: every dependent call must be included, including reverts");
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        Assert.That(receipts.Select(static receipt => receipt.StatusCode),
+            Is.EqualTo(Enumerable.Range(0, count).Select(static i => i % 4 == 3 ? StatusCode.Failure : StatusCode.Success)),
+            "precondition: each fourth call reverts after writing, while other calls commit their dependent writes");
+        return block;
+    }
+
     [TestCase(false, TestName = "ParallelBlockTracer_WhenALaterTransactionFails_DisposesTheResultsAlreadyFinished")]
     [TestCase(true, TestName = "ParallelBlockTracer_WhenCancelled_DisposesTheResultsAlreadyFinished")]
     public async Task ParallelBlockTracer_WhenTheRunDoesNotComplete_DisposesTheResultsAlreadyFinished(bool cancel)
@@ -1228,7 +1417,8 @@ public partial class BlockProcessorTests
     private static ParallelTraceBudgets Budgets(BasicTestBlockchain chain, ParallelTraceBudget budget) => new(chain.SpecProvider, budget, changesetSeeds: true);
 
     private static ParallelBlockTracer.OwnedEnvironment BuildParallelEnvironment(
-        BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false, ExecutionCounter? executions = null)
+        BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false, ExecutionCounter? executions = null,
+        ExecutionCounter? preparations = null, PrefixCancellation? prefixCancellation = null)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
         IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
@@ -1245,6 +1435,8 @@ public partial class BlockProcessorTests
             if (refuseNonEmpty) builder.AddDecorator<IWorldState, NonEmptyOverlayRefusingState>();
             // The factory, not the adapter, so that the processors the access list manager builds are counted too.
             if (executions is not null) builder.AddDecorator<TransactionProcessorAdapterFactory>((_, inner) => processor => new CountingTransactionAdapter(inner(processor), executions));
+            if (preparations is not null) builder.AddLast<IBlockPreprocessorStep>(_ => new CountingPreprocessor(preparations));
+            if (prefixCancellation is not null) builder.AddDecorator<IWorldState>((_, state) => new PrefixCancellingState(state, prefixCancellation));
         });
         return new ParallelBlockTracer.OwnedEnvironment(scope.Resolve<IOverridableEnv<ParallelBlockTracer.Components>>(), scope);
     }
@@ -1410,7 +1602,7 @@ public partial class BlockProcessorTests
             !overlay.TryGetAccount(TestItem.PrivateKeyB.Address, null, out _) && base.TryApplyAccountOverlay(overlay);
     }
 
-    private sealed class RefusingSeedSource : IPrefixStateSeedSource
+    private sealed class RefusingSeedSource(Action? refused = null) : IPrefixStateSeedSource
     {
         public int AskedFor { get; private set; } = -1;
 
@@ -1419,6 +1611,7 @@ public partial class BlockProcessorTests
         public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
         {
             AskedFor = transactionIndex;
+            refused?.Invoke();
             return false;
         }
 
@@ -4898,6 +5091,72 @@ public partial class BlockProcessorTests
 
             public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
                 blockTracer.RecordOpcode();
+        }
+    }
+
+    private sealed class CountingPreprocessor(ExecutionCounter counter) : IBlockPreprocessorStep
+    {
+        public void RecoverData(Block block) => counter.Count();
+    }
+
+    private sealed class FailingBatchResultTracer(
+        IBlockTracer<GethLikeTxTrace> inner, Transaction failure, ConcurrentBag<DisposalCounter> completed, bool owningCollection, Action fail)
+        : IBlockTracer<GethLikeTxTrace>
+    {
+        private readonly IList<GethLikeTxTrace> _results = owningCollection ? new DisposableResettableList<GethLikeTxTrace>() : new List<GethLikeTxTrace>();
+
+        public bool IsTracingRewards => inner.IsTracingRewards;
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue) => inner.ReportReward(author, rewardType, rewardValue);
+        public void StartNewBlockTrace(Block block) => inner.StartNewBlockTrace(block);
+        public void EndBlockTrace() => inner.EndBlockTrace();
+        public IReadOnlyCollection<GethLikeTxTrace> BuildResult() => (IReadOnlyCollection<GethLikeTxTrace>)_results;
+
+        public ITxTracer StartNewTxTrace(Transaction? transaction)
+        {
+            if (transaction == failure) fail();
+            return inner.StartNewTxTrace(transaction);
+        }
+
+        public void EndTxTrace()
+        {
+            inner.EndTxTrace();
+            GethLikeTxTrace trace = inner.BuildResult().Last();
+            DisposalCounter counter = new();
+            completed.Add(counter);
+            _results.Add(new GethLikeTxTrace(new CountedBatchTrace(trace, counter)));
+        }
+    }
+
+    private sealed class CountedBatchTrace(GethLikeTxTrace trace, DisposalCounter counter) : IDisposable
+    {
+        public void Dispose()
+        {
+            trace.Dispose();
+            counter.Dispose();
+        }
+    }
+
+    private sealed class PrefixCancellation(CancellationTokenSource cancellation)
+    {
+        private bool _armed;
+
+        public int Writes { get; private set; }
+
+        public void Arm() => _armed = true;
+
+        public void OnWrite(in StorageCell cell)
+        {
+            if (!_armed || cell.Address != SharedContract) return;
+            if (++Writes == 1) cancellation.Cancel();
+        }
+    }
+
+    private sealed class PrefixCancellingState(IWorldState state, PrefixCancellation cancellation) : WorldStateDecorator(state)
+    {
+        public override void Set(in StorageCell cell, in UInt256 value)
+        {
+            base.Set(in cell, in value);
+            cancellation.OnWrite(in cell);
         }
     }
 }

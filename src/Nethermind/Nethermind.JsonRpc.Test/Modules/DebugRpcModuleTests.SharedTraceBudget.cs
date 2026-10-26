@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -355,6 +356,72 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    [NonParallelizable]
+    public async Task Debug_traceBlockByHash_NativeTracer_PreservesIndexedRoutingAndResults(
+        [Values("registered", "callTracer", "prestateTracer")] string tracerName, [Values] bool streamMode)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        OpenedBlockCount seeds = new(new ChangesetPrefixStateSeedSource(index));
+        ExecutionCount counter = new();
+        using ParallelTraceBudget budget = new(2);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = true })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[35];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(21_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(transactions.Length));
+        bool registered = tracerName == "registered";
+        string tracer = registered ? $"native-options-{Guid.NewGuid():N}" : tracerName;
+        if (registered)
+            GethLikeNativeTracerFactory.RegisterTracer(tracer,
+                (options, _, transaction, _) => new TransactionOptionsTracer(options, transaction.Hash!));
+        GethTraceOptions options = new() { Tracer = tracer, StreamMode = streamMode };
+        string? sequential = registered ? null : await RpcTest.TestSerializedRequest(chain.DebugRpcModule,
+            "debug_traceBlockByHash", block.Hash, options);
+        Assert.That(seeds.Opened, Is.Zero, "the golden response must replay the unindexed block");
+        IndexThroughTheCapture(chain, index, block, parent);
+        counter.Enabled = true;
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, options);
+
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JArray result = (JArray)json["result"]!;
+        Assert.That(result, Has.Count.EqualTo(transactions.Length), response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.Opened, Is.EqualTo(1), "the production parallel tracer must open the indexed block");
+            Assert.That(counter.Calls, Is.EqualTo(transactions.Length), "each transaction must execute once");
+            if (registered)
+                Assert.That(seeds.Accepted, Is.EqualTo(transactions.Length - 1), "registered factories seed each target after the first transaction");
+            else
+            {
+                Assert.That(response, Is.EqualTo(sequential), "buffered and streamed batches must preserve the full replay response");
+                Assert.That(seeds.Accepted, Is.InRange(1, transactions.Length - 2), "built-in tracers must seed ranges instead of one environment per transaction");
+            }
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                string expectedHash = transactions[i].Hash!.ToString();
+                Assert.That((string?)result[i]["txHash"], Is.EqualTo(expectedHash), response);
+                if (registered)
+                    Assert.That((string?)result[i]["result"]?["returnValue"], Is.EqualTo(expectedHash),
+                        "a registered native factory must receive its target in options.TxHash");
+            }
+        }
+    }
+
+    [Test]
     public async Task Debug_traceBlockByHash_WithATransactionFilter_ReturnsThatTransactionAlone_OnAnIndexedBlock()
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
@@ -536,6 +603,24 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    private sealed class TransactionOptionsTracer : GethLikeNativeTxTracer
+    {
+        private readonly Hash256 _transactionHash;
+        private readonly Hash256? _optionsTxHash;
+
+        public TransactionOptionsTracer(GethTraceOptions options, Hash256 transactionHash) : base(options)
+        {
+            _transactionHash = transactionHash;
+            _optionsTxHash = options.TxHash;
+        }
+
+        public override GethLikeTxTrace BuildResult() => new()
+        {
+            TxHash = _transactionHash,
+            ReturnValue = _optionsTxHash is { } hash ? hash.Bytes.ToArray() : []
+        };
+    }
+
     private sealed class FailingAdapter(ITransactionProcessorAdapter inner, Func<Hash256?> failingTx) : ITransactionProcessorAdapter
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
@@ -637,6 +722,7 @@ public partial class DebugRpcModuleTests
     private sealed class OpenedBlockCount(IPrefixStateSeedSource inner) : IPrefixStateSeedSource
     {
         public int Opened;
+        public int Accepted;
 
         public bool Enabled => inner.Enabled;
 
@@ -646,7 +732,27 @@ public partial class DebugRpcModuleTests
         {
             if (!inner.TryOpenBlock(block, out covered)) return false;
             Interlocked.Increment(ref Opened);
+            covered = new CountedCoveredBlock(covered, this);
             return true;
+        }
+
+        private sealed class CountedCoveredBlock(ICoveredBlock inner, OpenedBlockCount count) : ICoveredBlock
+        {
+            public IPrefixStateSeedSource CreateWorkerSeeds() => new CountedWorkerSeeds(inner.CreateWorkerSeeds(), count);
+            public void Complete() => inner.Complete();
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class CountedWorkerSeeds(IPrefixStateSeedSource inner, OpenedBlockCount count) : IPrefixStateSeedSource
+        {
+            public bool Enabled => inner.Enabled;
+
+            public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
+            {
+                bool accepted = inner.TrySeed(block, transactionIndex, slot);
+                if (accepted) Interlocked.Increment(ref count.Accepted);
+                return accepted;
+            }
         }
     }
 }

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text;
@@ -13,6 +14,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Core;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Evm.Tracing;
@@ -342,6 +344,75 @@ public partial class DebugRpcModuleTests
             Assert.That((string)parsed[0]["txHash"]!, Is.EqualTo(first.Hash!.ToString()), "the transaction traced before the failure is already written");
             Assert.That(parsed[0]["result"], Is.Not.Null);
             Assert.That((string)parsed[1]["error"]!, Does.Contain("simulated tracer failure"));
+        }
+    }
+
+    [Test]
+    public void GethLikeBlockNativeStreamingTracer_WhenBatchOutputFails_DisposesEveryTraceOnce(
+        [Values] bool cancel, [Values] bool collectionOwnsTraces)
+    {
+        using CancellationTokenSource cancellation = new();
+        BatchTraceDisposalCounter[] counters = [new(), new(), new(), new()];
+        GethLikeTxTrace[] entries = [.. counters.Select(static counter => new GethLikeTxTrace(counter) { TxHash = TestItem.KeccakA })];
+        IReadOnlyCollection<GethLikeTxTrace> traces;
+        if (collectionOwnsTraces)
+        {
+            DisposableResettableList<GethLikeTxTrace> owner = [];
+            owner.AddRange(entries);
+            traces = owner;
+        }
+        else
+        {
+            traces = entries;
+        }
+        BatchFailurePipeWriter pipe = new(cancellation, cancel, counters);
+        using Utf8JsonWriter writer = new(pipe);
+        writer.WriteStartArray();
+
+        Action write = () => GethLikeBlockNativeStreamingTracer.WriteBatch(writer, pipe, traces, cancellation.Token);
+
+        if (cancel) Assert.That(write, Throws.InstanceOf<OperationCanceledException>(), "cancellation must escape instead of returning a successful truncated batch");
+        else Assert.That(write, Throws.InvalidOperationException.With.Message.EqualTo("simulated batch output failure"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pipe.Flushes, Is.EqualTo(2), "the failure follows one completed transaction entry");
+            Assert.That(counters.Select(static counter => counter.Disposals), Is.All.EqualTo(1),
+                "written, current and unvisited traces must all release their resources exactly once");
+        }
+    }
+
+    private sealed class BatchTraceDisposalCounter : IDisposable
+    {
+        public int Disposals { get; private set; }
+
+        public void Dispose() => Disposals++;
+    }
+
+    private sealed class BatchFailurePipeWriter(CancellationTokenSource cancellation, bool cancel, BatchTraceDisposalCounter[] counters) : PipeWriter
+    {
+        private readonly ArrayBufferWriter<byte> _buffer = new();
+
+        public int Flushes { get; private set; }
+
+        public override void Advance(int bytes) => _buffer.Advance(bytes);
+        public override Memory<byte> GetMemory(int sizeHint = 0) => _buffer.GetMemory(sizeHint);
+        public override Span<byte> GetSpan(int sizeHint = 0) => _buffer.GetSpan(sizeHint);
+        public override void CancelPendingFlush() { }
+        public override void Complete(Exception? exception = null) { }
+
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        {
+            Assert.That(counters[Flushes].Disposals, Is.EqualTo(1), "the current trace must be released before output backpressure can block");
+            if (++Flushes == 2)
+            {
+                if (cancel)
+                {
+                    cancellation.Cancel();
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                throw new InvalidOperationException("simulated batch output failure");
+            }
+            return new ValueTask<FlushResult>(new FlushResult(isCanceled: false, isCompleted: false));
         }
     }
 }

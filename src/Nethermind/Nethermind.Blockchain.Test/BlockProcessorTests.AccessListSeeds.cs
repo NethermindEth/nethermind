@@ -225,6 +225,11 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public Task AccessListSeed_WhenTracingBatches_MatchesFullBlockReplay(
+        [Values("callTracer", "prestateTracer")] string tracerName, [Values] bool stream) =>
+        AssertBatchedTraceMatchesReplay(35, tracerName, withLog: false, stream, useAccessList: true, refuseNonEmpty: false);
+
+    [Test]
     public async Task AccessListSeed_ParallelBlockTrace_TracesTheRewardsOnTheStateAfterTheLastTransaction([Values] bool stream)
     {
         using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary()));
