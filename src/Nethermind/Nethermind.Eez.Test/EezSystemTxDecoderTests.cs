@@ -17,7 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Eez.Test;
 
-public class EezSystemTxDecoderTests
+public partial class EezSystemTxDecoderTests
 {
     /// <summary>Canonical encoding of chain id 1, nonce 0, target EEZL2, value 0, input <c>0x01020304</c>.</summary>
     private static readonly byte[] CanonicalVector = Bytes.FromHexString("0x76dd0180944200000000000000000000000000000000000007808401020304");
