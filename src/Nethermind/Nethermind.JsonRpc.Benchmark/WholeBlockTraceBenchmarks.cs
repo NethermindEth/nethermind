@@ -144,10 +144,13 @@ public class WholeBlockTraceBenchmarks
     {
         using Scope<ParallelBlockTracer.Components> scope = _sequential.BuildAndOverride(_parent);
         IBlockTracer<GethLikeTxTrace> tracer = _forBlock(scope.Component.WorldState);
-        scope.Component.Processor.Process(_block.WithReplacedHeader(_block.Header.Clone()),
-            TraceProcessingOptions.ReadOnlyReplay, tracer, CancellationToken.None);
+        ReplaySequential(scope.Component, tracer);
         return DisposeResults(tracer.BuildResult());
     }
+
+    private void ReplaySequential(ParallelBlockTracer.Components components, IBlockTracer<GethLikeTxTrace> tracer) =>
+        components.Processor.Process(_block.WithReplacedHeader(_block.Header.Clone()),
+            TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(CancellationToken.None), CancellationToken.None);
 
     [Benchmark]
     public int IndexedPerTransaction()
@@ -191,31 +194,34 @@ public class WholeBlockTraceBenchmarks
 
     private void VerifyResults()
     {
+        ExecutionCounter counter = new();
+        using ParallelBlockTracer.OwnedEnvironment sequentialValidation = BuildEnvironment(counter);
         string expected;
-        using (Scope<ParallelBlockTracer.Components> scope = _sequential.BuildAndOverride(_parent))
+        using (Scope<ParallelBlockTracer.Components> scope = sequentialValidation.BuildAndOverride(_parent))
         {
             IBlockTracer<GethLikeTxTrace> tracer = _forBlock(scope.Component.WorldState);
-            scope.Component.Processor.Process(_block.WithReplacedHeader(_block.Header.Clone()),
-                TraceProcessingOptions.ReadOnlyReplay, tracer, CancellationToken.None);
+            ReplaySequential(scope.Component, tracer);
             expected = SerializeAndDispose(tracer.BuildResult());
         }
+        if (counter.Executions != Transactions || counter.CancelableExecutions != Transactions)
+            throw new InvalidOperationException("The full-block control did not execute each transaction with a cancelable VM tracer.");
 
-        ExecutionCounter counter = new();
+        counter.Reset();
         using ParallelBlockTracer validation = CreateParallelTracer(counter);
         if (!validation.TryTrace(_block, _parent, _forTransaction, null, CancellationToken.None,
                 out IReadOnlyList<GethLikeTxTrace>? individual))
             throw new InvalidOperationException("The individual indexed control refused the captured block.");
         string individualJson = SerializeAndDispose(individual);
-        if (individualJson != expected || counter.Executions != Transactions)
-            throw new InvalidOperationException("The individual indexed control differs from full-block replay or replayed a prefix.");
+        if (individualJson != expected || counter.Executions != Transactions || counter.CancelableExecutions != Transactions)
+            throw new InvalidOperationException("The individual indexed control differs from full-block replay, replayed a prefix, or used a noncancelable VM tracer.");
 
         counter.Reset();
         if (!validation.TryTraceBatches(_block, _parent, _forBlock, null, CancellationToken.None,
                 out IReadOnlyList<GethLikeTxTrace>? batched))
             throw new InvalidOperationException("The batched indexed control refused the captured block.");
         string batchedJson = SerializeAndDispose(batched);
-        if (batchedJson != expected || counter.Executions != Transactions)
-            throw new InvalidOperationException("The batched control differs from full-block replay or replayed a prefix.");
+        if (batchedJson != expected || counter.Executions != Transactions || counter.CancelableExecutions != Transactions)
+            throw new InvalidOperationException("The batched control differs from full-block replay, replayed a prefix, or used a noncancelable VM tracer.");
     }
 
     private string SerializeAndDispose(IReadOnlyCollection<GethLikeTxTrace> traces)
@@ -324,7 +330,7 @@ public class WholeBlockTraceBenchmarks
     private sealed class TraceBlockConfig : ManualConfig
     {
         public TraceBlockConfig() => AddJob(Job.Default.WithToolchain(InProcessNoEmitToolchain.Instance)
-            .WithLaunchCount(1).WithWarmupCount(3).WithIterationCount(8)
+            .WithLaunchCount(1).WithWarmupCount(8).WithIterationCount(8)
             .WithIterationTime(TimeInterval.FromMilliseconds(250)).WithGcForce(true));
     }
 
@@ -339,16 +345,28 @@ public class WholeBlockTraceBenchmarks
     private sealed class ExecutionCounter
     {
         private int _executions;
+        private int _cancelableExecutions;
         public int Executions => _executions;
-        public void Count() => Interlocked.Increment(ref _executions);
-        public void Reset() => _executions = 0;
+        public int CancelableExecutions => _cancelableExecutions;
+
+        public void Count(ITxTracer tracer)
+        {
+            Interlocked.Increment(ref _executions);
+            if (tracer.IsCancelable) Interlocked.Increment(ref _cancelableExecutions);
+        }
+
+        public void Reset()
+        {
+            _executions = 0;
+            _cancelableExecutions = 0;
+        }
     }
 
     private sealed class CountingTransactionAdapter(ITransactionProcessorAdapter inner, ExecutionCounter counter) : ITransactionProcessorAdapter
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
         {
-            counter.Count();
+            counter.Count(txTracer);
             return inner.Execute(transaction, txTracer);
         }
 
