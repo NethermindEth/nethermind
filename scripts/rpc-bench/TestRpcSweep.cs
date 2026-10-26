@@ -79,7 +79,7 @@ JsonArray TraceCapture()
     var parity = new JsonArray();
     for (var index = 0; index < traceTransactions.Length; index++)
     {
-        native.Add(new JsonObject
+        native.Add((JsonNode)new JsonObject
         {
             ["txHash"] = traceTransactions[index],
             ["result"] = new JsonObject { ["type"] = "CALL", ["calls"] = new JsonArray(new JsonObject { ["type"] = "CALL", ["value"] = "0x0" }) }
@@ -91,8 +91,8 @@ JsonArray TraceCapture()
             ["traceAddress"] = address, ["subtraces"] = children,
             ["action"] = new JsonObject { ["value"] = "0x0" }, ["result"] = new JsonObject { ["gasUsed"] = "0x1" }
         };
-        parity.Add(ParityEntry(new JsonArray(), index == 0 ? 1 : 0));
-        if (index == 0) parity.Add(ParityEntry(new JsonArray(0), 0));
+        parity.Add((JsonNode)ParityEntry([], index == 0 ? 1 : 0));
+        if (index == 0) parity.Add((JsonNode)ParityEntry(new JsonArray(0), 0));
     }
     JsonObject Row(string method, JsonArray result) => new()
     {
