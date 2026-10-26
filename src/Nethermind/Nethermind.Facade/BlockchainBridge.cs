@@ -494,44 +494,34 @@ namespace Nethermind.Facade
             int addressCount = FillAddressesToOptimize(addressBuffer, nonceSource, header, tx, optimize, precompiles);
             if (addressCount < addressBuffer.Length) Array.Resize(ref addressBuffer, addressCount);
 
+            // Tracing access charges every account and slot a run touches as warm, so a branch that depends on gas can
+            // go another way than in a transaction carrying the list. The optimized list is instead collected, as Geth
+            // does, from what opcodes name in runs that pay the real access costs.
+            AccessTxTracer? accessTracer = optimize ? null : new(addressBuffer);
+            OpcodeAccessListTracer? opcodeTracer = optimize ? new(addressBuffer) : null;
             AccessList? previousAccessList = tx.AccessList;
-            AccessTxTracer accessTracer = new(addressBuffer);
-            // The EVM also warms addresses no opcode names, such as delegation targets and created contracts;
-            // Geth leaves those out, so the optimized list keeps only the addresses its tracer would record.
-            ReferencedAddressTracer? referencedTracer = optimize ? new() : null;
+            if (opcodeTracer is not null)
+            {
+                opcodeTracer.Reset(previousAccessList);
+                previousAccessList = opcodeTracer.BuildAccessList();
+            }
+
             CallOutputTracer outputTracer = new();
-            CompositeTxTracer compositeTracer = referencedTracer is null
-                ? new CompositeTxTracer(outputTracer, accessTracer)
-                : new CompositeTxTracer(outputTracer, accessTracer, referencedTracer);
-            CancellationTxTracer tracer = compositeTracer.WithCancellation(cancellationToken);
+            CancellationTxTracer tracer = new CompositeTxTracer(outputTracer, accessTracer ?? (ITxTracer)opcodeTracer!).WithCancellation(cancellationToken);
             TransactionResult result;
             bool stop;
-            bool droppedWarmAddresses;
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                accessTracer.Reset();
-                referencedTracer?.Addresses.Clear();
+                accessTracer?.Reset();
+                opcodeTracer?.Reset(previousAccessList);
                 outputTracer.Reset();
                 tx.AccessList = previousAccessList;
                 result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap: true);
-                AccessList? discovered = referencedTracer is null
-                    ? accessTracer.AccessList
-                    : KeepReferencedAddresses(accessTracer.AccessList, referencedTracer.Addresses, previousAccessList);
-                droppedWarmAddresses = discovered?.Count.AddressesCount != accessTracer.AccessList?.Count.AddressesCount;
+                AccessList? discovered = opcodeTracer?.BuildAccessList() ?? accessTracer!.AccessList;
                 stop = !result.TransactionExecuted || HasConverged(previousAccessList, discovered);
                 previousAccessList = discovered;
             } while (!stop);
-
-            // Tracing access charges every account a run touches as warm, as if it were listed. When the list leaves
-            // one out, such as a delegation target, a transaction carrying the list pays cold for it, so the gas and
-            // outcome come from a run with the list alone.
-            if (droppedWarmAddresses && result.TransactionExecuted)
-            {
-                outputTracer.Reset();
-                tx.AccessList = previousAccessList;
-                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, outputTracer.WithCancellation(cancellationToken), rejectsTipAboveFeeCap: true);
-            }
 
             return BuildCallOutput(result, outputTracer, previousAccessList);
         }
@@ -581,7 +571,10 @@ namespace Nethermind.Facade
                 // Geth also excludes the authority of every EIP-7702 authorization it does not skip outright.
                 foreach (AuthorizationTuple authorization in tx.AuthorizationList ?? [])
                 {
-                    if ((!authorization.ChainId.IsZero && authorization.ChainId != specProvider.ChainId) || authorization.Nonce == ulong.MaxValue)
+                    if ((!authorization.ChainId.IsZero && authorization.ChainId != specProvider.ChainId)
+                        || authorization.Nonce == ulong.MaxValue
+                        || new UInt256(authorization.AuthoritySignature.SAsSpan, isBigEndian: true) > SecP256k1Curve.HalfN
+                        || authorization.AuthoritySignature.V - Signature.VOffset > 1)
                         continue;
 
                     if ((authorization.Authority ??= ecdsa.RecoverAddress(authorization)) is { } authority)
@@ -595,69 +588,90 @@ namespace Nethermind.Facade
             return idx;
         }
 
-        /// <summary>Drops the addresses Geth's access-list tracer would not record.</summary>
-        /// <returns>
-        /// <paramref name="discovered"/> without the addresses that hold no storage key, were named by no opcode
-        /// in <paramref name="referenced"/>, and were not in the run's own <paramref name="requested"/> list.
-        /// </returns>
-        private static AccessList? KeepReferencedAddresses(AccessList? discovered, HashSet<Address> referenced, AccessList? requested)
+        /// <summary>Collects the access list Geth's access-list tracer records, on top of the list a run starts from.</summary>
+        /// <remarks>
+        /// Records the target of a call, the account an account-reading opcode names, and the slot an <c>SLOAD</c> or
+        /// <c>SSTORE</c> names in the executing account. The EVM also warms accounts no opcode names, such as delegation
+        /// targets and created contracts, and Geth leaves those out. The tracer does not trace access, so the run it
+        /// observes pays the same access costs as a transaction carrying the list.
+        /// </remarks>
+        private sealed class OpcodeAccessListTracer(Address[] excludedAddresses) : TxTracer
         {
-            if (discovered is null) return null;
-
-            HashSet<Address>? requestedAddresses = null;
-            if (requested is { IsEmpty: false })
-            {
-                requestedAddresses = new(requested.Count.AddressesCount);
-                foreach ((Address listed, _) in requested)
-                    requestedAddresses.Add(listed);
-            }
-
-            AccessList.Builder builder = new();
-            foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in discovered)
-            {
-                if (storageKeys.Count == 0 && !referenced.Contains(address) && requestedAddresses?.Contains(address) != true)
-                    continue;
-
-                builder.AddAddress(address);
-                foreach (UInt256 storageKey in storageKeys)
-                    builder.AddStorage(storageKey);
-            }
-
-            return builder.Build();
-        }
-
-        /// <summary>Records the addresses Geth's access-list tracer adds: the target of a call and the account an account-reading opcode names.</summary>
-        private sealed class ReferencedAddressTracer : TxTracer
-        {
+            private readonly Dictionary<Address, HashSet<UInt256>> _accessList = [];
             private Instruction _opcode;
+            private Address? _executingAccount;
 
             public override bool IsTracingInstructions => true;
             public override bool IsTracingStack => true;
 
-            public HashSet<Address> Addresses { get; } = [];
+            public void Reset(AccessList? startingList)
+            {
+                _accessList.Clear();
+                if (startingList is null) return;
 
-            public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) => _opcode = opcode;
+                foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in startingList)
+                {
+                    HashSet<UInt256> keys = GetStorageKeys(address);
+                    foreach (UInt256 storageKey in storageKeys)
+                        keys.Add(storageKey);
+                }
+            }
+
+            /// <returns>The collected list, without the excluded addresses that hold no storage key.</returns>
+            public AccessList BuildAccessList()
+            {
+                AccessList.Builder builder = new();
+                foreach ((Address address, HashSet<UInt256> storageKeys) in _accessList)
+                {
+                    if (storageKeys.Count == 0 && Array.IndexOf(excludedAddresses, address) >= 0)
+                        continue;
+
+                    builder.AddAddress(address);
+                    foreach (UInt256 storageKey in storageKeys)
+                        builder.AddStorage(storageKey);
+                }
+
+                return builder.Build();
+            }
+
+            public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+            {
+                _opcode = opcode;
+                _executingAccount = env.ExecutingAccount;
+            }
 
             public override void SetOperationStack(TraceStack stack)
             {
                 switch (_opcode)
                 {
+                    case Instruction.SLOAD or Instruction.SSTORE when stack.Count >= 1:
+                        GetStorageKeys(_executingAccount!).Add(stack.PeekUInt256(0));
+                        break;
                     // Geth requires five items for every call variant, although DELEGATECALL and STATICCALL take six.
                     case Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL when stack.Count >= 5:
-                        Addresses.Add(stack.PeekAddress(1));
+                        GetStorageKeys(stack.PeekAddress(1));
                         break;
                     case Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.SELFDESTRUCT when stack.Count >= 1:
-                        Addresses.Add(stack.PeekAddress(0));
+                        GetStorageKeys(stack.PeekAddress(0));
                         break;
                 }
+            }
+
+            private HashSet<UInt256> GetStorageKeys(Address address)
+            {
+                if (!_accessList.TryGetValue(address, out HashSet<UInt256>? keys))
+                    _accessList[address] = keys = [];
+
+                return keys;
             }
         }
 
         private static bool HasConverged(AccessList? previous, AccessList? discovered)
         {
-            // Count comparison is sufficient because WarmUp(tx.AccessList) pre-populates the warm-address
-            // set with all of `previous`'s entries before execution, making `discovered` monotonically
-            // non-decreasing (discovered ⊇ previous). Equal counts therefore imply equal content.
+            // Count comparison is sufficient because each run starts from `previous`: WarmUp(tx.AccessList)
+            // pre-populates the warm-address set with its entries, and OpcodeAccessListTracer is seeded with
+            // them, making `discovered` monotonically non-decreasing (discovered ⊇ previous). Equal counts
+            // therefore imply equal content.
             (int addrs, int keys) previousCount = previous?.Count ?? (0, 0);
             (int addrs, int keys) discoveredCount = discovered?.Count ?? (0, 0);
             return previousCount == discoveredCount;

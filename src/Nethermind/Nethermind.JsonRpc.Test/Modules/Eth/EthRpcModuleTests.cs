@@ -2707,6 +2707,8 @@ public partial class EthRpcModuleTests
 
     // Like Geth, the optimized list holds only addresses an opcode named, never those the EVM warmed on its own.
     [TestCase("0x600060006000f000", new string[0], TestName = "Access list leaves out a contract the call created")]
+    [TestCase("0x600060006000600060007300000000000000000000000000000000000000015af100", new string[0],
+        TestName = "Access list leaves out a precompile a call names")]
     [TestCase("0x6000600060006000600073aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5af100", new[] { "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
         TestName = "Access list keeps an address a call names")]
     [TestCase("0x6000600060006000600073d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d15af100", new[] { DelegatedAccount },
@@ -2735,7 +2737,31 @@ public partial class EthRpcModuleTests
         Assert.That(gasUsed, Is.EqualTo(expectedGas), result.ToString());
     }
 
-    private static string AccessListContractCall => $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}"}""";
+    // The contract measures the gas a CALL to the delegated account costs and runs the branch only when that call pays
+    // cold access for the delegation target, as a transaction carrying the list does. The list must hold what the branch
+    // touches even though tracing the access would have charged the target as warm and skipped the branch.
+    [TestCase("73bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb315000", "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", new string[0],
+        TestName = "Access list holds an address a branch taken at real gas costs names")]
+    [TestCase("6001545000", AccessListContract, new[] { "0x0000000000000000000000000000000000000000000000000000000000000001" },
+        TestName = "Access list holds a slot a branch taken at real gas costs loads")]
+    public async Task Eth_createAccessList_holds_what_a_branch_taken_at_real_gas_costs_touches(string branch, string touched, string[] storageKeys)
+    {
+        // GAS, CALL the delegated account, GAS, SUB, then JUMPI to the branch at 0x2e if the call cost over 1,000 gas.
+        string code = $"0x5a6000600060006000600073{DelegatedAccount[2..]}5af1505a90036103e810602e57005b{branch}";
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        (JToken result, _) = await CallCreateAccessList(ctx, AccessListContractCall, AccessListStateOverride(code), optimize: true);
+
+        JToken[] accessList = result["accessList"]!.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.Select(static e => e["address"]!.Value<string>()), Is.EquivalentTo(new[] { DelegatedAccount, touched }), result.ToString());
+            Assert.That(accessList.Single(e => e["address"]!.Value<string>() == touched)["storageKeys"]!.Select(static k => k.Value<string>()),
+                Is.EqualTo(storageKeys), result.ToString());
+        }
+    }
+
+    private static string AccessListContractCall =>$$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}"}""";
 
     // The contract under test runs code; the delegated account delegates to a contract that only stops.
     private static string AccessListStateOverride(string code) => $$$"""
@@ -2744,12 +2770,21 @@ public partial class EthRpcModuleTests
          "0xc300000000000000000000000000000000000000":{"code":"0x00"}}
         """;
 
+    // A high-s signature still recovers the authority, but the transaction skips the authorization and never warms the
+    // authority, so like Geth the list keeps it.
     [Test]
-    public async Task Eth_createAccessList_leaves_out_an_authority_the_call_names()
+    public async Task Eth_createAccessList_leaves_out_an_authority_the_call_names([Values] bool highS)
     {
         using Context ctx = await Context.CreateWithOsakaEnabled();
         ulong chainId = ctx.Test.SpecProvider.ChainId;
         AuthorizationTuple authorization = new EthereumEcdsa(chainId).Sign(TestItem.PrivateKeyB, chainId, new Address("0xc300000000000000000000000000000000000000"), 0);
+        if (highS)
+        {
+            Signature signature = authorization.AuthoritySignature;
+            authorization = new AuthorizationTuple(chainId, authorization.CodeAddress, authorization.Nonce, (byte)(1 - signature.RecoveryId),
+                new UInt256(signature.RAsSpan, isBigEndian: true), SecP256k1Curve.N - new UInt256(signature.SAsSpan, isBigEndian: true));
+        }
+
         SetCodeTransactionForRpc transaction = new()
         {
             From = new Address(CreateAccessListSender),
@@ -2761,7 +2796,8 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, true);
 
-        Assert.That(JToken.Parse(serialized).SelectToken("result.accessList")?.ToArray(), Is.Empty, serialized);
+        Assert.That(JToken.Parse(serialized).SelectToken("result.accessList")!.Select(static e => e["address"]!.Value<string>()),
+            Is.EqualTo(highS ? new[] { TestItem.AddressB.ToString() } : []), serialized);
     }
 
     [Test]
