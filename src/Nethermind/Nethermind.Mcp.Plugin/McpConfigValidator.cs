@@ -4,11 +4,11 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Nethermind.Api.Monitoring;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc;
-using Nethermind.Monitoring.Config;
 
 namespace Nethermind.Mcp.Plugin;
 

@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Api.Monitoring;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.IO;
 using Nethermind.JsonRpc;
-using Nethermind.Monitoring.Config;
 using NUnit.Framework;
 
 namespace Nethermind.Mcp.Plugin.Test;
