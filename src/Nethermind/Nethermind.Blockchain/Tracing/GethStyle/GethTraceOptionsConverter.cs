@@ -78,11 +78,13 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
             init => ParsedTimeout = value;
         }
 
+
 #pragma warning disable CS0618
         public new bool? DisableMemory { get => base.DisableMemory; set { if (value is { } v) base.DisableMemory = v; } }
 #pragma warning restore CS0618
 
         public new bool? EnableMemory { get => base.EnableMemory; set { if (value is { } v) base.EnableMemory = v; } }
+
     }
 
     internal sealed class ParsedDurationConverter : JsonConverter<ParsedTraceDuration>

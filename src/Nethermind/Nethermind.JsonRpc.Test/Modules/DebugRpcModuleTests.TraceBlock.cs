@@ -656,6 +656,7 @@ public partial class DebugRpcModuleTests
 
     }
 
+
     [Test]
     public async Task Debug_traceBlockByNumber_rejects_non_object_options([Values("17", "[]", "\"bad\"", "true")] string optionsJson)
     {
