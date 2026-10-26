@@ -1,0 +1,93 @@
+name: Whole-block trace performance experiment
+
+on:
+  push:
+    branches: [bench/trace-whole-block-20261026]
+    paths: [.github/workflows/whole-block-trace-performance.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    if: github.repository_owner == 'NethermindEth'
+    runs-on: benchmark
+    timeout-minutes: 90
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - name: Check out the experiment
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Test indexed block trace parity and boundaries
+        run: >-
+          dotnet test --project src/Nethermind/Nethermind.Blockchain.Test/Nethermind.Blockchain.Test.csproj
+          -c Release -- --filter
+          "FullyQualifiedName~ParallelBlockTracer|FullyQualifiedName~AccessListSeed_ParallelBlockTrace|FullyQualifiedName~AccessListSeed_WhenTracingBatches|FullyQualifiedName~TransactionTraceBoundary_WhenCancelledInSuppressedPrefix"
+
+      - name: Test streamed trace batch failure ownership
+        run: >-
+          dotnet test --project src/Nethermind/Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj
+          -c Release -- --filter
+          "FullyQualifiedName~GethLikeBlockNativeStreamingTracer_WhenBatchOutputFails_DisposesEveryTraceOnce|FullyQualifiedName~Debug_traceBlockByHash_NativeTracer_PreservesIndexedRoutingAndResults"
+
+      - name: Prepare benchmark runner inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          inputs_root="${GITHUB_WORKSPACE}/src/Nethermind/artifacts/bin/Nethermind.Benchmark.Runner/release"
+          for input in blake2f blsg1add blsg1msm blsg1mul blsg2add blsg2msm blsg2mul blsmapfp2tog2 \
+            blsmapfptog1 blspairingcheck bnadd bnmul bnpair ec_recover modexp point_evaluation ripemd sha256; do
+            mkdir -p "${inputs_root}/${input}/current"
+            if [[ ! -f "${inputs_root}/${input}/current/sample.csv" ]]; then
+              echo "00" > "${inputs_root}/${input}/current/sample.csv"
+            fi
+          done
+
+      - name: Measure one-state replay, per-transaction replay and batches
+        shell: bash
+        working-directory: src/Nethermind/Nethermind.Benchmark.Runner
+        run: |
+          set -euo pipefail
+          dotnet restore ../Benchmarks.slnx --locked-mode
+          dotnet run -c Release -- --filter '*WholeBlockTraceBenchmarks*' --join --buildTimeout 900 \
+            --artifacts "${GITHUB_WORKSPACE}/whole-block-trace-results" \
+            | tee "${GITHUB_WORKSPACE}/whole-block-trace-benchmarks.log"
+
+      - name: Require all benchmark cases to complete
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="whole-block-trace-results/results/Nethermind.JsonRpc.Benchmark.WholeBlockTraceBenchmarks-report-full-compressed.json"
+          jq -e '.Benchmarks | length == 54 and all(.[]; .Statistics != null and .Statistics.Mean > 0 and .Statistics.N > 0)' "${report}"
+
+      - name: Publish benchmark tables
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f whole-block-trace-benchmarks.log ]]; then
+            sed -e 's/\x1b\[[0-9;]*m//g' whole-block-trace-benchmarks.log | grep -E '^\|' >> "${GITHUB_STEP_SUMMARY}" || true
+          fi
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: whole-block-trace-performance-${{ github.sha }}
+          path: |
+            whole-block-trace-benchmarks.log
+            whole-block-trace-results
+          if-no-files-found: warn
+          retention-days: 14
