@@ -168,7 +168,7 @@ public static partial class EvmInstructions
         long initialStateSpill = TTracingInst.IsActive && TEip8037.IsActive ? TGasPolicy.GetStateGasSpill(in gas) : 0;
         ulong traceMemorySize = DispatchFlags.ConstTracing && vm.IsTracingActions ? vm.VmState.Memory.Size : 0;
         bool traceColdAccess = DispatchFlags.ConstTracing && vm.IsTracingActions && TSpec.UseHotAndColdStorage &&
-            vm.VmState.AccessTracker.IsCold(codeSource) && !spec.IsPrecompile(codeSource);
+            vm.VmState.AccessTracker.IsCold(codeSource) && !vm.VmState.AccessTracker.IsPrewarmedPrecompile(codeSource, spec);
 
         if (hasValueTransfer)
         {
@@ -474,7 +474,7 @@ public static partial class EvmInstructions
         string error = gas < constantCost ? "out of gas"
             : !TryGetTraceMemorySize(in inputOffset, in inputLength, out _) || !TryGetTraceMemorySize(in outputOffset, in outputLength, out _)
                 ? "gas uint64 overflow"
-                : spec.UseHotAndColdStorage && !spec.IsEip7702Enabled && vm.VmState.AccessTracker.IsCold(target) && !spec.IsPrecompile(target) && gas < coldCost
+                : spec.UseHotAndColdStorage && !spec.IsEip7702Enabled && vm.VmState.AccessTracker.IsCold(target) && !vm.VmState.AccessTracker.IsPrewarmedPrecompile(target, spec) && gas < coldCost
                     ? "out of gas: out of gas"
                     : "out of gas: write protection";
         vm.TraceOperationReady(constantCost, error);

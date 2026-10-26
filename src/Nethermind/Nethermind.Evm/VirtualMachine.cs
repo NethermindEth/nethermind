@@ -2102,7 +2102,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (!Spec.UseHotAndColdStorage)
             return baseCost + extraCost;
 
-        bool isCold = !IsTracingAccess && VmState.AccessTracker.IsCold(address) && !Spec.IsPrecompile(address);
+        bool isCold = !IsTracingAccess && VmState.AccessTracker.IsCold(address) && !VmState.AccessTracker.IsPrewarmedPrecompile(address, Spec);
         ulong accessCost = isCold
             ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess
             : GasCostOf.WarmStateRead;

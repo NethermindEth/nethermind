@@ -3779,6 +3779,23 @@ public sealed class VirtualMachineExtensionHooksTests
     }
 
     [Test]
+    public void Cleared_access_list_makes_precompiles_and_the_recipient_cold_until_accessed()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(1).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .PushData(1).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .Op(Instruction.ADDRESS).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .Done;
+
+        ulong prewarmed = Execute(code).GasSpent;
+        _hookedMachine.ClearTopLevelAccessList = true;
+        ulong cleared = Execute(code).GasSpent;
+
+        Assert.That(cleared - prewarmed, Is.EqualTo(2 * (GasCostOf.ColdAccountAccess - GasCostOf.WarmStateRead)),
+            "the first precompile access and the recipient access are cold, the repeated precompile access is warm");
+    }
+
+    [Test]
     public void Nested_success_calls_are_reported_before_the_child_frame_is_merged()
     {
         Deploy(Prepare.EvmCode.Op(Instruction.STOP).Done);
@@ -4484,11 +4501,17 @@ public sealed class VirtualMachineExtensionHooksTests
         public byte[] ValueTransferRevertData { get; set; } = [];
         public ulong ValueTransferRevertGas { get; set; }
         public List<(Address Creator, Address ContractAddress, UInt256 Value)> ValueTransferCreatePrechecks { get; } = [];
+        public bool ClearTopLevelAccessList { get; set; }
 
         protected override bool TryExecuteFrameInitialization(VmState<EthereumGasPolicy> currentState, out CallResult result)
         {
             Initializations.Add((currentState.IsTopLevel, currentState.IsContinuation));
             result = default;
+            if (ClearTopLevelAccessList && currentState.IsTopLevel && !currentState.IsContinuation)
+            {
+                currentState.AccessTracker.ClearAccessList();
+            }
+
             if (ThrowFatalOnChild && !currentState.IsTopLevel && !currentState.IsContinuation)
             {
                 throw new OutOfGasException();
