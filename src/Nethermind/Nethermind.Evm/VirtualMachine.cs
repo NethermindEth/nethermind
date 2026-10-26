@@ -278,7 +278,7 @@ public partial class VirtualMachine<TGasPolicy>(
     internal bool IsTracingOpLevelStorage => _tracerFlags.IsTracingOpLevelStorage;
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
     private bool IsTracingOperationGasCost { get => DispatchFlags.Tracing(field); set; }
-    private bool IsTracingOperationStart { get => DispatchFlags.Tracing(field); set; }
+    internal bool IsTracingOperationStart { get => DispatchFlags.Tracing(field); private set; }
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
