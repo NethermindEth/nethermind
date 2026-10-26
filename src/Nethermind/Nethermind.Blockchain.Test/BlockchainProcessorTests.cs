@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -883,6 +884,55 @@ public class BlockchainProcessorTests
 
         context.Processed(_block2D4).BecomesNewHead();
         await second.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
+    public async Task Last_copy_removal_completes_all_removed_before_executed_copy_waiters([Values] bool processed)
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> removedWhenExecutedCopyCompletes) = ObserveInFlightRemoval(copies: 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed.IsCompleted, Is.False);
+            Assert.That(removedWhenExecutedCopyCompletes.IsCompleted, Is.False);
+        }
+
+        Assert.That(removeCopy(processed), Is.True);
+
+        Assert.That(await removedWhenExecutedCopyCompletes.WaitAsync(TimeSpan.FromSeconds(10)), Is.True,
+            "a last-copy executed waiter must already observe all copies removed when it resumes");
+    }
+
+    [Test]
+    public async Task Processed_copy_removal_releases_executed_waiters_while_another_copy_remains()
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> removedWhenExecutedCopyCompletes) = ObserveInFlightRemoval(copies: 2);
+
+        Assert.That(removeCopy(true), Is.False);
+
+        Assert.That(await removedWhenExecutedCopyCompletes.WaitAsync(TimeSpan.FromSeconds(10)), Is.False,
+            "the processed copy releases its waiter without waiting for the duplicate");
+        Assert.That(removed.IsCompleted, Is.False);
+
+        Assert.That(removeCopy(false), Is.True);
+        Assert.That(removed.IsCompleted, Is.True);
+    }
+
+    private static (Func<bool, bool> RemoveCopy, Task Removed, Task<bool> RemovedWhenExecutedCopyCompletes) ObserveInFlightRemoval(int copies)
+    {
+        Type type = typeof(BlockchainProcessor).GetNestedType("InFlightBlock", BindingFlags.NonPublic)!;
+        object inFlight = Activator.CreateInstance(type, nonPublic: true)!;
+        Func<bool> addCopy = type.GetMethod("TryAddCopy")!.CreateDelegate<Func<bool>>(inFlight);
+        for (int i = 0; i < copies; i++) Assert.That(addCopy(), Is.True);
+        type.GetMethod("MarkExecuted")!.Invoke(inFlight, null);
+        Task removed = (Task)type.GetProperty("Removed")!.GetValue(inFlight)!;
+
+        // An inline continuation observes the publication boundary deterministically, without a thread-pool race.
+        TaskCompletionSource executedCopyRemoved = new();
+        type.GetField("_executedCopyRemoved", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(inFlight, executedCopyRemoved);
+        Task<bool> removedWhenExecutedCopyCompletes = executedCopyRemoved.Task.ContinueWith(
+            _ => removed.IsCompleted, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+        return (type.GetMethod("RemoveCopy")!.CreateDelegate<Func<bool, bool>>(inFlight), removed, removedWhenExecutedCopyCompletes);
     }
 
     /// <summary>

@@ -322,26 +322,26 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // verdict. The next one sets the flag again when its own lands; until then an executed-only wait must not
             // take the entry for a block that is committing. The flag is cleared before the source is taken, which is
             // the order ExecutedCopyRemoved relies on.
-            if (processed && _executed)
-            {
-                _executed = false;
-                Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
-            }
+            bool executed = processed && _executed;
+            if (executed) _executed = false;
 
             int copies = Interlocked.Decrement(ref _copies);
-            if (copies > 0) return false;
-            // Taken below zero by a removal that overlapped the last one: that one owns the release either way.
-            if (copies < 0) return false;
             // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
-            if (Interlocked.CompareExchange(ref _copies, -1, 0) != 0) return false;
-            Release();
-            return true;
+            if (copies == 0 && Interlocked.CompareExchange(ref _copies, -1, 0) == 0)
+            {
+                Release();
+                return true;
+            }
+
+            if (executed) Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
+            return false;
         }
 
         public void Release()
         {
-            Interlocked.Exchange(ref _executedCopyRemoved, Done)?.TrySetResult();
+            // An executed-copy waiter can recheck all-copy removal as soon as it resumes.
             Interlocked.Exchange(ref _removed, Done)?.TrySetResult();
+            Interlocked.Exchange(ref _executedCopyRemoved, Done)?.TrySetResult();
         }
     }
 
