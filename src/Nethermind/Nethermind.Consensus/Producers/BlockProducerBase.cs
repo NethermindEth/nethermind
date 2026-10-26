@@ -18,7 +18,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
@@ -133,18 +132,7 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            Block block;
-            try
-            {
-                block = PrepareBlock(parent, payloadAttributes, flags);
-            }
-            // Preparing can read parent state (e.g. an AuRa gas limit contract) before the target state check below.
-            catch (StateUnavailableException e)
-            {
-                if (Logger.IsDebug) Logger.Debug($"Skipping block production on top of {parent.ToString(BlockHeader.Format.Short)}: {e.Message}");
-                return Task.FromResult((Block?)null);
-            }
-
+            Block block = PrepareBlock(parent, payloadAttributes, flags);
             if (StateProvider.HasStateForTargetBlock(block.Header))
             {
                 if (PreparedBlockCanBeMined(block))
