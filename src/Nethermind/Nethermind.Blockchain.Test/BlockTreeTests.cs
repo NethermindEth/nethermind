@@ -2912,6 +2912,36 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Delete_during_bloom_lookup_does_not_leave_deleted_header_cached([Values] bool invalidBlockDeletion)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTree blockTree = builder.TestObject;
+        BlockHeader deleted = blockTree.FindHeader(4, BlockTreeLookupOptions.None)!;
+        Block invalidBlock = blockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
+        ((IClearableCache)builder.BlockStore).ClearCache();
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+        bool deletionRan = false;
+
+        // The bloom check runs after the header is read and before it is cached.
+        BlockHeader? found = blockTree.FindCanonicalHeaderIfBloomMatches(deleted.Number, _ =>
+        {
+            if (invalidBlockDeletion) blockTree.DeleteInvalidBlock(invalidBlock);
+            else Assert.That(blockTree.DeleteChainSlice(3), Is.EqualTo(2));
+            deletionRan = true;
+            return true;
+        }, out bool headerFound);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.Not.Null);
+            Assert.That(headerFound, Is.True);
+            Assert.That(deletionRan, Is.True, "the deletion must overlap the lookup");
+            Assert.That(blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_two_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
