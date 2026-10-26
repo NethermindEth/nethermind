@@ -56,6 +56,7 @@ jobs:
         # each pack takes about 6 minutes, sized from the job times of a master run.
         project:
           - Nethermind.JsonRpc.Test
+          - Nethermind.Mcp.Plugin.Test
           - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
           - Nethermind.Synchronization.Test
