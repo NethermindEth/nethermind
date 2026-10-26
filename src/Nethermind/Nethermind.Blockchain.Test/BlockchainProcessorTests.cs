@@ -932,22 +932,42 @@ public class BlockchainProcessorTests
         }
     }
 
-    private static (Func<bool, bool> RemoveCopy, Task Removed, Task<bool> RemovedWhenExecutedCopyCompletes) ObserveInFlightRemoval(int copies)
+    [Test]
+    public async Task Last_copy_removal_keeps_late_executed_waiters_parked_until_release()
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> lateGetterWaited) = ObserveInFlightRemoval(copies: 1, observeLateGetter: true);
+
+        Assert.That(removeCopy(true), Is.True);
+
+        Assert.That(await lateGetterWaited.WaitAsync(TimeSpan.FromSeconds(10)), Is.True,
+            "a getter arriving before the executed source is released must still wait on that source");
+        Assert.That(removed.IsCompleted, Is.True);
+    }
+
+    private static (Func<bool, bool> RemoveCopy, Task Removed, Task<bool> Observation) ObserveInFlightRemoval(int copies, bool observeLateGetter = false)
     {
         Type type = typeof(BlockchainProcessor).GetNestedType("InFlightBlock", BindingFlags.NonPublic)!;
         object inFlight = Activator.CreateInstance(type, nonPublic: true)!;
         Func<bool> addCopy = type.GetMethod("TryAddCopy")!.CreateDelegate<Func<bool>>(inFlight);
         for (int i = 0; i < copies; i++) Assert.That(addCopy(), Is.True);
         type.GetMethod("MarkExecuted")!.Invoke(inFlight, null);
+        if (observeLateGetter)
+            type.GetField("_removed", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(inFlight, CreateSynchronousSource());
         Task removed = (Task)type.GetProperty("Removed")!.GetValue(inFlight)!;
 
-        // An inline continuation observes the publication boundary deterministically, without a thread-pool race.
-        TaskCompletionSource executedCopyRemoved = new();
+        TaskCompletionSource executedCopyRemoved = CreateSynchronousSource();
         type.GetField("_executedCopyRemoved", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(inFlight, executedCopyRemoved);
-        Task<bool> removedWhenExecutedCopyCompletes = executedCopyRemoved.Task.ContinueWith(
-            _ => removed.IsCompleted, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        Task<bool> observation = observeLateGetter
+            ? removed.ContinueWith(_ => !((Task)type.GetProperty("ExecutedCopyRemoved")!.GetValue(inFlight)!).IsCompleted,
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default)
+            : executedCopyRemoved.Task.ContinueWith(_ => removed.IsCompleted,
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
-        return (type.GetMethod("RemoveCopy")!.CreateDelegate<Func<bool, bool>>(inFlight), removed, removedWhenExecutedCopyCompletes);
+        return (type.GetMethod("RemoveCopy")!.CreateDelegate<Func<bool, bool>>(inFlight), removed, observation);
+
+#pragma warning disable NETH006 // Inline continuations observe the publication boundary deterministically.
+        static TaskCompletionSource CreateSynchronousSource() => new();
+#pragma warning restore NETH006
     }
 
     /// <summary>

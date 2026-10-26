@@ -320,10 +320,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             // Copies are processed in order, so once the processed copy is gone none of the ones left has had its
             // verdict. The next one sets the flag again when its own lands; until then an executed-only wait must not
-            // take the entry for a block that is committing. The flag is cleared before the source is taken, which is
-            // the order ExecutedCopyRemoved relies on.
+            // take the entry for a block that is committing. If copies remain, the flag is cleared before the source
+            // is taken, which is the order ExecutedCopyRemoved relies on.
             bool executed = processed && _executed;
-            if (executed) _executed = false;
 
             int copies = Interlocked.Decrement(ref _copies);
             // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
@@ -337,7 +336,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
             }
 
-            if (copies > 0 && executed) Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
+            if (executed)
+            {
+                _executed = false;
+                if (copies > 0) Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
+            }
             return false;
         }
 
