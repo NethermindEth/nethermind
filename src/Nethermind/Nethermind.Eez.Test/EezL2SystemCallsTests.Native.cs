@@ -184,19 +184,23 @@ public partial class EezL2SystemCallsTests
         });
 
     [Test]
-    public void Execute_NativeProfile_EthereumSystemCallRetainsItsUnmeteredNonceFreePath() =>
-        WithProcessor(NativeRules(), (state, processor, _) =>
+    public void Execute_EthereumSystemCallRetainsItsFeeFreeNonceFreePath([Values] bool native) =>
+        WithProcessor(native ? NativeRules() : EezChainRules.Rollup0, (state, processor, header) =>
         {
+            state.CreateAccount(Address.SystemUser, 17, 8);
             state.CreateAccount(TestItem.AddressB, 0, 1);
-            state.InsertCode(TestItem.AddressB, StopCode, Osaka.Instance);
+            state.InsertCode(TestItem.AddressB, Counter, Osaka.Instance);
+            state.Set(new StorageCell(TestItem.AddressB, UInt256.Zero), 10);
             state.Commit(Osaka.Instance);
-            SystemCall call = new() { SenderAddress = Address.SystemUser, To = TestItem.AddressB, GasLimit = 1000 };
+            Transaction call = new() { SenderAddress = Address.SystemUser, To = TestItem.AddressB, GasLimit = 100_000 };
             TransactionResult result = processor.Execute(call, new CallOutputTracer());
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result.TransactionExecuted, Is.True,
-                    "a protocol system call keeps the standard path even below transaction intrinsic gas");
-                Assert.That(state.GetNonce(Address.SystemUser), Is.Zero);
+                Assert.That(result.TransactionExecuted, Is.True, result.ToString());
+                Assert.That(state.GetNonce(Address.SystemUser), Is.EqualTo(8UL));
+                Assert.That(state.GetBalance(Address.SystemUser), Is.EqualTo((UInt256)17));
+                Assert.That(header.GasUsed, Is.Zero);
+                Assert.That(ReadStorage(state, TestItem.AddressB), Is.EqualTo((UInt256)11));
             }
         });
 
