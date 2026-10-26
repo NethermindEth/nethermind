@@ -4,7 +4,6 @@
 using System;
 using Autofac;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;

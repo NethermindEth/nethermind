@@ -187,7 +187,7 @@ public partial class EezL2SystemCallsTests
         header.Timestamp = updating ? 126UL : 122UL;
         header.ParentHash = TestItem.KeccakD;
         header.MixHash = new Hash256(chain.At(99UL + (ulong)count).PrevRandao);
-        Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithGasLimit(100_000)
+        Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithValue(0).WithGasLimit(100_000)
             .WithGasPrice(2.GWei).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         if (!updating) return new Block(header, [app], []);
         byte[] input = NativeHistoryCall.Encode(120, chain, 99, 99UL + (ulong)count);
