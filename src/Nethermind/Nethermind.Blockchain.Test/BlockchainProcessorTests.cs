@@ -918,7 +918,7 @@ public class BlockchainProcessorTests
     }
 
     [Test]
-    public void Overlapping_last_copy_removal_leaves_waiter_release_to_the_owner()
+    public void Removal_below_zero_does_not_release_waiters()
     {
         (Func<bool, bool> removeCopy, Task removed, Task<bool> removedWhenExecutedCopyCompletes) = ObserveInFlightRemoval(copies: 0);
 
