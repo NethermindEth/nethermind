@@ -1021,16 +1021,6 @@ jobs:
           fi
           docker version
 
-      - name: Restore cached master metrics
-        id: restore-master-metrics
-        if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v5
-        with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.cell.id }}
-          key: expb-master-metrics-v6-${{ matrix.cell.id }}-run-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v6-${{ matrix.cell.id }}-run-
-
       - name: Ensure EXPB config file exists
         shell: bash
         run: |
