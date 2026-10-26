@@ -150,15 +150,16 @@ public class PbtSnapshotBundleTests
         // Nothing records a removed group, so a newer persisted snapshot without the group leaves the older one visible.
         byte[] expected = persistedTier switch { 0 => database, 1 => newer, _ => older };
         byte[]?[] loads = new byte[2][];
+        using PbtLoadedRecordBuffer loaded = new();
         for (int attempt = 0; attempt < loads.Length; attempt++)
-            loads[attempt] = store.TryLoad(cursor, out PbtGroupRecord loaded) ? loaded.Payload.ToArray() : null;
+            loads[attempt] = loaded.TryLoad(store, cursor, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.TryLocate(0, out _), Is.False);
             Assert.That(store.TryLocate(bundle.RootGroupPointer, out PbtGroupRecord resident) ? resident.Payload.ToArray() : null, Is.EqualTo(memory),
                 "a fold reaches the branch's memory tiers by pointer");
             Assert.That(loads, Is.EqualTo(new[] { expected, expected }), "a load reads only the persisted layers");
-            Assert.That(reader.GroupReadCount, Is.EqualTo(persistedTier == 0 ? 1 : 0), "persisted entries stop the captured-reader fallback, and the warmed group answers again");
+            Assert.That(reader.GroupReadCount, Is.EqualTo(persistedTier == 0 ? 2 : 0), "persisted entries stop the captured-reader fallback, and a load warms nothing");
         }
 
         byte[] Encoding(byte seed) => PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(seed))], default);
@@ -237,8 +238,7 @@ public class PbtSnapshotBundleTests
         store.Publish();
         using PbtSnapshot unchanged = bundle.Collect(new StateId(parent), new StateId(2, rootHash), bundle.TreeRoot);
         Assert.That(buffer.TryLocate(unchanged.RootGroupPointer, out PbtGroupRecord root), Is.True, "an unchanged non-empty tree always publishes a resident root group");
-        Assert.That(bundle.TryLoadNodeGroupRecord(default, out PbtGroupRecord persisted), Is.True);
-        Assert.That(root.Payload.ToArray(), Is.EqualTo(persisted.Payload.ToArray()));
+        Assert.That(PbtSnapshotTestExtensions.LoadPayload((action, groups) => bundle.TryLoadNodeGroup(default, action, groups)), Is.EqualTo(root.Payload.ToArray()));
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         CountingStore counted = new(store);
@@ -309,31 +309,34 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void Loaded_groups_stay_warmed_until_collect_retires_the_transient_resource()
+    public void Only_the_warm_up_warms_groups_which_stay_warmed_until_collect_retires_the_transient_resource()
     {
         PbtStorageNodePath path = new([], 0);
         byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
         Reader reader = new(default, null) { GroupPayload = encoding };
         PbtSnapshotBundle bundle = CreateBundle(reader);
+        byte[]? Load() => PbtSnapshotTestExtensions.LoadPayload((action, groups) => bundle.TryLoadNodeGroup(path, action, groups));
 
-        bool loadedTwice = bundle.TryLoadNodeGroupRecord(path, out PbtGroupRecord first) & bundle.TryLoadNodeGroupRecord(path, out PbtGroupRecord second);
-        int blockReads = reader.GroupReadCount;
+        byte[]?[] loads = [Load(), Load()];
+        int loadReads = reader.GroupReadCount;
+        bundle.WarmUp(path, []);
+        byte[]? warmedLoad = Load();
+        int warmUpReads = reader.GroupReadCount;
         (PbtSnapshot snapshot, PbtTransientResource retired) = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
-        int retiredGroups = retired.WarmedGroupLog.Count;
+        int retiredGroups = retired.WarmedGroupBuffer.Count;
         retired.ReleaseLease();
         snapshot.Dispose();
-        bool loadedAfterCollect = bundle.TryLoadNodeGroupRecord(path, out _);
+        byte[]? loadAfterCollect = Load();
         int readsAfterCollect = reader.GroupReadCount;
         bundle.Dispose();
         bundle.WarmUp(path, []);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(loadedTwice && loadedAfterCollect, Is.True);
-            Assert.That(first.Payload.ToArray(), Is.EqualTo(encoding));
-            Assert.That(second.Payload.ToArray(), Is.EqualTo(encoding));
-            Assert.That(blockReads, Is.EqualTo(1), "a block reads a group from persistence once");
+            Assert.That(new[] { loads[0], loads[1], warmedLoad, loadAfterCollect }, Is.All.EqualTo(encoding));
+            Assert.That(loadReads, Is.EqualTo(2), "a loaded group is not warmed");
+            Assert.That(warmUpReads, Is.EqualTo(3), "the warm-up reads the group once and then answers loads");
             Assert.That(retiredGroups, Is.EqualTo(1), "collect hands out the resource that warmed the group");
-            Assert.That(readsAfterCollect, Is.EqualTo(2), "the next block warms a fresh resource");
+            Assert.That(readsAfterCollect, Is.EqualTo(4), "the next block reads a fresh resource");
             Assert.That(reader.GroupReadCount, Is.EqualTo(readsAfterCollect), "a disposed bundle warms nothing");
         }
     }
@@ -1102,10 +1105,10 @@ public class PbtSnapshotBundleTests
             if (found) System.Threading.Interlocked.Increment(ref _directReads);
             return found;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record)
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             System.Threading.Interlocked.Increment(ref _snapshotReads);
-            return store.TryLoad(path, out record);
+            return store.TryLoad(path, action, arg);
         }
 
         private void Apply(in PbtStorageNodePath path)

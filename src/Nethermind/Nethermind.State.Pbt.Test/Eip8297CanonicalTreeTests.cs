@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Buffers.Binary;
 using System.IO;
@@ -1279,7 +1280,8 @@ public class Eip8297CanonicalTreeTests
             record = default;
             return false;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record) => PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), path, out record);
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), action, arg);
 
         public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey) => store.GetNodeGroup(groupKey);
         private void SetNodeGroup(PbtGroupRecord record)
@@ -1523,7 +1525,8 @@ public class Eip8297CanonicalTreeTests
             record = default;
             return false;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record) => PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), path, out record);
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), action, arg);
 
         internal TrackingMemoryProvider MemoryProvider { get; } = new();
         internal PbtNodeGroupStore Inner { get; }

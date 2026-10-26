@@ -153,19 +153,22 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    /// <summary>Loads a group the fold reaches by no pointer, by its path.</summary>
+    /// <summary>Loads a group the fold reaches by no pointer, by its path, as <see cref="IPbtStore.TryLoad{TArg}"/> does.</summary>
     /// <remarks>
-    /// Tries the groups warmed for this block by path, then the persisted snapshots and persistence, whose group is appended to
-    /// the warmed groups. The groups of this bundle's changes and of every in-memory snapshot are in the buffer, which their
-    /// pins keep readable, so this source only fetches groups the buffer reaches by no pointer.
+    /// Hands over the record warmed for this block at the path, otherwise the payload in the persisted snapshots or persistence.
+    /// The groups of this bundle's changes and of every in-memory snapshot are in the buffer, which their pins keep readable,
+    /// so this source only fetches groups the buffer reaches by no pointer.
     /// </remarks>
-    /// <returns>False when no layer holds a group at <paramref name="path"/>.</returns>
-    public bool TryLoadNodeGroupRecord(in PbtStorageNodePath path, out PbtGroupRecord record)
+    /// <returns>False, without calling <paramref name="action"/>, when no layer holds a group at <paramref name="path"/>.</returns>
+    public bool TryLoadNodeGroup<TArg>(in PbtStorageNodePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
 
-        PbtWarmedGroupLog warmed = _transientResource.WarmedGroupLog;
-        return warmed.TryGet(path, out record) || TryLoadNodeGroupFromPersistence(readOnlyBundle, warmed, path, out record);
+        if (!_transientResource.WarmedGroupBuffer.TryGet(path, out PbtGroupRecord record))
+            return readOnlyBundle.TryLoadPersistedNodeGroup(path, action, arg);
+
+        action(record.Span, arg);
+        return true;
     }
 
     /// <summary>Warms the group at <paramref name="path"/> when the branch's buffer does not hold it, for this block's folds.</summary>
@@ -181,10 +184,10 @@ public sealed class PbtSnapshotBundle(
 
         try
         {
-            PbtWarmedGroupLog warmed = transientResource.WarmedGroupLog;
+            PbtWarmedGroupBuffer warmed = transientResource.WarmedGroupBuffer;
             if (!GroupRecordBuffer.TryFindGroup(RootGroupPointer, path, out PbtGroupRecord record)
                 && !warmed.TryGet(path, out record)
-                && !TryLoadNodeGroupFromPersistence(readOnlyBundle, warmed, path, out record)) return;
+                && !readOnlyBundle.TryLoadPersistedNodeGroup(path, WarmGroupState.Write, new WarmGroupState(warmed, in path, ref record))) return;
             if (!descendantBytes.IsEmpty) PbtNodeGroupCodec.ReadDescendantBytes(record.Payload.Span, descendantBytes);
         }
         finally
@@ -193,25 +196,29 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    /// <summary>Reads the group at <paramref name="path"/> from the persisted layers into <paramref name="warmed"/>.</summary>
-    private static bool TryLoadNodeGroupFromPersistence(PbtReadOnlySnapshotBundle readOnly, PbtWarmedGroupLog warmed, in PbtStorageNodePath path, out PbtGroupRecord record)
+    /// <summary>Writes the persisted payload handed to it into the warmed groups as the requested group, then indexes it.</summary>
+    /// <remarks>The payload is trusted to be the group its parent references, as warm-up trusts it.</remarks>
+    private readonly ref struct WarmGroupState
     {
-        record = default;
-        return readOnly.TryLoadPersistedNodeGroup(path, CachePersistedGroupState.Insert, new CachePersistedGroupState(warmed, in path, ref record));
-    }
+        public static readonly ReadOnlySpanAction<byte, WarmGroupState> Write = static (payload, state) =>
+        {
+            ulong pointer;
+            using (IPbtGroupRecordWriteBatch batch = state._warmed.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length))))
+            {
+                payload.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, state._path, default, payload.Length));
+                pointer = batch.BasePointer;
+            }
 
-    /// <summary>Inserts the persisted payload handed to it into the warmed groups as the requested group.</summary>
-    private readonly ref struct CachePersistedGroupState
-    {
-        public static readonly ReadOnlySpanAction<byte, CachePersistedGroupState> Insert = static (payload, insert) =>
-            insert._warmed.Append(insert._path, payload, out insert._record);
+            state._warmed.Index(state._path, pointer);
+            state._warmed.TryGet(state._path, out state._record);
+        };
 
-        private readonly PbtWarmedGroupLog _warmed;
+        private readonly PbtWarmedGroupBuffer _warmed;
         private readonly ref readonly PbtStorageNodePath _path;
         private readonly ref PbtGroupRecord _record;
 
-        /// <param name="record">Set to the inserted record.</param>
-        public CachePersistedGroupState(PbtWarmedGroupLog warmed, ref readonly PbtStorageNodePath path, ref PbtGroupRecord record)
+        /// <param name="record">Set to the written record.</param>
+        public WarmGroupState(PbtWarmedGroupBuffer warmed, ref readonly PbtStorageNodePath path, ref PbtGroupRecord record)
         {
             _warmed = warmed;
             _path = ref path;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -50,14 +51,15 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         return false;
     }
 
-    public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record)
+    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            bool found = _groups.TryGetValue(path.ToPath<PbtStorageNodePath>(), out byte[]? bytes);
-            record = found ? new PbtGroupRecord(bytes, 0) : default;
-            return found;
+            if (!_groups.TryGetValue(path.ToPath<PbtStorageNodePath>(), out byte[]? record)) return false;
+
+            action(record, arg);
+            return true;
         }
     }
 
@@ -66,7 +68,8 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     {
         if (!PbtTwoLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a two-level boundary.", nameof(groupKey));
-        if (!TryLoad(groupKey, out PbtGroupRecord record)) return null;
+        using PbtLoadedRecordBuffer loaded = new();
+        if (!loaded.TryLoad(this, groupKey, out PbtGroupRecord record)) return null;
 
         RefCountingMemory payload = _memoryProvider.Rent(record.Payload.Length);
         record.Payload.Span.CopyTo(payload.GetSpan());
@@ -118,15 +121,14 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         }
     }
 
-    /// <summary>Loads a test store's leased group as a managed record, releasing the lease.</summary>
+    /// <summary>Hands a test store's leased group payload to <paramref name="action"/>, releasing the lease.</summary>
     /// <returns>False for a null lease, which stands for a missing group.</returns>
-    public static bool TryLoadLease(RefCountingMemory? payload, scoped in PbtTraversalPath path, out PbtGroupRecord record)
+    public static bool TryLoadLease<TArg>(RefCountingMemory? payload, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
-        using (payload)
-        {
-            record = payload is null ? default : new PbtGroupRecord(Record(path.ToPath<PbtStorageNodePath>(), payload.GetSpan()), 0);
-            return payload is not null;
-        }
+        if (payload is null) return false;
+
+        using (payload) action(payload.GetSpan(), arg);
+        return true;
     }
 
     private static byte[] Record(in PbtStorageNodePath path, ReadOnlySpan<byte> payload)

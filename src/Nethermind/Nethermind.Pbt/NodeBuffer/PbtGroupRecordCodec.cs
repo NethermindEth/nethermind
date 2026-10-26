@@ -39,6 +39,10 @@ public static class PbtGroupRecordCodec
 
     public static int AlignedLength(int length) => (length + RecordAlignment - 1) & -RecordAlignment;
 
+    /// <summary>Whether <paramref name="group"/> is a group record rather than a group's payload.</summary>
+    /// <remarks>A group record starts with its <see cref="PbtGroupRecordKind.Group"/> kind, while a payload starts with <see cref="PbtNodeGroupCodec.Header"/>.</remarks>
+    public static bool IsRecord(ReadOnlySpan<byte> group) => group[0] == (byte)PbtGroupRecordKind.Group;
+
     /// <summary>A well-mixed 64-bit hash of a group path, which identifies the records of one group position.</summary>
     public static ulong PathKeyHash(in PbtStorageNodePath path)
     {

@@ -13,26 +13,31 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtTransientResourceTests
 {
     [Test]
-    public void Reset_ClearsTheWarmedGroupLogAndGrowsItsSizeOnlyPastItsCapacity([Values] bool pastCapacity)
+    public void Reset_ClearsTheWarmedGroupBufferAndGrowsItsSizeOnlyPastItsCapacity([Values] bool pastCapacity)
     {
         const int capacity = 4;
         using PbtTransientResource resource = new(new PbtTransientResource.Size(capacity));
-        PbtWarmedGroupLog warmedGroupLog = resource.WarmedGroupLog;
+        PbtWarmedGroupBuffer warmedGroupBuffer = resource.WarmedGroupBuffer;
         int groupCount = pastCapacity ? capacity + 1 : capacity;
+        ulong originalPointer = 0;
         for (byte value = 0; value < groupCount; value++)
-            warmedGroupLog.Append(PbtWarmedGroupLogTests.Path(value), PbtGroupRecordBufferTests.Payload(value, 64), out _);
+        {
+            ulong pointer = PbtSnapshotTestExtensions.Warm(warmedGroupBuffer, PbtWarmedGroupBufferTests.Path(value), PbtGroupRecordBufferTests.Payload(value, 64));
+            if (value == 0) originalPointer = pointer;
+        }
 
         resource.Reset();
 
-        bool foundAfterReset = warmedGroupLog.TryGet(PbtWarmedGroupLogTests.Path(0), out _);
+        bool foundAfterReset = warmedGroupBuffer.TryGet(PbtWarmedGroupBufferTests.Path(0), out _);
         byte[] payload = PbtGroupRecordBufferTests.Payload(0, 64);
-        warmedGroupLog.Append(PbtWarmedGroupLogTests.Path(0), payload, out _);
+        ulong newPointer = PbtSnapshotTestExtensions.Warm(warmedGroupBuffer, PbtWarmedGroupBufferTests.Path(0), payload);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resource.WarmedGroupLog, Is.SameAs(warmedGroupLog));
+            Assert.That(resource.WarmedGroupBuffer, Is.SameAs(warmedGroupBuffer));
             Assert.That(foundAfterReset, Is.False);
             Assert.That(resource.GetSize().NodeGroupsCacheSize, Is.EqualTo(groupCount));
-            Assert.That(warmedGroupLog.TryGet(PbtWarmedGroupLogTests.Path(0), out PbtGroupRecord record) && record.Payload.Span.SequenceEqual(payload), Is.True);
+            Assert.That(newPointer, Is.Not.EqualTo(originalPointer), "a reset never reuses a pointer");
+            Assert.That(warmedGroupBuffer.TryGet(PbtWarmedGroupBufferTests.Path(0), out PbtGroupRecord record) && record.Payload.Span.SequenceEqual(payload), Is.True);
         }
     }
 }

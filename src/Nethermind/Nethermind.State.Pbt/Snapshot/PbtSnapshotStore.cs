@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -57,7 +58,8 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Has
     /// <exception cref="InvalidDataException">Neither the warmed groups nor persistence hold the root group.</exception>
     private ulong CopyRootRecord()
     {
-        if (!TryLoad(new PbtTraversalPath(Span<byte>.Empty), out PbtGroupRecord record))
+        using PbtLoadedRecordBuffer loaded = new();
+        if (!loaded.TryLoad(this, new PbtTraversalPath(Span<byte>.Empty), out PbtGroupRecord record))
             throw new InvalidDataException("A referenced PBT node group is missing.");
 
         using IPbtGroupRecordWriteBatch batch = StartWriteBatch(PbtGroupRecordCodec.AlignedLength(record.Span.Length));
@@ -69,13 +71,13 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Has
     public bool TryLocate(ulong pointer, out PbtGroupRecord record) => Buffer.TryLocate(pointer, out record);
 
     /// <inheritdoc/>
-    public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record)
+    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         PbtStorageNodePath storagePath = path.ToPath<PbtStorageNodePath>();
-        if (!_recordReadTimes) return bundle.TryLoadNodeGroupRecord(storagePath, out record);
+        if (!_recordReadTimes) return bundle.TryLoadNodeGroup(storagePath, action, arg);
 
         long start = Stopwatch.GetTimestamp();
-        bool found = bundle.TryLoadNodeGroupRecord(storagePath, out record);
+        bool found = bundle.TryLoadNodeGroup(storagePath, action, arg);
         Metrics.PbtTrieUpdaterNodeGroupReadTimes.Observe(
             Stopwatch.GetTimestamp() - start,
             (found ? _foundLabels : _nullLabels)[ReadLabelIndex(storagePath)]);

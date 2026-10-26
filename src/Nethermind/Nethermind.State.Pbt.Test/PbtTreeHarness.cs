@@ -184,7 +184,8 @@ internal static class PbtStoreTestExtensions
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
-        return store.TryLoad(cursor, out PbtGroupRecord record) ? PbtSnapshotTestExtensions.CopyPayload(record) : null;
+        using PbtLoadedRecordBuffer loaded = new();
+        return loaded.TryLoad(store, cursor, out PbtGroupRecord record) ? PbtSnapshotTestExtensions.CopyPayload(record) : null;
     }
 
     internal static void SetNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey, RefCountingMemory? payload)

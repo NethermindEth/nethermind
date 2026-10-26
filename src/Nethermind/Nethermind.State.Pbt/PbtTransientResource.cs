@@ -23,7 +23,7 @@ public sealed class PbtTransientResource(PbtTransientResource.Size size) : IDisp
     private PbtResourcePool.Usage _returnUsage;
     private int _nodeGroupsCacheSize = size.NodeGroupsCacheSize;
 
-    public PbtWarmedGroupLog WarmedGroupLog { get; } = new(size.NodeGroupsCacheSize);
+    public PbtWarmedGroupBuffer WarmedGroupBuffer { get; } = new(size.NodeGroupsCacheSize);
 
     public void OnRented(IPbtResourcePool pool, PbtResourcePool.Usage usage)
     {
@@ -40,7 +40,7 @@ public sealed class PbtTransientResource(PbtTransientResource.Size size) : IDisp
     /// <remarks>
     /// Deliberately not <see cref="Dispose"/> (the <c>RefCountingDisposable</c> convention): the pool's
     /// <c>IDisposable</c> contract reserves <see cref="Dispose"/> for destroying an over-capacity resource
-    /// (freeing the <see cref="PbtWarmedGroupLog"/>), so it cannot double as the return-to-pool path.
+    /// (freeing the <see cref="PbtWarmedGroupBuffer"/>), so it cannot double as the return-to-pool path.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The final release found no return pool registered,
     /// i.e. the resource was not checked out through <see cref="PbtResourcePool.GetCachedResource"/>.</exception>
@@ -61,9 +61,9 @@ public sealed class PbtTransientResource(PbtTransientResource.Size size) : IDisp
 
     public void Reset()
     {
-        _nodeGroupsCacheSize = Math.Max(_nodeGroupsCacheSize, WarmedGroupLog.Count);
-        WarmedGroupLog.Reset();
+        _nodeGroupsCacheSize = Math.Max(_nodeGroupsCacheSize, WarmedGroupBuffer.Count);
+        WarmedGroupBuffer.Reset();
     }
 
-    public void Dispose() => WarmedGroupLog.Dispose();
+    public void Dispose() => WarmedGroupBuffer.Dispose();
 }

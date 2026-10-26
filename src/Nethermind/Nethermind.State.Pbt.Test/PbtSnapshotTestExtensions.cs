@@ -174,9 +174,36 @@ internal static class PbtSnapshotTestExtensions
 
     /// <summary>A caller-owned copy of the group at <paramref name="groupKey"/> in the branch's tree, from its buffer or else as a fold loads it.</summary>
     internal static RefCountingMemory? GetNodeGroup(this PbtSnapshotBundle bundle, PbtStorageNodePath groupKey) =>
-        bundle.GroupRecordBuffer.TryFindGroup(bundle.RootGroupPointer, groupKey, out PbtGroupRecord record) || bundle.TryLoadNodeGroupRecord(groupKey, out record)
-            ? CopyPayload(record)
-            : null;
+        bundle.GroupRecordBuffer.TryFindGroup(bundle.RootGroupPointer, groupKey, out PbtGroupRecord record) ? CopyPayload(record)
+        : LoadPayload((action, groups) => bundle.TryLoadNodeGroup(groupKey, action, groups)) is { } payload ? CopyPayload(payload)
+        : null;
+
+    /// <summary>The payload of the group <paramref name="load"/> hands over, as a record or as a payload, or null when it misses.</summary>
+    internal static byte[]? LoadPayload(Func<ReadOnlySpanAction<byte, List<byte[]>>, List<byte[]>, bool> load)
+    {
+        List<byte[]> groups = [];
+        if (!load(CollectGroup, groups)) return null;
+
+        byte[] group = groups.Single();
+        return PbtGroupRecordCodec.IsRecord(group) ? new PbtGroupRecord(group, 0).Payload.ToArray() : group;
+    }
+
+    /// <summary>Writes the group <paramref name="payload"/> to <paramref name="warmed"/> and indexes it at <paramref name="path"/>, as a warm-up does.</summary>
+    /// <returns>The pointer of the written record.</returns>
+    internal static ulong Warm(PbtWarmedGroupBuffer warmed, in PbtStorageNodePath path, ReadOnlySpan<byte> payload)
+    {
+        ulong pointer;
+        using (IPbtGroupRecordWriteBatch batch = warmed.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length))))
+        {
+            payload.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, path, default, payload.Length));
+            pointer = batch.BasePointer;
+        }
+
+        warmed.Index(path, pointer);
+        return pointer;
+    }
+
+    private static readonly ReadOnlySpanAction<byte, List<byte[]>> CollectGroup = static (group, groups) => groups.Add(group.ToArray());
 
     /// <summary>A pooled copy of <paramref name="record"/>'s payload.</summary>
     internal static RefCountingMemory CopyPayload(in PbtGroupRecord record) => CopyPayload(record.Payload.Span);

@@ -29,10 +29,10 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtNodeGroupPrefetchTests
 {
-    public enum PrefetchSkip { EmptyBal, SnapshotBacked, ReadByFold, MissingAccount }
+    public enum PrefetchSkip { EmptyBal, SnapshotBacked, MissingAccount }
 
     [Test]
-    public void NodeGroupPrefetch_skips_empty_snapshot_backed_or_fold_read_lists([Values] PrefetchSkip skip)
+    public void NodeGroupPrefetch_skips_empty_or_snapshot_backed_lists([Values] PrefetchSkip skip)
     {
         AccountChangesBuilder account = Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(1000, new StorageChange(1, 1u));
         // The storage group of C is always prefetched, so its read shows the prefetch has run.
@@ -50,13 +50,6 @@ public class PbtNodeGroupPrefetchTests
                 using RefCountingMemory payload = LifecyclePrefetchPayload(memory, path, 0);
                 return (path, (byte[]?)payload.GetSpan().ToArray());
             })]);
-        }
-        if (skip == PrefetchSkip.ReadByFold)
-        {
-            // Only a found group is kept, so the fold's read must find it.
-            reader.GetNodeGroup(Arg.Is<PbtStorageNodePath>(path => firstGroups.Contains(path)))
-                .Returns(call => LifecyclePrefetchPayload(new TrackingMemoryProvider(), call.Arg<PbtStorageNodePath>(), 0));
-            foreach (PbtStorageNodePath path in firstGroups) ((IDisposable?)bundle.GetNodeGroup(path))?.Dispose();
         }
         if (skip == PrefetchSkip.EmptyBal) bal = Build.A.BlockAccessList.TestObject;
         reader.ClearReceivedCalls();
@@ -100,8 +93,8 @@ public class PbtNodeGroupPrefetchTests
             bundle.SetTree((storageGroup, payload?.GetSpan().ToArray()), (deeperSnapshot, deeperPayload?.GetSpan().ToArray()));
         }
         HashSet<PbtStorageNodePath> firstGroups = [FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.AccountZone), FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone), FirstGroup(TestItem.AddressB, Eip8297KeyDerivation.StorageZone)];
-        // Only a found group is kept, so the prefetch reads again the groups the fold found absent.
-        PbtStorageNodePath[] reread = readByFold ? [.. firstGroups.Where(Absent)] : [];
+        // A fold's read warms nothing, so the prefetch reads again every group the fold read from persistence.
+        List<PbtStorageNodePath> reread = readByFold ? [.. firstGroups] : [];
         if (readByFold)
             foreach (PbtStorageNodePath path in firstGroups) ((IDisposable?)bundle.GetNodeGroup(path))?.Dispose();
 
@@ -119,6 +112,7 @@ public class PbtNodeGroupPrefetchTests
         {
             expected.Remove(storageGroup);
             expected.Remove(deeperSnapshot);
+            reread.Remove(storageGroup);
         }
         PbtStorageNodePath[] expectedReads = [.. expected, .. reread];
         Assert.That(() => LifecycleSingleReads(reader), Is.EquivalentTo(expectedReads).After(5000, 10));

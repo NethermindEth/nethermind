@@ -125,11 +125,19 @@ public static partial class TrieUpdater<TKey, TPath>
             absent = new(bitDepth, 0, 0);
         else
         {
-            if (!context.Store.TryLocate(current.GroupPointer, out PbtGroupRecord record) && !context.Store.TryLoad(path, out record))
-                throw new InvalidDataException("A referenced PBT node group is missing.");
-            GroupFrameReader<TKey, TPath> reader = new(record);
-            using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
-                return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
+            PbtLoadedRecordBuffer? loaded = null;
+            try
+            {
+                if (!context.Store.TryLocate(current.GroupPointer, out PbtGroupRecord record) && !(loaded = PbtLoadedRecordBuffer.Rent()).TryLoad(context.Store, path, out record))
+                    throw new InvalidDataException("A referenced PBT node group is missing.");
+                GroupFrameReader<TKey, TPath> reader = new(record);
+                using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
+                    return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
+            }
+            finally
+            {
+                if (loaded is not null) PbtLoadedRecordBuffer.Return(loaded);
+            }
         }
         return FoldSortedAndPublish(context, ref absent, current, operations, ref path, bitDepth, anchorDepth, encoding);
     }

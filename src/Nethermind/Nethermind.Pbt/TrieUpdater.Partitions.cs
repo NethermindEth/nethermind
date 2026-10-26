@@ -74,11 +74,19 @@ public static partial class TrieUpdater
             AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
             return FoldRoot(store, ref emptyRoot, default, touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
         }
-        if (!store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord) && !store.TryLoad(rootPath, out rootRecord))
-            throw new InvalidDataException("A referenced PBT node group is missing.");
-        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader = new(rootRecord);
-        using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
-            return FoldRoot(store, ref rootReader, rootReader.TakeRoot(currentRoot.Hash), touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
+        PbtLoadedRecordBuffer? loaded = null;
+        try
+        {
+            if (!store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord) && !(loaded = PbtLoadedRecordBuffer.Rent()).TryLoad(store, rootPath, out rootRecord))
+                throw new InvalidDataException("A referenced PBT node group is missing.");
+            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader = new(rootRecord);
+            using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
+                return FoldRoot(store, ref rootReader, rootReader.TakeRoot(currentRoot.Hash), touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
+        }
+        finally
+        {
+            if (loaded is not null) PbtLoadedRecordBuffer.Return(loaded);
+        }
     }
 
     /// <summary>Rebuilds the root group of <paramref name="rootReader"/> around its touched slots, each folded by <paramref name="foldSlot"/>, and publishes it.</summary>

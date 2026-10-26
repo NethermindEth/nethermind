@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Pbt;
@@ -28,12 +29,12 @@ internal sealed class PbtOverlayStore : IPbtStore
         return false;
     }
 
-    public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record)
+    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         PbtStorageNodePath key = path.ToPath<PbtStorageNodePath>();
-        bool found = _overlay.TryGetValue(key, out byte[]? bytes) || _base.TryGetValue(key, out bytes);
-        record = found ? new PbtGroupRecord(bytes, 0) : default;
-        return found;
+        if (!_overlay.TryGetValue(key, out byte[]? bytes) && !_base.TryGetValue(key, out bytes)) return false;
+        action(bytes, arg);
+        return true;
     }
 
     private void SetNodeGroup(PbtGroupRecord record) => _overlay[record.Path] = record.Span.ToArray();

@@ -629,7 +629,8 @@ public class PbtNodeGroupTests
             record = default;
             return false;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record) => PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), path, out record);
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), action, arg);
 
         internal int Fetches => _fetches;
         internal int Loads => _loads;
@@ -1029,7 +1030,8 @@ public class PbtNodeGroupTests
             record = default;
             return false;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, out PbtGroupRecord record) => PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), path, out record);
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), action, arg);
 
         internal List<PbtStorageNodePath> Reads { get; } = [];
         internal RefCountingMemory? Payload { get; set; }
