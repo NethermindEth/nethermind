@@ -25,6 +25,19 @@ public static class Metrics
 
     public static void RecordUnreadableTransactionChangesetRow() => Interlocked.Increment(ref _unreadableTransactionChangesetRows);
 
+    [DetailedMetric]
+    [Description("Time to publish the trie nodes a bulk set wrote into the snapshot bundle (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
+    public static IMetricObserver TrieNodePublishTime { get; set; } = new NoopMetricObserver();
+
+    [GaugeMetric]
+    [Description("Bytes of trie node buffer generations readable in place.")]
+    public static long NodeRecordBufferMemory { get; set; }
+
+    [GaugeMetric]
+    [Description("Number of trie node buffer generations readable in place.")]
+    public static long NodeRecordBufferGenerations { get; set; }
+
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }

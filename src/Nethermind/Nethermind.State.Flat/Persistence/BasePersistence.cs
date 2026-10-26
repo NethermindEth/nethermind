@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -494,6 +495,8 @@ public static class BasePersistence
     {
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
     }
 
     public interface ITrieWriteBatch
@@ -834,6 +837,12 @@ public static class BasePersistence
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStorageRlp(address, path, flags);
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _trieReader.TryLoadStateRlp(path, flags, action, arg);
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _trieReader.TryLoadStorageRlp(address, path, flags, action, arg);
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);

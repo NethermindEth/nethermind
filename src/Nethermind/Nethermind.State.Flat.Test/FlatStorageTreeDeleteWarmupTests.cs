@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,11 +16,13 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -34,11 +37,6 @@ public class FlatStorageTreeDeleteWarmupTests
     private const int TrieSlots = 2_000;
     private const int DeletedSlots = 64;
 
-    // The per-block node cache is direct-mapped, so a few warmed nodes are evicted by others whatever is written;
-    // a delete must not add the nodes its collapse needs on top of that. Slots are hashed with a per-process seed,
-    // so the collisions vary run to run: a flagged delete has read up to 5 more nodes, an unflagged one always 25 more.
-    private const int CollisionAllowance = 12;
-
     private static readonly Address Contract = TestItem.AddressA;
 
     [Test]
@@ -52,7 +50,7 @@ public class FlatStorageTreeDeleteWarmupTests
         // the warm-up dedupe: the delete hint must still be queued.
         long deleteLoads = fixture.CommitLoads(slots, delete: true, passDeleteFlag: true, out Hash256 storageRoot, hintWithoutValueFirst);
 
-        Assert.That(deleteLoads, Is.LessThanOrEqualTo(updateLoads + CollisionAllowance), "the commit read collapse siblings the warm-up should have loaded");
+        Assert.That(deleteLoads, Is.LessThanOrEqualTo(updateLoads), "the commit read collapse siblings the warm-up should have loaded");
         Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
     }
 
@@ -66,7 +64,7 @@ public class FlatStorageTreeDeleteWarmupTests
         long deleteLoads = fixture.CommitLoads(slots, delete: true, passDeleteFlag: false, out Hash256 storageRoot);
 
         // Not a requirement: it shows these deletes do collapse branches, so the test above can fail.
-        Assert.That(deleteLoads, Is.GreaterThan(updateLoads + CollisionAllowance));
+        Assert.That(deleteLoads, Is.GreaterThan(updateLoads));
         Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
     }
 
@@ -80,14 +78,16 @@ public class FlatStorageTreeDeleteWarmupTests
         private readonly ResourcePool _resourcePool;
         private readonly RocksDbPersistence _persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance, NullTrieNodeLog.Instance);
         private readonly StateId _baseState;
+        private readonly List<INodeRecordBuffer> _buffers = [];
+        private readonly List<Snapshot> _snapshots = [];
 
         public Fixture()
         {
             _resourcePool = new ResourcePool(_config);
             SnapshotBundle bundle = new(
-                new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
-                new TrieNodeCache(_config, LimboLogs.Instance), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            CapturingCommitTarget target = new();
+                new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null),
+                NewBuffer(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            CapturingCommitTarget target = new(_snapshots);
             using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), target, _config, new NoopTrieWarmer(), LimboLogs.Instance);
 
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
@@ -100,15 +100,6 @@ public class FlatStorageTreeDeleteWarmupTests
             scope.Commit(0);
             _baseState = new StateId(0, scope.RootHash);
             Persist(target.Snapshot ?? throw new InvalidOperationException("The base commit produced no snapshot"));
-
-            // A node cache grows to fit the blocks before it; a fresh one is far smaller than a running node's.
-            for (int block = 0; block < 2; block++)
-            {
-                (FlatWorldStateScope warming, _) = OpenScope(passDeleteFlag: false);
-                IWorldStateScopeProvider.IStorageTree tree = warming.CreateStorageTree(Contract);
-                for (int i = 0; i < TrieSlots; i++) tree.HintSet(Slot(i));
-                warming.Dispose();
-            }
         }
 
         /// <summary>Hints <paramref name="slots"/> as a block writing them would, then counts the persistence reads of the block-end commit.</summary>
@@ -147,9 +138,9 @@ public class FlatStorageTreeDeleteWarmupTests
         {
             CountingReader reader = new(_persistence.CreateReader());
             SnapshotBundle bundle = new(
-                new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
-                new TrieNodeCache(_config, LimboLogs.Instance), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(), _config, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
+                new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null),
+                NewBuffer(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(_snapshots), _config, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
             return (scope, reader);
         }
 
@@ -178,11 +169,23 @@ public class FlatStorageTreeDeleteWarmupTests
             using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To, WriteFlags.None);
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) batch.SetAccount(kv.Key.Key, kv.Value);
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages) batch.SetStorage(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value);
-            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes) batch.SetStateTrieNode(kv.Key.Key, kv.Value.FullRlp.AsSpan());
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes) batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value.FullRlp.AsSpan());
+            foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes) batch.SetStateTrieNode(path, record.Rlp);
+            foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes) batch.SetStorageTrieNode(address, path, record.Rlp);
         }
 
-        public void Dispose() => _persistence.Clear();
+        private INodeRecordBuffer NewBuffer()
+        {
+            INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+            _buffers.Add(buffer);
+            return buffer;
+        }
+
+        public void Dispose()
+        {
+            _persistence.Clear();
+            foreach (Snapshot snapshot in _snapshots) snapshot.Dispose();
+            foreach (INodeRecordBuffer buffer in _buffers) buffer.Dispose();
+        }
     }
 
     /// <summary>Runs each job inside its push. Without <c>passDeleteFlag</c> it warms only the path, as before deletes were flagged.</summary>
@@ -226,6 +229,18 @@ public class FlatStorageTreeDeleteWarmupTests
             return inner.TryLoadStorageRlp(address, path, flags);
         }
 
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Interlocked.Increment(ref _loads);
+            return inner.TryLoadStateRlp(path, flags, action, arg);
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Interlocked.Increment(ref _loads);
+            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
+        }
+
         public Account? GetAccount(Address address) => inner.GetAccount(address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => inner.TryGetSlot(address, slot, ref outValue);
         public StateId CurrentState => inner.CurrentState;
@@ -238,13 +253,14 @@ public class FlatStorageTreeDeleteWarmupTests
     }
 
     /// <summary>Keeps the snapshot and hands the block's node cache back to its pool, as the database manager does once done with it.</summary>
-    private sealed class CapturingCommitTarget : IFlatCommitTarget
+    private sealed class CapturingCommitTarget(List<Snapshot> snapshots) : IFlatCommitTarget
     {
         public Snapshot? Snapshot { get; private set; }
 
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)
         {
             Snapshot = snapshot;
+            snapshots.Add(snapshot);
             transientResource.ReleaseLease();
         }
     }

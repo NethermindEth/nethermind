@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 
 using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
@@ -453,21 +454,7 @@ namespace Nethermind.Trie
 
                     // The kernel always runs at its native width; lanes past groupCount stay cleared
                     // and their digests are dropped.
-                    if (paddedLength == KeccakHash.RateBlockLength)
-                    {
-                        if (batchSize == HashBatchSize)
-                            KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref hashes[0]);
-                        else
-                            KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
-                    }
-                    else if (batchSize == HashBatchSize)
-                    {
-                        KeccakHash.ComputePaddedMultiBlocks8Avx512(ref inputs[0], paddedLength, ref hashes[0]);
-                    }
-                    else
-                    {
-                        KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], paddedLength, ref hashes[0]);
-                    }
+                    KeccakBatch.ComputePadded(inputs, paddedLength, batchSize == HashBatchSize, ref hashes[0]);
 
                     ushort storeMask = groupMask;
                     for (int i = 0; i < groupCount; i++)

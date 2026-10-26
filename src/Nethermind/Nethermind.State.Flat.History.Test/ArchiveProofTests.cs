@@ -19,6 +19,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
+using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.Test;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
@@ -2489,10 +2491,11 @@ public class ArchiveProofTests
         _container = builder.Build();
         IResourcePool pool = _container.Resolve<IResourcePool>();
         ForwardCommitmentCapture capture = _container.Resolve<ForwardCommitmentCapture>();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         for (ulong block = 0; block <= _chain.Head; block++)
         {
-            using Snapshot snapshot = pool.CreateSnapshot(block == 0 ? StateId.PreGenesis : _chain.StateIdAt(block - 1), _chain.StateIdAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv);
-            foreach ((TreePath path, byte[] rlp) in _chain.CommittedStateNodes(block)) snapshot.Content.StateNodes[path] = new TrieNode(NodeType.Unknown, rlp);
+            using Snapshot snapshot = pool.CreateSnapshot(block == 0 ? StateId.PreGenesis : _chain.StateIdAt(block - 1), _chain.StateIdAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv, buffer);
+            foreach ((TreePath path, byte[] rlp) in _chain.CommittedStateNodes(block)) snapshot.Content.SetStateNodeRlp(buffer, path, rlp);
             capture.Capture(block, snapshot);
         }
 

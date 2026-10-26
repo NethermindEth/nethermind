@@ -8,21 +8,21 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using Bloom = Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter;
+using Nethermind.Core.Collections;
 
-namespace Nethermind.State.Flat.Test.Persistence.BloomFilter;
+namespace Nethermind.State.Flat.Test.Persistence;
 
 [TestFixture]
 public class BloomFilterTests
 {
-    private static Bloom NewBloom(long capacity = 100, double bitsPerKey = 10, long initialCount = 0) =>
+    private static BloomFilter NewBloom(long capacity = 100, double bitsPerKey = 10, long initialCount = 0) =>
         new(capacity, bitsPerKey, initialCount);
 
     [TestCase(new ulong[] { 12345 })]
     [TestCase(new ulong[] { 1, 2, 3, 100, 1000, 99999 })]
     public void Add_AddedItems_AreFound(ulong[] hashes)
     {
-        using Bloom bloom = NewBloom();
+        using BloomFilter bloom = NewBloom();
 
         foreach (ulong hash in hashes) bloom.Add(hash);
 
@@ -35,7 +35,7 @@ public class BloomFilterTests
     [Test]
     public void Add_Concurrent_ShouldBeThreadSafe()
     {
-        using Bloom bloom = NewBloom(capacity: 1000);
+        using BloomFilter bloom = NewBloom(capacity: 1000);
         int threadsCount = 10;
         int itemsPerThread = 50;
         using Barrier barrier = new(threadsCount);
@@ -65,7 +65,7 @@ public class BloomFilterTests
     {
         // The capacity is far above the 30k added keys. A saturated filter's
         // false-positive rate masks a single lost write and defeats the check below.
-        using Bloom bloom = NewBloom(capacity: 100_000);
+        using BloomFilter bloom = NewBloom(capacity: 100_000);
         const int iterationsPerThread = 10000;
 
         Task[] writerTasks = Enumerable.Range(0, 3).Select(threadId => Task.Run(() =>
@@ -108,8 +108,8 @@ public class BloomFilterTests
     public void AddUnsynchronized_SetsTheSameBitsAsAdd([Values(1.0, 10.0, 14.0, 30.0)] double bitsPerKey)
     {
         const int keys = 2_000;
-        using Bloom atomic = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
-        using Bloom plain = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
+        using BloomFilter atomic = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
+        using BloomFilter plain = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
 
         for (ulong i = 0; i < keys; i++)
         {
@@ -127,18 +127,24 @@ public class BloomFilterTests
     }
 
     [Test]
-    public void AddUnsynchronized_AfterDispose_Throws()
+    public void Operations_AfterDispose_Throw()
     {
-        Bloom bloom = NewBloom();
+        BloomFilter bloom = NewBloom();
         bloom.Dispose();
 
-        Assert.That(() => bloom.AddUnsynchronized(1), Throws.TypeOf<ObjectDisposedException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => bloom.Add(1), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(() => bloom.AddUnsynchronized(1), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(() => bloom.MightContain(1), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(() => bloom.Clear(), Throws.TypeOf<ObjectDisposedException>());
+        }
     }
 
     [Test]
     public void Dispose_MultipleTimes_ShouldNotThrow()
     {
-        Bloom bloom = NewBloom();
+        BloomFilter bloom = NewBloom();
 
         bloom.Dispose();
         Assert.DoesNotThrow(() => bloom.Dispose());
@@ -147,8 +153,8 @@ public class BloomFilterTests
     [Test]
     public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue([Values(0UL, 1UL, 0xDEADBEEFCAFEBABEUL, ulong.MaxValue)] ulong key)
     {
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
-            Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
+        using Nethermind.Core.Collections.BloomFilter bloom =
+            Nethermind.Core.Collections.BloomFilter.AlwaysTrue();
 
         Assert.That(bloom.MightContain(key), Is.True, "AlwaysTrue sentinel must match every probe");
     }
@@ -156,7 +162,7 @@ public class BloomFilterTests
     [Test]
     public void MightContain_BeforeAnyAdds_ShouldReturnFalse()
     {
-        using Bloom bloom = NewBloom();
+        using BloomFilter bloom = NewBloom();
         Assert.That(bloom.MightContain(99999), Is.False, "empty bloom filter should return false for items not added");
     }
 
@@ -164,7 +170,7 @@ public class BloomFilterTests
     public void Add_LargeNumberOfItems_ShouldWork()
     {
         const int totalItems = 500;
-        using Bloom bloom = NewBloom(capacity: totalItems);
+        using BloomFilter bloom = NewBloom(capacity: totalItems);
 
         for (ulong i = 0; i < totalItems; i++) bloom.Add(i);
 
@@ -186,7 +192,7 @@ public class BloomFilterTests
     [Test]
     public void Constructor_AcceptsInitialCount()
     {
-        using Bloom bloom = NewBloom(initialCount: 42);
+        using BloomFilter bloom = NewBloom(initialCount: 42);
         Assert.That(bloom.Count, Is.EqualTo(42));
     }
 }

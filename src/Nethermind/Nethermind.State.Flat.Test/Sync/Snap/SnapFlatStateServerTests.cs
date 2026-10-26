@@ -49,7 +49,7 @@ public class SnapFlatStateServerTests
 
         _flatDbManager = Substitute.For<IFlatDbManager>();
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
-            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()));
+            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
 
         _stateRootIndex = Substitute.For<IFlatStateRootIndex>();
         _stateRootIndex.TryGetStateId(Arg.Any<Hash256>(), out Arg.Any<StateId>())
@@ -157,7 +157,7 @@ public class SnapFlatStateServerTests
         byte[] stateRootRlp = BuildSingleAccountStateRoot(accountPath, accountRlp, out _rootHash);
         _stateId = new StateId(0, _rootHash.ValueHash256);
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
-            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()));
+            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
         WriteStateTrieRoot(stateRootRlp);
         RlpException expected = Assert.Throws<RlpException>(() => AccountDecoder.Instance.Decode(accountRlp))!;
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
@@ -191,7 +191,7 @@ public class SnapFlatStateServerTests
         _stateId = new StateId(0, _rootHash.ValueHash256);
 
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
-            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()));
+            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
 
         WriteState(stateRootRlp, addressHash, storageRootRlp);
 

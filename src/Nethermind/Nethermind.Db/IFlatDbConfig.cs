@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Config;
 
 namespace Nethermind.Db;
@@ -130,7 +131,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 
-    [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
+    [ConfigItem(Description = "Obsolete trie cache memory target, in bytes. The trie-node cache has been removed, so this setting has no effect.", DefaultValue = "536870912", HiddenFromDocs = true)]
+    [Obsolete("The trie-node cache has been removed. This setting has no effect.")]
     ulong TrieCacheMemoryBudget { get; set; }
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for the larger of 3/4 of the processor count and 1.5 per processor up to 12, 0 to disable)", DefaultValue = "-1")]
@@ -142,7 +144,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
-    [ConfigItem(Description = "Only hash the storage tries before a block is reported valid, and write their nodes when the block commits, as the state trie already does. `false` writes each storage trie's nodes before the block is reported valid.", DefaultValue = "true")]
+    [ConfigItem(Description = "Publish the storage trie roots when the block commits, after it is reported valid, as the state trie already does; their nodes are written as each write batch completes either way. `false` publishes each storage trie's root before the block is reported valid.", DefaultValue = "true")]
     bool DeferStorageTrieCommit { get; set; }
 
     [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
