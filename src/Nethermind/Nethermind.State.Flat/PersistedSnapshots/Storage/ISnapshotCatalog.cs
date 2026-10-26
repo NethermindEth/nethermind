@@ -9,11 +9,11 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// </summary>
 public interface ISnapshotCatalog
 {
-    /// <summary>Persist a catalog entry, keyed by its <c>(To, depth)</c> tuple.</summary>
+    /// <summary>Persist a catalog entry, keyed by its <c>(To, tier)</c> tuple; replaces any entry at that key.</summary>
     void Add(CatalogEntry entry);
 
-    /// <summary>Remove the entry at <c>(to, depth)</c>. Returns <c>true</c> when one was present.</summary>
-    bool Remove(in StateId to, long depth);
+    /// <summary>Remove the entry at <c>(to, tier)</c>. Returns <c>true</c> when one was present.</summary>
+    bool Remove(in StateId to, SnapshotTier tier);
 
     /// <summary>Stream all catalog entries (unordered); eagerly version-checks and seeds metadata.</summary>
     IEnumerable<CatalogEntry> Load();
