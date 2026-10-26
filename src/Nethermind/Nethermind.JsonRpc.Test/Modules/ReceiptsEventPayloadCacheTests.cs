@@ -158,7 +158,7 @@ public class ReceiptsEventPayloadCacheTests
         // Two unfiltered subscribers share every receipt; the filtered ones overlap them.
         Hash256[]?[] filters = [null, null, [TestItem.KeccakD], [TestItem.KeccakD, TestItem.KeccakC], []];
         (CollectingClient Client, Subscription Subscription)[] subscribers = [.. filters.Select(hashes =>
-            fixture.SubscribeToReceipts(hashes, ExpectedReceipts(e, hashes).Count))];
+            fixture.SubscribeToReceipts(hashes, ExpectedReceipts(e, hashes).Count > 0 ? 1 : 0))];
 
         fixture.Monitor.Raise(e);
 
@@ -180,8 +180,8 @@ public class ReceiptsEventPayloadCacheTests
     {
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
         using Fixture fixture = new();
-        // Address A and C's logs are at positions 0, 2 and 3; transactions C and D are both receipts.
-        int expected = logs ? 3 : 2;
+        // Address A and C's logs are at positions 0, 2 and 3; the receipts of transactions C and D are one notification.
+        int expected = logs ? 3 : 1;
         (CollectingClient client, _) = logs
             ? fixture.SubscribeToLogs([TestItem.AddressA, TestItem.AddressC], expected)
             : fixture.SubscribeToReceipts([TestItem.KeccakC, TestItem.KeccakD], expected);
@@ -310,8 +310,11 @@ public class ReceiptsEventPayloadCacheTests
     private static IEnumerable<string> ExpectedLogMessages(ReceiptsEventArgs e, string subscriptionId, Address? address) =>
         ExpectedLogs(e, address).Select(log => Message(log, subscriptionId));
 
-    private static IEnumerable<string> ExpectedReceiptMessages(ReceiptsEventArgs e, string subscriptionId, Hash256[]? hashes) =>
-        ExpectedReceipts(e, hashes).Select(receipt => Message(receipt, subscriptionId));
+    private static IEnumerable<string> ExpectedReceiptMessages(ReceiptsEventArgs e, string subscriptionId, Hash256[]? hashes)
+    {
+        ReceiptForRpc[] receipts = [.. ExpectedReceipts(e, hashes)];
+        return receipts.Length == 0 ? [] : [Message(receipts, subscriptionId)];
+    }
 
     private static string Message<T>(T result, string subscriptionId) => RpcTest.SerializeResponse(new JsonRpcSubscriptionResponse<T>
     {

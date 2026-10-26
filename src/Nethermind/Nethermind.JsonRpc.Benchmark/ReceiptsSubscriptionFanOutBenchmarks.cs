@@ -98,8 +98,8 @@ public class ReceiptsSubscriptionFanOutBenchmarks
         {
             (true, true) => Logs * Subscribers,
             (true, false) => Logs * (1 + unfiltered),
-            (false, true) => Receipts * Subscribers,
-            (false, false) => Math.Min(Receipts, Subscribers) + Receipts * unfiltered,
+            (false, true) => Subscribers,
+            (false, false) => Math.Min(Receipts, Subscribers) + unfiltered,
         };
         _subscriptions = [.. Enumerable.Range(0, Subscribers + unfiltered).Select(i => factory.CreateSubscription(new SerializingClient(this), Kind, (isLogs, same) switch
         {
