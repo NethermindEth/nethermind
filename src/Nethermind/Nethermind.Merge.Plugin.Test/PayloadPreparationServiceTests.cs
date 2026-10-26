@@ -431,6 +431,24 @@ public class PayloadPreparationServiceTests
 
     [Test]
     [CancelAfter(30000)]
+    public async Task Dispose_before_publishing_the_context_leaves_nothing_stored()
+    {
+        RecordingBlockImprovementContextFactory factory = new();
+        using TestPayloadPreparationService service = CreateService(factory);
+        factory.OnContextCreated = () => service.Dispose();
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        await service.GetPayload(payloadId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.Contexts, Has.Count.EqualTo(1));
+            Assert.That(service.Stored(payloadId), Is.Null);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
     public async Task StartPreparingPayload_after_dispose_returns_an_id_without_a_payload([Values] bool disposedAfterShutdownRead)
     {
         IBlockProducer producer = Substitute.For<IBlockProducer>();
