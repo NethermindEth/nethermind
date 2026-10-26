@@ -4,7 +4,9 @@
 using System;
 using Autofac;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -277,6 +279,9 @@ public partial class EezL2SystemCallsTests
     private static EezChainRules NativeRules() => EezChainRules.NativeRollupX(NativeSchedule(), TestItem.AddressD);
 
     private static void WithProcessor(EezChainRules rules, Action<IWorldState, ITransactionProcessor, BlockHeader> action)
+        => WithProcessor(rules, (_, state, processor, header) => action(state, processor, header));
+
+    private static void WithProcessor(EezChainRules rules, Action<ILifetimeScope, IWorldState, ITransactionProcessor, BlockHeader> action)
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Osaka.Instance))
@@ -285,7 +290,8 @@ public partial class EezL2SystemCallsTests
             .Build();
         IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().CreateResettableWorldState();
         using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
-            .AddSingleton<IWorldStateScopeProvider>(scopeProvider));
+            .AddSingleton<IWorldStateScopeProvider>(scopeProvider)
+            .AddModule(container.Resolve<IBlockValidationModule[]>()));
         IWorldState state = scope.Resolve<IWorldState>();
         using IDisposable stateScope = state.BeginScope(IWorldState.PreGenesis);
         ITransactionProcessor processor = scope.Resolve<ITransactionProcessor>();
@@ -294,16 +300,16 @@ public partial class EezL2SystemCallsTests
         header.IsPostMerge = true;
         header.BaseFeePerGas = 1.GWei;
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, scope.Resolve<ISpecProvider>().GetSpec(header)));
-        action(state, processor, header);
+        action(scope, state, processor, header);
     }
 
-    private static Transaction NativeTransaction(UInt256 value, ulong gas, Address? to = null, ReadOnlyMemory<byte> data = default)
+    private static Transaction NativeTransaction(UInt256 value, ulong gas, Address? to = null, ReadOnlyMemory<byte> data = default, Hash256? sourceHash = null)
     {
         Transaction tx = new()
         {
             Type = EezConstants.NativeSystemTxType,
             ChainId = 1,
-            SourceHash = TestItem.KeccakC,
+            SourceHash = sourceHash ?? TestItem.KeccakC,
             SenderAddress = Address.SystemUser,
             To = to ?? EezConstants.RollupXEezl2Address,
             Value = value,

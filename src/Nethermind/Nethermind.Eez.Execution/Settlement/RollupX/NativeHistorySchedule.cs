@@ -39,6 +39,38 @@ internal sealed class NativeHistorySchedule
 
     internal NativeHistoryExecution Resolve(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, ulong? selected)
     {
+        NativeHistoryExecution execution = ResolveOrigin(timestamp, in state, chain, selected);
+        return selected.HasValue
+            ? execution with { Import = NativeHistoryCall.Encode(execution.Cutoff, chain, state.Endpoint, execution.OriginNumber) }
+            : execution;
+    }
+
+    internal NativeHistoryExecution VerifyRecorded(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, ReadOnlyMemory<byte>? recorded)
+    {
+        ulong? selected = null;
+        ulong cutoff = 0;
+        ReadOnlySpan<byte> hashes = default;
+        if (recorded is { } input)
+        {
+            hashes = NativeHistoryCall.Decode(input.Span, out cutoff);
+            ulong count = (ulong)(hashes.Length / AbiWord.Size);
+            if (state.Endpoint > ulong.MaxValue - count) throw NativeL1Header.Invalid("history endpoint overflow");
+            selected = state.Endpoint + count;
+        }
+        NativeHistoryExecution execution = ResolveOrigin(timestamp, in state, chain, selected);
+        if (recorded is null) return execution;
+        if (cutoff != execution.Cutoff) throw NativeL1Header.Invalid("recorded history cutoff mismatch");
+        for (int offset = 0; offset < hashes.Length / AbiWord.Size; offset++)
+        {
+            ValueHash256 recordedHash = new(hashes.Slice(offset * AbiWord.Size, AbiWord.Size));
+            if (recordedHash != chain.At(state.Endpoint + (ulong)offset + 1).Hash)
+                throw NativeL1Header.Invalid("recorded history differs from checked L1 headers");
+        }
+        return execution with { Import = recorded.Value };
+    }
+
+    private NativeHistoryExecution ResolveOrigin(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, ulong? selected)
+    {
         if (timestamp <= FirstCutoff || (timestamp - FirstCutoff) % BlockInterval != 0)
             throw NativeL1Header.Invalid("history requires an aligned post-genesis timestamp");
         ulong cutoff = SourceCutoff(timestamp);
@@ -50,15 +82,13 @@ internal sealed class NativeHistorySchedule
         if (updating != selected.HasValue) throw NativeL1Header.Invalid("missing or off-schedule history transaction");
         NativeL1Header source = chain.At(selected ?? state.Endpoint);
         if (source.Timestamp > cutoff) throw NativeL1Header.Invalid("origin is newer than delayed cutoff");
-        ReadOnlyMemory<byte> import = default;
         if (updating)
         {
             if (source.Number < state.Endpoint || source.Number - state.Endpoint > NativeHistoryCall.MaxHashes)
                 throw NativeL1Header.Invalid("history import exceeds bound or regresses");
             if (cutoff > ulong.MaxValue - Interval) throw NativeL1Header.Invalid("next cutoff overflow");
-            import = NativeHistoryCall.Encode(cutoff, chain, state.Endpoint, source.Number);
         }
-        return new NativeHistoryExecution(cutoff, source.Number, source.Hash, source.PrevRandao, import);
+        return new NativeHistoryExecution(cutoff, source.Number, source.Hash, source.PrevRandao, default);
     }
 }
 
