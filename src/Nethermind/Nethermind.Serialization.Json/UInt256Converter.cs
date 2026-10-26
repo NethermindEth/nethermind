@@ -159,7 +159,8 @@ public class UInt256Converter : JsonConverter<UInt256>
     private static void WriteDecimalValue(Utf8JsonWriter writer, UInt256 value, NumberConversion conversion)
     {
         Span<byte> buffer = stackalloc byte[maxLength];
-        value.TryFormat(buffer, out int written, provider: CultureInfo.InvariantCulture);
+        bool formatted = value.TryFormat(buffer, out int written, provider: CultureInfo.InvariantCulture);
+        Debug.Assert(formatted);
         if (conversion == NumberConversion.Decimal)
             writer.WriteRawValue(buffer[..written]);
         else
@@ -169,7 +170,8 @@ public class UInt256Converter : JsonConverter<UInt256>
     private static void WriteDecimalPropertyName(Utf8JsonWriter writer, UInt256 value)
     {
         Span<byte> buffer = stackalloc byte[maxLength];
-        value.TryFormat(buffer, out int written, provider: CultureInfo.InvariantCulture);
+        bool formatted = value.TryFormat(buffer, out int written, provider: CultureInfo.InvariantCulture);
+        Debug.Assert(formatted);
         writer.WritePropertyName(buffer[..written]);
     }
 

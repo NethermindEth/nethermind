@@ -105,7 +105,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     }
 
     [Test]
-    public void Write_WhenDecimalModeIsSelected_PreservesJsonTypeAndEncoder(
+    public void Write_DecimalAndRaw_PreservesJsonTypeAndEncoder(
         [ValueSource(nameof(DecimalWriteValues))] UInt256 value,
         [Values(NumberConversion.Decimal, NumberConversion.Raw)] NumberConversion conversion,
         [Values] bool propertyName,
