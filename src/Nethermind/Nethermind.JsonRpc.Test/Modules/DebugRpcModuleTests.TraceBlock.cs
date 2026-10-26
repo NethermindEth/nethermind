@@ -37,6 +37,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Preimage;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -74,7 +75,7 @@ public partial class DebugRpcModuleTests
             object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
             string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
             JToken json = JToken.Parse(response);
-            if (timeout == "1s" || tracer == "noopTracer")
+            if (timeout == "1s")
             {
                 Assert.That(json["error"], Is.Null, response);
                 Assert.That((JArray)json["result"]!, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
@@ -89,8 +90,39 @@ public partial class DebugRpcModuleTests
                 }
             }
         }
-        Assert.That(clock.Timers, tracer == "noopTracer" ? Is.Empty : Is.Not.Empty);
+        Assert.That(clock.Timers, Is.Not.Empty);
         Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+    }
+
+    [Test]
+    public async Task Specified_block_registered_native_tracers_enforce_reached_timeout(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(NativeNoopTracer.NoopTracer, NativeKeccakPreimageTracer.KeccakPreimageTracer, "registered", Native4ByteTracer.FourByteTracer)] string tracer,
+        [Values("before", "after")] string expiry)
+    {
+        if (tracer == "registered")
+        {
+            tracer = $"native-deadline-{Guid.NewGuid():N}";
+            GethLikeNativeTracerFactory.RegisterTracer(tracer, static (options, _, transaction, _) => new NativeNoopTracer(transaction, options));
+        }
+        DeadlineExecution clock = new() { Expiry = expiry };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        clock.Enabled = true;
+        clock.Target = block.Transactions[expiry == "before" ? 1 : 0].Nonce;
+        object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), method, selector,
+            new { tracer, timeout = "1s", streamMode = false });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That(clock.Timers, Has.Count.EqualTo(expiry == "before" ? 2 : 1));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
     }
 
     [Test]
