@@ -909,7 +909,9 @@ public partial class BlockProcessorTests
         }
     }
 
-    private static void ConfigureBatchTraceContract(ContainerBuilder builder) => builder.WithGenesisPostProcessor((block, state, specProvider) =>
+    private static void ConfigureBatchTraceContract(ContainerBuilder builder) => builder
+        .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Debug))
+        .WithGenesisPostProcessor((block, state, specProvider) =>
     {
         if (!state.AccountExists(SharedContract)) state.CreateAccount(SharedContract, 0);
         byte[] code =
