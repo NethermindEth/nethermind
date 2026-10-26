@@ -75,7 +75,7 @@ internal static class SyncSettings
                     pivot = (number, hash, difficulty);
                     break;
                 }
-                catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException or JsonException or FormatException or OverflowException or InvalidOperationException or ArgumentOutOfRangeException && !cancellationToken.IsCancellationRequested)
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or OperationCanceledException or JsonException or FormatException or OverflowException or InvalidOperationException or ArgumentOutOfRangeException)
                 {
                     Console.WriteLine($"{name} attempt {attempt}/5 failed: {exception.GetType().Name}");
                     if (attempt < 5) await delay(TimeSpan.FromSeconds(10 * attempt), cancellationToken);
