@@ -581,12 +581,16 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task Handshake_at_an_alternate_address_does_not_prove_a_static_peer_host()
+        public async Task Handshake_proves_a_static_peer_host_only_at_the_matched_address([Values] bool atAlternateAddress)
         {
             PeerPoolTests.ManualTimestampProvider timeProvider = new();
             await using Context ctx = new(staticPeerHosts: "5.5.5.5", peerPoolTimeProvider: timeProvider);
-            // Same flags as the RlpxHost fallback dial: a host match is not copied to the other address.
-            ctx.RlpxPeer.AlternateDialNode = node => new Node(node.Id, "6.6.6.6", node.Port) { IsStatic = node.IsStatic && !ctx.StaticHostFilter.IsPromoted(node) };
+            if (atAlternateAddress)
+            {
+                // Same flags as the RlpxHost fallback dial: a host match is not copied to the other address.
+                ctx.RlpxPeer.AlternateDialNode = node => new Node(node.Id, "6.6.6.6", node.Port) { IsStatic = node.IsStatic && !ctx.StaticHostFilter.IsPromoted(node) };
+            }
+
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             ctx.RlpxPeer.SessionCreated += HandshakeOnCreate;
@@ -596,7 +600,7 @@ namespace Nethermind.Network.Test
             Assert.That(() => pooled.OutSession?.State, Is.EqualTo(SessionState.HandshakeComplete).After(_delayLonger, 10));
             ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
 
-            Assert.That(ctx.StaticHostFilter.IsProven(pooled.Node), Is.False, "the handshake was at 6.6.6.6, not at the matched address");
+            Assert.That(ctx.StaticHostFilter.IsProven(pooled.Node), Is.EqualTo(!atAlternateAddress));
 
             ctx.RlpxPeer.MakeItFail();
             pooled.OutSession!.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Remote, "test");
@@ -607,7 +611,14 @@ namespace Nethermind.Network.Test
             }
 
             timeProvider.Advance(PeerPool.UnprovenStaticHostTimeout);
-            Assert.That(() => pooled.Node.IsStatic, Is.False.After(_delayLonger, 10));
+            if (atAlternateAddress)
+            {
+                Assert.That(() => pooled.Node.IsStatic, Is.False.After(_delayLonger, 10));
+            }
+            else
+            {
+                Assert.That(() => pooled.Node.IsStatic, Is.True.After(300), "a proven node is not demoted");
+            }
         }
 
         // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,

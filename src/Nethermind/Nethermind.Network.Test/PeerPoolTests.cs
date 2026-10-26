@@ -531,6 +531,33 @@ public class PeerPoolTests
     }
 
     [Test]
+    public async Task StaticHostPeer_ArrivingAgain_DoesNotBecomePermanentStatic([Values] bool arrivalIsPooledInstance)
+    {
+        StaticHostFilter filter = new("1.2.3.0/24", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+        PeerPool pool = new(new TestNodeSource(), Substitute.For<INodeStatsManager>(), new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig(), LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), filter);
+
+        Node arrival;
+        if (arrivalIsPooledInstance)
+        {
+            arrival = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303)).Node;
+        }
+        else
+        {
+            pool.GetOrAdd(new Node(TestItem.PublicKeyA, "9.9.9.9", 30303));
+            // An inbound session node: its remote port is ephemeral, so only the IP is matched.
+            arrival = new Node(TestItem.PublicKeyA, "1.2.3.4", 12345);
+            Assert.That(filter.TryPromote(arrival, matchPort: false), Is.True);
+        }
+
+        Peer pooled = pool.GetOrAdd(arrival);
+        filter.Demote(pooled.Node);
+
+        Assert.That(pooled.Node.IsStatic, Is.False);
+        await pool.StopAsync();
+    }
+
+    [Test]
     public void GetOrAdd_MergesVerifiedEnrStateIntoPersistedPeer()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
