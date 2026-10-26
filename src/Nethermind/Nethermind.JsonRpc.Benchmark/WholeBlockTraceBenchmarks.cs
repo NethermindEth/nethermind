@@ -295,8 +295,8 @@ public class WholeBlockTraceBenchmarks
 
     private static byte[] RouterCode(int calls)
     {
-        List<byte> code = new();
-        List<int> failureJumps = new();
+        List<byte> code = [];
+        List<int> failureJumps = [];
         for (int i = 0; i < calls; i++)
         {
             code.AddRange([0x60, 0x20, 0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0x73]);
