@@ -59,14 +59,14 @@ try
     {
         var output = await Run(OperatingSystem.IsWindows() ? "python" : "python3",
             ["-m", "unittest", "discover", "-s", path, "-p", "test*.py", "-v"], cancellation.Token);
-        if (!Regex.IsMatch(output, @"\bRan [1-9][0-9]* tests?\b"))
+        if (!PythonSummary().IsMatch(output))
             throw new InvalidOperationException("Python discovery did not report any executed tests.");
     }
 
     foreach (var file in csharpFiles)
     {
         var output = await Run("dotnet", ["run", "--file", file], cancellation.Token);
-        if (!Regex.IsMatch(output, @"(?m)^Passed [1-9][0-9]* tests?\.\r?$"))
+        if (!CSharpSummary().IsMatch(output))
             throw new InvalidOperationException($"{file} did not report a positive 'Passed N tests.' summary.");
     }
     foreach (var file in shellFiles)
@@ -93,4 +93,12 @@ static async Task<string> Run(string executable, string[] arguments, Cancellatio
     if (result.Code != 0)
         throw new InvalidOperationException($"{executable} exited with code {result.Code}.");
     return result.Output + result.Error;
+}
+
+partial class Program
+{
+    [GeneratedRegex(@"\bRan [1-9][0-9]* tests?\b")]
+    private static partial Regex PythonSummary();
+    [GeneratedRegex(@"(?m)^Passed [1-9][0-9]* tests?\.\r?$")]
+    private static partial Regex CSharpSummary();
 }
