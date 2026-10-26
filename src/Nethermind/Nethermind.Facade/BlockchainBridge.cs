@@ -981,10 +981,7 @@ namespace Nethermind.Facade
             {
                 try
                 {
-                    IReleaseSpec spec = specProvider.GetSpec(header).WithoutEip158();
-                    IWorldState worldState = scope.Component.WorldState;
-                    worldState.ApplyStateOverridesNoCommit(codeInfoRepository, stateOverride, spec);
-                    worldState.Commit(spec, commitRoots: false);
+                    scope.Component.WorldState.ApplyStateOverrides(codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number, merkleize: false);
                 }
                 catch
                 {

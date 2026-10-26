@@ -270,7 +270,8 @@ public partial class VirtualMachine<TGasPolicy>(
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
     // Tracer capabilities are fixed for one execution. IsCancelable also selects both the dispatch table
     // and its matching loop specialization; IsTracingImplicitStop avoids walking the tracer graph at frame exit,
-    // and IsTracingOperationGasCost and IsTracingOperationStart avoid walking it per traced opcode.
+    // and IsTracingOperationGasCost and IsTracingOperationStart avoid walking it per traced opcode. _stackPushTracer,
+    // null when no tracer observes stack pushes, saves resolving that for each frame's stack.
     private VmTracerFlags _tracerFlags;
     internal bool IsTracingActions => _tracerFlags.IsTracingActions;
     internal bool IsTracingRefunds => _tracerFlags.IsTracingRefunds;
@@ -279,6 +280,7 @@ public partial class VirtualMachine<TGasPolicy>(
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
     private bool IsTracingOperationGasCost { get => DispatchFlags.Tracing(field); set; }
     internal bool IsTracingOperationStart { get => DispatchFlags.Tracing(field); private set; }
+    private ITxTracer? _stackPushTracer;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -362,6 +364,7 @@ public partial class VirtualMachine<TGasPolicy>(
         IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
         IsTracingOperationGasCost = TTracingInst.IsActive && txTracer.Any<ITraceOperationGasCost>(static tracer => tracer.IsTracingInstructions);
         IsTracingOperationStart = TTracingInst.IsActive && txTracer.Any<ITraceOperationStart>(static tracer => tracer.IsTracingInstructions);
+        _stackPushTracer = txTracer.IsTracingStackPushes ? txTracer : null;
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
         _isInstructionTraceActive = false;
@@ -1654,11 +1657,11 @@ public partial class VirtualMachine<TGasPolicy>(
         EvmStack stack;
         if (vmState.IsContinuation)
         {
-            vmState.RestoreStack<TTracingInst>(_txTracer, codeSpan, out stack);
+            vmState.RestoreStack<TTracingInst>(_stackPushTracer, codeSpan, out stack);
         }
         else if (TTracingInst.IsActive)
         {
-            vmState.InitializeStacks(_txTracer, codeSpan, out stack);
+            vmState.InitializeStacks(_stackPushTracer, codeSpan, out stack);
         }
         else
         {
