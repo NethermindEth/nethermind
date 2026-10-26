@@ -21,10 +21,10 @@ internal static class SnapshotLayerProbe
     public const int StorageNode = 3;
     private const int Kinds = 4;
 
-    // Per kind: bundle reads, a spare slot, reads that walked layers,
+    // Per kind: bundle reads, samples dropped as outliers, reads that walked layers,
     // read-only bundle entries, then per content type (0 = mutable, 1 = sorted): probes, hits, sampled ticks, samples.
     private const int Reads = 0;
-    private const int Unused = 1;
+    private const int Outliers = 1;
     private const int Walked = 2;
     private const int ReadOnlyEntries = 3;
     private const int PerContent = 4;
@@ -39,6 +39,7 @@ internal static class SnapshotLayerProbe
     private static readonly ConcurrentBag<long[]> _all = [];
     private static readonly long[] _last = new long[Slots];
     private static readonly double _timestampFloorNs = CalibrateFloorNs();
+    private static readonly long _outlierTicks = Stopwatch.Frequency / 200_000;
     private static readonly Lock _reportLock = new();
 
     [ThreadStatic] private static long[]? _local;
@@ -89,8 +90,17 @@ internal static class SnapshotLayerProbe
         if (found) local[at + Hits]++;
         if (start != 0)
         {
-            local[at + SampledTicks] += Stopwatch.GetTimestamp() - start;
-            local[at + Samples]++;
+            long elapsed = Stopwatch.GetTimestamp() - start;
+            // A sample this long means the thread was descheduled mid-probe; keep it out of the mean.
+            if (elapsed > _outlierTicks)
+            {
+                local[kind * Stride + Outliers]++;
+            }
+            else
+            {
+                local[at + SampledTicks] += elapsed;
+                local[at + Samples]++;
+            }
         }
     }
 
@@ -142,7 +152,8 @@ internal static class SnapshotLayerProbe
                 sb.Append(' ').Append(names[kind])
                     .Append("={r=").Append(delta[b + Reads])
                     .Append(",walk=").Append(delta[b + Walked])
-                    .Append(",ro=").Append(delta[b + ReadOnlyEntries]);
+                    .Append(",ro=").Append(delta[b + ReadOnlyEntries])
+                    .Append(",out=").Append(delta[b + Outliers]);
                 AppendContent(sb, "m", delta, b + PerContent);
                 AppendContent(sb, "s", delta, b + PerContent + 4);
                 sb.Append('}');
