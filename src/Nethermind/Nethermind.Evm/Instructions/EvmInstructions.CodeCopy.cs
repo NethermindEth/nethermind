@@ -344,7 +344,7 @@ public static partial class EvmInstructions
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
-        ulong traceGasCost = TTracingInst.IsActive
+        ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart
             ? vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.ExtCodeCost, Eip8038.IsActive ? Eip8038Constants.WarmAccess : 0)
             : 0;
 
