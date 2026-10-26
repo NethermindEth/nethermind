@@ -4,7 +4,6 @@
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 
@@ -25,8 +24,6 @@ public class TestMergeModule(IModule? mergeModule) : Module
             builder.AddModule(mergeModule);
 
         builder
-            .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
-
             // Block production related.
             .AddScoped<PostMergeBlockProducerFactory>()
 

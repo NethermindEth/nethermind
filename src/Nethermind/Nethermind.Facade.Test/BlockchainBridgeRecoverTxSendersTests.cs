@@ -120,6 +120,18 @@ public class BlockchainBridgeRecoverTxSendersTests(bool compactReceipts)
     }
 
     [Test]
+    public void Recovers_the_senders_after_an_empty_stored_receipt()
+    {
+        Block block = BuildBlock(TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC);
+        TxReceipt?[] receipts = [Build.A.Receipt.WithSender(TestItem.AddressA).TestObject, null, Build.A.Receipt.WithSender(TestItem.AddressC).TestObject];
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = new ReceiptArrayStorageDecoder(compactReceipts).EncodeAsBytes(receipts!, RlpBehaviors.Storage);
+
+        _blockchainBridge.RecoverTxSenders(block);
+
+        Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC }));
+    }
+
+    [Test]
     public void Recovers_every_sender_when_the_receipts_do_not_cover_the_block([Values] bool storeOneReceipt)
     {
         Block block = BuildBlock(TestItem.PrivateKeyA, TestItem.PrivateKeyB);
