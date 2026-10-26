@@ -22,7 +22,7 @@ public sealed class ConfigureMemoryAllocators(
     MallocHelper? mallocHelper = null)
     : IStep
 {
-    private const uint NettyPageSize = 8192;
+    private const uint NettyPageSize = 4096;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ConfigureMemoryAllocators>();
     private readonly MallocHelper _mallocHelper = mallocHelper ?? MallocHelper.Instance;
@@ -51,8 +51,7 @@ public sealed class ConfigureMemoryAllocators(
         // Old configs may still set -1, the default while Init.MemoryHint existed.
         int arenaOrder = networkConfig.NettyArenaOrder < 0 ? INetworkConfig.DefaultNettyArenaOrder : networkConfig.NettyArenaOrder;
 
-        // For some reason needs to be half page size to get page size
-        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (NettyPageSize / 2).ToString((IFormatProvider?)null));
+        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", NettyPageSize.ToString((IFormatProvider?)null));
 
         // Set PooledByteBufferAllocator.Default configuration.
         // Set it to a fixed 1 MB, 1 arena. Code should prefer NethermindBuffers.Default instead as it is easier to override.

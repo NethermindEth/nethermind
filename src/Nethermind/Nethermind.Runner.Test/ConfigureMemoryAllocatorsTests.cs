@@ -36,8 +36,11 @@ public class ConfigureMemoryAllocatorsTests
         new ConfigureMemoryAllocators(new InitConfig(), networkConfig, LimboLogs.Instance, Substitute.For<MallocHelper>()).Execute(CancellationToken.None);
 
         int expectedChunkSize = PooledByteBufferAllocator.DefaultPageSize << expectedOrder;
-        Assert.That(((PooledByteBufferAllocator)NethermindBuffers.Default).Metric.ChunkSize, Is.EqualTo(expectedChunkSize));
-        Assert.That(((PooledByteBufferAllocator)NethermindBuffers.RlpxAllocator).Metric.ChunkSize, Is.EqualTo(expectedChunkSize));
-        Assert.That(((PooledByteBufferAllocator)NethermindBuffers.Default).Metric.HeapArenas().Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((PooledByteBufferAllocator)NethermindBuffers.Default).Metric.ChunkSize, Is.EqualTo(expectedChunkSize));
+            Assert.That(((PooledByteBufferAllocator)NethermindBuffers.RlpxAllocator).Metric.ChunkSize, Is.EqualTo(expectedChunkSize));
+            Assert.That(((PooledByteBufferAllocator)NethermindBuffers.Default).Metric.HeapArenas().Count, Is.EqualTo(1));
+        }
     }
 }
