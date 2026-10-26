@@ -711,8 +711,12 @@ public class ParallelUpdateRootTests
         }
 
         /// <summary>The groups reached by walking the buffer from <see cref="RootPointer"/>, pruned below <paramref name="lowerBound"/>.</summary>
-        public IReadOnlyList<PbtPhysicalPayload> TreePayloads(ulong lowerBound = default) =>
-            PbtNodeGroupKey.InKeyOrder(Buffer, RootPointer, lowerBound).Select(static record => new PbtPhysicalPayload(record.Path, record.Payload.Span)).ToArray();
+        public IReadOnlyList<PbtPhysicalPayload> TreePayloads(ulong lowerBound = default)
+        {
+            List<PbtPhysicalPayload> payloads = [];
+            foreach (PbtGroupRecord record in PbtNodeGroupKey.InKeyOrder(Buffer, RootPointer, lowerBound)) payloads.Add(new PbtPhysicalPayload(record.Path, record.Payload.Span));
+            return payloads;
+        }
 
         /// <summary>The payload of the group at <paramref name="path"/> in the tree under <see cref="RootPointer"/>, or null when the walk misses.</summary>
         public byte[]? FindGroup(PbtStorageNodePath path) =>

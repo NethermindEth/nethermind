@@ -87,6 +87,9 @@ internal static class PbtSnapshotTestExtensions
     /// links from its direct parent and its unlisted siblings stay unresolved. A null payload marks its group absent: an absent root
     /// publishes an empty tree, and an absent descendant is unlinked from its parent. Unresolved groups fall back to the persisted view.
     /// </remarks>
+    /// <summary>The groups <see cref="PbtSnapshotContent.EnumerateNodeGroups"/> enumerates, in its order.</summary>
+    internal static PbtGroupRecord[] NodeGroups(this PbtSnapshotContent content) => [.. content.EnumerateNodeGroups()];
+
     internal static void SetTree(this PbtSnapshotContent content, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {
         content.BeginNodeGroupWrites(content.GroupRecordBuffer ?? DefaultGroupRecordBuffer);

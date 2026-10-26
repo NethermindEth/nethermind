@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.NodeBuffer;
@@ -45,47 +46,16 @@ public static class PbtNodeGroupKey
         return PbtStorageNodePath.Create(path, depth);
     }
 
-    /// <summary>The groups of the tree under <paramref name="rootPointer"/> reserved at or after <paramref name="lowerBound"/>: the root group first, then the rest in key order.</summary>
+    /// <summary>Enumerates the groups of the tree under <paramref name="rootPointer"/> reserved at or after <paramref name="lowerBound"/>: the root group first, then the rest in key order.</summary>
     /// <remarks>
     /// The root group is keyed apart from the others. Below it, a linked group's subtree is one contiguous key range whose
     /// prefix is the group's path, and the ranges of a group's links follow their slot order. A group sorts before its
     /// subtree or inside one of its children's ranges, so it is carried down as pending until the walk passes it. Links below
-    /// <paramref name="lowerBound"/>, and links not in the buffer, are not followed. A pin at or below
-    /// <paramref name="lowerBound"/> must outlive every use of the records.
+    /// <paramref name="lowerBound"/>, and links not in the buffer, are not followed. Returned records are borrowed: a pin at
+    /// or below <paramref name="lowerBound"/> must outlive the enumeration and every use of the records.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A record at or above <paramref name="lowerBound"/> is no longer resident.</exception>
-    public static List<PbtGroupRecord> InKeyOrder(IPbtGroupRecordBuffer buffer, ulong rootPointer, ulong lowerBound)
-    {
-        List<PbtGroupRecord> ordered = [];
-        if (!TryResolve(buffer, rootPointer, lowerBound, out PbtGroupRecord rootRecord)) return ordered;
-        ordered.Add(rootRecord);
-        MergeBelow(buffer, rootRecord, lowerBound, [], ordered);
-        return ordered;
-    }
-
-    /// <summary>Emits the groups below <paramref name="record"/> merged with <paramref name="pending"/>, the sorted groups above them whose keys fall in its range.</summary>
-    private static void MergeBelow(IPbtGroupRecordBuffer buffer, in PbtGroupRecord record, ulong lowerBound,
-        List<(byte[] Key, PbtGroupRecord Record)> pending, List<PbtGroupRecord> ordered)
-    {
-        PbtGroupLinks links = record.Links;
-        Span<byte> key = stackalloc byte[MaxLength];
-        for (int slot = 0; slot < PbtTwoLevelGroupGeometry.BoundarySlots; slot++)
-        {
-            if (!TryResolve(buffer, links[slot], lowerBound, out PbtGroupRecord child)) continue;
-            int below = 0;
-            while (below < pending.Count && CompareToRange(pending[below].Key, child.Path) < 0) ordered.Add(pending[below++].Record);
-            int inside = below;
-            while (inside < pending.Count && CompareToRange(pending[inside].Key, child.Path) == 0) inside++;
-            List<(byte[] Key, PbtGroupRecord Record)> childPending = pending.GetRange(below, inside - below);
-            pending.RemoveRange(0, inside);
-            byte[] childKey = Encode(child.Path, key).ToArray();
-            int index = 0;
-            while (index < childPending.Count && childPending[index].Key.AsSpan().SequenceCompareTo(childKey) < 0) index++;
-            childPending.Insert(index, (childKey, child));
-            MergeBelow(buffer, child, lowerBound, childPending, ordered);
-        }
-        foreach ((_, PbtGroupRecord group) in pending) ordered.Add(group);
-    }
+    public static KeyOrderEnumerable InKeyOrder(IPbtGroupRecordBuffer buffer, ulong rootPointer, ulong lowerBound) => new(buffer, rootPointer, lowerBound);
 
     private static bool TryResolve(IPbtGroupRecordBuffer buffer, ulong pointer, ulong lowerBound, out PbtGroupRecord record)
     {
@@ -110,5 +80,99 @@ public static class PbtNodeGroupKey
         if (key.Length == fullBytes) return -1;
         int mask = 0xFF << (8 - remainder) & 0xFF;
         return (key[fullBytes] & mask) - (bits[fullBytes] & mask);
+    }
+
+    public readonly ref struct KeyOrderEnumerable(IPbtGroupRecordBuffer buffer, ulong rootPointer, ulong lowerBound)
+    {
+        private readonly IPbtGroupRecordBuffer _buffer = buffer;
+        private readonly ulong _rootPointer = rootPointer;
+        private readonly ulong _lowerBound = lowerBound;
+
+        public KeyOrderEnumerator GetEnumerator() => new(_buffer, _rootPointer, _lowerBound);
+    }
+
+    /// <remarks>
+    /// Pending groups are kept in descending key order, so the next one to emit is the last, and the pending groups in a
+    /// child's range are a tail of its parent's, which the child's frame emits before it is popped.
+    /// </remarks>
+    public ref struct KeyOrderEnumerator(IPbtGroupRecordBuffer buffer, ulong rootPointer, ulong lowerBound) : IDisposable
+    {
+        private readonly IPbtGroupRecordBuffer _buffer = buffer;
+        private readonly ulong _rootPointer = rootPointer;
+        private readonly ulong _lowerBound = lowerBound;
+        private ArrayPoolListRef<Frame> _stack = new(4);
+        private ArrayPoolListRef<PbtGroupRecord> _pending = new(4);
+        private bool _started;
+
+        public PbtGroupRecord Current { get; private set; }
+
+        public bool MoveNext()
+        {
+            if (!_started)
+            {
+                _started = true;
+                if (TryResolve(_buffer, _rootPointer, _lowerBound, out PbtGroupRecord root))
+                {
+                    _stack.Add(new Frame { Record = root });
+                    Current = root;
+                    return true;
+                }
+            }
+
+            Span<byte> key = stackalloc byte[MaxLength];
+            Span<byte> childKey = stackalloc byte[MaxLength];
+            while (_stack.Count > 0)
+            {
+                ref Frame frame = ref _stack.GetRef(_stack.Count - 1);
+                if (frame.HasChild)
+                {
+                    if (_pending.Count > frame.PendingStart && CompareToRange(Encode(_pending[^1].Path, key), frame.Child.Path) < 0) return EmitLast();
+
+                    int inside = _pending.Count;
+                    while (inside > frame.PendingStart && CompareToRange(Encode(_pending[inside - 1].Path, key), frame.Child.Path) == 0) inside--;
+                    ReadOnlySpan<byte> encodedChild = Encode(frame.Child.Path, childKey);
+                    int index = _pending.Count;
+                    while (index > inside && Encode(_pending[index - 1].Path, key).SequenceCompareTo(encodedChild) < 0) index--;
+                    PbtGroupRecord child = frame.Child;
+                    frame.HasChild = false;
+                    _pending.Insert(index, child);
+                    _stack.Add(new Frame { Record = child, PendingStart = inside });
+                    continue;
+                }
+
+                if (frame.NextSlot < PbtTwoLevelGroupGeometry.BoundarySlots)
+                {
+                    frame.HasChild = TryResolve(_buffer, frame.Record.GetLink(frame.NextSlot++), _lowerBound, out frame.Child);
+                    continue;
+                }
+
+                if (_pending.Count > frame.PendingStart) return EmitLast();
+                _stack.RemoveAt(_stack.Count - 1);
+            }
+
+            return false;
+        }
+
+        private bool EmitLast()
+        {
+            Current = _pending[^1];
+            _pending.RemoveAt(_pending.Count - 1);
+            return true;
+        }
+
+        public void Dispose()
+        {
+            _stack.Dispose();
+            _pending.Dispose();
+        }
+
+        private struct Frame
+        {
+            public PbtGroupRecord Record;
+            public PbtGroupRecord Child;
+            public int NextSlot;
+            public int PendingStart;
+            public bool HasChild;
+        }
     }
 }

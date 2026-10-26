@@ -70,8 +70,8 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     /// Groups the tree inherits from earlier layers, and groups replaced within this layer, are not enumerated. The layer's
     /// generation pin keeps the records valid while the layer is not reset.
     /// </remarks>
-    public IEnumerable<PbtGroupRecord> EnumerateNodeGroups() =>
-        _nodeGroupPin is null ? [] : PbtNodeGroupKey.InKeyOrder(_nodeGroupPin.Buffer, RootGroupPointer, _nodeGroupPin.WriteBoundary);
+    public PbtNodeGroupKey.KeyOrderEnumerable EnumerateNodeGroups() =>
+        _nodeGroupPin is null ? default : PbtNodeGroupKey.InKeyOrder(_nodeGroupPin.Buffer, RootGroupPointer, _nodeGroupPin.WriteBoundary);
 
     /// <summary>The runs of header slots for <see cref="PbtPath"/> run keys, or of the other slots for <see cref="PbtStoragePath"/> ones.</summary>
     private ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>

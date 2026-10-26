@@ -67,7 +67,7 @@ public class PbtSnapshotCompactorTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true)));
-                Assert.That(compacted.Content.EnumerateNodeGroups().Count(), Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
+                Assert.That(compacted.Content.NodeGroups().Length, Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
                 Assert.That(found, Is.EqualTo(!emptied));
                 Assert.That(payload?.Memory.ToArray(), Is.EqualTo(emptied ? null : expected));
             }
@@ -126,7 +126,7 @@ public class PbtSnapshotCompactorTests
             Assert.That(buffer.TryLocate(childPointer, out PbtGroupRecord child), Is.True);
             Assert.That(child.Path, Is.EqualTo(childPath));
         }
-        Assert.That(compacted.Content.EnumerateNodeGroups().Select(static record => record.Path), Is.EquivalentTo(new[] { default, childPath }),
+        Assert.That(compacted.Content.NodeGroups().Select(static record => record.Path), Is.EquivalentTo(new[] { default, childPath }),
             "the compacted snapshot persists its newest tree's groups");
     }
 
