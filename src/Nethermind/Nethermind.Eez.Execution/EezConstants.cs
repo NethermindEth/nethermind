@@ -10,6 +10,18 @@ public static class EezConstants
     /// <summary>The EIP-2718 type of EEZ's unsigned native system transactions.</summary>
     public const TxType SystemTxType = (TxType)0x76;
 
+    /// <summary>The EIP-2718 type of the fresh-network native envelope.</summary>
+    public const TxType NativeSystemTxType = (TxType)0x45;
+
+    /// <summary>The native envelope version for the recorded L1 history profile.</summary>
+    public const ulong NativeSystemTxVersion = 1;
+
+    /// <summary>The fixed L1 history predeploy used by native history transactions.</summary>
+    public static readonly Address L1HistoryAddress = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0077");
+
+    /// <summary>The maximum metered gas of a native L1 history transaction.</summary>
+    public const ulong L1HistoryTxGasCap = 2_000_000;
+
     /// <summary>The execution budget every rollup0 system transaction receives; the wire format carries no gas fields.</summary>
     public const ulong SystemTxGasLimit = 2_000_000;
 
