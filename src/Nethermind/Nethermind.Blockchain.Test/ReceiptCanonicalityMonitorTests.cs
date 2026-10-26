@@ -44,11 +44,11 @@ public class ReceiptCanonicalityMonitorTests
             return [];
         });
 
-        ConcurrentQueue<(Hash256?, bool)> published = new();
+        ConcurrentQueue<(Hash256?, bool, Transaction[]?)> published = new();
         using CountdownEvent allPublished = new(3);
         monitor.ReceiptsInserted += (_, e) =>
         {
-            published.Enqueue((e.BlockHeader.Hash, e.WasRemoved));
+            published.Enqueue((e.BlockHeader.Hash, e.WasRemoved, e.Transactions));
             allPublished.Signal();
         };
 
@@ -58,7 +58,7 @@ public class ReceiptCanonicalityMonitorTests
 #pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(allPublished.Wait(Timeout), Is.True);
 #pragma warning restore NUnit2045
-        Assert.That(published, Is.EqualTo(new[] { (removed.Hash, true), (first.Hash, false), (second.Hash, false) }));
+        Assert.That(published, Is.EqualTo(new[] { (removed.Hash, true, removed.Transactions), (first.Hash, false, first.Transactions), (second.Hash, false, second.Transactions) }));
     }
 
     [Test]

@@ -170,6 +170,13 @@ public class FilterManagerTests
             static receipt => receipt.WithBlockNumber(4L));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void logs_should_only_match_block_of_block_hash_filter([Values] bool isSameBlock)
+        => AssertFilterLogs(
+            [static filter => filter.AtBlockHash(TestItem.KeccakA)],
+            [receipt => receipt.WithBlockHash(isSameBlock ? TestItem.KeccakA : TestItem.KeccakB)],
+            logs => Assert.That(logs, isSameBlock ? Is.Not.Empty : Is.Empty));
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_existing_address()
         => LogsShouldNotBeEmpty(static filter => filter.WithAddress(TestItem.AddressA),
             static receipt => receipt.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject));
