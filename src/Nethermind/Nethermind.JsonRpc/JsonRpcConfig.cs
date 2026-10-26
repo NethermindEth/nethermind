@@ -85,6 +85,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public ulong RpcTxFeeCap { get; set; } = (ulong)1.Ether;
     public bool EnableEthSignTransaction { get; set; }
     public string[] CorsOrigins { get; set; } = ["*"];
+    public string[] AllowedHosts { get; set; } = ["*"];
+    public string[] EngineAllowedHosts { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 16;
     public int IpcProcessingConcurrency { get; set; } = 16;
     public int BatchProcessingConcurrency { get; set; } = 4;

@@ -16,7 +16,9 @@ using Nethermind.Serialization.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -99,6 +101,57 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
                 Assert.That(trace.Entries[i].GasCost, Is.EqualTo(gasCosts[i]), $"gasCost[{i}]");
             }
             gasTotal += gasCosts[i];
+        }
+    }
+
+    [Test]
+    public void Unpaid_memory_expansion_cost_reaches_a_tracer_behind_wrappers([Values] bool wrapped)
+    {
+        const int offset = 0x100000;
+        byte[] code = Prepare.EvmCode
+            .PushData("0x1")
+            .PushData(offset)
+            .Op(Instruction.MSTORE)
+            .Done;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        using ITxTracer executionTracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(NullTxTracer.Instance, tracer))
+            : tracer;
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), executionTracer);
+
+        // As in geth, the opcode that runs out of gas reports the cost it could not pay.
+        const ulong words = offset / EvmStack.WordSize + 1;
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Memory * words + words * words / 512));
+    }
+
+    [Test]
+    public void AccessGasDiagnostics_WhenOperationRepeats_PreservesColdAndWarmCosts(
+        [Values(Instruction.SLOAD, Instruction.BALANCE, Instruction.EXTCODESIZE, Instruction.EXTCODEHASH)] Instruction opcode,
+        [Values] bool wrapped)
+    {
+        UInt256 argument = opcode == Instruction.SLOAD ? UInt256.One : new UInt256(TestItem.AddressC.Bytes, isBigEndian: true);
+        byte[] code = Prepare.EvmCode
+            .PushData(argument).Op(opcode).Op(Instruction.POP)
+            .PushData(argument).Op(opcode).Op(Instruction.STOP)
+            .Done;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        using ITxTracer executionTracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(new TestAllTracerWithOutput(), tracer))
+            : tracer;
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), executionTracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        ulong coldCost = opcode == Instruction.SLOAD ? GasCostOf.ColdSLoad : GasCostOf.ColdAccountAccess;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.False, "tracing diagnostics must preserve successful execution");
+            Assert.That(trace.Entries.Where(entry => entry.Opcode == opcode.ToString()).Select(entry => entry.GasCost),
+                Is.EqualTo(new[] { coldCost, GasCostOf.WarmStateRead }), "the tracer must receive cold and warm access costs");
         }
     }
 

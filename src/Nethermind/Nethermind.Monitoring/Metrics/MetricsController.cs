@@ -17,12 +17,12 @@ using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api.Monitoring;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
-using Nethermind.Monitoring.Config;
 using Prometheus;
 
 [assembly: InternalsVisibleTo("Nethermind.Monitoring.Test")]
