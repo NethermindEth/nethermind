@@ -393,6 +393,17 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void Maps_zero_nonce_storage_accounts()
+    {
+        Address[] accounts = [new("0x00000000000000000000000000000000000000a1"), new("0x00000000000000000000000000000000000000b2")];
+        string list = string.Join(", ", accounts.Select(static a => $"\"{a}\""));
+
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"zeroNonceStorageAccounts\": [{list}]");
+
+        Assert.That(chainSpec.Parameters.ZeroNonceStorageAccounts, Is.EqualTo(accounts));
+    }
+
+    [Test]
     public void Rejects_invalid_extension_types([Values(
         "\"bootnodes\": \"enr:invalid\",", "\"bootnodes\": [1],",
         "\"name\": 1,", "\"name\": true,", "\"name\": [],", "\"name\": {},")] string genesisExtra) =>

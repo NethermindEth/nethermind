@@ -3,7 +3,7 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.Monitoring.Config;
+namespace Nethermind.Api.Monitoring;
 
 [ConfigCategory(Description = "Configuration of the metrics provided by a Nethermind node for both, the Prometheus and the dotnet-counters.")]
 public interface IMetricsConfig : IConfig
@@ -21,13 +21,13 @@ public interface IMetricsConfig : IConfig
     bool CountersEnabled { get; }
 
     [ConfigItem(Description = "The Prometheus Pushgateway instance URL.", IsSensitive = true)]
-    string PushGatewayUrl { get; }
+    string? PushGatewayUrl { get; }
 
     [ConfigItem(Description = "The Pushgateway basic authentication username. Both the username and password must be set to enable authentication.", IsSensitive = true)]
-    string PushGatewayUsername { get; }
+    string? PushGatewayUsername { get; }
 
     [ConfigItem(Description = "The Pushgateway basic authentication password. Both the username and password must be set to enable authentication.", IsSensitive = true)]
-    string PushGatewayPassword { get; }
+    string? PushGatewayPassword { get; }
 
     [ConfigItem(DefaultValue = "5", Description = "The frequency of pushing metrics to Prometheus, in seconds.")]
     int IntervalSeconds { get; }

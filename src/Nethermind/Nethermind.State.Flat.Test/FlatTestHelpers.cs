@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NSubstitute;
 
@@ -20,6 +24,22 @@ internal static class FlatTestHelpers
         SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
         populate?.Invoke(content);
         return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="entry"/> under the pre-<c>(To, tier)</c> catalog key: big-endian To block, To root,
+    /// big-endian depth. The row value layout is unchanged by the re-key, so the current catalog produces it.
+    /// </summary>
+    public static void PutLegacyCatalogRow(IDb catalogDb, CatalogEntry entry)
+    {
+        byte[] key = new byte[48];
+        BinaryPrimitives.WriteInt64BigEndian(key, (long)entry.To.BlockNumber);
+        entry.To.StateRoot.Bytes.CopyTo(key.AsSpan(8));
+        BinaryPrimitives.WriteInt64BigEndian(key.AsSpan(40), (long)(entry.To.BlockNumber - entry.From.BlockNumber));
+
+        using MemDb scratch = new();
+        new SnapshotCatalog(scratch).Add(entry);
+        catalogDb[key] = scratch.GetAllValues().Single();
     }
 
     public static SnapshotPooledList SnapshotList(params Snapshot[] snapshots)

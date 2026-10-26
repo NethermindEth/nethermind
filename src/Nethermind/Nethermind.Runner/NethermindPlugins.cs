@@ -26,6 +26,7 @@ public static class NethermindPlugins
         typeof(Nethermind.Mcp.Plugin.McpPlugin),
         typeof(Nethermind.Merge.AuRa.AuRaMergePlugin),
         typeof(Nethermind.Merge.Plugin.MergePlugin),
+        typeof(Nethermind.Monitoring.MonitoringPlugin),
         typeof(Nethermind.Optimism.OptimismPlugin),
         typeof(Nethermind.SendPolicy.Plugin.SendPolicyPlugin),
         typeof(Nethermind.Shutter.ShutterPlugin),
