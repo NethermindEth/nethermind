@@ -588,23 +588,25 @@ public partial class DebugRpcModuleTests
             ("decode", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
             ("genesis", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
             ("empty", "bad", null, noop, null, raw, null, null),
-            ("nonempty", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "Cannot parse 'bad' as a duration"),
+            ("nonempty", "bad", null, noop, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
             ("nonempty", "bad", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
             ("nonempty", "5s", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
             ("nonempty", "5s", null, noop, null, raw, null, null),
-            ("nonempty", "bad", null, "callTracer", nullConfig, raw, ErrorCodes.InvalidInput, "Cannot parse 'bad' as a duration"),
+            ("nonempty", "bad", null, "callTracer", nullConfig, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
             ("nonempty", "5s", null, "callTracer", nullConfig, raw, null, null),
             ("nonempty", 7, null, noop, null, raw, ErrorCodes.InvalidParams, null),
             ("nonempty", new string('x', 65), null, noop, null, raw, ErrorCodes.InvalidParams, null),
             ("nonempty", "bad", null, noop, null, "debug_traceTransactionInBlockByHash", ErrorCodes.InvalidParams, null),
-            ("nonempty", "bad", false, null, null, raw, ErrorCodes.InvalidInput, "Cannot parse 'bad' as a duration"),
-            ("nonempty", "bad", true, null, null, raw, ErrorCodes.InvalidInput, "Cannot parse 'bad' as a duration"),
+            ("nonempty", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("nonempty", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
             ("nonempty", "5s", false, null, null, raw, null, null),
             ("nonempty", "5s", true, null, null, raw, null, null),
-            ("empty", "bad", false, null, null, raw, null, null),
-            ("empty", "bad", true, null, null, raw, null, null),
-            ("unmatched", "bad", false, null, null, raw, null, null),
-            ("unmatched", "bad", true, null, null, raw, null, null)
+            ("empty", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("empty", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("unmatched", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("unmatched", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("decode", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("decode", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1")
         ];
         int index = 0;
         foreach ((string selection, object timeout, bool? streaming, string? tracer, string? config, string method, int? code, string? diagnostic) in cases)
@@ -619,7 +621,7 @@ public partial class DebugRpcModuleTests
     }
 
     [TestCaseSource(nameof(RawBlockTimeoutCases))]
-    public async Task Debug_traceBlock_orders_decode_genesis_and_construction_before_timeout(
+    public async Task Debug_traceBlock_timeout_validation_preserves_fail_fast_errors_and_valid_traces(
         string selection, string method, Dictionary<string, object?> options, int? expectedCode, string? diagnostic)
     {
         using Context context = await Context.Create();
