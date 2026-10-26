@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using FastEnumUtility;
 using Microsoft.ClearScript;
@@ -28,7 +29,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
-    private readonly CancellationTokenSource _cts;
+    private readonly CancellationTokenSource? _cts;
+    private readonly GethTraceDeadline? _deadline;
     private readonly CancellationTokenRegistration _ctsRegistration;
     private bool _disposed;
     private readonly bool _captureErrors;
@@ -103,13 +105,25 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             {
                 throw new JavaScriptTraceFailure(exception);
             }
-            if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
-                throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
-            _cts = new CancellationTokenSource(timeout);
-            _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+            if (options.EnforceExecutionDeadline)
+            {
+                _deadline = new(clock: options.DeadlineClock);
+                _ctsRegistration = _deadline.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+                _deadline.Start(timeout);
+            }
+            else
+            {
+                if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
+                    throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
+                _cts = new CancellationTokenSource(timeout);
+                _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+            }
         }
         catch
         {
+            _ctsRegistration.Dispose();
+            _deadline?.Dispose();
+            _cts?.Dispose();
             DisposeCallbacks();
             throw;
         }
@@ -117,6 +131,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
     public override GethLikeTxTrace BuildResult()
     {
+        CheckDeadline();
         GethLikeTxTrace result = base.BuildResult();
 
         result.TxHash = _ctx.TxHash;
@@ -131,9 +146,15 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             object? value = Invoke(TracerFunctions.result);
             if (_traceError is null)
                 result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(value) };
+            CheckDeadline();
+        }
+        catch (Exception exception) when (IsOwnDeadlineInterruption(exception))
+        {
+            throw new GethTraceDeadlineException();
         }
         catch (Exception exception) when (JavaScriptTraceFailure.IsRecoverable(exception))
         {
+            CheckDeadline();
             _traceError = exception.Message;
         }
         finally
@@ -211,6 +232,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
+        CheckDeadline();
         _log.refund = CurrentRefund;
         _log.pc = pc;
         _log.op = Log.Opcode.Of(opcode);
@@ -472,7 +494,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         {
             base.Dispose();
             _ctsRegistration.Dispose();
-            _cts.Dispose();
+            _cts?.Dispose();
+            _deadline?.Dispose();
         }
         finally
         {
@@ -488,8 +511,38 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         }
     }
 
+    private void CheckDeadline()
+    {
+        if (_deadline?.Expired == true) throw new GethTraceDeadlineException();
+    }
+
+    private bool IsOwnDeadlineInterruption(Exception exception)
+    {
+        if (_deadline?.Expired != true) return false;
+        while (true)
+        {
+            switch (exception)
+            {
+                case ScriptInterruptedException { IsFatal: false, InnerException: null }:
+                    return true;
+                case ScriptInterruptedException { IsFatal: false, InnerException: { } inner }:
+                    exception = inner;
+                    break;
+                case ScriptEngineException { IsFatal: false, InnerException: { } inner }:
+                    exception = inner;
+                    break;
+                case TargetInvocationException { InnerException: { } inner }:
+                    exception = inner;
+                    break;
+                default:
+                    return false;
+            }
+        }
+    }
+
     private object? Invoke(TracerFunctions function, string? config = null)
     {
+        CheckDeadline();
         // A failed JS hook must not abort canonical execution or corrupt later transactions' prestate.
         if (_traceError is not null) return null;
         Engine.CurrentEngine = _engine;
@@ -509,6 +562,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 };
                 object? value = _engine.InvokeCapturingNull((object)_tracer, _callbacks![function], arguments.First, arguments.Second, arguments.HasSecond, out observedNullThrow);
                 _engine.ThrowIfInputFailed();
+                CheckDeadline();
                 return value;
             }
             return function switch
@@ -523,10 +577,15 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 _ => throw new ArgumentOutOfRangeException(nameof(function))
             };
         }
+        catch (Exception exception) when (IsOwnDeadlineInterruption(exception))
+        {
+            throw new GethTraceDeadlineException();
+        }
         catch (Exception exception) when (_captureErrors
             && (_engine.TryGetInputError(exception, out string? inputError, observedNullThrow)
                 || JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow)))
         {
+            CheckDeadline();
             _engine.ThrowIfInterrupted();
             if (function == TracerFunctions.setup)
                 throw new JavaScriptTraceFailure(exception, inputError ?? exception.Message);
