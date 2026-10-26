@@ -21,7 +21,9 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
@@ -46,7 +48,7 @@ namespace Nethermind.AuRa.Test
             public TimeSpan StepDelay { get; }
             private BuildBlocksOnlyWhenNotProcessing _trigger;
 
-            public Context(IAuraConfig auraConfig = null)
+            public Context(IAuraConfig auraConfig = null, IGasLimitCalculator gasLimitCalculator = null)
             {
                 StepDelay = TimeSpan.FromMilliseconds(20);
                 TransactionSource = Substitute.For<ITxSource>();
@@ -73,10 +75,10 @@ namespace Nethermind.AuRa.Test
                     return block;
                 });
                 StateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(x => true);
-                InitProducer(auraConfig ?? new AuRaConfig { ForceSealing = true });
+                InitProducer(auraConfig ?? new AuRaConfig { ForceSealing = true }, gasLimitCalculator ?? new FollowOtherMiners(MainnetSpecProvider.Instance));
             }
 
-            private void InitProducer(IAuraConfig auraConfig)
+            private void InitProducer(IAuraConfig auraConfig, IGasLimitCalculator gasLimitCalculator)
             {
                 IBlockProductionTrigger onAuRaSteps = new BuildBlocksOnAuRaSteps(AuRaStepCalculator, LimboLogs.Instance);
                 _trigger = new BuildBlocksOnlyWhenNotProcessing(
@@ -86,7 +88,6 @@ namespace Nethermind.AuRa.Test
                     LimboLogs.Instance,
                     !auraConfig.AllowAuRaPrivateChains);
                 IBlocksConfig blocksConfig = new BlocksConfig();
-                FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
 
                 AuRaBlockProducer = new AuRaBlockProducer(
                     TransactionSource,
@@ -207,6 +208,26 @@ namespace Nethermind.AuRa.Test
             context.StateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
             context.StateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(false);
             await StartStop(context, expectBlock: false);
+        }
+
+        [Test]
+        public async Task Does_not_produce_block_when_parent_state_is_unavailable_while_preparing()
+        {
+            IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+            gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<ulong?>()).Throws(new StateNotRetainedException("Parent state is not retained"));
+            Context context = new(gasLimitCalculator: gasLimitCalculator);
+
+            try
+            {
+                Block block = await context.AuRaBlockProducer.BuildBlock(Build.A.BlockHeader.TestObject);
+
+                Assert.That(block, Is.Null);
+                context.BlockchainProcessor.DidNotReceive().Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>());
+            }
+            finally
+            {
+                await context.StopAsync();
+            }
         }
 
         [Test]
