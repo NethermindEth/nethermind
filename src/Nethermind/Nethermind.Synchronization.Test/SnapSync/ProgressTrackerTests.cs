@@ -280,8 +280,11 @@ public class ProgressTrackerTests
         resumed.ReportRequestReleased(storage);
         storage.Dispose();
 
-        Assert.That(resumed.IsFinished(out SnapSyncBatch? next), Is.True, "the answered storage was the last request, so the phase is done");
-        Assert.That(next, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed.IsFinished(out SnapSyncBatch? next), Is.True, "the answered storage was the last request, so the phase is done");
+            Assert.That(next, Is.Null);
+        }
     }
 
     // Regression: a resumed run reported its account ranges as not started, so its progress never got past the
@@ -410,11 +413,15 @@ public class ProgressTrackerTests
                 return batch;
             });
 
+#pragma warning disable NUnit2045 // Confirm the wait outcome before checking checkpoint state.
             Assert.That(next.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the checkpoint is due, so it waits for the response");
+#pragma warning restore NUnit2045
             Assert.That(Volatile.Read(ref checkpointsSaved), Is.EqualTo(1));
         }
 
+#pragma warning disable NUnit2045 // Confirm the wait outcome before checking checkpoint state.
         Assert.That(next.Wait(TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Volatile.Read(ref checkpointsSaved), Is.EqualTo(2));
         first!.Dispose();
         next.Result!.Dispose();
