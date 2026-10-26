@@ -52,16 +52,25 @@ public static class StateOverridesExtensions
         }
     }
 
+    /// <summary>Applies <paramref name="overrides"/> to <paramref name="state"/> and commits them.</summary>
+    /// <remarks>
+    /// With <paramref name="merkleize"/> unset, the commit leaves storage roots, the trie at <paramref name="blockNumber"/>
+    /// and the state root alone. The overrides are then visible only through <paramref name="state"/>, which suits a call
+    /// that reads the overridden state and never resolves it through a root.
+    /// </remarks>
     public static void ApplyStateOverrides(
         this IWorldState state,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
-        ulong blockNumber)
+        ulong blockNumber,
+        bool merkleize = true)
     {
         spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
-        state.Commit(spec, commitRoots: true);
+        state.Commit(spec, commitRoots: merkleize);
+        if (!merkleize) return;
+
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
     }

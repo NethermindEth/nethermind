@@ -165,22 +165,12 @@ public class GethStyleTracer(
         if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
         options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
         if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
-        ApplyCallStateOverrides(state, options.StateOverrides, callSpec);
+        state.ApplyStateOverrides(codeInfoRepository, options.StateOverrides, callSpec, tracedBlock.Header.Number, merkleize: false);
         transactionProcessorAdapter.CurrentAdapterFactory = processor =>
         {
             // This Ethereum context does not invoke chain-specific BlockProcessor context overrides (for example XDC).
             return CreateCallAdapter(processor, tracedBlock.Header, callSpec, options.BlockOverrides, blobBaseFee);
         };
-    }
-
-    /// <summary>Applies a traced call's state overrides on top of the state the replay has reached.</summary>
-    /// <remarks>As in <c>eth_call</c>, the commit leaves the trie and storage roots alone: the call reads the overridden state,
-    /// and nothing in a trace reads a root.</remarks>
-    private void ApplyCallStateOverrides(IWorldState state, Dictionary<Address, AccountOverride>? overrides, IReleaseSpec callSpec)
-    {
-        IReleaseSpec overrideSpec = callSpec.WithoutEip158();
-        state.ApplyStateOverridesNoCommit(codeInfoRepository, overrides, overrideSpec);
-        state.Commit(overrideSpec, commitRoots: false);
     }
 
     private static UInt256? GetCallBlobBaseFee(Transaction call, GethTraceOptions options) =>
@@ -425,7 +415,7 @@ public class GethStyleTracer(
             {
                 IWorldState state = scope.Component.WorldState;
                 traced = overridesTracer = new CallAtIndexBlockTracer(traced, block.Header, block.Transactions[0],
-                    _ => ApplyCallStateOverrides(state, stateOverrides, spec));
+                    _ => state.ApplyStateOverrides(codeInfoRepository, stateOverrides, spec, block.Number, merkleize: false));
             }
 
             // A seed skips the prefix, whose logs a traced prefix is there to count.
