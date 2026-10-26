@@ -160,8 +160,14 @@ internal static class RollupXCanonicalJson
     {
         byte shortEscape = character switch
         {
-            '"' => (byte)'"', '\\' => (byte)'\\', '\b' => (byte)'b', '\f' => (byte)'f',
-            '\n' => (byte)'n', '\r' => (byte)'r', '\t' => (byte)'t', _ => 0,
+            '"' => (byte)'"',
+            '\\' => (byte)'\\',
+            '\b' => (byte)'b',
+            '\f' => (byte)'f',
+            '\n' => (byte)'n',
+            '\r' => (byte)'r',
+            '\t' => (byte)'t',
+            _ => 0,
         };
         if (shortEscape != 0)
         {
