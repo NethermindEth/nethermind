@@ -398,27 +398,7 @@ public class HistoryPrunerTests
         using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(historyConfig, blocks: 20);
 
         IBlockTree tree = chain.BlockTree;
-        Block parent = tree.FindBlock(19UL, BlockTreeLookupOptions.None)!;
-        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
-        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
-        Block sideBlock = Build.A.Block
-            .WithParent(parent)
-            .WithTransactions(tx)
-            .WithReceiptsRoot(TestItem.KeccakA)
-            .WithBloom(new Bloom([log]))
-            .WithExtraData([1])
-            .TestObject;
-
-        Assert.That(tree.SuggestBlock(sideBlock, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
-        Assert.That(tree.GetInfo(sideBlock.Number, sideBlock.Hash!).Info, Is.Not.Null,
-            "the side block must have chain-level metadata before it is marked processed");
-        tree.MarkChainAsProcessed([sideBlock]);
-        chain.ReceiptStorage.Insert(sideBlock, [Build.A.Receipt
-            .WithLogs(log)
-            .WithTransactionHash(tx.Hash)
-            .WithBlockHash(sideBlock.Hash)
-            .WithBlockNumber(sideBlock.Number)
-            .TestObject], ensureCanonical: false);
+        Block sideBlock = HistoryTestHelpers.CreateProcessedOrphan(chain, 19, TestItem.AddressE);
 
         using (Assert.EnterMultipleScope())
         {

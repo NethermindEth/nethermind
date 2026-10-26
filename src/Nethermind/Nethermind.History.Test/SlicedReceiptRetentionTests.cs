@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -52,29 +53,19 @@ public class SlicedReceiptRetentionTests
         index.GetEnumerator(slicedAddress, Arg.Any<int>(), Arg.Any<int>())
             .Returns(_ => Enumerable.Empty<int>().GetEnumerator());
 
-        using BasicTestBlockchain chain = await BuildBlockchain(historyConfig, flatDbConfig, index);
+        using BasicTestBlockchain chain = await BuildBlockchain(historyConfig, flatDbConfig, index, builder =>
+        {
+            builder.AddSingleton<IPrunedLogsRetention, IPrunedReceiptRetention>(retention => (IPrunedLogsRetention)retention);
+            if (indexedFinder)
+                builder.RegisterType<IndexedLogFinder>().As<ILogFinder>().SingleInstance()
+                    .WithParameter("minBlocksToUseIndex", 1).WithAttributeFiltering();
+            else
+                builder.RegisterType<LogFinder>().As<ILogFinder>().SingleInstance().WithAttributeFiltering();
+        });
         for (int i = 0; i < 20; i++) await chain.AddBlock();
 
         IBlockTree tree = chain.BlockTree;
-        Block parent = tree.FindBlock(19UL, BlockTreeLookupOptions.None)!;
-        LogEntry log = Build.A.LogEntry.WithAddress(slicedAddress).WithTopics(TestItem.KeccakF).TestObject;
-        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
-        Block orphan = Build.A.Block
-            .WithParent(parent)
-            .WithTransactions(tx)
-            .WithReceiptsRoot(TestItem.KeccakA)
-            .WithBloom(new Bloom([log]))
-            .WithExtraData([1])
-            .TestObject;
-
-        Assert.That(tree.SuggestBlock(orphan, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
-        tree.MarkChainAsProcessed([orphan]);
-        chain.ReceiptStorage.Insert(orphan, [Build.A.Receipt
-            .WithLogs(log)
-            .WithTransactionHash(tx.Hash)
-            .WithBlockHash(orphan.Hash)
-            .WithBlockNumber(orphan.Number)
-            .TestObject], ensureCanonical: false);
+        Block orphan = HistoryTestHelpers.CreateProcessedOrphan(chain, 19, slicedAddress);
 
         Assert.That(chain.ReceiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.True,
             "the orphan's receipts must exist before the production pruner runs");
@@ -85,7 +76,7 @@ public class SlicedReceiptRetentionTests
         HistoryPruner pruner = (HistoryPruner)chain.Container.Resolve<IHistoryPruner>();
         pruner.TryPruneHistory(CancellationToken.None);
 
-        IPrunedLogsRetention retention = (IPrunedLogsRetention)chain.Container.Resolve<IPrunedReceiptRetention>();
+        IPrunedLogsRetention retention = chain.Container.Resolve<IPrunedLogsRetention>();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tree.IsMainChain(orphan.Header), Is.False);
@@ -97,12 +88,8 @@ public class SlicedReceiptRetentionTests
                 "the address/height retention gate must report coverage to reproduce the false-empty result");
         }
 
-        LogFinder logFinder = indexedFinder
-            ? new IndexedLogFinder(tree, chain.ReceiptStorage, chain.ReceiptStorage, LimboLogs.Instance,
-                Substitute.For<IReceiptsRecovery>(), chain.SpecProvider, index, minBlocksToUseIndex: 1,
-                prunedLogsRetention: retention)
-            : new LogFinder(tree, chain.ReceiptStorage, chain.ReceiptStorage, LimboLogs.Instance,
-                Substitute.For<IReceiptsRecovery>(), chain.SpecProvider, prunedLogsRetention: retention);
+        ILogFinder logFinder = chain.Container.Resolve<ILogFinder>();
+        Assert.That(logFinder, Is.TypeOf(indexedFinder ? typeof(IndexedLogFinder) : typeof(LogFinder)));
 
         BlockParameter hash = new(orphan.Hash!);
         LogFilter filter = new(0, hash, hash, new AddressFilter(slicedAddress), new SequenceTopicsFilter());
@@ -956,7 +943,7 @@ public class SlicedReceiptRetentionTests
     }
 
     private static async Task<BasicTestBlockchain> BuildBlockchain(
-        IHistoryConfig historyConfig, IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage = null)
+        IHistoryConfig historyConfig, IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage = null, Action<ContainerBuilder> configure = null)
     {
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = 0 });
         IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
@@ -974,6 +961,7 @@ public class SlicedReceiptRetentionTests
             {
                 containerBuilder.AddSingleton(logIndexStorage);
             }
+            configure?.Invoke(containerBuilder);
         });
     }
 }
