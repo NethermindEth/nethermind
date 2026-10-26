@@ -19,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Eez.Test;
@@ -278,7 +279,9 @@ public partial class EezL2SystemCallsTests
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Osaka.Instance) { ChainId = 1 })
             .AddModule(new EezModule(new EezConfig(), rules))
             .Build();
-        using ILifetimeScope scope = container.BeginLifetimeScope();
+        IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().CreateResettableWorldState();
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(scopeProvider));
         IWorldState state = scope.Resolve<IWorldState>();
         using IDisposable stateScope = state.BeginScope(IWorldState.PreGenesis);
         ITransactionProcessor processor = scope.Resolve<ITransactionProcessor>();
@@ -294,8 +297,14 @@ public partial class EezL2SystemCallsTests
     {
         Transaction tx = new()
         {
-            Type = EezConstants.NativeSystemTxType, ChainId = 1, SourceHash = TestItem.KeccakC,
-            SenderAddress = Address.SystemUser, To = to ?? EezConstants.RollupXEezl2Address, Value = value, GasLimit = gas, Data = data,
+            Type = EezConstants.NativeSystemTxType,
+            ChainId = 1,
+            SourceHash = TestItem.KeccakC,
+            SenderAddress = Address.SystemUser,
+            To = to ?? EezConstants.RollupXEezl2Address,
+            Value = value,
+            GasLimit = gas,
+            Data = data,
         };
         EezNativeSystemTxDecoder decoder = new();
         byte[] encoded = new byte[decoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
