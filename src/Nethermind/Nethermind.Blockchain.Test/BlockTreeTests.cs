@@ -2878,8 +2878,15 @@ public class BlockTreeTests
         }
     }
 
+    public enum DeletionOverlapLookup
+    {
+        Header,
+        Block,
+        BloomHeader
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Delete_during_lookup_does_not_leave_deleted_block_cached([Values] bool headerLookup, [Values] bool invalidBlockDeletion)
+    public void Delete_during_lookup_does_not_leave_deleted_block_cached([Values] DeletionOverlapLookup lookup, [Values] bool invalidBlockDeletion)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
         BlockTree blockTree = builder.TestObject;
@@ -2887,7 +2894,7 @@ public class BlockTreeTests
         Block invalidBlock = blockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
         ((IClearableCache)builder.BlockStore).ClearCache();
         ((IClearableCache)builder.HeaderStore).ClearCache();
-        TestMemDb db = (TestMemDb)(headerLookup ? builder.HeadersDb : builder.BlocksDb);
+        TestMemDb db = (TestMemDb)(lookup == DeletionOverlapLookup.Block ? builder.BlocksDb : builder.HeadersDb);
         // The lookup reads its value from the database, then the deletion runs before the lookup caches it.
         db.ReadFunc = key =>
         {
@@ -2898,9 +2905,12 @@ public class BlockTreeTests
             return value!;
         };
 
-        object? found = headerLookup
-            ? blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number)
-            : blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number);
+        object? found = lookup switch
+        {
+            DeletionOverlapLookup.Header => blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number),
+            DeletionOverlapLookup.Block => blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number),
+            _ => blockTree.FindCanonicalHeaderIfBloomMatches(deleted.Number, static _ => true, out _)
+        };
 
         using (Assert.EnterMultipleScope())
         {
@@ -2908,36 +2918,6 @@ public class BlockTreeTests
             Assert.That(db.ReadFunc, Is.Null, "the deletion must overlap the lookup");
             Assert.That(blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
             Assert.That(blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
-        }
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Delete_during_bloom_lookup_does_not_leave_deleted_header_cached([Values] bool invalidBlockDeletion)
-    {
-        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
-        BlockTree blockTree = builder.TestObject;
-        BlockHeader deleted = blockTree.FindHeader(4, BlockTreeLookupOptions.None)!;
-        Block invalidBlock = blockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
-        ((IClearableCache)builder.BlockStore).ClearCache();
-        ((IClearableCache)builder.HeaderStore).ClearCache();
-        bool deletionRan = false;
-
-        // The bloom check runs after the header is read and before it is cached.
-        BlockHeader? found = blockTree.FindCanonicalHeaderIfBloomMatches(deleted.Number, _ =>
-        {
-            if (invalidBlockDeletion) blockTree.DeleteInvalidBlock(invalidBlock);
-            else Assert.That(blockTree.DeleteChainSlice(3), Is.EqualTo(2));
-            deletionRan = true;
-            return true;
-        }, out bool headerFound);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(found, Is.Not.Null);
-            Assert.That(headerFound, Is.True);
-            Assert.That(deletionRan, Is.True, "the deletion must overlap the lookup");
-            Assert.That(blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
-            Assert.That(blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
         }
     }
 
