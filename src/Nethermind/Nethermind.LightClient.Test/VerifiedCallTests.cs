@@ -21,13 +21,39 @@ public class VerifiedCallTests
 
     [Test]
     public async Task Frame_submission_verifies_payer_prefix_and_keyed_nonce_before_relay(
-        [Values("valid", "dimension-fits", "blob-valid", "nonce", "prefix", "signature", "execution-fee", "blob-fee", "execution-reservation", "state-reservation")] string scenario)
+        [Values("valid", "dimension-fits", "blob-valid", "nonce", "prefix", "signature", "execution-fee", "blob-fee",
+            "execution-reservation", "state-reservation", "verify-gas-below", "verify-gas-limit", "verify-gas-over",
+            "verify-state-below", "verify-state-limit", "verify-state-over", "prefix-work", "prefix-opcode", "prefix-opcode-abort")] string scenario)
     {
-        byte[] code = scenario == "prefix" ? [0x00] : [0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00];
+        byte[] approve = [0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00];
+        byte[] code = scenario switch
+        {
+            "prefix" => [0x00],
+            // Spend more than 100k gas before approving payment.
+            "prefix-work" => [0x61, 0x17, 0x70, 0x5b, 0x60, 0x01, 0x90, 0x03, 0x80, 0x60, 0x03, 0x57, 0x50, .. approve],
+            "prefix-opcode" => [0x43, 0x50, .. approve],
+            "prefix-opcode-abort" => [0x43, 0x50, 0x5b, 0x60, 0x02, 0x56],
+            _ => approve,
+        };
         FakeSource source = new(code, contractBalance: 1_000_000_000) { BaseFee = (UInt256)(scenario == "execution-fee" ? 10 : 1) };
         SingleReleaseSpecProvider spec = new(new KeyedFrameSpec(), 1, 1);
         using VerifiedCall calls = new(source, spec, NullLogManager.Instance);
         using VerifiedRpc rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        ulong executionGas = scenario switch
+        {
+            "verify-gas-below" => 299_999,
+            "verify-gas-limit" => 300_000,
+            "verify-gas-over" => 300_001,
+            _ => 200_000,
+        };
+        ulong stateGas = scenario switch
+        {
+            "state-reservation" => 300_000,
+            "verify-state-below" => 499_999,
+            "verify-state-limit" => 500_000,
+            "verify-state-over" => 500_001,
+            _ => 200_000,
+        };
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
@@ -41,7 +67,7 @@ public class VerifiedCallTests
             BlobVersionedHashes = [],
             FrameSignatures = [],
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null,
-                200_000, scenario == "state-reservation" ? 300_000UL : 200_000UL, UInt256.Zero, default)],
+                executionGas, stateGas, UInt256.Zero, default)],
         };
         if (scenario == "signature")
             transaction.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, Contract, default,
@@ -73,7 +99,7 @@ public class VerifiedCallTests
         if (scenario == "dimension-fits") Assert.That(source.BlockGasLimit, Is.LessThan(submitted.GasLimit));
         if (scenario == "state-reservation") Assert.That(executionReservation, Is.LessThanOrEqualTo(source.BlockGasLimit));
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { "0x" + Convert.ToHexString(encoded).ToLowerInvariant() });
-        if (scenario is "valid" or "dimension-fits" or "blob-valid")
+        if (scenario is "valid" or "dimension-fits" or "blob-valid" or "verify-gas-below" or "verify-gas-limit" or "verify-state-below" or "verify-state-limit" or "prefix-work")
         {
             Assert.That(await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None), Is.EqualTo(transaction.CalculateHash().ToString()));
             Assert.That(source.Broadcasts, Is.EqualTo(1));
@@ -96,12 +122,15 @@ public class VerifiedCallTests
             RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None));
             Assert.That(error!.Code, Is.EqualTo(-32003));
             Assert.That(source.Broadcasts, Is.Zero);
-            if (scenario is "execution-fee" or "blob-fee" or "execution-reservation" or "state-reservation")
+            if (scenario is "prefix-opcode" or "prefix-opcode-abort")
+                Assert.That(error.Message, Does.Contain("banned opcode NUMBER"));
+            if (scenario is "execution-fee" or "blob-fee" or "execution-reservation" or "state-reservation" or "verify-gas-over" or "verify-state-over")
             {
                 Assert.That(error.Message, Does.Contain(scenario switch
                 {
                     "execution-fee" => "fee cap is below",
                     "blob-fee" => "blob fee cap is below",
+                    "verify-gas-over" or "verify-state-over" => "bounded public-mempool work limit",
                     _ => "gas reservation exceeds",
                 }));
                 Assert.That(source.CodeFetches, Is.Zero);

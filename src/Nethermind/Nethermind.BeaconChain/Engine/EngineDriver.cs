@@ -12,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -28,15 +29,17 @@ namespace Nethermind.BeaconChain.Engine;
 /// <remarks>
 /// Calls go through <see cref="ExternalClDetector.InnerEngine"/> so the driver's own traffic never
 /// trips external-CL detection. The orchestrator serializes all calls (they run on the slot
-/// worker); only availability is read concurrently. A forkchoice
+/// worker); local blob recovery reads the execution layer concurrently. A forkchoice
 /// update still running past its deadline fails every later call until it finishes.
 /// </remarks>
-public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager, SlotClock clock, BeaconChainSpec spec, INodeColumnCustodySource custody, IBlockTree? blockTree = null) : IEngineDriver
+public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager, SlotClock clock, BeaconChainSpec spec, INodeColumnCustodySource custody, IBlockTree? blockTree = null, GCKeeper? gcKeeper = null) : IEngineDriver
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EngineDriver>();
     private volatile bool _isAvailable = true;
     private Task? _pendingForkchoice;
     private bool _hasSentForkchoice;
+    private Task<DataColumnSidecar[]>? _pendingLocalColumns;
+    private Hash256? _pendingLocalColumnsRoot;
 
     /// <summary>Whether the consensus head being sent is more than an epoch behind the wall clock; unset, no head is taken as catching up.</summary>
     internal Func<bool>? IsCatchingUp { get; set; }
@@ -45,12 +48,84 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     public bool IsAvailable => _isAvailable;
     /// <summary>How long a caller waits for a forkchoice update before it counts as unavailable.</summary>
     internal TimeSpan ForkchoiceTimeout { get; init; } = TimeSpan.FromSeconds(8);
+    /// <summary>How long an import waits for its first local blob recovery attempt before using network columns.</summary>
+    internal TimeSpan LocalColumnsTimeout { get; init; } = TimeSpan.FromSeconds(1);
     /// <summary>
     /// The block currently being run through the state transition; the orchestrator sets it before
     /// <see cref="StateTransition.StateTransition.Apply"/> so <see cref="NotifyNewPayload"/> can
     /// recover what the body alone does not carry — the EIP-4788 parent beacon block root.
     /// </summary>
     public SignedBeaconBlock? CurrentBlock { get; set; }
+
+    /// <summary>Recovers local columns within the import budget, retaining at most one unfinished recovery for a later retry.</summary>
+    /// <remarks>Called serially by the import worker. Timed-out recovery remains tracked for shutdown and owns its eventual engine response.</remarks>
+    internal async Task<DataColumnSidecar[]> GetLocalColumns(SignedBeaconBlock block)
+    {
+        if (block.Message!.Body!.BlobKzgCommitments!.Length == 0) return [];
+        Hash256 root = SszRoots.HashTreeRoot(block.Message);
+        if (_pendingLocalColumns is { } pending)
+        {
+            if (!pending.IsCompleted) return [];
+            _pendingLocalColumns = null;
+            DataColumnSidecar[] recovered = await pending;
+            if (_pendingLocalColumnsRoot == root) return recovered;
+        }
+
+        // Register before scheduling, so shutdown also drains a recovery still waiting for a thread.
+        IDisposable call;
+        try
+        {
+            call = detector.EnterEmbeddedCall("getBlobsV2");
+        }
+        catch (EngineUnavailableException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Local blob retrieval failed for slot {block.Message.Slot}: {e.Message}");
+            return [];
+        }
+        _pendingLocalColumnsRoot = root;
+        Task<DataColumnSidecar[]> recovery = _pendingLocalColumns = Task.Run(async () =>
+        {
+            using (call)
+                return await GetLocalColumnsCore(block);
+        });
+        _ = recovery.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        try
+        {
+            DataColumnSidecar[] columns = await recovery.WaitAsync(LocalColumnsTimeout);
+            _pendingLocalColumns = null;
+            return columns;
+        }
+        catch (TimeoutException)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Local blob retrieval for slot {block.Message.Slot} is still running; waiting for network columns");
+            return [];
+        }
+    }
+
+    private async Task<DataColumnSidecar[]> GetLocalColumnsCore(SignedBeaconBlock block)
+    {
+        if (custody.Current is not { } localCustody) return [];
+        SszKzgCommitment[] commitments = block.Message!.Body!.BlobKzgCommitments!;
+        if (commitments.Length == 0) return [];
+        byte[][] hashes = new byte[commitments.Length][];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = new byte[Hash256.Size];
+            Nethermind.Crypto.KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitments[i].AsSpan(), hashes[i]);
+        }
+        try
+        {
+            ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await detector.InnerEngine.engine_getBlobsV2(hashes);
+            using IDisposable? response = result.Data as IDisposable;
+            return result.Result.ResultType == ResultType.Success && result.Data is { } blobs ? LocalBlobColumns.Create(block, blobs, localCustody.SampledColumns) : [];
+        }
+        catch (Exception e) when (e is not OutOfMemoryException and not OperationCanceledException)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Local blob retrieval failed for slot {block.Message.Slot}: {e.Message}");
+            return [];
+        }
+    }
     /// <summary>
     /// Submits the block's execution payload via <c>engine_newPayloadV4</c> and returns the
     /// execution layer's verdict (VALID/INVALID/SYNCING/ACCEPTED).
@@ -68,6 +143,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         return await CallEngineAsync("newPayloadV4", _logger.IsInfo ? $"{payload.BlockNumber} ({payload.BlockHash?.ToShortString()})" : null, async () =>
         {
             using IDisposable call = detector.EnterEmbeddedCall("newPayloadV4");
+            gcKeeper?.CancelPendingGC();
             long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
@@ -204,6 +280,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         return await CallEngineAsync("newPayloadV5", _logger.IsInfo ? $"{converted.BlockNumber} ({converted.BlockHash?.ToShortString()})" : null, async () =>
         {
             using IDisposable call = detector.EnterEmbeddedCall("newPayloadV5");
+            gcKeeper?.CancelPendingGC();
             long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);

@@ -199,7 +199,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 MaxIdontwantLength = IdontwantIdsPerControl,
                 MaxIdontwantMessages = MaxIdontwantControlsPerHeartbeat,
             }, ScheduledTopics(spec), spec))
-            .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager))
+            .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
     }
 
@@ -255,6 +255,10 @@ public sealed class BeaconP2P : IAsyncDisposable
             }
         }
     }
+
+    /// <summary>Caps library transport logs at Trace.</summary>
+    internal static ILoggerFactory CreateLibp2pLoggerFactory(ILogManager logManager) =>
+        new NethermindLoggerFactory(logManager, lowerLogLevel: true, maxLogLevel: Microsoft.Extensions.Logging.LogLevel.Trace);
 
     // Status, Ping, MetaData and Goodbye stay open to every session, as admission needs them; a host without the peer manager admits no one itself.
     private bool IsAdmittedPeer(PeerId peerId) => _peerPool?.Value is not PeerManager manager || manager.IsAdmitted(peerId);
@@ -327,7 +331,13 @@ public sealed class BeaconP2P : IAsyncDisposable
             {
                 PubsubSettings settings = _serviceProvider.GetRequiredService<PubsubSettings>();
                 _deferredValidation = new DeferredGossipValidation(_router, _messageValidator, _config.GossipMaxPendingValidations, _config.GossipMaxPendingValidationBytes,
-                    BeaconSyncOrchestrator.VoteQueueCapacity, settings.PendingValidationTimeout, _logger, _startCts.Token);
+                    BeaconSyncOrchestrator.VoteQueueCapacity, settings.PendingValidationTimeout, _logger, _startCts.Token)
+                {
+                    ReportRejectedMessage = (source, detail) =>
+                    {
+                        if (_peerPool?.Value is PeerManager manager) manager.ReportRejectedGossip(source, detail);
+                    },
+                };
                 _gossipSubscriptions = new GossipTopicSubscriptions(_router, _deferredValidation.Verify);
                 _router.VerifyMessage = _gossipSubscriptions.Verify;
                 _router.OnDeferredMessage = _deferredValidation.ValidateAsync;

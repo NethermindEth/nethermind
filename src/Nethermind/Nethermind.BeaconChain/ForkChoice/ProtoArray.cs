@@ -599,7 +599,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     }
 
 
-    /// <summary>The proposer boost in Gwei: <paramref name="boostPercent"/>% of one committee's share of the total active balance.</summary>
+    /// <summary>The proposer boost in Gwei: <paramref name="boostPercent"/>% of one committee's share of the unslashed active balance.</summary>
     /// <remarks>https://github.com/ethereum/consensus-specs/blob/dev/specs/phase0/fork-choice.md#get_proposer_score</remarks>
     public ulong CalculateCommitteeFraction(JustifiedBalances justifiedBalances, ulong boostPercent) =>
         checked(justifiedBalances.TotalEffectiveBalance / slotsPerEpoch * boostPercent / 100);

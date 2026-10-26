@@ -135,6 +135,27 @@ public class GloasOperationsTests
         Assert.That(state.Slashings[1], Is.EqualTo(slashingsBefore + 32 * Gwei), "only the newly slashed validator's balance joins the slashings accounting");
     }
 
+    [Test]
+    public void ProcessAttesterSlashing_clears_the_pending_builder_payment_of_a_slashed_proposer()
+    {
+        BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        EpochCache cache = new();
+        const ulong bidValue = 5 * Gwei;
+
+        int proposer = (int)state.GetBeaconProposerIndex();
+        ApplyBlock(state, MinimalBlock(state, ValidBuilderBid(state, builderSk, builderIndex: 0, value: bidValue)), cache);
+        GloasSlotProcessing.ProcessSlots(state, 33, cache);
+        Assert.That(state.BuilderPendingPayments![32].ProposerIndex, Is.EqualTo((ulong)proposer), "fixture bug: the payment must name the slot-32 proposer");
+
+        GloasBlockProcessing.ProcessAttesterSlashing(state, ConflictingVotes(state, [proposer], [proposer]), cache, pubkeys, verifySignatures: true);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Validators![proposer].Slashed, Is.True);
+        Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(0ul), "a slashed proposer forfeits its pending payment whichever slashing caught it");
+        Assert.That(state.BuilderPendingPayments[32].ProposerIndex, Is.EqualTo(0ul));
+    }
+
     [TestCase(false, false, "slashed no validator")]
     [TestCase(true, false, "slashed no validator")]
     [TestCase(false, true, "attestation 1 is invalid")]

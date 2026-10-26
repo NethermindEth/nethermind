@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.ForkChoice;
 
-/// <summary>The fast confirmation rule from consensus-specs v1.7.0-beta.3, phase0/fast-confirmation.md.</summary>
+/// <summary>The fast confirmation rule from consensus-specs v1.7.0-beta.4, phase0/fast-confirmation.md.</summary>
 /// <remarks>Owned by the fork-choice import thread. Confirmations assume slot synchrony and at most 25 percent Byzantine stake.</remarks>
 internal sealed class FastConfirmation(
     BeaconChainSpec spec,
@@ -154,7 +154,7 @@ internal sealed class FastConfirmation(
         ulong slot = Slot(root);
         ulong end = store.CurrentSlot - 1;
         ulong maximum = EstimateCommitteeWeight(source.Total, parent.Slot + 1, end, spec.SlotsPerEpoch);
-        ulong proposerScore = source.Total / spec.SlotsPerEpoch * ProtoArrayForkChoice.DefaultProposerScoreBoostPercent / 100;
+        ulong proposerScore = source.UnslashedTotal / spec.SlotsPerEpoch * ProtoArrayForkChoice.DefaultProposerScoreBoostPercent / 100;
         ulong discount = 0;
         if (parent.Slot + 1 < slot)
         {
@@ -243,6 +243,8 @@ internal sealed class FastConfirmation(
         internal readonly ulong[] Balances;
         internal readonly bool[] Slashed;
         internal readonly ulong Total;
+        /// <summary>The base of <c>compute_proposer_score</c>, which leaves slashed validators out of <see cref="Total"/>.</summary>
+        internal readonly ulong UnslashedTotal;
 
         internal BalanceSource(ForkedBeaconState state, BeaconChainSpec spec)
         {
@@ -263,9 +265,12 @@ internal sealed class FastConfirmation(
                 {
                     Balances[i] = validator.EffectiveBalance;
                     Total = checked(Total + validator.EffectiveBalance);
+                    if (!validator.Slashed)
+                        UnslashedTotal += validator.EffectiveBalance;
                 }
             }
             Total = Math.Max(Total, Presets.EffectiveBalanceIncrement);
+            UnslashedTotal = Math.Max(UnslashedTotal, Presets.EffectiveBalanceIncrement);
         }
     }
 

@@ -31,6 +31,9 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The UDP port for beacon chain libp2p QUIC. Zero disables QUIC and its ENR advertisement.", DefaultValue = "0")]
     int QuicPort { get; set; }
 
+    [ConfigItem(Description = "Number of PeerDAS custody groups, from 4 to 128. Use at least 64 to reconstruct blobs for the Beacon API, or 128 to serve all columns. Default: 4 groups.", DefaultValue = "4")]
+    ulong CustodyGroupCount { get; set; }
+
     [ConfigItem(Description = "Comma-separated beacon chain bootnode ENRs. When empty, the built-in bootnodes of the network selected via the execution layer's chain id are used.", DefaultValue = "null")]
     string? Bootnodes { get; set; }
 

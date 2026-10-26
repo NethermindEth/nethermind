@@ -357,7 +357,7 @@ public sealed class ColumnBackfill(
                     continue;
                 }
 
-                if (!await FetchByRootAsync(parent, token) || !store.TryGetForkedBlock(parent, out block))
+                if ((block = await FetchByRootAsync(parent, lowest, token)) is null)
                 {
                     return false;
                 }
@@ -368,17 +368,17 @@ public sealed class ColumnBackfill(
                 return false;
             }
 
-            if (!await HasValidSignatureAsync(parent, block))
-            {
-                if (!await FetchByRootAsync(parent, token) || !store.TryGetForkedBlock(parent, out block))
-                {
-                    return false;
-                }
-            }
-
             if (block.Slot < lowest)
             {
                 break;
+            }
+
+            if (!await HasValidSignatureAsync(parent, block))
+            {
+                if ((block = await FetchByRootAsync(parent, lowest, token)) is null)
+                {
+                    return false;
+                }
             }
 
             if (block.Slot < resolvedFrom)
@@ -564,11 +564,11 @@ public sealed class ColumnBackfill(
         }
     }
 
-    private async Task<bool> FetchByRootAsync(Hash256 root, CancellationToken token)
+    private async Task<ForkedSignedBeaconBlock?> FetchByRootAsync(Hash256 root, ulong lowest, CancellationToken token)
     {
         foreach (IBeaconSyncPeer peer in NextPeers(ulong.MaxValue))
         {
-            if (!IsFollowingHead()) return false;
+            if (!IsFollowingHead()) return null;
             IReadOnlyList<ForkedSignedBeaconBlock> reply;
             try
             {
@@ -582,7 +582,7 @@ public sealed class ColumnBackfill(
 
             if (reply.Count == 1 && reply[0].ComputeMessageRoot() == root)
             {
-                if (await TryStoreAsync(root, reply[0])) return true;
+                if (reply[0].Slot < lowest || await TryStoreAsync(root, reply[0])) return reply[0];
                 continue;
             }
 
@@ -592,7 +592,7 @@ public sealed class ColumnBackfill(
             }
         }
 
-        return false;
+        return null;
     }
 
     private async Task<bool> HasValidSignatureAsync(Hash256 root, ForkedSignedBeaconBlock block)

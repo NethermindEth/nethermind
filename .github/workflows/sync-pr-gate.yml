@@ -16,16 +16,39 @@ permissions:
   contents: read
 
 jobs:
+  select-consensus:
+    if: github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      clients: ${{ steps.clients.outputs.result }}
+    steps:
+      - uses: actions/github-script@v8
+        id: clients
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo, pull_number: context.issue.number, per_page: 100
+            });
+            const affectsEmbedded = path =>
+              /^src\/Nethermind\/Nethermind\.(BeaconChain[^/]*|Network\.Libp2p[^/]*|Merge\.Plugin[^/]*|Serialization\.Ssz[^/]*|Analyzers[^/]*)\//.test(path) ||
+              /(^|\/)(Directory\.(Build\.(props|targets)|Packages\.props)|global\.json|Dockerfile)$/.test(path) ||
+              path === '.github/workflows/sync-pr-gate.yml';
+            return files.length >= 3000 || files.some(file => affectsEmbedded(file.filename) || affectsEmbedded(file.previous_filename || ''))
+              ? ['Lodestar', 'Embedded'] : ['Lodestar'];
+
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }}${{ matrix.consensus == 'Embedded' && ', embedded CL' || '' }})"
     if: github.event.pull_request.head.repo.fork == false
+    needs: select-consensus
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
         mode: [HalfPath, Flat]
-        consensus: [Lodestar, Embedded]
+        consensus: ${{ fromJSON(needs.select-consensus.outputs.clients) }}
         include:
           - mode: HalfPath
             flatdb: false

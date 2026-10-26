@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -18,7 +19,7 @@ namespace Nethermind.Optimism.CL.P2P;
 /// IReader reads the prefix through ReadVarintUlongAsync. No read outlives ListenAsync, so releasing
 /// its last allowance in finally cannot race a later acquisition.
 /// </remarks>
-internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStreamBudget budget) : ISessionProtocol
+internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStreamBudget budget, TimeSpan? bodyReadTimeout = null) : ISessionProtocol
 {
     public string Id => inner.Id;
 
@@ -32,7 +33,7 @@ internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStream
             return;
         }
 
-        BudgetedChannel bounded = new(channel, budget, peer);
+        BudgetedChannel bounded = new(channel, budget, peer, bodyReadTimeout ?? TimeSpan.FromSeconds(10));
         try
         {
             await inner.ListenAsync(bounded, context);
@@ -43,8 +44,9 @@ internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStream
         }
     }
 
-    private sealed class BudgetedChannel(IChannel channel, GossipStreamBudget budget, PeerId peer) : IChannel
+    private sealed class BudgetedChannel(IChannel channel, GossipStreamBudget budget, PeerId peer, TimeSpan bodyReadTimeout) : IChannel
     {
+        private readonly CancellationToken _closed = channel.CancellationToken;
         private bool _reserved;
 
         public async Task<ulong> ReadVarintUlongAsync(CancellationToken token)
@@ -53,11 +55,13 @@ internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStream
             Release();
             ulong length = await channel.ReadVarintUlongAsync(token);
             // Duplicate outbound dials can leave an idle stream ahead of the stream selected to send RPCs.
-            if (!_reserved && !(_reserved = budget.TryAcquire(peer)))
+            using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(token, _closed);
+            if (!await budget.AcquireAsync(peer, waiting.Token))
             {
                 await channel.CloseAsync();
                 throw new ChannelClosedException();
             }
+            _reserved = true;
             return length;
         }
 
@@ -70,15 +74,27 @@ internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStream
             }
         }
 
-        public ValueTask<ReadResult> ReadAsync(int length, ReadBlockingMode blockingMode = ReadBlockingMode.WaitAll, CancellationToken token = default) =>
-            channel.ReadAsync(length, blockingMode, token);
+        public async ValueTask<ReadResult> ReadAsync(int length, ReadBlockingMode blockingMode = ReadBlockingMode.WaitAll, CancellationToken token = default)
+        {
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(token, _closed);
+            deadline.CancelAfter(bodyReadTimeout);
+            try
+            {
+                return await channel.ReadAsync(length, blockingMode, deadline.Token);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                await channel.CloseAsync();
+                throw new ChannelClosedException();
+            }
+        }
         public ValueTask<IOResult> WriteAsync(ReadOnlySequence<byte> bytes, CancellationToken token = default) => channel.WriteAsync(bytes, token);
         public ValueTask<IOResult> WriteEofAsync(CancellationToken token = default) => channel.WriteEofAsync(token);
         public ValueTask CloseAsync() => channel.CloseAsync();
         public ValueTask AbortAsync() => channel.AbortAsync();
         public ValueTask CloseReadAsync() => channel.CloseReadAsync();
         public TaskAwaiter GetAwaiter() => channel.GetAwaiter();
-        public CancellationToken CancellationToken => channel.CancellationToken;
+        public CancellationToken CancellationToken => _closed;
     }
 }
 
@@ -87,12 +103,37 @@ internal sealed class GossipStreamBudget
     internal const int MaxStreams = 16;
     private readonly HashSet<PeerId> _peers = [];
     private readonly System.Threading.Lock _lock = new();
+    private readonly LinkedList<Waiter> _waiting = new();
+    private int _active;
 
-    internal bool TryAcquire(PeerId peer)
+    internal async Task<bool> AcquireAsync(PeerId peer, CancellationToken token)
+    {
+        LinkedListNode<Waiter> node;
+        lock (_lock)
+        {
+            token.ThrowIfCancellationRequested();
+            if (!_peers.Add(peer)) return false;
+            if (_active < MaxStreams)
+            {
+                _active++;
+                return true;
+            }
+            node = _waiting.AddLast(new Waiter(peer));
+        }
+
+        using CancellationTokenRegistration registration = token.Register(() => Cancel(node, token));
+        return await node.Value.Completion.Task;
+    }
+
+    private void Cancel(LinkedListNode<Waiter> node, CancellationToken token)
     {
         lock (_lock)
         {
-            return _peers.Count < MaxStreams && _peers.Add(peer);
+            // A removed node has already been granted; its caller owns the allowance and releases it.
+            if (node.List is null) return;
+            _waiting.Remove(node);
+            _peers.Remove(node.Value.Peer);
+            node.Value.Completion.TrySetCanceled(token);
         }
     }
 
@@ -100,7 +141,24 @@ internal sealed class GossipStreamBudget
     {
         lock (_lock)
         {
-            _peers.Remove(peer);
+            if (_peers.Remove(peer))
+            {
+                if (_waiting.First is { } next)
+                {
+                    _waiting.RemoveFirst();
+                    next.Value.Completion.SetResult(true);
+                }
+                else
+                {
+                    _active--;
+                }
+            }
         }
+    }
+
+    private sealed class Waiter(PeerId peer)
+    {
+        public PeerId Peer { get; } = peer;
+        public TaskCompletionSource<bool> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

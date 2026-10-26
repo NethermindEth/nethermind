@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Caching;
@@ -203,6 +204,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Reads the post-state of a head or justified root for the Beacon API; tests script it, otherwise the <see cref="BlockImporter"/> reads its held state.</summary>
     internal Func<Hash256, ForkedBeaconState?>? ApiStateReader { get; set; }
     internal Func<CheckpointRef, ForkedBeaconState?>? ApiCheckpointStateReader { get; set; }
+    private CachedBeaconStateHasher? _apiCheckpointHasher;
 
     private volatile Tip _syncTip = new(Hash256.Zero, 0);
 
@@ -276,6 +278,7 @@ public sealed class BeaconSyncOrchestrator(
     internal sealed record GossipGloasAttesterSlashingItem(AttesterSlashingGloas Slashing, GossipVerdict? Verdict = null) : WorkItem;
     internal sealed record GossipPayloadAttestationItem(PayloadAttestationMessage Message, GossipVerdict? Verdict = null) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
+    internal sealed record PrepareSlotItem(ulong Slot) : WorkItem;
 
     /// <summary>The sidecar pool holds every sampled column awaited for <paramref name="BlockRoot"/>; queued at most once per watch.</summary>
     internal sealed record ColumnsHeldItem(Hash256 BlockRoot) : WorkItem;
@@ -511,7 +514,6 @@ public sealed class BeaconSyncOrchestrator(
             headSnapshots.Current = new HeadSnapshot(anchorStatus, null, Hash256.Zero, false)
             {
                 State = headSnapshots.CaptureState ? ReadApiState(importer, anchorRoot, null) : null,
-                FinalizedState = headSnapshots.CaptureState ? ReadApiCheckpointState(importer, new CheckpointRef(_anchorCheckpointEpoch, anchorRoot), null) : null,
             };
         }
     }
@@ -528,6 +530,7 @@ public sealed class BeaconSyncOrchestrator(
     private ulong EarliestAvailableSlot()
     {
         ulong blocksFrom = Math.Min(_anchorSlot, columnBackfill?.CompleteFrom ?? _anchorSlot);
+        if (store.TryGetEarliestBlockSlot(out ulong retainedFrom)) blocksFrom = Math.Max(blocksFrom, retainedFrom);
         if (columnPool is null || slotClock.CurrentEpoch < spec.FuluForkEpoch)
         {
             return blocksFrom;
@@ -865,6 +868,10 @@ public sealed class BeaconSyncOrchestrator(
                 break;
             case EnvelopeItem envelope:
                 await ImportEnvelopeItemAsync(envelope, token);
+                break;
+            case PrepareSlotItem prepare when prepare.Slot == slotClock.CurrentSlot + 1:
+                if (_importer is BlockImporter importer && _lastHead is { } currentHead)
+                    importer.PrepareNextSlot(currentHead.HeadRoot, prepare.Slot);
                 break;
             case ColumnsHeldItem held:
                 // The pool dropped the fired watch; one a re-arm set since is dropped too, so none is orphaned.
@@ -2795,7 +2802,15 @@ public sealed class BeaconSyncOrchestrator(
         if (previous?.JustifiedState is { } justified && justified.Checkpoint == checkpoint) return justified;
         if (previous?.FinalizedState is { } finalized && finalized.Checkpoint == checkpoint) return finalized;
         ForkedBeaconState? state = ApiCheckpointStateReader is { } reader ? reader(checkpoint) : (importer as BlockImporter)?.GetCheckpointStateForApi(checkpoint);
-        return state is null ? null : new CheckpointStateSnapshot(checkpoint, state);
+        if (state is null) return null;
+        CachedBeaconStateHasher hasher = _apiCheckpointHasher ??= new();
+        Hash256 root = state switch
+        {
+            ForkedBeaconState.OfFulu fulu => hasher.HashTreeRoot(fulu.State),
+            ForkedBeaconState.OfGloas gloas => hasher.HashTreeRoot(gloas.State),
+            _ => throw new NotSupportedException(),
+        };
+        return new CheckpointStateSnapshot(checkpoint, state, root);
     }
 
     /// <summary>Applies the execution layer's forkchoice verdict for <paramref name="headRoot"/> to fork choice, dropping one that contradicts an earlier verdict.</summary>
@@ -3066,9 +3081,14 @@ public sealed class BeaconSyncOrchestrator(
     internal async Task RunHeadSlotDelayTimerAsync(CancellationToken token)
     {
         using PeriodicTimer timer = new(TimeSpan.FromSeconds(1));
+        ulong? preparedSlot = null;
         do
         {
             RefreshHeadSlotDelay();
+            ulong nextSlot = slotClock.CurrentSlot + 1;
+            if (preparedSlot != nextSlot && slotClock.TimeIntoSlot.TotalSeconds >= spec.SecondsPerSlot * 2.0 / 3
+                && _work.Writer.TryWrite(new PrepareSlotItem(nextSlot)))
+                preparedSlot = nextSlot;
         } while (await timer.WaitForNextTickAsync(token));
     }
 
@@ -3177,7 +3197,7 @@ public sealed class BeaconSyncOrchestrator(
                 if (_logger.IsDebug) _logger.Debug($"Range sync round starts past the blocks held for a deferred block, at slot {held.Tip.Slot} instead of {tip.Slot}");
                 // A rejected held branch may also have an orphaned imported tip, so keep the finalized fallback when available and the tip is not the head.
                 RangeSync.AnchorFallback? beforeTip = tipIsHead ? null : fallback;
-                fallback = new RangeSync.AnchorFallback(beforeTip?.Root ?? tip.Root, beforeTip?.Slot ?? tip.Slot, () => { if (ReferenceEquals(_rangeHeld, held)) _rangeHeld = null; });
+                fallback = new RangeSync.AnchorFallback(beforeTip?.Root ?? tip.Root, beforeTip?.Slot ?? tip.Slot, () => Interlocked.CompareExchange(ref _rangeHeld, null, held));
                 tip = held.Tip;
             }
 

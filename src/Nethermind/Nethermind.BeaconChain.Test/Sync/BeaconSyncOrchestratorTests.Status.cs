@@ -33,6 +33,25 @@ public partial class BeaconSyncOrchestratorTests
     private const ulong YoungWallSlot = FuluAnchorSlot + 100;
     private const long AnchorColumnOffset = 10 - (long)(ServeRangeStart - FuluAnchorSlot);
 
+    [Test]
+    public async Task Status_block_floor_advances_after_pruning_without_restart()
+    {
+        BeaconChainSpec spec = Spec with { FuluForkEpoch = ulong.MaxValue, GloasForkEpoch = ulong.MaxValue };
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, spec);
+        store.SetAnchor(TestItem.KeccakA, 64);
+        ulong epoch = Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2 + 3;
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder status, _) = CreateStatusHarness(
+            new DataColumnSidecarPool(), 64, epoch * spec.SlotsPerEpoch, forkSpec: spec, backingStore: store);
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+        Assert.That(status.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(64UL));
+
+        store.SetAnchor(TestItem.KeccakB, 128);
+        store.PruneCanonicalBlocks(epoch, 128);
+
+        Assert.That(status.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(96UL));
+    }
+
     [TestCase(-5L, null, false, false, 0L, TestName = "Columns held from below the serve range advertise the anchor")]
     [TestCase(10L, null, false, false, 3200L + 10L, TestName = "Columns held only from inside the serve range advertise their first slot")]
     [TestCase(null, null, false, false, (long)(FuluWallSlot - FuluAnchorSlot + 1), TestName = "No columns held advertise the slot after the current one")]
@@ -255,7 +274,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(logs.Messages, Has.None.Contains("Wild hard fork appeared (Gloas)"), "a restart past the fork has no crossing to mark");
     }
 
-    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null, ulong? backfilledFrom = null, CheckpointRef? finalized = null, ScriptedImporter? scriptedImporter = null, ILogManager? logManager = null)
+    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null, ulong? backfilledFrom = null, CheckpointRef? finalized = null, ScriptedImporter? scriptedImporter = null, ILogManager? logManager = null, BeaconChainStore? backingStore = null)
     {
         BeaconChainSpec spec = forkSpec ?? Spec;
         ManualTimestamper timestamper = new(WallTime(wallSlot));
@@ -263,7 +282,7 @@ public partial class BeaconSyncOrchestratorTests
         StubPool peers = new([]);
         ScriptedImporter importer = scriptedImporter ?? ImporterWithHead(anchorSlot, headOffset, headFull, finalized);
         BeaconChainStatusHolder statusHolder = new(spec, timestamper);
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        BeaconChainStore store = backingStore ?? new(new MemColumnsDb<BeaconChainDbColumns>());
         RangeSync rangeSync = new(peers, LimboLogs.Instance, pool, spec, RangeSyncTests.ClockAtGenesis(spec));
         ColumnBackfill? columnBackfill = backfilledFrom is { } from
             ? new ColumnBackfill(store, pool, rangeSync, peers, slotClock, spec, statusHolder, new DiscoveryNodeCustodySource(null), LimboLogs.Instance) { CompleteFrom = from }

@@ -44,7 +44,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     public HttpClient Client { get; private set; } = null!;
     public PeerManager? PeerManager { get; }
 
-    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager, HeadSnapshotHolder? headSnapshots, IEngineDriver? engine, bool forkAwareStore)
+    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager, HeadSnapshotHolder? headSnapshots, IEngineDriver? engine, bool forkAwareStore, BeaconChainService? driver)
     {
         Spec = spec;
         Db = db ?? new MemColumnsDb<BeaconChainDbColumns>();
@@ -65,14 +65,14 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         apiConfig.Host = "127.0.0.1";
         apiConfig.Port = 0;
         Host = new BeaconApiHost(apiConfig, chainConfig, spec, StatusHolder, Clock, Store,
-            metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots);
+            metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots, driver: driver);
     }
 
     public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
         IColumnsDb<BeaconChainDbColumns>? db = null, BeaconApiConfig? apiConfig = null, ILogManager? logManager = null, bool withPeerManager = false, HeadSnapshotHolder? headSnapshots = null,
-        IEngineDriver? engine = null, bool forkAwareStore = true)
+        IEngineDriver? engine = null, bool forkAwareStore = true, BeaconChainService? driver = null)
     {
-        BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager, headSnapshots, engine, forkAwareStore);
+        BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager, headSnapshots, engine, forkAwareStore, driver);
         await host.Host.StartAsync(CancellationToken.None);
         host.Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Host.Port}"), Timeout = TimeSpan.FromSeconds(30) };
         return host;

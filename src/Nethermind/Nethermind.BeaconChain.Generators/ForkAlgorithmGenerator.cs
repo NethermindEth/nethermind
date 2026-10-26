@@ -7,7 +7,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
-namespace Nethermind.Analyzers;
+namespace Nethermind.BeaconChain.Generators;
 
 /// <summary>Specializes fork algorithm templates into concrete Fulu and Gloas methods.</summary>
 /// <remarks>Fork differences are compile-time branches; emitted methods retain concrete state types and calls.</remarks>

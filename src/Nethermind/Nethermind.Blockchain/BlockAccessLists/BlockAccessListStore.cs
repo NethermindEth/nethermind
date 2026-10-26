@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -19,6 +20,9 @@ namespace Nethermind.Blockchain.BlockAccessLists;
 public class BlockAccessListStore : IBlockAccessListStore
 {
     private const int KeyLength = 40;
+
+    /// <inheritdoc/>
+    public Lock WriteLock { get; } = new();
 
     private readonly IDb _balDb;
     private readonly BlockAccessListDecoder _balDecoder;
@@ -137,13 +141,16 @@ public class BlockAccessListStore : IBlockAccessListStore
     /// deferred overlay for the range under its own lock so a queued write cannot resurrect one.</summary>
     public void DeleteRange(ulong fromInclusive, ulong toExclusive)
     {
-        if (_pending is not null)
+        lock (WriteLock)
         {
-            _pending.RemoveRange(fromInclusive, toExclusive, () => _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list"));
-        }
-        else
-        {
-            _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list");
+            if (_pending is not null)
+            {
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
+            }
+            else
+            {
+                _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
+            }
         }
 
         _balDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);

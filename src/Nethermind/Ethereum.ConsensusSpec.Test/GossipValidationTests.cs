@@ -308,7 +308,7 @@ public class GossipValidationTests
     private static void Run(GossipValidationCase testCase, ICollection<Observation>? observations = null)
     {
         if (IsUnrouted(testCase))
-            throw new NotImplementedInDriverException($"GossipRouter neither subscribes nor validates the {TopicOf(testCase.Handler)} topic, so its rules have no code to run against");
+            throw new NotImplementedInDriverException($"GossipRouter neither subscribes nor validates the {TopicOf(testCase.Handler)} topic, so its rules have no code to run against") { KnownUnsupported = true };
 
         VectorMeta meta = VectorMeta.Load(testCase.CasePath);
         bool gloas = testCase.Fork == "gloas";
@@ -411,7 +411,7 @@ public class GossipValidationTests
             Assert.Fail(string.Join("; ", failures));
 
         if (uncheckedRejects.Count > 0)
-            throw new NotImplementedInDriverException($"GossipRouter does not reject: {string.Join("; ", uncheckedRejects)}");
+            throw new NotImplementedInDriverException($"GossipRouter does not reject: {string.Join("; ", uncheckedRejects)}") { KnownUnsupported = true };
 
         // A held message must be raised once the next slot starts, which tells a deferral from a drop that counted nothing.
         bool ReleasedAtNextSlot()

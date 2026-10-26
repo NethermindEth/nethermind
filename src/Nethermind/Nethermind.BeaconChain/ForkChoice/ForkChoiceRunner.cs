@@ -1000,7 +1000,7 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"Aggregate head block {beaconBlockRoot} does not descend from the finalized checkpoint {_store.FinalizedCheckpoint}");
 
         if (gloasContainer || IsGloasSlot(data.Slot))
-            ValidatePayloadStatusVote(data, blockSlot);
+            ValidatePayloadStatusVote(data, blockSlot, aggregator is not null);
 
         bool fromIncludingBlock = false;
         if (includingBlock is not null)
@@ -1199,15 +1199,37 @@ public sealed class ForkChoiceRunner
     };
 
     /// <summary>Enforces Gloas payload-status indices: 0/1, 0 in the block's own slot, and 1 only for roots in store.payloads. Pre-Gloas blocks are exempt only for on_block, not index-1 votes (gloas/fork-choice.md, EIP-7732).</summary>
-    private void ValidatePayloadStatusVote(AttestationData data, ulong blockSlot)
+    private void ValidatePayloadStatusVote(AttestationData data, ulong blockSlot, bool gossip)
     {
         if (data.Index > 1)
             throw new ForkChoiceException($"Attestation index {data.Index} is not a payload status (0 or 1)");
         if (blockSlot == data.Slot && data.Index != 0)
             // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] For same-slot attestations, the payload cannot yet be present".
             throw new ForkChoiceException($"Attestation for slot {data.Slot} votes for the payload of a block from its own slot") { RejectGossip = true };
+        if (gossip && data.Index == 1)
+        {
+            // gloas/p2p-interface.md verify_attestation_payload_status: REJECT invalidated payloads, IGNORE optimistic payloads.
+            if (_invalidPayloads.Contains(data.BeaconBlockRoot!))
+                throw new ForkChoiceException($"Attestation votes for the invalidated payload of {data.BeaconBlockRoot}") { RejectGossip = true };
+        }
         if (data.Index == 1 && !_payloads.Contains(data.BeaconBlockRoot!))
             throw new ForkChoiceException($"Attestation votes for the payload of {data.BeaconBlockRoot}, which is not verified");
+        if (gossip && data.Index == 1 && !IsGloasPayloadValid(data.BeaconBlockRoot!))
+            throw new ForkChoiceException($"Attestation votes for the optimistic payload of {data.BeaconBlockRoot}");
+    }
+
+    private bool IsGloasPayloadValid(Hash256 root)
+    {
+        if (_validPayloads.Contains(root)) return true;
+        Hash256? hash = _protoArray.GetExecutionBlockHash(root);
+        if (hash is null) return false;
+        foreach (ProtoNode node in _protoArray.Nodes)
+        {
+            if (node.IsGloas && ((_validPayloads.Contains(node.Root) && node.ExecutionBlockHash == hash)
+                || (node.ExecutionStatus == ExecutionStatus.Valid && _parentBlockHashes.GetValueOrDefault(node.Root) == hash)))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -2217,20 +2239,19 @@ public sealed class ForkChoiceRunner
         ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
         Validator[] validators = ValidatorsOf(state);
         ulong[] effectiveBalances = new ulong[validators.Length];
-        ulong totalActiveBalance = 0;
+        ulong unslashedActiveBalance = 0;
         for (int i = 0; i < validators.Length; i++)
         {
             Validator validator = validators[i];
-            if (!validator.IsActiveValidator(epoch))
+            if (!validator.IsActiveValidator(epoch) || validator.Slashed)
                 continue;
 
-            totalActiveBalance = checked(totalActiveBalance + validator.EffectiveBalance);
-            if (!validator.Slashed)
-                effectiveBalances[i] = validator.EffectiveBalance;
+            effectiveBalances[i] = validator.EffectiveBalance;
+            unslashedActiveBalance = checked(unslashedActiveBalance + validator.EffectiveBalance);
         }
 
-        // get_total_active_balance counts slashed validators and floors at EFFECTIVE_BALANCE_INCREMENT (specs/phase0/beacon-chain.md).
-        JustifiedBalances balances = new(effectiveBalances, Math.Max(Presets.EffectiveBalanceIncrement, totalActiveBalance));
+        // calculate_committee_fraction takes get_total_balance of the unslashed active validators, floored at EFFECTIVE_BALANCE_INCREMENT (specs/phase0/fork-choice.md).
+        JustifiedBalances balances = new(effectiveBalances, Math.Max(Presets.EffectiveBalanceIncrement, unslashedActiveBalance));
         _justifiedBalances[justified] = balances;
         return balances;
     }

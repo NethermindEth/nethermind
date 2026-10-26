@@ -15,7 +15,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 
 /// <summary>
 /// Upgrades Fulu state to Gloas, initializes the PTC window and onboards pending builders
-/// (<c>specs/gloas/fork.md</c>, consensus-specs v1.7.0-beta.2).
+/// (<c>specs/gloas/fork.md</c>, consensus-specs v1.7.0-beta.4).
 /// </summary>
 /// <remarks>
 /// Committee sampling uses Fulu accessors: the upgrade preserves validators, balances,

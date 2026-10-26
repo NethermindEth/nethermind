@@ -606,7 +606,6 @@ public class TransportTests
                 catch (SubprotocolException exception)
                 {
                     request.Peer.WireErrors.Enqueue(exception);
-                    request.Peer.Reply(request, [], false);
                 }
             }
         };
@@ -1850,12 +1849,7 @@ public class TransportTests
         internal void Reply(ReceiptRequest request, TxReceipt[] receipts, bool partial)
         {
             if (!_pending.TryRemove(request.Id, out _)) throw new InvalidOperationException("ETH fixture request is no longer pending.");
-            try { SendReply(request, receipts, partial); }
-            catch
-            {
-                _pending.TryAdd(request.Id, request);
-                throw;
-            }
+            SendReply(request, receipts, partial);
         }
 
         private void SendReply(ReceiptRequest request, TxReceipt[] receipts, bool partial)

@@ -52,9 +52,8 @@ public class BeaconChainSpecTests
         Assert.That(BeaconChainSpec.Hoodi.ElectraForkEpoch, Is.EqualTo(2048ul));
         Assert.That(BeaconChainSpec.Hoodi.FuluForkEpoch, Is.EqualTo(50688ul));
         Assert.That(BeaconChainSpec.Hoodi.MaxBlobsPerBlockElectra, Is.EqualTo(9ul));
-        Assert.That(BeaconChainSpec.Hoodi.GloasForkEpoch, Is.EqualTo(132352ul));
-        Assert.That(BeaconChainSpec.Hoodi.GloasForkVersion, Is.EqualTo(new byte[] { 0x80, 0, 9, 0x10 }));
-        Assert.That(BeaconChainSpec.Hoodi.Forks, Has.Length.EqualTo(8));
+        Assert.That(BeaconChainSpec.Hoodi.GloasForkEpoch, Is.EqualTo(Presets.FarFutureEpoch));
+        Assert.That(BeaconChainSpec.Hoodi.Forks, Has.Length.EqualTo(7));
         Assert.That(BeaconChainSpec.Hoodi.BlobSchedule, Has.Length.EqualTo(2));
     }
 

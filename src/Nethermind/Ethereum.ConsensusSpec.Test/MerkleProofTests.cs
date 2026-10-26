@@ -40,7 +40,7 @@ public class MerkleProofTests
         FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
         string proofName = Path.GetFileName(testCase.CasePath).Split("__")[0];
         if ((testCase.Fork, proofName) is not ("fulu", "blob_kzg_commitments_merkle_proof") and not ("electra", "blob_kzg_commitment_merkle_proof"))
-            throw new NotImplementedInDriverException($"{testCase.Fork} {proofName} proves a leaf no code in this node verifies.");
+            throw new NotImplementedInDriverException($"{testCase.Fork} {proofName} proves a leaf no code in this node verifies.") { KnownUnsupported = true };
 
         BeaconBlockBody.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, "object.ssz_snappy")), out BeaconBlockBody body);
         YamlMappingNode proof = FuluDriverSupport.LoadMapping(Path.Combine(testCase.CasePath, "proof.yaml"));

@@ -13,7 +13,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,6 +25,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -579,14 +582,20 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public async Task Streamed_serialization_failure_is_an_internal_error([Values] bool wrapped)
+    public async Task Streamed_serialization_failure_preserves_typed_mapping(
+        [Values("json", "format", "duration")] string kind, [Values] bool wrapped)
     {
         IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
         ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
         pool.GetModule(false).Returns(rpcModule);
         using CancellationTokenSource timeout = new();
-        Exception failure = new JsonException("Cannot serialize trace");
-        if (wrapped) failure = new TargetInvocationException(failure);
+        Exception cause = kind switch
+        {
+            "json" => new JsonException("Cannot serialize trace"),
+            "format" => new FormatException("Cannot serialize trace"),
+            _ => new TraceDurationFormatException("bad duration")
+        };
+        Exception failure = wrapped ? new TargetInvocationException(cause) : cause;
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
             .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
                 (_, _, _) => throw failure, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
@@ -595,8 +604,22 @@ public class JsonRpcServiceTests
         PipeWriter writer = PipeWriter.Create(stream);
         await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
         await writer.CompleteAsync();
-        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
-        Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+        bool durationError = kind == "duration" && !wrapped;
+        string expected = durationError
+            ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"bad duration"},"id":67}"""
+            : JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                error = new { code = ErrorCodes.InternalError, message = "Internal error", data = $"{cause.GetType()}: {cause.Message}" },
+                id = 67
+            });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(expected));
+            pool.DidNotReceive().ReturnModule(rpcModule);
+        }
+        response.Dispose();
+        pool.Received(1).ReturnModule(rpcModule);
     }
 
     [Test]
@@ -1535,6 +1558,42 @@ public class JsonRpcServiceTests
         public int DisposeCount { get; private set; }
 
         public void Dispose() => DisposeCount++;
+    }
+
+    [Test]
+    public async Task Service_registered_by_the_node_can_be_decorated()
+    {
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddDecorator<IJsonRpcService, RecordingJsonRpcService>()
+            .Build();
+
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_chainId"), new JsonRpcContext(RpcEndpoint.Http));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service, Is.InstanceOf<RecordingJsonRpcService>());
+            Assert.That(((RecordingJsonRpcService)service).Methods, Is.EqualTo(new[] { "eth_chainId" }));
+            RpcTest.AssertSuccess<ulong>(response);
+        }
+    }
+
+    private sealed class RecordingJsonRpcService(IJsonRpcService inner) : IJsonRpcService
+    {
+        public List<string> Methods { get; } = [];
+
+        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context)
+        {
+            Methods.Add(request.Method);
+            return inner.SendRequestAsync(request, context);
+        }
+
+        public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, in JsonRpcId id, string? methodName = null) =>
+            inner.GetErrorResponse(errorCode, errorMessage, in id, methodName);
+
+        public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, string? methodName = null) =>
+            inner.GetErrorResponse(errorCode, errorMessage, methodName);
     }
 
     public class PolymorphicBasePayload

@@ -187,7 +187,6 @@ public partial record BeaconChainSpec
             new(Bytes.FromHexString("0x50000910"), 0), // deneb
             new(Bytes.FromHexString("0x60000910"), 2048), // electra
             new(Bytes.FromHexString("0x70000910"), 50688), // fulu
-            new(Bytes.FromHexString("0x80000910"), 132352), // gloas
         ],
         BlobSchedule =
         [
@@ -197,8 +196,8 @@ public partial record BeaconChainSpec
         ElectraForkEpoch = 2048,
         FuluForkEpoch = 50688,
         MaxBlobsPerBlockElectra = 9,
-        GloasForkEpoch = 132352,
-        GloasForkVersion = Bytes.FromHexString("0x80000910"),
+        GloasForkEpoch = Presets.FarFutureEpoch, // eth-clients/hoodi unscheduled Gloas on 2026-10-22
+        GloasForkVersion = Bytes.FromHexString("0x07000000"),
     };
 
     /// <summary>

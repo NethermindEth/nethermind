@@ -52,7 +52,8 @@ public class GenesisTests
 
     private static void Run(GenesisCase testCase) =>
         throw new NotImplementedInDriverException(
-            $"the {testCase.Fork} genesis state is a {testCase.Fork} BeaconState of the {testCase.Preset} preset, and this repo models no such container");
+            $"the {testCase.Fork} genesis state is a {testCase.Fork} BeaconState of the {testCase.Preset} preset, and this repo models no such container")
+        { KnownUnsupported = true };
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
     private static IEnumerable<TestCaseData> MainnetCases() => ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];

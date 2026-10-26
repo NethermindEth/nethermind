@@ -6,10 +6,12 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Snappier;
@@ -22,6 +24,36 @@ public class ColumnGossipRouterReconstructionTests
     private const int Required = Eip7594DasConstants.RequiredColumnsForReconstruction;
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+
+    [Test]
+    public async Task A_full_store_queue_does_not_hold_the_reconstruction_lock()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        using ColumnStoreWriter writer = new(LimboLogs.Instance);
+        DataColumnSidecarPool pool = new(store: new BeaconChainStore(db, Spec), storeWriter: writer);
+        (ColumnGossipRouter router, _, _) = Create(DataColumnReconstruction.TryReconstruct, pool);
+        Hash256 root = Seed(pool, CurrentSlot);
+        pool.Add(root, CurrentSlot, DataColumnSidecarTestFixture.BuildValidSidecar(Required - 1, CurrentSlot));
+        await writer.WhenWritten().WaitAsync(Timeout);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        writer.Post(() => { entered.Set(); release.Wait(Timeout); });
+        Assert.That(entered.Wait(Timeout), Is.True);
+        for (int i = 0; i < ColumnStoreWriter.MaxQueued; i++) writer.Post(static () => { });
+        Task reconstruction = Task.Run(() => typeof(ColumnGossipRouter).GetMethod("TrackHeldColumnAndMaybeReconstruct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(router, [root, CurrentSlot]));
+        bool acquired = false;
+        try
+        {
+            Assert.That(SpinWait.SpinUntil(() => pool.TryGet(root, Required, out _), Timeout), Is.True);
+            Lock reconstructionLock = (Lock)typeof(ColumnGossipRouter).GetField("_reconstructionLock", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(router)!;
+            acquired = reconstructionLock.TryEnter(TimeSpan.FromSeconds(1));
+            if (acquired) reconstructionLock.Exit();
+        }
+        finally { release.Set(); }
+        await reconstruction.WaitAsync(Timeout);
+        Assert.That(acquired, Is.True, "disk backpressure must not hold the cross-block reconstruction lock");
+    }
 
     [TestCase(false, TestName = "Sidecars_of_another_root_are_not_blocked_while_one_root_recovers")]
     [TestCase(true, TestName = "A_root_is_never_recovered_twice_concurrently")]
@@ -125,9 +157,9 @@ public class ColumnGossipRouterReconstructionTests
         Assert.That(pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
     }
 
-    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, ConcurrentBag<DataColumnSidecar> Received) Create(ColumnGossipRouter.DataColumnReconstructor reconstruct)
+    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, ConcurrentBag<DataColumnSidecar> Received) Create(ColumnGossipRouter.DataColumnReconstructor reconstruct, DataColumnSidecarPool? pool = null)
     {
-        DataColumnSidecarPool pool = new();
+        pool ??= new();
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot + 6);
         ColumnGossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, pool) { Reconstruct = reconstruct };
         router.Start(_ => new GossipDigestWindowTests.SilentTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static i => (ulong)i)]);

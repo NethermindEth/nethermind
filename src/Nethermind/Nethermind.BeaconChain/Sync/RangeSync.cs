@@ -95,8 +95,9 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         HashSet<string>? skippedOnWordOf = null;
         // Peers whose first block after the slots they vouched for missed the unverified anchor, by id.
         HashSet<string>? anchorMisses = null;
+        Dictionary<string, (IBeaconSyncPeer Peer, Hash256 Parent, ulong Start)> omittedParents = [];
         // The peers whose misses abandoned the anchor, each charged if it later serves the chain from the fallback through that anchor.
-        (string[] PeerIds, Hash256 Root, ulong Slot)? abandonedOnWordOf = null;
+        (HashSet<string> PeerIds, Hash256 Root, ulong Slot)? abandonedOnWordOf = null;
 
         while (!token.IsCancellationRequested && nextSlot <= targetHeadSlot())
         {
@@ -165,6 +166,11 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
+            if (batch is { Linked: false } && fallback is not null && (skippedOnWordOf is not null || from == lastSlot + 1))
+            {
+                omittedParents[peer.Id] = (peer, batch.Value.Blocks[0].ParentRoot, from);
+            }
+
             if (batch is { Linked: false } && fallback is not null && (skippedOnWordOf is not null || from == lastSlot + 1)
                 && CountAnchorMismatches(anchorMisses ??= [], lastRoot, peer.Id, target) >= fallback.RequiredMismatches)
             {
@@ -218,10 +224,21 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             await FetchColumnsForBatchAsync(batch.Value.Blocks, batch.Value.Roots, token);
             await FetchGloasColumnsForBatchAsync(batch.Value.Blocks, batch.Value.Roots, token);
             batchSource?.Invoke(peer);
-            foreach (ForkedSignedBeaconBlock block in batch.Value.Blocks)
+            for (int blockIndex = 0; blockIndex < batch.Value.Blocks.Count; blockIndex++)
             {
+                ForkedSignedBeaconBlock block = batch.Value.Blocks[blockIndex];
                 yield return block;
                 lastSlot = block.Slot;
+                Hash256 root = batch.Value.Roots[blockIndex];
+                foreach (KeyValuePair<string, (IBeaconSyncPeer Peer, Hash256 Parent, ulong Start)> miss in omittedParents)
+                {
+                    if (root == miss.Value.Parent && block.Slot >= miss.Value.Start)
+                    {
+                        miss.Value.Peer.ReportFailure(PeerFailureReason.ProtocolViolation, "The range response omitted the served block's parent inside the requested range");
+                        omittedParents.Remove(miss.Key);
+                        abandonedOnWordOf?.PeerIds.Remove(miss.Key);
+                    }
+                }
             }
 
             if (batch.Value.Blocks.Count > 0)
@@ -231,7 +248,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 if (abandonedOnWordOf is { } abandoned && lastSlot >= abandoned.Slot)
                 {
                     // BeaconBlocksByRange is answered from the responder's own fork choice, so only a peer that serves both views contradicted itself.
-                    if (Array.IndexOf(batch.Value.Roots, abandoned.Root) >= 0 && Array.IndexOf(abandoned.PeerIds, peer.Id) >= 0)
+                    if (Array.IndexOf(batch.Value.Roots, abandoned.Root) >= 0 && abandoned.PeerIds.Contains(peer.Id))
                     {
                         peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"The first block after {abandoned.Root} named another parent, but its chain from the fallback anchor links through it");
                     }

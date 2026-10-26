@@ -26,8 +26,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// at every boundary from balances the epoch's own blocks moved: two branches that diverged inside
 /// the previous epoch share the decision root yet can disagree on the total active balance, which
 /// the decision-root key used to hand across silently. Same-slot siblings within one epoch share
-/// both keys and both values legitimately; a separate instance per candidate is still the only
-/// protection for the stateful <see cref="Hasher"/>.
+/// both keys and both values legitimately. Instances sharing the stateful <see cref="Hasher"/> must be used serially.
 /// </remarks>
 public sealed class EpochCache
 {

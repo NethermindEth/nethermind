@@ -95,6 +95,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly Queue<(string PeerId, long RemovedAtTicks, long Sequence)> _closedOrder = new();
     private long _closedSequence;
     internal static readonly TimeSpan ClosedPeerWindow = TimeSpan.FromMinutes(1);
+    internal static readonly TimeSpan RejectedGossipWindow = TimeSpan.FromMinutes(1);
     private readonly BeaconDiscovery? _discovery;
     private readonly INodeColumnCustodySource _localCustody;
     private readonly ITimestamper _timestamper;
@@ -646,6 +647,35 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         connected!.ReportFailure(PeerFailureReason.ProtocolViolation, detail, ownRequest: false);
         return true;
+    }
+
+    internal void ReportRejectedGossip(PeerId peerId, string detail)
+    {
+        ManagedPeer? peer;
+        lock (_admissionLock)
+        {
+            if (!TryFindConnected(peerId.ToString(), out peer) && !TryFindClosed(peerId.ToString(), out peer)) return;
+        }
+
+        peer!.ReportFailure(PeerFailureReason.ProtocolViolation, detail, ownRequest: false);
+        if (peer.RecordRejectedGossip())
+        {
+            // Do not hold the pubsub verdict callback while the peer's streams close.
+            _ = DropRejectedGossipAsync(peer, detail);
+        }
+    }
+
+    private async Task DropRejectedGossipAsync(ManagedPeer peer, string detail)
+    {
+        try
+        {
+            await DropAsync(peer, GoodbyeReason.Fault, detail, _runToken);
+        }
+        catch (OperationCanceledException) when (_runToken.IsCancellationRequested) { }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Failed to disconnect gossip peer {peer.Id}: {DescribeFailure(e)}");
+        }
     }
 
     /// <summary>
@@ -1964,8 +1994,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return;
         }
 
-        // A drop that began before the peer's session closed finds it removed and recorded by RemoveClosedSession already, with no session left to say goodbye on.
-        if (!removed && peer.RemovedOnClose)
+        // A peer refused at admission was never pooled, so only a closed session or an earlier drop owns the disconnect.
+        if (!removed && peer.RemovedOnClose || !peer.RecordDrop(reason, detail, unresponsive))
         {
             return;
         }
@@ -1974,7 +2004,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         Interlocked.Increment(ref Metrics.PeersDroppedCount);
         Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(GoodbyeReasonName(reason)));
         if (removed) _dialHistory.Record(peer.Id, connected: false);
-        RecordDisconnect(peer, reason, detail, unresponsive);
         await _p2p.GoodbyeAsync(peer.Session, reason, token);
         try
         {
@@ -2303,6 +2332,25 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         /// <summary>The discv5 ENR text this peer was discovered with; <c>null</c> for a static peer or
         /// an inbound session (see <see cref="PeerManager.TryAddPeerAsync"/>'s optional ENR parameter).</summary>
         public string? Enr { get; } = enr;
+        private int _rejectedGossip;
+        private long _rejectedGossipSinceTicks;
+
+        /// <returns><c>true</c> once <see cref="MaxConsecutiveFailures"/> rejections fall within one <see cref="RejectedGossipWindow"/>.</returns>
+        /// <remarks>A flood reaches the limit at once; rare rejections over a long honest session never accumulate to it.</remarks>
+        public bool RecordRejectedGossip()
+        {
+            long now = manager._timestamper.UtcNowOffset.UtcTicks;
+            lock (_closeLock)
+            {
+                if (now - _rejectedGossipSinceTicks > RejectedGossipWindow.Ticks)
+                {
+                    _rejectedGossipSinceTicks = now;
+                    _rejectedGossip = 0;
+                }
+
+                return ++_rejectedGossip == MaxConsecutiveFailures;
+            }
+        }
         public int ConsecutiveFailures => Volatile.Read(ref _consecutiveFailures);
 
         /// <summary>The selection penalty from failed requests; a passing health check clears only its health-timeout contribution.</summary>
@@ -2465,6 +2513,20 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 _closeRecorded = true;
                 _closeCountedAsFault = ViolatedProtocolSinceLastHealthyCheck;
                 manager.RecordClosedSession(this, _closeCountedAsFault, newDisconnect: true);
+            }
+        }
+
+        /// <summary>Records our drop of the peer like <see cref="RecordClose"/>: as a fault disconnect when <paramref name="reason"/> is one or the peer violated the protocol since its last passing health check.</summary>
+        /// <returns><c>false</c> when the peer's close or drop was already recorded.</returns>
+        public bool RecordDrop(ulong reason, string detail, bool unresponsive)
+        {
+            lock (_closeLock)
+            {
+                if (_closeRecorded) return false;
+                _closeRecorded = true;
+                _closeCountedAsFault = reason == GoodbyeReason.Fault || ViolatedProtocolSinceLastHealthyCheck;
+                manager.RecordDisconnect(this, _closeCountedAsFault ? GoodbyeReason.Fault : reason, detail, unresponsive && !_closeCountedAsFault);
+                return true;
             }
         }
 

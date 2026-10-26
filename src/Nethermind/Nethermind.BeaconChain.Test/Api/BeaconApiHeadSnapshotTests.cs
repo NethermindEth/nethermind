@@ -40,8 +40,8 @@ public class BeaconApiHeadSnapshotTests
             Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = chain.AnchorRoot, HeadSlot = chain.AnchorState.Slot, FinalizedRoot = chain.AnchorRoot, FinalizedEpoch = 1 }, null, chain.AnchorRoot, true)
             {
                 State = new ForkedBeaconState.OfFulu(chain.AnchorState),
-                JustifiedState = new CheckpointStateSnapshot(checkpoint, state),
-                FinalizedState = new CheckpointStateSnapshot(checkpoint, state),
+                JustifiedState = new CheckpointStateSnapshot(checkpoint, state, stateRoot),
+                FinalizedState = new CheckpointStateSnapshot(checkpoint, state, stateRoot),
             },
         };
         await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(chain.Spec, headSnapshots: snapshots);

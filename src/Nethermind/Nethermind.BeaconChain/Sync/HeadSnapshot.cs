@@ -27,17 +27,7 @@ public sealed record HeadSnapshot(StatusMessageV2 Status, Hash256? FullHeadRoot,
 }
 
 /// <summary>A checkpoint's epoch-start state, shared unchanged across head publications.</summary>
-internal sealed record CheckpointStateSnapshot(CheckpointRef Checkpoint, ForkedBeaconState State)
-{
-    private readonly Lazy<Hash256> _root = new(() => State switch
-    {
-        ForkedBeaconState.OfFulu fulu => SszRoots.HashTreeRoot(fulu.State),
-        ForkedBeaconState.OfGloas gloas => SszRoots.HashTreeRoot(gloas.State),
-        _ => throw new NotSupportedException(),
-    });
-
-    internal Hash256 StateRoot => _root.Value;
-}
+internal sealed record CheckpointStateSnapshot(CheckpointRef Checkpoint, ForkedBeaconState State, Hash256 StateRoot);
 
 /// <summary>Publishes one completed get_head view to other threads (fork-choice.md).</summary>
 /// <remarks><see cref="Current"/> stays <c>null</c> until the orchestrator is initialized.</remarks>

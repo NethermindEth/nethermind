@@ -35,6 +35,33 @@ public class FastConfirmationTests
         Assert.That(rule.ConfirmedRoot, Is.EqualTo(previousEpoch ? GetRoot(2) : finalized.Root));
     }
 
+    /// <remarks>
+    /// 10 votes of 32 ETH and one of 1,317 ETH score 1,637 ETH. The safety threshold is about 1,636.35 ETH when the proposer score leaves
+    /// the 8 slashed validators out (<c>calculate_committee_fraction</c>), and about 1,637.95 ETH when it counts them.
+    /// </remarks>
+    [Test]
+    public void Proposer_score_leaves_slashed_validators_out_of_the_safety_threshold()
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet with { SlotsPerEpoch = Presets.SlotsPerEpoch };
+        CheckpointRef finalized = new(1, GetRoot(1));
+        ForkChoiceStore store = new(spec.SlotsPerEpoch, spec.SlotsPerEpoch * 2 - 1, finalized, finalized);
+        ProtoArrayForkChoice tree = new(store.CurrentSlot, spec.SlotsPerEpoch, Hash256.Zero, finalized, finalized,
+            ExecutionStatus.Valid, GetRoot(1));
+        tree.ProcessBlock(new ProtoBlock(spec.SlotsPerEpoch + 1, GetRoot(2), finalized.Root, Hash256.Zero,
+            finalized, finalized, ExecutionStatus.Valid, GetRoot(2), finalized, finalized), store.CurrentSlot, finalized, finalized);
+        ForkedBeaconState.OfFulu source = (ForkedBeaconState.OfFulu)State(spec.SlotsPerEpoch, activation: false, laterEpoch: false);
+        Validator[] validators = source.State.Validators!;
+        for (ulong i = 0; i < 8; i++) validators[i].Slashed = true;
+        for (ulong i = 8; i < 18; i++) tree.ProcessAttestation(i, GetRoot(2), 1);
+        validators[31].EffectiveBalance = 1_317 * Presets.EffectiveBalanceIncrement;
+        tree.ProcessAttestation(31, GetRoot(2), 1);
+        FastConfirmation rule = new(spec, store, tree, new HashSet<ulong>(), _ => source, _ => source, (_, _) => source);
+
+        rule.OnSlot(GetRoot(2));
+
+        Assert.That(rule.ConfirmedRoot, Is.EqualTo(GetRoot(2)));
+    }
+
     [Test]
     public void Epoch_reconfirmation_uses_previous_balances_and_advancement_uses_current_balances([Values] bool activation)
     {

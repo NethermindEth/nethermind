@@ -10,6 +10,13 @@ namespace Ethereum.ConsensusSpec.Test;
 public class FuluDriverSupportTests
 {
     [Test]
+    public void An_unexpectedly_unsupported_vector_fails_instead_of_becoming_inconclusive()
+    {
+        Assert.Throws<AssertionException>(() => ConsensusSpecTestSummary.FinishUnsupportedVector(new("missing operand"), "second"));
+        Assert.Throws<InconclusiveException>(() => ConsensusSpecTestSummary.FinishUnsupportedVector(new("unsupported fork") { KnownUnsupported = true }, "unmodeled"));
+    }
+
+    [Test]
     public void AssertRejected_passes_only_the_pipelines_own_rejection_types()
     {
         Assert.DoesNotThrow(() => FuluDriverSupport.AssertRejected(new BeaconStateException("failed spec assertion"), "the operation"));

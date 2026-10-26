@@ -30,6 +30,21 @@ public class BeaconApiHostTests : BeaconApiFixture
 
     private NoOpEngineDriver _engine = null!;
 
+    [Test]
+    public async Task Stopping_the_driver_closes_live_event_streams()
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        BeaconChainService driver = container.Resolve<BeaconChainService>();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(Spec, driver: driver);
+        using HttpResponseMessage response = await host.Client.GetAsync("/eth/v1/events?topics=head", HttpCompletionOption.ResponseHeadersRead);
+        await using System.IO.Stream events = await response.Content.ReadAsStreamAsync();
+
+        driver.Stop();
+
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        Assert.That(await events.ReadAsync(new byte[1], deadline.Token), Is.Zero);
+    }
+
     [OneTimeSetUp]
     public async Task StartHost()
     {

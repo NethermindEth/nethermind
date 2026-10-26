@@ -105,14 +105,14 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
             wasProcessed: true, validateSuggestedBlock: true, senderRecovery: recovery,
-            specProvider: container.Resolve<ISpecProvider>());
+            specProvider: container.Resolve<ISpecProvider>(), timeoutMs: LongRequestBudgetMs);
         ISenderRecoveryProgress? progress = null;
         try
         {
             ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
             progress = recovery.GetInFlight(transactions);
             ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor
-                ? null : await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                ? null : await entered.Task.WaitAsync(AnswerWait);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodingWorkers, Is.Not.Null);

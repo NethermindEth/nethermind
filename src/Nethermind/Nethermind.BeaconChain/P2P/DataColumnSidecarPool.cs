@@ -30,8 +30,9 @@ namespace Nethermind.BeaconChain.P2P;
 /// <param name="status">Finalized epoch for pruning noncanonical sidecars; null disables that pruning.</param>
 /// <param name="logManager">Reports store faults.</param>
 /// <param name="storeWriter">Runs writes and prunes in order after memory insertion; null runs on the caller.</param>
+/// <param name="config">The custody group count used to identify persisted sampled columns.</param>
 public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainStore? store = null, SlotClock? clock = null, IBeaconChainStatusSource? status = null, ILogManager? logManager = null,
-    ColumnStoreWriter? storeWriter = null)
+    ColumnStoreWriter? storeWriter = null, IBeaconChainConfig? config = null)
 {
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<DataColumnSidecarPool>();
 
@@ -197,7 +198,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
     }
 
-    // Discovery derives the node id from this stored key with CUSTODY_REQUIREMENT groups; import needed every sampled column, which includes the custody ones (fulu/das-core.md).
+    // Import needed every sampled column, including the configured custody columns (fulu/das-core.md).
     private UInt128? StoredSampledColumns()
     {
         try
@@ -209,7 +210,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
 
             using PrivateKey nodeKey = new(key);
             UInt128 columns = UInt128.Zero;
-            foreach (ulong column in new NodeColumnCustody(nodeKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement).SampledColumns)
+            foreach (ulong column in new NodeColumnCustody(nodeKey.PublicKey.Hash, config?.CustodyGroupCount ?? Eip7594DasConstants.CustodyRequirement).SampledColumns)
             {
                 columns |= UInt128.One << (int)column;
             }

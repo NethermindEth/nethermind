@@ -52,7 +52,7 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
             INamedTypeSymbol symbol = compilation.GetTypeByMetadataName("Nethermind.BeaconChain.Types." + parts[0])
                 ?? compilation.GetTypeByMetadataName("Nethermind.Merge.Plugin.SszRest." + parts[0])
                 ?? throw new InvalidOperationException("Unknown type " + parts[0]);
-            IPropertySymbol[] properties = SszType.GetOrderedPublicProperties(symbol).ToArray();
+            IPropertySymbol[] properties = SszPropertyOrder.GetPublicProperties(symbol).ToArray();
             if (parts.Length != properties.Length + 1) throw new InvalidOperationException("Field count does not match SSZ schema: " + symbol.Name);
             Field[] table = new Field[properties.Length];
             for (int index = 0; index < properties.Length; index++)

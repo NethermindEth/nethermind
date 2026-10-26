@@ -2,25 +2,49 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Buffers.Binary;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 
 namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>Holds the node's own eth2 <c>MetaData</c>, served over the <c>metadata</c> and <c>ping</c> protocols.</summary>
 /// <remarks>
-/// The node neither attests nor custodies extra data, so the subnet bitfields stay empty and the
-/// custody group count is the Fulu <c>CUSTODY_REQUIREMENT</c> minimum. Reads
-/// <see cref="Eip7594DasConstants.CustodyRequirement"/> directly rather than its own copy, so this
-/// value and the one <see cref="Discovery.LocalCustody"/> derives subnets from can never drift apart.
+/// The node does not attest, so the attestation subnet bitfields stay empty. The custody group count
+/// uses the same configuration as <see cref="Discovery.LocalCustody"/>.
 /// </remarks>
-public class LocalMetadataSource
+public class LocalMetadataSource(IBeaconChainConfig? config = null, BeaconChainStore? store = null)
 {
-    public MetaDataV3 Current { get; set; } = new()
+    private readonly Lazy<MetaDataV3> _initial = new(() => new()
     {
-        SeqNumber = 1,
+        SeqNumber = Sequence(config?.CustodyGroupCount ?? Eip7594DasConstants.CustodyRequirement, store),
         Attnets = new BitArray(64),
         Syncnets = new BitArray(4),
-        CustodyGroupCount = Eip7594DasConstants.CustodyRequirement,
-    };
+        CustodyGroupCount = config?.CustodyGroupCount ?? Eip7594DasConstants.CustodyRequirement,
+    });
+
+    public MetaDataV3 Current
+    {
+        get => field ?? _initial.Value;
+        set;
+    }
+
+    private static ulong Sequence(ulong count, BeaconChainStore? store)
+    {
+        if (store is null) return 1;
+        const string key = "p2pMetadata";
+        // Previously every configuration advertised sequence 1, so the first persisted version supersedes it.
+        ulong sequence = 2;
+        if (store.GetMetadata(key) is { Length: 2 * sizeof(ulong) } previous)
+        {
+            sequence = BinaryPrimitives.ReadUInt64BigEndian(previous);
+            if (BinaryPrimitives.ReadUInt64BigEndian(previous.AsSpan(sizeof(ulong))) != count) sequence = checked(sequence + 1);
+        }
+        byte[] value = new byte[2 * sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(value, sequence);
+        BinaryPrimitives.WriteUInt64BigEndian(value.AsSpan(sizeof(ulong)), count);
+        store.PutMetadata(key, value);
+        return sequence;
+    }
 }

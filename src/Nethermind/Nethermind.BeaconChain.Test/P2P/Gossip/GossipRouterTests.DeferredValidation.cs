@@ -39,7 +39,8 @@ public partial class GossipRouterTests
     public async Task Deferred_block_is_sent_to_the_mesh_only_once_its_verdict_is_accepted(
         [Values(MessageValidity.Accepted, MessageValidity.Rejected, MessageValidity.Ignored)] MessageValidity validity)
     {
-        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 8, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
+        List<PeerId> rejected = [];
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 8, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), reportRejected: (peer, _) => rejected.Add(peer));
         byte[] block = BlockMessage(CurrentSlot);
 
         fixture.Receive(fixture.Sender, block);
@@ -51,6 +52,7 @@ public partial class GossipRouterTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((forwardedWhilePending, pending), Is.EqualTo((false, 1)), "the router holds a deferred message");
         Assert.That(applied, Is.True);
+        Assert.That(rejected, Is.EqualTo(validity == MessageValidity.Rejected ? new[] { fixture.Sender } : Array.Empty<PeerId>()));
         Assert.That(fixture.SentToNeighbor(block), Is.EqualTo(validity == MessageValidity.Accepted), "only an accepted message is sent on");
         Assert.That(fixture.Router.GetDropCount(GossipDropReason.Duplicate), Is.Zero, "the router caches the id of a message with a verdict, so a copy is not validated again");
         Assert.That((fixture.Pubsub.PendingValidationCount, fixture.Validation.PendingBytes), Is.EqualTo((0, 0L)), "a given verdict releases its message");
@@ -100,24 +102,27 @@ public partial class GossipRouterTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((share, raisedFromSender), Is.EqualTo((2, 2)), "the message past the peer's share is throttled");
         Assert.That(fixture.Raised, Has.Count.EqualTo(3), "another peer's message is still validated");
-        Assert.That(fixture.Validation.Verify(fixture.Sender, vote), Is.EqualTo(MessageValidity.Deferred), "a vote is not held to the peer's share");
+        Assert.That(fixture.Validation.Verify(fixture.Sender, vote), Is.EqualTo(MessageValidity.Deferred), "votes have a separate per-peer share");
     }
 
     [Test]
-    public async Task One_rpc_of_many_columns_from_one_peer_is_not_held_to_its_share()
+    public async Task One_rpc_of_votes_or_columns_from_one_peer_is_held_to_its_share([Values] bool votes)
     {
-        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 128, maxPendingBytes: 1 << 24, TimeSpan.FromSeconds(30));
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 128, maxPendingBytes: 1 << 24, TimeSpan.FromSeconds(30), maxPendingVotes: 128);
         byte[] digest = ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot));
-        MessageValidity[] columns = [.. Enumerable.Range(0, 128).Select(subnet => fixture.Validation.Verify(fixture.Sender,
-            new Message { Topic = GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName((ulong)subnet)), Data = ByteString.CopyFrom([(byte)subnet]) }))];
+        string Topic(int index) => GossipTopics.Topic(digest, votes ? GossipTopics.BeaconAggregateAndProof : GossipTopics.DataColumnSidecarTopicName((ulong)index));
+        MessageValidity[] messages = [.. Enumerable.Range(0, 128).Select(subnet => fixture.Validation.Verify(fixture.Sender,
+            new Message { Topic = Topic(subnet), Data = ByteString.CopyFrom([(byte)subnet]) }))];
 
         MessageValidity block = fixture.Validation.Verify(fixture.Sender, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(fixture.Validation.MaxPendingPerSource, Is.LessThan(columns.Length), "fixture: more columns than the peer's share");
-        Assert.That(columns, Is.All.EqualTo(MessageValidity.Deferred));
+        Assert.That(fixture.Validation.MaxPendingPerSource, Is.LessThan(messages.Length), "fixture: more messages than the peer's share");
+        Assert.That(messages.Take(fixture.Validation.MaxPendingPerSource), Is.All.EqualTo(MessageValidity.Deferred));
+        Assert.That(messages.Skip(fixture.Validation.MaxPendingPerSource), Is.All.EqualTo(MessageValidity.Throttled));
+        Assert.That(fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = Topic(0), Data = ByteString.CopyFrom([0]) }), Is.EqualTo(MessageValidity.Deferred));
         Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
-        Assert.That(fixture.Validation.Pending, Is.EqualTo(1), "parked columns do not consume block reservations");
+        Assert.That(fixture.Validation.Pending, Is.EqualTo(1), "votes and columns do not consume block reservations");
     }
 
     // gloas/p2p-interface.md data_column_sidecar: a sidecar whose block is unseen MAY be queued; the queue must not starve other peers' columns.
@@ -155,7 +160,7 @@ public partial class GossipRouterTests
     {
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), maxPendingVotes: 2);
         string aggregates = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconAggregateAndProof);
-        MessageValidity[] votes = [.. Enumerable.Range(0, 3).Select(i => fixture.Validation.Verify(fixture.Sender, new Message { Topic = aggregates, Data = ByteString.CopyFrom([(byte)i]) }))];
+        MessageValidity[] votes = [.. Enumerable.Range(0, 3).Select(i => fixture.Validation.Verify(i == 1 ? fixture.Neighbor : fixture.Sender, new Message { Topic = aggregates, Data = ByteString.CopyFrom([(byte)i]) }))];
 
         MessageValidity block = fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
 
@@ -315,7 +320,7 @@ public partial class GossipRouterTests
         public PeerId Neighbor { get; } = neighbor.Peer;
 
         public static async Task<DeferredFixture> Create(int maxPending, long maxPendingBytes, TimeSpan timeout, string protocol = PubsubRouter.GossipsubProtocolVersionV11, int maxPendingVotes = 1024,
-            TimeProvider? time = null, bool gloasColumns = false)
+            TimeProvider? time = null, bool gloasColumns = false, Action<PeerId, string>? reportRejected = null)
         {
             IContainer container = BeaconChainTestContainer.Builder().Build();
             PubsubSettings settings;
@@ -341,7 +346,10 @@ public partial class GossipRouterTests
             }
 
             DeferredGossipValidation validation = new(pubsub, validator,
-                maxPending, maxPendingBytes, maxPendingVotes, timeout, LimboLogs.Instance.GetClassLogger<GossipRouterTests>(), CancellationToken.None, time);
+                maxPending, maxPendingBytes, maxPendingVotes, timeout, LimboLogs.Instance.GetClassLogger<GossipRouterTests>(), CancellationToken.None, time)
+            {
+                ReportRejectedMessage = reportRejected,
+            };
             pubsub.VerifyMessage = validation.Verify;
             pubsub.OnDeferredMessage = validation.ValidateAsync;
             pubsub.GetTopic(BlockTopic);

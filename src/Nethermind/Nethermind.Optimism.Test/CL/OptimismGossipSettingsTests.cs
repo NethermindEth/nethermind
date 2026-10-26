@@ -76,27 +76,57 @@ public class OptimismGossipSettingsTests
         BoundedGossipProtocol first = new(inner, budget);
         BoundedGossipProtocol otherVersion = new(inner, budget);
         ISessionContext[] peers = Enumerable.Range(0, GossipStreamBudget.MaxStreams + 1).Select(_ => Session()).ToArray();
-        Task[] listening = new Task[GossipStreamBudget.MaxStreams];
+        Task[] listening = new Task[GossipStreamBudget.MaxStreams + 2];
         Array.Fill(listening, Task.CompletedTask);
         listening[0] = first.ListenAsync(ReadyChannel(), peers[0]);
         try
         {
             IChannel duplicate = ReadyChannel();
-            await otherVersion.ListenAsync(duplicate, peers[0]);
+            listening[^2] = otherVersion.ListenAsync(duplicate, peers[0]);
+            Assert.That(listening[^2].IsCompleted, Is.True);
             await duplicate.Received(1).CloseAsync();
             Assert.That(admitted, Is.EqualTo(1));
 
-            Parallel.For(1, listening.Length, i => listening[i] = first.ListenAsync(ReadyChannel(), peers[i]));
+            Parallel.For(1, GossipStreamBudget.MaxStreams, i => listening[i] = first.ListenAsync(ReadyChannel(), peers[i]));
             IChannel excess = ReadyChannel();
-            await otherVersion.ListenAsync(excess, peers[^1]);
+            listening[^1] = otherVersion.ListenAsync(excess, peers[^1]);
 
-            await excess.Received(1).CloseAsync();
+            Assert.That(listening[^1].IsCompleted, Is.False);
+            await excess.DidNotReceive().CloseAsync();
             Assert.That(admitted, Is.EqualTo(GossipStreamBudget.MaxStreams));
         }
         finally
         {
             done.SetResult();
             await Task.WhenAll(listening);
+        }
+        Assert.That(admitted, Is.EqualTo(GossipStreamBudget.MaxStreams + 1));
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task A_stalled_rpc_body_times_out_and_releases_its_allowance(CancellationToken token)
+    {
+        GossipStreamBudget budget = new();
+        ISessionProtocol inner = Substitute.For<ISessionProtocol>();
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(async call =>
+        {
+            await call.Arg<IChannel>().ReadPrefixedProtobufAsync(GossipRpc.Parser, 1024, token);
+        });
+        BoundedGossipProtocol protocol = new(inner, budget, TimeSpan.FromMilliseconds(100));
+        ISessionContext peer = Session();
+        Channel channel = new();
+        Task listener = protocol.ListenAsync(channel, peer);
+        try
+        {
+            await channel.Reverse.WriteVarintAsync(1024).AsTask().WaitAsync(token);
+            await Assert.ThrowsAsync<ChannelClosedException>(async () => await listener.WaitAsync(token));
+            Assert.That(await budget.AcquireAsync(peer.State.RemotePeerId!, token), Is.True);
+            budget.Release(peer.State.RemotePeerId!);
+        }
+        finally
+        {
+            await channel.CloseAsync();
         }
     }
 
@@ -155,7 +185,8 @@ public class OptimismGossipSettingsTests
             Assert.That(idleListener.IsCompleted, Is.False);
             await idle.CloseAsync();
             await idleListener.WaitAsync(token);
-            Assert.That(budget.TryAcquire(peer.State.RemotePeerId!), Is.False, "closing an idle stream must not release the active stream's allowance");
+            Assert.That(await budget.AcquireAsync(peer.State.RemotePeerId!, token), Is.False,
+                "closing an idle stream must not release the active stream's allowance");
         }
         finally
         {
@@ -171,6 +202,87 @@ public class OptimismGossipSettingsTests
         IChannel channel = Substitute.For<IChannel>();
         channel.ReadVarintUlongAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(1UL));
         return channel;
+    }
+
+    [Test]
+    public async Task A_stream_reads_its_underlying_cancellation_token_only_once()
+    {
+        IChannel channel = ReadyChannel();
+        int reads = 0;
+        channel.CancellationToken.Returns(_ => { reads++; return CancellationToken.None; });
+        ISessionProtocol inner = Substitute.For<ISessionProtocol>();
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(async call =>
+        {
+            IChannel bounded = call.Arg<IChannel>();
+            for (int i = 0; i < 100; i++)
+            {
+                await bounded.ReadVarintUlongAsync(bounded.CancellationToken);
+                await bounded.ReadAsync(0);
+            }
+        });
+
+        await new BoundedGossipProtocol(inner, new GossipStreamBudget()).ListenAsync(channel, Session());
+
+        Assert.That(reads, Is.EqualTo(1));
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Queued_peers_are_admitted_in_order_and_duplicates_are_refused([Values] bool cancelFirst, CancellationToken token)
+    {
+        GossipStreamBudget budget = new();
+        PeerId[] active = Enumerable.Range(0, GossipStreamBudget.MaxStreams).Select(_ => new Identity().PeerId).ToArray();
+        foreach (PeerId peer in active) Assert.That(await budget.AcquireAsync(peer, token), Is.True);
+        PeerId first = new Identity().PeerId;
+        PeerId second = new Identity().PeerId;
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<bool> firstWait = budget.AcquireAsync(first, cancellation.Token);
+        Task<bool> secondWait = budget.AcquireAsync(second, token);
+        Assert.That(await budget.AcquireAsync(first, token), Is.False);
+        Assert.That(await budget.AcquireAsync(active[0], token), Is.False);
+
+        if (cancelFirst)
+        {
+            await cancellation.CancelAsync();
+            await Assert.CatchAsync<OperationCanceledException>(async () => await firstWait);
+        }
+        budget.Release(active[0]);
+        Task<bool> rejoining = budget.AcquireAsync(active[0], token);
+        Assert.That(rejoining.IsCompleted, Is.False);
+        if (!cancelFirst)
+        {
+            Assert.That(await firstWait.WaitAsync(token), Is.True);
+            Assert.That(secondWait.IsCompleted, Is.False);
+            budget.Release(first);
+        }
+        Assert.That(await secondWait.WaitAsync(token), Is.True);
+        Assert.That(rejoining.IsCompleted, Is.False);
+        budget.Release(second);
+        Assert.That(await rejoining.WaitAsync(token), Is.True);
+        foreach (PeerId peer in active) budget.Release(peer);
+        Assert.That(await budget.AcquireAsync(first, token), Is.True);
+        budget.Release(first);
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Cancellation_racing_admission_does_not_lose_an_allowance(CancellationToken token)
+    {
+        GossipStreamBudget budget = new();
+        PeerId[] peers = Enumerable.Range(0, GossipStreamBudget.MaxStreams + 1).Select(_ => new Identity().PeerId).ToArray();
+        for (int attempt = 0; attempt < 100; attempt++)
+        {
+            foreach (PeerId peer in peers[..^1]) Assert.That(await budget.AcquireAsync(peer, token), Is.True);
+            using CancellationTokenSource cancellation = new();
+            Task<bool> queued = budget.AcquireAsync(peers[^1], cancellation.Token);
+            await Task.WhenAll(Task.Run(() => budget.Release(peers[0]), token), Task.Run(cancellation.Cancel, token));
+            try
+            {
+                if (await queued.WaitAsync(token)) budget.Release(peers[^1]);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            foreach (PeerId peer in peers[1..^1]) budget.Release(peer);
+        }
     }
 
     [Test]

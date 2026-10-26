@@ -16,7 +16,7 @@ public class GloasLineageHasherTests
     private const ulong ForkSlot = 32;
 
     [Test]
-    public void Lineage_keeps_a_cached_hasher_and_a_fork_branch_adopts_a_fresh_one()
+    public void Lineage_keeps_one_cached_hasher_across_fork_branches()
     {
         SignedGloasChain chain = new(new FullBeaconStateHasher());
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
@@ -38,7 +38,7 @@ public class GloasLineageHasherTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(new[] { initial, afterFirst, afterSecond, afterFork, afterForkChild }, Has.All.TypeOf<CachedBeaconStateHasher>());
         Assert.That(afterSecond, Is.SameAs(afterFirst), "a child of the lineage block reuses the lineage hasher");
-        Assert.That(afterFork, Is.Not.SameAs(afterSecond), "a fork branch does not inherit the previous branch's memo");
+        Assert.That(afterFork, Is.SameAs(afterSecond), "a fork branch reuses the lineage hasher instead of rebuilding its trees");
         Assert.That(afterForkChild, Is.SameAs(afterFork));
     }
 

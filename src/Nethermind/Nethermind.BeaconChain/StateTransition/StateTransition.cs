@@ -39,6 +39,15 @@ public static class StateTransition
         cache.SigningSpec = spec;
         BeaconBlock block = signedBlock.Message!;
         SlotProcessing.ProcessSlots(state, block.Slot, cache);
+        ApplyPrepared(state, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures);
+    }
+
+    internal static void ApplyPrepared(BeaconStateFulu state, SignedBeaconBlock signedBlock, EpochCache cache, PubkeyCache pubkeys,
+        INewPayloadNotifier notifier, BeaconChainSpec spec, bool validateResult, bool verifySignatures)
+    {
+        BeaconBlock block = signedBlock.Message!;
+        if (state.Slot != block.Slot) throw new BeaconStateException("Prepared state does not match the block slot");
+        cache.SigningSpec = spec;
 
         if (verifySignatures && state.Validators!.Length > pubkeys.Count)
             pubkeys.Extend(state.Validators, pubkeys.Count);

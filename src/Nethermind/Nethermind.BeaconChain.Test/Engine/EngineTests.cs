@@ -12,6 +12,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Specs;
@@ -35,6 +36,31 @@ namespace Nethermind.BeaconChain.Test.Engine;
 public class EngineTests
 {
     private static readonly Hash256 TestHash = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+
+    [Test]
+    public async Task New_payload_cancels_pending_collection_before_calling_the_engine([Values] bool gloas)
+    {
+        using CancellationTokenSource pending = new();
+        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        ConfigureEngine(inner, () =>
+        {
+            Assert.That(pending.IsCancellationRequested, Is.True);
+            return Task.FromResult(PayloadStatusV1.Syncing);
+        });
+        using IContainer container = BeaconChainTestContainer.Builder(engine: inner)
+            .AddSingleton<IGCStrategy>(Substitute.For<IGCStrategy>())
+            .AddSingleton<GCKeeper>()
+            .Build();
+        GCKeeper keeper = container.Resolve<GCKeeper>();
+        typeof(GCKeeper).GetField("_pendingGcCts", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(keeper, pending);
+        _ = container.Resolve<IEngineRpcModule>();
+        EngineDriver driver = container.Resolve<EngineDriver>();
+
+        if (gloas) await driver.NewPayload(GloasPayload(5), [], TestHash, new ExecutionRequestsGloas());
+        else await driver.NewPayload(CreateBlock());
+
+        Assert.That(pending.IsCancellationRequested, Is.True);
+    }
 
     [Test]
     public async Task The_embedded_driver_receives_invalid_from_the_real_engine_for_a_mismatched_payload_hash()

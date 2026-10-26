@@ -443,51 +443,7 @@ class SszType
         }
     }
 
-    internal static IEnumerable<IPropertySymbol> GetOrderedPublicProperties(ITypeSymbol type) => GetPublicProperties(type);
-
-    private static IEnumerable<IPropertySymbol> GetPublicProperties(ITypeSymbol type)
-    {
-        List<ITypeSymbol> typeChain = [];
-        ITypeSymbol? current = type;
-        while (current is not null && current.SpecialType == SpecialType.None)
-        {
-            typeChain.Add(current);
-            current = current.BaseType;
-        }
-        typeChain.Reverse();
-
-        Dictionary<string, IPropertySymbol> mostDerived = new(StringComparer.Ordinal);
-        foreach (ITypeSymbol t in typeChain)
-        {
-            foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))
-            {
-                mostDerived[p.Name] = p;
-            }
-        }
-
-        HashSet<string> seen = new(StringComparer.Ordinal);
-        foreach (ITypeSymbol t in typeChain)
-        {
-            foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))
-            {
-                if (!seen.Add(p.Name))
-                    continue;
-
-                if (!mostDerived.TryGetValue(p.Name, out IPropertySymbol? canonical))
-                    continue;
-
-                if (HasPropertyAttribute(canonical, "SszIgnoreAttribute"))
-                    continue;
-
-                yield return canonical;
-            }
-        }
-    }
-
-    private static IEnumerable<IPropertySymbol> GetPublicReadWriteProperties(ITypeSymbol type) =>
-        type.GetMembers().OfType<IPropertySymbol>()
-            .Where(p => p.GetMethod?.DeclaredAccessibility == Accessibility.Public
-                     && p.SetMethod?.DeclaredAccessibility == Accessibility.Public);
+    private static IEnumerable<IPropertySymbol> GetPublicProperties(ITypeSymbol type) => SszPropertyOrder.GetPublicProperties(type);
 
     private static bool HasAttribute(ITypeSymbol typeSymbol, string attributeName) =>
         typeSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);

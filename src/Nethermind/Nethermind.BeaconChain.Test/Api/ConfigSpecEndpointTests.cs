@@ -43,7 +43,7 @@ public class ConfigSpecEndpointTests
         Dictionary<string, JsonElement> data = served.EnumerateObject().ToDictionary(p => p.Name, p => p.Value);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(pinned.Keys.Except(data.Keys), Is.Empty, "keys of the pinned files that are not served");
-        Assert.That(data.Keys.Except(pinned.Keys).Except(ServedBeyondPinnedFiles).Except(["BLOB_SCHEDULE", "GAS_LIMIT_SCHEDULE", "SLOT_DURATION_SCHEDULE"]).Except(PinnedSpecConstants.All.Select(c => c.Name)), Is.Empty, "served keys that no pinned file has");
+        Assert.That(data.Keys.Except(pinned.Keys).Except(ServedBeyondPinnedFiles).Except(["BLOB_SCHEDULE", "GAS_LIMIT_SCHEDULE"]).Except(PinnedSpecConstants.All.Select(c => c.Name)), Is.Empty, "served keys that no pinned file has");
         Assert.That(pinned.Where(entry => data.TryGetValue(entry.Key, out JsonElement actual) && (actual.ValueKind != JsonValueKind.String || actual.GetString() != entry.Value))
             .Select(entry => $"{entry.Key}={(data.TryGetValue(entry.Key, out JsonElement actual) ? actual.ToString() : "missing")} (pinned {entry.Value})"), Is.Empty);
 
@@ -52,8 +52,6 @@ public class ConfigSpecEndpointTests
         Assert.That(data["BLOB_SCHEDULE"].EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
             Is.EqualTo(schedule.Select(m => (m.Groups["epoch"].Value, m.Groups["blobs"].Value))));
         Assert.That(data["GAS_LIMIT_SCHEDULE"].GetArrayLength(), Is.Zero);
-        Assert.That(data["SLOT_DURATION_SCHEDULE"].EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("SLOT_DURATION_MS").GetString())),
-            Is.EqualTo(new[] { ("0", "12000") }));
     }
 
     private const string ArrayConstant = "PARTICIPATION_FLAG_WEIGHTS";
@@ -143,7 +141,7 @@ public class ConfigSpecEndpointTests
             ("GENESIS_DELAY", "600"), ("TERMINAL_TOTAL_DIFFICULTY", "0"), ("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT", "16384"), ("SECONDS_PER_ETH1_BLOCK", "12"),
             ("ALTAIR_FORK_VERSION", "0x20000910"), ("ALTAIR_FORK_EPOCH", "0"), ("DENEB_FORK_VERSION", "0x50000910"), ("ELECTRA_FORK_VERSION", "0x60000910"),
             ("ELECTRA_FORK_EPOCH", "2048"), ("FULU_FORK_VERSION", "0x70000910"), ("FULU_FORK_EPOCH", "50688"),
-            ("GLOAS_FORK_VERSION", "0x80000910"), ("GLOAS_FORK_EPOCH", "132352"), ("DEPOSIT_CHAIN_ID", "560048"), ("DEPOSIT_NETWORK_ID", "560048"),
+            ("GLOAS_FORK_EPOCH", "18446744073709551615"), ("DEPOSIT_CHAIN_ID", "560048"), ("DEPOSIT_NETWORK_ID", "560048"),
             ("DEPOSIT_CONTRACT_ADDRESS", "0x00000000219ab540356cBB839Cbe05303d7705Fa"), ("SLOT_DURATION_MS", "12000"),
         ];
         (string Key, string Value)[] sepolia =
@@ -199,7 +197,5 @@ public class ConfigSpecEndpointTests
         Assert.That(ConstantMismatches(served), Is.Empty);
         Assert.That(served.GetProperty("BLOB_SCHEDULE").EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
             Is.EqualTo(spec.BlobSchedule.Select(e => (e.Epoch.ToString(), e.MaxBlobsPerBlock.ToString()))));
-        Assert.That(served.GetProperty("SLOT_DURATION_SCHEDULE").EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("SLOT_DURATION_MS").GetString())),
-            Is.EqualTo(new[] { ("0", (spec.SecondsPerSlot * 1000).ToString()) }));
     }
 }

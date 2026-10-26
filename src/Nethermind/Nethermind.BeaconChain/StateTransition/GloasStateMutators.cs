@@ -10,9 +10,9 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// the Gloas block operations need that <see cref="GloasStateAccessors"/> does not already carry.
 /// </summary>
 /// <remarks>
-/// Same Electra semantics as <see cref="BeaconStateMutators.SlashValidator"/> (the pinned Gloas
-/// spec leaves <c>slash_validator</c> unmodified); duplicated rather than shared for the reason
-/// given on <see cref="GloasStateAccessors"/>. The exit it initiates draws on the Gloas exit churn
+/// The Electra semantics of <see cref="BeaconStateMutators.SlashValidator"/>, plus the Gloas
+/// (EIP-7732) removal of the slashed validator's pending builder payments; duplicated rather than
+/// shared for the reason given on <see cref="GloasStateAccessors"/>. The exit it initiates draws on the Gloas exit churn
 /// (EIP-8061) through <see cref="GloasStateAccessors.InitiateValidatorExit"/>.
 /// </remarks>
 public static partial class GloasStateMutators

@@ -22,6 +22,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.TxPool;
 
 namespace Nethermind.LightClient;
 
@@ -64,7 +65,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
     internal async Task ValidateFrameAdmissionAsync(VerifiedHead head, Transaction transaction, BlockHeader contextHeader,
         IReleaseSpec spec, CancellationToken cancellationToken)
     {
-        if (FrameTxValidation.ValidationWorkGas(transaction) > Eip8141Constants.MaxVerifyGas
+        if (FrameTxValidation.ValidationWorkGas(transaction) > TxPoolConfig.DefaultFrameTxMaxVerifyGas
             || FrameTxValidation.ValidationWorkStateGas(transaction) > 500_000)
             throw new RpcException(-32003, "Frame validation prefix exceeds the bounded public-mempool work limit.");
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -97,9 +98,20 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
                         ITransactionProcessor processor = environment.Resolve<ITransactionProcessor>();
                         BlockExecutionContext context = new(contextHeader, spec);
                         processor.SetBlockExecutionContext(in context);
-                        TransactionResult result = processor.Process(transaction, NullTxTracer.Instance.WithCancellation(token),
-                            ExecutionOptions.Restore | ExecutionOptions.FrameValidationPrefixOnly);
-                        if (!result) throw new RpcException(-32003, result.GetErrorMessage(null) ?? "Frame validation prefix failed.");
+                        using FrameTxValidationTracer tracer = new(transaction.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress,
+                            state, spec, token: token, maxVerifyGas: TxPoolConfig.DefaultFrameTxMaxVerifyGas);
+                        TransactionResult result;
+                        try
+                        {
+                            result = processor.Process(transaction, tracer,
+                                ExecutionOptions.Restore | ExecutionOptions.FrameValidationPrefixOnly);
+                        }
+                        catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer.Violated)
+                        {
+                            throw new RpcException(-32003, tracer.ViolationReason!);
+                        }
+                        if (!result || tracer.Violated || tracer.Payer is null)
+                            throw new RpcException(-32003, tracer.ViolationReason ?? result.GetErrorMessage(null) ?? "Frame validation prefix failed.");
                         return;
                     }
                     catch (MissingCallState missing) { await FillAsync(head, missing, token); }

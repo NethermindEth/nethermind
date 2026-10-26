@@ -5,6 +5,8 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
@@ -28,6 +30,55 @@ namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
 public class BeaconDiscoveryTests
 {
+    [Test]
+    public void Resolving_metadata_leaves_a_fresh_database_empty_until_schema_validation()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        LocalMetadataSource metadata = new(store: store);
+
+        Assert.That(store.GetMetadata("p2pMetadata"), Is.Null);
+        Assert.DoesNotThrow(store.EnsureSchemaVersion);
+        Assert.That(metadata.Current.SeqNumber, Is.EqualTo(2UL));
+        Assert.That(store.GetMetadata("p2pMetadata"), Is.Not.Null);
+    }
+
+    [Test]
+    public void Metadata_sequence_survives_restart_and_increments_when_custody_changes([Values(4UL, 128UL)] ulong initialCount)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        LocalMetadataSource first = new(new BeaconChainConfig { CustodyGroupCount = initialCount }, new BeaconChainStore(db));
+        LocalMetadataSource same = new(new BeaconChainConfig { CustodyGroupCount = initialCount }, new BeaconChainStore(db));
+        ulong nextCount = initialCount == 4 ? 128UL : 4UL;
+        LocalMetadataSource changed = new(new BeaconChainConfig { CustodyGroupCount = nextCount }, new BeaconChainStore(db));
+        LocalMetadataSource restarted = new(new BeaconChainConfig { CustodyGroupCount = nextCount }, new BeaconChainStore(db));
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(first.Current.SeqNumber, Is.GreaterThan(1UL), "supersede the formerly fixed metadata sequence");
+        Assert.That(same.Current.SeqNumber, Is.EqualTo(first.Current.SeqNumber));
+        Assert.That(changed.Current.SeqNumber, Is.EqualTo(first.Current.SeqNumber + 1));
+        Assert.That(changed.Current.CustodyGroupCount, Is.EqualTo(nextCount));
+        Assert.That(restarted.Current.SeqNumber, Is.EqualTo(changed.Current.SeqNumber));
+    }
+
+    [Test]
+    public async Task Configured_custody_is_used_for_discovery_metadata_and_sampling(
+        [Values(4UL, 64UL, 128UL)] ulong groups, [Values(0, 9051)] int quicPort)
+    {
+        await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { CustodyGroupCount = groups, QuicPort = quicPort }).Build();
+        BeaconDiscovery discovery = container.Resolve<BeaconDiscovery>();
+        discovery.CreateDiscv5Services(IPAddress.Loopback);
+        NodeColumnCustody custody = container.Resolve<INodeColumnCustodySource>().Current!;
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(discovery.LocalCustody!.CustodyGroupCount, Is.EqualTo(groups));
+        Assert.That(discovery.LocalNodeRecord.GetValue<ulong>("cgc"), Is.EqualTo(groups));
+        Assert.That(discovery.LocalNodeRecord.GetValue<int>(EnrContentKey.Quic), Is.EqualTo(quicPort == 0 ? (int?)null : quicPort));
+        Assert.That(container.Resolve<LocalMetadataSource>().Current.CustodyGroupCount, Is.EqualTo(groups));
+        Assert.That(custody.CustodyColumns, Has.Count.EqualTo(groups));
+        Assert.That(custody.SampledColumns, Has.Count.EqualTo(Math.Max(8UL, groups)));
+    }
+
     [Test]
     public async Task A_discovery_bind_failure_is_retried_until_the_port_is_available()
     {
