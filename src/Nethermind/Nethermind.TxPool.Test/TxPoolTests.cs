@@ -10,9 +10,11 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
@@ -24,12 +26,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -5186,6 +5190,128 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "only the slot holder survives");
                 Assert.That(_txPool.TryGetPendingTransaction(untracked.Hash!, out _), Is.False, "the newly dependent transaction is over the cap");
             }
+        }
+
+        public enum EcRecoverSignerChange
+        {
+            UnrelatedAccountGainsCode,
+            SignerGainsCode,
+            SignerDelegates,
+        }
+
+        // EIP-8151: an owner check in the prefix turns on the code of the account ecRecover recovers. The prefix runs
+        // in a real EVM here, so it is the tracer, not a stub, that names the signer the pool revalidates on.
+        [TestCase(EcRecoverSignerChange.UnrelatedAccountGainsCode, true, true, false)]
+        [TestCase(EcRecoverSignerChange.SignerGainsCode, true, false, true)]
+        [TestCase(EcRecoverSignerChange.SignerDelegates, true, true, true)]
+        // Without EIP-8298 the signer is not a dependency: a code change there (infeasible on such a chain) goes unnoticed.
+        [TestCase(EcRecoverSignerChange.SignerGainsCode, false, true, false)]
+        [TestCase(EcRecoverSignerChange.SignerDelegates, false, true, false)]
+        public async Task Revalidation_follows_the_code_of_the_signer_an_ecrecover_owner_check_recovered(EcRecoverSignerChange change, bool eip8298, bool stays, bool resimulated)
+        {
+            PrivateKey owner = TestItem.PrivateKeys[9];
+            ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = eip8298 });
+            IReleaseSpec spec = specProvider.GenesisSpec;
+            IWorldState state = TestWorldStateFactory.CreateForTest();
+            byte[] senderCode = OwnerCheckCode(owner);
+            BlockHeader stateHead = WithCode(state, spec, IWorldState.PreGenesis, TestItem.AddressA, senderCode, 1.Ether);
+            using FrameTxPrefixSimulator realSimulator = EvmFrameTxPrefixSimulator(state, specProvider, () => stateHead);
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
+                .Returns(call => realSimulator.Simulate(call.ArgAt<Transaction>(0), call.ArgAt<bool>(1), call.ArgAt<bool>(2), call.ArgAt<CancellationToken>(3), call.ArgAt<Func<bool>>(4)));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, specProvider, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _stateProvider.InsertCode(senderCode, TestItem.AddressA);
+
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                SenderAddress = TestItem.AddressA,
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            tx.Hash = tx.CalculateHash();
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A baseline head first, so the following change list is trusted as complete.
+            Block first = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(first);
+            simulator.ClearReceivedCalls();
+
+            Address touched = change == EcRecoverSignerChange.UnrelatedAccountGainsCode ? TestItem.AddressF : owner.Address;
+            byte[] code = change == EcRecoverSignerChange.SignerDelegates
+                ? [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressF.Bytes]
+                : [(byte)Instruction.STOP];
+            stateHead = WithCode(state, spec, stateHead, touched, code);
+            Block second = Build.A.Block.WithNumber(2).WithParent(first).TestObject;
+            second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { touched };
+            await RaiseBlockAddedToMainAndWaitForNewHead(second);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(stays ? 1 : 0));
+                simulator.Received(resimulated ? 1 : 0).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
+            }
+        }
+
+        /// <summary>Code approving execution and payment only when ecRecover returns <paramref name="owner"/>'s address.</summary>
+        /// <remarks>The output is copied past the input, so a withheld (empty) one compares as zero, and an approval of
+        /// scope zero reverts the frame.</remarks>
+        private static byte[] OwnerCheckCode(PrivateKey owner)
+        {
+            const int outputOffset = 256;
+            ValueHash256 message = ValueKeccak.Compute("owner check"u8);
+            Signature signature = new Ecdsa().Sign(owner, in message);
+            byte[] input = new byte[128];
+            message.Bytes.CopyTo(input);
+            input[63] = (byte)signature.V;
+            signature.Bytes.CopyTo(input.AsSpan(64));
+            return Prepare.EvmCode
+                .DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover, 50_000, input).Op(Instruction.POP)
+                .Op(Instruction.RETURNDATASIZE).PushData(0).PushData(outputOffset).Op(Instruction.RETURNDATACOPY)
+                .PushData(outputOffset).Op(Instruction.MLOAD).PushData(owner.Address).Op(Instruction.EQ)
+                .PushData((byte)FrameFlags.ApproveExecutionAndPayment).Op(Instruction.MUL).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        }
+
+        /// <summary>Installs <paramref name="code"/> at <paramref name="address"/> over the state at <paramref name="parent"/>.</summary>
+        /// <returns>A header at the resulting state.</returns>
+        private static BlockHeader WithCode(IWorldState state, IReleaseSpec spec, BlockHeader parent, Address address, byte[] code, UInt256 balance = default)
+        {
+            using IDisposable scope = state.BeginScope(parent);
+            state.CreateAccountIfNotExists(address, balance);
+            state.InsertCode(address, code, spec);
+            state.Commit(spec);
+            ulong number = parent is null ? 0 : parent.Number + 1;
+            state.CommitTree(number);
+            return Build.A.BlockHeader.WithNumber(number).WithStateRoot(state.StateRoot).TestObject;
+        }
+
+        /// <summary>The production simulator, running each prefix over <paramref name="state"/> at <paramref name="stateAt"/>.</summary>
+        private static FrameTxPrefixSimulator EvmFrameTxPrefixSimulator(IWorldState state, ISpecProvider specProvider, Func<BlockHeader> stateAt)
+        {
+            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+            ITransactionProcessor processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, virtualMachine, new EthereumCodeInfoRepository(state), LimboLogs.Instance);
+            IReadOnlyTxProcessorSource source = Substitute.For<IReadOnlyTxProcessorSource>();
+            source.TryBuild(Arg.Any<BlockHeader>(), out Arg.Any<IReadOnlyTxProcessingScope>())
+                .Returns(call => call.Succeed(1, new WorldStateProcessingScope(processor, state, state.BeginScope(stateAt()))));
+            IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+            envFactory.Create().Returns(source);
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithGasLimit(30_000_000).TestObject);
+            return new FrameTxPrefixSimulator(envFactory, blockFinder, specProvider,
+                new TxPoolConfig { FrameTxSimulationTimeoutMs = 0, FrameTxSimulationBudgetPerHeadMs = int.MaxValue }, LimboLogs.Instance);
+        }
+
+        /// <remarks>Closes the world-state scope it was opened over on the thread that disposes it, the simulating one.</remarks>
+        private sealed class WorldStateProcessingScope(ITransactionProcessor transactionProcessor, IWorldState worldState, IDisposable closer) : IReadOnlyTxProcessingScope
+        {
+            public ITransactionProcessor TransactionProcessor => transactionProcessor;
+            public IWorldState WorldState => worldState;
+            public void Dispose() => closer.Dispose();
         }
 
         [Test]
