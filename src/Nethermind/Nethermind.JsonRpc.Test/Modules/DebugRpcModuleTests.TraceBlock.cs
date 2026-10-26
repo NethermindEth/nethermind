@@ -526,7 +526,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
         [Values("0s", "-1s", "121s", "5s")] string timeout,
-        [Values("error", "null", "primitive")] string failure)
+        [Values("error", "null", "primitive", "timeout-message")] string failure)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
@@ -536,7 +536,7 @@ public partial class DebugRpcModuleTests
             "debug_traceBlockByHash" => block.Hash!,
             _ => Rlp.Encode(block).ToString()
         };
-        string thrown = failure switch { "null" => "null", "primitive" => "42", _ => "Error('setup-before-timeout')" };
+        string thrown = failure switch { "null" => "null", "primitive" => "42", "timeout-message" => "Error('execution timeout')", _ => "Error('setup-before-timeout')" };
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
             new { tracer = "{fault:function(){},setup:function(){throw " + thrown + ";},result:function(){return {};}}", timeout });
         JToken json = JToken.Parse(response);
@@ -550,8 +550,9 @@ public partial class DebugRpcModuleTests
                 Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
                 Assert.That((string?)traces[i]["error"], Is.Not.Null.And.Not.Empty, response);
                 if (failure != "null")
-                    Assert.That((string?)traces[i]["error"], Does.Contain(failure == "primitive" ? "42" : "setup-before-timeout"), response);
-                Assert.That(traces[i]["result"], Is.Null, response);
+                    Assert.That((string?)traces[i]["error"], Does.Contain(failure switch { "primitive" => "42", "timeout-message" => "execution timeout", _ => "setup-before-timeout" }), response);
+                if (method == "debug_traceBlock") Assert.That(traces[i]["result"], Is.Null, response);
+                else Assert.That(traces[i]["result"]?.Type, Is.EqualTo(JTokenType.Null), response);
             }
         }
     }
@@ -2403,8 +2404,16 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(
-        [Values(1, 100, 1000)] int traceCount, [Values] bool errors)
+    public Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(
+        [Values(1, 100, 1000)] int traceCount, [Values] bool errors) =>
+        AssertBlockResultSerialization(traceCount, errors, includeErrorResult: false);
+
+    [Test]
+    public Task GethLikeTxTraceStreamingResult_specified_errors_include_null_results(
+        [Values(1, 100, 1000)] int traceCount, [Values] bool errors) =>
+        AssertBlockResultSerialization(traceCount, errors, includeErrorResult: true);
+
+    private static async Task AssertBlockResultSerialization(int traceCount, bool errors, bool includeErrorResult)
     {
         List<GethLikeTxTrace> traces = new(traceCount);
         for (int i = 0; i < traceCount; i++)
@@ -2416,7 +2425,7 @@ public partial class DebugRpcModuleTests
             traces.Add(trace);
         }
 
-        using GethLikeTxTraceStreamingResult result = new(traces);
+        using GethLikeTxTraceStreamingResult result = new(traces) { IncludeErrorResult = includeErrorResult };
 
         string streamedJson = await StreamToStringAsync(result);
 
@@ -2434,7 +2443,8 @@ public partial class DebugRpcModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((string?)first["error"], Is.EqualTo("tracer failure"));
-                Assert.That(first["result"], Is.Null);
+                if (includeErrorResult) Assert.That(first["result"]?.Type, Is.EqualTo(JTokenType.Null));
+                else Assert.That(first["result"], Is.Null);
             }
         }
     }
