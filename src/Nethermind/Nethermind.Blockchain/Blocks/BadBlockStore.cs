@@ -81,10 +81,13 @@ public class BadBlockStore(
                 blockDb.Set(block.Number, block.Hash, value, writeFlags);
             }
 
-            byte[] key = new byte[40];
-            KeyValueStoreExtensions.GetBlockNumPrefixedKey(block.Number, block.Hash, key);
             if (balSize > 0) LoadBlockAccessListSizes();
-            SetBlockAccessListSize(key, balSize);
+            if (_blockAccessListSizes is not null)
+            {
+                byte[] key = new byte[40];
+                KeyValueStoreExtensions.GetBlockNumPrefixedKey(block.Number, block.Hash, key);
+                SetBlockAccessListSize(key, balSize);
+            }
 
             TruncateToMaxSize();
             if (balSize > 0) TrimBlockAccessLists(writeFlags);
@@ -154,8 +157,9 @@ public class BadBlockStore(
         if (toDelete > 0)
         {
             // The key is the block number followed by the hash, so the values do not need to be decoded.
-            foreach (byte[] key in blockDb.GetAllKeys(true).Take(toDelete))
+            foreach (byte[] key in blockDb.GetAllKeys(true))
             {
+                if (toDelete-- == 0) break;
                 blockDb.Remove(key);
                 SetBlockAccessListSize(key, 0);
             }

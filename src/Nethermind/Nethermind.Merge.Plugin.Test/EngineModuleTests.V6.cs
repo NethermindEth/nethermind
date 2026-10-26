@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Collections;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -429,7 +430,19 @@ public partial class EngineModuleTests
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e")]
     public async Task NewPayloadV5_invalid_BAL_keeps_both_access_lists_in_bad_blocks(string blockHash, string stateRoot)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.NoEip8037Instance);
+        List<Block> inserted = [];
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.NoEip8037Instance, configurer: builder => builder
+            .AddDecorator<IBadBlockStore>((_, inner) =>
+            {
+                IBadBlockStore store = Substitute.For<IBadBlockStore>();
+                store.When(static s => s.Insert(Arg.Any<Block>(), Arg.Any<WriteFlags>())).Do(c =>
+                {
+                    inserted.Add(c.Arg<Block>());
+                    inner.Insert(c.Arg<Block>(), c.Arg<WriteFlags>());
+                });
+                store.GetAll().Returns(_ => inner.GetAll());
+                return store;
+            }));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block block = CreateBlockWithInvalidBal(chain, blockHash, stateRoot, null);
 
@@ -446,6 +459,8 @@ public partial class EngineModuleTests
             // Parallel execution only checks the suggested access list and does not build one.
             Assert.That(badBlock["generatedBlockAccessList"]?.GetValue<string>(),
                 Parallel ? Is.Null : Is.Not.Null.And.Not.EqualTo(badBlock["blockAccessList"]!.GetValue<string>()));
+            // The manager reuses its generated access list for the next block, so the bad block must keep its own copy.
+            Assert.That(inserted.Single().EncodedGeneratedBlockAccessList?.ToHexString(true), Is.EqualTo(badBlock["generatedBlockAccessList"]?.GetValue<string>()));
         }
     }
 

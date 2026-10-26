@@ -34,8 +34,11 @@ public class BadBlockStoreTests
             badBlockStore.Insert(block);
         }
 
-        Assert.That(badBlockStore.GetAll(), Is.EquivalentTo(toAdd).UsingBlockComparer());
-        Assert.That(badBlockStore.GetAll().Select(static b => b.EncodedBlockAccessList), Has.All.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(badBlockStore.GetAll(), Is.EquivalentTo(toAdd).UsingBlockComparer());
+            Assert.That(badBlockStore.GetAll().Select(static b => b.EncodedBlockAccessList), Has.All.Null);
+        }
     }
 
     [Test]
