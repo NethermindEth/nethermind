@@ -980,7 +980,9 @@ namespace Nethermind.Network
             {
                 // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
                 // A host match of the pooled node can come from a discovery record, which says nothing about the address of this session.
-                session.Node.IsStatic = existingPeer.Node.IsStatic && !_staticHostFilter.IsPromoted(existingPeer.Node);
+                // An outbound handshake to the matched address proves that the key runs there, so the key stays static from any address.
+                session.Node.IsStatic = existingPeer.Node.IsStatic
+                    && (!_staticHostFilter.IsPromoted(existingPeer.Node) || _staticHostFilter.IsProven(existingPeer.Node));
                 session.Node.IsTrusted = existingPeer.Node.IsTrusted;
             }
 

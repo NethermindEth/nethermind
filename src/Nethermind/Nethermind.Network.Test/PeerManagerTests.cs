@@ -559,7 +559,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task Incoming_session_does_not_inherit_a_static_host_match_of_the_pooled_record()
+        public async Task Incoming_session_inherits_a_static_host_match_of_the_pooled_record_only_when_proven([Values] bool proven)
         {
             await using Context ctx = new(maxActivePeers: 1, staticPeerHosts: "5.5.5.5");
             ctx.PeerManager.Start();
@@ -572,10 +572,12 @@ namespace Nethermind.Network.Test
 
             Peer pooled = ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "5.5.5.5", 30303));
             Assert.That(pooled.Node.IsStatic, Is.True);
+            if (proven) ctx.StaticHostFilter.MarkProven(pooled.Node, pooled.Node.Address);
 
+            // The session comes from 1.2.3.4, which is not the matched address.
             ctx.RlpxPeer.CreateIncoming(CreateIncomingSessionTemplate(TestItem.PublicKeyB));
 
-            Assert.That(ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.False);
+            Assert.That(ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.EqualTo(proven));
         }
 
         [Test]
