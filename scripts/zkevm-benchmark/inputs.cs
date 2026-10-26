@@ -28,7 +28,7 @@ if (args.Length == 0 || args[0] is not ("paths" or "frame"))
     return Usage();
 
 Dictionary<string, string> options = [];
-for (int i = 1; i < args.Length; i += 2)
+for (var i = 1; i < args.Length; i += 2)
 {
     if (!args[i].StartsWith("--") || i + 1 >= args.Length)
         return Usage();
@@ -36,20 +36,20 @@ for (int i = 1; i < args.Length; i += 2)
 }
 
 string[] required = args[0] == "paths" ? ["index", "shard", "shards"] : ["index", "shard", "shards", "root", "out", "manifest"];
-foreach (string name in required)
+foreach (var name in required)
 {
     if (!options.ContainsKey(name))
         return Usage();
 }
 
-if (!int.TryParse(options["shards"], out int shards) || shards <= 0 ||
-    !int.TryParse(options["shard"], out int shard) || shard < 0 || shard >= shards)
+if (!int.TryParse(options["shards"], out var shards) || shards <= 0 ||
+    !int.TryParse(options["shard"], out var shard) || shard < 0 || shard >= shards)
 {
     Console.Error.WriteLine("error: --shard must be in [0, --shards)");
     return 2;
 }
 
-List<(string Id, string JsonPath)> cases = ReadShard(options["index"], shard, shards);
+var cases = ReadShard(options["index"], shard, shards);
 if (cases.Count == 0)
 {
     Console.Error.WriteLine("error: the archive index lists no blockchain_test cases for this shard");
@@ -58,27 +58,27 @@ if (cases.Count == 0)
 
 if (args[0] == "paths")
 {
-    foreach (string path in cases.Select(static c => c.JsonPath).Distinct().Order(StringComparer.Ordinal))
+    foreach (var path in cases.Select(static c => c.JsonPath).Distinct().Order(StringComparer.Ordinal))
         Console.WriteLine(path);
     return 0;
 }
 
-string outDir = options["out"];
-using FileStream manifestStream = File.Create(options["manifest"]);
+var outDir = options["out"];
+using var manifestStream = File.Create(options["manifest"]);
 using Utf8JsonWriter manifest = new(manifestStream, new JsonWriterOptions { Indented = true });
 manifest.WriteStartArray();
 
-byte[] lengthPrefix = new byte[sizeof(ulong)];
-byte[] padding = new byte[ZiskAlignment];
-int written = 0;
-foreach (IGrouping<string, (string Id, string JsonPath)> file in cases.GroupBy(static c => c.JsonPath).OrderBy(static g => g.Key, StringComparer.Ordinal))
+var lengthPrefix = new byte[sizeof(ulong)];
+var padding = new byte[ZiskAlignment];
+var written = 0;
+foreach (var file in cases.GroupBy(static c => c.JsonPath).OrderBy(static g => g.Key, StringComparer.Ordinal))
 {
     HashSet<string> wanted = [.. file.Select(static c => c.Id)];
-    foreach ((string id, string input, string output) in ReadLastBlocks(Path.Combine(options["root"], file.Key), wanted))
+    foreach ((var id, var input, var output) in ReadLastBlocks(Path.Combine(options["root"], file.Key), wanted))
     {
-        byte[] data = Convert.FromHexString(input.AsSpan(2));
-        string name = $"{written++}.ssz";
-        using (FileStream stream = File.Create(Path.Combine(outDir, name)))
+        var data = Convert.FromHexString(input.AsSpan(2));
+        var name = $"{written++}.ssz";
+        using (var stream = File.Create(Path.Combine(outDir, name)))
         {
             BinaryPrimitives.WriteUInt64LittleEndian(lengthPrefix, (ulong)data.Length);
             stream.Write(lengthPrefix);
@@ -113,11 +113,11 @@ static int Usage()
 
 static List<(string Id, string JsonPath)> ReadShard(string indexPath, int shard, int shards)
 {
-    using FileStream stream = File.OpenRead(indexPath);
-    using JsonDocument index = JsonDocument.Parse(stream);
+    using var stream = File.OpenRead(indexPath);
+    using var index = JsonDocument.Parse(stream);
     List<(string, string)> cases = [];
-    int ordinal = 0;
-    foreach (JsonElement testCase in index.RootElement.GetProperty("test_cases").EnumerateArray())
+    var ordinal = 0;
+    foreach (var testCase in index.RootElement.GetProperty("test_cases").EnumerateArray())
     {
         if (testCase.GetProperty("format").GetString() != "blockchain_test")
             continue;
@@ -133,20 +133,20 @@ static List<(string Id, string JsonPath)> ReadShard(string indexPath, int shard,
 // which puts the test ids at depth 1, the test's own properties at depth 2 and a block's at depth 4.
 static IEnumerable<(string Id, string Input, string Output)> ReadLastBlocks(string path, HashSet<string> wanted)
 {
-    using FileStream stream = File.OpenRead(path);
-    byte[] buffer = new byte[InitialBufferSize];
-    int length = 0;
-    bool final = false;
+    using var stream = File.OpenRead(path);
+    var buffer = new byte[InitialBufferSize];
+    var length = 0;
+    var final = false;
     JsonReaderState state = default;
 
     string? test = null, input = null, output = null;
-    bool inBlocks = false;
-    BlockField field = BlockField.None;
+    var inBlocks = false;
+    var field = BlockField.None;
     List<(string, string, string)> found = [];
 
     while (!final)
     {
-        int read = stream.Read(buffer, length, buffer.Length - length);
+        var read = stream.Read(buffer, length, buffer.Length - length);
         final = read == 0;
         length += read;
 
@@ -156,7 +156,7 @@ static IEnumerable<(string Id, string Input, string Output)> ReadLastBlocks(stri
             switch (reader.TokenType)
             {
                 case JsonTokenType.PropertyName when reader.CurrentDepth == 1:
-                    string id = reader.GetString()!;
+                    var id = reader.GetString()!;
                     test = wanted.Contains(id) ? id : null;
                     input = output = null;
                     break;
@@ -188,7 +188,7 @@ static IEnumerable<(string Id, string Input, string Output)> ReadLastBlocks(stri
             }
         }
 
-        int consumed = (int)reader.BytesConsumed;
+        var consumed = (int)reader.BytesConsumed;
         state = reader.CurrentState;
         length -= consumed;
         // A token larger than the buffer, such as a big witness hex string, leaves nothing consumable.
@@ -198,7 +198,7 @@ static IEnumerable<(string Id, string Input, string Output)> ReadLastBlocks(stri
             Buffer.BlockCopy(buffer, consumed, buffer, 0, length);
 
         // Hand back finished tests between chunks so their inputs do not accumulate.
-        foreach ((string, string, string) item in found)
+        foreach (var item in found)
             yield return item;
         found.Clear();
     }

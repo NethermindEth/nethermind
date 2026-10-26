@@ -15,17 +15,16 @@
 
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Analysis;
-using Microsoft.Diagnostics.Tracing.Analysis.GC;
 using Microsoft.Diagnostics.Tracing.Parsers.Clr;
 
-string path = "";
-int top = 8;
-for (int i = 0; i < args.Length; i++)
+var path = "";
+var top = 8;
+for (var i = 0; i < args.Length; i++)
 {
     if (args[i] == "--top")
     {
         // Rejected rather than defaulted: a silently ignored flag looks like the tool obeyed it.
-        if (i + 1 >= args.Length || !int.TryParse(args[i + 1], out int parsed) || parsed <= 0)
+        if (i + 1 >= args.Length || !int.TryParse(args[i + 1], out var parsed) || parsed <= 0)
         {
             Console.Error.WriteLine($"error: --top needs a positive integer, got '{(i + 1 < args.Length ? args[i + 1] : "")}'");
             return 2;
@@ -99,7 +98,7 @@ try
     source.Clr.ContentionStart += _ => contentionStarts++;
     source.Clr.ContentionStop += (ContentionStopTraceData e) =>
     {
-        double ms = e.DurationNs / 1_000_000.0;
+        var ms = e.DurationNs / 1_000_000.0;
         contentionMs.Add(ms);
         contentionTotalMs += ms;
         if (ms > contentionMaxMs) contentionMaxMs = ms;
@@ -125,7 +124,7 @@ if (eventCount == 0)
     return 1;
 }
 
-double windowMs = double.IsNaN(firstEventMs) ? 0 : lastEventMs - firstEventMs;
+var windowMs = double.IsNaN(firstEventMs) ? 0 : lastEventMs - firstEventMs;
 Console.WriteLine($"# {Path.GetFileName(path)}");
 Console.WriteLine();
 Console.WriteLine($"- events: {eventCount:N0}, window: {windowMs / 1000.0:F1} s");
@@ -139,10 +138,10 @@ if (gcs.Count == 0)
 }
 else
 {
-    double pauseTotal = gcs.Sum(g => g.PauseMs);
+    var pauseTotal = gcs.Sum(g => g.PauseMs);
     Console.WriteLine($"- {gcs.Count} collections, pause total {pauseTotal:F1} ms" +
                       (windowMs > 0 ? $" ({pauseTotal / windowMs * 100:F2}% of the window)" : ""));
-    foreach (IGrouping<int, (int Gen, string Type, string Reason, double PauseMs, double PromotedMb, double TimeMs)> g
+    foreach (var g
              in gcs.GroupBy(g => g.Gen).OrderBy(g => g.Key))
     {
         Console.WriteLine($"- gen{g.Key}: {g.Count()} collections, pause {g.Sum(x => x.PauseMs):F1} ms " +
@@ -151,8 +150,8 @@ else
     Console.WriteLine();
     Console.WriteLine("| # | at s | gen | type | reason | pause ms | promoted MB |");
     Console.WriteLine("|---|---|---|---|---|---|---|");
-    int rank = 0;
-    foreach ((int Gen, string Type, string Reason, double PauseMs, double PromotedMb, double TimeMs) gc
+    var rank = 0;
+    foreach (var gc
              in gcs.OrderByDescending(g => g.PauseMs).Take(top))
     {
         Console.WriteLine($"| {++rank} | {gc.TimeMs / 1000.0:F1} | {gc.Gen} | {gc.Type} | {gc.Reason} | {gc.PauseMs:F1} | {gc.PromotedMb:F0} |");

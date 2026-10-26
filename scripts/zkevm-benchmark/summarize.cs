@@ -24,23 +24,23 @@ const int Top = 25;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
 Dictionary<string, string> options = [];
-for (int i = 0; i < args.Length; i += 2)
+for (var i = 0; i < args.Length; i += 2)
 {
     if (!args[i].StartsWith("--") || i + 1 >= args.Length)
         return Usage();
     options[args[i][2..]] = args[i + 1];
 }
 
-foreach (string name in (string[])["results", "release", "commit", "shards", "into", "summary"])
+foreach (var name in (string[])["results", "release", "commit", "shards", "into", "summary"])
 {
     if (!options.ContainsKey(name))
         return Usage();
 }
 
 Dictionary<string, int> shardCounts = [];
-using (JsonDocument shards = JsonDocument.Parse(options["shards"]))
+using (var shards = JsonDocument.Parse(options["shards"]))
 {
-    foreach (JsonProperty gas in shards.RootElement.EnumerateObject())
+    foreach (var gas in shards.RootElement.EnumerateObject())
         shardCounts[gas.Name] = gas.Value.GetInt32();
 }
 
@@ -48,19 +48,19 @@ using (JsonDocument shards = JsonDocument.Parse(options["shards"]))
 // ran, `<gas>-<shard>.failed.json` beside it for the ones that did not, and
 // `<gas>-<shard>.skipped.json` for the known failures it left out, so a missing rows file is a shard
 // that never got as far as measuring.
-string[] files = Directory.GetFiles(options["results"], "*.json", SearchOption.AllDirectories);
+var files = Directory.GetFiles(options["results"], "*.json", SearchOption.AllDirectories);
 Array.Sort(files, StringComparer.Ordinal);
 List<string> rowFiles = [];
 List<Row> rows = [];
 List<Failure> failures = [];
 List<KnownFailure> skipped = [];
-foreach (string file in files)
+foreach (var file in files)
 {
-    using FileStream stream = File.OpenRead(file);
-    using JsonDocument shard = JsonDocument.Parse(stream);
+    using var stream = File.OpenRead(file);
+    using var shard = JsonDocument.Parse(stream);
     if (file.EndsWith(".failed.json", StringComparison.Ordinal))
     {
-        foreach (JsonElement failure in shard.RootElement.EnumerateArray())
+        foreach (var failure in shard.RootElement.EnumerateArray())
         {
             failures.Add(new Failure(
                 failure.GetProperty("gas").GetString()!,
@@ -73,14 +73,14 @@ foreach (string file in files)
 
     if (file.EndsWith(".skipped.json", StringComparison.Ordinal))
     {
-        foreach (JsonElement known in shard.RootElement.EnumerateArray())
+        foreach (var known in shard.RootElement.EnumerateArray())
             skipped.Add(new KnownFailure(known.GetProperty("gas").GetString()!, known.GetProperty("id").GetString()!));
 
         continue;
     }
 
     rowFiles.Add(file);
-    foreach (JsonElement row in shard.RootElement.EnumerateArray())
+    foreach (var row in shard.RootElement.EnumerateArray())
     {
         rows.Add(new Row(
             row.GetProperty("gas").GetString()!,
@@ -106,17 +106,17 @@ report.AppendLine("## Stateless benchmark fixtures")
     .AppendLine("| Gas value | Shards | Blocks | Failed | Skipped | Max cost | Total cost |")
     .AppendLine("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
 
-bool incomplete = false;
-foreach (string gas in gasValues)
+var incomplete = false;
+foreach (var gas in gasValues)
 {
-    List<Row> measured = rows.FindAll(row => row.Gas == gas);
-    int failed = failures.Count(failure => failure.Gas == gas);
-    int done = rowFiles.Count(file => Path.GetFileName(file).StartsWith($"{gas}-", StringComparison.Ordinal));
-    int expected = shardCounts[gas];
+    var measured = rows.FindAll(row => row.Gas == gas);
+    var failed = failures.Count(failure => failure.Gas == gas);
+    var done = rowFiles.Count(file => Path.GetFileName(file).StartsWith($"{gas}-", StringComparison.Ordinal));
+    var expected = shardCounts[gas];
     incomplete |= done != expected;
-    string shardCell = done == expected ? $"{done}" : $"{done} of {expected}";
-    long max = measured.Count == 0 ? 0 : measured.Max(static row => row.Total);
-    int skippedCount = skipped.Count(known => known.Gas == gas);
+    var shardCell = done == expected ? $"{done}" : $"{done} of {expected}";
+    var max = measured.Count == 0 ? 0 : measured.Max(static row => row.Total);
+    var skippedCount = skipped.Count(known => known.Gas == gas);
     report.AppendLine($"| {gas} | {shardCell} | {measured.Count} | {failed} | {skippedCount} | {max:N0} | {measured.Sum(static row => row.Total):N0} |");
 }
 
@@ -124,7 +124,7 @@ if (failures.Count > 0)
 {
     report.AppendLine().AppendLine("### Failed blocks").AppendLine()
         .AppendLine("| Gas value | Case | Reason |").AppendLine("| --- | --- | --- |");
-    foreach (Failure failure in failures.OrderBy(static failure => GasKey(failure.Gas)).ThenBy(static failure => failure.Id, StringComparer.Ordinal))
+    foreach (var failure in failures.OrderBy(static failure => GasKey(failure.Gas)).ThenBy(static failure => failure.Id, StringComparer.Ordinal))
         report.AppendLine($"| {failure.Gas} | `{Case(failure.Id)}` | {failure.Reason} |");
 }
 
@@ -132,19 +132,19 @@ if (skipped.Count > 0)
 {
     report.AppendLine().AppendLine("<details><summary>Known failures, not run</summary>").AppendLine()
         .AppendLine("| Gas value | Case |").AppendLine("| --- | --- |");
-    foreach (KnownFailure known in skipped.OrderBy(static known => GasKey(known.Gas)).ThenBy(static known => known.Id, StringComparer.Ordinal))
+    foreach (var known in skipped.OrderBy(static known => GasKey(known.Gas)).ThenBy(static known => known.Id, StringComparer.Ordinal))
         report.AppendLine($"| {known.Gas} | `{Case(known.Id)}` |");
     report.AppendLine().AppendLine("</details>");
 }
 
-foreach (string gas in gasValues)
+foreach (var gas in gasValues)
 {
     List<Row> costliest = [.. rows.Where(row => row.Gas == gas).OrderByDescending(static row => row.Total)];
     if (costliest.Count == 0)
         continue;
 
     Dictionary<string, Row> worstPerModule = [];
-    foreach (Row row in costliest)
+    foreach (var row in costliest)
         worstPerModule.TryAdd(Module(row.Id), row);
 
     report.AppendLine().AppendLine($"### {gas}").AppendLine()
@@ -179,23 +179,23 @@ static string Case(string id) => id[(id.IndexOf("::", StringComparison.Ordinal) 
 // `tests/benchmark/compute/precompile/test_modexp.py::test_modexp[...]` -> `precompile/test_modexp`
 static string Module(string id)
 {
-    Match match = ModuleRegex.Pattern.Match(id);
+    var match = ModuleRegex.Pattern.Match(id);
     return match.Success ? match.Groups[1].Value : id[..id.IndexOf("::", StringComparison.Ordinal)];
 }
 
 static void AppendTable(StringBuilder report, string header, IEnumerable<Row> rows, Func<Row, string> label)
 {
     report.AppendLine($"| {header} | Cost | Steps |").AppendLine("| --- | ---: | ---: |");
-    foreach (Row row in rows)
+    foreach (var row in rows)
         report.AppendLine($"| `{label(row)}` | {row.Total:N0} | {row.Steps:N0} |");
 }
 
 static void WriteResults(string path, List<Row> rows)
 {
-    using FileStream stream = File.Create(path);
+    using var stream = File.Create(path);
     using Utf8JsonWriter writer = new(stream, new JsonWriterOptions { Indented = true });
     writer.WriteStartArray();
-    foreach (Row row in rows)
+    foreach (var row in rows)
     {
         writer.WriteStartObject();
         writer.WriteString("gas", row.Gas);
