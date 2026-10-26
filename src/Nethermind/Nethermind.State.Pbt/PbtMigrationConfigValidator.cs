@@ -13,7 +13,8 @@ public static class PbtMigrationConfigValidator
     public static bool IsScheduledMigration(ChainSpec chainSpec) =>
         chainSpec.Parameters.Eip8347TransitionTimestamp is { } activation && chainSpec.Genesis is { } genesis && activation > genesis.Timestamp;
 
-    public static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationGenesisBootstrap;
+    public static bool HasSource(IPbtConfig configuration) =>
+        configuration.MigrationSnapshotPath is not null || configuration.MigrationPreimagesPath is not null || configuration.MigrationGenesisBootstrap;
 
     public static void Validate(IPbtConfig config, IFlatDbConfig flatConfig, ChainSpec chainSpec, string targetPath)
     {
@@ -39,12 +40,12 @@ public static class PbtMigrationConfigValidator
 
         bool snapshot = HasPath(config.MigrationSnapshotPath);
         bool preimages = HasPath(config.MigrationPreimagesPath);
-        if (preimages && !snapshot)
-            Fail("MigrationPreimagesPath only verifies MigrationSnapshotPath, so it requires it.");
-        if (snapshot && config.MigrationGenesisBootstrap)
-            Fail("Select at most one migration source: snapshot (optionally verified by preimages) or genesis bootstrap.");
-        if (snapshot && config.MigrationAnchor is null)
+        if ((snapshot || preimages) && config.MigrationGenesisBootstrap)
+            Fail("Select at most one migration source: snapshot (optionally verified by preimages), preimages alone or genesis bootstrap.");
+        if ((snapshot || preimages) && config.MigrationAnchor is null)
             Fail("MigrationAnchor is required for an external migration source.");
+        if (preimages && !snapshot && flatConfig.Layout is not FlatLayout.Flat)
+            Fail("MigrationPreimagesPath without MigrationSnapshotPath imports this node's own state, so it requires the hash-keyed FlatLayout.Flat.");
 
         foreach (string? path in new[] { config.MigrationSnapshotPath, config.MigrationPreimagesPath })
         {

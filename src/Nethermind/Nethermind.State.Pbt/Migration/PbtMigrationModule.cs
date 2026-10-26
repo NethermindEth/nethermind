@@ -15,6 +15,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
@@ -47,6 +48,7 @@ public sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<IBalHealing>(NoopBalHealing.Instance)
 
             .AddSingleton<MigrationFlatFinalizedStateProvider>()
+            .AddSingleton<PbtSelfImport>()
             .AddSingleton<PbtMigrationBootstrap>()
             .AddSingleton<PbtMigrationImport, PbtMigrationBootstrap, IProcessExitSource, ILogManager>((bootstrap, processExitSource, logManager) =>
                 new PbtMigrationImport(bootstrap.Initialize, processExitSource, logManager))

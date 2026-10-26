@@ -29,6 +29,7 @@ public sealed class PbtMigrationBootstrap(
     IPbtPersistence pbtPersistence,
     IPbtDbManager pbtManager,
     PbtAnchorImport anchorImport,
+    PbtSelfImport selfImport,
     IPbtConfig configuration,
     IInitConfig initConfiguration,
     ChainSpec chainSpec,
@@ -57,8 +58,8 @@ public sealed class PbtMigrationBootstrap(
     }
 
     /// <remarks>
-    /// A snapshot is imported on its own, and preimages beside it only verify it; without a snapshot, the genesis source
-    /// is imported whole. The inputs stay open through the import.
+    /// A snapshot is imported on its own, and preimages beside it only verify it; preimages alone import this node's own
+    /// flat state; without either, the genesis source is imported whole. The inputs stay open through the import.
     /// </remarks>
     private async Task Import(BlockHeader genesis, CancellationToken cancellationToken)
     {
@@ -79,6 +80,11 @@ public sealed class PbtMigrationBootstrap(
                 ? File.Open(verifyingPath, FileMode.Open, FileAccess.Read, FileShare.Read)
                 : null;
             await anchorImport.ImportSnapshot(snapshot, verifyingPreimages, anchor, scratch, cancellationToken);
+        }
+        else if (configuration.MigrationPreimagesPath is { } preimagesPath)
+        {
+            using Stream preimages = File.Open(preimagesPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            await selfImport.Import(preimages, header, cancellationToken);
         }
         else
         {

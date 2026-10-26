@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Collections;
 using Nethermind.State.Pbt.Image;
@@ -58,7 +57,7 @@ public class ImportPbtFromPreimageFlat(
         int workers = config.ExportConcurrency > 0 ? config.ExportConcurrency : Environment.ProcessorCount;
         if (_logger.IsInfo) _logger.Info($"Rebuilding PBT state from preimage-flat database at {sourceState} with {workers} source reader(s)");
 
-        ClearInterruptedAttempt();
+        if (PbtColumnSweep.ClearInterruptedImport(pbtDb) && _logger.IsInfo) _logger.Info("Discarded entries left by an interrupted PBT import.");
         string directory = Path.Combine(PbtMigrationAnchor.ScratchDirectory(dbFactory, "import"), $"pbt-import-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         try
@@ -73,27 +72,5 @@ public class ImportPbtFromPreimageFlat(
         {
             Directory.Delete(directory, recursive: true);
         }
-    }
-
-    /// <remarks>
-    /// An interrupted import can leave logical entries and trie nodes despite a pre-genesis state pointer.
-    /// <see cref="TrieUpdater"/> reads a stored root group before its supplied root hash, so stale nodes
-    /// would produce the wrong root.
-    /// </remarks>
-    private void ClearInterruptedAttempt()
-    {
-        bool cleared = false;
-        pbtDb.GetColumnDb(PbtColumns.Metadata).Remove(PbtRocksDbPersistence.RootNodeGroupKey);
-
-        foreach (PbtColumns column in Enum.GetValues<PbtColumns>())
-        {
-            if (column == PbtColumns.Metadata) continue;
-            IDb columnDb = pbtDb.GetColumnDb(column);
-            if (((ISortedKeyValueStore)columnDb).FirstKey is null) continue;
-            ((IRangeRemovableKeyValueStore)columnDb).RemoveRange([], PbtColumnSweep.PastEveryKey());
-            cleared = true;
-        }
-
-        if (cleared && _logger.IsInfo) _logger.Info("Discarded entries left by an interrupted PBT import.");
     }
 }
