@@ -157,6 +157,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             }
             catch (OperationCanceledException) when (preparation.Cts.Token.IsCancellationRequested)
             {
+                if (_logger.IsDebug) _logger.Debug($"Empty block for payload {payloadId} cancelled");
             }
             catch (Exception e)
             {
