@@ -213,6 +213,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 Metrics.SnapshotMemory += totalBytes;
                 Metrics.TotalSnapshotMemory += totalBytes;
 
+                ReportLayerProbe();
                 return true;
             }
 
@@ -233,6 +234,21 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         }
 
         return false;
+    }
+
+    private void ReportLayerProbe()
+    {
+        if (!_logger.IsInfo) return;
+
+        long mutableEntries = 0;
+        foreach (KeyValuePair<StateId, Snapshot> entry in _snapshots)
+        {
+            Snapshot snapshot = entry.Value;
+            if (!snapshot.IsSorted)
+                mutableEntries += snapshot.AccountsCount + snapshot.StoragesCount + snapshot.StateNodesCount + snapshot.StorageNodesCount;
+        }
+
+        SnapshotLayerProbe.ReportBlock(_logger, SnapshotCount, (int)Interlocked.Read(ref _compactedSnapshotCount), InMemoryBytes, mutableEntries);
     }
 
     public ArrayPoolList<StateId> GetStatesAtBlockNumber(ulong blockNumber)
