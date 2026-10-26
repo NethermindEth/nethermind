@@ -149,6 +149,8 @@ class StreamingProxyTests(unittest.TestCase):
             self.assertEqual(settings["profile"], "rollup0-conditional")
             self.assertEqual(settings["listenAddress"], "127.0.0.1:50062")
             self.assertEqual(settings["composerCertificates"], ["client.cer"])
+            self.assertEqual(settings["maxSessionsPerOwner"], 4)
+            self.assertGreaterEqual(settings["maxReservedBytes"], 8 * 64 * 1024 * 1024 * settings["maxSessionsPerOwner"])
             self.assertEqual((stream / "server.pfx").stat().st_mode & 0o777, 0o600)
             self.assertNotIn((stream / "password").read_text().strip(), result.stdout + result.stderr)
 

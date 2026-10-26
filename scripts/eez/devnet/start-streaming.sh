@@ -20,7 +20,7 @@ openssl x509 -in "$stream/client.crt" -outform DER -out "$stream/client.cer"
 cat "$stream/client.crt" "$stream/client.key" > "$stream/client.pem"
 jq -n '{profile: "rollup0-conditional", listenAddress: "127.0.0.1:50062",
     serverCertificate: "server.pfx", serverPasswordFile: "password", composerCertificates: ["client.cer"],
-    maxSessionsPerOwner: 4, maxReservedBytes: 1073741824}' \
+    maxSessionsPerOwner: 4, maxReservedBytes: 2147483648}' \
     > "$stream/config.json"
 cat > "$stream/haproxy.cfg" <<EOF
 global
