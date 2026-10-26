@@ -562,14 +562,17 @@ namespace Nethermind.Synchronization.SnapSync
             partition.NextAccountPath = nextPath;
             partition.MoreAccountsToRight = moreChildrenToRight && nextPath < hashLimit;
 
-            long covered = partition.MoreAccountsToRight
-                ? Math.Clamp((long)BinaryPrimitives.ReadUInt32BigEndian(nextPath.Bytes) - BinaryPrimitives.ReadUInt32BigEndian(partition.AccountPathStart.Bytes), 0, partition.KeySpaceWidth)
-                : partition.KeySpaceWidth;
+            long covered = GetCoveredKeySpace(partition);
             long delta = covered - partition.CoveredKeySpace;
             partition.CoveredKeySpace = covered;
             // Storage, code and refresh requests can run after the last account range; only the range phase end publishes the full scale.
             PublishCoveredAccountKeySpace(Math.Min(Interlocked.Add(ref _coveredAccountKeySpace, delta), AccountKeySpace - 1));
         }
+
+        private static long GetCoveredKeySpace(AccountRangePartition partition) =>
+            partition.MoreAccountsToRight
+                ? Math.Clamp((long)BinaryPrimitives.ReadUInt32BigEndian(partition.NextAccountPath.Bytes) - BinaryPrimitives.ReadUInt32BigEndian(partition.AccountPathStart.Bytes), 0, partition.KeySpaceWidth)
+                : partition.KeySpaceWidth;
 
         private void SetCoveredAccountKeySpace(long covered)
         {
@@ -716,17 +719,23 @@ namespace Nethermind.Synchronization.SnapSync
 
             AccountRangeReadyForRequest.Clear();
             int accountsLeft = 0;
+            long covered = 0;
             foreach (AccountRangeProgress progress in checkpoint.Partitions)
             {
                 AccountRangePartition partition = AccountRangePartitions[progress.AccountPathLimit];
                 partition.NextAccountPath = progress.NextAccountPath;
                 partition.MoreAccountsToRight = progress.MoreAccountsToRight;
+                partition.CoveredKeySpace = GetCoveredKeySpace(partition);
+                covered += partition.CoveredKeySpace;
                 if (partition.MoreAccountsToRight)
                 {
                     AccountRangeReadyForRequest.Enqueue(partition);
                     accountsLeft++;
                 }
             }
+
+            Volatile.Write(ref _coveredAccountKeySpace, covered);
+            PublishCoveredAccountKeySpace(Math.Min(covered, AccountKeySpace - 1));
 
             foreach (PathWithAccount account in checkpoint.StoragesToRetrieve) StoragesToRetrieve.Enqueue(account);
 

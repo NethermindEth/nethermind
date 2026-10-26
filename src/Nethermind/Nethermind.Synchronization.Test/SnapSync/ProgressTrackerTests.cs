@@ -270,6 +270,40 @@ public class ProgressTrackerTests
         Assert.That(next, Is.Null);
     }
 
+    // Regression: a resumed run reported its account ranges as not started, so its progress never got past the
+    // partitions left to do, and a response for a partition partly done before the restart counted that part twice.
+    [Test]
+    [NonParallelizable]
+    public void A_resumed_run_reports_the_progress_made_before_the_restart()
+    {
+        SnapCheckpoint? saved = null;
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.SupportsCheckpoints.Returns(true);
+        snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(call => saved = call.Arg<SnapCheckpoint?>());
+        snapTrieFactory.LoadCheckpoint().Returns(_ => saved is null ? null : SnapCheckpoint.Decode(saved.Encode()));
+
+        ValueHash256 limit;
+        using (ProgressTracker interrupted = CreateProgressTracker(accountRangePartition: 4, snapTrieFactory: snapTrieFactory, snapResume: true, checkpointInterval: TimeSpan.MaxValue))
+        {
+            interrupted.IsFinished(out SnapSyncBatch? accountRange);
+            limit = accountRange!.AccountRangeRequest!.LimitHash!.Value;
+            interrupted.UpdateAccountRangePartitionProgress(limit, new ValueHash256("0x2000000000000000000000000000000000000000000000000000000000000000"), moreChildrenToRight: true);
+            interrupted.ReportAccountRangePartitionFinished(limit);
+            interrupted.ReportRequestReleased(accountRange);
+            accountRange.Dispose();
+            interrupted.SaveCheckpointAtShutdown();
+        }
+
+        using ProgressTracker resumed = CreateProgressTracker(accountRangePartition: 4, snapTrieFactory: snapTrieFactory, snapResume: true);
+        resumed.Reset();
+        Assert.That(Metrics.SnapRangesProgress, Is.Zero);
+        resumed.LoadProgress();
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(1250));
+
+        resumed.UpdateAccountRangePartitionProgress(limit, new ValueHash256("0x3000000000000000000000000000000000000000000000000000000000000000"), moreChildrenToRight: true);
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(1875));
+    }
+
     // Regression: a restart during the state ranges phase used to start the account ranges over from the beginning.
     [Test]
     public void A_restarted_run_resumes_from_a_checkpoint_taken_with_a_request_in_flight()
