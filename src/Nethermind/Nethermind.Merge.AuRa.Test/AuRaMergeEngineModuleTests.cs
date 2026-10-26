@@ -12,6 +12,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -218,6 +219,8 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 // as normally, test blockchain don't use INethermindApi at all.
                 .AddModule(new AuRaModule(ChainSpec))
                 .AddModule(new AuRaMergeModule())
+                // Production keeps AuRa rewards after the merge, but the expected payloads in these tests assume no rewards.
+                .AddDecorator<IRewardCalculator, MergeRewardCalculator>()
                 .AddSingleton<NethermindApi.Dependencies>()
                 .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
                 .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer

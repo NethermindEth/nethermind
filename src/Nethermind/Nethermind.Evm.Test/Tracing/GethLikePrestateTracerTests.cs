@@ -30,13 +30,30 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
-    [Test]
-    public void Write_WhenAccountPrimitivesArePresent_WritesHexBalanceAndDecimalNonce([Values] bool includeValues)
+    private static IEnumerable<TestCaseData> AccountPrimitiveCases()
+    {
+        yield return new TestCaseData(null, "{}").SetName("{m}: Omitted");
+        foreach (string nonce in new[]
+        {
+            "0",
+            "300",
+            "18446744073709551615",
+            "18446744073709551616",
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+        })
+        {
+            yield return new TestCaseData(UInt256.Parse(nonce), "{\"balance\":\"0xff\",\"nonce\":" + nonce + "}")
+                .SetName("{m}: " + nonce);
+        }
+    }
+
+    [TestCaseSource(nameof(AccountPrimitiveCases))]
+    public void Write_WhenAccountPrimitivesArePresent_WritesHexBalanceAndDecimalNonce(UInt256? nonce, string expected)
     {
         NativePrestateTracerAccount account = new()
         {
-            Balance = includeValues ? (UInt256)255 : null,
-            Nonce = includeValues ? (UInt256)300 : null
+            Balance = nonce is not null ? (UInt256)255 : null,
+            Nonce = nonce
         };
         NumberConversion previousValue = ForcedNumberConversion.Value;
         try
@@ -47,7 +64,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(json, Is.EqualTo(includeValues ? """{"balance":"0xff","nonce":300}""" : "{}"));
+                Assert.That(json, Is.EqualTo(expected));
                 Assert.That(ForcedNumberConversion.Value, Is.EqualTo(NumberConversion.Raw), "serialization must restore the caller's format");
             }
         }
@@ -122,6 +139,33 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void SetOperationStack_WhenAccountReadThrows_RemovesPendingSnapshotAndAllowsRetry()
+    {
+        StorageReadCounter reads = new();
+        using IContainer container = CreateStorageReadContainer(reads);
+        using ILifetimeScope processingScope = CreateStorageProcessingScope(container);
+        IWorldState state = processingScope.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(TestItem.AddressC, 9);
+        using NativePrestateTracer tracer = new(state, GetGethTraceOptions(), Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
+        byte[] stack = TestItem.AddressC.Bytes.PadLeft(32);
+        tracer.StartOperation(0, Instruction.BALANCE, 100, environment);
+        reads.FailNextAccountRead = true;
+
+        Assert.Throws<InvalidOperationException>(() => tracer.SetOperationStack(new TraceStack(stack)));
+
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> prestate =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+        Assert.That(prestate.ContainsKey(TestItem.AddressC), Is.False, "a failed read must not leave an empty account");
+
+        tracer.SetOperationStack(new TraceStack(stack));
+
+        Assert.That(prestate[TestItem.AddressC].Balance, Is.EqualTo((UInt256)9), "retry must capture the real account");
+    }
+
     private static IContainer CreateStorageReadContainer(StorageReadCounter reads) => new ContainerBuilder()
         .AddModule(new TestNethermindModule(Cancun.Instance))
         .AddSingleton(reads)
@@ -183,15 +227,55 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace)
+    public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace, [Values] bool disableStorage)
     {
-        RecordingPrestateTracer tracer = new(TestState);
+        RecordingPrestateTracer tracer = new(TestState, disableStorage);
         using ITxTracer executionTracer = new CancellationTxTracer(new CompositeTxTracer(
             tracer, fullTrace ? new FullInstructionTracer() : NullTxTracer.Instance));
         byte[] code = Prepare.EvmCode
             .PushData(1)
             .PushData(2)
             .Op(Instruction.ADD)
+            .PushData(0)
+            .Op(Instruction.SLOAD)
+            .PushData(7)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .PushData(TestItem.AddressC)
+            .Op(Instruction.BALANCE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        Execute(executionTracer, code, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations.Contains(Instruction.SLOAD), Is.EqualTo(fullTrace || !disableStorage));
+            Assert.That(tracer.Operations.Contains(Instruction.SSTORE), Is.EqualTo(fullTrace || !disableStorage));
+            Assert.That(tracer.Operations, Does.Contain(Instruction.BALANCE), "account reads must remain selected when storage capture is disabled");
+            Assert.That(tracer.Operations.Contains(Instruction.ADD), Is.EqualTo(fullTrace));
+            Assert.That(tracer.Error, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Execute_WhenPrestateIsTraced_ReportsStackPushesOnlyWhenAnotherTracerObservesThem([Values] bool fullTrace)
+    {
+        RecordingPrestateTracer tracer = new(TestState);
+        FullInstructionTracer full = new();
+        using ITxTracer executionTracer = new CancellationTxTracer(new CompositeTxTracer(
+            tracer, fullTrace ? full : NullTxTracer.Instance));
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(2)
+            .Op(Instruction.ADD)
+            .Op(Instruction.DUP1)
+            .Op(Instruction.SWAP1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.EXP)
+            .PushData(UInt256.MaxValue)
+            .Op(Instruction.CALLDATALOAD)
             .PushData(0)
             .Op(Instruction.SLOAD)
             .Op(Instruction.STOP)
@@ -202,21 +286,23 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.Operations, Does.Contain(Instruction.SLOAD));
-            Assert.That(tracer.Operations.Contains(Instruction.ADD), Is.EqualTo(fullTrace));
-            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.Pushes > 0, Is.EqualTo(fullTrace));
+            Assert.That(full.Pushes > 0, Is.EqualTo(fullTrace));
         }
     }
 
     [Test]
-    public void Execute_WhenExcludedOpcodeFails_ReportsTheError()
+    public void Execute_WhenOpcodeFails_ReportsTheError(
+        [Values(Instruction.ADD, Instruction.SLOAD, Instruction.SSTORE)] Instruction opcode,
+        [Values] bool disableStorage)
     {
-        using RecordingPrestateTracer tracer = new(TestState);
+        using RecordingPrestateTracer tracer = new(TestState, disableStorage);
 
-        Execute(tracer, Prepare.EvmCode.Op(Instruction.ADD).Done, MainnetSpecProvider.CancunActivation);
+        Execute(tracer, Prepare.EvmCode.Op(opcode).Done, MainnetSpecProvider.CancunActivation);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.Operations, Does.Not.Contain(Instruction.ADD));
+            Assert.That(tracer.Operations.Contains(opcode), Is.EqualTo(opcode != Instruction.ADD && !disableStorage));
             Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.StackUnderflow));
         }
     }
@@ -1421,13 +1507,23 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     private sealed class FullInstructionTracer : TxTracer
     {
         public override bool IsTracingInstructions => true;
+        public int Pushes { get; private set; }
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => Pushes++;
     }
 
-    private sealed class RecordingPrestateTracer(IWorldState worldState)
-        : NativePrestateTracer(worldState, GetGethTraceOptions(), Hash256.Zero, TestItem.AddressA, TestItem.AddressB)
+    private sealed class RecordingPrestateTracer(IWorldState worldState, bool disableStorage = false)
+        : NativePrestateTracer(worldState, GetGethTraceOptions(JsonSerializer.Serialize(new { disableStorage })), Hash256.Zero, TestItem.AddressA, TestItem.AddressB)
     {
         public List<Instruction> Operations { get; } = [];
         public EvmExceptionType? Error { get; private set; }
+        public int Pushes { get; private set; }
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        {
+            Pushes++;
+            base.ReportStackPush(stackItem);
+        }
 
         public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
         {
@@ -1467,6 +1563,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     {
         public int Count { get; set; }
         public bool FailNextRead { get; set; }
+        public bool FailNextAccountRead { get; set; }
     }
 
     private sealed class RecordingStorageWorldState(IWorldState state, StorageReadCounter reads) : WorldStateDecorator(state)
@@ -1480,6 +1577,16 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
                 throw new InvalidOperationException("storage read failed");
             }
             base.Get(in storageCell, out value);
+        }
+
+        public override bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            if (reads.FailNextAccountRead)
+            {
+                reads.FailNextAccountRead = false;
+                throw new InvalidOperationException("account read failed");
+            }
+            return base.TryGetAccount(address, out account);
         }
     }
 }

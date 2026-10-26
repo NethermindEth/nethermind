@@ -9,9 +9,11 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -39,6 +41,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Serialization.Json;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -51,6 +54,8 @@ public class StartupTests
 {
     private const string GetBlobsV1Method = "engine_getBlobsV1";
     private const string GetBlobsV2Method = "engine_getBlobsV2";
+    private const string AllowedOrigin = "https://app.example";
+    private const string OtherOrigin = "https://evil.example";
 
     private static readonly GCKeeper GcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
     private static readonly Startup Startup;
@@ -872,6 +877,94 @@ public class StartupTests
             string.Join(" | ", logger.LogList));
     }
 
+    [TestCase(new[] { AllowedOrigin }, AllowedOrigin, ExpectedResult = true, TestName = "WebSocket origin: accepts an allowed origin")]
+    [TestCase(new[] { AllowedOrigin }, OtherOrigin, ExpectedResult = false, TestName = "WebSocket origin: rejects another origin")]
+    [TestCase(new[] { AllowedOrigin }, "", ExpectedResult = true, TestName = "WebSocket origin: accepts a request without an origin")]
+    [TestCase(new[] { "https://App.Example" }, AllowedOrigin, ExpectedResult = true, TestName = "WebSocket origin: ignores the case of a configured origin")]
+    [TestCase(new[] { "*" }, OtherOrigin, ExpectedResult = true, TestName = "WebSocket origin: accepts any origin with the wildcard")]
+    [TestCase(new string[0], OtherOrigin, ExpectedResult = false, TestName = "WebSocket origin: rejects every origin with no CORS origins")]
+    public bool WebSocketOriginFilter_follows_the_cors_policy(string[] corsOrigins, string origin) =>
+        WebSocketOriginFilter.IsAllowed(origin, Startup.CreateCorsPolicy(new JsonRpcConfig { CorsOrigins = corsOrigins }));
+
+    [Test]
+    public async Task UseJsonRpcWebSockets_refuses_another_origin_before_the_socket_is_accepted()
+    {
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(30));
+        TestLogger logger = new();
+        await using WebApplication app = await StartWebSocketHostAsync(new JsonRpcConfig { CorsOrigins = [AllowedOrigin] }, logger, deadline.Token);
+        Uri uri = new UriBuilder(ServerUri(app)) { Scheme = "ws" }.Uri;
+
+        using (ClientWebSocket allowed = await ConnectWebSocketAsync(uri, AllowedOrigin, deadline.Token))
+        {
+            Assert.That(allowed.State, Is.EqualTo(WebSocketState.Open));
+        }
+
+        using (ClientWebSocket nonBrowser = await ConnectWebSocketAsync(uri, origin: null, deadline.Token))
+        {
+            Assert.That(nonBrowser.State, Is.EqualTo(WebSocketState.Open));
+        }
+
+        Assert.That(logger.LogList, Is.Empty);
+
+        WebSocketException? refused = await Assert.ThrowsAsync<WebSocketException>(() => ConnectWebSocketAsync(uri, OtherOrigin, deadline.Token));
+        Assert.That(refused!.Message, Does.Contain("403"));
+        // The node logs the refused origin before it answers, so the line is there once the client sees 403.
+        Assert.That(logger.LogList, Has.Exactly(1).Items);
+        Assert.That(logger.LogList[0], Does.Contain(OtherOrigin).And.Contain("JsonRpc.CorsOrigins"));
+    }
+
+    /// <summary>
+    /// Serves WebSockets through <see cref="Startup.UseJsonRpcWebSockets"/>, the pipeline <see cref="Startup"/> builds,
+    /// with a module that accepts every socket.
+    /// </summary>
+    private static async Task<WebApplication> StartWebSocketHostAsync(IJsonRpcConfig config, TestLogger logger, CancellationToken cancellationToken)
+    {
+        WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
+        builder.Services.AddLogging();
+        builder.Services.AddSingleton(AcceptingWebSocketsManager());
+        builder.WebHost.UseKestrelCore().ConfigureKestrel(static options => options.Listen(IPAddress.Loopback, 0));
+
+        WebApplication app = builder.Build();
+        TestJsonRpcUrlCollection urls = new();
+        Startup.UseJsonRpcWebSockets(app, config, urls, new ILogger(logger));
+
+        await app.StartAsync(cancellationToken);
+        // The port is known only once Kestrel has bound it; the pipeline looks it up per request.
+        int port = ServerUri(app).Port;
+        urls.Add(port, new JsonRpcUrl(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), port, RpcEndpoint.Ws, false, [ModuleType.Eth]));
+        return app;
+    }
+
+    private static IWebSocketsManager AcceptingWebSocketsManager()
+    {
+        ISocketsClient client = Substitute.For<ISocketsClient>();
+        client.Id.Returns("test");
+        IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
+        module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(ValueTask.FromResult(client));
+        IWebSocketsManager manager = Substitute.For<IWebSocketsManager>();
+        manager.GetModule(Arg.Any<string>()).Returns(module);
+        return manager;
+    }
+
+    private static Uri ServerUri(WebApplication app) =>
+        new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First());
+
+    private static async Task<ClientWebSocket> ConnectWebSocketAsync(Uri uri, string? origin, CancellationToken cancellationToken)
+    {
+        ClientWebSocket socket = new();
+        if (origin is not null) socket.Options.SetRequestHeader("Origin", origin);
+        try
+        {
+            await socket.ConnectAsync(uri, cancellationToken);
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
     private static async Task<string> ProcessJsonRpcRequest(
         string request,
         bool setContentLength = true,
@@ -1235,13 +1328,11 @@ public class StartupTests
 
     private sealed class TestJsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection
     {
-        public TestJsonRpcUrlCollection(JsonRpcUrl url)
-            : base(capacity: 1)
-        {
-            Add(url.Port, url);
-            Urls = [url.ToString()];
-        }
+        public TestJsonRpcUrlCollection() { }
 
-        public string[] Urls { get; }
+        public TestJsonRpcUrlCollection(JsonRpcUrl url)
+            : base(capacity: 1) => Add(url.Port, url);
+
+        public string[] Urls => Values.Select(static url => url.ToString()).ToArray();
     }
 }

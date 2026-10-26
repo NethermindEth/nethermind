@@ -38,6 +38,7 @@
     <Project Path="../../src/Nethermind/Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Mcp.Plugin/Nethermind.Mcp.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Monitoring/Nethermind.Monitoring.csproj" />

@@ -244,7 +244,7 @@ public sealed class PersistedSnapshotLoader(
             }
             catch
             {
-                _catalog.Remove(snapshot.To, (long)(snapshot.To.BlockNumber - snapshot.From.BlockNumber));
+                _catalog.Remove(snapshot.To, SnapshotTier.PersistedBase);
                 throw;
             }
 
