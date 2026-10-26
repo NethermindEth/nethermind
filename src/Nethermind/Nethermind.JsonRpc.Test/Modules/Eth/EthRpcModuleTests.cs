@@ -1772,10 +1772,10 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_proof_and_transaction_count_show_the_eip8253_bump_from_the_fork_block()
     {
-        Address target = Eip8253Constants.MainnetAccounts[0];
+        Address target = Eip8253TestData.MainnetAccounts[0];
         TestSpecProvider specProvider = new(Bogota.Instance)
         {
-            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] },
             ForkOnBlockNumber = ulong.MaxValue,
             ChainId = BlockchainIds.Mainnet,
             AllowTestChainOverride = false,
