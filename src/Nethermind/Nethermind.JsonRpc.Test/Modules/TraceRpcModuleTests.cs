@@ -1256,7 +1256,7 @@ public class TraceRpcModuleTests
         {
             Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
             if (expectedMessage is not null)
-                Assert.That(error.GetProperty("message").GetString(), Is.EqualTo(expectedMessage), response);
+                Assert.That(error.GetProperty("message").GetString(), Is.EqualTo($"invalid argument 0: {expectedMessage}"), response);
         }
     }
 
@@ -1600,7 +1600,7 @@ public class TraceRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", filter.RootElement);
 
-        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid trace filter mode, expected \"intersection\" or \"union\""},"id":67}"""));
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 0: invalid trace filter mode, expected \"intersection\" or \"union\""},"id":67}"""));
     }
 
     [Test]

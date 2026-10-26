@@ -13,18 +13,18 @@
       },
       "Microsoft.Build.Tasks.Git": {
         "type": "Direct",
-        "requested": "[10.0.402, )",
-        "resolved": "10.0.402",
-        "contentHash": "k4TuSlseeYpFMIZP3X/MFHNKe+yNDIfVDlvu2ABiWaFWFQFwdsjqmoLTjtrD6YZ5vS2LT1TEZ9JT2kokfLdd0w==",
+        "requested": "[10.0.403, )",
+        "resolved": "10.0.403",
+        "contentHash": "1furteBFeemMmZ4s+ORjQb7YtO+wG63NJahbQbRUi91FV6V87BdV0U3vX1jbMC6iKSELYYoXWssSzLu3mx0i2w==",
         "dependencies": {
-          "System.IO.Hashing": "10.0.13"
+          "System.IO.Hashing": "10.0.14"
         }
       },
       "Microsoft.Extensions.FileProviders.Embedded": {
         "type": "Direct",
-        "requested": "[10.0.13, )",
-        "resolved": "10.0.13",
-        "contentHash": "H4baeis/dx/NZ87070hjvJc5mry36x68yQjiMKS3uFxa2tlAwWAciZZh3baTjGCDc7ChURQdLOzPLVsXfkAEFw=="
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "v+KNMXj2RktQ690ijlFYniH8gggO+EVMjCZSou+NcpI2mKNAT27Dgn2UfiJKbwQ84v2Avp6Mwceqog8gvQn5Cw=="
       },
       "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": {
         "type": "Direct",
@@ -49,9 +49,9 @@
       },
       "System.CommandLine": {
         "type": "Direct",
-        "requested": "[2.0.13, )",
-        "resolved": "2.0.13",
-        "contentHash": "TIO2lMV+sSP7WW7pD/oCRHD9ENWY+jqwXmYzgks3R46cEdDzwjQOAhsiBn+M3EegfGjgTpa2h+eIrcU+AM2k6A=="
+        "requested": "[2.0.14, )",
+        "resolved": "2.0.14",
+        "contentHash": "15fyVO4aG6poR6IKmhM74zf7PUzaU6FZAGm2d3SQSO9yIyGAeo44e6t9qeKjjaqyMEqYdqcb2G1B0gpLoDU2cA=="
       },
       "AspNetCore.HealthChecks.UI.Core": {
         "type": "Transitive",
@@ -244,6 +244,11 @@
           "Microsoft.EntityFrameworkCore": "8.0.11"
         }
       },
+      "Microsoft.Extensions.AI.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.8.3",
+        "contentHash": "K0B05oApxmviWalNHPMBBcRC7erKiDATz3ENNR/jqTR9JwIwLRefgDhj2jCRwL1aca99pXUe0qyQC73/xIuZig=="
+      },
       "Microsoft.Extensions.DependencyModel": {
         "type": "Transitive",
         "resolved": "8.0.2",
@@ -275,6 +280,14 @@
         "type": "Transitive",
         "resolved": "1.1.0",
         "contentHash": "kz0PEW2lhqygehI/d6XsPCQzD7ff7gUJaVGPVETX611eadGsA3A877GdSlU0LRVMCTH/+P3o2iDTak+S08V2+A=="
+      },
+      "ModelContextProtocol.Core": {
+        "type": "Transitive",
+        "resolved": "2.2.0",
+        "contentHash": "FeBfXU6T8k+jw4afg4sfxdEX2rL/e5oKOk9ROOGztu9k47+7Bz08sdaToYt2XvMY1opNbwxYQOFMj6wH9TInhA==",
+        "dependencies": {
+          "Microsoft.Extensions.AI.Abstractions": "10.8.3"
+        }
       },
       "Mono.TextTemplating": {
         "type": "Transitive",
@@ -579,7 +592,6 @@
           "Nethermind.Facade": "[2.3.0-preview, )",
           "Nethermind.History": "[2.3.0-preview, )",
           "Nethermind.JsonRpc": "[2.3.0-preview, )",
-          "Nethermind.Monitoring": "[2.3.0-preview, )",
           "Nethermind.Network": "[2.3.0-preview, )",
           "Nethermind.Sockets": "[2.3.0-preview, )"
         }
@@ -646,7 +658,7 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Network.Enr": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )",
-          "System.Configuration.ConfigurationManager": "[10.0.13, )"
+          "System.Configuration.ConfigurationManager": "[10.0.14, )"
         }
       },
       "nethermind.consensus": {
@@ -721,7 +733,7 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Crypto.Bls": "[0.3.17.15, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
-          "System.Security.Cryptography.ProtectedData": "[10.0.13, )"
+          "System.Security.Cryptography.ProtectedData": "[10.0.14, )"
         }
       },
       "nethermind.db": {
@@ -954,6 +966,15 @@
           "Nethermind.Logging": "[2.3.0-preview, )"
         }
       },
+      "nethermind.mcp.plugin": {
+        "type": "Project",
+        "dependencies": {
+          "ModelContextProtocol.AspNetCore": "[2.2.0, )",
+          "Nethermind.Api": "[2.1.0-preview, )",
+          "Nethermind.Init": "[2.1.0-preview, )",
+          "Nethermind.JsonRpc": "[2.1.0-preview, )"
+        }
+      },
       "nethermind.merge.aura": {
         "type": "Project",
         "dependencies": {
@@ -980,8 +1001,8 @@
       "nethermind.monitoring": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.3.0-preview, )",
-          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
           "prometheus-net.AspNetCore": "[8.2.1, )"
         }
       },
@@ -1077,7 +1098,7 @@
       "nethermind.portfolioviewer.plugin": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.13, )",
+          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.14, )",
           "Nethermind.Api": "[2.3.0-preview, )",
           "Nethermind.Blockchain": "[2.3.0-preview, )",
           "Nethermind.Consensus": "[2.3.0-preview, )",
@@ -1181,7 +1202,7 @@
           "Nethermind.State": "[2.3.0-preview, )",
           "Nethermind.Synchronization": "[2.3.0-preview, )",
           "Nethermind.Trie": "[2.3.0-preview, )",
-          "System.IO.Hashing": "[10.0.13, )"
+          "System.IO.Hashing": "[10.0.14, )"
         }
       },
       "nethermind.state.flat.history": {
@@ -1514,6 +1535,24 @@
         "resolved": "3.0.1",
         "contentHash": "s/s20YTVY9r9TPfTrN5g8zPF1YhwxyqO6PxUkrYTGI2B+OGPe9AdajWZrLhFqXIvqIW23fnUE4+ztrUWNU1+9g=="
       },
+      "ModelContextProtocol": {
+        "type": "CentralTransitive",
+        "requested": "[2.2.0, )",
+        "resolved": "2.2.0",
+        "contentHash": "4Pb9u02Nwsp0poueDsqNdyGRojFxOYpljB7zDBsq+aHL+Afou3OgxlBc3GWFVnsRMRJrUtWqDh3s6k2JgPzmrQ==",
+        "dependencies": {
+          "ModelContextProtocol.Core": "[2.2.0]"
+        }
+      },
+      "ModelContextProtocol.AspNetCore": {
+        "type": "CentralTransitive",
+        "requested": "[2.2.0, )",
+        "resolved": "2.2.0",
+        "contentHash": "3JelDMuFIwFzXybsh6K30G6wXu5gmqKnuRnieqgBMuR0FkqqXRv4B+NYZuPgthSyNq5UwRyvv2U2VJBE3RD3PQ==",
+        "dependencies": {
+          "ModelContextProtocol": "[2.2.0]"
+        }
+      },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
         "requested": "[0.3.17.15, )",
@@ -1683,24 +1722,24 @@
       },
       "System.Configuration.ConfigurationManager": {
         "type": "CentralTransitive",
-        "requested": "[10.0.13, )",
-        "resolved": "10.0.13",
-        "contentHash": "BkkGt1IDGMaNkSWJR+hEN3V/UMvyoYKW0rG7rlhKQwS2Ghn+9dt98aV7syIMK+ChumTk+IbDF4k0QXqVs9Zudg==",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "F/bLtwG0JuJ2OnTCsvJbnulvN7hr+BIFJLtE3PzgmW3AWkV8LYO5XF0j+zB4tHn/b4yfR7PAO0dZmoYeaINtnQ==",
         "dependencies": {
-          "System.Security.Cryptography.ProtectedData": "10.0.13"
+          "System.Security.Cryptography.ProtectedData": "10.0.14"
         }
       },
       "System.IO.Hashing": {
         "type": "CentralTransitive",
-        "requested": "[10.0.13, )",
-        "resolved": "10.0.13",
-        "contentHash": "ZlcywyQ7FJmgOV2nctdfOEPGS0kRK8T2CdOoPr6F4HPYpmjSo6GQfj3yTyOzNO6B+2U84/JKSPkJJMWqLmVsMw=="
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "lVqovhCt3HlZe7ONG5ydaj6BYwYI004gldVfMMkJl/lR5ueeCtWNpW4nejOX75sPmzm8vXCxB69GqwHaYCnyUQ=="
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "CentralTransitive",
-        "requested": "[10.0.13, )",
-        "resolved": "10.0.13",
-        "contentHash": "aUSmC6cPjFLSE0rDTsmkR3wvUOnscqewebOaaELEToh12sNmoltZqT3f0C81mJ1zhxKjWco25soHTvYwsXCsUw=="
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "UuaBUHgmtc9h6CMxaQqFDDJxkS5JVy7XEB+DbtCvD68GFcVM9/AccuNwFpARx8nwCnvjaxzoOBjG3gPz32P1Eg=="
       },
       "Testably.Abstractions": {
         "type": "CentralTransitive",

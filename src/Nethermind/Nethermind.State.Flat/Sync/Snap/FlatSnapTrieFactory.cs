@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
@@ -20,12 +23,28 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// EnsureInitialize/FinalizeSync are driven by the snap-sync runner at start/end of the run,
 /// so they don't need internal locking — they're never called concurrently with CreateXxxTree.
 /// </summary>
-public class FlatSnapTrieFactory(IPersistence persistence, IPersistenceManager persistenceManager, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
+public class FlatSnapTrieFactory(
+    IPersistence persistence,
+    IPersistenceManager persistenceManager,
+    IColumnsDb<FlatDbColumns> flatDb,
+    [KeyFilter(DbNames.Code)] IDb codeDb,
+    ISyncConfig syncConfig,
+    ILogManager logManager) : ISnapTrieFactory
 {
+    private const int AccountKeyLength = 20;
+    private const int MaxNodePathLength = 64;
+
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
 
     public void EnsureInitialize()
     {
+        if (syncConfig.SnapResume && LoadCheckpoint() is { } checkpoint)
+        {
+            DiscardWritesAfter(checkpoint);
+            persistenceManager.ResetPersistedStateId();
+            return;
+        }
+
         // Log before probing: on a database holding only tombstones from an earlier wipe, the probe itself can take a while.
         if (_logger.IsInfo) _logger.Info("Clearing database");
         if (_logger.IsWarn && HasAccounts())
@@ -47,6 +66,154 @@ public class FlatSnapTrieFactory(IPersistence persistence, IPersistenceManager p
     }
 
     public void FinalizeSync() => persistence.Flush();
+
+    public bool SupportsCheckpoints => true;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A checkpoint that cannot be read, or was saved with a different number of account range partitions, is not
+    /// returned, so every caller, including those ahead of <see cref="EnsureInitialize"/>, treats it as gone.
+    /// </remarks>
+    public SnapCheckpoint? LoadCheckpoint()
+    {
+        byte[]? record = BasePersistence.ReadSnapCheckpoint(flatDb.GetColumnDb(FlatDbColumns.Metadata));
+        if (record is null) return null;
+
+        SnapCheckpoint checkpoint;
+        try
+        {
+            checkpoint = SnapCheckpoint.Decode(record);
+        }
+        catch (InvalidDataException e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Ignoring the snap sync checkpoint, which cannot be read: {e.Message}");
+            return null;
+        }
+
+        if (checkpoint.Partitions.Length != syncConfig.SnapSyncAccountRangePartitionCount)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Ignoring the snap sync checkpoint, saved with {checkpoint.Partitions.Length} account range partitions while {nameof(ISyncConfig.SnapSyncAccountRangePartitionCount)} is now {syncConfig.SnapSyncAccountRangePartitionCount}.");
+            return null;
+        }
+
+        return checkpoint;
+    }
+
+    public void SaveCheckpoint(SnapCheckpoint? checkpoint)
+    {
+        if (checkpoint is not null)
+        {
+            // Snap writes skip the WAL, so only a flush makes the data the checkpoint covers durable. The persistence
+            // flush drains the trie node log but only logs a column that fails to flush, so each column is flushed
+            // again, throwing, before a checkpoint can claim the data. Codes are written with the WAL.
+            persistence.Flush();
+            foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>()) flatDb.GetColumnDb(column).FlushOrThrow();
+            codeDb.SyncWal();
+        }
+
+        BasePersistence.WriteSnapCheckpoint(flatDb, checkpoint?.Encode());
+    }
+
+    /// <summary>Deletes everything snap sync wrote after <paramref name="checkpoint"/> was saved, keeping what it covers.</summary>
+    /// <remarks>
+    /// Writes made after the checkpoint may come from an older root, and part of them may be lost with the unflushed
+    /// memtables. Downloading over them again would leave entries the newer root no longer has, so whatever the resumed
+    /// run requests again is deleted first: the rest of each unfinished account partition with the storage of those
+    /// accounts, and the queued storage ranges. What is left is what an uninterrupted run held at the checkpoint.
+    /// <para>
+    /// A trie node whose position lies within such a range is deleted with it. One whose position only overlaps the
+    /// range lies on the path to one of its ends, and is deleted when the keys under it reach into the range: a range
+    /// commit never persists a node whose keys reach past the committed range, so such a node was written after the
+    /// checkpoint. A leaf or an extension on that path whose keys lie wholly outside the range is kept, as it may well
+    /// predate the checkpoint, and trie reassembly can rebuild a missing branch from the flat entries but not a leaf.
+    /// </para>
+    /// </remarks>
+    private void DiscardWritesAfter(SnapCheckpoint checkpoint)
+    {
+        long startTime = Stopwatch.GetTimestamp();
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync))
+        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            foreach (AccountRangeProgress partition in checkpoint.Partitions)
+            {
+                if (!partition.MoreAccountsToRight) continue;
+
+                batch.DeleteStateTrieNodeRange(partition.NextAccountPath, partition.AccountPathLimit);
+                DeleteNodesReachingInto(reader, batch, address: null, partition.NextAccountPath, partition.AccountPathLimit);
+
+                if (TryGetFirstAccountKeyAtOrAfter(partition.NextAccountPath, out ValueHash256 firstAccount))
+                {
+                    batch.DeleteAccountRange(firstAccount, partition.AccountPathLimit);
+                    batch.SelfDestructRange(firstAccount, partition.AccountPathLimit);
+                }
+            }
+
+            foreach ((ValueHash256 accountPath, ValueHash256 from, ValueHash256 to) in checkpoint.StorageRangesToRefetch())
+            {
+                batch.DeleteStorageRange(accountPath, from, to);
+                batch.DeleteStorageTrieNodeRange(accountPath, from, to);
+                // Over the whole trie, every node is within the range deleted above.
+                if (from == ValueKeccak.Zero && to == ValueKeccak.MaxValue) continue;
+
+                DeleteNodesReachingInto(reader, batch, accountPath.ToCommitment(), from, to);
+            }
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Resuming the snap sync from a checkpoint; discarded what was written after it in {Stopwatch.GetElapsedTime(startTime).TotalSeconds:N1}s.");
+    }
+
+    /// <summary>
+    /// Deletes the nodes on the paths to <paramref name="from"/> and <paramref name="to"/> whose keys reach into
+    /// <c>[<paramref name="from"/>, <paramref name="to"/>]</c>, in the storage trie of <paramref name="address"/>, or in
+    /// the state trie when it is <c>null</c>.
+    /// </summary>
+    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in ValueHash256 from, in ValueHash256 to)
+    {
+        DeleteNodesReachingInto(reader, batch, address, new TreePath(from, MaxNodePathLength), from, to);
+        DeleteNodesReachingInto(reader, batch, address, new TreePath(to, MaxNodePathLength), from, to);
+    }
+
+    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in TreePath boundary, in ValueHash256 from, in ValueHash256 to)
+    {
+        for (int length = 0; length < MaxNodePathLength; length++)
+        {
+            TreePath path = boundary.Truncate(length);
+            byte[]? rlp = address is null
+                ? reader.TryLoadStateRlp(path, ReadFlags.None)
+                : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
+            if (rlp is null) continue;
+
+            TrieNode node = new(NodeType.Unknown, rlp);
+            node.ResolveNode(NullTrieNodeResolver.Instance, path);
+            TreePath keys = node.IsBranch ? path : path.Append(node.Key);
+            if (keys.ToUpperBoundPath().CompareTo(from) < 0 || keys.ToLowerBoundPath().CompareTo(to) > 0) continue;
+
+            // A null span deletes the key.
+            if (address is null) batch.SetStateTrieNode(path, default);
+            else batch.SetStorageTrieNode(address, path, default);
+        }
+    }
+
+    /// <summary>Finds the lowest path whose 20-byte account key no account below <paramref name="path"/> can share.</summary>
+    /// <remarks>
+    /// Accounts and their storage are keyed by the first 20 bytes of the path, so a range deleted from
+    /// <paramref name="path"/> itself would also take the account just below it, which shares those bytes.
+    /// </remarks>
+    /// <returns><c>false</c> when no such path exists.</returns>
+    private static bool TryGetFirstAccountKeyAtOrAfter(in ValueHash256 path, out ValueHash256 firstAccount)
+    {
+        firstAccount = path;
+        Span<byte> bytes = firstAccount.BytesAsSpan;
+        if (!bytes[AccountKeyLength..].ContainsAnyExcept((byte)0)) return true;
+
+        bytes[AccountKeyLength..].Clear();
+        for (int i = AccountKeyLength - 1; i >= 0; i--)
+        {
+            if (++bytes[i] != 0) return true;
+        }
+
+        return false;
+    }
 
     public ISnapTree<PathWithAccount> CreateStateTree()
     {

@@ -793,7 +793,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x1");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 0\"},\"id\":67}"));
     }
 
     [Test]
@@ -1758,7 +1758,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "'0x1234567890123456789012345678901234567890123456789012345678901234567890'", "true");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 0\"},\"id\":67}"));
     }
 
     [Test]
@@ -1772,10 +1772,10 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_proof_and_transaction_count_show_the_eip8253_bump_from_the_fork_block()
     {
-        Address target = Eip8253Constants.MainnetAccounts[0];
+        Address target = Eip8253TestData.MainnetAccounts[0];
         TestSpecProvider specProvider = new(Bogota.Instance)
         {
-            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] },
             ForkOnBlockNumber = ulong.MaxValue,
             ChainId = BlockchainIds.Mainnet,
             AllowTestChainOverride = false,

@@ -916,9 +916,22 @@ public class JsonRpcSocketsClientTests
             }
 
             Assert.That(() => concurrentCall, Is.EqualTo(concurrencyLevel).After(10000, 10));
-            completeSource.SetResult();
 
-            await ShutdownAndWait(pair.SendSocket, receiver);
+            // A client can close its send side after the last request and still expect every response.
+            pair.SendSocket.Shutdown(SocketShutdown.Send);
+            completeSource.SetResult();
+            await receiver;
+
+            int responses = 0;
+            byte[] buffer = new byte[1024];
+            while (responses < concurrencyLevel)
+            {
+                int read = await pair.SendSocket.ReceiveAsync(buffer, pair.Cts.Token);
+                if (read == 0) break;
+                responses += buffer.AsSpan(0, read).Count((byte)'\n');
+            }
+
+            Assert.That(responses, Is.EqualTo(concurrencyLevel));
         }
 
         [Test]
