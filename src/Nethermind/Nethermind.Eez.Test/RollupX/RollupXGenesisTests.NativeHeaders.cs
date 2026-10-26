@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Settlement.RollupX;

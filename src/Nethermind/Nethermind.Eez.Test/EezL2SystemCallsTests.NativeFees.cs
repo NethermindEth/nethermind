@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Eez.Execution;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
