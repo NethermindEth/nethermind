@@ -56,7 +56,9 @@ public class DevBlockProducerTests
 
         blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "genesis");
+#pragma warning restore NUnit2045
 
         Assert.That(await trigger.BuildBlock(), Is.Not.Null, "produced");
         Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "1");

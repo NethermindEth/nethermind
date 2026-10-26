@@ -170,9 +170,12 @@ public class GethGenesisLoaderTests
 
         // Null/empty preconditions must fail fast — subsequent asserts deref these and would NRE
         // if they were inside the same EnterMultipleScope (which records failure but keeps going).
-        Assert.That(chainSpec.Genesis, Is.Not.Null);
-        Assert.That(chainSpec.Allocations, Is.Not.Empty);
-        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Genesis, Is.Not.Null);
+            Assert.That(chainSpec.Allocations, Is.Not.Empty);
+            Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -208,9 +211,12 @@ public class GethGenesisLoaderTests
         ChainSpec chainSpec = LoadChainSpec(
             Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/plataberget.json"));
 
-        Assert.That(chainSpec.Genesis, Is.Not.Null);
-        Assert.That(chainSpec.Allocations, Is.Not.Empty);
-        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Genesis, Is.Not.Null);
+            Assert.That(chainSpec.Allocations, Is.Not.Empty);
+            Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        }
 
         using (Assert.EnterMultipleScope())
         {

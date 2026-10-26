@@ -60,8 +60,11 @@ public class TraceStorePrunerTests
         Assert.That(keys.Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null));
         AddNewBlocks(blockTree);
         await Task.Delay(100);
-        Assert.That(keys.Skip(3).Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null)); // too old were not removed
-        Assert.That(keys.Take(3).Select(k => memDb.Get(k)).All(b => b == null), Is.True); // those were removed
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keys.Skip(3).Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null)); // too old were not removed
+            Assert.That(keys.Take(3).Select(k => memDb.Get(k)).All(b => b == null), Is.True);
+        } // those were removed
 
     }
 }

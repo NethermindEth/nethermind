@@ -440,8 +440,11 @@ public class FrameTxPayerExposureFilterTests
         tx.Hash = TestItem.KeccakA;
         if (payerless) tx.PayerAddress = null;
 
-        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
-        Assert.That(maxCost, Is.EqualTo(UInt256.Zero), "a priced transaction would be rejected on its cost instead");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
+            Assert.That(maxCost, Is.EqualTo(UInt256.Zero), "a priced transaction would be rejected on its cost instead");
+        }
 
         TestReadOnlyStateProvider senderAccounts = new();
         senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);
@@ -644,8 +647,11 @@ public class FrameTxPayerExposureFilterTests
         tx.BlobVersionedHashes = [new byte[32]];
         tx.MaxFeePerBlobGas = 1;
 
-        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
-        Assert.That(maxCost, Is.EqualTo((UInt256)TestCost + Eip4844Constants.GasPerBlob));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
+            Assert.That(maxCost, Is.EqualTo((UInt256)TestCost + Eip4844Constants.GasPerBlob));
+        }
     }
 
     [Test]
@@ -771,7 +777,9 @@ public class FrameTxPayerExposureFilterTests
     {
         // At max_fee_per_gas == 1 the cost is the gas budget, so the frame's gas limit is the
         // requested cost less the spec-priced intrinsic component.
+#pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(FrameTx(0), Spec, out ulong intrinsicGas, out _, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(intrinsicGas, Is.LessThan((ulong)cost), "the requested cost must leave room for the intrinsic term");
         return FrameTx((ulong)cost - intrinsicGas, payer);
     }

@@ -98,8 +98,11 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
         Block head = Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject;
         Task newHead = Task.Run(() => api.TriggerNewHeadBlock(new(head)));
 
-        Assert.That(newHead.Wait(TimeSpan.FromSeconds(10)), Is.True, "NewHeadBlock handler deadlocked against the timeout callback");
-        Assert.That(waitTask.Result, Is.EqualTo(head));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newHead.Wait(TimeSpan.FromSeconds(10)), Is.True, "NewHeadBlock handler deadlocked against the timeout callback");
+            Assert.That(waitTask.Result, Is.EqualTo(head));
+        }
     }
 
     /// <summary>

@@ -174,8 +174,11 @@ public class FrameTxBlockReceiptsTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(1));
+        }
 
         return (receiptsTracer.TxReceipts[0], block, spec);
     }

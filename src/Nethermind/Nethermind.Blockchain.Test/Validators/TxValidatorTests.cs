@@ -42,8 +42,11 @@ public class TxValidatorTests
         SecP256k1Curve.N.Convert(out BigInteger n);
         SecP256k1Curve.HalfN.Convert(out BigInteger halfN);
 
-        Assert.That((N == n), Is.True);
-        Assert.That((HalfN == halfN), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((N == n), Is.True);
+            Assert.That((HalfN == halfN), Is.True);
+        }
     }
 
     private static IEnumerable<TestCaseData> ZeroSignatureComponentCases()
@@ -405,8 +408,11 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
 
-        Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance).AsBool(), Is.False);
-        Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance).AsBool());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance).AsBool(), Is.False);
+            Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance).AsBool());
+        }
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -845,12 +851,12 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             ValidationResult validationResult = txValidator.IsWellFormed(tx, Prague.Instance);
             Assert.That(validationResult.AsBool(), Is.False);
             Assert.That(validationResult.Error, Is.EqualTo(TxErrorMessages.NotAllowedCreateTransaction));
-        });
+        }
     }
 
     [Test]
@@ -1341,9 +1347,12 @@ public class TxValidatorTests
 
         ValidationResult result = txValidator.IsWellFormed(tx, Eip8141Prototype.Instance);
 
-        Assert.That(result.AsBool(), Is.False);
-        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxGasLimitExceeded(
-            (ulong)blobCount * Eip4844Constants.GasPerBlob, Eip8141Prototype.Instance.GasCosts.MaxBlobGasPerTx)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool(), Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxGasLimitExceeded(
+                (ulong)blobCount * Eip4844Constants.GasPerBlob, Eip8141Prototype.Instance.GasCosts.MaxBlobGasPerTx)));
+        }
     }
 
     [Test]
@@ -1354,8 +1363,11 @@ public class TxValidatorTests
 
         ValidationResult result = txValidator.IsWellFormed(tx, Eip8141Prototype.Instance);
 
-        Assert.That(result.AsBool(), Is.False);
-        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidBlobVersionedHashVersion));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool(), Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidBlobVersionedHashVersion));
+        }
     }
 
     [Test]
@@ -1367,8 +1379,11 @@ public class TxValidatorTests
 
         ValidationResult result = txValidator.IsWellFormed(tx, Eip8141Prototype.Instance);
 
-        Assert.That(result.AsBool(), Is.False);
-        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxMissingMaxFeePerBlobGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool(), Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxMissingMaxFeePerBlobGas));
+        }
     }
 
     // A fork lowering the per-tx blob limit must evict an over-limit type-6 at head revalidation.

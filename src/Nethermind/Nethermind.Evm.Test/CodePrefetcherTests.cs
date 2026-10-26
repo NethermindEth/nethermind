@@ -54,8 +54,11 @@ public class CodePrefetcherTests
         GC.Collect();
         GC.WaitForPendingFinalizers();
 
-        Assert.That(taken.IsAlive, Is.False, "the prefetcher must not hold code it handed out");
-        Assert.That(prefetcher.Take(in CodeHash).IsNull(), "a second taker reads the code itself");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(taken.IsAlive, Is.False, "the prefetcher must not hold code it handed out");
+            Assert.That(prefetcher.Take(in CodeHash).IsNull(), "a second taker reads the code itself");
+        }
         GC.KeepAlive(prefetcher);
     }
 
@@ -64,7 +67,9 @@ public class CodePrefetcherTests
     {
         prefetcher.Prefetch(in CodeHash);
         ReadOnlyMemory<byte> code = prefetcher.Take(in CodeHash);
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(MemoryMarshal.TryGetArray(code, out ArraySegment<byte> array), "the test store serves arrays");
+#pragma warning restore NUnit2045
         Assert.That(code, Is.SequenceEqualTo(Code));
         return new WeakReference(array.Array);
     }
@@ -117,9 +122,12 @@ public class CodePrefetcherTests
 
         prefetcher.Enqueue(in CodeHash);
 
-        Assert.That(codeDb.ReadStarted.Wait(TimeSpan.FromSeconds(10)), "no reader picked up the queued code");
-        Assert.That(prefetcher.Take(in CodeHash), Is.SequenceEqualTo(Code));
-        Assert.That(codeDb.Reads, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeDb.ReadStarted.Wait(TimeSpan.FromSeconds(10)), "no reader picked up the queued code");
+            Assert.That(prefetcher.Take(in CodeHash), Is.SequenceEqualTo(Code));
+            Assert.That(codeDb.Reads, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -163,19 +171,25 @@ public class CodePrefetcherTests
         CodePrefetcher prefetcher = new(codeDb);
 
         prefetcher.Enqueue(in CodeHash);
-        Assert.That(codeDb.ReadStarted.Wait(TimeSpan.FromSeconds(10)), "no reader picked up the queued code");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeDb.ReadStarted.Wait(TimeSpan.FromSeconds(10)), "no reader picked up the queued code");
 
-        // The block ends on the commit path, so it must not wait for the store.
-        Assert.That(Task.Run(prefetcher.Stop).Wait(TimeSpan.FromSeconds(10)), "stop waited for the read in progress");
+            // The block ends on the commit path, so it must not wait for the store.
+            Assert.That(Task.Run(prefetcher.Stop).Wait(TimeSpan.FromSeconds(10)), "stop waited for the read in progress");
+        }
 
         codeDb.Release();
-        Assert.That(SpinWait.SpinUntil(() =>
+        using (Assert.EnterMultipleScope())
         {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            return codeDb.LastServed is { IsAlive: false };
-        }, TimeSpan.FromSeconds(10)), "code read after the stop stayed held");
-        Assert.That(prefetcher.Take(in CodeHash).IsNull(), "execution reads the code itself");
+            Assert.That(SpinWait.SpinUntil(() =>
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                return codeDb.LastServed is { IsAlive: false };
+            }, TimeSpan.FromSeconds(10)), "code read after the stop stayed held");
+            Assert.That(prefetcher.Take(in CodeHash).IsNull(), "execution reads the code itself");
+        }
         GC.KeepAlive(prefetcher);
     }
 
@@ -190,8 +204,11 @@ public class CodePrefetcherTests
         // The cache lookup comes after the stop check and before the read is added, so the stop lands between them.
         prefetcher.Prefetch(in CodeHash);
 
-        Assert.That(codeDb.Reads, Is.EqualTo(1), "the read raced the stop, as a background reader can");
-        Assert.That(prefetcher.Take(in CodeHash).IsNull(), "a stopped prefetcher must not hold the code it read");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeDb.Reads, Is.EqualTo(1), "the read raced the stop, as a background reader can");
+            Assert.That(prefetcher.Take(in CodeHash).IsNull(), "a stopped prefetcher must not hold the code it read");
+        }
     }
 
     /// <summary>Misses every lookup, stopping the prefetcher as it looks.</summary>
@@ -221,8 +238,11 @@ public class CodePrefetcherTests
         GC.Collect();
         GC.WaitForPendingFinalizers();
 
-        Assert.That(codeDb.LastServed!.IsAlive, Is.False, "a stopped prefetcher must not hold code");
-        Assert.That(prefetcher.Take(in CodeHash).IsNull(), "execution reads the code itself");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeDb.LastServed!.IsAlive, Is.False, "a stopped prefetcher must not hold code");
+            Assert.That(prefetcher.Take(in CodeHash).IsNull(), "execution reads the code itself");
+        }
         GC.KeepAlive(prefetcher);
     }
 

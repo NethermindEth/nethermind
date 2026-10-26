@@ -130,8 +130,11 @@ public partial class BlockProcessorTests
             chain.BlockProcessor.ProcessOne(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList,
                 executionTracer, spec, CancellationToken.None);
             count = recording.Started;
-            Assert.That(recording.Ended, Is.EqualTo(count), "each executed transaction must finish its tracer lifecycle");
-            Assert.That(recording.BlockEnded, Is.True, "early completion must still close the block tracer");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recording.Ended, Is.EqualTo(count), "each executed transaction must finish its tracer lifecycle");
+                Assert.That(recording.BlockEnded, Is.True, "early completion must still close the block tracer");
+            }
             using GethLikeTxTraceCollection result = new(tracer.BuildResult());
             return chain.JsonSerializer.Serialize(result);
         }
@@ -375,7 +378,9 @@ public partial class BlockProcessorTests
         foreach (Block block in new[] { first, second })
         {
             using TransactionChangesetIndex.BlockCapture capture = actual.StartBlock((ulong)block.Number);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(run!.TryExecuteNext(capture.Tracer, CancellationToken.None), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(capture.Commit() && actual.TryClaim((ulong)block.Number, (ulong)block.Number), Is.True);
         }
 
@@ -1032,8 +1037,11 @@ public partial class BlockProcessorTests
         bool traced;
         try
         {
-            Assert.That(secondEntered.Wait(TimeSpan.FromSeconds(10)), Is.True);
-            Assert.That(thirdFinished.Wait(TimeSpan.FromSeconds(10)), Is.True, "a later transaction must finish while the preceding one is blocked");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(secondEntered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(thirdFinished.Wait(TimeSpan.FromSeconds(10)), Is.True, "a later transaction must finish while the preceding one is blocked");
+            }
             lock (streamed)
                 Assert.That(streamed.Select(static trace => trace.TransactionHash), Is.EqualTo(new[] { block.Transactions[0].Hash }), "transaction zero is emitted before the remaining work completes");
         }
@@ -2381,7 +2389,9 @@ public partial class BlockProcessorTests
 
         int branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
         ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
         Assert.That(await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10), Is.True);
+#pragma warning restore NUnit2045
         Assert.That((int)testRpc.BlockTree.BestKnownNumber, Is.EqualTo(branchLength - 1));
     }
 
@@ -3153,8 +3163,11 @@ public partial class BlockProcessorTests
         InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
 
-        Assert.That(exception!.Message, Does.Contain("EIP-8037 inclusion check"));
-        Assert.That(exception.Message, Does.Contain("ExecutionDimensionExceeded"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Message, Does.Contain("EIP-8037 inclusion check"));
+            Assert.That(exception.Message, Does.Contain("ExecutionDimensionExceeded"));
+        }
     }
 
     [Test]
@@ -3486,8 +3499,11 @@ public partial class BlockProcessorTests
             ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
         }
 
-        Assert.That(transactionProcessor.ThreadIds.Count, Is.GreaterThan(1));
-        Assert.That(transactionProcessor.ObservedProcessingThreadFlags.Count, Is.EqualTo(txCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transactionProcessor.ThreadIds.Count, Is.GreaterThan(1));
+            Assert.That(transactionProcessor.ObservedProcessingThreadFlags.Count, Is.EqualTo(txCount));
+        }
         foreach (bool observedProcessingThreadFlag in transactionProcessor.ObservedProcessingThreadFlags)
         {
             Assert.That(observedProcessingThreadFlag, Is.EqualTo(isBlockProcessingThread));
@@ -3572,13 +3588,13 @@ public partial class BlockProcessorTests
             CancellationToken.None);
         receiptsTracer.EndBlockTrace();
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(receipts, Has.Length.EqualTo(txCount));
             Assert.That(blockTracer.StartedTransactions, Is.EqualTo(txCount));
             Assert.That(blockTracer.EndedTransactions, Is.EqualTo(txCount));
             Assert.That(blockTracer.OpcodeCount, Is.EqualTo(txCount));
-        });
+        }
     }
 
     [Test]
@@ -3647,12 +3663,18 @@ public partial class BlockProcessorTests
             new BlockReceiptsTracer(),
             CancellationToken.None);
 
-        Assert.That(receipts, Has.Length.EqualTo(txCount));
-        Assert.That(balIndexes.Count, Is.EqualTo(txCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts, Has.Length.EqualTo(txCount));
+            Assert.That(balIndexes.Count, Is.EqualTo(txCount));
+        }
         for (int i = 0; i < txCount; i++)
         {
-            Assert.That(receipts[i].Index, Is.EqualTo(i));
-            Assert.That(receipts[i].GasUsed, Is.EqualTo(21_000 + i));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipts[i].Index, Is.EqualTo(i));
+                Assert.That(receipts[i].GasUsed, Is.EqualTo(21_000 + i));
+            }
         }
 
         foreach ((int txIndex, uint balIndex) in balIndexes)
@@ -3700,11 +3722,11 @@ public partial class BlockProcessorTests
 
         // The decisive prefix has to run. The upper bound stays well clear of the in-flight window
         // so it asserts that the tail stopped without depending on how fast cancellation propagates.
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(ex!.Message, Does.Contain("EIP-8037 inclusion check"));
             Assert.That(transactionProcessor.ExecutedCount, Is.InRange(rejectIndex + 1, txCount / 8));
-        });
+        }
     }
 
     [Test]

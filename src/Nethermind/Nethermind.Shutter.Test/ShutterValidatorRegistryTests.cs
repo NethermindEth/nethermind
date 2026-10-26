@@ -62,11 +62,11 @@ class ShutterValidatorRegistryTests
         badUpdate.Signature[34] += 1;
         updates.Add((5, badUpdate));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(!contract.IsRegistered(updates, validatorsInfo, out HashSet<ulong> unregistered));
             Assert.That(unregistered.Count, Is.EqualTo(4));
-        });
+        }
     }
 
     private static Update CreateUpdate(ulong startIndex, uint count, uint nonce, byte version, bool isRegistration)

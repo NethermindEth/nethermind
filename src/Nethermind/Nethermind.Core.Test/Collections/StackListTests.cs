@@ -40,7 +40,9 @@ namespace Nethermind.Core.Test.Collections
             StackList<int> stack = GetStackList();
             int expectedElement = stack[^1];
             int count = stack.Count;
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
             Assert.That(stack.Pop(), Is.EqualTo(expectedElement));
+#pragma warning restore NUnit2045
             Assert.That(stack.Count, Is.EqualTo(count - 1));
         }
 
@@ -50,7 +52,9 @@ namespace Nethermind.Core.Test.Collections
             StackList<int> stack = GetStackList();
             int expectedElement = stack[^1];
             int count = stack.Count;
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
             Assert.That(stack.TryPop(out int item), Is.EqualTo(true));
+#pragma warning restore NUnit2045
             Assert.That(item, Is.EqualTo(expectedElement));
             Assert.That(stack.Count, Is.EqualTo(count - 1));
         }

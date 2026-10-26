@@ -373,8 +373,11 @@ public class BlobTxStorageTests
                 ? ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions([new(358, 0)], results) == 1
                 : ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _));
 
-            Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True, "read completed while the save held the lock");
-            Assert.That(read.Result, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True, "read completed while the save held the lock");
+                Assert.That(read.Result, Is.True);
+            }
         }
         finally
         {
@@ -665,10 +668,13 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[3];
         int found = blobTxStorage.TryGetMany(keys, 3, results);
 
-        Assert.That(found, Is.EqualTo(2));
-        Assert.That(results[0], Is.Not.Null);
-        Assert.That(results[1], Is.Not.Null);
-        Assert.That(results[2], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(2));
+            Assert.That(results[0], Is.Not.Null);
+            Assert.That(results[1], Is.Not.Null);
+            Assert.That(results[2], Is.Null);
+        }
     }
 
     [Test]
@@ -702,8 +708,11 @@ public class BlobTxStorageTests
     {
         BlobTxStorage blobTxStorage = new();
 
-        Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
-        Assert.That(tx, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
+            Assert.That(tx, Is.Null);
+        }
     }
 
     [Test]
@@ -959,9 +968,12 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[2];
         int found = blobTxStorage.TryGetMany(keys, 2, results);
 
-        Assert.That(found, Is.EqualTo(0));
-        Assert.That(results[0], Is.Null);
-        Assert.That(results[1], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(0));
+            Assert.That(results[0], Is.Null);
+            Assert.That(results[1], Is.Null);
+        }
     }
 
     /// <remarks>

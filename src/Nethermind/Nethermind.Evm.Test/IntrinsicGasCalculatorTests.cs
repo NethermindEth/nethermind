@@ -117,12 +117,15 @@ namespace Nethermind.Evm.Test
                 bool isAfterRepricing = options.HasFlag(GasOptions.AfterRepricing);
                 bool floorCostEnabled = options.HasFlag(GasOptions.FloorCostEnabled);
 
-                Assert.That(gas.Standard, Is.EqualTo(21000UL + (isAfterRepricing ? testCase.NewCost : testCase.OldCost)), $"{spec.Name}: {testCase.Data.ToHexString()}");
-                Assert.That(gas.FloorGas, Is.EqualTo(floorCostEnabled ? testCase.FloorCost : 0UL));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(gas.Standard, Is.EqualTo(21000UL + (isAfterRepricing ? testCase.NewCost : testCase.OldCost)), $"{spec.Name}: {testCase.Data.ToHexString()}");
+                    Assert.That(gas.FloorGas, Is.EqualTo(floorCostEnabled ? testCase.FloorCost : 0UL));
 
-                Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(
-                        Standard: 21000UL + (isAfterRepricing ? testCase.NewCost : testCase.OldCost),
-                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0UL)), $"{spec.Name}: {testCase.Data.ToHexString()}");
+                    Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(
+                            Standard: 21000UL + (isAfterRepricing ? testCase.NewCost : testCase.OldCost),
+                            FloorGas: floorCostEnabled ? testCase.FloorCost : 0UL)), $"{spec.Name}: {testCase.Data.ToHexString()}");
+                }
             }
 
             Test(Homestead.Instance, GasOptions.None);
@@ -256,8 +259,11 @@ namespace Nethermind.Evm.Test
 
             // Create execution = CREATE_ACCESS (value endowment adds nothing); NEW_ACCOUNT is top-frame state gas.
             ulong expectedExecution = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess;
-            Assert.That(gas.Standard, Is.EqualTo(expectedExecution));
-            Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gas.Standard, Is.EqualTo(expectedExecution));
+                Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
+            }
         }
 
         [Test]
@@ -305,8 +311,11 @@ namespace Nethermind.Evm.Test
 
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
 
-            Assert.That(gas.Standard, Is.EqualTo(expectedStandard));
-            Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(expectedStandard, TxBaseEip2780)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gas.Standard, Is.EqualTo(expectedStandard));
+                Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(expectedStandard, TxBaseEip2780)));
+            }
         }
 
         [Test]
@@ -337,8 +346,11 @@ namespace Nethermind.Evm.Test
             // so a value endowment adds nothing — create-with-value equals create-with-zero-value.
             ulong createCharge = eip8038Enabled ? Eip8038Constants.CreateAccess : GasCostOf.TxCreate;
             ulong expected = TxBaseEip2780 + createCharge;
-            Assert.That(IntrinsicGasCalculator.Calculate(createZero, spec).Standard, Is.EqualTo(expected));
-            Assert.That(IntrinsicGasCalculator.Calculate(createValue, spec).Standard, Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(IntrinsicGasCalculator.Calculate(createZero, spec).Standard, Is.EqualTo(expected));
+                Assert.That(IntrinsicGasCalculator.Calculate(createValue, spec).Standard, Is.EqualTo(expected));
+            }
         }
 
         [TestCase(false, GasCostOf.ColdAccountAccess)]
@@ -401,8 +413,11 @@ namespace Nethermind.Evm.Test
             ulong expectedStandard = GasCostOf.Transaction
                 + (zeros + nonZeros * spec.GasCosts.TxDataNonZeroMultiplier) * GasCostOf.TxDataZero;
 
-            Assert.That(gas.FloorGas, Is.EqualTo(expectedFloor));   // 21600
-            Assert.That(gas.Standard, Is.EqualTo(expectedStandard)); // 21760, still 68/non-zero byte
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gas.FloorGas, Is.EqualTo(expectedFloor));   // 21600
+                Assert.That(gas.Standard, Is.EqualTo(expectedStandard));
+            } // 21760, still 68/non-zero byte
         }
 
         [Test]
@@ -442,8 +457,11 @@ namespace Nethermind.Evm.Test
 
             if (expectHit)
             {
-                Assert.That(tx.IntrinsicGasMemo, Is.SameAs(memoAfterFirst), "a spec match must not rebuild the memo");
-                Assert.That(second, Is.EqualTo(first));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tx.IntrinsicGasMemo, Is.SameAs(memoAfterFirst), "a spec match must not rebuild the memo");
+                    Assert.That(second, Is.EqualTo(first));
+                }
             }
             else
             {

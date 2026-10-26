@@ -69,7 +69,9 @@ public class PersistedStateAccountSourceTests
         {
             source.ForEachAccount(_root, (byte)partition, (path, account) =>
             {
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
                 Assert.That(path.Bytes[0], Is.EqualTo(partition));
+#pragma warning restore NUnit2045
                 Assert.That(read.TryAdd(path, account), Is.True, $"account {path} was read twice");
             }, CancellationToken.None);
         }

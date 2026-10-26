@@ -1231,7 +1231,9 @@ public class FrameTxValidationPrefixSimulationTests
         Transaction tx = FrameTx(nonce: 0,
             new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero,
                 CalldataOf(30_000)));
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out ulong floorGas, out ulong maxGas), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(maxGas, Is.EqualTo(floorGas), "the fixture must be a shape where the floor binds");
 
         DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxGas + (ulong)(long)balanceDelta));

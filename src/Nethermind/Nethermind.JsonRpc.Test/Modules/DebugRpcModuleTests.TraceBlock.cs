@@ -72,9 +72,12 @@ public partial class DebugRpcModuleTests
         string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
             new { tracer, tracerConfig, streamMode = true });
 
-        Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
-        Assert.That(streamed, Is.EqualTo(buffered));
-        Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
+            Assert.That(streamed, Is.EqualTo(buffered));
+            Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+        }
     }
 
     [Test]
@@ -99,8 +102,11 @@ public partial class DebugRpcModuleTests
         string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
             new { tracer, tracerConfig, streamMode = true });
 
-        Assert.That(streamed, Is.EqualTo(buffered));
-        Assert.That(JToken.Parse(streamed)["error"], empty ? Is.Null : Is.Not.Null, streamed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamed, Is.EqualTo(buffered));
+            Assert.That(JToken.Parse(streamed)["error"], empty ? Is.Null : Is.Not.Null, streamed);
+        }
     }
 
     [Test]
@@ -122,8 +128,11 @@ public partial class DebugRpcModuleTests
         Assert.That(parallel.ReceivedCalls(), Is.Not.Empty, "the consumed native stream must use the indexed path");
         string buffered = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { tracer = "callTracer", timeout, streamMode = false });
-        Assert.That(streamed, Is.EqualTo(buffered));
-        Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamed, Is.EqualTo(buffered));
+            Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+        }
     }
 
     [Test]
@@ -271,9 +280,12 @@ public partial class DebugRpcModuleTests
         JToken streamed = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { tracer, tracerConfig, timeout = "bad", streamMode = true }));
 
-        Assert.That((int?)buffered["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), buffered.ToString());
-        Assert.That((int?)streamed["error"]?["code"], Is.EqualTo((int?)buffered["error"]?["code"]), streamed.ToString());
-        Assert.That((string?)streamed["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("Cannot parse 'bad'"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)buffered["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), buffered.ToString());
+            Assert.That((int?)streamed["error"]?["code"], Is.EqualTo((int?)buffered["error"]?["code"]), streamed.ToString());
+            Assert.That((string?)streamed["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("Cannot parse 'bad'"));
+        }
     }
 
     [Test]
@@ -301,12 +313,16 @@ public partial class DebugRpcModuleTests
         if (timeout == "5s")
         {
             using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null,
                 Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>());
+#pragma warning restore NUnit2045
             Assert.That(constructorCalls, Is.Zero, "the native constructor must remain deferred until the writer is consumed");
 
             JArray envelopes = JArray.Parse(await StreamToStringAsync(result!));
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(constructorCalls, Is.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(envelopes, Has.Count.EqualTo(1));
             Assert.That((int?)envelopes[0]["errorCode"], Is.EqualTo(ErrorCodes.InternalError));
             Assert.That((string?)envelopes[0]["error"], Is.EqualTo("tracing failed: native host failure"));
@@ -322,9 +338,12 @@ public partial class DebugRpcModuleTests
             };
             JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options));
 
-            Assert.That((int?)response["error"]?["code"], Is.EqualTo(expectedCode), response.ToString());
-            Assert.That(response["result"], Is.Null);
-            Assert.That(response.ToString(), Does.Not.Contain("Cannot parse 'bad'"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)response["error"]?["code"], Is.EqualTo(expectedCode), response.ToString());
+                Assert.That(response["result"], Is.Null);
+                Assert.That(response.ToString(), Does.Not.Contain("Cannot parse 'bad'"));
+            }
         }
     }
 
@@ -339,8 +358,11 @@ public partial class DebugRpcModuleTests
         JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { tracer = "noopTracer", timeout = "bad", streamMode = true, txHash = selection == "unmatched" ? TestItem.KeccakD : null }));
 
-        Assert.That(response["error"], Is.Null, response.ToString());
-        Assert.That((JArray)response["result"]!, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"], Is.Null, response.ToString());
+            Assert.That((JArray)response["result"]!, Is.Empty);
+        }
     }
 
     private static IEnumerable<TestCaseData> NativeBooleanConfigCases()
@@ -412,7 +434,9 @@ public partial class DebugRpcModuleTests
                 timeout = "0s"
             });
         JToken error = JToken.Parse(response)["error"]!;
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(error, Is.Not.Null, response);
+#pragma warning restore NUnit2045
         Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
     }
 
@@ -476,8 +500,11 @@ public partial class DebugRpcModuleTests
         string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, baselineOptions.RootElement);
         string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, nullOptions.RootElement);
 
-        Assert.That(JToken.Parse(expected)["error"], Is.Null, expected);
-        Assert.That(JToken.DeepEquals(JToken.Parse(actual), JToken.Parse(expected)), Is.True, actual);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(expected)["error"], Is.Null, expected);
+            Assert.That(JToken.DeepEquals(JToken.Parse(actual), JToken.Parse(expected)), Is.True, actual);
+        }
     }
 
     [Test]
@@ -491,8 +518,11 @@ public partial class DebugRpcModuleTests
         string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { enableMemory, enableReturnData = true, streamMode = true });
 
-        Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
-        Assert.That(JToken.DeepEquals(JToken.Parse(streamed), JToken.Parse(buffered)), Is.True, streamed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
+            Assert.That(JToken.DeepEquals(JToken.Parse(streamed), JToken.Parse(buffered)), Is.True, streamed);
+        }
     }
 
     [TestCase(false, "\"bad\"", "lookup")]
@@ -617,7 +647,9 @@ public partial class DebugRpcModuleTests
         }
         else if (valid)
         {
+#pragma warning disable NUnit2045 // The operation must succeed before accessing its result.
             Assert.That(json["error"], Is.Null, response);
+#pragma warning restore NUnit2045
             Assert.That((JArray)json["result"]!, Has.Count.EqualTo(block.Transactions.Length), response);
         }
         else
@@ -1125,12 +1157,18 @@ public partial class DebugRpcModuleTests
             using (tracer.StartNewTxTrace(secondTransaction)) tracer.EndTxTrace();
             secondResult = tracer.BuildResult();
             Assert.That(secondResult, Has.Count.EqualTo(1));
-            Assert.That(secondResult.Single().TxHash, Is.EqualTo(secondTransaction.Hash));
-            Assert.That(secondResult.Single().TraceError, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(secondResult.Single().TxHash, Is.EqualTo(secondTransaction.Hash));
+                Assert.That(secondResult.Single().TraceError, Is.Null);
+            }
             if (firstResult is not null)
             {
-                Assert.That(firstResult.Single().TxHash, Is.EqualTo(firstTransaction.Hash));
-                Assert.That(firstResult.Single().TraceError, Is.EqualTo(constructionError ? "first construction failed" : null));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(firstResult.Single().TxHash, Is.EqualTo(firstTransaction.Hash));
+                    Assert.That(firstResult.Single().TraceError, Is.EqualTo(constructionError ? "first construction failed" : null));
+                }
             }
             tracer.Dispose();
             tracer.Dispose();
@@ -1533,8 +1571,11 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
             new { tracer = "keccak256PreimageTracer" });
         JToken result = JToken.Parse(response);
-        Assert.That(result["error"], Is.Null, response);
-        Assert.That(result["result"]!.Count(), Is.EqualTo(block.Transactions.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null, response);
+            Assert.That(result["result"]!.Count(), Is.EqualTo(block.Transactions.Length));
+        }
         for (int i = 0; i < block.Transactions.Length; i++)
             Assert.That(result["result"]![i]!["txHash"]!.Value<string>(), Is.EqualTo(block.Transactions[i].Hash!.ToString()));
     }
@@ -2178,7 +2219,9 @@ public partial class DebugRpcModuleTests
         using JsonDocument doc = JsonDocument.Parse(response);
         JsonElement root = doc.RootElement;
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(root.TryGetProperty("error", out JsonElement error), Is.True, "Missing 'error' field");
+#pragma warning restore NUnit2045
         Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("genesis is not traceable"));
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
@@ -2226,14 +2269,19 @@ public partial class DebugRpcModuleTests
         using JsonDocument doc = JsonDocument.Parse(response);
         JsonElement root = doc.RootElement;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(root.TryGetProperty("result", out JsonElement resultArray), Is.True, "Missing 'result' field");
+#pragma warning restore NUnit2045
         Assert.That(resultArray.ValueKind, Is.EqualTo(JsonValueKind.Array), "'result' must be an array");
         Assert.That(resultArray.GetArrayLength(), Is.GreaterThan(0), "Result array must not be empty");
 
         foreach (JsonElement entry in resultArray.EnumerateArray())
         {
-            Assert.That(entry.TryGetProperty("result", out _), Is.True, "Each entry must have 'result'");
-            Assert.That(entry.TryGetProperty("txHash", out _), Is.True, "Each entry must have 'txHash'");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry.TryGetProperty("result", out _), Is.True, "Each entry must have 'result'");
+                Assert.That(entry.TryGetProperty("txHash", out _), Is.True, "Each entry must have 'txHash'");
+            }
         }
     }
 

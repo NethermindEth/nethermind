@@ -66,8 +66,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         // When EIP-7778 is enabled, block.GasUsed should reflect pre-refund gas
         // The refund should not reduce the block gas used
-        Assert.That(tracer.GasSpent, Is.GreaterThan(0));
-        Assert.That(block.Header.GasUsed, Is.GreaterThan(tracer.GasSpent));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.GreaterThan(0));
+            Assert.That(block.Header.GasUsed, Is.GreaterThan(tracer.GasSpent));
+        }
     }
 
     [Test]
@@ -101,8 +104,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         // Receipt gas is post-refund, block gas is pre-refund
         // So receipt.GasUsed < block.GasUsed when there are refunds
-        Assert.That(receipt.GasUsed, Is.LessThan(block.Header.GasUsed), "Receipt GasUsed should be post-refund (less than block gas)");
-        Assert.That(receipt.GasUsedTotal, Is.EqualTo(receipt.GasUsed), "For single tx, GasUsedTotal equals GasUsed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.GasUsed, Is.LessThan(block.Header.GasUsed), "Receipt GasUsed should be post-refund (less than block gas)");
+            Assert.That(receipt.GasUsedTotal, Is.EqualTo(receipt.GasUsed), "For single tx, GasUsedTotal equals GasUsed");
+        }
     }
 
     [Test]
@@ -114,10 +120,13 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         GasConsumed gasConsumed = new(spentGas, operationGas, blockGas);
 
-        Assert.That(gasConsumed.SpentGas, Is.EqualTo(spentGas));
-        Assert.That(gasConsumed.OperationGas, Is.EqualTo(operationGas));
-        Assert.That(gasConsumed.BlockGas, Is.EqualTo(blockGas));
-        Assert.That(gasConsumed.EffectiveBlockGas, Is.EqualTo(blockGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gasConsumed.SpentGas, Is.EqualTo(spentGas));
+            Assert.That(gasConsumed.OperationGas, Is.EqualTo(operationGas));
+            Assert.That(gasConsumed.BlockGas, Is.EqualTo(blockGas));
+            Assert.That(gasConsumed.EffectiveBlockGas, Is.EqualTo(blockGas));
+        }
     }
 
     [Test]
@@ -128,8 +137,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         GasConsumed gasConsumed = new(spentGas, operationGas);
 
-        Assert.That(gasConsumed.BlockGas, Is.EqualTo(0UL));
-        Assert.That(gasConsumed.EffectiveBlockGas, Is.EqualTo(spentGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gasConsumed.BlockGas, Is.EqualTo(0UL));
+            Assert.That(gasConsumed.EffectiveBlockGas, Is.EqualTo(spentGas));
+        }
     }
 
     [Test]
@@ -138,9 +150,12 @@ public class Eip7778Tests : VirtualMachineTestsBase
         ulong gas = 21000UL;
         GasConsumed gasConsumed = gas;
 
-        Assert.That(gasConsumed.SpentGas, Is.EqualTo(gas));
-        Assert.That(gasConsumed.OperationGas, Is.EqualTo(gas));
-        Assert.That(gasConsumed.BlockGas, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gasConsumed.SpentGas, Is.EqualTo(gas));
+            Assert.That(gasConsumed.OperationGas, Is.EqualTo(gas));
+            Assert.That(gasConsumed.BlockGas, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -176,8 +191,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         // When EIP-7778 is disabled, block.GasUsed equals gas spent (post-refund)
-        Assert.That(tracer.GasSpent, Is.GreaterThan(0));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(tracer.GasSpent));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.GreaterThan(0));
+            Assert.That(block.Header.GasUsed, Is.EqualTo(tracer.GasSpent));
+        }
     }
 
     [Test]
@@ -250,8 +268,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         TxReceipt receipt = tracer.TxReceipts[0];
         // When EIP-7778 is disabled, receipt and block gas are both post-refund
-        Assert.That(receipt.GasUsedTotal, Is.EqualTo(block.Header.GasUsed));
-        Assert.That(receipt.GasUsed, Is.EqualTo(block.Header.GasUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.GasUsedTotal, Is.EqualTo(block.Header.GasUsed));
+            Assert.That(receipt.GasUsed, Is.EqualTo(block.Header.GasUsed));
+        }
     }
 
     [Test]
@@ -284,8 +305,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
             new Transaction { Data = calldata, To = Address.Zero },
             eip7778And7623Spec);
 
-        Assert.That(intrinsicGas.Standard, Is.EqualTo(21000 + 100 * 16)); // 22600
-        Assert.That(intrinsicGas.FloorGas, Is.EqualTo(21000 + 400 * 10)); // 25000
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsicGas.Standard, Is.EqualTo(21000 + 100 * 16)); // 22600
+            Assert.That(intrinsicGas.FloorGas, Is.EqualTo(21000 + 400 * 10));
+        } // 25000
         Assert.That(intrinsicGas.FloorGas, Is.GreaterThan(intrinsicGas.Standard));
 
         // Now test execution - the block gas should use the floor since standard < floor
@@ -322,9 +346,12 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // Block gas should be max(preRefundGas, floorGas)
         // Since this is a simple transfer with no refunds, preRefundGas = standard gas
         // But floor gas is higher, so block gas should use floor
-        Assert.That(block.Header.GasUsed, Is.EqualTo(intrinsicGas.FloorGas), "Block gas should use calldata floor when it exceeds execution gas");
-        // Receipt also uses floor gas since it's what user pays
-        Assert.That(receipt.GasUsed, Is.EqualTo(intrinsicGas.FloorGas), "Receipt GasUsed should use calldata floor");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.GasUsed, Is.EqualTo(intrinsicGas.FloorGas), "Block gas should use calldata floor when it exceeds execution gas");
+            // Receipt also uses floor gas since it's what user pays
+            Assert.That(receipt.GasUsed, Is.EqualTo(intrinsicGas.FloorGas), "Receipt GasUsed should use calldata floor");
+        }
     }
 
     [Test]
@@ -352,8 +379,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
             new Transaction { Data = calldata, To = Address.Zero },
             eip7778And7623Spec);
 
-        Assert.That(intrinsicGas.Standard, Is.EqualTo(21000 + 4)); // 21004 for 1 zero byte
-        Assert.That(intrinsicGas.FloorGas, Is.EqualTo(21000 + 10)); // 21010 floor
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsicGas.Standard, Is.EqualTo(21000 + 4)); // 21004 for 1 zero byte
+            Assert.That(intrinsicGas.FloorGas, Is.EqualTo(21000 + 10));
+        } // 21010 floor
 
         // Set up sender and recipient accounts
         TestState.CreateAccount(TestItem.AddressA, 1.Ether);
@@ -400,9 +430,12 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         // The execution gas (pre-refund) should exceed the floor gas
         // Block gas = max(preRefundGas, floorGas), so should use preRefundGas
-        Assert.That(block.Header.GasUsed, Is.GreaterThan(intrinsicGas.FloorGas), "Block gas should exceed calldata floor when execution is more expensive");
-        // Receipt uses post-refund gas which is less than block gas
-        Assert.That(receipt.GasUsed, Is.LessThanOrEqualTo(block.Header.GasUsed), "Receipt GasUsed (post-refund) should be <= block gas (pre-refund)");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.GasUsed, Is.GreaterThan(intrinsicGas.FloorGas), "Block gas should exceed calldata floor when execution is more expensive");
+            // Receipt uses post-refund gas which is less than block gas
+            Assert.That(receipt.GasUsed, Is.LessThanOrEqualTo(block.Header.GasUsed), "Receipt GasUsed (post-refund) should be <= block gas (pre-refund)");
+        }
     }
 
     [Test]
@@ -475,8 +508,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, eip7778And7623Spec);
 
         Assert.That(receipt.GasUsed, Is.LessThan(block.Header.GasUsed), "Receipt shows post-refund gas, which is less than block gas");
-        Assert.That(receipt.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "User payment should be at least floor gas");
-        Assert.That(block.Header.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "Block gas should be at least floor gas");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "User payment should be at least floor gas");
+            Assert.That(block.Header.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "Block gas should be at least floor gas");
+        }
     }
 
     [Test]
@@ -538,8 +574,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         TransactionResult result2 = _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(result2, Is.EqualTo(TransactionResult.BlockGasLimitExceeded), "second transaction must be rejected: admission uses pre-refund block gas, leaving no room");
-        Assert.That(block.Header.GasUsed, Is.EqualTo(blockGasAfterTx1), "a rejected transaction must not change block gas");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result2, Is.EqualTo(TransactionResult.BlockGasLimitExceeded), "second transaction must be rejected: admission uses pre-refund block gas, leaving no room");
+            Assert.That(block.Header.GasUsed, Is.EqualTo(blockGasAfterTx1), "a rejected transaction must not change block gas");
+        }
         Assert.That(block.Header.GasUsed, Is.LessThanOrEqualTo(block.Header.GasLimit), "block gas must never exceed the gas limit");
     }
 
@@ -599,13 +638,16 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         // Receipt gas is post-refund, block gas is pre-refund
         // First tx had refund, so receipt1.GasUsed < contribution to block gas
-        Assert.That(receipt1.GasUsed, Is.LessThan(blockGasAfterTx1), "First tx receipt (post-refund) should be less than its block gas contribution (pre-refund)");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt1.GasUsed, Is.LessThan(blockGasAfterTx1), "First tx receipt (post-refund) should be less than its block gas contribution (pre-refund)");
 
-        // Verify cumulative receipt gas uses post-refund values
-        Assert.That(receipt2.GasUsedTotal, Is.EqualTo(receipt1.GasUsed + receipt2.GasUsed), "Cumulative receipt gas should be sum of post-refund gas values");
+            // Verify cumulative receipt gas uses post-refund values
+            Assert.That(receipt2.GasUsedTotal, Is.EqualTo(receipt1.GasUsed + receipt2.GasUsed), "Cumulative receipt gas should be sum of post-refund gas values");
 
-        // Block gas should be greater than cumulative receipt gas due to refunds
-        Assert.That(block.Header.GasUsed, Is.GreaterThan(receipt2.GasUsedTotal), "Block gas (pre-refund) should be greater than cumulative receipt gas (post-refund) due to tx1 refund");
+            // Block gas should be greater than cumulative receipt gas due to refunds
+            Assert.That(block.Header.GasUsed, Is.GreaterThan(receipt2.GasUsedTotal), "Block gas (pre-refund) should be greater than cumulative receipt gas (post-refund) due to tx1 refund");
+        }
     }
 
     [Test]
@@ -639,15 +681,21 @@ public class Eip7778Tests : VirtualMachineTestsBase
         _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         tracer.EndTxTrace();
 
-        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1));
-        Assert.That(block.Header.GasUsed, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1));
+            Assert.That(block.Header.GasUsed, Is.GreaterThan(0));
+        }
 
         // Restore to snapshot 0
         tracer.Restore(snapshot);
 
         // Verify everything is cleared
-        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0), "Receipts should be empty after restore to 0");
-        Assert.That(block.Header.GasUsed, Is.EqualTo(0), "Block gas should be reset after restore to 0");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0), "Receipts should be empty after restore to 0");
+            Assert.That(block.Header.GasUsed, Is.EqualTo(0), "Block gas should be reset after restore to 0");
+        }
     }
 
     [Test]
@@ -700,16 +748,22 @@ public class Eip7778Tests : VirtualMachineTestsBase
         _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         tracer.EndTxTrace();
 
-        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(2));
-        Assert.That(block.Header.GasUsed, Is.GreaterThan(blockGasAfterTx1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(2));
+            Assert.That(block.Header.GasUsed, Is.GreaterThan(blockGasAfterTx1));
+        }
 
         // Restore to snapshot after tx1
         tracer.Restore(snapshotAfterTx1);
 
         // Verify state is restored to after tx1
         Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1), "Should have 1 receipt after restore");
-        Assert.That(tracer.TxReceipts[0].GasUsed, Is.EqualTo(receipt1.GasUsed), "First receipt should be unchanged");
-        Assert.That(block.Header.GasUsed, Is.EqualTo(blockGasAfterTx1), "Block gas should be restored to post-tx1 value");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.TxReceipts[0].GasUsed, Is.EqualTo(receipt1.GasUsed), "First receipt should be unchanged");
+            Assert.That(block.Header.GasUsed, Is.EqualTo(blockGasAfterTx1), "Block gas should be restored to post-tx1 value");
+        }
     }
 
     [Test]
@@ -758,12 +812,18 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         // First restore: back to after tx1
         tracer.Restore(snapshot1);
-        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(gasAfterTx1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1));
+            Assert.That(block.Header.GasUsed, Is.EqualTo(gasAfterTx1));
+        }
 
         // Second restore: back to empty
         tracer.Restore(snapshot0);
-        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
+            Assert.That(block.Header.GasUsed, Is.EqualTo(0));
+        }
     }
 }

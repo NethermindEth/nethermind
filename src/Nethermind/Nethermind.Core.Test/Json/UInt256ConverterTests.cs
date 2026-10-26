@@ -71,12 +71,16 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
 
         Container? deserialized = JsonSerializer.Deserialize<Container>($"{{ \"Number\" : {asString} }}", deserializeOptions);
 
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(deserialized, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(Equals(item, deserialized.Number));
 
         UInt256? deserializedUint256 = JsonSerializer.Deserialize<UInt256>(asString, deserializeOptions);
 
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(deserializedUint256, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(Equals(item, deserializedUint256.Value));
     }
 

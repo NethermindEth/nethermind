@@ -29,8 +29,11 @@ public partial class DebugRpcModuleTests
         JToken json = JToken.Parse(actual);
         Assert.That(json["error"], Is.Null, actual);
         JArray entries = (JArray)json["result"]!;
-        Assert.That(entries, Has.Count.EqualTo(valid.Transactions.Length));
-        Assert.That(actual, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries, Has.Count.EqualTo(valid.Transactions.Length));
+            Assert.That(actual, Is.EqualTo(expected));
+        }
         if (tracer is ThrowingResultJavaScriptTracer)
         {
             foreach (JToken entry in entries)

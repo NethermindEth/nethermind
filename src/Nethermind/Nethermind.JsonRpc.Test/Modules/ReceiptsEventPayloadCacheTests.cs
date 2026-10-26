@@ -118,8 +118,11 @@ public class ReceiptsEventPayloadCacheTests
         (CollectingClient client, _) = fixture.SubscribeToLogs(TestItem.AddressC, 1);
 
         fixture.Monitor.Raise(e);
-        Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
-        Assert.That(anyTopic.Received.Wait(DeliveryTimeout), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
+            Assert.That(anyTopic.Received.Wait(DeliveryTimeout), Is.True);
+        }
 
         using ReceiptsEventPayloadCache<LogsFilter>.Membership unfiltered = fixture.LogPayloads.Join(null);
         EventPayloads payloads = unfiltered.ForEvent(e);
@@ -143,7 +146,9 @@ public class ReceiptsEventPayloadCacheTests
         for (int i = 0; i < filters.Length; i++)
         {
             (CollectingClient client, Subscription subscription) = subscribers[i];
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(client.Received.Wait(DeliveryTimeout), Is.True, "every log the filter accepts is published");
+#pragma warning restore NUnit2045
             Assert.That(client.Messages, Is.EqualTo(ExpectedLogMessages(e, subscription.Id, filters[i])), "byte for byte what a subscriber serializing its own logs sends");
         }
     }

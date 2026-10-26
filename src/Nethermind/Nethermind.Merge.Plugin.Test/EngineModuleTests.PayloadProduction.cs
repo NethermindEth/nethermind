@@ -62,8 +62,11 @@ public partial class EngineModuleTests
         Assert.That(responseFirst.Result.ResultType, Is.EqualTo(ResultType.Success));
         ResultWrapper<ExecutionPayload?> responseSecond = await rpc.engine_getPayloadV1(payloadId);
         Assert.That(responseSecond, Is.Not.Null);
-        Assert.That(responseSecond.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(responseSecond.Data!.BlockHash!, Is.EqualTo(responseFirst.Data!.BlockHash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseSecond.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(responseSecond.Data!.BlockHash!, Is.EqualTo(responseFirst.Data!.BlockHash!));
+        }
     }
 
     [Test]
@@ -297,10 +300,13 @@ public partial class EngineModuleTests
 
         BlockHeader? currentHeader = chain.BlockTree.BestSuggestedHeader!;
 
-        Assert.That(currentHeader.UnclesHash!.ToString(), Is.EqualTo("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"));
-        Assert.That(currentHeader.Difficulty, Is.EqualTo((UInt256)0));
-        Assert.That(currentHeader.Nonce, Is.EqualTo(0));
-        Assert.That(currentHeader.MixHash, Is.EqualTo(random));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(currentHeader.UnclesHash!.ToString(), Is.EqualTo("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"));
+            Assert.That(currentHeader.Difficulty, Is.EqualTo((UInt256)0));
+            Assert.That(currentHeader.Nonce, Is.EqualTo(0));
+            Assert.That(currentHeader.MixHash, Is.EqualTo(random));
+        }
     }
 
     [Test]

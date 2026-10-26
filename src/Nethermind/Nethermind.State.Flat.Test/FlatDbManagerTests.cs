@@ -679,8 +679,11 @@ public class FlatDbManagerTests
 
         using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(CreateStateId(5, rootByte: 5));
 
-        Assert.That(bundle, Is.Not.Null, "below the general floor with a slice configured, the block is served restricted instead of refused");
-        Assert.That(manager.HasStateForBlock(CreateStateId(5, rootByte: 5)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle, Is.Not.Null, "below the general floor with a slice configured, the block is served restricted instead of refused");
+            Assert.That(manager.HasStateForBlock(CreateStateId(5, rootByte: 5)), Is.True);
+        }
     }
 
     private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(

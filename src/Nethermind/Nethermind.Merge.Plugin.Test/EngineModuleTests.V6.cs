@@ -384,8 +384,11 @@ public partial class EngineModuleTests
             Keccak.Zero,
             []);
 
-        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(response.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(response.Data, Is.Not.Null);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -793,7 +796,9 @@ public partial class EngineModuleTests
         ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4(blobVersionedHashes, ToBitArray(requestedMask));
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, requestedMask, out byte[][] expectedCells), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         BlobCellsAndProofs?[] blobsAndProofs = result.Data!.ToArray();
         Assert.That(blobsAndProofs, Has.Length.EqualTo(2).And.None.Null);
@@ -986,8 +991,11 @@ public partial class EngineModuleTests
         int expectedCellsOffset,
         byte[][] expectedProofs)
     {
-        Assert.That(actual.BlobCells, Has.Length.EqualTo(requestedMask.Count));
-        Assert.That(actual.Proofs, Has.Length.EqualTo(requestedMask.Count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.BlobCells, Has.Length.EqualTo(requestedMask.Count));
+            Assert.That(actual.Proofs, Has.Length.EqualTo(requestedMask.Count));
+        }
 
         int expectedIndex = 0;
         foreach (int _ in requestedMask.EnumerateSetBits())
@@ -1483,8 +1491,11 @@ public partial class EngineModuleTests
                 Assert.That(result.Data, Is.Not.Null, $"engine_newPayloadV5 returned error instead of payload status: {result.Result} (code {result.ErrorCode})");
                 if (expectedError is null)
                 {
-                    Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-                    Assert.That(result.Data.LatestValidHash, Is.EqualTo(payload.BlockHash));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+                        Assert.That(result.Data.LatestValidHash, Is.EqualTo(payload.BlockHash));
+                    }
                 }
                 else
                 {
@@ -1569,7 +1580,9 @@ public partial class EngineModuleTests
 
         (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) = BuildTestTransactionsAndWithdrawal(gasPrice, gasLimit);
 
+#pragma warning disable NUnit2045 // These assertions independently observe results; no success prerequisite or shared-state mutation sequence.
         Assert.That(chain.TxPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         Assert.That(chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 

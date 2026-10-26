@@ -118,7 +118,9 @@ public partial class FrameTxProcessorTests
         using NativeStateGasTracer stateGasTracer = new(tx, Spec, GethTraceOptions.Default);
         CompositeTxTracer combinedTracer = new(tracer, stateGasTracer);
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx, tracer: combinedTracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(tracer.TraceResult, Is.Not.Null);
         using GethLikeTxTrace trace = stateGasTracer.BuildResult();
         StateGasTrace gas = (StateGasTrace)trace.CustomTracerResult!.Value;
@@ -298,8 +300,11 @@ public partial class FrameTxProcessorTests
 
         TransactionResult result = CallAndRestore(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        }
     }
 
     [Test]
@@ -351,8 +356,11 @@ public partial class FrameTxProcessorTests
 
         TransactionResult result = CallAndRestore(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        }
     }
 
     [Test]
@@ -1523,7 +1531,9 @@ public partial class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(blockGasLimit).TestObject;
 
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out ulong execution, out ulong state), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
 
         GasEstimator estimator = new(_transactionProcessor, _stateProvider);
@@ -2251,7 +2261,9 @@ public partial class FrameTxProcessorTests
 
         CallOutputTracer tracer = new();
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
         AssertStorage(Recipient, 0, UInt256.Zero, "an ASSERT frame cannot write");
         AssertStorage(Observer, 0, UInt256.Zero, "the halted assertion unwound the body");
@@ -2270,7 +2282,9 @@ public partial class FrameTxProcessorTests
             Frame(FrameMode.Assert, FrameFlags.ApprovePayment, target: Recipient));
 
         CallOutputTracer tracer = new();
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
@@ -2312,7 +2326,9 @@ public partial class FrameTxProcessorTests
             Frame(FrameMode.Sender, target: Observer),
             Frame(FrameMode.Assert, target: Recipient));
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL),
             "the sender nonce bump is part of the prefix that payment approval committed");
     }
@@ -2928,7 +2944,9 @@ public partial class FrameTxProcessorTests
         _stateProvider.CommitTree(0);
 
         FrameReceiptTracer tracer = new();
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 0), tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(tracer.FrameReceipts![0].GasUsed, Is.EqualTo(Eip8038Constants.WarmAccess),
             "the default code draws no execution gas of its own, leaving the warm sender's entry access");
@@ -3089,8 +3107,10 @@ public partial class FrameTxProcessorTests
         FrameReceiptTracer tracer = new();
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(BuildProcessor(_stateProvider, MovedPrecompile(IdentityPrecompile.Address, movedTo)),
             tx, tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
 
         // The target and the designation are both cold — the latter because a moved precompile is no
         // longer in the spec's EIP-2929 pre-warm set — and nothing beyond those two accesses runs.
@@ -3119,7 +3139,9 @@ public partial class FrameTxProcessorTests
         FrameReceiptTracer tracer = new();
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(BuildProcessor(_stateProvider, repository), tx, tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
 
         // Empty code cannot revert, so the failure is the override code having run.
         Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
@@ -3371,7 +3393,9 @@ public partial class FrameTxProcessorTests
         Transaction simulated = FrameTx(nonce: 5, KeyedSelfVerifyFrame(freshKeyCount: 1));
         simulated.NonceKeys = [7];
 
+#pragma warning disable NUnit2045 // Check the execution result before running the next transaction.
         Assert.That(Process(executed).TransactionExecuted, Is.False, "key 7 sits at sequence 0, so the set is not consumable");
+#pragma warning restore NUnit2045
         Assert.That(CallAndRestore(simulated).TransactionExecuted, Is.True);
     }
 
@@ -3424,7 +3448,9 @@ public partial class FrameTxProcessorTests
         keyed.NonceKeys = [UInt256.Zero];
 
         FrameReceiptTracer keyedTracer = new();
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(keyed, tracer: keyedTracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
 
         FrameReceiptTracer plainTracer = new();
@@ -3802,7 +3828,9 @@ public partial class FrameTxProcessorTests
 
         Transaction tx = FrameTx(nonce: 1, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(2UL), "payment approval moved the account nonce");
         AssertStorage(Observer, 0, (UInt256)1);
     }

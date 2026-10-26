@@ -155,8 +155,11 @@ public partial class EthRpcModuleTests
         string expected = await ctx.Test.TestEthRpc(method, missingState ? [explicitLimits, "latest"] : [explicitLimits, "latest", null, blockOverride]);
         string response = await ctx.Test.TestEthRpc(method, missingState ? [omitted, "latest"] : [omitted, "latest", null, blockOverride]);
 
-        Assert.That(JToken.Parse(expected)["error"]!["code"]!.Value<int>(), Is.EqualTo(missingState ? ErrorCodes.ResourceUnavailable : ErrorCodes.InvalidInput), expected);
-        Assert.That(response, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(expected)["error"]!["code"]!.Value<int>(), Is.EqualTo(missingState ? ErrorCodes.ResourceUnavailable : ErrorCodes.InvalidInput), expected);
+            Assert.That(response, Is.EqualTo(expected));
+        }
     }
 
     private const string RevertsWithoutGasPrice = "0x3a6007575f5ffd5b00";
@@ -251,7 +254,9 @@ public partial class EthRpcModuleTests
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request);
 
         JToken parsed = JToken.Parse(response);
+#pragma warning disable NUnit2045 // The operation must succeed before accessing its result.
         Assert.That(parsed["error"], Is.Null, response);
+#pragma warning restore NUnit2045
         Assert.That((JArray)parsed["result"]!["tx"]!["frames"]!, Has.Count.EqualTo(Eip8141Constants.MaxFrames));
     }
 
@@ -510,8 +515,11 @@ public partial class EthRpcModuleTests
         string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
 
         JToken parsed = JToken.Parse(response);
-        Assert.That(parsed["error"], Is.Null, response);
-        Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+        }
     }
 
     [Test]
@@ -538,8 +546,11 @@ public partial class EthRpcModuleTests
         JToken parsed = JToken.Parse(response);
         if (invalid == "nonce" && !validation)
         {
-            Assert.That(parsed["error"], Is.Null, response);
-            Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parsed["error"], Is.Null, response);
+                Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+            }
             return;
         }
 
@@ -567,8 +578,11 @@ public partial class EthRpcModuleTests
         string response = await ctx.Test.TestEthRpc(method, request);
 
         JToken parsed = JToken.Parse(response);
-        Assert.That(parsed["error"], Is.Null, response);
-        Assert.That(parsed["result"], Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            Assert.That(parsed["result"], Is.Not.Null);
+        }
         if (method == "eth_call") Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"));
         if (method == "eth_simulateV1")
         {
@@ -664,9 +678,12 @@ public partial class EthRpcModuleTests
         string placeholderEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", placeholder);
         string signedEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", signed);
 
-        Assert.That(JToken.Parse(signedEstimate)["error"], Is.Null, signedEstimate);
-        Assert.That(Convert.ToUInt64(JToken.Parse(placeholderEstimate)["result"]!.Value<string>(), 16),
-            Is.GreaterThanOrEqualTo(Convert.ToUInt64(JToken.Parse(signedEstimate)["result"]!.Value<string>(), 16)), placeholderEstimate);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(signedEstimate)["error"], Is.Null, signedEstimate);
+            Assert.That(Convert.ToUInt64(JToken.Parse(placeholderEstimate)["result"]!.Value<string>(), 16),
+                Is.GreaterThanOrEqualTo(Convert.ToUInt64(JToken.Parse(signedEstimate)["result"]!.Value<string>(), 16)), placeholderEstimate);
+        }
     }
 
     [Test]
@@ -873,8 +890,11 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
 
-        Assert.That(JToken.Parse(serialized)["error"], Is.Null, "unpriced estimate must zero the base fee override instead of reverting");
-        Assert.That(JToken.Parse(serialized)["result"], Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(serialized)["error"], Is.Null, "unpriced estimate must zero the base fee override instead of reverting");
+            Assert.That(JToken.Parse(serialized)["result"], Is.Not.Null);
+        }
     }
 
     [Test]
@@ -1063,8 +1083,11 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
 
-        Assert.That(JToken.Parse(serialized)["error"], Is.Null, $"the contract reverts unless NUMBER is the latest block's: {serialized}");
-        Assert.That(JToken.Parse(serialized)["result"], Is.Not.Null, serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(serialized)["error"], Is.Null, $"the contract reverts unless NUMBER is the latest block's: {serialized}");
+            Assert.That(JToken.Parse(serialized)["result"], Is.Not.Null, serialized);
+        }
     }
 
     [TestCase("0xfe", null, "invalid opcode: INVALID", TestName = "Designated invalid opcode")]
@@ -1263,8 +1286,11 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
         JToken response = JToken.Parse(serialized);
-        Assert.That(response["result"]?.Value<string>(), Is.EqualTo(expectedResult), serialized);
-        Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError), serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["result"]?.Value<string>(), Is.EqualTo(expectedResult), serialized);
+            Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError), serialized);
+        }
     }
 
     [Test]
@@ -1661,8 +1687,11 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
         const ulong expected = 207_391;
-        Assert.That(Eip8037NewAccountTransferGas, Is.EqualTo(204_600ul), "gas the transfer uses");
-        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected.ToHexString(true)}\",\"id\":67}}"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8037NewAccountTransferGas, Is.EqualTo(204_600ul), "gas the transfer uses");
+            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected.ToHexString(true)}\",\"id\":67}}"));
+        }
     }
 
     private static async Task TestEstimateGasOutOfGas(Context ctx, ulong? specifiedGasLimit, ulong expectedGasLimit, string message)
@@ -1856,8 +1885,11 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
 
         JToken parsed = JToken.Parse(serialized);
-        Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
-        Assert.That(parsed["error"]!["message"]!.Value<string>(), Is.EqualTo(expectedMessage));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Is.EqualTo(expectedMessage));
+        }
     }
 
     [Test]

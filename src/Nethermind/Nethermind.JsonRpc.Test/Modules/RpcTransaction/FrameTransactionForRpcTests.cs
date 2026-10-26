@@ -456,9 +456,12 @@ public class FrameTransactionForRpcTests
             Signatures = Secp256k1Signatures(1),
         };
 
-        Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
-        // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
-        Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
+            // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
+            Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
+        }
     }
 
     private static Transaction BuildKeyedFrameTx(UInt256[]? nonceKeys, ulong nonceSeq = 3)

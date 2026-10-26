@@ -131,9 +131,12 @@ namespace Nethermind.Synchronization.Test.SnapSync
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[4].Path);
             AddRangeResult result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof.StorageProofs[0].Proof.Length + proof.StorageProofs[1].Proof.Length, proof.StorageProofs[0].Proof.Concat(proof.StorageProofs[1].Proof))));
 
-            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+                Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+                Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            }
         }
 
         [Test]
@@ -166,9 +169,12 @@ namespace Nethermind.Synchronization.Test.SnapSync
             storageRangeRequest = PrepareStorageRequest(TestItem.Tree.AccountAddress0, rootHash, TestItem.Tree.SlotsWithPaths[4].Path);
             AddRangeResult result3 = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, TestItem.Tree.SlotsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof.StorageProofs[0].Proof.Length + proof.StorageProofs[1].Proof.Length, proof.StorageProofs[0].Proof.Concat(proof.StorageProofs[1].Proof))));
 
-            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
-            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+                Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
+                Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            }
         }
 
         [Test]
@@ -195,9 +201,12 @@ namespace Nethermind.Synchronization.Test.SnapSync
                     Bytes.FromHexString("f838a120290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5639594654f75e491acf8c380d2a6906e67e2e56813665e"),
                 }));
 
-            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(moreChildrenToRight, Is.False);
-            Assert.That(helper.TrieNodeWritesCount, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+                Assert.That(moreChildrenToRight, Is.False);
+                Assert.That(helper.TrieNodeWritesCount, Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -219,8 +228,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
                 null,
                 proofs: null);
 
-            Assert.That(result, Is.EqualTo(AddRangeResult.EmptyRange));
-            Assert.That(helper.TrieNodeWritesCount, Is.EqualTo(0)); // No writes should happen
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AddRangeResult.EmptyRange));
+                Assert.That(helper.TrieNodeWritesCount, Is.EqualTo(0));
+            } // No writes should happen
         }
 
         [Test]
