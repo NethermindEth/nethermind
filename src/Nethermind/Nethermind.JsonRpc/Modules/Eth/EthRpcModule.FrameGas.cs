@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -65,7 +66,13 @@ public partial class EthRpcModule
         // The search picks the frame limits, so a call priced per gas is searched at the budget its prices buy over the
         // gas cap; the call then runs at the budget they buy over the limits the search filled.
         ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
-        if (request.PerGasBudget(tx, gasCap) is { } searchBudget) tx.MaxFee = searchBudget;
+        if (request.PerGasBudget(tx, gasCap) is { } searchBudget)
+        {
+            tx.MaxFee = searchBudget;
+            UInt256 feeCap = request.MaxFeePerGas ?? request.GasPrice ?? UInt256.Zero;
+            UInt256 baseFee = request.ShouldSetBaseFee() ? (blockOverride?.ApplyTo(header) ?? header).BaseFeePerGas : UInt256.Zero;
+            tx.GasPrice = UInt256.Min(tx.GasPrice, feeCap > baseFee ? feeCap - baseFee : UInt256.Zero);
+        }
 
         FrameForRpc[] input = request.Frames!;
         bool[] fillExecution = new bool[input.Length];

@@ -134,6 +134,28 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    [Test]
+    public void Execute_MaxFee_BlobCarrierTipCappedByBudget()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.BlobVersionedHashes = [new byte[32]];
+        const ulong excessBlobGas = 50_000_000;
+        UInt256 blobFee = ExpectedBlobFee(excessBlobGas, blobCount: 1);
+        UInt256 maxFee = (UInt256)MaxGas(tx) * BudgetBaseFee + blobFee + 3;
+        WithMaxFee(tx, maxFee, 1_000_000);
+
+        CallOutputTracer output = new();
+        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas, baseFeePerGas: BudgetBaseFee, tracer: output);
+
+        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(maxFee - (UInt256)output.GasSpent * BudgetBaseFee - blobFee));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - maxFee));
+        }
+    }
+
     [TestCase((byte)0x04, TestName = "Execute_MaxFee_TxParam_MaxFee")]
     [TestCase((byte)0x05, TestName = "Execute_MaxFee_TxParam_MaxBlobFeeHalts")]
     [TestCase((byte)0x06, TestName = "Execute_MaxFee_TxParam_MaxCostHalts")]

@@ -104,18 +104,29 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         tx.BlobVersionedHashes = BlobVersionedHashes;
         // A call priced per gas is converted to the budget those prices buy: the per-gas cap over max_gas plus the
         // per-blob cap over the blob gas.
-        tx.MaxFee = MaxFee ?? BudgetFor(tx, MaxFeePerGas ?? UInt256.Zero, MaxFeePerBlobGas ?? UInt256.Zero, spec);
+        tx.MaxFee = MaxFee ?? BudgetFor(tx, MaxFeePerGas ?? GasPrice ?? UInt256.Zero, MaxFeePerBlobGas ?? UInt256.Zero, spec);
         tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(tx.MaxFee, totalFrameGas);
         return tx;
     }
 
     public override bool ShouldSetBaseFee() => base.ShouldSetBaseFee() || MaxFee.IsPositive();
 
+    /// <inheritdoc/>
+    /// <remarks>A request naming a <c>max_fee</c> gets only the priority fee, since <c>max_fee</c> is its fee cap.</remarks>
+    public override Result FillDefaults(in TxFillContext context)
+    {
+        if (MaxFee is null)
+            return base.FillDefaults(context);
+
+        MaxPriorityFeePerGas ??= context.MaxPriorityFeePerGas;
+        return Result.Success;
+    }
+
     /// <summary>The budget a call priced per gas buys over <paramref name="maxGas"/>, or <see langword="null"/> for one
     /// naming a <c>max_fee</c>.</summary>
     /// <remarks>For a run whose <c>max_gas</c> is not known when the call is converted, such as a frame gas search.</remarks>
     public UInt256? PerGasBudget(Transaction tx, ulong maxGas) =>
-        MaxFee is null ? Price(tx, MaxFeePerGas ?? UInt256.Zero, MaxFeePerBlobGas ?? UInt256.Zero, maxGas) : null;
+        MaxFee is null ? Price(tx, MaxFeePerGas ?? GasPrice ?? UInt256.Zero, MaxFeePerBlobGas ?? UInt256.Zero, maxGas) : null;
 
     /// <remarks>Without a fork to price <c>max_gas</c> by, the frame gas sum stands in.</remarks>
     private static UInt256 BudgetFor(Transaction tx, in UInt256 maxFeePerGas, in UInt256 maxFeePerBlobGas, IReleaseSpec? spec)

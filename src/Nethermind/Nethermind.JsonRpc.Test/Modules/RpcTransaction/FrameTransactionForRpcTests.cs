@@ -260,11 +260,12 @@ public class FrameTransactionForRpcTests
 
     // A call priced per gas buys what that price would. Without a fork to price max_gas by, the frame gas sum stands in.
     [Test]
-    public void FrameTransactionForRpc_ToTransaction_ConvertsAPerGasCall([Values] bool withSpec, [Values] bool blobs)
+    public void FrameTransactionForRpc_ToTransaction_ConvertsAPerGasCall([Values] bool withSpec, [Values] bool blobs, [Values] bool asGasPrice)
     {
         FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(BuildMinimalFrameTx());
         rpc.MaxFee = null;
-        rpc.MaxFeePerGas = 3;
+        if (asGasPrice) (rpc.MaxFeePerGas, rpc.MaxPriorityFeePerGas, rpc.GasPrice) = (null, null, 3);
+        else (rpc.MaxFeePerGas, rpc.GasPrice) = (3, null);
         if (blobs)
         {
             rpc.MaxFeePerBlobGas = 5;
@@ -294,6 +295,23 @@ public class FrameTransactionForRpcTests
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
 
         Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.MaxFeeWithPerGasFees));
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_FillDefaults_WithMaxFee_FillsOnlyThePriorityFee()
+    {
+        FrameTransactionForRpc rpc = new() { MaxFee = 1_000 };
+
+        Result result = rpc.FillDefaults(new TxFillContext { GasPrice = 9, MaxPriorityFeePerGas = 2, BaseFee = 7, BlobBaseFee = 1, Spec = FramesSpec });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+            Assert.That(rpc.MaxFee, Is.EqualTo((UInt256)1_000));
+            Assert.That(rpc.MaxPriorityFeePerGas, Is.EqualTo((UInt256)2));
+            Assert.That(rpc.MaxFeePerGas, Is.Null);
+            Assert.That(rpc.MaxFeePerBlobGas, Is.Null);
+        }
     }
 
     [Test]
