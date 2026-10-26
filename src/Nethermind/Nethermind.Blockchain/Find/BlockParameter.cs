@@ -276,13 +276,10 @@ namespace Nethermind.JsonRpc.Data
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private BlockParameter ReadStringComplex(ref Utf8JsonReader reader, JsonSerializerOptions options)
-        {
-            string value = reader.GetString()!;
-            return value.StartsWith("0x", StringComparison.Ordinal)
-                ? ReadStringFormatOther(Encoding.UTF8.GetBytes(value))
-                : TypeInfoJsonSerializer.Deserialize<BlockParameter>(value, options)!;
-        }
+        private BlockParameter ReadStringComplex(ref Utf8JsonReader reader, JsonSerializerOptions options) =>
+            !reader.HasValueSequence && !reader.ValueIsEscaped && reader.ValueSpan.StartsWith("0x"u8)
+                ? ReadStringFormatOther(reader.ValueSpan)
+                : TypeInfoJsonSerializer.Deserialize<BlockParameter>(reader.GetString()!, options)!;
 
         private BlockParameter ReadStringFormatOther(ReadOnlySpan<byte> span)
         {
