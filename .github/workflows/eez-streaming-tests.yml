@@ -93,7 +93,7 @@ jobs:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: eez-selected-vectors
           path: ${{ runner.temp }}
