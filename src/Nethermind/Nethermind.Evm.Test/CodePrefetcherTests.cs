@@ -122,12 +122,13 @@ public class CodePrefetcherTests
 
         prefetcher.Enqueue(in CodeHash);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(codeDb.ReadStarted.Wait(TimeSpan.FromSeconds(10)), "no reader picked up the queued code");
-            Assert.That(prefetcher.Take(in CodeHash), Is.SequenceEqualTo(Code));
-            Assert.That(codeDb.Reads, Is.EqualTo(1));
-        }
+#pragma warning disable NUnit2045 // A reader must start before taking its prefetched result.
+        Assert.That(codeDb.ReadStarted.Wait(TimeSpan.FromSeconds(10)), "no reader picked up the queued code");
+#pragma warning restore NUnit2045
+#pragma warning disable NUnit2045 // Taking the prefetched code must complete before checking the read count.
+        Assert.That(prefetcher.Take(in CodeHash), Is.SequenceEqualTo(Code));
+#pragma warning restore NUnit2045
+        Assert.That(codeDb.Reads, Is.EqualTo(1));
     }
 
     [Test]
@@ -171,13 +172,12 @@ public class CodePrefetcherTests
         CodePrefetcher prefetcher = new(codeDb);
 
         prefetcher.Enqueue(in CodeHash);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(codeDb.ReadStarted.Wait(TimeSpan.FromSeconds(10)), "no reader picked up the queued code");
+#pragma warning disable NUnit2045 // A read must be in progress before testing whether Stop waits for it.
+        Assert.That(codeDb.ReadStarted.Wait(TimeSpan.FromSeconds(10)), "no reader picked up the queued code");
+#pragma warning restore NUnit2045
 
-            // The block ends on the commit path, so it must not wait for the store.
-            Assert.That(Task.Run(prefetcher.Stop).Wait(TimeSpan.FromSeconds(10)), "stop waited for the read in progress");
-        }
+        // The block ends on the commit path, so it must not wait for the store.
+        Assert.That(Task.Run(prefetcher.Stop).Wait(TimeSpan.FromSeconds(10)), "stop waited for the read in progress");
 
         codeDb.Release();
         using (Assert.EnterMultipleScope())

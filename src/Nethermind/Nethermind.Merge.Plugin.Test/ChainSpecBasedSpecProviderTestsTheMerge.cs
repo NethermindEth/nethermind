@@ -34,8 +34,8 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlockNumber + 1));
-            Assert.That(provider.TransitionActivations.Length, Is.EqualTo(0));
-        } // merge block number shouldn't affect transition blocks
+            Assert.That(provider.TransitionActivations.Length, Is.EqualTo(0)); // merge block number shouldn't affect transition blocks
+        }
     }
 
     [Test]
@@ -52,8 +52,8 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
             Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo((UInt256)10));
             Assert.That(chainSpec.MergeForkIdBlockNumber, Is.EqualTo(72));
 
-            Assert.That(provider.TransitionActivations, Has.Member((ForkActivation)72));
-        } // MergeForkIdBlockNumber should affect transition blocks
+            Assert.That(provider.TransitionActivations, Has.Member((ForkActivation)72)); // MergeForkIdBlockNumber should affect transition blocks
+        }
         Assert.That(provider.TransitionActivations, Has.No.Member((ForkActivation)100)); // merge block number shouldn't affect transition blocks
         Assert.That(provider.TransitionActivations, Has.No.Member((ForkActivation)101)); // merge block number shouldn't affect transition blocks
     }

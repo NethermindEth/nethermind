@@ -77,8 +77,11 @@ public class FrameExceptionFragmentsTests
             frames: Rlp.Encode(new byte[19]),               // a string where a list belongs
             maxPriorityFeePerGas: Rlp.Encode(0L));
 
-        Assert.That(message, Does.Contain("Expected a sequence prefix"));
-        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("Expected a sequence prefix"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
     }
 
     [Test]
@@ -95,8 +98,11 @@ public class FrameExceptionFragmentsTests
 
         string message = DecodeFailureMessage(payload);
 
-        Assert.That(message, Does.Contain("RLP data is truncated"));
-        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("RLP data is truncated"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
     }
 
     [Test]

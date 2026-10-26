@@ -51,7 +51,9 @@ public class GuestBls12381LayoutTests
         byte[] decoded = DecodeG2<OnFlag>(new byte[Eip2537.LenG2]);
 
         G2Affine point = new();
+#pragma warning disable NUnit2045 // Decoding must succeed before inspecting the decoded point.
         Assert.That(point.TryDecode(decoded, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(point.IsInf(), Is.True);
     }
 
@@ -60,7 +62,9 @@ public class GuestBls12381LayoutTests
     {
         byte[] decoded = new byte[Eip2537.LenG1Trimmed];
 
+#pragma warning disable NUnit2045 // Decoding must succeed before inspecting the decoded point.
         Assert.That(Eip2537.TryDecodeG1<OnFlag>(new byte[Eip2537.LenG1], decoded), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(decoded[0], Is.EqualTo(Eip2537.Sp1InfinityBit));
         Assert.That(decoded.AsSpan(1).ContainsAnyExcept((byte)0), Is.False);
     }
@@ -73,7 +77,9 @@ public class GuestBls12381LayoutTests
         wire[2 * Eip2537.LenFp - 1] = 2;
         byte[] decoded = new byte[2 * Eip2537.LenFpTrimmed];
 
+#pragma warning disable NUnit2045 // Decoding must succeed before inspecting the decoded point.
         Assert.That(Eip2537.TryDecodeFp2<OnFlag>(wire, decoded), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(decoded[Eip2537.LenFpTrimmed - 1], Is.EqualTo(2));
         Assert.That(decoded[2 * Eip2537.LenFpTrimmed - 1], Is.EqualTo(1));
     }

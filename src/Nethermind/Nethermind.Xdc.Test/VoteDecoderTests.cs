@@ -177,8 +177,8 @@ public class VoteDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(round, Is.EqualTo(1UL));
-            Assert.That(hash, Is.Not.EqualTo(Hash256.Zero));
-        } // Should be computed hash
+            Assert.That(hash, Is.Not.EqualTo(Hash256.Zero)); // Should be computed hash
+        }
     }
 
 }

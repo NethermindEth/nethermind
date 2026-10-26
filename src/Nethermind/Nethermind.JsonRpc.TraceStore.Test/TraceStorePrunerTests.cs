@@ -63,8 +63,8 @@ public class TraceStorePrunerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(keys.Skip(3).Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null)); // too old were not removed
-            Assert.That(keys.Take(3).Select(k => memDb.Get(k)).All(b => b == null), Is.True);
-        } // those were removed
+            Assert.That(keys.Take(3).Select(k => memDb.Get(k)).All(b => b == null), Is.True); // those were removed
+        }
 
     }
 }

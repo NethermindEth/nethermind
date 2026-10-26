@@ -147,7 +147,7 @@ public class VisitorProgressTrackerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracker.NodeCount, Is.EqualTo(1));
-            Assert.That(tracker.GetProgress(), Is.EqualTo(0));
-        } // Empty path doesn't contribute to progress
+            Assert.That(tracker.GetProgress(), Is.EqualTo(0)); // Empty path doesn't contribute to progress
+        }
     }
 }

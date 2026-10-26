@@ -373,11 +373,10 @@ public class BlobTxStorageTests
                 ? ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions([new(358, 0)], results) == 1
                 : ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _));
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True, "read completed while the save held the lock");
-                Assert.That(read.Result, Is.True);
-            }
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
+            Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True, "read completed while the save held the lock");
+#pragma warning restore NUnit2045
+            Assert.That(read.Result, Is.True);
         }
         finally
         {

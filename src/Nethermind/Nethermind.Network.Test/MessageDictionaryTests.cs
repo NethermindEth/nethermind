@@ -267,11 +267,10 @@ public class MessageDictionaryTests
             using MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>.ResponseScope response =
                 dictionary.BeginResponse(content);
             Task<bool> expireTask = Task.Run(() => dictionary.TryExpireRequest(111));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(expireTask.Wait(1000), Is.True);
-                Assert.That(expireTask.Result, Is.False);
-            }
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
+            Assert.That(expireTask.Wait(1000), Is.True);
+#pragma warning restore NUnit2045
+            Assert.That(expireTask.Result, Is.False);
             Task sendTask = Task.Run(() => dictionary.Send(replacement));
             Assert.That(sendTask.Wait(1000), Is.True);
 

@@ -416,8 +416,8 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(gas.FloorGas, Is.EqualTo(expectedFloor));   // 21600
-                Assert.That(gas.Standard, Is.EqualTo(expectedStandard));
-            } // 21760, still 68/non-zero byte
+                Assert.That(gas.Standard, Is.EqualTo(expectedStandard)); // 21760, still 68/non-zero byte
+            }
         }
 
         [Test]

@@ -189,8 +189,8 @@ public class SlotRlpEncodingTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey), Is.Null);
-            Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("abcd")));
-        } // raw, not RLP(0x82abcd)
+            Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("abcd"))); // raw, not RLP(0x82abcd)
+        }
 
         RocksDbPersistence reopened = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
         using IPersistence.IPersistenceReader reader2 = reopened.CreateReader();

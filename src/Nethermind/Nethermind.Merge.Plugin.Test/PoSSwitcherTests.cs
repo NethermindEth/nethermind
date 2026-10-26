@@ -128,8 +128,8 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(block3!.IsTerminalBlock(specProvider), Is.EqualTo(false)); // PoWBlock
                 Assert.That(block4!.IsTerminalBlock(specProvider), Is.EqualTo(true)); // terminal block
                 Assert.That(block5!.IsTerminalBlock(specProvider), Is.EqualTo(false)); // incorrect PoW not terminal block
-                Assert.That(blockWithPostMergeFlag.IsTerminalBlock(specProvider), Is.EqualTo(false));
-            } // block with post merge flag
+                Assert.That(blockWithPostMergeFlag.IsTerminalBlock(specProvider), Is.EqualTo(false)); // block with post merge flag
+            }
         }
 
         [TestCase(5000000, true)]
@@ -197,8 +197,8 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(poSSwitcher.GetBlockConsensusInfo(block3!), Is.EqualTo((false, false))); // PoWBlock
                 Assert.That(poSSwitcher.GetBlockConsensusInfo(block4!), Is.EqualTo((true, false))); // terminal block
                 Assert.That(poSSwitcher.GetBlockConsensusInfo(block5!), Is.EqualTo((false, true))); // incorrect PoW, TTD > TD and it is not terminal, so we should process it in the same way like post merge blocks
-                Assert.That(poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header), Is.EqualTo((false, true)));
-            } // block with post merge flag
+                Assert.That(poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header), Is.EqualTo((false, true))); // block with post merge flag
+            }
         }
 
         [Test]
@@ -223,8 +223,8 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(poSSwitcher.GetBlockConsensusInfo(block3!), Is.EqualTo((false, false))); // PoWBlock
                 Assert.That(poSSwitcher.GetBlockConsensusInfo(block4!), Is.EqualTo((false, false))); // terminal block
                 Assert.That(poSSwitcher.GetBlockConsensusInfo(block5!), Is.EqualTo((false, false)));
-                Assert.That(poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header), Is.EqualTo((false, true)));
-            } // block with post merge flag
+                Assert.That(poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header), Is.EqualTo((false, true))); // block with post merge flag
+            }
         }
 
         [Test]

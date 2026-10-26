@@ -308,8 +308,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(intrinsicGas.Standard, Is.EqualTo(21000 + 100 * 16)); // 22600
-            Assert.That(intrinsicGas.FloorGas, Is.EqualTo(21000 + 400 * 10));
-        } // 25000
+            Assert.That(intrinsicGas.FloorGas, Is.EqualTo(21000 + 400 * 10)); // 25000
+        }
         Assert.That(intrinsicGas.FloorGas, Is.GreaterThan(intrinsicGas.Standard));
 
         // Now test execution - the block gas should use the floor since standard < floor
@@ -382,8 +382,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(intrinsicGas.Standard, Is.EqualTo(21000 + 4)); // 21004 for 1 zero byte
-            Assert.That(intrinsicGas.FloorGas, Is.EqualTo(21000 + 10));
-        } // 21010 floor
+            Assert.That(intrinsicGas.FloorGas, Is.EqualTo(21000 + 10)); // 21010 floor
+        }
 
         // Set up sender and recipient accounts
         TestState.CreateAccount(TestItem.AddressA, 1.Ether);

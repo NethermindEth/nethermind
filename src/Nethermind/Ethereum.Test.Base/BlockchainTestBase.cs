@@ -823,7 +823,9 @@ public abstract class BlockchainTestBase
 
     private static void AssertRpcSuccess(JsonRpcResponse response)
     {
+#pragma warning disable NUnit2045 // The response type must be confirmed before casting it.
         Assert.That(response, Is.InstanceOf<IResultWrapper>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
+#pragma warning restore NUnit2045
         Assert.That(((IResultWrapper)response).Result.ResultType, Is.EqualTo(ResultType.Success));
     }
 

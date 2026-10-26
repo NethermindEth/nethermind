@@ -49,8 +49,8 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             Assert.That(local.RootHash, Is.EqualTo(remote.StateTree.RootHash));
 
             // I guess state root will be requested regardless
-            Assert.That(data.RequestedNodesCount, Is.EqualTo(1));
-        }   // 4 boundary proof nodes stitched together => 0
+            Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
+        }
     }
 
     [Test]

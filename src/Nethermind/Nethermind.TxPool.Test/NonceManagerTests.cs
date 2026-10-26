@@ -181,11 +181,10 @@ public class NonceManagerTests
             return nonce;
         }, TaskCreationOptions.LongRunning);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(next.Wait(TimeSpan.FromSeconds(5)), Is.True, "a failed reservation must not keep the account locked");
-            Assert.That(next.Result, Is.EqualTo(3UL));
-        }
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
+        Assert.That(next.Wait(TimeSpan.FromSeconds(5)), Is.True, "a failed reservation must not keep the account locked");
+#pragma warning restore NUnit2045
+        Assert.That(next.Result, Is.EqualTo(3UL));
     }
 
     [Test]
@@ -748,20 +747,19 @@ public class NonceManagerTests
                 Accept(concurrentLocker, TestItem.AddressA, concurrentNonce);
                 return concurrentNonce;
             }, TaskCreationOptions.LongRunning);
+            Assert.That(reserving.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the concurrent reservation has started");
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reserving.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the concurrent reservation has started");
                 Assert.That(concurrent.Wait(100), Is.False, "the concurrent reservation must wait for the in-flight one");
                 Assert.That(nonce, Is.EqualTo(0UL));
             }
             Accept(locker, TestItem.AddressA, nonce);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(concurrent.Wait(TimeSpan.FromSeconds(10)), Is.True);
-            Assert.That(concurrent.Result, Is.EqualTo(1UL));
-        }
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
+        Assert.That(concurrent.Wait(TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(concurrent.Result, Is.EqualTo(1UL));
     }
 
     [Test]

@@ -577,8 +577,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         {
             Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
             Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(1)); // Account C mismatched
-            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1));
-        } // Account B missing in flat
+            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1)); // Account B missing in flat
+        }
     }
 
 }

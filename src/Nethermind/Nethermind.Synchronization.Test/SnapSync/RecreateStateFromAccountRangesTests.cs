@@ -112,8 +112,8 @@ public class RecreateStateFromAccountRangesTests
         {
             Assert.That(tree.RootHash, Is.EqualTo(_inputTree.RootHash));
             Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
-            Assert.That(db.KeyExists(rootHash), Is.False);
-        } // the root node is a part of the proof nodes
+            Assert.That(db.KeyExists(rootHash), Is.False); // the root node is a part of the proof nodes
+        }
     }
 
     [Test]
@@ -175,8 +175,8 @@ public class RecreateStateFromAccountRangesTests
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
-            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
-        } // the root node is NOT a part of the proof nodes
+            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False); // the root node is NOT a part of the proof nodes
+        }
     }
 
     [TestCase("ffffffff", TestName = "undecodable RLP")]

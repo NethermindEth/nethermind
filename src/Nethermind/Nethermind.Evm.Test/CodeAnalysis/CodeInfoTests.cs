@@ -382,8 +382,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(codeInfo.ValidateJump(10), Is.False);
-                Assert.That(codeInfo.ValidateJump(11), Is.False);
-            } // 0x5b but not JUMPDEST but data
+                Assert.That(codeInfo.ValidateJump(11), Is.False); // 0x5b but not JUMPDEST but data
+            }
         }
 
         [Test]

@@ -231,8 +231,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AddRangeResult.EmptyRange));
-                Assert.That(helper.TrieNodeWritesCount, Is.EqualTo(0));
-            } // No writes should happen
+                Assert.That(helper.TrieNodeWritesCount, Is.EqualTo(0)); // No writes should happen
+            }
         }
 
         [Test]
