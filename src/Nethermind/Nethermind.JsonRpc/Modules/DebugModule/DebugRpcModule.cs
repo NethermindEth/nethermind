@@ -598,10 +598,10 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
+        BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError, requireBody: true);
         if (headerError is not null)
         {
-            return headerError;
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block {blockHash} not found", headerError.ErrorCode, headerError.IsTemporary);
         }
 
         if (header.Number == 0)
