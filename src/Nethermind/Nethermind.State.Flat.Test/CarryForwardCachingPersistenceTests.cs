@@ -1056,6 +1056,15 @@ public class CarryForwardCachingPersistenceTests
             public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
                 RemoveSlots(model._addressesByHash[addressHash], fromPath, toPath, all: toPath == ValueKeccak.Zero);
 
+            public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+            {
+                foreach (Address address in model._addresses)
+                {
+                    ValueHash256 hash = HashOf(address);
+                    if (hash.CompareTo(fromPath) >= 0 && hash.CompareTo(toPath) <= 0) RemoveSlots(address, ValueKeccak.Zero, ValueKeccak.Zero, all: true);
+                }
+            }
+
             public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }

@@ -7,7 +7,7 @@ description: Dispatch and interpret the JSON-RPC benchmark workflow (run-rpc-ben
 
 - Workflow file: [`.github/workflows/run-rpc-benchmarks.yml`](../../../.github/workflows/run-rpc-benchmarks.yml)
 - Scripts and full reference: [`scripts/rpc-bench/README.md`](../../../scripts/rpc-bench/README.md)
-- [Linux perf flow](../../../scripts/rpc-bench/README.md#linux-perf-flow) documents the root-only RPC capture contract; [`scripts/perf-report.sh`](../../../scripts/perf-report.sh) reads folded profiles from both EXPB and rpc-bench.
+- [Linux perf flow](../../../scripts/rpc-bench/README.md#linux-perf-flow) documents the root-only RPC capture contract; [`scripts/PerfReport.cs`](../../../scripts/PerfReport.cs) reads folded profiles from both EXPB and rpc-bench.
 
 `run-rpc-benchmarks` measures state-reading JSON-RPC (`eth_call`, `eth_getBalance`, `trace_*`,
 `debug_*`) against a parked DB snapshot on the same two benchmark runners as expb — pick the box with
@@ -58,7 +58,7 @@ the thing to get right:
 Size a cell by request count instead of duration with `corpus_requests` (absolute) or `corpus_passes`
 (a multiple of the corpus's record count) — `corpus_passes: 5` on 497 records at 100 rps is ~2,485
 requests. Note these are draws *with replacement*, so coverage is `N x (1 - (1 - 1/N)^requests)`, not a
-full pass. `corpus_parity.py` refuses corpora above **10,000 records** unless `max_corpus_records` is
+full pass. `CorpusParity.cs` refuses corpora above **10,000 records** unless `max_corpus_records` is
 raised, and the k6 fixture is the real ceiling long before parity is (~142 MB for 497 records), so a
 50k-record capture wants sampling down rather than a bigger cap.
 
