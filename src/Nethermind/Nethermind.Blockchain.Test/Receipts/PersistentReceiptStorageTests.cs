@@ -828,6 +828,41 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(ReadStoredReceipts(block)[0], Is.EqualTo(marker));
     }
 
+    /// <summary>
+    /// A plugin replaces the compact receipt format by registering a <see cref="RlpDecoderKey.Storage"/> decoder, so
+    /// compact receipts must be written and read with the registered decoder, not core's.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Compact_receipts_use_the_registered_storage_decoder()
+    {
+        Assume.That(useCompactReceipts, "Only compact receipts use the storage decoder.");
+        using MarkingStorageDecoder decoder = MarkingStorageDecoder.Register();
+        (Block block, _) = PrepareBlock();
+        _storage.Insert(block, [new MarkedTxReceipt(Build.A.Receipt.WithGasUsedTotal(MarkingStorageDecoder.MarkerGasUsedTotal).TestObject)]);
+        _storage.ClearCache();
+
+        bool served = _storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out TxReceipt? single, out _, out _);
+        _storage.ClearCache();
+        Assert.That(_storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator), Is.True);
+        try
+        {
+            Assert.That(iterator.TryGetNext(out _), Is.True);
+        }
+        finally
+        {
+            iterator.Dispose();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoder.MarkedWrites, Is.EqualTo(1), "written with the registered decoder");
+            Assert.That(served, Is.True);
+            Assert.That(single, Is.TypeOf<MarkedTxReceipt>(), "single receipt read with the registered decoder");
+            Assert.That(decoder.MarkedRefReads, Is.EqualTo(1), "iterator reads with the registered decoder");
+            Assert.That(_storage.Get(block), Has.Exactly(1).TypeOf<MarkedTxReceipt>(), "block receipts read with the registered decoder");
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Log_recovery_reads_the_body_for_compact_receipts_without_transaction_hashes()
     {
@@ -1394,6 +1429,67 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         byte[] key = new byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(block.Number, block.Hash!, key);
         return key;
+    }
+
+    private sealed class MarkedTxReceipt(TxReceipt receipt) : TxReceipt(receipt);
+
+    /// <summary>
+    /// Wraps the registered storage decoder until disposed, marking only receipts with
+    /// <see cref="MarkerGasUsedTotal"/> so that parallel tests sharing the global registry are unaffected.
+    /// </summary>
+    private sealed class MarkingStorageDecoder : RlpDecoder<TxReceipt>, IReceiptRefDecoder, IDisposable
+    {
+        public const ulong MarkerGasUsedTotal = 0x5EED_5EED;
+
+        private static readonly RlpDecoderKey Key = new(typeof(TxReceipt), RlpDecoderKey.Storage);
+        private readonly IRlpDecoder<TxReceipt> _inner;
+        private readonly IReceiptRefDecoder _innerRef;
+        private int _markedWrites;
+        private int _markedRefReads;
+
+        private MarkingStorageDecoder(IRlpDecoder<TxReceipt> inner)
+        {
+            _inner = inner;
+            _innerRef = (IReceiptRefDecoder)inner;
+        }
+
+        public int MarkedWrites => Volatile.Read(ref _markedWrites);
+        public int MarkedRefReads => Volatile.Read(ref _markedRefReads);
+        public bool CanDecodeBloom => _innerRef.CanDecodeBloom;
+
+        public static MarkingStorageDecoder Register()
+        {
+            MarkingStorageDecoder decoder = new(Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage)!);
+            Rlp.RegisterDecoder(Key, decoder);
+            return decoder;
+        }
+
+        public void Dispose() => Rlp.RegisterDecoder(Key, _inner);
+
+        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => _inner.GetLength(item, rlpBehaviors);
+
+        public override void Encode<TWriter>(ref TWriter stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is MarkedTxReceipt) Interlocked.Increment(ref _markedWrites);
+            _inner.Encode(ref stream, item, rlpBehaviors);
+        }
+
+        protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            TxReceipt? receipt = _inner.Decode(ref decoderContext, rlpBehaviors);
+            return receipt?.GasUsedTotal == MarkerGasUsedTotal ? new MarkedTxReceipt(receipt) : receipt;
+        }
+
+        public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item)
+        {
+            _innerRef.DecodeStructRef(ref decoderContext, rlpBehaviors, out item);
+            if (item.GasUsedTotal == MarkerGasUsedTotal) Interlocked.Increment(ref _markedRefReads);
+        }
+
+        public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none, out LogEntryStructRef current) =>
+            _innerRef.DecodeLogEntryStructRef(ref decoderContext, none, out current);
+
+        public Hash256[] DecodeTopics(RlpReader reader) => _innerRef.DecodeTopics(reader);
     }
 
     private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, ulong? headNumber = null, WriteFlags writeFlags = WriteFlags.None)
