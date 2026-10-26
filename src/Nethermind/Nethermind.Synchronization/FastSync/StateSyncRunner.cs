@@ -123,7 +123,7 @@ public class StateSyncRunner(
         if (anchor is not null && allowedBySyncPivot && blockTree.IsMainChain(anchor))
         {
             TimeSpan age = TimeSpan.FromSeconds(timestamper.UnixTime.Seconds.SaturatingSub(anchor.Timestamp));
-            if (age <= MaxResumedAnchorAge) return anchor;
+            if (syncConfig.StaticSnapPivot || age <= MaxResumedAnchorAge) return anchor;
 
             if (_logger.IsWarn) _logger.Warn($"Not resuming the snap sync: its checkpoint starts from block {anchor.Number} ({anchor.Hash}), {age.TotalHours:N0} hours ago, past the {MaxResumedAnchorAge.TotalHours:N0} hours a resumed sync may start from.");
         }

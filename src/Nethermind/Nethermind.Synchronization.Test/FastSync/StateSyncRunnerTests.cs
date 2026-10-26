@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -177,17 +178,26 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
 
     // Healing with block access lists replays from the first pivot, so a resumed sync has to keep the one its downloaded
     // ranges started from - unless that block left the canonical chain, which leaves nothing to resume, or the node was
-    // offline for so long that healing the kept ranges would cost more than downloading them again.
-    [TestCase(true, 24, true, TestName = "Resumes_from_the_checkpoint_anchor")]
-    [TestCase(false, 0, false, TestName = "Starts_over_when_the_checkpoint_anchor_is_not_canonical")]
-    [TestCase(true, 25, false, TestName = "Starts_over_when_the_checkpoint_anchor_is_too_old")]
-    public void Takes_the_first_pivot_from_the_checkpoint_anchor(bool canonical, int anchorAgeHours, bool resumes)
+    // offline for so long that healing the kept ranges would cost more than downloading them again. A static pivot
+    // never moves, so its anchor is resumed however old it is.
+    [TestCase(true, 24, false, true, TestName = "Resumes_from_the_checkpoint_anchor")]
+    [TestCase(false, 0, false, false, TestName = "Starts_over_when_the_checkpoint_anchor_is_not_canonical")]
+    [TestCase(true, 25, false, false, TestName = "Starts_over_when_the_checkpoint_anchor_is_too_old")]
+    [TestCase(true, 240, true, true, TestName = "Resumes_from_an_old_checkpoint_anchor_at_a_static_pivot")]
+    public void Takes_the_first_pivot_from_the_checkpoint_anchor(bool canonical, int anchorAgeHours, bool staticPivot, bool resumes)
     {
         using IContainer container = BuildRunnerContainer();
         StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
         BlockHeader anchor = canonical
-            ? container.Resolve<IBlockTree>().FindHeader(10)!
+            ? blockTree.FindHeader(10)!
             : Build.A.BlockHeader.WithNumber(10).TestObject;
+        if (staticPivot)
+        {
+            container.Resolve<ISyncConfig>().StaticSnapPivot = true;
+            blockTree.SyncPivot = (anchor.Number, anchor.Hash!);
+        }
+
         ((ManualTimestamper)container.Resolve<ITimestamper>()).Set(DateTimeOffset.FromUnixTimeSeconds((long)anchor.Timestamp).UtcDateTime.AddHours(anchorAgeHours));
         _snapTrieFactory.LoadCheckpoint().Returns(new SnapCheckpoint
         {
