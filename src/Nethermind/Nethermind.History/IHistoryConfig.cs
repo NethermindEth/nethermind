@@ -34,6 +34,11 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "2")]
     uint PruningTimeoutSeconds { get; set; }
 
+    [ConfigItem(
+        Description = "Whether to run a one-time, store-wide compaction of the blocks database after any enabled pruning mode reclaims history, reclaiming stale RocksDB blob files that pruning alone leaves behind. Expensive: heavy I/O that can take hours on a large database, so it runs only once.",
+        DefaultValue = "false")]
+    bool CompactBlocksOnPrune { get; set; }
+
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler
     bool Enabled() => Pruning != PruningModes.Disabled;

@@ -1822,6 +1822,83 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return true;
     }
 
+    // Age cutoff 1.0 makes every blob file a GC candidate and force threshold 0.0 relocates their live values into
+    // fresh blob files, so the forced-bottommost rewrite can drop every stale blob file - a surviving key pinning the
+    // oldest one otherwise keeps all newer unreferenced files alive.
+    private static readonly Dictionary<string, string> BlobGarbageCollectionOptions = new()
+    {
+        { "enable_blob_files", "true" },
+        { "enable_blob_garbage_collection", "true" },
+        { "blob_garbage_collection_age_cutoff", "1.0" },
+        { "blob_garbage_collection_force_threshold", "0.0" },
+    };
+
+    // Blob garbage collection back to its RocksDB defaults. The blob-file-enable state is deliberately not reset
+    // here: it is restored through the tune state machine so _currentTune stays consistent with the live options.
+    private static readonly Dictionary<string, string> BlobGarbageCollectionDisableOptions = new()
+    {
+        { "enable_blob_garbage_collection", "false" },
+        { "blob_garbage_collection_age_cutoff", "0.25" },
+        { "blob_garbage_collection_force_threshold", "1.0" },
+    };
+
+    /// <inheritdoc/>
+    public virtual bool CompactReclaimingBlobFiles()
+    {
+        // A store with no blob files has nothing for the rewrite to reclaim, so skip hours of pointless I/O - but
+        // still report it ran, so the one-shot caller marks it done rather than re-attempting it every start. When
+        // the property is unavailable the rewrite runs rather than silently skip the feature.
+        if (!HasBlobFiles())
+        {
+            if (_logger.IsInfo) _logger.Info($"Skipping blob-file compaction of {Name}: it holds no blob files to reclaim.");
+            return true;
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Compacting {Name} with blob garbage collection to retire stale blob files. This runs until done and aborts cleanly on shutdown.");
+
+        ITunableDb.TuneType tuneToRestore = _currentTune;
+
+        ApplyOptions(BlobGarbageCollectionOptions);
+        try
+        {
+            CompactOpenRange(cf: null, forceBottommost: true);
+        }
+        finally
+        {
+            RestoreOptionsAfterBlobGarbageCollection(tuneToRestore);
+        }
+
+        return true;
+    }
+
+    private bool HasBlobFiles()
+    {
+        string? numBlobFiles = _db.GetProperty("rocksdb.num-blob-files");
+        return !long.TryParse(numBlobFiles, out long count) || count > 0;
+    }
+
+    /// <summary>Puts blob garbage collection back to its defaults and re-applies the tune the database carried
+    /// before the compaction, so <c>_currentTune</c> stays consistent with the live blob-file options and a later
+    /// <see cref="Tune"/> to the same type is not short-circuited into leaving them unset.</summary>
+    /// <remarks>The transient <see cref="ApplyOptions"/> above left <c>_currentTune</c> untouched, so it is nudged
+    /// off the target first to defeat <see cref="Tune"/>'s no-op guard. A failing restore is logged, not thrown:
+    /// the database stays usable, only its compaction options may differ until the next restart.</remarks>
+    private void RestoreOptionsAfterBlobGarbageCollection(ITunableDb.TuneType tuneToRestore)
+    {
+        try
+        {
+            ApplyOptions(BlobGarbageCollectionDisableOptions);
+            _currentTune = tuneToRestore == ITunableDb.TuneType.Default
+                ? ITunableDb.TuneType.EnableBlobFiles
+                : ITunableDb.TuneType.Default;
+            Tune(tuneToRestore);
+        }
+        catch (RocksDbException e)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to restore {Name} options after blob-file compaction; the database stays usable but its compaction options may differ until restart.", e);
+        }
+    }
+
     /// <inheritdoc/>
     public virtual void InterruptCompactions() => _db.DisableManualCompaction();
 

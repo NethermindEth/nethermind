@@ -415,6 +415,110 @@ public class HistoryPrunerTests
         CheckOldestAndCutoff(expectedPruneBelow, finalCutoff, historyPruner);
     }
 
+    [Test]
+    public async Task Blob_compaction_runs_once_when_enabled_and_a_pass_reclaimed([Values] bool compactBlocksOnPrune)
+    {
+        const int blocks = 100;
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0, CompactBlocksOnPrune = compactBlocksOnPrune };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb blocksDb);
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        blocksDb.Received(compactBlocksOnPrune ? 1 : 0).CompactReclaimingBlobFiles();
+    }
+
+    [Test]
+    public async Task Blob_compaction_does_not_repeat_once_its_marker_is_persisted()
+    {
+        const int blocks = 100;
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb blocksDb);
+        // A completed compaction (returns true) is what persists the marker.
+        blocksDb.CompactReclaimingBlobFiles().Returns(true);
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        // Advance the cutoff so a second pass reclaims more heights; the one-shot marker must still block it.
+        historyConfig.RetentionEpochs = 0;
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        blocksDb.Received(1).CompactReclaimingBlobFiles();
+    }
+
+    [Test]
+    public async Task Blob_compaction_does_not_rerun_for_a_fresh_instance_that_reloaded_a_persisted_marker()
+    {
+        const int blocks = 100;
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        // First instance completes the compaction and persists the marker to the shared metadata store.
+        HistoryPruner first = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb firstBlocksDb);
+        firstBlocksDb.CompactReclaimingBlobFiles().Returns(true);
+        first.TryPruneHistory(CancellationToken.None);
+        firstBlocksDb.Received(1).CompactReclaimingBlobFiles();
+
+        // A fresh instance reloads the persisted marker on its first pass, so even with more history to reclaim
+        // (lowered retention) it must not repeat the one-shot. This exercises the KeyExists reload path a reused
+        // instance never does.
+        historyConfig.RetentionEpochs = 0;
+        HistoryPruner restarted = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb restartedBlocksDb);
+        restarted.TryPruneHistory(CancellationToken.None);
+
+        restartedBlocksDb.DidNotReceive().CompactReclaimingBlobFiles();
+    }
+
+    [Test]
+    public async Task Blob_compaction_runs_after_a_completed_reclaim_even_when_the_pass_token_is_already_spent()
+    {
+        // The one-shot is governed by process exit, not the per-pass timeout. A pass that arrives with its budget
+        // already spent still reclaims the remaining heights in one chunk, so the compaction must still run. On the
+        // pre-fix code the trigger sat in a finally gated on an un-cancelled pass token: this pass skipped it, and
+        // because the reclaim cursor had then caught up to the boundary, no later pass re-entered the trigger either
+        // - the interrupt-leaves-it-unrun gap. An unset marker is left behind, so the run is still owed.
+        const int blocks = 100;
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb blocksDb);
+        blocksDb.CompactReclaimingBlobFiles().Returns(true);
+        pruner.TryPruneHistory(new CancellationToken(canceled: true));
+
+        blocksDb.Received(1).CompactReclaimingBlobFiles();
+    }
+
+    private static HistoryPruner CreatePrunerWithSpyBlocksDb(BasicTestBlockchain testBlockchain, IHistoryConfig historyConfig, out IDb blocksDb)
+    {
+        // Reuses the blockchain's real stores so a pass actually reclaims, but swaps the pruner's blocks DB for a
+        // substitute. The pruner deletes blocks through the block tree, not this handle, so the reclaim is unaffected
+        // while the one-shot compaction call becomes observable.
+        IDbProvider realDbProvider = testBlockchain.Container.Resolve<IDbProvider>();
+        blocksDb = Substitute.For<IDb>();
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.BlocksDb.Returns(blocksDb);
+        dbProvider.MetadataDb.Returns(realDbProvider.MetadataDb);
+        dbProvider.ReceiptsDb.Returns(realDbProvider.ReceiptsDb);
+
+        return new HistoryPruner(
+            testBlockchain.Container.Resolve<IBlockTree>(),
+            testBlockchain.Container.Resolve<IReceiptStorage>(),
+            testBlockchain.Container.Resolve<IBlockAccessListStore>(),
+            testBlockchain.Container.Resolve<ISpecProvider>(),
+            testBlockchain.Container.Resolve<IChainLevelInfoRepository>(),
+            testBlockchain.Container.Resolve<IHeaderStore>(),
+            dbProvider,
+            historyConfig,
+            testBlockchain.Container.Resolve<IBlocksConfig>(),
+            testBlockchain.Container.Resolve<ISyncConfig>(),
+            testBlockchain.Container.Resolve<IProcessExitSource>(),
+            testBlockchain.Container.Resolve<IBackgroundTaskScheduler>(),
+            testBlockchain.Container.Resolve<IBlockProcessingQueue>(),
+            testBlockchain.Container.Resolve<IPrunedReceiptRetention>(),
+            testBlockchain.Container.Resolve<ILogManager>());
+    }
+
     [TestCase(0UL, 0UL)]
     [TestCase(1UL, 32UL)]
     [TestCase(33024UL, 1_056_768UL)]

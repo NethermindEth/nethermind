@@ -60,6 +60,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IPrunedReceiptRetention _receiptRetention;
     private readonly bool _enabled;
     private readonly bool _balPruningOnly;
+    private readonly bool _compactBlocksOnPrune;
     private readonly ulong _pruningInterval;
     private readonly ulong _minHistoryRetentionEpochs;
     private readonly ulong _minBalRetentionEpochs;
@@ -95,6 +96,8 @@ public class HistoryPruner : IHistoryPruner
     private volatile BlockHeader? _oldestBlockHeader;
     private volatile bool _hasLoadedDeletePointers;
     private bool _hasLoadedBalsDeletePointer;
+    // One-shot: once a blob-reclaiming compaction completes it is persisted and never repeated for the DB's life.
+    private bool _blobCompactionDone;
     private volatile bool _stampsValidated;
     // Consumed under _pruneLock after an eligible pass; the lock-free read only decides whether to enter the lock.
     private int _initialPruningPassPending = 1;
@@ -134,6 +137,7 @@ public class HistoryPruner : IHistoryPruner
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
+        _compactBlocksOnPrune = historyConfig.CompactBlocksOnPrune;
         _balPruningOnly = !_enabled
             && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
@@ -680,7 +684,15 @@ public class HistoryPruner : IHistoryPruner
         // Chases the published boundary, not the cutoff: they part company the moment a pass is interrupted.
         ulong limit = ulong.Min(_blocksDeletePointer, _blockTree.SyncPivot.BlockNumber);
         ulong start = ulong.Max(_blocksReclaimCursor, _minDeletableBlockNumber);
-        if (start >= limit) return;
+        if (start >= limit)
+        {
+            // The reclaim cursor has already caught up to the boundary, so the loop below never runs and no later
+            // pass would re-enter it. The one-shot blob compaction still owes a run if it never completed - e.g. a
+            // process exit aborted it after the cursor had reached here - so it is evaluated on this path too, not
+            // only after a pass that reclaimed.
+            TryCompactBlocksReclaimingBlobFiles();
+            return;
+        }
 
         ulong reclaimed = 0;
         try
@@ -728,6 +740,51 @@ public class HistoryPruner : IHistoryPruner
                 _logger.Info($"Completed block pruning up to #{_blocksDeletePointer}. Reclaimed {reclaimed} heights.");
             }
         }
+
+        // Success path only - an interrupted reclaim returns from inside the loop above and never reaches here, so
+        // the hours-long rewrite is not launched over a half-pruned database, nor from a finally that would mask a
+        // mid-reclaim exception. The cursor has reached the boundary, so the stale blob files can be retired.
+        TryCompactBlocksReclaimingBlobFiles();
+    }
+
+    private void TryCompactBlocksReclaimingBlobFiles()
+    {
+        if (!_compactBlocksOnPrune || _blobCompactionDone || _processExitSource.Token.IsCancellationRequested) return;
+        CompactBlocksReclaimingBlobFiles();
+    }
+
+    /// <summary>Runs once, after pruning has reclaimed history, the store-wide blocks-database compaction that
+    /// retires the stale RocksDB blob files a plain range reclaim cannot free while a surviving key still
+    /// references the oldest blob file. Persists a marker on completion so it never repeats.</summary>
+    /// <remarks>Gated behind <see cref="IHistoryConfig.CompactBlocksOnPrune"/> because it is expensive: it rewrites
+    /// the whole blocks database and can take hours, during which it holds the pruning lock and occupies its
+    /// background worker, so history pruning pauses and background throughput dips for that one-time window. It is
+    /// interruptible by process exit only - never by the per-pass timeout token. A process-exit abort deliberately
+    /// leaves the marker unset, and because the trigger is re-evaluated even once the reclaim cursor has caught up
+    /// to the boundary, an interrupted run is retried on a later pass or the next start.</remarks>
+    private void CompactBlocksReclaimingBlobFiles()
+    {
+        long startTimestamp = Stopwatch.GetTimestamp();
+        if (_logger.IsInfo) _logger.Info("Compacting the blocks database to reclaim stale blob files left by history pruning. This is a one-time operation that may take hours, during which history pruning is paused.");
+
+        bool ran;
+        using (_processExitSource.Token.Register(static db => ((IDb)db!).InterruptCompactions(), _blocksDb))
+        {
+            ran = _blocksDb.CompactReclaimingBlobFiles();
+        }
+
+        // A handle that declined (the default IDb implementation, or a store that did not run it) must not have the
+        // one-shot marked permanently done without having run.
+        if (!ran) return;
+
+        // Only a genuine completion is recorded: a process-exit interrupt aborts the rewrite mid-way, and marking
+        // it done then would skip the reclaim forever.
+        if (_processExitSource.Token.IsCancellationRequested) return;
+
+        _blobCompactionDone = true;
+        _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionDone, [1]);
+
+        if (_logger.IsInfo) _logger.Info($"Completed the blocks database blob-file compaction in {Stopwatch.GetElapsedTime(startTimestamp)}.");
     }
 
     /// <summary>Reclaims <c>[from, to)</c> except the heights still answered for, and returns the
@@ -1172,6 +1229,8 @@ public class HistoryPruner : IHistoryPruner
         // Loaded here rather than lazily in the sweep, because ShouldPruneHistory has to see it: a sweep left
         // half-finished is work owed, and if nothing else were owed the pass would never run to notice.
         LoadTxIndexSweepCursor();
+
+        _blobCompactionDone = _metadataDb.KeyExists(MetadataDbKeys.HistoryPruningBlobCompactionDone);
 
         _hasLoadedDeletePointers = true;
         if (_logger.IsDebug) _logger.Debug($"Discovered oldest block stored #{_blocksDeletePointer}, oldest BAL stored #{_balsDeletePointer}.");

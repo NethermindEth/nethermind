@@ -1167,12 +1167,65 @@ namespace Nethermind.Db.Test
                 "the exclusive bound is not in the range, so neither the tombstone nor the unlink may take it");
         }
 
+        [Test]
+        public void CompactReclaimingBlobFiles_RetiresBlobFilesAPinnedKeyKeptAlive_WithoutInliningTheRetainedValuesIntoSst()
+        {
+            // Blob mode with tiny thresholds, auto-compaction off so a ranged reclaim cannot free what a forced
+            // bottommost compaction with blob GC must. The factory must be built over the SAME config, or the
+            // options never reach the database and the test silently runs without blob files.
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
+            };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+
+            const int heights = 500;
+            const int retained = 50; // the pinned bottom region; height 1 references the oldest blob file
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+
+            long sstBefore = SstBytes(DbPath);
+            long blobBefore = BlobBytes(DbPath);
+            Assert.That(blobBefore, Is.GreaterThan(0), "blob mode must actually be engaged - values of 4096 bytes belong in blob files, not SST");
+
+            db.RemoveRange(BlockKey((ulong)retained, 0x00), BlockKey(heights, 0x00));
+            db.ReclaimRange(BlockKey((ulong)retained, 0x00), BlockKey(heights, 0x00));
+            long blobAfterReclaim = BlobBytes(DbPath);
+
+            bool compacted = db.CompactReclaimingBlobFiles();
+            long sstAfter = SstBytes(DbPath);
+            long blobAfter = BlobBytes(DbPath);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(blobAfterReclaim, Is.GreaterThan(blobBefore / 2),
+                    "a ranged reclaim cannot retire the newer blob files while a surviving key still references the oldest one");
+                Assert.That(sstAfter + blobAfter, Is.LessThan((sstBefore + blobBefore) / 2),
+                    "the one-shot blob-GC compaction must give the disk back now that only the pinned region survives");
+                // R3: the retained values must be relocated into fresh blob files, never inlined into SST.
+                Assert.That(blobAfter, Is.GreaterThan(sstAfter),
+                    "the retained values stay in blob files - inlining them into SST would bloat SST by the whole retained dataset");
+                Assert.That(sstAfter, Is.LessThan(blobBefore / 2),
+                    "SST must not balloon with the retained values the blob GC relocated");
+                Assert.That(GetValue(db, BlockKey(1, 0x00)), Is.Not.Null, "the pinned bottom key must still read back");
+                Assert.That(GetValue(db, BlockKey(heights / 2, 0x00)), Is.Null, "a removed key must be gone");
+            }
+        }
+
         private static int SstFileCount(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
             .Count();
 
         private static long SstBytes(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
+            .Sum(file => new FileInfo(file).Length);
+
+        private static long BlobBytes(string dbPath) => Directory
+            .EnumerateFiles(dbPath, "*.blob", SearchOption.AllDirectories)
             .Sum(file => new FileInfo(file).Length);
 
         private static byte[] BlockKey(ulong blockNumber, byte hashTag)
