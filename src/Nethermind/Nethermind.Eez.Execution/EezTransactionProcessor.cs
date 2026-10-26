@@ -91,7 +91,8 @@ public sealed class EezTransactionProcessor(
         in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice,
         in UInt256 blobBaseFee, int statusCode)
     {
-        if (statusCode == StatusCode.Success && spec.FeeCollector is { } collector && !spec.IsEip8037Enabled && substate.DestroyListContains(collector))
+        if (!rules.UsesNativeSystemTransactions && statusCode == StatusCode.Success && spec.FeeCollector is { } collector &&
+            !spec.IsEip8037Enabled && substate.DestroyListContains(collector))
         {
             if (!ReferenceEquals(_feeSpecSource, spec))
             {
