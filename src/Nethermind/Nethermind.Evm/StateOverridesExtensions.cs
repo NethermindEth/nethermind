@@ -54,7 +54,7 @@ public static class StateOverridesExtensions
 
     /// <summary>Applies <paramref name="overrides"/> to <paramref name="state"/> and commits them.</summary>
     /// <remarks>
-    /// With <paramref name="merkleize"/> unset, the commit leaves storage roots, the trie at <paramref name="blockNumber"/>
+    /// With <paramref name="merkleize"/> set to <c>false</c>, the commit leaves storage roots, the trie at <paramref name="blockNumber"/>
     /// and the state root alone. The overrides are then visible only through <paramref name="state"/>, which suits a call
     /// that reads the overridden state and never resolves it through a root.
     /// </remarks>
