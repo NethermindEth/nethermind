@@ -744,7 +744,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
                 Assert.That((string?)json["error"]?["message"], Is.EqualTo(method == "debug_traceBlockByNumber"
-                    ? $"block #{blockNumber} not found" : $"Cannot find header for block hash: {selector}"), response);
+                    ? $"block #{blockNumber} not found" : $"block {selector} not found"), response);
             }
             return;
         }
@@ -2502,7 +2502,7 @@ public partial class DebugRpcModuleTests
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
 
-    [TestCase("debug_traceBlock", -32000)]
+    [TestCase("debug_traceBlock", -32602)]
     [TestCase("debug_traceBlockByNumber", -32000)]
     [TestCase("debug_traceBlockByHash", -32000)]
     public async Task Debug_traceBlock_routes_reject_malformed_timeout_before_stream_commit(string method, int expectedCode)
