@@ -210,9 +210,9 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace)
+    public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace, [Values] bool disableStorage)
     {
-        RecordingPrestateTracer tracer = new(TestState);
+        RecordingPrestateTracer tracer = new(TestState, disableStorage);
         using ITxTracer executionTracer = new CancellationTxTracer(new CompositeTxTracer(
             tracer, fullTrace ? new FullInstructionTracer() : NullTxTracer.Instance));
         byte[] code = Prepare.EvmCode
@@ -221,6 +221,11 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             .Op(Instruction.ADD)
             .PushData(0)
             .Op(Instruction.SLOAD)
+            .PushData(7)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .PushData(TestItem.AddressC)
+            .Op(Instruction.BALANCE)
             .Op(Instruction.STOP)
             .Done;
 
@@ -228,22 +233,26 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.Operations, Does.Contain(Instruction.SLOAD));
+            Assert.That(tracer.Operations.Contains(Instruction.SLOAD), Is.EqualTo(fullTrace || !disableStorage));
+            Assert.That(tracer.Operations.Contains(Instruction.SSTORE), Is.EqualTo(fullTrace || !disableStorage));
+            Assert.That(tracer.Operations, Does.Contain(Instruction.BALANCE), "account reads must remain selected when storage capture is disabled");
             Assert.That(tracer.Operations.Contains(Instruction.ADD), Is.EqualTo(fullTrace));
             Assert.That(tracer.Error, Is.Null);
         }
     }
 
     [Test]
-    public void Execute_WhenExcludedOpcodeFails_ReportsTheError()
+    public void Execute_WhenOpcodeFails_ReportsTheError(
+        [Values(Instruction.ADD, Instruction.SLOAD, Instruction.SSTORE)] Instruction opcode,
+        [Values] bool disableStorage)
     {
-        using RecordingPrestateTracer tracer = new(TestState);
+        using RecordingPrestateTracer tracer = new(TestState, disableStorage);
 
-        Execute(tracer, Prepare.EvmCode.Op(Instruction.ADD).Done, MainnetSpecProvider.CancunActivation);
+        Execute(tracer, Prepare.EvmCode.Op(opcode).Done, MainnetSpecProvider.CancunActivation);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.Operations, Does.Not.Contain(Instruction.ADD));
+            Assert.That(tracer.Operations.Contains(opcode), Is.EqualTo(opcode != Instruction.ADD && !disableStorage));
             Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.StackUnderflow));
         }
     }
@@ -1450,8 +1459,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         public override bool IsTracingInstructions => true;
     }
 
-    private sealed class RecordingPrestateTracer(IWorldState worldState)
-        : NativePrestateTracer(worldState, GetGethTraceOptions(), Hash256.Zero, TestItem.AddressA, TestItem.AddressB)
+    private sealed class RecordingPrestateTracer(IWorldState worldState, bool disableStorage = false)
+        : NativePrestateTracer(worldState, GetGethTraceOptions(JsonSerializer.Serialize(new { disableStorage })), Hash256.Zero, TestItem.AddressA, TestItem.AddressB)
     {
         public List<Instruction> Operations { get; } = [];
         public EvmExceptionType? Error { get; private set; }
