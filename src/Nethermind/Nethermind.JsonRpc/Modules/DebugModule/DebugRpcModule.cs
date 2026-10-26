@@ -765,7 +765,8 @@ public class DebugRpcModule(
         Transaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
-            return ResultWrapper<ArrayPoolList<byte>>.Success(null);
+            // execution-apis types the result as bytes with no not-found null, so an unknown transaction is empty bytes.
+            return ResultWrapper<ArrayPoolList<byte>>.Success(ArrayPoolList<byte>.Empty());
         }
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
@@ -850,13 +851,21 @@ public class DebugRpcModule(
 
     public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
     {
-        Block? block = debugBridge.GetBlock(blockParameter);
-        if (block is null || block.BlockAccessListHash is null)
+        // The access list is stored apart from the body, so a block whose body expired can still serve it,
+        // and a pre-Amsterdam one stays -32001 rather than 4444.
+        SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError && searchResult.Error != BlockFinderExtensions.HeaderNotFound)
+        {
+            return ResultWrapper<OwnedByteMemory>.Fail(searchResult);
+        }
+
+        BlockHeader? header = searchResult.Object;
+        if (header?.BlockAccessListHash is null)
         {
             return ResultWrapper<OwnedByteMemory>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
         }
 
-        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Number, block.Hash);
+        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(header.Number, header.Hash!);
 
         return balRlp is null
             ? ResultWrapper<OwnedByteMemory>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)

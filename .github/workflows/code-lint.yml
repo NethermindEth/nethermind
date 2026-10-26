@@ -142,7 +142,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
 
-      # fetch-artifacts.sh is the only gate between a frame-verify-gas release and the tar members
+      # The verifier artifact fetcher is the only gate between a frame-verify-gas release and the tar members
       # extracted on the shared benchmark runner, so its suite must run on every change.
       - name: Run the fetch-artifacts test suite
         run: dotnet run --file scripts/ci/RunScriptTests.cs -- scripts/frame-verify-gas
