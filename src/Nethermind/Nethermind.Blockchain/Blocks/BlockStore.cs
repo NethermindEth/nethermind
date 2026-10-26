@@ -4,7 +4,11 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -212,8 +216,8 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
-        memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = ReadRecoveryBlockMemory(keyWithBlockNumber);
+        memoryOwner ??= ReadRecoveryBlockMemory(blockHash.Bytes);
         if (memoryOwner is null) return null;
 
         ReceiptRecoveryBlock? block = null;
@@ -225,6 +229,55 @@ public class BlockStore : IBlockStore, IClearableCache
         finally
         {
             if (block is null) ((IMemoryOwner<byte>)memoryOwner).Dispose();
+        }
+    }
+
+    private MemoryManager<byte>? ReadRecoveryBlockMemory(ReadOnlySpan<byte> key)
+    {
+        if (_blockDb is not IReadOnlyNativeKeyValueStore native) return _blockDb.GetOwnedMemory(key);
+
+        ReadOnlySpan<byte> bytes = native.GetNativeSlice(key, out nint handle);
+        try
+        {
+            if (bytes.IsEmpty) return null;
+            if (handle == 0) return ArrayMemoryManager.From(bytes.ToArray());
+
+            PinnedBlockMemory owner = new(native, handle, bytes);
+            handle = 0;
+            return owner;
+        }
+        finally
+        {
+            if (handle != 0) native.DangerousReleaseHandle(handle);
+        }
+    }
+
+    // Only the recovery decoder reads this memory; a nonzero native lease keeps the pointer valid until disposal.
+    private sealed unsafe class PinnedBlockMemory(IReadOnlyNativeKeyValueStore db, nint handle, ReadOnlySpan<byte> bytes) : MemoryManager<byte>
+    {
+        private nint _handle = handle;
+        private readonly byte* _pointer = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(bytes));
+        private readonly int _length = bytes.Length;
+
+        public override Span<byte> GetSpan()
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _handle) == 0, this);
+            return new Span<byte>(_pointer, _length);
+        }
+
+        public override MemoryHandle Pin(int elementIndex = 0)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _handle) == 0, this);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)_length);
+            return new MemoryHandle(_pointer + elementIndex);
+        }
+
+        public override void Unpin() { }
+
+        protected override void Dispose(bool disposing)
+        {
+            nint released = Interlocked.Exchange(ref _handle, 0);
+            if (released != 0) db.DangerousReleaseHandle(released);
         }
     }
 
