@@ -184,7 +184,7 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["cf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x1036640"]""",
-            "invalid argument 0: hex string without 0x prefix",
+            "invalid argument 0: json: cannot unmarshal hex string without 0x prefix into Go value of type common.Address",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("Address without 0x prefix");
         yield return new TestCaseData(
@@ -252,6 +252,24 @@ public class JsonRpcServiceTests
             yield return new TestCaseData(method, $"""["{block}","0xzz"]""",
                 "invalid argument 1: json: cannot unmarshal invalid hex string into Go value of type hexutil.Uint").SetName($"Non-hex position index in {method}");
         }
+        foreach ((string flag, string kind) in new[] { ("1", "number"), ("{}", "object"), ("[]", "array") })
+        {
+            yield return new TestCaseData("eth_getBlockByNumber", $"""["0x10",{flag}]""",
+                $"invalid argument 1: json: cannot unmarshal {kind} into Go value of type bool").SetName($"Full transactions flag as {kind}");
+        }
+        foreach ((string index, string reason) in new[] { ("5", "non-string"), ("\"0x\"", "hex string \"0x\""), ("\"zz\"", "hex string without 0x prefix") })
+        {
+            yield return new TestCaseData("eth_getTransactionByBlockNumberAndIndex", $"""["0x10",{index}]""",
+                $"invalid argument 1: json: cannot unmarshal {reason} into Go value of type hexutil.Uint").SetName($"Position index rejected as {reason}");
+        }
+        yield return new TestCaseData("eth_getBlockByHash", $"""["{fullHash[..^1]}",false]""",
+            "invalid argument 0: json: cannot unmarshal hex string of odd length into Go value of type common.Hash").SetName("Odd-length block hash");
+        yield return new TestCaseData("eth_getBlockByNumber", $"""["0x{new string('1', 65)}",false]""",
+            "invalid argument 0: hex number > 64 bits").SetName("Block number of 65 digits");
+        yield return new TestCaseData("eth_getLogs", """[{"fromBlock":"0x1","toBlock":"0x2","address":[null]}]""",
+            "invalid argument 0: non-string address at index 0").SetName("Non-string log filter address");
+        yield return new TestCaseData("eth_getLogs", """[{"fromBlock":"0x1","toBlock":"0x2","topics":[[true]]}]""",
+            "invalid argument 0: invalid topic(s)").SetName("Non-string log filter topic");
         yield return new TestCaseData("eth_getBlockByHash", $"""["{fullHash}","full"]""",
             "invalid argument 1: json: cannot unmarshal string into Go value of type bool").SetName("Non-boolean full transactions flag by hash");
         yield return new TestCaseData("eth_getBalance", $"""["{shortAddress}","latest"]""",

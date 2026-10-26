@@ -21,9 +21,12 @@ internal sealed class PositionIndexConverter : JsonConverter<UInt256>
         {
             return GetRegisteredConverter().Read(ref reader, typeToConvert, options);
         }
-        catch (FormatException e)
+        catch (Exception e) when (e is FormatException or JsonException)
         {
-            string reason = e is IExceptionWithSafePublicMessage ? e.Message : "invalid hex string";
+            string reason = reader.TokenType != JsonTokenType.String ? "non-string"
+                : reader.GetString() is not { } value || !value.StartsWith("0x", StringComparison.Ordinal) ? "hex string without 0x prefix"
+                : value.Length == 2 ? "hex string \"0x\""
+                : e is IExceptionWithSafePublicMessage ? e.Message : "invalid hex string";
             throw new SafePublicMessageFormatException($"json: cannot unmarshal {reason} into Go value of type hexutil.Uint", e);
         }
     }

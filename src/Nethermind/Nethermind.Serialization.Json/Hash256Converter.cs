@@ -26,12 +26,21 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
         JsonSerializerOptions options)
     {
         Span<byte> bytes = stackalloc byte[Hash256.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        byte[]? bytesArray;
+        try
         {
-            return new Hash256(bytes);
+            if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+            {
+                return new Hash256(bytes);
+            }
+
+            bytesArray = ByteArrayConverter.ConvertData(ref reader, _strictHexFormat);
+        }
+        catch (FormatException e)
+        {
+            throw new SafePublicMessageFormatException($"json: cannot unmarshal {e.Message} into Go value of type common.Hash", e);
         }
 
-        byte[]? bytesArray = ByteArrayConverter.ConvertData(ref reader, _strictHexFormat);
         return bytesArray switch
         {
             null => null,

@@ -107,7 +107,7 @@ public class FrameTransactionForRpcTests
     }
 
     [TestCase("0x12", typeof(SafePublicMessageFormatException))]
-    [TestCase("0xzz", typeof(FormatException))]
+    [TestCase("0xzz", typeof(SafePublicMessageFormatException))]
     public void FrameSignature_RejectsMalformedSigner(string signer, Type expectedException)
     {
         string json = $"{{\"scheme\":1,\"signer\":\"{signer}\"}}";

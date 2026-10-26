@@ -117,6 +117,11 @@ public class Filter : IJsonRpcParam
                 int index = 0;
                 foreach (JsonElement element in token.EnumerateArray())
                 {
+                    if (element.ValueKind != JsonValueKind.String)
+                    {
+                        throw new SafePublicMessageFormatException($"non-string address at index {index}");
+                    }
+
                     result.Add(new(ParseAddress(element, index++)));
                 }
 
@@ -162,7 +167,12 @@ public class Filter : IJsonRpcParam
                     int i = 0;
                     foreach (JsonElement element in token.EnumerateArray())
                     {
-                        result[i++] = ParseHash(element);
+                        result[i++] = element.ValueKind switch
+                        {
+                            JsonValueKind.String => ParseHash(element),
+                            JsonValueKind.Null => throw new ArgumentException("null topic in a topic list"),
+                            _ => throw new SafePublicMessageFormatException("invalid topic(s)")
+                        };
                     }
 
                     topics[slotIndex++] = result;

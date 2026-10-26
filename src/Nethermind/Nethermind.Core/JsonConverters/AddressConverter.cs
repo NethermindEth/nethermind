@@ -27,12 +27,21 @@ public class AddressConverter(bool strictHexFormat = false) : JsonConverter<Addr
     internal static Address? ReadAddress(ref Utf8JsonReader reader, bool strictHexFormat = false)
     {
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat))
+        byte[]? addressBytes;
+        try
         {
-            return new Address(bytes);
+            if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat))
+            {
+                return new Address(bytes);
+            }
+
+            addressBytes = ByteArrayConverter.ConvertData(ref reader, strictHexFormat);
+        }
+        catch (FormatException e)
+        {
+            throw new SafePublicMessageFormatException($"json: cannot unmarshal {e.Message} into Go value of type common.Address", e);
         }
 
-        byte[]? addressBytes = ByteArrayConverter.ConvertData(ref reader, strictHexFormat);
         return addressBytes switch
         {
             null => null,
