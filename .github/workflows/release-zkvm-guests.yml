@@ -58,7 +58,6 @@ jobs:
           version=$version_prefix${version_suffix:+-$version_suffix}
           echo "Detected version $version"
           echo "version=$version" >> $GITHUB_OUTPUT
-          echo "commit=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
 
       - name: Generate verification keys and sign
         id: sign
@@ -85,7 +84,7 @@ jobs:
             # The zkVM version is the tag of the image the guest is run with
             zkvm_version=$(sed -n 's/^[A-Z0-9]*_IMAGE ?= [^:]*:v\{0,1\}\([^@]*\)@.*/\1/p' \
               "../src/Nethermind/Nethermind.Stateless.${guests[$vm]}Guest/Makefile")
-            name=nethermind-guest-${{ steps.version.outputs.version }}-${{ steps.version.outputs.commit }}-$vm-${zkvm_version:?}
+            name=stateless-validator-nethermind-$vm-v${zkvm_version:?}
             digests+="- **${names[$vm]} $zkvm_version**"$'\n'"  - ELF: \`$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)\`"$'\n'
 
             # ere-server's OpenVM rejects the guest's entrypoint, so that guest gets no VK. It

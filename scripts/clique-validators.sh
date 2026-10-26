@@ -193,10 +193,10 @@ cat <<EOF >> docker-compose.yml
     node_$1:
         image: $docker_image
         container_name: node_$1
-        command: --config config
+        command: --config /config/config.json
         volumes:
             - ./genesis:/config/genesis
-            - ./node_$1/configs/config.json:/nethermind/configs/config.json
+            - ./node_$1/configs/config.json:/config/config.json
             - ./static-nodes.json:/nethermind/Data/static-nodes.json
             - ./node_$1/db/clique:/nethermind/nethermind_db/clique
             - ./node_$1/keystore:/nethermind/keystore
