@@ -603,20 +603,13 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    private sealed class TransactionOptionsTracer : GethLikeNativeTxTracer
+    private sealed class TransactionOptionsTracer(GethTraceOptions options, Hash256 transactionHash) : GethLikeNativeTxTracer(options)
     {
-        private readonly Hash256 _transactionHash;
-        private readonly Hash256? _optionsTxHash;
-
-        public TransactionOptionsTracer(GethTraceOptions options, Hash256 transactionHash) : base(options)
-        {
-            _transactionHash = transactionHash;
-            _optionsTxHash = options.TxHash;
-        }
+        private readonly Hash256? _optionsTxHash = options.TxHash;
 
         public override GethLikeTxTrace BuildResult() => new()
         {
-            TxHash = _transactionHash,
+            TxHash = transactionHash,
             ReturnValue = _optionsTxHash is { } hash ? hash.Bytes.ToArray() : []
         };
     }
