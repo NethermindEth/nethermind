@@ -212,7 +212,9 @@ public class ExecutionProcessorTests
     public void ShouldProcessExecutionRequests([Values(0, 1, 3)] int depositCount)
     {
         TxReceipt[] txReceipts = [
-            Build.A.Receipt.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject).TestObject,
+            Build.A.Receipt.WithLogs(
+                Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash).TestObject,
+                Build.A.LogEntry.WithAddress(DepositContractAddress).TestObject).TestObject,
             Build.A.Receipt.WithLogs(_executionDepositRequests.Take(depositCount)
                 .Select(request => CreateLogEntry(request.RequestDataParts)).ToArray()).TestObject
         ];
