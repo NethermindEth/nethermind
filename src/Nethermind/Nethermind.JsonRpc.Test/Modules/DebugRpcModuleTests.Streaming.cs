@@ -358,7 +358,7 @@ public partial class DebugRpcModuleTests
         if (collectionOwnsTraces)
         {
             DisposableResettableList<GethLikeTxTrace> owner = [];
-            owner.AddRange(entries);
+            foreach (GethLikeTxTrace entry in entries) owner.Add(entry);
             traces = owner;
         }
         else

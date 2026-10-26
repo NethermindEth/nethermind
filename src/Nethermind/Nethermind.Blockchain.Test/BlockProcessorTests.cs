@@ -883,7 +883,7 @@ public partial class BlockProcessorTests
                 int position = Array.FindIndex(block.Transactions, candidate => candidate.Hash == tx.Hash);
                 return new BlockLogIndex(position - position / 4);
             }
-            : null;
+        : null;
         Func<IWorldState, IBlockTracer<GethLikeTxTrace>> forTransactions =
             state => GethStyleTracer.CreateOptionsTracer(block.Header, options, state, chain.SpecProvider, logIndices);
         List<GethLikeTxTrace> emitted = [];
