@@ -1,15 +1,25 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
+using Nethermind.Logging;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Runner.Test.Module;
 
@@ -35,6 +45,42 @@ public class FlatWorldStateModuleTests
                 Assert.That(step.Dependencies, Does.Contain(typeof(InitializeBlockTree)));
                 Assert.That(step.Dependents, Does.Contain(typeof(InitializeBlockchain)));
             }
+        }
+    }
+
+    [Test]
+    public void File_paths_are_rooted_like_the_databases_under_a_relative_BaseDbPath()
+    {
+        string baseDbPath = $"flat-paths-{Guid.NewGuid():N}";
+        string rootedBaseDbPath = Path.Combine(PathUtils.ExecutingDirectory, baseDbPath);
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.Path.Returns(new RealFileSystem().Path);
+        FlatDbConfig flatDbConfig = new();
+        try
+        {
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new FlatWorldStateModule(flatDbConfig))
+                .AddSingleton<IFlatDbConfig>(flatDbConfig)
+                .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = baseDbPath })
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .AddSingleton<IColumnsDb<FlatDbColumns>>(new MemColumnsDb<FlatDbColumns>())
+                .AddSingleton(fileSystem)
+                .Build();
+
+            container.Resolve<ITrieNodeLog>();
+            container.Resolve<IArenaManager>();
+            container.Resolve<BlobArenaManager>();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.Exists(Path.Combine(rootedBaseDbPath, "persistedSnapshot", "arena")), "arena");
+                Assert.That(Directory.Exists(Path.Combine(rootedBaseDbPath, "persistedSnapshot", "blob")), "blob");
+            }
+            fileSystem.Directory.Received().Exists(Path.Combine(rootedBaseDbPath, "flatTrieNodeLog"));
+        }
+        finally
+        {
+            if (Directory.Exists(rootedBaseDbPath)) Directory.Delete(rootedBaseDbPath, recursive: true);
         }
     }
 }
