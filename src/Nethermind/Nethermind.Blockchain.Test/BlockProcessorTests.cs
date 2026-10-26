@@ -822,12 +822,13 @@ public partial class BlockProcessorTests
             builder.WithGenesisPostProcessor((_, state) =>
             {
                 state.CreateAccount(SharedContract, 0);
-                state.InsertCode(SharedContract,
+                byte[] code =
                 [
                     0x60, 0x01, 0x60, 0x00, 0x55,
                     0x61, 0x02, 0x00, 0x5b, 0x60, 0x01, 0x90, 0x03, 0x80, 0x60, 0x08, 0x57, 0x50,
                     0x60, 0x02, 0x60, 0x01, 0x55, 0x00,
-                ], Prague.Instance);
+                ];
+                state.InsertCode(SharedContract, code, Prague.Instance);
             }));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain, SharedContract);
@@ -911,13 +912,14 @@ public partial class BlockProcessorTests
     private static void ConfigureBatchTraceContract(ContainerBuilder builder) => builder.WithGenesisPostProcessor((block, state, specProvider) =>
     {
         if (!state.AccountExists(SharedContract)) state.CreateAccount(SharedContract, 0);
-        state.InsertCode(SharedContract,
+        byte[] code =
         [
             0x60, 0x00, 0x54, 0x60, 0x01, 0x01, 0x80, 0x60, 0x00, 0x55,
             0x60, 0x00, 0x52, 0x60, 0x2a, 0x60, 0x00, 0x60, 0x00, 0xa1,
             0x36, 0x15, 0x60, 0x1e, 0x57, 0x60, 0x20, 0x60, 0x00, 0xfd,
             0x5b, 0x60, 0x20, 0x60, 0x00, 0xf3,
-        ], specProvider.GetSpec(block.Header));
+        ];
+        state.InsertCode(SharedContract, code, specProvider.GetSpec(block.Header));
     });
 
     private static async Task<Block> AddBatchTraceBlock(BasicTestBlockchain chain, int count)
