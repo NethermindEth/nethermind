@@ -1329,42 +1329,30 @@ public partial class EngineModuleTests
         Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
 
         TaskCompletionSource processingRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource blockRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnBlockRemoved(object? sender, BlockRemovedEventArgs e)
-        {
-            if (e.BlockHash == block.Hash) blockRemoved.TrySetResult();
-        }
-
         ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingRelease = processingRelease.Task;
-        chain.BlockProcessingQueue.BlockRemoved += OnBlockRemoved;
         try
         {
-            try
+            if (suggestPending) blockTree.BlockAcceptingNewBlocks();
+            ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
+            using (Assert.EnterMultipleScope())
             {
-                if (suggestPending) blockTree.BlockAcceptingNewBlocks();
-                ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-                    Assert.That(IsMarkedProcessed(), Is.False,
-                        "processing is held until after the answer");
-                }
+                Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+                Assert.That(IsMarkedProcessed(), Is.False, "processing is held until after the answer");
             }
-            finally
-            {
-                processingRelease.TrySetResult();
-                if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
-            }
-
-            // A suggested header can be visible before its chain level; removal follows the commit.
-            await blockRemoved.Task.WaitAsync(GateTimeout);
-            Assert.That(blockTree.WasProcessed(block.Number, block.Hash!), Is.True);
         }
         finally
         {
-            chain.BlockProcessingQueue.BlockRemoved -= OnBlockRemoved;
+            processingRelease.TrySetResult();
+            if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
         }
-        // A suggest can publish its header before the chain level containing its processed flag.
+
+        using CancellationTokenSource cts = new(GateTimeout);
+        while (!IsMarkedProcessed())
+        {
+            await Task.Delay(10, cts.Token);
+        }
+
+        // A suggest still in flight has already published the header, but not yet the chain level the flag is on.
         bool IsMarkedProcessed() => blockTree.GetInfo(block.Number, block.Hash!).Info is { WasProcessed: true };
     }
 
