@@ -690,6 +690,7 @@ public static partial class EvmInstructions
         if (vmState.IsStatic) goto StaticCallViolation;
 
         IReleaseSpec spec = vm.Spec;
+        if (IsSystemContract(spec, vmState.Env.ExecutingAccount)) goto BadInstruction;
         // SETCODEFROM_SOURCE_GAS: the source account access plus a fixed source code validation charge.
         if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess)) goto OutOfGas;
 
@@ -737,7 +738,19 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
+
+    /// <summary>EIP-8298: an account the protocol calls from <c>SYSTEM_ADDRESS</c> during block processing; the EIP-6110 deposit contract is not one.</summary>
+    private static bool IsSystemContract(IReleaseSpec spec, Address address)
+        => address == spec.Eip4788ContractAddress
+        || address == spec.Eip2935ContractAddress
+        || address == spec.Eip7002ContractAddress
+        || address == spec.Eip7251ContractAddress
+        || (spec.IsEip8282Enabled
+            && (address == Eip8282Constants.BuilderDepositRequestPredeployAddress
+                || address == Eip8282Constants.BuilderExitRequestPredeployAddress));
 
     /// <summary>
     /// Implements the PREVRANDAO opcode.
