@@ -332,6 +332,7 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public List<(ValueHash256 AddrHash, Account Account)> SetAccountRawCalls { get; } = [];
     public List<(ValueHash256 FromPath, ValueHash256 ToPath)> DeleteAccountRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 FromPath, ValueHash256 ToPath)> DeleteStorageRangeCalls { get; } = [];
+    public List<(ValueHash256 FromPath, ValueHash256 ToPath)> SelfDestructRangeCalls { get; } = [];
     public List<(ValueHash256 From, ValueHash256 To)> DeleteStateTrieNodeRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 From, ValueHash256 To)> DeleteStorageTrieNodeRangeCalls { get; } = [];
     public int DisposeCount { get; private set; }
@@ -356,6 +357,9 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
 
     public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
         DeleteStorageRangeCalls.Add((addressHash, fromPath, toPath));
+
+    public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+        SelfDestructRangeCalls.Add((fromPath, toPath));
 
     public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
         DeleteStateTrieNodeRangeCalls.Add((from, to));

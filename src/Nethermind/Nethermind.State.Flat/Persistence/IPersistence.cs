@@ -120,6 +120,16 @@ public interface IPersistence
         void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
 
         /// <summary>
+        /// Does what <see cref="SelfDestruct"/> does, deleting the storage slots and storage trie nodes, for every
+        /// account whose path is within <c>[<paramref name="fromPath"/>, <paramref name="toPath"/>]</c>.
+        /// </summary>
+        /// <remarks>
+        /// Storage is keyed by the first 20 bytes of the account path, so the bounds are compared on those bytes only,
+        /// as in <see cref="DeleteAccountRange"/>.
+        /// </remarks>
+        void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+
+        /// <summary>
         /// Deletes every state trie node whose node and subtree are entirely contained within the value range
         /// <c>[<paramref name="from"/>, <paramref name="to"/>]</c> — i.e. every node at path P for which
         /// <c><paramref name="from"/> &lt;= P.ToLowerBoundPath()</c> and <c>P.ToUpperBoundPath() &lt;= <paramref name="to"/></c>.

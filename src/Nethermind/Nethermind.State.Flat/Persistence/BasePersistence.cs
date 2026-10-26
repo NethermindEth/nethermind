@@ -70,6 +70,7 @@ public static class BasePersistence
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
     private static readonly byte[] WipedForSyncKey = Keccak.Compute("WipedForSync").BytesToArray();
+    private static readonly byte[] SnapCheckpointKey = Keccak.Compute("SnapCheckpoint").BytesToArray();
 
     /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
     internal const byte SlotEncodingRaw = 0;
@@ -231,6 +232,19 @@ public static class BasePersistence
     {
         IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
         metadata.PutSpan(WipedForSyncKey, [1]);
+        metadata.Remove(SnapCheckpointKey);
+        metadata.FlushOrThrow();
+    }
+
+    /// <summary>Reads the snap sync checkpoint saved by <see cref="WriteSnapCheckpoint"/>, or <c>null</c> when there is none.</summary>
+    internal static byte[]? ReadSnapCheckpoint(IReadOnlyKeyValueStore metadata) => metadata.Get(SnapCheckpointKey) is { Length: > 0 } record ? record : null;
+
+    /// <summary>Durably saves the snap sync checkpoint, or deletes it when <paramref name="record"/> is <c>null</c>. A wipe deletes it too.</summary>
+    internal static void WriteSnapCheckpoint(IColumnsDb<FlatDbColumns> db, byte[]? record)
+    {
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        if (record is null) metadata.Remove(SnapCheckpointKey);
+        else metadata.PutSpan(SnapCheckpointKey, record);
         metadata.FlushOrThrow();
     }
 
@@ -247,6 +261,7 @@ public static class BasePersistence
             // The wipe marker precedes every delete and the state pointer reset closes the wipe, so a wipe that dies
             // midway reads back as "pointer and marker both present" and the next start redoes it.
             batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(WipedForSyncKey, [1]);
+            batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(SnapCheckpointKey);
 
             int count = 0;
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
@@ -293,38 +308,77 @@ public static class BasePersistence
     /// <summary>
     /// Scan a key range and delete all entries matching the expected key length.
     /// </summary>
+    /// <param name="flags">The batch's write flags. Without the WAL a batch commits every few hundred writes, deletes included, which bounds a long scan.</param>
     internal static void DeleteMatchingKeys(
         ISortedKeyValueStore snap,
         IWriteBatch batch,
         ReadOnlySpan<byte> firstKey,
         ReadOnlySpan<byte> lastKey,
-        int expectedKeyLength)
+        int expectedKeyLength,
+        WriteFlags flags)
     {
         using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
         while (view.MoveNext())
         {
             if (view.CurrentKey.Length == expectedKeyLength)
-                batch.Remove(view.CurrentKey);
+                batch.Set(view.CurrentKey, null, flags);
         }
     }
 
     /// <summary>
     /// Scan a key range and delete entries matching the address suffix at the given offset.
     /// </summary>
+    /// <param name="flags">The batch's write flags. Without the WAL a batch commits every few hundred writes, deletes included, which bounds a long scan.</param>
     internal static void DeleteMatchingKeys(
         ISortedKeyValueStore snap,
         IWriteBatch batch,
         ReadOnlySpan<byte> firstKey,
         ReadOnlySpan<byte> lastKey,
         int suffixOffset,
-        ReadOnlySpan<byte> expectedSuffix)
+        ReadOnlySpan<byte> expectedSuffix,
+        WriteFlags flags)
     {
         using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
         while (view.MoveNext())
         {
             ReadOnlySpan<byte> key = view.CurrentKey;
             if (key.Length >= suffixOffset + expectedSuffix.Length && Bytes.AreEqual(key[suffixOffset..], expectedSuffix))
-                batch.Remove(view.CurrentKey);
+                batch.Set(view.CurrentKey, null, flags);
+        }
+    }
+
+    /// <summary>
+    /// Scans <c>[firstKey, lastKey)</c> and removes every key of <paramref name="keyLength"/> bytes whose 20-byte
+    /// account is within <c>[fromAccount, toAccount]</c>. The account is read as <paramref name="prefixLength"/> bytes at
+    /// <paramref name="prefixOffset"/> followed by the rest of its bytes at <paramref name="suffixOffset"/>.
+    /// </summary>
+    /// <param name="flags">The batch's write flags. Without the WAL a batch commits every few hundred writes, deletes included, which bounds a long scan.</param>
+    [SkipLocalsInit]
+    internal static void DeleteKeysOfAccountRange(
+        ISortedKeyValueStore snap,
+        IWriteBatch batch,
+        scoped ReadOnlySpan<byte> firstKey,
+        scoped ReadOnlySpan<byte> lastKey,
+        int keyLength,
+        int prefixOffset,
+        int prefixLength,
+        int suffixOffset,
+        scoped ReadOnlySpan<byte> fromAccount,
+        scoped ReadOnlySpan<byte> toAccount,
+        WriteFlags flags)
+    {
+        const int accountLength = 20;
+        Span<byte> account = stackalloc byte[accountLength];
+        using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+        while (view.MoveNext())
+        {
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            if (key.Length != keyLength) continue;
+
+            key.Slice(prefixOffset, prefixLength).CopyTo(account);
+            key.Slice(suffixOffset, accountLength - prefixLength).CopyTo(account[prefixLength..]);
+            if (account.SequenceCompareTo(fromAccount) >= 0 && account.SequenceCompareTo(toAccount) <= 0)
+                batch.Set(key, null, flags);
         }
     }
 
@@ -378,6 +432,9 @@ public static class BasePersistence
     {
         public void SelfDestruct(in ValueHash256 address);
 
+        /// <inheritdoc cref="IPersistence.IWriteBatch.SelfDestructRange"/>
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+
         public void RemoveAccount(in ValueHash256 address);
 
         public void SetAccount(in ValueHash256 address, ReadOnlySpan<byte> value);
@@ -417,6 +474,9 @@ public static class BasePersistence
     {
         public void SelfDestruct(Address addr);
 
+        /// <inheritdoc cref="IPersistence.IWriteBatch.SelfDestructRange"/>
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+
         public void SetAccount(Address addr, Account? account);
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
@@ -442,6 +502,10 @@ public static class BasePersistence
     public interface ITrieWriteBatch
     {
         public void SelfDestruct(in ValueHash256 address);
+
+        /// <inheritdoc cref="IPersistence.IWriteBatch.SelfDestructRange"/>
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to);
@@ -458,6 +522,9 @@ public static class BasePersistence
         private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
+
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            _flatWriteBatch.SelfDestructRange(fromPath, toPath);
 
         public void SetAccount(Address addr, Account? account)
         {
@@ -817,6 +884,12 @@ public static class BasePersistence
         {
             _flatWriter.SelfDestruct(addr);
             _trieWriteBatch.SelfDestruct(addr.ToAccountPath);
+        }
+
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            _flatWriter.SelfDestructRange(fromPath, toPath);
+            _trieWriteBatch.SelfDestructRange(fromPath, toPath);
         }
 
         public void SetAccount(Address addr, Account? account) =>

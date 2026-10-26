@@ -155,6 +155,11 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Set up .NET for CI scripts
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.402
+
     - name: Authenticate to GCP
       if: inputs.skip_auth != 'true'
       uses: google-github-actions/auth@v3
@@ -194,7 +199,7 @@ runs:
         NETWORK_TAG: ${{ inputs.network_tag }}
         IMAGE_FAMILY: ${{ inputs.image_family }}
         IMAGE_PROJECT: ${{ inputs.image_project }}
-      run: bash "${GITHUB_ACTION_PATH}/create.sh"
+      run: dotnet run --file "${GITHUB_ACTION_PATH}/Create.cs"
 
     - name: Destroy runner
       id: destroy
@@ -207,4 +212,4 @@ runs:
         ZONES: ${{ inputs.zones }}
         PROJECT_ID: ${{ inputs.project_id }}
         EXPECT_INSTANCE: ${{ inputs.expect_instance }}
-      run: bash "${GITHUB_ACTION_PATH}/destroy.sh"
+      run: dotnet run --file "${GITHUB_ACTION_PATH}/Destroy.cs" -p:NuGetAudit=false -p:RestoreSources="${GITHUB_ACTION_PATH}"

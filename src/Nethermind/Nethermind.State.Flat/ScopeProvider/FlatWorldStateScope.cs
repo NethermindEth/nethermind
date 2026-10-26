@@ -748,13 +748,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (_storages.Count == 0) return;
 
-        using ArrayPoolList<FlatStorageTree> dirty = new(_storages.Count);
-        foreach (FlatStorageTree storage in _storages.Values)
+        using Dictionary<AddressAsKey, FlatStorageTree>.ValueCollection.Enumerator storages = _storages.Values.GetEnumerator();
+        do
         {
+            if (!storages.MoveNext()) return;
+        } while (!storages.Current.HasUncommittedNodes);
+
+        using ArrayPoolList<FlatStorageTree> dirty = new(_storages.Count) { storages.Current };
+        while (storages.MoveNext())
+        {
+            FlatStorageTree storage = storages.Current;
             if (storage.HasUncommittedNodes) dirty.Add(storage);
         }
-
-        if (dirty.Count == 0) return;
 
         if (dirty.Count == 1 || Core.Cpu.RuntimeInformation.IsSingleProcessor)
         {
