@@ -151,6 +151,7 @@ jobs:
             tests_config: {categories: "", branch: ""}
           }')
 
+          echo "DISCOVER_SINCE=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
           gh workflow run run-smoketests.yml \
             --repo NethermindEth/post-merge-smoke-tests --ref main \
             -f github_username="${{ github.actor }}" \
@@ -161,6 +162,11 @@ jobs:
             -f config_json="$config_json" \
             -f tests_active="0" \
             -f timeout="$TIMEOUT"
+
+      - name: Set up .NET for CI scripts
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
 
       - name: Wait for creation of node
         id: wait
@@ -175,8 +181,7 @@ jobs:
           NAME_FILTER: ${{ env.BASE_TAG }}
           REF: "main"
         run: |
-          chmod +x scripts/wait-for-workflow.sh
-          ./scripts/wait-for-workflow.sh | tee script-output.txt
+          dotnet run --file scripts/WaitForWorkflow.cs | tee script-output.txt
           run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
           echo "Run ID extracted is: $run_id"
           echo "RUN_ID=$run_id" >> $GITHUB_ENV
@@ -187,7 +192,7 @@ jobs:
         env:
           GH_APP_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
-          # wait-for-workflow.sh already blocks until the run completes, so the artifact
+          # WaitForWorkflow.cs already blocks until the run completes, so the artifact
           # exists; this short retry only absorbs brief artifact-API listing lag.
           ARTIFACT_ID=""
           for attempt in $(seq 1 10); do
