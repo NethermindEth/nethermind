@@ -167,6 +167,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             Eip7002ContractAddress = config.PragueTime is null ? null : Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip7251ContractAddress = config.PragueTime is null ? null : Eip7251Constants.ConsolidationRequestPredeployAddress,
             Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,
+            ZeroNonceStorageAccounts = config.ZeroNonceStorageAccounts,
 
             BlobSchedule = blobSchedule
         };
@@ -175,6 +176,10 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         // table — same source of truth as the Parity loader, driven by Forks/*.cs.
         HardforkLabels.ExpandAll(chainSpec.Parameters, config);
     }
+
+    /// <summary>Precedence of <paramref name="forkName"/>'s <c>blobSchedule</c> entry over others at the same timestamp; <c>null</c> when the key is ignored.</summary>
+    internal static int? BlobScheduleOrder(string forkName) =>
+        _blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork) ? fork.Order : null;
 
     private readonly record struct BlobScheduleFork(int Order);
 
@@ -192,6 +197,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             [nameof(BPO3)] = new(6),
             [nameof(BPO4)] = new(7),
             [nameof(BPO5)] = new(8),
+            [nameof(Bogota)] = new(9),
         };
 
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec)

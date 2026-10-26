@@ -144,6 +144,7 @@ public class ProgressTrackerTests
     // Healing is not checkpointed, so once it may start a restart must find no checkpoint to resume. A backend that
     // cannot resume is never checkpointed at all.
     [Test]
+    [NonParallelizable]
     public void Will_mark_range_phase_finished_when_ranges_drain([Values] bool snapResume, [Values] bool supportsCheckpoints)
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
@@ -157,8 +158,11 @@ public class ProgressTrackerTests
         progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
         progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
         request.Dispose();
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale - 1));
+
         bool finished = progressTracker.IsFinished(out _);
         Assert.That(finished, Is.True);
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
 
         snapTrieFactory.Received(1).MarkRangePhaseFinished();
         if (checkpointed) snapTrieFactory.Received(1).SaveCheckpoint(null);
@@ -366,6 +370,33 @@ public class ProgressTrackerTests
         Assert.That(Volatile.Read(ref checkpointsSaved), Is.EqualTo(2));
         first!.Dispose();
         next.Result!.Dispose();
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Will_publish_covered_account_key_space()
+    {
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 4, snapTrieFactory: snapTrieFactory);
+        Assert.That(Metrics.SnapRangesProgress, Is.Zero);
+
+        progressTracker.IsFinished(out SnapSyncBatch? request);
+        using (request)
+        {
+            ValueHash256 limit = request!.AccountRangeRequest!.LimitHash!.Value;
+            progressTracker.UpdateAccountRangePartitionProgress(limit, new Hash256("0x2000000000000000000000000000000000000000000000000000000000000000"), true);
+            Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(1250));
+
+            progressTracker.UpdateAccountRangePartitionProgress(limit, limit, false);
+            Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(2500));
+        }
+
+        snapTrieFactory.IsRangePhaseFinished().Returns(true);
+        progressTracker.LoadProgress();
+        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
+
+        progressTracker.Reset();
+        Assert.That(Metrics.SnapRangesProgress, Is.Zero);
     }
 
     [Test]

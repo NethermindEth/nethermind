@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
@@ -10,6 +11,7 @@ namespace Nethermind.TxPool;
 public ref struct TxFilteringState(Transaction tx, IAccountStateProvider accounts, IReleaseSpec headSpec)
 {
     private AccountStruct _senderAccount;
+    private bool? _senderHasDelegatedCode;
 
     /// <summary>Set once every <c>frame_signatures</c> entry has verified against the head spec.</summary>
     /// <remarks>Lets a downstream filter assert pre-validation from what actually ran rather than from
@@ -91,4 +93,7 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
             return _senderAccount;
         }
     }
+
+    internal bool SenderHasDelegatedCode(IReadOnlyStateProvider worldState) =>
+        _senderHasDelegatedCode ??= SenderAccount.HasCode && worldState.IsDelegatedCode(SenderAccount.CodeHash);
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -10,6 +11,7 @@ namespace Nethermind.Evm
 {
     public static class TransactionExtensions
     {
+        [SkipLocalsInit]
         public static Address GetRecipient(this Transaction tx, in UInt256 nonce) =>
             tx.To ?? (tx.IsSystem()
                 ? tx.SenderAddress!
@@ -17,26 +19,43 @@ namespace Nethermind.Evm
 
         public static TxGasInfo GetGasInfo(this Transaction tx, IReleaseSpec spec, BlockHeader header)
         {
+            UInt256? feePerBlobGas = null;
+            return tx.GetGasInfo(spec, header, ref feePerBlobGas);
+        }
+
+        /// <summary>
+        /// As <see cref="GetGasInfo(Transaction, IReleaseSpec, BlockHeader)"/>, computing the fee per blob gas of
+        /// <paramref name="header"/> at most once across the transactions of one block.
+        /// </summary>
+        public static TxGasInfo GetGasInfo(this Transaction tx, IReleaseSpec spec, BlockHeader header, ref UInt256? feePerBlobGas)
+        {
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
             // EIP-8141: gate on blob presence, not the type-3-only SupportsBlobs, so frame-blob txs report blob gas.
             if (tx.CarriesBlobs)
             {
-                if (header.ExcessBlobGas is null)
-                {
-                    throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessBlobGas)} set.", nameof(header.ExcessBlobGas));
-                }
-
-                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
-                {
-                    throw new OverflowException("Blob gas price calculation led to overflow.");
-                }
+                feePerBlobGas ??= CalculateFeePerBlobGas(spec, header);
                 ulong blobGas = BlobGasCalculator.CalculateBlobGas(tx);
 
                 return new(effectiveGasPrice, feePerBlobGas, blobGas);
             }
 
             return new(effectiveGasPrice, null, null);
+        }
+
+        private static UInt256 CalculateFeePerBlobGas(IReleaseSpec spec, BlockHeader header)
+        {
+            if (header.ExcessBlobGas is null)
+            {
+                throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessBlobGas)} set.", nameof(header.ExcessBlobGas));
+            }
+
+            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
+            {
+                throw new OverflowException("Blob gas price calculation led to overflow.");
+            }
+
+            return feePerBlobGas;
         }
     }
 

@@ -117,7 +117,7 @@ public sealed class ExtensionData : INodeWithKey
     INodeData INodeData.Clone() => new ExtensionData(Key, Value);
 }
 
-public sealed class LeafData : INodeWithKey
+public sealed partial class LeafData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Leaf;
     public int Length => 0;
@@ -130,7 +130,6 @@ public sealed class LeafData : INodeWithKey
 
     private readonly CappedArray<byte> _value;
 
-    public byte[]? Key { get; set; }
     public CappedArray<byte> Value => _value;
     public TrieNode? StorageRoot { get; set; }
 
@@ -152,6 +151,4 @@ public sealed class LeafData : INodeWithKey
     public ref object? this[int index] => throw new IndexOutOfRangeException();
 
     INodeData INodeData.Clone() => new LeafData(Key, _value);
-
-    public LeafData CloneWithNewValue(CappedArray<byte> value) => new(Key, value, StorageRoot);
 }
