@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Blocks;
@@ -108,11 +109,12 @@ public class BadBlockStoreTests
     }
 
     [Test]
-    public void Insert_drops_oldest_block_access_lists_above_budget([Values] bool reopen)
+    public void Insert_drops_oldest_block_access_lists_above_budget([Values] bool reopen, [Values] bool countsOverwrites)
     {
         const int balSize = 100;
-        TestMemDb db = new();
-        BadBlockStore CreateStore() => new(db, 10, maxBlockAccessListSize: balSize, blockAccessListBudget: 4 * balSize);
+        TestMemDb db = countsOverwrites ? new OverwriteCountingMemDb() : new TestMemDb();
+        // The store holds exactly the inserted blocks, so the trim overwrites must not make it delete one.
+        BadBlockStore CreateStore() => new(db, 4, maxBlockAccessListSize: balSize, blockAccessListBudget: 4 * balSize);
         BadBlockStore badBlockStore = CreateStore();
 
         for (byte number = 1; number <= 4; number++)
@@ -198,5 +200,19 @@ public class BadBlockStoreTests
     private sealed class ByteSizeMemDb : MemDb
     {
         public override IDbMeta.DbMetric GatherMetric() => new() { Size = Count * 1024 };
+    }
+
+    // Like RocksDB's estimate-num-keys, EstimatedCount counts an overwritten key again.
+    private sealed class OverwriteCountingMemDb : TestMemDb, IDbMeta
+    {
+        private long _overwrites;
+
+        long IDbMeta.EstimatedCount => Count + _overwrites;
+
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (value is not null && KeyExists(key)) _overwrites++;
+            base.Set(key, value, flags);
+        }
     }
 }

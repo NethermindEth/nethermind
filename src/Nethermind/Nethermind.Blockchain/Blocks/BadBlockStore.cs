@@ -153,16 +153,13 @@ public class BadBlockStore(
 
     private void TruncateToMaxSize()
     {
-        int toDelete = (int)(blockDb.EstimatedCount - maxSize);
-        if (toDelete > 0)
+        // RocksDB's EstimatedCount counts an overwritten key again until compaction, so it cannot size the deletes.
+        // The key is the block number followed by the hash, so the values do not need to be decoded.
+        byte[][] keys = blockDb.GetAllKeys(true).ToArray();
+        for (long i = 0; i < keys.Length - maxSize; i++)
         {
-            // The key is the block number followed by the hash, so the values do not need to be decoded.
-            foreach (byte[] key in blockDb.GetAllKeys(true))
-            {
-                if (toDelete-- == 0) break;
-                blockDb.Remove(key);
-                SetBlockAccessListSize(key, 0);
-            }
+            blockDb.Remove(keys[i]);
+            SetBlockAccessListSize(keys[i], 0);
         }
     }
 
