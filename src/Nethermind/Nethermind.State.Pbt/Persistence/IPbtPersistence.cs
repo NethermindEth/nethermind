@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -43,6 +44,11 @@ public interface IPbtPersistence
         /// <param name="groupKey">The group-boundary key identifying the group.</param>
         /// <returns>One caller-owned reference, or <see langword="null"/> when the group is absent.</returns>
         RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>;
+
+        /// <summary>Passes the complete group identified by <paramref name="groupKey"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <returns>Whether the group was found.</returns>
+        bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct;
     }
 
     public interface IWriteBatch : IDisposable

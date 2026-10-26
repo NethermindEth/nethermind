@@ -242,6 +242,26 @@ public class PbtRocksDbPersistence(
             return RefCountingMemory.OwningRocksDb(owned);
         }
 
+        public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct
+        {
+            PbtColumns column = NodeGroupColumn(groupKey);
+            IReadOnlyKeyValueStore store = GetNodeGroupColumn(column);
+            Span<byte> payload = store.GetSpan(NodeGroupStorageKey(column, groupKey, stackalloc byte[PbtNodeGroupKey.MaxLength]));
+            if (payload.IsEmpty) return false;
+            try
+            {
+                PbtNodeGroupCodec.DebugValidateNodes(groupKey, payload);
+                action(payload, arg);
+            }
+            finally
+            {
+                store.DangerousReleaseMemory(payload);
+            }
+
+            return true;
+        }
+
         private IReadOnlyKeyValueStore GetNodeGroupColumn(PbtColumns column) => column switch
         {
             PbtColumns.Metadata => _metadata,

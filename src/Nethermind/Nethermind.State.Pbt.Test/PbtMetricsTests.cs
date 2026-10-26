@@ -188,7 +188,7 @@ public class PbtMetricsTests
         using PbtSnapshotContent emptyContent = new();
         emptyContent.BeginNodeGroupWrites(content.GroupRecordBuffer ?? PbtSnapshotTestExtensions.DefaultGroupRecordBuffer);
         emptyContent.RootGroupPointer = content.RootGroupPointer;
-        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader, detailedMetrics, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
+        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader.LoadingGroupsByLease(), detailedMetrics, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
         UInt256 actualHeaderSlot = bundle.GetSlot(TestItem.AddressA, 1);

@@ -40,7 +40,7 @@ public class PbtNodeGroupPrefetchTests
             (skip == PrefetchSkip.MissingAccount ? account : account.WithBalanceChanges(new BalanceChange(1, 100))).TestObject,
             Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject).TestObject;
         IPbtPersistence.IReader reader = Reader(skip == PrefetchSkip.MissingAccount ? [TestItem.AddressA] : []);
-        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader.LoadingGroupsByLease());
         PbtStorageNodePath[] firstGroups = [FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.AccountZone), FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone)];
         if (skip == PrefetchSkip.SnapshotBacked)
         {
@@ -91,7 +91,7 @@ public class PbtNodeGroupPrefetchTests
 
         bool Absent(PbtStorageNodePath path) => descendantBytes < 0 || path.BitDepth == 264 && !path.Equals(storageGroup);
         RefCountingMemory? ReadPayload(PbtStorageNodePath path) => Absent(path) ? null : LifecyclePrefetchPayload(memory, path, descendantBytes);
-        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader.LoadingGroupsByLease());
         PbtStorageNodePath deeperSnapshot = PbtTestPaths.Prefix<PbtStorageNodePath>(storagePath.Bytes, 266);
         if (snapshotBacked)
         {
@@ -153,7 +153,7 @@ public class PbtNodeGroupPrefetchTests
             if (Interlocked.Increment(ref reads) == 2) throw new System.IO.IOException("single prefetch read failed");
             return LifecyclePrefetchPayload(memory, call.Arg<PbtStorageNodePath>(), 1025);
         });
-        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader.LoadingGroupsByLease());
         InterfaceLogger logger = ErrorLogger();
 
         PbtWorldStateScope scope = HintBal(bundle, bal, logger);
@@ -180,7 +180,7 @@ public class PbtNodeGroupPrefetchTests
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         using (RefCountingMemory payload = LifecyclePrefetchPayload(memory, paths[0], 0)) content.SetTree((paths[0], payload.GetSpan().ToArray()));
         using (PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader.LoadingGroupsByLease(), recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0),
             PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false))
         {
             InterfaceLogger logger = ErrorLogger();

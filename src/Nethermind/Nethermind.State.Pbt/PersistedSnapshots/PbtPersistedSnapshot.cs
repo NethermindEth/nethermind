@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -169,6 +170,48 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
         return found;
     }
 
+    /// <summary>Passes the payload of the group at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
+    /// <returns>Whether the snapshot has an entry for the group; a found tombstone sets <paramref name="tombstone"/> and passes nothing.</returns>
+    public bool TryLoadNodeGroup<TPath, TArg>(in TPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone)
+        where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
+        tombstone = false;
+        ReadOnlySpan<byte> key = PbtPersistedKey.Group(path, stackalloc byte[PbtPersistedKey.MaxGroupLength]);
+        if (!_bloom.Filter.MightContain(PbtPersistedKey.BloomHash(key))) return false;
+        ArenaByteReader reader = _reservation.CreateReader();
+        if (!SortedTableReader.TrySeek<ArenaByteReader, NoOpPin>(reader, new(0, reader.Length), key, out Bound bound)) return false;
+        Span<byte> value = ReadValue(reader, bound, stackalloc byte[MaxValueLength]);
+        int length = PbtPersistedFormat.PayloadLength(key, value, out _);
+        tombstone = length < 0;
+        if (tombstone) return true;
+        if (!PbtPersistedFormat.TryReadBlob(value, out NodeRef blob))
+        {
+            PassGroup(path, value[1..], action, arg);
+            return true;
+        }
+
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+        try
+        {
+            Span<byte> payload = buffer.AsSpan(0, length);
+            ReadChunk(blob, payload);
+            PassGroup(path, payload, action, arg);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+        return true;
+    }
+
+    private static void PassGroup<TPath, TArg>(in TPath path, ReadOnlySpan<byte> payload, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct
+    {
+        PbtNodeGroupCodec.ValidateNodes(path, payload);
+        action(payload, arg);
+    }
+
     public void PersistOnShutdown()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
@@ -210,10 +253,10 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
         ArenaByteReader reader = _reservation.CreateReader();
-        byte[] value = ReadValue(reader, bound);
+        Span<byte> value = ReadValue(reader, bound, stackalloc byte[MaxValueLength]);
         int length = PbtPersistedFormat.PayloadLength(key, value, out uint chunks);
         if (length < 0) return null;
-        if (chunks == 0) return value[1..];
+        if (chunks == 0) return value[1..].ToArray();
         byte[] payload = GC.AllocateUninitializedArray<byte>(length);
         if (PbtPersistedFormat.TryReadBlob(value, out NodeRef blob))
         {
@@ -282,10 +325,12 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
 
     private static PackedSlotRun DecodeRun(ReadOnlySpan<byte> bytes) => bytes.IsEmpty ? SlotRun.Empty : SlotRun.Decode(bytes);
 
-    private static byte[] ReadValue(scoped in ArenaByteReader reader, Bound bound)
+    private const int MaxValueLength = 255;
+
+    private static Span<byte> ReadValue(scoped in ArenaByteReader reader, Bound bound, Span<byte> buffer)
     {
-        if (bound.Length is < 0 or > 255) throw new InvalidDataException("Invalid persisted PBT table value length.");
-        byte[] value = new byte[(int)bound.Length];
+        if (bound.Length is < 0 or > MaxValueLength) throw new InvalidDataException("Invalid persisted PBT table value length.");
+        Span<byte> value = buffer[..(int)bound.Length];
         reader.TryRead(bound.Offset, value);
         return value;
     }

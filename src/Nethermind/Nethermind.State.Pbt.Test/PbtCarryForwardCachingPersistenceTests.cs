@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -218,6 +219,8 @@ public class PbtCarryForwardCachingPersistenceTests
 
             public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
             public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
+            public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+                where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => false;
             public void Dispose() { }
         }
 

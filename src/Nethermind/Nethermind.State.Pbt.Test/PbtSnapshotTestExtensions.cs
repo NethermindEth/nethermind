@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
+using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.Snapshot;
 
@@ -148,8 +153,24 @@ internal static class PbtSnapshotTestExtensions
         return default;
     }
 
-    /// <summary>Returns a caller-owned group lease, or null when no layer has an entry.</summary>
-    internal static RefCountingMemory? GetNodeGroup(this PbtReadOnlySnapshotBundle bundle, PbtStorageNodePath groupKey) => bundle.GetPersistedNodeGroup(groupKey);
+    /// <summary>Returns a caller-owned copy of the persisted group, or null when no persisted layer has an entry.</summary>
+    internal static RefCountingMemory? GetNodeGroup(this PbtReadOnlySnapshotBundle bundle, PbtStorageNodePath groupKey)
+    {
+        RefCountingMemory? payload = null;
+        bundle.TryLoadPersistedNodeGroup(groupKey, static (bytes, target) => target[0] = CopyPayload(bytes), new Span<RefCountingMemory?>(ref payload));
+        return payload;
+    }
+
+    /// <summary>Serves <paramref name="reader"/>'s span-action group loads from its <see cref="IPbtPersistence.IReader.GetNodeGroup{TPath}"/>, where a substitute configures and counts them.</summary>
+    internal static IPbtPersistence.IReader LoadingGroupsByLease(this IPbtPersistence.IReader reader) => new LeaseGroupLoadingReader(reader);
+
+    /// <summary>Passes the lease <paramref name="payload"/> to <paramref name="action"/> and releases it, as a span-action load built on a lease read.</summary>
+    internal static bool PassNodeGroup<TArg>(RefCountingMemory? payload, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        if (payload is null) return false;
+        using (payload) action(payload.GetSpan(), arg);
+        return true;
+    }
 
     /// <summary>A caller-owned copy of the group at <paramref name="groupKey"/> in the branch's tree, from its buffer or else as a fold loads it.</summary>
     internal static RefCountingMemory? GetNodeGroup(this PbtSnapshotBundle bundle, PbtStorageNodePath groupKey) =>
@@ -158,10 +179,25 @@ internal static class PbtSnapshotTestExtensions
             : null;
 
     /// <summary>A pooled copy of <paramref name="record"/>'s payload.</summary>
-    internal static RefCountingMemory CopyPayload(in PbtGroupRecord record)
+    internal static RefCountingMemory CopyPayload(in PbtGroupRecord record) => CopyPayload(record.Payload.Span);
+
+    private static RefCountingMemory CopyPayload(ReadOnlySpan<byte> bytes)
     {
-        RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(record.Payload.Length);
-        record.Payload.Span.CopyTo(payload.GetSpan());
+        RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(bytes.Length);
+        bytes.CopyTo(payload.GetSpan());
         return payload;
+    }
+
+    private sealed class LeaseGroupLoadingReader(IPbtPersistence.IReader inner) : IPbtPersistence.IReader
+    {
+        public StateId CurrentState => inner.CurrentState;
+        public ValueHash256 CurrentRoot => inner.CurrentRoot;
+        public PbtAccount? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
+        public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey> => inner.GetSlotRun(runKey);
+        public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
+        public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => PassNodeGroup(inner.GetNodeGroup(groupKey), action, arg);
+        public void Dispose() => inner.Dispose();
     }
 }

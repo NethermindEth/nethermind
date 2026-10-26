@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -196,15 +196,27 @@ public sealed class PbtSnapshotBundle(
     /// <summary>Reads the group at <paramref name="path"/> from the persisted layers into <paramref name="warmed"/>.</summary>
     private static bool TryLoadNodeGroupFromPersistence(PbtReadOnlySnapshotBundle readOnly, PbtWarmedGroupLog warmed, in PbtStorageNodePath path, out PbtGroupRecord record)
     {
-        using RefCountingMemory? payload = readOnly.GetPersistedNodeGroup(path);
-        if (payload is null)
-        {
-            record = default;
-            return false;
-        }
+        record = default;
+        return readOnly.TryLoadPersistedNodeGroup(path, CachePersistedGroupState.Insert, new CachePersistedGroupState(warmed, in path, ref record));
+    }
 
-        warmed.Append(path, payload.GetSpan(), out record);
-        return true;
+    /// <summary>Inserts the persisted payload handed to it into the warmed groups as the requested group.</summary>
+    private readonly ref struct CachePersistedGroupState
+    {
+        public static readonly ReadOnlySpanAction<byte, CachePersistedGroupState> Insert = static (payload, insert) =>
+            insert._warmed.Append(insert._path, payload, out insert._record);
+
+        private readonly PbtWarmedGroupLog _warmed;
+        private readonly ref readonly PbtStorageNodePath _path;
+        private readonly ref PbtGroupRecord _record;
+
+        /// <param name="record">Set to the inserted record.</param>
+        public CachePersistedGroupState(PbtWarmedGroupLog warmed, ref readonly PbtStorageNodePath path, ref PbtGroupRecord record)
+        {
+            _warmed = warmed;
+            _path = ref path;
+            _record = ref record;
+        }
     }
 
     public Account? GetAccount(Address address) => ReadAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), promote: false);

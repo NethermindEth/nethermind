@@ -66,14 +66,22 @@ public static class PbtPersistedKey
 
     /// <summary>The group's family byte, then its <see cref="PbtNodeGroupKey"/>; the root group's key is its family byte alone.</summary>
     /// <remarks>Groups then sort as in the database, so a tree walk can emit them in key order. A group is never chunked.</remarks>
-    public static byte[] Group<TPath>(in TPath path) where TPath : struct, IPbtNodePath<TPath>
+    public static byte[] Group<TPath>(in TPath path) where TPath : struct, IPbtNodePath<TPath> =>
+        Group(path, stackalloc byte[MaxGroupLength]).ToArray();
+
+    public const int MaxGroupLength = 1 + PbtNodeGroupKey.MaxLength;
+
+    /// <inheritdoc cref="Group{TPath}(in TPath)"/>
+    /// <param name="destination">At least <see cref="MaxGroupLength"/> bytes, which the returned key slices.</param>
+    public static ReadOnlySpan<byte> Group<TPath>(in TPath path, Span<byte> destination) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (path.BitDepth == 0) return [RootGroup];
-        Span<byte> encoded = stackalloc byte[PbtNodeGroupKey.MaxLength];
-        ReadOnlySpan<byte> groupKey = PbtNodeGroupKey.Encode(path, encoded);
-        byte[] key = new byte[1 + groupKey.Length];
-        key[0] = GroupFamily(path);
-        groupKey.CopyTo(key.AsSpan(1));
+        if (path.BitDepth == 0)
+        {
+            destination[0] = RootGroup;
+            return destination[..1];
+        }
+        destination[0] = GroupFamily(path);
+        ReadOnlySpan<byte> key = destination[..(1 + PbtNodeGroupKey.Encode(path, destination[1..]).Length)];
         ValidateDescriptor(key);
         return key;
     }

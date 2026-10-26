@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Buffers;
@@ -129,23 +129,49 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
-    /// <summary>Reads persisted snapshots and the captured persistence reader, without probing in-memory snapshots.</summary>
-    public RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey)
+    /// <summary>Passes the persisted payload of a group to <paramref name="action"/>, borrowed for the duration of the call.</summary>
+    /// <remarks>Reads persisted snapshots and the captured persistence reader, without probing in-memory snapshots.</remarks>
+    /// <returns>Whether the group was found and passed.</returns>
+    public bool TryLoadPersistedNodeGroup<TArg>(in PbtStorageNodePath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         GuardDispose();
-        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        RefCountingMemory? result = null;
-        bool found = false;
+        if (!recordDetailedMetrics) return TryLoadPersistedNodeGroupUnmeasured(groupKey, action, arg);
+
+        long sw = Stopwatch.GetTimestamp();
+        int length = 0;
+        bool found = TryLoadPersistedNodeGroupUnmeasured(groupKey, MeasuredGroupLoad<TArg>.Pass, new MeasuredGroupLoad<TArg>(action, arg, ref length));
+        int partition = (int)PbtPartitions.PartitionOfPath(groupKey);
+        Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (found ? _readNodeGroupPersistenceLabels : _readNodeGroupPersistenceNullLabels)[partition]);
+        if (found) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupPersistenceSizeKeys[partition], length);
+        return found;
+    }
+
+    private bool TryLoadPersistedNodeGroupUnmeasured<TArg>(in PbtStorageNodePath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
         for (int index = persistedSnapshots.Count - 1; index >= 0; index--)
-            if (persistedSnapshots[index].TryGetNodeGroup(groupKey, out result)) { found = true; break; }
-        if (!found) result = reader.GetNodeGroup(groupKey);
-        if (recordDetailedMetrics)
+            if (persistedSnapshots[index].TryLoadNodeGroup(groupKey, action, arg, out bool tombstone)) return !tombstone;
+        return reader.TryLoadNodeGroup(groupKey, action, arg);
+    }
+
+    /// <summary>Passes the payload handed to it on to the wrapped action, recording its length.</summary>
+    private readonly ref struct MeasuredGroupLoad<TArg> where TArg : allows ref struct
+    {
+        public static readonly ReadOnlySpanAction<byte, MeasuredGroupLoad<TArg>> Pass = static (payload, load) =>
         {
-            int partition = (int)PbtPartitions.PartitionOfPath(groupKey);
-            Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (result is null ? _readNodeGroupPersistenceNullLabels : _readNodeGroupPersistenceLabels)[partition]);
-            if (result is not null) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupPersistenceSizeKeys[partition], result.GetSpan().Length);
+            load._length = payload.Length;
+            load._action(payload, load._arg);
+        };
+
+        private readonly ReadOnlySpanAction<byte, TArg> _action;
+        private readonly TArg _arg;
+        private readonly ref int _length;
+
+        public MeasuredGroupLoad(ReadOnlySpanAction<byte, TArg> action, TArg arg, ref int length)
+        {
+            _action = action;
+            _arg = arg;
+            _length = ref length;
         }
-        return result;
     }
 
     public PbtAccount? GetAccount(Address address) => GetAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes));

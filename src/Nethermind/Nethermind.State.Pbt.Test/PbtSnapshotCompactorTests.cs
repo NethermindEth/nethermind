@@ -395,6 +395,10 @@ public class PbtSnapshotCompactorTests
                     {
                         Assert.That(snapshot.TryGetNodeGroup(group.Key, out RefCountingMemory? payload), Is.True);
                         using (payload) Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(group.Payload.ToArray()));
+                        byte[]? loaded = null;
+                        Assert.That(snapshot.TryLoadNodeGroup(group.Key, static (bytes, target) => target[0] = bytes.ToArray(), new Span<byte[]?>(ref loaded), out bool tombstone), Is.True);
+                        Assert.That(tombstone, Is.False);
+                        Assert.That(loaded, Is.EqualTo(group.Payload.ToArray()));
                     }
             }
         }

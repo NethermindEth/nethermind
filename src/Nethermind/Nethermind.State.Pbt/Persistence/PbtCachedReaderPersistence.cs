@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core.Memory;
@@ -127,6 +128,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey> => inner.GetSlotRun(runKey);
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
+        public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => inner.TryLoadNodeGroup(groupKey, action, arg);
         public bool TryLease() => TryAcquireLease();
         protected override void CleanUp() => inner.Dispose();
     }

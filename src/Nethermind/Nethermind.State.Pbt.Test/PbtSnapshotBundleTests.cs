@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -592,13 +593,13 @@ public class PbtSnapshotBundleTests
         Reader reader = new(default, null) { GroupPayload = persistedEncoding };
         using PbtReadOnlySnapshotBundle bundle = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(head, StateId.PreGenesis), reader, slotFilterBitsPerKey: 0);
         int persistenceReads = !newerMemory && tombstone ? 1 : 0;
-        using (RefCountingMemory? payload = bundle.GetPersistedNodeGroup(path))
+        using (RefCountingMemory? payload = bundle.GetNodeGroup(path))
         using (Assert.EnterMultipleScope())
         {
             Assert.That(payload?.Memory.ToArray(), Is.EqualTo(persistedEncoding));
             Assert.That(reader.GroupReadCount, Is.EqualTo(persistenceReads), "only a group no persisted tree holds is read from persistence");
         }
-        using (RefCountingMemory? missingPayload = bundle.GetPersistedNodeGroup(new PbtStorageNodePath([0], 8)))
+        using (RefCountingMemory? missingPayload = bundle.GetNodeGroup(new PbtStorageNodePath([0], 8)))
         using (Assert.EnterMultipleScope())
         {
             Assert.That(missingPayload, Is.Null);
@@ -1079,6 +1080,8 @@ public class PbtSnapshotBundleTests
             GroupPayload.CopyTo(memory.GetSpan());
             return memory;
         }
+        public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => PbtSnapshotTestExtensions.PassNodeGroup(GetNodeGroup(groupKey), action, arg);
         public int DisposeCount { get; private set; }
         public void Dispose() => DisposeCount++;
     }
