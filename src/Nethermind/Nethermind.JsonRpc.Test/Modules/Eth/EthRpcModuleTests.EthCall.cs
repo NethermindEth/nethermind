@@ -172,10 +172,18 @@ public partial class EthRpcModuleTests
             return;
         }
         string rejectedField = field switch { "both" => "beaconRoot", "nonemptyWithdrawals" => "withdrawals", _ => field };
+        string expectedMessage = rejectedField == "withdrawals"
+            ? BlockOverride.WithdrawalsNotSupported
+            : "block override \"beaconRoot\" is not supported for this RPC method";
+        AssertCallBlockOverrideError(error, expectedMessage, response);
+    }
+
+    private static void AssertCallBlockOverrideError(JToken? error, string expectedMessage, string response)
+    {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(-32000), response);
-            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo($"block override \"{rejectedField}\" is not supported for this RPC method"), response);
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(expectedMessage), response);
         }
     }
 
@@ -1926,11 +1934,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc(method, transaction, "latest", null, blockOverride);
 
         JToken error = JToken.Parse(serialized)["error"]!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(error["message"]!.Value<string>(), Is.EqualTo(BlockOverride.WithdrawalsNotSupported));
-        }
+        AssertCallBlockOverrideError(error, BlockOverride.WithdrawalsNotSupported, serialized);
     }
 
     [Test]
