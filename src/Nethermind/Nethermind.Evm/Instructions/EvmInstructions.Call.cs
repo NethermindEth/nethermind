@@ -254,8 +254,9 @@ public static partial class EvmInstructions
             gasLimitUl += GasCostOf.CallStipend;
         }
 
+        ulong precheckGasUsed = 0;
         byte[]? precheckRevert = TOpCall.ExecutionType == ExecutionType.CALL && hasValueTransfer
-            ? vm.OnValueTransferCallPrecheck(env.ExecutingAccount, target, in callValue)
+            ? vm.OnValueTransferCallPrecheck(env.ExecutingAccount, target, in callValue, out precheckGasUsed)
             : null;
 
         // Check call depth and balance of the caller.
@@ -264,12 +265,14 @@ public static partial class EvmInstructions
         {
             EvmExceptionType? precheckError = precheckRevert is not null ? null
                 : env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
+            // A rejecting precheck may consume part or all of the gas reserved for the call.
+            ulong returnedGas = precheckRevert is null ? gasLimitUl : gasLimitUl - Math.Min(precheckGasUsed, gasLimitUl);
             if (DispatchFlags.ConstTracing && vm.IsTracingActions)
             {
                 if (precheckError is { } error)
                     TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, error);
                 else
-                    TraceRevertedCallPrecheck<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckRevert!);
+                    TraceRevertedCallPrecheck<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, returnedGas, codeInfo.IsPrecompile, precheckRevert!);
             }
 
             // If the call cannot proceed, return an empty response (or the precheck's revert data) and push zero on the stack.
@@ -288,14 +291,14 @@ public static partial class EvmInstructions
             }
 
             // Refund the remaining gas to the caller.
-            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            TGasPolicy.UpdateGasUp(ref gas, returnedGas);
             // EIP-8037: no account is created when the call cannot proceed (depth exceeded or
             // balance too low), so refund the up-front NEW_ACCOUNT state charge.
             if (chargesNewAccount)
                 vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetNewAccountStateCost());
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
+                vm.TxTracer.ReportGasUpdateForVmTrace(returnedGas, TGasPolicy.GetRemainingGas(in gas));
             }
             return pushResult;
         }
@@ -598,7 +601,7 @@ public static partial class EvmInstructions
 
     /// <summary>
     /// Reports a CALL that <see cref="VirtualMachine{TGasPolicy}.OnValueTransferCallPrecheck"/> rejected as an action that
-    /// reverted at once with the precheck's revert data and all of its gas left.
+    /// reverted at once with the precheck's revert data and <paramref name="gasLeft"/> of its gas left.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void TraceRevertedCallPrecheck<TGasPolicy, TOpCall>(
@@ -608,6 +611,7 @@ public static partial class EvmInstructions
         Address codeSource,
         in UInt256 callValue,
         ulong gas,
+        ulong gasLeft,
         bool isPrecompile,
         byte[] revertData)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -617,7 +621,7 @@ public static partial class EvmInstructions
         bool loaded = vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
         Debug.Assert(loaded, "The rejected call input was validated and expanded before its precheck.");
         vm.TxTracer.ReportAction(gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, isPrecompile);
-        vm.TxTracer.ReportActionRevert(gas, revertData);
+        vm.TxTracer.ReportActionRevert(gasLeft, revertData);
     }
 
     [MethodImpl(FullCallFrameInlining)]

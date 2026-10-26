@@ -4049,19 +4049,24 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
-    [Test]
-    public void Value_transfer_call_precheck_revert_returns_its_data_and_the_reserved_gas([Values] bool affordable)
+    [TestCase(true, 0UL)]
+    [TestCase(false, 0UL)]
+    [TestCase(false, 100UL)]
+    [TestCase(false, ulong.MaxValue)]
+    public void Value_transfer_call_precheck_revert_returns_its_data_and_the_unused_reserved_gas(bool affordable, ulong gasUsed)
     {
+        const ulong forwardedGas = 5_000;
         byte[] revertData = [.. Enumerable.Range(1, 36).Select(static i => (byte)i)];
         _worldState.CreateAccount(TestItem.AddressE, 1.Ether);
         _worldState.CreateAccount(TestItem.AddressF, 1.Ether);
         _hookedMachine.RejectedValueTransferTarget = TestItem.AddressE;
         _hookedMachine.ValueTransferRevertData = revertData;
+        _hookedMachine.ValueTransferRevertGas = gasUsed;
         UInt256 value = affordable ? 1 : 101.Ether;
         Prepare code = Prepare.EvmCode.MSTORE(0, [0]);
-        AppendMeasuredOperation(code, static (p, operand) => p.CALL(50_000, TestItem.AddressE, operand, 0, 0, 0, 32), value, 64);
+        AppendMeasuredOperation(code, static (p, operand) => p.CALL(forwardedGas, TestItem.AddressE, operand, 0, 0, 0, 32), value, 64);
         code.MLOAD(0).MSTORE(160);
-        AppendMeasuredOperation(code, static (p, operand) => p.CALL(50_000, TestItem.AddressF, operand, 0, 0, 0, 32), value, 192);
+        AppendMeasuredOperation(code, static (p, operand) => p.CALL(forwardedGas, TestItem.AddressF, operand, 0, 0, 0, 32), value, 192);
 
         TestAllTracerWithOutput result = Execute(code.RETURN(64, 224).Done, transactionValue: 0);
         byte[] output = result.ReturnValue!;
@@ -4070,7 +4075,7 @@ public sealed class VirtualMachineExtensionHooksTests
         {
             Assert.That(result.Error, Is.Null);
             Assert.That(ReadWord(output, 0), Is.EqualTo(UInt256.Zero), "rejected call status");
-            Assert.That(ReadWord(output, 1), Is.EqualTo(ReadWord(output, 5)), "gas spent by the rejected call");
+            Assert.That(ReadWord(output, 1), Is.EqualTo(ReadWord(output, 5) + Math.Min(gasUsed, forwardedGas + GasCostOf.CallStipend)), "gas spent by the rejected call");
             Assert.That(ReadWord(output, 2), Is.EqualTo((UInt256)revertData.Length), "rejected call RETURNDATASIZE");
             Assert.That(output.AsSpan(96, 32).ToArray(), Is.EqualTo(revertData[..32]), "rejected call output window");
             Assert.That(ReadWord(output, 4), Is.EqualTo(affordable ? UInt256.One : UInt256.Zero), "continued call status");
@@ -4151,6 +4156,7 @@ public sealed class VirtualMachineExtensionHooksTests
         _worldState.CreateAccount(TestItem.AddressE, 1.Ether);
         _hookedMachine.RejectedValueTransferTarget = target;
         _hookedMachine.ValueTransferRevertData = revertData;
+        _hookedMachine.ValueTransferRevertGas = 100;
         Prepare code = create
             ? Prepare.EvmCode.Create([(byte)Instruction.STOP], UInt256.One)
             : Prepare.EvmCode.CALL(50_000, TestItem.AddressE, 1, 0, 0, 0, 0);
@@ -4167,7 +4173,7 @@ public sealed class VirtualMachineExtensionHooksTests
             Assert.That(rejected.Value, Is.EqualTo(UInt256.One));
             Assert.That(rejected.Error, Is.EqualTo("Reverted"));
             Assert.That(rejected.Result?.Output, Is.EqualTo(revertData));
-            Assert.That(rejected.Result?.GasUsed, Is.Zero);
+            Assert.That(rejected.Result?.GasUsed, Is.EqualTo(create ? 0UL : 100UL));
             if (!create)
             {
                 Assert.That(rejected.Gas, Is.EqualTo(50_000 + GasCostOf.CallStipend));
@@ -4476,6 +4482,7 @@ public sealed class VirtualMachineExtensionHooksTests
         public bool WarmValueTransferStorage { get; set; }
         public Address? RejectedValueTransferTarget { get; set; }
         public byte[] ValueTransferRevertData { get; set; } = [];
+        public ulong ValueTransferRevertGas { get; set; }
         public List<(Address Creator, Address ContractAddress, UInt256 Value)> ValueTransferCreatePrechecks { get; } = [];
 
         protected override bool TryExecuteFrameInitialization(VmState<EthereumGasPolicy> currentState, out CallResult result)
@@ -4531,9 +4538,10 @@ public sealed class VirtualMachineExtensionHooksTests
             Address codeSource,
             in UInt256 value) => SkipEoaCallFastPath;
 
-        protected internal override byte[]? OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value)
+        protected internal override byte[]? OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value, out ulong gasUsed)
         {
             ValueTransferPrechecks.Add((from, to, value));
+            gasUsed = ValueTransferRevertGas;
             return ObserveValueTransferPrecheck(to);
         }
 

@@ -613,15 +613,23 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <param name="from">The account supplying the call value.</param>
     /// <param name="to">The account receiving the call value.</param>
     /// <param name="value">The nonzero value supplied by the call.</param>
+    /// <param name="gasUsed">
+    /// Gas a rejected call consumes from the gas reserved for it, stipend included; ignored when the call continues.
+    /// </param>
     /// <returns>Revert data that rejects the call, or <see langword="null"/> to continue.</returns>
     /// <remarks>
     /// The hook runs after child gas reservation and the value stipend, but before depth and balance rejection.
     /// It is raised only for CALL operations and before a child snapshot or frame exists. A rejection is handled
-    /// like a failed precheck: it pushes zero and returns the reserved gas, but also stages the revert data as
-    /// return data and copies it into the output window. State and access-list changes made by the hook persist
-    /// whether the call is then rejected or proceeds. The default continues.
+    /// like a failed precheck: it pushes zero and returns the reserved gas less <paramref name="gasUsed"/>, none of it
+    /// when <paramref name="gasUsed"/> exceeds the reservation, and also stages the revert data as return data and
+    /// copies it into the output window. State and access-list changes made by the hook persist whether the call is
+    /// then rejected or proceeds. The default continues.
     /// </remarks>
-    protected internal virtual byte[]? OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value) => null;
+    protected internal virtual byte[]? OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value, out ulong gasUsed)
+    {
+        gasUsed = 0;
+        return null;
+    }
 
     /// <summary>Lets a specialized virtual machine observe or reject a value-bearing creation before it is prechecked.</summary>
     /// <param name="creator">The account creating the contract and supplying the value.</param>
