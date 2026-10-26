@@ -750,6 +750,8 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (FindLocalBlock(header) is not { } localBlock) return null;
 
+            // Only check binding a stored body to its header: IsValidDownloadedBlock skips the roots (validateHashes: false),
+            // and a beacon body can mismatch its header, e.g. a Taiko payload with null Transactions/Withdrawals stored under the wire roots.
             if (!_blockValidator.ValidateBodyAgainstHeader(header, localBlock.Body, out string? errorMessage))
             {
                 if (_logger.IsDebug) _logger.Debug($"Stored body of {header.ToString(BlockHeader.Format.Short)} does not match its header, downloading it instead: {errorMessage}");
