@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -47,9 +46,9 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor.Options, IReceiptConfig, IBlocksConfig>((receiptConfig, blocksConfig) => new()
+                .AddScoped<BlockchainProcessor.Options, IBlocksConfig>(blocksConfig => new()
                 {
-                    StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                    StoreReceiptsByDefault = true,
                     ProcessingCores = blocksConfig.ProcessingCores,
                     BlockProcessingTimeoutMs = blocksConfig.BlockProcessingTimeoutMs
                 })

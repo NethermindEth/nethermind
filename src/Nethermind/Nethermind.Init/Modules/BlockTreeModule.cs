@@ -91,7 +91,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
         if (!receiptConfig.StoreReceipts)
         {
-            builder.AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance);
+            builder.AddSingleton<IReceiptMigrationStore, TransientReceiptStorage>();
         }
     }
 
