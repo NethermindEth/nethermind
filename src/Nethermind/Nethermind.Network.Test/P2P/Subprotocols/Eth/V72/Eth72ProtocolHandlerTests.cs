@@ -1020,6 +1020,7 @@ public class Eth72ProtocolHandlerTests
             _sparseBlobPoolPeerRegistry.RemovePeer(_idlePeer);
         }
 
+        _transactionPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(_transactionPool, new TxEventArgs(tx));
         ISparseBlobPoolPeer handler = _handler;
         handler.MaintainSparseBlobState(clock.UtcNowOffset + Eth72ProtocolHandler.SamplerProviderWait / 2);
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
