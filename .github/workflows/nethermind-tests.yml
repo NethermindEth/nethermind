@@ -52,11 +52,12 @@ jobs:
         runner:
           - ubuntu-latest
           - ubuntu-24.04-arm
-        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.sh);
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/RunTestProjects.cs);
         # each pack takes about 6 minutes, sized from the job times of a master run.
         project:
           - Nethermind.Eez.Test
           - Nethermind.JsonRpc.Test
+          - Nethermind.Mcp.Plugin.Test
           - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
           - Nethermind.Synchronization.Test
@@ -75,6 +76,7 @@ jobs:
               Nethermind.Abi.Test
               Nethermind.AuRa.Test
               Nethermind.Ethash.Test
+              Nethermind.Experimental.Abi.Test
               Nethermind.SendPolicy.Plugin.Test
               Nethermind.Specs.Test
               Nethermind.State.Test
@@ -178,7 +180,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
           COVERAGE: ${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' }}
-        run: bash scripts/ci/run-test-projects.sh
+        run: dotnet run --file scripts/ci/RunTestProjects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
@@ -307,7 +309,7 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
-        run: bash scripts/ci/run-test-projects.sh
+        run: dotnet run --file scripts/ci/RunTestProjects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
@@ -377,7 +379,7 @@ jobs:
             # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
             run_tests=(../artifacts/bin/${{ matrix.test.project }}/release/${{ matrix.test.project }} --results-directory TestResults)
           else
-            dotnet build ${{ matrix.test.project }}.csproj -c release
+            dotnet build ${{ matrix.test.project }}.csproj -c release -p:RunAnalyzersDuringBuild=false  # analyzers run in build-solutions.yml
             hang_timeout=4m  # the in-job build leaves less of the job budget for a hang to be dumped in
             run_tests=(dotnet test --project ${{ matrix.test.project }}.csproj -c release --no-build --no-restore)
           fi

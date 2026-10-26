@@ -3412,6 +3412,47 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
+    // A peer that announces full custody but never answers cells requests must not be restored as a
+    // provider forever: each restore re-arms the retry and the registry lifetime.
+    [Test]
+    public void should_stop_restoring_announcement_after_repeated_unanswered_cells_requests([Values] bool timedOut)
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
+        registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
+        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>()).Returns(true);
+        registry.RecordCells(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>()).Returns(true);
+        RecreateHandler(sparseBlobPoolPeerRegistry: registry);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)tx.NetworkWrapper!, cellMask, out byte[][] cells), Is.True);
+
+        HandleIncomingStatusMessage();
+        for (int i = 0; i < Eth72ProtocolHandler.MaxUnansweredCellRequestRestores + 1; i++)
+        {
+            MissCellsRequest(tx.Hash!, cellMask, timedOut);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            registry.Received(Eth72ProtocolHandler.MaxUnansweredCellRequestRestores + 1).RemoveAnnouncement(_handler, tx.Hash!);
+            registry.Received(Eth72ProtocolHandler.MaxUnansweredCellRequestRestores).RecordAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>());
+        }
+
+        // A delivery resets the count, so the next miss restores the announcement again.
+        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
+        using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [tx.Hash!], [cells], cellMask.ToBytes());
+        HandleZeroMessage(response, Eth72MessageCode.Cells);
+        registry.ClearReceivedCalls();
+        MissCellsRequest(tx.Hash!, cellMask, timedOut);
+
+        registry.Received(1).RecordAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>());
+    }
+
     // Local scheduler saturation is our fault: the retry is still throttled, but the peer keeps the
     // announcement that marks it as a provider node-wide.
     [Test]
@@ -5954,6 +5995,22 @@ public class Eth72ProtocolHandlerTests
         Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(hash, cellMask), Is.True);
         using CellsMessage72 empty = new(GetLastGetCellsRequestId(hash, cellMask), [], [], BlobCellMask.Empty.ToBytes());
         HandleZeroMessage(empty, Eth72MessageCode.Cells);
+    }
+
+    /// <summary>Lets one cells request go unanswered, then runs maintenance past the retry backoff.</summary>
+    private void MissCellsRequest(Hash256 hash, BlobCellMask cellMask, bool timedOut)
+    {
+        if (timedOut)
+        {
+            Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(hash, cellMask), Is.True);
+            ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(11));
+        }
+        else
+        {
+            ParkEmptyCellsResponse(hash, cellMask);
+        }
+
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
     }
 
     /// <summary>The handler wraps a cells response in its private ClaimedCellsResponse before scheduling it.</summary>

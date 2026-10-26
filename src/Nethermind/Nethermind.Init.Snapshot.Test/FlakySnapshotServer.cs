@@ -51,6 +51,8 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public bool IgnoreRangeOnce { get; set; }
 
+    public bool IgnoreFirstByteRange { get; set; }
+
     public bool RedirectFirstRequest { get; set; }
 
     public int? DropETagAfterRequests { get; set; }
@@ -149,7 +151,10 @@ internal sealed class FlakySnapshotServer : IDisposable
                           && (ifRange is null || ifRange == etag)
                           && TryParseRange(rangeHeader, content.Length, ref from, ref to);
 
-            if (ranged && IgnoreRangeOnce && rangeHeader != "bytes=0-0" && Interlocked.Exchange(ref _rangeIgnored, 1) == 0)
+            if (ranged && IgnoreFirstByteRange && rangeHeader == "bytes=0-0")
+                ranged = false;
+
+            if (ranged && IgnoreRangeOnce && requestNumber > 1 && Interlocked.Exchange(ref _rangeIgnored, 1) == 0)
                 ranged = false;
 
             if (ranged && from >= content.Length)

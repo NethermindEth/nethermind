@@ -69,9 +69,9 @@ jobs:
           #
           # This body is duplicated verbatim in arm-runner-maintenance.yml and in both benchmark jobs of
           # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
-          # actions/checkout, which none of the three jobs has and which arm-runner-maintenance.yml must
+          # actions/checkout, which arm-runner-maintenance.yml must
           # not depend on - it is the workflow you dispatch when the disk is full.
-          # scripts/ci/test_reap_stale_overlays.py asserts the three copies are byte-identical and drives
+          # scripts/ci/TestReapStaleOverlays.cs asserts the three copies are byte-identical and drives
           # this body against synthetic mount tables.
           # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
           # script path, so only that test can point this at a table it wrote.

@@ -61,7 +61,6 @@ public class EezModule(IEezConfig config, EezChainRules rules) : Module
         {
             builder.AddSingleton<IBeaconBlockRootHandler>(NoBeaconRootsCall.Instance);
             builder.AddSingleton<IRewardCalculator>(NoBlockRewards.Instance);
-            builder.AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance);
         }
 
         if (rules.BurnedAtBlockStart.Length != 0)

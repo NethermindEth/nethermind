@@ -1,0 +1,1 @@
+Copied verbatim from go-ethereum's [`cmd/evm/testdata`](https://github.com/ethereum/go-ethereum/tree/1c6b3104fad2f37b016770c0a66b03831a1f5d70/cmd/evm/testdata), keeping its directory numbers. `T8nTests` runs them as geth's `TestT8n` and `TestEVMTracing` do.
