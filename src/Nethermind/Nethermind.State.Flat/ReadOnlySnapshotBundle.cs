@@ -94,6 +94,7 @@ public sealed class ReadOnlySnapshotBundle(
     public Account? GetAccount(Address address, HashedKey<Address> key)
     {
         GuardDispose();
+        SnapshotLayerProbe.ReadOnlyEntry(SnapshotLayerProbe.Account);
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
@@ -140,6 +141,7 @@ public sealed class ReadOnlySnapshotBundle(
     public void GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out UInt256? value)
     {
         GuardDispose();
+        SnapshotLayerProbe.ReadOnlyEntry(SnapshotLayerProbe.Slot);
 
         (Address address, UInt256 index) = key.Key;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -250,6 +252,7 @@ public sealed class ReadOnlySnapshotBundle(
     public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
+        SnapshotLayerProbe.ReadOnlyEntry(SnapshotLayerProbe.StateNode);
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
@@ -274,6 +277,7 @@ public sealed class ReadOnlySnapshotBundle(
     public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
+        SnapshotLayerProbe.ReadOnlyEntry(SnapshotLayerProbe.StorageNode);
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)

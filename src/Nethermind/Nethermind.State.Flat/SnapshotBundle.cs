@@ -110,6 +110,7 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         HashedKey<Address> key = new(address);
+        SnapshotLayerProbe.Read(SnapshotLayerProbe.Account);
 
         if (!excludeChanged && (_changedAccounts.TryGetValue(key, out Account? acc) || _readAccounts.TryGetValue(key, out acc)))
         {
@@ -118,6 +119,7 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         isInCurrentSnapshot = false;
+        SnapshotLayerProbe.WalkLayers(SnapshotLayerProbe.Account);
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -149,12 +151,15 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         HashedKey<(Address, UInt256)> key = new((address, index));
+        SnapshotLayerProbe.Read(SnapshotLayerProbe.Slot);
 
         if (_changedSlots.TryGetValue(key, out UInt256? slotValue))
         {
             value = slotValue;
             return;
         }
+
+        SnapshotLayerProbe.WalkLayers(SnapshotLayerProbe.Slot);
 
         // Self-destructed at the point of the latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
@@ -303,11 +308,14 @@ public sealed class SnapshotBundle : IDisposable
 
     private bool DoFindStateNodeExternal(in HashedKey<TreePath> key, int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
+        SnapshotLayerProbe.Read(SnapshotLayerProbe.StateNode);
         if (_trieNodeCache.TryGet(null, key.Key, shardIdx, hashCode, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
             return true;
         }
+
+        SnapshotLayerProbe.WalkLayers(SnapshotLayerProbe.StateNode);
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -401,11 +409,14 @@ public sealed class SnapshotBundle : IDisposable
     // check for slightly improved latency.
     private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, int shardIdx, int hashCode, Hash256 hash, out TrieNode? node)
     {
+        SnapshotLayerProbe.Read(SnapshotLayerProbe.StorageNode);
         if (_trieNodeCache.TryGet(address, path, shardIdx, hashCode, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
             return true;
         }
+
+        SnapshotLayerProbe.WalkLayers(SnapshotLayerProbe.StorageNode);
 
         // Built only once the caches miss: hashing the address and the path is most of what a cache hit costs.
         HashedKey<(Hash256, TreePath)> key = new((address, path));

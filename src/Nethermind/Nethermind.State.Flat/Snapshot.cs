@@ -102,13 +102,23 @@ public class Snapshot : RefCountingDisposable
     internal SortedSnapshotContent SortedContent => _sorted!;
 
     public bool TryGetAccount(HashedKey<Address> key, out Account? acc)
-        => _isSorted ? _sorted!.TryGetAccount(key, out acc) : _mutable!.Accounts.TryGetValue(key, out acc);
+    {
+        long start = SnapshotLayerProbe.StartProbe();
+        bool found = _isSorted ? _sorted!.TryGetAccount(key, out acc) : _mutable!.Accounts.TryGetValue(key, out acc);
+        SnapshotLayerProbe.EndProbe(SnapshotLayerProbe.Account, _isSorted, found, start);
+        return found;
+    }
 
     public bool HasSelfDestruct(HashedKey<Address> key)
         => _isSorted ? _sorted!.HasSelfDestruct(key) : _mutable!.SelfDestructedStorageAddresses.TryGetValue(key, out bool _);
 
     public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out UInt256? value)
-        => _isSorted ? _sorted!.TryGetStorage(key, out value) : _mutable!.Storages.TryGetValue(key, out value);
+    {
+        long start = SnapshotLayerProbe.StartProbe();
+        bool found = _isSorted ? _sorted!.TryGetStorage(key, out value) : _mutable!.Storages.TryGetValue(key, out value);
+        SnapshotLayerProbe.EndProbe(SnapshotLayerProbe.Slot, _isSorted, found, start);
+        return found;
+    }
 
     /// <summary>The key a storage key is filed under in a slot filter built by <see cref="AddStorageKeysTo"/>.</summary>
     /// <remarks>The hash the dictionaries already bucket on, so a probe hashes nothing new.</remarks>
@@ -140,10 +150,20 @@ public class Snapshot : RefCountingDisposable
     }
 
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
-        => _isSorted ? _sorted!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node!);
+    {
+        long start = SnapshotLayerProbe.StartProbe();
+        bool found = _isSorted ? _sorted!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node!);
+        SnapshotLayerProbe.EndProbe(SnapshotLayerProbe.StateNode, _isSorted, found, start);
+        return found;
+    }
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
-        => _isSorted ? _sorted!.TryGetStorageNode(key, out node) : _mutable!.StorageNodes.TryGetValue(key, out node!);
+    {
+        long start = SnapshotLayerProbe.StartProbe();
+        bool found = _isSorted ? _sorted!.TryGetStorageNode(key, out node) : _mutable!.StorageNodes.TryGetValue(key, out node!);
+        SnapshotLayerProbe.EndProbe(SnapshotLayerProbe.StorageNode, _isSorted, found, start);
+        return found;
+    }
 
     protected override void CleanUp()
     {
