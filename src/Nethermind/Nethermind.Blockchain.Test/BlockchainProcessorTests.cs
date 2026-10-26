@@ -928,7 +928,7 @@ public class BlockchainProcessorTests
         {
             Assert.That(removed.IsCompleted, Is.False);
             Assert.That(removedWhenExecutedCopyCompletes.IsCompleted, Is.False,
-                "the removal that already decremented the last copy to zero owns the release");
+                "a removal that takes the count below zero must not release waiters");
         }
     }
 
