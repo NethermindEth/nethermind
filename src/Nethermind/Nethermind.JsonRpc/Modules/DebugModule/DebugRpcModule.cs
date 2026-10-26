@@ -338,13 +338,7 @@ public class DebugRpcModule(
         GethTraceOptions effective = options ?? GethTraceOptions.Default;
         if (validateStructLogTimeout && string.IsNullOrEmpty(effective.Tracer))
         {
-            bool hasTransactionToTrace = effective.TxHash is { } txHash
-                ? resolvedBlock.GetTransactionIndex(txHash.ValueHash256) >= 0
-                : resolvedBlock.Transactions.Length != 0;
-            if (hasTransactionToTrace && effective.ParsedTimeout.Error is { } durationError)
-            {
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(durationError, ErrorCodes.InvalidInput);
-            }
+            if (CheckBlockTraceTimeout(resolvedBlock, effective) is { } timeoutError) return timeoutError;
         }
         BlockParameter blockParameter = new(header.Hash!);
         return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
@@ -516,8 +510,16 @@ public class DebugRpcModule(
             return blockError;
         }
 
-        if (options?.ParsedTimeout.Error is null && CanStreamBlockTrace(options))
+        if (block.IsGenesis)
+
         {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
+        }
+
+        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            if (string.IsNullOrEmpty(effective.Tracer) && CheckBlockTraceTimeout(block, effective) is { } timeoutError) return timeoutError;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetBlockTrace(block!, token, options, writer, pipeWriter)));
@@ -540,6 +542,7 @@ public class DebugRpcModule(
         catch (TraceDurationFormatException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
+
         }
         catch (RlpException)
         {
@@ -672,6 +675,16 @@ public class DebugRpcModule(
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
+    }
+
+    private static ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? CheckBlockTraceTimeout(Block block, GethTraceOptions options)
+    {
+        bool hasTransactionToTrace = options.TxHash is { } txHash
+            ? block.GetTransactionIndex(txHash.ValueHash256) >= 0
+            : block.Transactions.Length != 0;
+        return hasTransactionToTrace && options.ParsedTimeout.Error is { } durationError
+            ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(durationError, ErrorCodes.InvalidInput)
+            : null;
     }
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, GethTraceOptions? options = null)

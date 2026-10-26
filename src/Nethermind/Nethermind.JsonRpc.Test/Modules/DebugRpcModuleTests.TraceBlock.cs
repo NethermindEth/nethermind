@@ -570,6 +570,90 @@ public partial class DebugRpcModuleTests
         yield return new TestCaseData(false, "\"bad\"", "eager", "debug_intermediateRoots");
     }
 
+    private static IEnumerable<TestCaseData> RawBlockTimeoutCases()
+    {
+        const string raw = "debug_traceBlock";
+        const string noop = NativeNoopTracer.NoopTracer;
+        const string invalidConfig = """{"diffMode":[]}""";
+        const string nullConfig = """{"onlyTopCall":true,"onlyTopCall":null,"withLog":null}""";
+        (string Selection, object Timeout, bool? Streaming, string? Tracer, string? Config, string Method, int? Code, string? Diagnostic)[] cases =
+        [
+            ("genesis", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
+            ("genesis", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
+            ("genesis", "5s", false, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
+            ("decode", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("decode", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("empty", "5s", false, null, null, raw, null, null),
+            ("empty", "5s", true, null, null, raw, null, null),
+            ("decode", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("genesis", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
+            ("empty", "bad", null, noop, null, raw, null, null),
+            ("nonempty", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "Cannot parse 'bad' as a duration"),
+            ("nonempty", "bad", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
+            ("nonempty", "5s", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
+            ("nonempty", "5s", null, noop, null, raw, null, null),
+            ("nonempty", "bad", null, "callTracer", nullConfig, raw, ErrorCodes.InvalidInput, "Cannot parse 'bad' as a duration"),
+            ("nonempty", "5s", null, "callTracer", nullConfig, raw, null, null),
+            ("nonempty", 7, null, noop, null, raw, ErrorCodes.InvalidParams, null),
+            ("nonempty", new string('x', 65), null, noop, null, raw, ErrorCodes.InvalidParams, null),
+            ("nonempty", "bad", null, noop, null, "debug_traceTransactionInBlockByHash", ErrorCodes.InvalidParams, null),
+            ("nonempty", "bad", false, null, null, raw, ErrorCodes.InvalidInput, "Cannot parse 'bad' as a duration"),
+            ("nonempty", "bad", true, null, null, raw, ErrorCodes.InvalidInput, "Cannot parse 'bad' as a duration"),
+            ("nonempty", "5s", false, null, null, raw, null, null),
+            ("nonempty", "5s", true, null, null, raw, null, null),
+            ("empty", "bad", false, null, null, raw, null, null),
+            ("empty", "bad", true, null, null, raw, null, null),
+            ("unmatched", "bad", false, null, null, raw, null, null),
+            ("unmatched", "bad", true, null, null, raw, null, null)
+        ];
+        int index = 0;
+        foreach ((string selection, object timeout, bool? streaming, string? tracer, string? config, string method, int? code, string? diagnostic) in cases)
+        {
+            Dictionary<string, object?> options = new() { ["timeout"] = timeout, ["tracer"] = tracer };
+            if (streaming is { } streamMode) options["streamMode"] = streamMode;
+            if (config is not null) options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>(config);
+            if (selection == "unmatched") options["txHash"] = TestItem.KeccakD;
+            yield return new TestCaseData(selection, method, options, code, diagnostic)
+                .SetName($"RawBlockTimeout_{index++}_{selection}_{method}");
+        }
+    }
+
+    [TestCaseSource(nameof(RawBlockTimeoutCases))]
+    public async Task Debug_traceBlock_orders_decode_genesis_and_construction_before_timeout(
+        string selection, string method, Dictionary<string, object?> options, int? expectedCode, string? diagnostic)
+    {
+        using Context context = await Context.Create();
+        Block block = selection switch
+        {
+            "genesis" => context.Blockchain.BlockTree.FindBlock(context.Blockchain.BlockTree.Genesis!.Hash!)!,
+            "empty" => await context.Blockchain.AddBlock(),
+            _ => await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain))
+        };
+        string input = selection == "decode" ? "0xc0" : Rlp.Encode(block).ToString();
+        object[] parameters = method == "debug_traceTransactionInBlockByHash"
+            ? [input, block.Transactions[0].Hash!, options] : [input, options];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        if (expectedCode is not null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+                Assert.That(json["result"], Is.Null, response);
+                if (diagnostic is not null) Assert.That(json["error"]?.ToString(), Does.Contain(diagnostic), response);
+            }
+        }
+        else
+        {
+            Assert.That(json["error"], Is.Null, response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(selection == "unmatched" ? 0 : block.Transactions.Length), response);
+            for (int i = 0; i < traces.Count; i++)
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+        }
+
+    }
+
     [Test]
     public async Task Debug_traceBlockByNumber_rejects_non_object_options([Values("17", "[]", "\"bad\"", "true")] string optionsJson)
     {
@@ -2413,7 +2497,7 @@ public partial class DebugRpcModuleTests
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
 
-    [TestCase("debug_traceBlock", -32602)]
+    [TestCase("debug_traceBlock", -32000)]
     [TestCase("debug_traceBlockByNumber", -32000)]
     [TestCase("debug_traceBlockByHash", -32000)]
     public async Task Debug_traceBlock_routes_reject_malformed_timeout_before_stream_commit(string method, int expectedCode)
