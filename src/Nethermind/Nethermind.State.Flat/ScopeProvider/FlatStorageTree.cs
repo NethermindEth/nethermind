@@ -393,7 +393,7 @@ public sealed class FlatStorageTree(
             storageTree._scope.CountEarlyReconciled(_reused, restored);
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = _entries.ToRef();
             if (entries.Count > 0) trie.BulkSet(entries, canParallelize: true);
-            // Deferred, the scope commit publishes the nodes after the block is reported valid.
+            // Deferred, the scope commit publishes the root after the block is reported valid.
             if (!storageTree._config.DeferStorageTrieCommit) storageTree.CommitTree();
             if (entries.Count > 0 || _reused > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree.RootHash);
         }

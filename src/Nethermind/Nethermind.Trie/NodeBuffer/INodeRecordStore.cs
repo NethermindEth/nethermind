@@ -12,7 +12,7 @@ public interface INodeRecordStore
     /// <summary>Finds a borrowed record, or misses when its pointer is absent or no longer available.</summary>
     bool TryLocate(ulong pointer, out NodeRecord record);
 
-    /// <summary>Reserves contiguous, zero-filled bytes for node records, registered with the buffer when the batch is disposed.</summary>
+    /// <summary>Reserves contiguous, zero-filled bytes for node records, each locatable by its pointer once written.</summary>
     /// <remarks>
     /// The reservation cannot cross a pointer-address boundary. The writer holds a pin no newer than the batch until all written
     /// records and their roots are published.

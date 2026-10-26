@@ -103,6 +103,7 @@ public class FlatOverridableWorldScopeTests
             }
 
             _container?.Dispose();
+            GlobalNodeRecordBuffer.Dispose();
             _cancellationTokenSource.Dispose();
         }
 

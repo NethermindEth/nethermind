@@ -163,7 +163,7 @@ public class PersistedSnapshotTests
             Assert.That((firstRetain.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((secondRetain.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
             Assert.That(secondCount, Is.InRange(1, 16));
             Assert.That(firstCount, Is.GreaterThan(secondCount * 8));
-            foreach ((TreePath path, _, NodeRecord record) in _buffer.EnumerateNodes(secondRoot.Pointer))
+            foreach ((TreePath path, _, NodeRecord record) in _buffer.EnumerateNodes(secondRoot.Pointer, 0))
             {
                 bool found = storage ? persisted.TryLoadStorageRlp(address!, path, out byte[]? rlp) : persisted.TryLoadStateRlp(path, out rlp);
                 Assert.That(found, Is.True, path.ToString());

@@ -66,7 +66,7 @@ public class SnapshotBundleWarmerTests
         }
 
         (ValueHash256 Hash, ulong Pointer) root = FlatTestHelpers.BulkSet(_pool, buffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
-        (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer).ToArray();
+        (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer, 0).ToArray();
         PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach (ValueHash256 key in keys) expected.Set(key.Bytes, value);
         buffer.SetRoot(address, root.Hash, root.Pointer);
@@ -193,7 +193,7 @@ public class SnapshotBundleWarmerTests
         else pointer = FlatTestHelpers.Warm(warmed, null, TreePath.Empty, rlp);
 
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
-        source.WarmUp(_buffer, (hash, pointer), ValueKeccak.Zero);
+        source.WarmUp(_buffer, (hash, pointer), ValueKeccak.Zero, forDelete: false);
 
         Assert.That(source.FetchCount, Is.Zero, "the node is read from the buffer or the warmed nodes");
     }
@@ -480,7 +480,7 @@ public class SnapshotBundleWarmerTests
             root = FlatTestHelpers.BulkSet(_pool, persistedBuffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
         }
 
-        Dictionary<TreePath, byte[]> persisted = persistedBuffer.EnumerateNodes(root.Pointer)
+        Dictionary<TreePath, byte[]> persisted = persistedBuffer.EnumerateNodes(root.Pointer, 0)
             .ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
@@ -521,10 +521,10 @@ public class SnapshotBundleWarmerTests
             Assert.That(published.All(pointer => _buffer.TryLocate(pointer, out _)), Is.True, "snapshot pointers are real-buffer records");
             // A published record linking a warmed child would end the walk through the real buffer early.
             WarmedNodeRecordBuffer warmedView = new(_buffer, retired!.WarmedNodeBuffer);
-            Assert.That(_buffer.EnumerateNodes(trie.Root.Pointer).Count(), Is.EqualTo(warmedView.EnumerateNodes(trie.Root.Pointer).Count()), "published records cannot retain temporary children");
+            Assert.That(_buffer.EnumerateNodes(trie.Root.Pointer, 0).Count(), Is.EqualTo(warmedView.EnumerateNodes(trie.Root.Pointer, 0).Count()), "published records cannot retain temporary children");
 
             Assert.That(retired.WarmedNodeBuffer.TryGet(address, TreePath.Empty, out _, out ulong warmedRoot), Is.True);
-            (TreePath Path, ulong Pointer, NodeRecord Record)[] warmedNodes = warmedView.EnumerateNodes(warmedRoot).ToArray();
+            (TreePath Path, ulong Pointer, NodeRecord Record)[] warmedNodes = warmedView.EnumerateNodes(warmedRoot, 0).ToArray();
             Assert.That(warmedNodes, Has.Length.GreaterThan(1), "warm-up must populate child pointers, not just path entries");
             foreach ((TreePath path, _, NodeRecord record) in warmedNodes)
                 Assert.That(record.Rlp.ToArray(), Is.EqualTo(persisted[path]), "published bytes remain complete under overlapping warm-ups");

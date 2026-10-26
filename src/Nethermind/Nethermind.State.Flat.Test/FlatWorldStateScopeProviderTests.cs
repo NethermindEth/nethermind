@@ -257,6 +257,9 @@ public class FlatWorldStateScopeProviderTests
                                 }
                                 LastCommittedSnapshot = snapshot;
 
+                                // Mirror FlatDbManager.AddSnapshot: returning to the pool directly would recycle
+                                // the resource while a warmer lease is still outstanding, and the resource would
+                                // then be returned a second time when that lease is released.
                                 transientResource.ReleaseLease();
                             });
 
@@ -1177,6 +1180,24 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(next.Scope.AppliesStorageWritesEarly, Is.False);
     }
 
+    [Test]
+    [NonParallelizable]
+    public void EarlyStorageApply_WakesTheParkedThread()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+
+        Assert.That(() => scope.EarlyApplier.IsParked, Is.True.After(5000, 10));
+
+        storageTree.HintSet(1, 1);
+        Assert.That(() => storageTree.EarlyWritesDrained, Is.True.After(5000, 10));
+        Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1));
+    }
+
     private static void ApplyEarlyHints(FlatStorageTree tree, Action hint)
     {
         using ManualResetEventSlim started = new();
@@ -1206,6 +1227,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(context.Scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(expected.RootHash));
     }
 
+    // Process-wide, so restore the previous value.
     private static IDisposable SetMinIdleGap(TimeSpan gap)
     {
         TimeSpan previous = IdleStorageApplier.MinIdleGap;
@@ -1359,7 +1381,7 @@ public class FlatWorldStateScopeProviderTests
 
         for (int block = 1; block <= lastBlock; block++)
         {
-            // Warming the next block's slots fetches the persisted nodes that block then reads from the trie node cache.
+            // Warming the next block's slots fetches the persisted nodes that block then reads from the warmed node buffer.
             if (block < lastBlock)
             {
                 (int nextFirstContract, int nextEndContract) = ContractsOf(block + 1);
@@ -1449,7 +1471,6 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(reader.Loads, Is.EqualTo(2), "a loaded node is not warmed");
             Assert.That(Load(readOnlySnapshotPath, readOnlySnapshotRlp), Is.Null, "read-only bundle snapshot must be read through the buffer");
             Assert.That(Load(ownSnapshotPath, ownSnapshotRlp), Is.Null, "own snapshot must be read through the buffer");
-            Assert.That(Load(ownSnapshotPath, readOnlySnapshotRlp), Is.Null, "snapshot node of another hash");
         }
     }
 
@@ -1784,7 +1805,7 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(resumedSnapshot.BufferPin!.WriteBoundary, Is.LessThan(interleavedSnapshot.BufferPin!.WriteBoundary));
             Assert.That(resumed, Has.Some.LessThan(interleavedSnapshot.BufferPin!.WriteBoundary), "the paused scope retains its earlier reachable writes");
             Assert.That(resumed, Does.Not.Contain(interleavedSnapshot.StateRootPointer));
-            Assert.That(resumed.Length, Is.EqualTo(ctx.NodeRecordBuffer.EnumerateNodes(resumedSnapshot.StateRootPointer).Count()));
+            Assert.That(resumed.Length, Is.EqualTo(ctx.NodeRecordBuffer.EnumerateNodes(resumedSnapshot.StateRootPointer, 0).Count()));
             Assert.That(interleavedSnapshot.StateNodes.Count(), Is.EqualTo(1));
         }
     }

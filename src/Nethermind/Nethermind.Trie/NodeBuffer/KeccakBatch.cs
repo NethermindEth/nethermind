@@ -97,26 +97,33 @@ internal static class KeccakBatch
             input[^1] |= 0x80;
         }
 
-        ref byte output = ref MemoryMarshal.GetReference(MemoryMarshal.AsBytes(laneHashes));
+        ComputePadded(inputs, paddedLength, lanes == Avx512Lanes, ref MemoryMarshal.GetReference(MemoryMarshal.AsBytes(laneHashes)));
+
+        for (int lane = 0; lane < group.Length; lane++)
+        {
+            hashes[group[lane]] = laneHashes[lane];
+        }
+    }
+
+    /// <summary>Hashes padded messages of <paramref name="paddedLength"/> bytes each, lying back to back in <paramref name="inputs"/>, in one kernel call.</summary>
+    /// <param name="eightLanes">Whether the AVX-512 kernel hashes eight messages, rather than the AVX2 one four.</param>
+    /// <param name="output">Receives the 32-byte hash of each lane, cleared lanes included.</param>
+    internal static void ComputePadded(Span<byte> inputs, int paddedLength, bool eightLanes, ref byte output)
+    {
         if (paddedLength == KeccakHash.RateBlockLength)
         {
-            if (lanes == Avx512Lanes)
+            if (eightLanes)
                 KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref output);
             else
                 KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref output);
         }
-        else if (lanes == Avx512Lanes)
+        else if (eightLanes)
         {
             KeccakHash.ComputePaddedMultiBlocks8Avx512(ref inputs[0], paddedLength, ref output);
         }
         else
         {
             KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], paddedLength, ref output);
-        }
-
-        for (int lane = 0; lane < group.Length; lane++)
-        {
-            hashes[group[lane]] = laneHashes[lane];
         }
     }
 }

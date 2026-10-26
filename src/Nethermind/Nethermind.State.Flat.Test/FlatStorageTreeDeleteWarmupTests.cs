@@ -37,11 +37,6 @@ public class FlatStorageTreeDeleteWarmupTests
     private const int TrieSlots = 2_000;
     private const int DeletedSlots = 64;
 
-    // The per-block node cache is direct-mapped, so a few warmed nodes are evicted by others whatever is written;
-    // a delete must not add the nodes its collapse needs on top of that. Slots are hashed with a per-process seed,
-    // so the collisions vary run to run: a flagged delete has read up to 5 more nodes, an unflagged one always 25 more.
-    private const int CollisionAllowance = 12;
-
     private static readonly Address Contract = TestItem.AddressA;
 
     [Test]
@@ -55,7 +50,7 @@ public class FlatStorageTreeDeleteWarmupTests
         // the warm-up dedupe: the delete hint must still be queued.
         long deleteLoads = fixture.CommitLoads(slots, delete: true, passDeleteFlag: true, out Hash256 storageRoot, hintWithoutValueFirst);
 
-        Assert.That(deleteLoads, Is.LessThanOrEqualTo(updateLoads + CollisionAllowance), "the commit read collapse siblings the warm-up should have loaded");
+        Assert.That(deleteLoads, Is.LessThanOrEqualTo(updateLoads), "the commit read collapse siblings the warm-up should have loaded");
         Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
     }
 
@@ -69,7 +64,7 @@ public class FlatStorageTreeDeleteWarmupTests
         long deleteLoads = fixture.CommitLoads(slots, delete: true, passDeleteFlag: false, out Hash256 storageRoot);
 
         // Not a requirement: it shows these deletes do collapse branches, so the test above can fail.
-        Assert.That(deleteLoads, Is.GreaterThan(updateLoads + CollisionAllowance));
+        Assert.That(deleteLoads, Is.GreaterThan(updateLoads));
         Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
     }
 
@@ -105,15 +100,6 @@ public class FlatStorageTreeDeleteWarmupTests
             scope.Commit(0);
             _baseState = new StateId(0, scope.RootHash);
             Persist(target.Snapshot ?? throw new InvalidOperationException("The base commit produced no snapshot"));
-
-            // A node cache grows to fit the blocks before it; a fresh one is far smaller than a running node's.
-            for (int block = 0; block < 2; block++)
-            {
-                (FlatWorldStateScope warming, _) = OpenScope(passDeleteFlag: false);
-                IWorldStateScopeProvider.IStorageTree tree = warming.CreateStorageTree(Contract);
-                for (int i = 0; i < TrieSlots; i++) tree.HintSet(Slot(i));
-                warming.Dispose();
-            }
         }
 
         /// <summary>Hints <paramref name="slots"/> as a block writing them would, then counts the persistence reads of the block-end commit.</summary>

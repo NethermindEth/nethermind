@@ -75,7 +75,7 @@ public class FlatStateReaderTests
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader));
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
 
         if (fullScan) reader.RunTreeVisitor(new TreeDumper(), header);
         else reader.RunTreeVisitor(new AccountProofCollector(TestItem.AddressA, [(UInt256)1]), header);
@@ -88,44 +88,23 @@ public class FlatStateReaderTests
     }
 
     [Test]
-    public void RunTreeVisitor_ReadsBufferRootsWithoutPersistence([Values] bool fullScan)
+    public void RunTreeVisitor_ReadsSnapshotsBeforeBasePersistence([Values] bool fullScan, [Values] bool persistedSnapshot)
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
         trieReader.AddRootsTo(snapshot, _buffer);
-        trieReader.StateAvailable = false;
-        trieReader.StorageAvailable = false;
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot));
-
-        AssertVisit(reader, header, stateRoot, fullScan);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(trieReader.StateRlpLoads, Is.Zero);
-            Assert.That(trieReader.StorageRlpLoads, Is.Zero);
-        }
-    }
-
-    [Test]
-    public void RunTreeVisitor_ReadsPersistedSnapshotsBeforeBasePersistence([Values] bool fullScan)
-    {
-        CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
-        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        using INodeRecordBuffer sourceBuffer = FlatTestHelpers.NewTestBuffer();
-        ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, sourceBuffer);
-        trieReader.AddRootsTo(snapshot, sourceBuffer);
         using TempPath arenaPath = TempPath.GetTempDirectory();
         using TempPath blobsPath = TempPath.GetTempDirectory();
         using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaPath.Path);
         using BlobArenaManager blobs = new(blobsPath.Path, 4L * 1024 * 1024);
-        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, blobs);
-        using PersistedSnapshot persisted = TestFixtureHelpers.CreatePersistedSnapshot(arena, blobs, snapshot.From, snapshot.To, data);
+        using PersistedSnapshot? persisted = persistedSnapshot
+            ? TestFixtureHelpers.CreatePersistedSnapshot(arena, blobs, snapshot.From, snapshot.To, PersistedSnapshotBuilderTestExtensions.Build(snapshot, blobs))
+            : null;
         trieReader.StateAvailable = false;
         trieReader.StorageAvailable = false;
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, persisted: persisted));
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, persistedSnapshot ? null : snapshot, persisted));
 
         AssertVisit(reader, header, stateRoot, fullScan);
 
@@ -181,7 +160,7 @@ public class FlatStateReaderTests
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
 
-    private class CurrentBundleFlatDbManager(IPersistence.IPersistenceReader persistenceReader, Snapshot? snapshot = null, PersistedSnapshot? persisted = null) : IFlatDbManager
+    private class CurrentBundleFlatDbManager(IPersistence.IPersistenceReader persistenceReader, Snapshot? snapshot, PersistedSnapshot? persisted) : IFlatDbManager
     {
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
         {

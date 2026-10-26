@@ -42,7 +42,7 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
     }
 
     /// <param name="buffer">The buffer holding the trie, which the warmed nodes are combined with.</param>
-    public void WarmUp(INodeRecordBuffer buffer, (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key, bool forDelete = false)
+    public void WarmUp(INodeRecordBuffer buffer, (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key, bool forDelete)
     {
         using ReadOnlySnapshotBundle reader = new(new SnapshotPooledList(0), new Persistence(this), false, PersistedSnapshotStack.Empty(), bufferPin: null);
         BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(buffer, warmed), warmed, reader, address, root, key, forDelete);

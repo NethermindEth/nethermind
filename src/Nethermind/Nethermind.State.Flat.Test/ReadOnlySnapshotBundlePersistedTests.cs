@@ -215,9 +215,12 @@ public class ReadOnlySnapshotBundlePersistedTests
             StrongBox<byte[]?> spanRlp = new();
             bool found = bundle.TryLoadPersistedRlp(storage ? address : null, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
 
-            Assert.That(arrayRlp, Is.EqualTo(expected), path.ToString());
-            Assert.That(found, Is.EqualTo(expected is not null), path.ToString());
-            Assert.That(spanRlp.Value, Is.EqualTo(expected), path.ToString());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(arrayRlp, Is.EqualTo(expected), path.ToString());
+                Assert.That(found, Is.EqualTo(expected is not null), path.ToString());
+                Assert.That(spanRlp.Value, Is.EqualTo(expected), path.ToString());
+            }
         }
 
         const int reads = 64;

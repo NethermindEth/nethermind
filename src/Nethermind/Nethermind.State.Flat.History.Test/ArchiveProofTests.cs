@@ -2491,7 +2491,7 @@ public class ArchiveProofTests
         _container = builder.Build();
         IResourcePool pool = _container.Resolve<IResourcePool>();
         ForwardCommitmentCapture capture = _container.Resolve<ForwardCommitmentCapture>();
-        INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         for (ulong block = 0; block <= _chain.Head; block++)
         {
             using Snapshot snapshot = pool.CreateSnapshot(block == 0 ? StateId.PreGenesis : _chain.StateIdAt(block - 1), _chain.StateIdAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv, buffer);

@@ -181,6 +181,7 @@ public sealed unsafe partial class BloomFilter : IDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
+        // In bounds: GetLineAndHashState keeps lineIndex below NumBlocks, and a probe bit below 512 keeps bit >> 6 below WordsPerLine.
         ulong** lines = stackalloc ulong*[AddLanes];
         uint* hashes = stackalloc uint[AddLanes];
         ulong* words = stackalloc ulong[WordsPerLine];

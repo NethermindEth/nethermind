@@ -22,9 +22,6 @@ public readonly struct NodeRecord
         _offset = offset;
     }
 
-    /// <summary>Whether this references no record.</summary>
-    public bool IsNull => _buffer.Equals(default);
-
     /// <summary>The whole record: header, child pointers and RLP.</summary>
     public ReadOnlySpan<byte> Span
     {

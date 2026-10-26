@@ -63,7 +63,7 @@ public static class NodeRecordBufferExtensions
     /// Inline children are contained in their parent's RLP and are not emitted as separate records.
     /// Pointers below <paramref name="lowerBound"/> and their subtrees are skipped: immutable buffer parents are written after their children.
     /// </remarks>
-    public static IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)> EnumerateNodes(this INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound = 0) => new NodeEnumerable(buffer, rootPointer, lowerBound);
+    public static IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)> EnumerateNodes(this INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound) => new NodeEnumerable(buffer, rootPointer, lowerBound);
 
     private static bool TryFindRecord(INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, out NodeRecord record)
     {

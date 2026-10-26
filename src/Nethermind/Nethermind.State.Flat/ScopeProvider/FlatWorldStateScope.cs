@@ -688,8 +688,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _earlyApplyClosed = true;
         _pausePrewarmer = true;
 
-        // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
-        // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
+        // With DeferStorageTrieCommit the write batches wrote the storage trees' nodes but not their roots, which are published
+        // here, after the block was reported valid; otherwise the batches already published them. The roots must be in the
         // bundle before CollectAndApplySnapshot takes the block's changes. No tree means nothing was written.
         if (!_trieless)
         {
@@ -762,7 +762,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             return;
         }
 
-        // Each address writes its own node dictionary in the bundle, so the trees commit independently.
+        // Publishing only swaps the root index entry and records the root in a concurrent dictionary, so the trees commit independently.
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         ParallelUnbalancedWork.For(0, dirty.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
             dirty, static (i, trees) =>

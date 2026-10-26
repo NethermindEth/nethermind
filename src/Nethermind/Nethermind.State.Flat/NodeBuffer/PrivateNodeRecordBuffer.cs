@@ -108,8 +108,10 @@ internal sealed class PrivateNodeRecordBuffer(int generationBytes) : INodeRecord
 
             ulong next = NodeRecordBuffer.NextGeneration(_active.Id);
             // The first generation always has the base size, so its storage is reused rather than reallocated.
-            // It does not need to be zeroed: a record write covers every byte the record is read back by.
-            NativeNodeBuffer reused = _generations[0]!.Data;
+            // Its used prefix is zeroed, as a write batch hands out zero-filled bytes.
+            Generation first = _generations[0]!;
+            NativeNodeBuffer reused = first.Data;
+            reused.AsSpan(0, (int)Math.Min(first.Used, reused.Length)).Clear();
             _generations[0] = null;
             FreeGenerations();
             _firstGeneration = next;

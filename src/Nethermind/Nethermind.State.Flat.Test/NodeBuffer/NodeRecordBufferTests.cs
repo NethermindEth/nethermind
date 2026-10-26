@@ -81,7 +81,7 @@ public class NodeRecordBufferTests
         {
             Assert.That(buffer.TryLocate(temporaryPointer, out _), Is.False);
             Assert.That(buffer.TryLocate(realPointer, out _), Is.True);
-            Assert.That(buffer.EnumerateNodes(temporaryPointer), Is.Empty);
+            Assert.That(buffer.EnumerateNodes(temporaryPointer, 0), Is.Empty);
             Assert.That(warmed.TryLocate(realPointer, out _), Is.False);
         }
     }

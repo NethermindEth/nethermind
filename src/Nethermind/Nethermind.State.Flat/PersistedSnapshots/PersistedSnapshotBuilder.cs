@@ -15,6 +15,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -174,7 +175,15 @@ public static class PersistedSnapshotBuilder
         // snapshot must be measured live at persist time: Snapshot.EstimateMemory serves counts sealed at
         // first observation (for repository-ledger consistency), which may predate late content writes.
         checked((snapshot.IsSorted ? snapshot.EstimateMemory() : snapshot.Content.EstimateMemory())
-            + (snapshot.StateNodes.LongCount() + snapshot.StorageNodes.LongCount()) * NodeTableEntryUpperBound + 4.KiB);
+            + CountNodes(snapshot) * NodeTableEntryUpperBound + 4.KiB);
+
+    private static long CountNodes(Snapshot snapshot)
+    {
+        long count = 0;
+        foreach ((TreePath Path, ulong Pointer, NodeRecord Record) _ in snapshot.StateNodes) count++;
+        foreach ((Hash256 Address, TreePath Path, ulong Pointer, NodeRecord Record) _ in snapshot.StorageNodes) count++;
+        return count;
+    }
 
     private static void WritePerAddress<TWriter>(
         ref SortedTableBuilder<TWriter> table, Snapshot snapshot,

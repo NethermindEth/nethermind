@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>Native record storage, released only once no pin covers its generation.</summary>
-internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
+internal sealed unsafe partial class NativeNodeBuffer : MemoryManager<byte>
 {
     private const nuint HugePageBytes = 2 * 1024 * 1024;
     private const int MadvHugePage = 14;
@@ -17,8 +17,8 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
     private readonly void* _allocation;
     private readonly nuint _allocatedBytes;
 
-    [DllImport("libc", EntryPoint = "madvise")]
-    private static extern int Madvise(void* address, nuint length, int advice);
+    [LibraryImport("libc", EntryPoint = "madvise")]
+    private static partial int Madvise(void* address, nuint length, int advice);
 
     private NativeNodeBuffer(int length)
     {
@@ -31,7 +31,6 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
         // The allocator zeroes a large allocation by mapping fresh pages, which become resident only once written, so a
         // generation costs only what is appended to it. Clearing it here would commit every page up front.
         _allocation = NativeMemory.AllocZeroed(_allocatedBytes);
-        if (_allocation == null) throw new OutOfMemoryException();
 
         void* data = (void*)(((nuint)_allocation + alignment - 1) & ~(alignment - 1));
         bool pressureAdded = false;

@@ -169,16 +169,15 @@ internal static class NodeRecordBulkSet
         }
     }
 
-    /// <summary>What applying entries to a node did: nothing, handing <see cref="Original"/> back, or a change to the pending node at <see cref="PendingIndex"/>, -1 when removed.</summary>
-    private readonly struct Updated(bool changed, in Source original, int pendingIndex)
+    /// <summary>What applying entries to a node did: nothing, or a change to the pending node at <see cref="PendingIndex"/>, -1 when removed.</summary>
+    private readonly struct Updated(bool changed, int pendingIndex)
     {
         public readonly bool Changed = changed;
-        public readonly Source Original = original;
         public readonly int PendingIndex = pendingIndex;
 
-        public static Updated Unchanged(in Source original) => new(false, original, -1);
+        public static Updated Unchanged => new(false, -1);
 
-        public static Updated To(int pendingIndex) => new(true, default, pendingIndex);
+        public static Updated To(int pendingIndex) => new(true, pendingIndex);
 
         public ChildRef Reference => PendingIndex < 0 ? default : ChildRef.ForPending(PendingIndex);
     }
@@ -243,7 +242,7 @@ internal static class NodeRecordBulkSet
             switch (entries.Length)
             {
                 case 0:
-                    return Updated.Unchanged(node);
+                    return Updated.Unchanged;
                 case 1:
                     return SetOne(entries[0], ref path, node);
             }
@@ -326,7 +325,7 @@ internal static class NodeRecordBulkSet
 
             // Unlike PatriciaTree.MaybeCombineNode, there is no node to compare with the original: a fake branch whose children
             // all stay is the original, and anything else changes some key under it.
-            if (!changed) return Updated.Unchanged(node);
+            if (!changed) return Updated.Unchanged;
 
             // A remainder no entry changed stays below the new branch, with the key the branch shortened.
             if (remainderKept) _workingState.Children[childrenStart + remainderNibble] = ChildRef.ForPending(IntoNode(remainder));
@@ -498,7 +497,7 @@ internal static class NodeRecordBulkSet
                 int depth = path.Length;
                 if (current.Kind == SourceKind.None)
                 {
-                    result = isDelete ? Updated.Unchanged(current) : Updated.To(_workingState.AddPendingLeaf(entryKey[depth..], value!));
+                    result = isDelete ? Updated.Unchanged : Updated.To(_workingState.AddPendingLeaf(entryKey[depth..], value!));
                     break;
                 }
 
@@ -509,12 +508,12 @@ internal static class NodeRecordBulkSet
                     if (matched == keyLength)
                     {
                         result = isDelete ? Updated.To(-1)
-                            : current.LeafValue().Span.SequenceEqual(value) ? Updated.Unchanged(current)
+                            : current.LeafValue().Span.SequenceEqual(value) ? Updated.Unchanged
                             : Updated.To(_workingState.AddPendingLeaf(key[..keyLength], value!));
                     }
                     else
                     {
-                        result = isDelete ? Updated.Unchanged(current)
+                        result = isDelete ? Updated.Unchanged
                             : Updated.To(DivergingBranch(_workingState, entryKey, depth, matched, key[matched],
                                 ChildRef.ForPending(_workingState.AddPendingLeaf(key[(matched + 1)..keyLength], current.LeafValue())), value!));
                     }
@@ -531,7 +530,7 @@ internal static class NodeRecordBulkSet
                     {
                         if (isDelete)
                         {
-                            result = Updated.Unchanged(current);
+                            result = Updated.Unchanged;
                             break;
                         }
 
@@ -564,14 +563,14 @@ internal static class NodeRecordBulkSet
                 {
                     int keyLength = source.CopyKey(key);
                     path.TruncateMut(path.Length - keyLength);
-                    result = !result.Changed ? Updated.Unchanged(source)
+                    result = !result.Changed ? Updated.Unchanged
                         : result.PendingIndex < 0 ? result
                         : Updated.To(PrependKeyPrefix(key[..keyLength], result.PendingIndex));
                 }
                 else
                 {
                     path.TruncateOne();
-                    result = !result.Changed ? Updated.Unchanged(source)
+                    result = !result.Changed ? Updated.Unchanged
                         : Updated.To(ReplaceChild(CopyChildren(frame.Record), frame.ChildNibble, result.PendingIndex, ref path));
                 }
             }

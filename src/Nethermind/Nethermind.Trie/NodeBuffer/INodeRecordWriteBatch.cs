@@ -5,10 +5,10 @@ using System;
 
 namespace Nethermind.Trie.NodeBuffer;
 
-/// <summary>Contiguous, zero-filled bytes reserved in a node-record buffer, whose records are registered with the buffer on dispose.</summary>
+/// <summary>Contiguous, zero-filled bytes reserved in a node-record buffer, each record locatable by its pointer once written.</summary>
 /// <remarks>
-/// The writer fills <see cref="Bytes"/> with complete, record-aligned node records from its start. Disposal registers every record
-/// written; a batch must not be used after it is disposed.
+/// The writer fills <see cref="Bytes"/> with complete, record-aligned node records from its start. Disposal only ends the reservation;
+/// a batch must not be used after it is disposed.
 /// </remarks>
 public interface INodeRecordWriteBatch : IDisposable
 {

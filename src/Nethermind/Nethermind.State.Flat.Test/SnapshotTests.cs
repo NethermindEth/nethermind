@@ -145,7 +145,7 @@ public class SnapshotTests
         bool found = storage
             ? snapshot.TryGetStorageNode((address!, TreePath.Empty.Append(1)), out TrieNode? inherited)
             : snapshot.TryGetStateNode(TreePath.Empty.Append(1), out inherited);
-        ulong inheritedPointer = buffer.EnumerateNodes(updated.Pointer).First(node => node.Path == TreePath.Empty.Append(1)).Pointer;
+        ulong inheritedPointer = buffer.EnumerateNodes(updated.Pointer, 0).First(node => node.Path == TreePath.Empty.Append(1)).Pointer;
         BloomFilter bloom = ((NodeRecordBuffer)buffer).FindBloom(updated.Pointer)!;
         snapshot.PopulateBloom();
         snapshot.PopulateBloom();
