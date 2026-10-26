@@ -108,6 +108,10 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(blockHash, transactionHash, cancellationToken, WithBufferedLimit(options));
         }
+        catch (NativeTracerConfigException exception)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
+        }
         catch (TraceDurationFormatException ex)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
@@ -230,27 +234,36 @@ public class DebugRpcModule(
     private BlockHeader? TryGetTraceCallHeader(BlockParameter parameter, ulong? txIndex, out ResultWrapper<GethLikeTxTrace>? error)
     {
         if (txIndex is null) return TryGetHeaderAndCheckState(parameter, out error);
+        return TryGetBlockAtTransaction(parameter, txIndex.Value, out error)?.Header;
+    }
 
+    /// <summary>
+    /// Resolves the block holding transaction <paramref name="txIndex"/> and checks that its parent state is available.
+    /// </summary>
+    /// <remarks>An empty block accepts index 0, as geth does.</remarks>
+    /// <returns>The resolved block, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private Block? TryGetBlockAtTransaction<TResult>(BlockParameter parameter, ulong txIndex, out ResultWrapper<TResult>? error)
+    {
         SearchResult<Block> search = blockFinder.SearchForBlock(parameter);
         if (search.IsError)
         {
-            error = GetFailureResult<GethLikeTxTrace, Block>(search, debugBridge.HaveNotSyncedHeadersYet());
+            error = GetFailureResult<TResult, Block>(search, debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
         Block block = search.Object!;
         if (block.IsGenesis)
         {
-            error = ResultWrapper<GethLikeTxTrace>.Fail("no transaction in genesis", ErrorCodes.InvalidInput);
+            error = ResultWrapper<TResult>.Fail("no transaction in genesis", ErrorCodes.InvalidInput);
             return null;
         }
         _ = TryGetHeaderAndCheckState(block.ParentHash!, out error);
         if (error is not null) return null;
         if (txIndex >= (ulong)Math.Max(block.Transactions.Length, 1))
         {
-            error = ResultWrapper<GethLikeTxTrace>.Fail($"transaction index {txIndex} out of range for block {block.Hash}", ErrorCodes.InvalidInput);
+            error = ResultWrapper<TResult>.Fail($"transaction index {txIndex} out of range for block {block.Hash}", ErrorCodes.InvalidInput);
             return null;
         }
-        return block.Header;
+        return block;
     }
 
     private bool CanStreamStructLogs(GethTraceOptions? options)
@@ -514,6 +527,10 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
+        catch (NativeTracerConfigException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
+        }
         catch (RlpException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Error decoding block RLP: {blockRlp.ToHexString()}", ErrorCodes.InvalidInput);
@@ -681,6 +698,34 @@ public class DebugRpcModule(
         return ResultWrapper<IReadOnlyCollection<Hash256>>.Success(roots);
     }
 
+    public ResultWrapper<StorageRangeResult> debug_storageRangeAt(BlockParameter blockParameter, int txIndex, Address address, byte[] keyStart, int maxResult)
+    {
+        if (txIndex < 0)
+            return ResultWrapper<StorageRangeResult>.Fail($"transaction index {txIndex} must not be negative", ErrorCodes.InvalidParams);
+        if (keyStart.Length > ValueHash256.MemorySize)
+            return ResultWrapper<StorageRangeResult>.Fail($"keyStart must be at most {ValueHash256.MemorySize} bytes", ErrorCodes.InvalidParams);
+
+        Block? block = TryGetBlockAtTransaction(blockParameter, (ulong)txIndex, out ResultWrapper<StorageRangeResult>? error);
+        if (error is not null) return error;
+
+        // A shorter start key is a prefix of the hashed keys to iterate from, as in geth's trie iterator seek.
+        ValueHash256 startKey = new(keyStart.PadRight(ValueHash256.MemorySize));
+        int limit = Math.Clamp(maxResult, 0, StorageRangeResult.MaxResults);
+
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
+        StorageRangeVisitor range;
+        try
+        {
+            range = debugBridge.GetStorageRange(block!, txIndex, address, startKey, limit, timeout.Token);
+        }
+        catch (NotSupportedException e)
+        {
+            return ResultWrapper<StorageRangeResult>.Fail(e.Message, ErrorCodes.InvalidInput);
+        }
+
+        return ResultWrapper<StorageRangeResult>.Success(new StorageRangeResult(range));
+    }
+
     public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null) => throw new NotImplementedException();
 
     public ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter) => throw new NotImplementedException();
@@ -720,7 +765,8 @@ public class DebugRpcModule(
         Transaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
-            return ResultWrapper<ArrayPoolList<byte>>.Success(null);
+            // execution-apis types the result as bytes with no not-found null, so an unknown transaction is empty bytes.
+            return ResultWrapper<ArrayPoolList<byte>>.Success(ArrayPoolList<byte>.Empty());
         }
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
@@ -805,13 +851,21 @@ public class DebugRpcModule(
 
     public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
     {
-        Block? block = debugBridge.GetBlock(blockParameter);
-        if (block is null || block.BlockAccessListHash is null)
+        // The access list is stored apart from the body, so a block whose body expired can still serve it,
+        // and a pre-Amsterdam one stays -32001 rather than 4444.
+        SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError && searchResult.Error != BlockFinderExtensions.HeaderNotFound)
+        {
+            return ResultWrapper<OwnedByteMemory>.Fail(searchResult);
+        }
+
+        BlockHeader? header = searchResult.Object;
+        if (header?.BlockAccessListHash is null)
         {
             return ResultWrapper<OwnedByteMemory>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
         }
 
-        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Number, block.Hash);
+        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(header.Number, header.Hash!);
 
         return balRlp is null
             ? ResultWrapper<OwnedByteMemory>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)

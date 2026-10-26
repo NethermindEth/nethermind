@@ -117,7 +117,7 @@ public sealed class TransactionTraceExecutor(
 
     private TxReceipt[] Execute(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token, TransactionTraceBoundary boundary, int first)
     {
-        for (int i = first; i < block.Transactions.Length; i++)
+        for (int i = first; i < block.Transactions.Length && !boundary.IsComplete; i++)
         {
             token.ThrowIfCancellationRequested();
             Transaction tx = block.Transactions[i];
@@ -144,7 +144,6 @@ public sealed class TransactionTraceExecutor(
                 balManager.NextTransaction();
                 balManager.SpendGas(tx.BlockGasUsed);
             }
-            if (boundary.IsComplete) break;
         }
 
         // The receipts of what executed: with a seeded prefix that is the tail from the target on, not the block's.

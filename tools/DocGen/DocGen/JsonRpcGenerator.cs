@@ -9,16 +9,20 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
+using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
 using Spectre.Console;
 using System.Buffers;
@@ -46,12 +50,14 @@ internal static class JsonRpcGenerator
     private const string _blockTags = "`earliest`, `finalized`, `latest`, `pending`, or `safe`";
     private const string _blockNumberIfNotStrict = "_integer_ (block number, if `JsonRpc.StrictHexFormat` is `false`)";
     private static readonly SortedSet<string> _guessedTypeNames = new(StringComparer.Ordinal);
+    private static readonly NullabilityInfoContext _nullabilityContext = new();
     private static readonly Dictionary<Type, string> _knownTypeNames = new()
     {
         [typeof(Address)] = "_string_ (address)",
         [typeof(AddressAsKey)] = "_string_ (address)",
         [typeof(BigInteger)] = "_string_ (decimal integer)",
         [typeof(BlockParameter)] = $"_string_ (block number or hash or either of {_blockTags}), _object_ (EIP-1898 `{{blockHash, requireCanonical}}` or `{{blockNumber}}`), or {_blockNumberIfNotStrict}",
+        [typeof(BlockTransactions)] = "array of _string_ (hash), or array of _object_ (transaction, same as `result` in `eth_getTransactionByHash`) when full transactions are requested",
         [typeof(Bloom)] = "_string_ (hex data)",
         [typeof(bool)] = "_boolean_",
         [typeof(byte)] = "_integer_",
@@ -72,6 +78,7 @@ internal static class JsonRpcGenerator
         [typeof(int)] = "_integer_",
         [typeof(IPAddress)] = "_string_",
         [typeof(long)] = "_string_ (hex integer)",
+        [typeof(OwnedByteMemory)] = "_string_ (hex data)",
         [typeof(PublicKey)] = "_string_ (node id, no \"0x\" prefix)",
         [typeof(Signature)] = "_string_ (hex data)",
         [typeof(StorageValuesRequest)] = "map of address to array of _string_ (hex storage slot), 1 to 1024 slots in total",
@@ -95,12 +102,34 @@ internal static class JsonRpcGenerator
         [typeof(MemoryHexConverter)] = "array of _string_ (32-byte hex data)",
         [typeof(PublicKeyConverter)] = "_string_ (hex data)",
         [typeof(StackHexConverter)] = "array of _string_ (hex integer)",
+        [typeof(StorageCellIndexConverter)] = "array of _string_ (32-byte hex data)",
         [typeof(StorageHexConverter)] = "map of _string_ (32-byte hex data)",
+    };
+
+    // Labels for objects whose converter writes them in another form, or writes another value in some cases
+    private static readonly Dictionary<Type, string> _knownConverterObjectNames = new()
+    {
+        [typeof(AccessListForRpc.JsonConverter)] = "array of _object_",
+        [typeof(GethLikeTxTraceCollectionConverter)] = "array of _object_ (`error` _string_ in place of `result` when a JavaScript tracer fails)",
+        [typeof(GethLikeTxTraceConverter)] = "_object_ (the tracer's own result instead when `tracer` is set)",
+        [typeof(SyncingResultJsonConverter)] = "`false` when not syncing, else _object_",
     };
 
     // Members written by hand-rolled object converters, which expose no serializer contract to read them from
     private static readonly Dictionary<Type, (string Name, Type Type, Type? Converter)[]> _knownConverterMembers = new()
     {
+        // The members of each access list item
+        [typeof(AccessListForRpc.JsonConverter)] =
+        [
+            ("address", typeof(Address), null), ("storageKeys", typeof(IEnumerable<UInt256>), typeof(StorageCellIndexConverter)),
+        ],
+        [typeof(GethLikeTxTraceCollectionConverter)] = [("result", typeof(GethLikeTxTrace), null), ("txHash", typeof(Hash256), null)],
+        // Forced raw number conversion writes gas as a JSON number
+        [typeof(GethLikeTxTraceConverter)] =
+        [
+            ("failed", typeof(bool), null), ("gas", typeof(int), null), ("returnValue", typeof(byte[]), null),
+            ("structLogs", typeof(List<GethTxTraceEntry>), null),
+        ],
         // A call or create action; a reward writes author, rewardType and value instead,
         // and a self-destruct writes address, balance and refundAddress
         [typeof(ParityTraceActionConverter)] =
@@ -124,6 +153,20 @@ internal static class JsonRpcGenerator
             ("trace", typeof(ParityTraceAction[]), typeof(ParityTraceActionFromReplayJsonConverter)),
             ("transactionHash", typeof(Hash256), null), ("vmTrace", typeof(ParityVmTrace), null),
         ],
+        [typeof(ProofJsonConverter)] =
+        [
+            ("accountProof", typeof(byte[][]), null), ("address", typeof(Address), null), ("balance", typeof(UInt256), null),
+            ("codeHash", typeof(Hash256), null), ("nonce", typeof(ulong), null), ("storageHash", typeof(Hash256), null),
+            ("storageProof", typeof(StorageProof[]), null),
+        ],
+        // Written only while syncing
+        [typeof(SyncingResultJsonConverter)] =
+        [
+            ("currentBlock", typeof(ulong), null), ("healedBytecodes", typeof(ulong?), null), ("healedTrienodes", typeof(ulong?), null),
+            ("highestBlock", typeof(ulong), null), ("startingBlock", typeof(ulong), null), ("syncedAccounts", typeof(ulong?), null),
+            ("syncedBytecodes", typeof(ulong?), null), ("syncedStorage", typeof(ulong?), null), ("warpChunksAmount", typeof(ulong?), null),
+            ("warpChunksProcessed", typeof(ulong?), null),
+        ],
         // Read by Filter.ReadJson rather than a converter, so keyed by the type
         [typeof(Filter)] =
         [
@@ -131,6 +174,16 @@ internal static class JsonRpcGenerator
             ("fromBlock", typeof(FilterBlockBound), null), ("toBlock", typeof(FilterBlockBound), null),
             ("topics", typeof(FilterTopics), null), ("useIndex", typeof(bool), null),
         ],
+    };
+
+    // Methods whose declared result type hides the type that the serializer writes
+    private static readonly Dictionary<string, Type> _knownResultTypes = new()
+    {
+        [nameof(IDebugRpcModule.debug_traceBadBlock)] = typeof(GethLikeTxTraceCollection),
+        [nameof(IDebugRpcModule.debug_traceBlock)] = typeof(GethLikeTxTraceCollection),
+        [nameof(IDebugRpcModule.debug_traceBlockByHash)] = typeof(GethLikeTxTraceCollection),
+        [nameof(IDebugRpcModule.debug_traceBlockByNumber)] = typeof(GethLikeTxTraceCollection),
+        [nameof(IEthRpcModule.eth_config)] = typeof(ForkConfigSummary),
     };
 
     // Markers for the forms Filter.ReadJson accepts; its range bounds are parsed from their text, so they take no EIP-1898 object
@@ -360,7 +413,7 @@ internal static class JsonRpcGenerator
             `result`: 
             """);
 
-        WriteExpandedType(file, GetReturnType(method.ReturnType));
+        WriteExpandedType(file, _knownResultTypes.GetValueOrDefault(method.Name) ?? GetReturnType(method.ReturnType), documentNull: true);
 
         if (attr.ResultCanBeNull)
             file.WriteLine("""
@@ -374,7 +427,7 @@ internal static class JsonRpcGenerator
             """);
     }
 
-    private static void WriteExpandedType(StreamWriter file, Type type, int indentation = 0, bool omitTypeName = false, IEnumerable<string?>? parentTypes = null, Type? converterType = null)
+    private static void WriteExpandedType(StreamWriter file, Type type, int indentation = 0, bool omitTypeName = false, IEnumerable<string?>? parentTypes = null, Type? converterType = null, bool documentNull = false)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
 
@@ -400,7 +453,7 @@ internal static class JsonRpcGenerator
             {
                 file.Write($"{(isDictionary ? "map" : "array")} of ");
 
-                WriteExpandedType(file, itemType!);
+                WriteExpandedType(file, itemType!, documentNull: documentNull);
             }
             else
                 file.WriteLine(jsonType);
@@ -409,23 +462,30 @@ internal static class JsonRpcGenerator
         }
 
         if (!omitTypeName)
-            file.WriteLine(_objectTypeName);
+            file.WriteLine(GetObjectTypeName(type, converterType));
 
         if (IsOpaqueJson(type))
             return;
 
-        foreach ((string name, Type memberType, Type? memberConverter) in GetSerializedMembers(type, converterType))
+        foreach ((string name, Type memberType, Type? memberConverter, bool canBeNull, bool canBeOmitted) in GetSerializedMembers(type, converterType))
         {
             string memberJsonType = GetJsonTypeName(memberType, memberConverter);
+            bool isObject = memberJsonType.Equals(_objectTypeName, StringComparison.Ordinal);
+            Type? itemType = null;
+            bool isObjectCollection = !isObject && memberJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
+                TryGetEnumerableItemType(memberType, out itemType, out bool _);
+            string memberTypeName = isObject ? GetObjectTypeName(memberType, memberConverter) : memberJsonType;
 
-            file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {memberJsonType}");
+            if (isObjectCollection && memberJsonType.EndsWith(_objectTypeName, StringComparison.Ordinal))
+                memberTypeName = memberJsonType[..^_objectTypeName.Length] + GetObjectTypeName(itemType!, memberConverter);
 
-            if (memberJsonType.Equals(_objectTypeName, StringComparison.Ordinal))
-                WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(nodeName), memberConverter);
-            else if (memberJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
-                TryGetEnumerableItemType(memberType, out Type? itemType, out bool _))
+            file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {(documentNull && canBeOmitted ? "optional " : string.Empty)}{memberTypeName}{(documentNull && canBeNull ? " or `null`" : string.Empty)}");
+
+            if (isObject)
+                WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(nodeName), memberConverter, documentNull);
+            else if (isObjectCollection)
                 // A converter on a collection of objects writes its items
-                WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(nodeName), memberConverter);
+                WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(nodeName), memberConverter, documentNull);
         }
     }
 
@@ -582,19 +642,31 @@ internal static class JsonRpcGenerator
         }
     }
 
-    private static IEnumerable<(string Name, Type Type, Type? Converter)> GetSerializedMembers(Type type, Type? converterType)
+    // The member's converter, else the type's own, decides the shape of the object
+    private static Type? GetShapeConverter(Type type, Type? converterType) =>
+        converterType ?? GetContract(Nullable.GetUnderlyingType(type) ?? type)?.Converter.GetType();
+
+    private static string GetObjectTypeName(Type type, Type? converterType) =>
+        GetShapeConverter(type, converterType) is { } shapeConverter &&
+        _knownConverterObjectNames.TryGetValue(shapeConverter, out string? name)
+            ? name
+            : _objectTypeName;
+
+    private static IEnumerable<(string Name, Type Type, Type? Converter, bool CanBeNull, bool CanBeOmitted)> GetSerializedMembers(Type type, Type? converterType)
     {
         JsonTypeInfo? contract = GetContract(type);
 
-        if (((converterType ?? contract?.Converter.GetType()) is { } shapeConverter &&
-            _knownConverterMembers.TryGetValue(shapeConverter, out (string, Type, Type?)[]? members)) ||
+        if ((GetShapeConverter(type, converterType) is { } shapeConverter &&
+            _knownConverterMembers.TryGetValue(shapeConverter, out (string Name, Type Type, Type? Converter)[]? members)) ||
             _knownConverterMembers.TryGetValue(type, out members))
-            return members;
+            return members.Select(m => (m.Name, m.Type, m.Converter, CanBeNull: false, CanBeOmitted: false));
 
         if (contract?.Kind is JsonTypeInfoKind.Object)
             return contract.Properties
                 .Where(p => p.Get is not null && !IsNullForSpecialization(type, p))
-                .Select(p => (Name: p.Name, Type: p.PropertyType, Converter: MemberConverter(p.AttributeProvider)))
+                .Select(p => (Name: p.Name, Type: p.PropertyType, Converter: MemberConverter(p.AttributeProvider),
+                    CanBeNull: p.IsGetNullable && IsWrittenWhenNull(p.AttributeProvider as MemberInfo),
+                    CanBeOmitted: IsOmitted(p.AttributeProvider as MemberInfo, p.IsGetNullable)))
                 .OrderBy(m => m.Name, StringComparer.Ordinal);
 
         // A hand-rolled converter exposes no contract members, leaving the CLR shape as the only guess
@@ -606,9 +678,31 @@ internal static class JsonRpcGenerator
         return type.GetProperties(memberFlags).Select(p => (Member: (MemberInfo)p, Type: p.PropertyType))
             .Concat(type.GetFields(memberFlags).Select(f => (Member: (MemberInfo)f, Type: f.FieldType)))
             .Where(m => m.Member.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
-            .Select(m => (Name: GetFallbackName(m.Member), Type: m.Type, Converter: MemberConverter(m.Member)))
+            .Select(m => (Name: GetFallbackName(m.Member), Type: m.Type, Converter: MemberConverter(m.Member),
+                CanBeNull: IsNullable(m.Member) && IsWrittenWhenNull(m.Member),
+                CanBeOmitted: IsOmitted(m.Member, IsNullable(m.Member))))
             .OrderBy(m => m.Name, StringComparer.Ordinal);
     }
+
+    // Unknown (nullable-oblivious) counts as nullable, as the serializer's own contract treats it
+    private static bool IsNullable(MemberInfo member) =>
+        (member is PropertyInfo property ? _nullabilityContext.Create(property) : _nullabilityContext.Create((FieldInfo)member))
+            .ReadState is not NullabilityState.NotNull;
+
+    // A null member is omitted under WhenWritingNull (the serializer default) and only reaches the wire under Never or WhenReading
+    private static bool IsWrittenWhenNull(MemberInfo? member) =>
+        GetIgnoreCondition(member) is JsonIgnoreCondition.Never or JsonIgnoreCondition.WhenReading;
+
+    private static bool IsOmitted(MemberInfo? member, bool isNullable) =>
+        GetIgnoreCondition(member) switch
+        {
+            JsonIgnoreCondition.WhenWritingDefault => true,
+            JsonIgnoreCondition.WhenWritingNull => isNullable,
+            _ => false
+        };
+
+    private static JsonIgnoreCondition GetIgnoreCondition(MemberInfo? member) =>
+        member?.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition ?? EthereumJsonSerializer.JsonOptions.DefaultIgnoreCondition;
 
     // SimulateBlockResult<TTrace> returns null from one of these by its type argument, so the serializer never writes it
     private static bool IsNullForSpecialization(Type type, JsonPropertyInfo property) =>
