@@ -157,43 +157,47 @@ public class JsonRpcGeneratorTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Replay_response_documents_members_written_only_sometimes_as_optional(bool isCreate)
+    [Test]
+    public void Replay_response_documents_exactly_the_members_written_only_sometimes_as_optional()
     {
-        ParityTxTraceFromReplay trace = new()
+        // Without a hash and an error, as trace_call writes a successful call
+        static JsonDocument Serialize(ParityTraceResult result) => JsonDocument.Parse(new EthereumJsonSerializer().Serialize(new ParityTxTraceFromReplay
         {
-            TransactionHash = Keccak.Zero,
-            Action = new ParityTraceAction
-            {
-                Type = isCreate ? "create" : "call",
-                CallType = isCreate ? "create" : "call",
-                Result = isCreate ? new ParityTraceResult { Address = Address.Zero, Code = [] } : new ParityTraceResult { Output = [] }
-            },
+            Action = CallAction(result),
             // An operation outside the empty code is written without op
             VmTrace = new ParityVmTrace { Code = [], Operations = [new ParityVmOperationTrace()] }
-        };
-        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        }));
+
+        using JsonDocument create = Serialize(new ParityTraceResult { Address = Address.Zero, Code = [] });
+        using JsonDocument call = Serialize(new ParityTraceResult { Output = [] });
+        JsonElement[] roots = [create.RootElement, call.RootElement];
         string response = ReadResponse("trace", "trace_replayTransaction");
-        string resultResponse = ReadPropertyBlock(ReadPropertyBlock(response, "trace", 2), "result", 4);
-        string opsResponse = ReadPropertyBlock(ReadPropertyBlock(response, "vmTrace", 2), "ops", 4);
+        string traceResponse = ReadPropertyBlock(response, "trace", 2);
 
         using (Assert.EnterMultipleScope())
         {
-            AssertOmittedPropertiesOptional(wire.RootElement.GetProperty("trace")[0].GetProperty("result"), resultResponse, 6);
-            AssertOmittedPropertiesOptional(wire.RootElement.GetProperty("vmTrace").GetProperty("ops")[0], opsResponse, 6);
+            AssertOptionalExactlyWhenOmitted(roots, response, 2);
+            AssertOptionalExactlyWhenOmitted([.. roots.Select(r => r.GetProperty("trace")[0])], traceResponse, 4);
+            AssertOptionalExactlyWhenOmitted([.. roots.Select(r => r.GetProperty("trace")[0].GetProperty("result"))],
+                ReadPropertyBlock(traceResponse, "result", 4), 6);
+            AssertOptionalExactlyWhenOmitted([.. roots.Select(r => r.GetProperty("vmTrace").GetProperty("ops")[0])],
+                ReadPropertyBlock(ReadPropertyBlock(response, "vmTrace", 2), "ops", 4), 6);
         }
     }
 
-    private static void AssertOmittedPropertiesOptional(JsonElement value, string response, int indentation)
+    /// <summary>Asserts a member is documented as optional if and only if one of <paramref name="values"/> leaves it out.</summary>
+    private static void AssertOptionalExactlyWhenOmitted(JsonElement[] values, string response, int indentation)
     {
         string prefix = $"{new string(' ', indentation)}- `";
-        string[] omitted = [.. response.Split('\n')
-            .Where(l => l.StartsWith(prefix, StringComparison.Ordinal) && !value.TryGetProperty(l[prefix.Length..l.IndexOf('`', prefix.Length)], out _))];
 
-        AssertDocumentedProperties(value, response, indentation);
-        Assert.That(omitted, Is.Not.Empty);
-        Assert.That(omitted, Has.All.Contains("`: optional "));
+        foreach (JsonElement value in values)
+            AssertDocumentedProperties(value, response, indentation);
+
+        foreach (string line in response.Split('\n').Where(l => l.StartsWith(prefix, StringComparison.Ordinal)))
+        {
+            string name = line[prefix.Length..line.IndexOf('`', prefix.Length)];
+            Assert.That(line.Contains("`: optional ", StringComparison.Ordinal), Is.EqualTo(values.Any(v => !v.TryGetProperty(name, out _))), line);
+        }
     }
 
     private static IEnumerable<TestCaseData> ResultsWithOmittedMembers()
@@ -315,6 +319,18 @@ public class JsonRpcGeneratorTests
         Assert.That(EthereumJsonSerializer.JsonOptions.GetTypeInfo(type).Converter.GetType()
             .GetInterface(JsonRpcGenerator.GeneratedJsonWriterInterface), Is.Not.Null);
 
+    private static ParityTraceAction CallAction(ParityTraceResult? result, string? error = null) => new()
+    {
+        Type = "call",
+        CallType = "call",
+        From = Address.Zero,
+        To = Address.Zero,
+        Input = CappedArray<byte>.Empty,
+        Error = error,
+        Result = result,
+        TraceAddress = CappedArray<int>.Empty
+    };
+
     private static IEnumerable<TestCaseData> ResultsWithNullMembers()
     {
         yield return new TestCaseData("eth", "eth_getHeaderByNumber",
@@ -345,34 +361,13 @@ public class JsonRpcGeneratorTests
             BlockHash = Keccak.Zero,
             Action = new ParityTraceAction { Type = "reward", RewardType = "block", Author = Address.Zero, Result = null }
         }).Single()).SetArgDisplayNames("reward trace without trace address");
-        yield return new TestCaseData("trace", "trace_replayTransaction", new ParityTxTraceFromReplay
-        {
-            Action = new ParityTraceAction
-            {
-                Type = "call",
-                CallType = "call",
-                From = Address.Zero,
-                To = Address.Zero,
-                Input = CappedArray<byte>.Empty,
-                Error = "Reverted",
-                Result = null,
-                TraceAddress = CappedArray<int>.Empty
-            }
-        }).SetArgDisplayNames("failed call without state diff or vm trace");
+        yield return new TestCaseData("trace", "trace_replayTransaction", new ParityTxTraceFromReplay { Action = CallAction(null, "Reverted") })
+            .SetArgDisplayNames("failed call without state diff or vm trace");
         yield return new TestCaseData("trace", "trace_replayTransaction", new ParityTxTraceFromReplay
         {
             Output = [],
             StateChanges = [],
-            Action = new ParityTraceAction
-            {
-                Type = "call",
-                CallType = "call",
-                From = Address.Zero,
-                To = Address.Zero,
-                Input = CappedArray<byte>.Empty,
-                Result = new ParityTraceResult { Output = [] },
-                TraceAddress = CappedArray<int>.Empty
-            },
+            Action = CallAction(new ParityTraceResult { Output = [] }),
             VmTrace = new ParityVmTrace { Code = [], Operations = [new ParityVmOperationTrace { Halted = true }, new ParityVmOperationTrace()] }
         }).SetArgDisplayNames("vm trace with halted and empty operations");
     }

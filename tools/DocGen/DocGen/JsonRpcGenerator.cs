@@ -237,7 +237,10 @@ internal static class JsonRpcGenerator
     // The members of _knownConverterMembers, under the same key, that their converter leaves out in some cases
     private static readonly Dictionary<Type, string[]> _knownConverterOmittedMembers = new()
     {
+        [typeof(ParityTraceActionFromReplayJsonConverter)] = ["error"],
         [typeof(ParityTraceResultConverter)] = ["address", "code", "output"],
+        // trace_call and trace_callMany build the trace without the hash
+        [typeof(ParityTxTraceFromReplayJsonConverter)] = ["transactionHash"],
         [typeof(ParityVmOperationTraceConverter)] = ["op"],
     };
 
