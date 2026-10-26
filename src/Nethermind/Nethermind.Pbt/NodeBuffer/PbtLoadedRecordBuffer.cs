@@ -2,34 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Collections.Concurrent;
 
 namespace Nethermind.Pbt.NodeBuffer;
 
 /// <summary>The records of the groups a traversal loads from an <see cref="IPbtStore"/>, readable until <see cref="Clear"/>.</summary>
-/// <remarks>
-/// Records are written to pooled chunks that never move, so a record handed out stays valid as more are added. Buffers are pooled;
-/// a returned one releases its records.
-/// </remarks>
+/// <remarks>Records are written to pooled chunks that never move, so a record handed out stays valid as more are added.</remarks>
 public sealed class PbtLoadedRecordBuffer : IDisposable
 {
     private const int ChunkBytes = 64 * 1024;
-    private const int MaxPooled = 64;
 
-    private static readonly ConcurrentQueue<PbtLoadedRecordBuffer> Pool = new();
     private static readonly ReadOnlySpanAction<byte, Target> Write = static (group, target) => target.Record = target.Buffer.Add(group, target.Path);
 
     private readonly List<byte[]> _chunks = [];
     private int _used = ChunkBytes;
-
-    public static PbtLoadedRecordBuffer Rent() => Pool.TryDequeue(out PbtLoadedRecordBuffer? buffer) ? buffer : new PbtLoadedRecordBuffer();
-
-    /// <summary>Releases the records of <paramref name="buffer"/>, which must no longer be read, and pools it.</summary>
-    public static void Return(PbtLoadedRecordBuffer buffer)
-    {
-        buffer.Clear();
-        if (Pool.Count < MaxPooled) Pool.Enqueue(buffer);
-    }
 
     /// <summary>Loads the group at <paramref name="path"/> from <paramref name="store"/> into this buffer.</summary>
     /// <returns>False when the store has no such group.</returns>

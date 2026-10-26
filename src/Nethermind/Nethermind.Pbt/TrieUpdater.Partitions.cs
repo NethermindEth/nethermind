@@ -68,39 +68,40 @@ public static partial class TrieUpdater
             ? accountFold.Fold(slot, boundary, descendantBytes, encoding)
             : storageFold.Fold(slot, boundary, descendantBytes, encoding);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
-        // An empty tree owns no groups; a group left at the root path by an earlier tree is stale.
-        if (currentRoot.Hash == default)
-        {
-            AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
-            return FoldRoot(store, ref emptyRoot, default, touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
-        }
-        PbtLoadedRecordBuffer? loaded = null;
+        FoldWorkingState workingState = FoldWorkingState.Rent();
+        using SpareWorkingStates spares = new();
         try
         {
-            if (!store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord) && !(loaded = PbtLoadedRecordBuffer.Rent()).TryLoad(store, rootPath, out rootRecord))
+            FoldContext context = new(store, memoryProvider, foldQuota, null, fanOut, workingState, spares);
+            // An empty tree owns no groups; a group left at the root path by an earlier tree is stale.
+            if (currentRoot.Hash == default)
+            {
+                AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
+                return FoldRoot(context, ref emptyRoot, default, touchedSlots, foldSlot);
+            }
+            if (!store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord) && !workingState.Loaded.TryLoad(store, rootPath, out rootRecord))
                 throw new InvalidDataException("A referenced PBT node group is missing.");
             GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader = new(rootRecord);
             using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
-                return FoldRoot(store, ref rootReader, rootReader.TakeRoot(currentRoot.Hash), touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
+                return FoldRoot(context, ref rootReader, rootReader.TakeRoot(currentRoot.Hash), touchedSlots, foldSlot);
         }
         finally
         {
-            if (loaded is not null) PbtLoadedRecordBuffer.Return(loaded);
+            FoldWorkingState.Return(workingState);
         }
     }
 
     /// <summary>Rebuilds the root group of <paramref name="rootReader"/> around its touched slots, each folded by <paramref name="foldSlot"/>, and publishes it.</summary>
-    private static (ValueHash256 Hash, ulong Pointer) FoldRoot<TRoot>(IPbtStore store, ref TRoot rootReader, in BoundaryNode root, int touchedSlots, ForeignSlotFold foldSlot,
-        ConcurrencyController foldQuota, FoldFanOut fanOut, IRefCountingMemoryProvider memoryProvider)
+    private static (ValueHash256 Hash, ulong Pointer) FoldRoot<TRoot>(FoldContext context, ref TRoot rootReader, in BoundaryNode root, int touchedSlots, ForeignSlotFold foldSlot)
         where TRoot : struct, IGroupFrame<PbtVariableTreeKey, PbtStorageNodePath>
     {
         ValueHash256 hash = default;
         GroupPublication publication;
-        using (PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(0, memoryProvider))
+        PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = context.WorkingState.RentWriter(0, context.MemoryProvider);
+        try
         {
             PbtTraversalPath rootPath = new(Span<byte>.Empty);
             StoredGroupHashes.Open(out StoredGroupHashes hashes);
-            FoldContext context = new(store, memoryProvider, foldQuota, null, fanOut);
             ComposedNode rootNode = WalkFrameOverForeignSlots(context, ref rootReader, ref hashes, rootWriter, root, rootPath, touchedSlots, foldSlot);
             if (!rootNode.IsEmpty)
             {
@@ -109,6 +110,10 @@ public static partial class TrieUpdater
                 hash = rootNode.Hash != default || PbtNodeCodec.IsLeaf(entry) ? rootNode.Hash : HashBranch(entry);
             }
             publication = PublishGroup(context, ref rootReader, rootWriter, rootPath);
+        }
+        finally
+        {
+            context.WorkingState.ReturnWriter(rootWriter);
         }
         return (hash, publication.Pointer);
     }
@@ -149,17 +154,26 @@ public static partial class TrieUpdater
         public SlotNode Fold(int slot, in BoundaryNode boundary, long descendantBytes, Span<byte> encoding)
         {
             long start = Stopwatch.GetTimestamp();
-            TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, foldQuota, _operations!.UnsafeGetInternalArray(), fanOut);
-            Span<PbtWriteOperation<TKey>> operations = _operations.AsSpan();
-            // The producer grouped each zone by its shard nibble, so sorted shards sort the zone; each shard's leaves are
-            // hashed with its sort, so the fold reads leaf hashes in place of values.
-            foreach ((int zoneStart, int count, ArrayPoolList<int> table) in _zones)
-                TrieUpdater<TKey, TPath>.SortShards(context, operations.Slice(zoneStart, count), table.AsSpan());
-            TrieUpdater<TKey, TPath>.AssertSorted(operations);
-            TrieUpdater<TKey, TPath>.SlotNode result = TrieUpdater<TKey, TPath>.FoldDetachedSlot(context, TPath.Create(ReadOnlySpan<byte>.Empty, 0), 0, slot,
-                TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtVariableTreeKey, PbtStorageNodePath>(boundary), descendantBytes, operations, encoding);
-            foldTime?.Observe(Stopwatch.GetTimestamp() - start, foldLabel);
-            return new(result.Length, result.Hash) { SizeDelta = result.SizeDelta, GroupPointer = result.GroupPointer };
+            TrieUpdater<TKey, TPath>.FoldWorkingState workingState = TrieUpdater<TKey, TPath>.FoldWorkingState.Rent();
+            using TrieUpdater<TKey, TPath>.SpareWorkingStates spares = new();
+            try
+            {
+                TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, foldQuota, _operations!.UnsafeGetInternalArray(), fanOut, workingState, spares);
+                Span<PbtWriteOperation<TKey>> operations = _operations.AsSpan();
+                // The producer grouped each zone by its shard nibble, so sorted shards sort the zone; each shard's leaves are
+                // hashed with its sort, so the fold reads leaf hashes in place of values.
+                foreach ((int zoneStart, int count, ArrayPoolList<int> table) in _zones)
+                    TrieUpdater<TKey, TPath>.SortShards(context, operations.Slice(zoneStart, count), table.AsSpan());
+                TrieUpdater<TKey, TPath>.AssertSorted(operations);
+                TrieUpdater<TKey, TPath>.SlotNode result = TrieUpdater<TKey, TPath>.FoldDetachedSlot(context, TPath.Create(ReadOnlySpan<byte>.Empty, 0), 0, slot,
+                    TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtVariableTreeKey, PbtStorageNodePath>(boundary), descendantBytes, operations, encoding);
+                foldTime?.Observe(Stopwatch.GetTimestamp() - start, foldLabel);
+                return new(result.Length, result.Hash) { SizeDelta = result.SizeDelta, GroupPointer = result.GroupPointer };
+            }
+            finally
+            {
+                TrieUpdater<TKey, TPath>.FoldWorkingState.Return(workingState);
+            }
         }
 
         public void Dispose()

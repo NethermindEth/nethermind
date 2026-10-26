@@ -34,7 +34,7 @@ public static partial class TrieUpdater
         Stored,
     }
 
-    /// <summary>Runs <paramref name="work"/> for every index below <paramref name="count"/>, across threads as <paramref name="quota"/> allows.</summary>
+    /// <summary>Runs <paramref name="work"/> with <paramref name="state"/> for every index below <paramref name="count"/>, across threads as <paramref name="quota"/> allows.</summary>
     /// <remarks>
     /// Work runs on the calling thread while the quota has no free slot; the first slot taken admits a parallel loop over
     /// the indices still left, whose workers charge themselves as they start. That admission slot is claimed by the first
@@ -42,11 +42,11 @@ public static partial class TrieUpdater
     /// worker takes quota outright, so the loop is charged exactly once per running worker, briefly exceeding the budget
     /// when sibling loops start together. The calling thread already holds its own slot and is not charged.
     /// </remarks>
-    public static void ForEachOnQuota(ConcurrencyController quota, int count, Action<int> work)
+    public static void ForEachOnQuota<TState>(ConcurrencyController quota, int count, TState state, Action<int, TState> work)
     {
         int next = 0;
         for (; next < count - 1 && !quota.TryRequestConcurrencyQuota(); next++)
-            work(next);
+            work(next, state);
         if (next < count - 1)
         {
             int callerThreadId = Environment.CurrentManagedThreadId;
@@ -62,7 +62,7 @@ public static partial class TrieUpdater
                     },
                     (index, tookQuota) =>
                     {
-                        work(index);
+                        work(index, state);
                         return tookQuota;
                     },
                     tookQuota =>
@@ -77,7 +77,7 @@ public static partial class TrieUpdater
         }
         else if (next < count)
         {
-            work(next);
+            work(next, state);
         }
     }
 
@@ -160,20 +160,24 @@ public static partial class TrieUpdater<TKey, TPath>
         return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtTwoLevelGroupGeometry.LevelsPerGroup;
     }
 
-    /// <summary>Per-fold state shared by every frame of one root update.</summary>
+    /// <summary>Per-fold state shared by every frame of one root update, with the working state of the thread folding.</summary>
     /// <remarks>
     /// <see cref="FoldQuota"/> is the budget every nested frame takes its extra workers from before fanning out;
     /// <see cref="Operations"/>, set only when wide frames may fold their buckets concurrently, is the backing array of
     /// every operation range, so a bucket can rebuild its span on another thread,
     /// and <see cref="FanOut"/> gives how many operations a concurrent run of buckets holds at least, by what it has stored below it.
     /// Buffer frames borrow records directly; <see cref="Store"/> remains the exact-view fallback and takes every group record.
+    /// A parallel run folds under a context of its own, carrying a working state from <see cref="Spares"/>.
     /// </remarks>
-    public sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
+    public readonly struct FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations,
+        FoldFanOut fanOut, FoldWorkingState workingState, SpareWorkingStates spares)
     {
         public IPbtStore Store { get; } = store;
         public IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
         public ConcurrencyController FoldQuota { get; } = foldQuota;
         public PbtWriteOperation<TKey>[]? Operations { get; } = operations;
         public FoldFanOut FanOut { get; } = fanOut;
+        public FoldWorkingState WorkingState { get; } = workingState;
+        public SpareWorkingStates Spares { get; } = spares;
     }
 }

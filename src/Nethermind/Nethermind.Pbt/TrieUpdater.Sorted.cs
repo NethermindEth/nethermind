@@ -125,19 +125,11 @@ public static partial class TrieUpdater<TKey, TPath>
             absent = new(bitDepth, 0, 0);
         else
         {
-            PbtLoadedRecordBuffer? loaded = null;
-            try
-            {
-                if (!context.Store.TryLocate(current.GroupPointer, out PbtGroupRecord record) && !(loaded = PbtLoadedRecordBuffer.Rent()).TryLoad(context.Store, path, out record))
-                    throw new InvalidDataException("A referenced PBT node group is missing.");
-                GroupFrameReader<TKey, TPath> reader = new(record);
-                using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
-                    return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
-            }
-            finally
-            {
-                if (loaded is not null) PbtLoadedRecordBuffer.Return(loaded);
-            }
+            if (!context.Store.TryLocate(current.GroupPointer, out PbtGroupRecord record) && !context.WorkingState.Loaded.TryLoad(context.Store, path, out record))
+                throw new InvalidDataException("A referenced PBT node group is missing.");
+            GroupFrameReader<TKey, TPath> reader = new(record);
+            using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
+                return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
         }
         return FoldSortedAndPublish(context, ref absent, current, operations, ref path, bitDepth, anchorDepth, encoding);
     }
@@ -148,22 +140,29 @@ public static partial class TrieUpdater<TKey, TPath>
         ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int anchorDepth, scoped Span<byte> encoding)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(bitDepth, context.MemoryProvider);
-        StoredGroupHashes.Open(out StoredGroupHashes hashes);
-        ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path);
-        SlotNode result = default;
-        if (!root.IsEmpty)
+        PbtNodeGroupWriter<TPath> writer = context.WorkingState.RentWriter(bitDepth, context.MemoryProvider);
+        try
         {
-            ReadOnlySpan<byte> node = writer.Entry(root.Offset, root.Length).Span;
-            result = anchorDepth == bitDepth || PbtNodeCodec.IsLeaf(node)
-                ? Copy(node, root.Hash, encoding)
-                : new SlotNode(EncodeLifted(PbtBranchReader.FromValidated(node), path, anchorDepth, encoding), default);
-            writer.DropLast(PbtTwoLevelGroupGeometry.RootPosition);
+            StoredGroupHashes.Open(out StoredGroupHashes hashes);
+            ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path);
+            SlotNode result = default;
+            if (!root.IsEmpty)
+            {
+                ReadOnlySpan<byte> node = writer.Entry(root.Offset, root.Length).Span;
+                result = anchorDepth == bitDepth || PbtNodeCodec.IsLeaf(node)
+                    ? Copy(node, root.Hash, encoding)
+                    : new SlotNode(EncodeLifted(PbtBranchReader.FromValidated(node), path, anchorDepth, encoding), default);
+                writer.DropLast(PbtTwoLevelGroupGeometry.RootPosition);
+            }
+            GroupPublication publication = PublishGroup(context, ref reader, writer, path);
+            result.SizeDelta = publication.SizeDelta;
+            result.GroupPointer = publication.Pointer;
+            return result;
         }
-        GroupPublication publication = PublishGroup(context, ref reader, writer, path);
-        result.SizeDelta = publication.SizeDelta;
-        result.GroupPointer = publication.Pointer;
-        return result;
+        finally
+        {
+            context.WorkingState.ReturnWriter(writer);
+        }
     }
 
     /// <summary>Rebuilds the open frame's group from <paramref name="input"/> and the range, leaving its root as the last entry, at the root position.</summary>
@@ -181,8 +180,7 @@ public static partial class TrieUpdater<TKey, TPath>
         }
         finally
         {
-            if (walk.FoldedAhead is { } foldedAhead) ArrayPool<byte>.Shared.Return(foldedAhead);
-            if (walk.FoldedAheadNodes is { } foldedAheadNodes) ArrayPool<SlotNode>.Shared.Return(foldedAheadNodes);
+            if (walk.FoldedAhead is { } foldedAhead) context.WorkingState.ReturnFoldedAhead(foldedAhead, walk.FoldedAheadNodes!);
         }
     }
 
@@ -194,7 +192,7 @@ public static partial class TrieUpdater<TKey, TPath>
     /// calling thread, since the frame's hash cache is not shared. Each worker writes its slot's encoding
     /// into a slice of its own and never touches the frame, whose group lease outlives the loop, so boundary nodes are
     /// read from it in place. Slots fold on the calling thread while the quota has no free slot, as
-    /// <see cref="TrieUpdater.ForEachOnQuota"/> does.
+    /// <see cref="TrieUpdater.ForEachOnQuota"/> does, and every run folds on a spare working state, as the frame's own stays in use.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
@@ -227,41 +225,46 @@ public static partial class TrieUpdater<TKey, TPath>
             covers[foldCount++] = cover;
         }
 
-        Span<int> runEnds = stackalloc int[PbtTwoLevelGroupGeometry.BoundarySlots];
-        int runCount = fanOut.PlanBucketRuns(counts[..foldCount], descendantBytes[..foldCount], runEnds);
+        int runCount = fanOut.PlanBucketRuns(counts[..foldCount], descendantBytes[..foldCount], context.WorkingState.RunEnds);
         if (runCount < 2) return;
 
         int operationOffset = OffsetOf(context.Operations!, operations);
-        SortedSlotFold[] folds = ArrayPool<SortedSlotFold>.Shared.Rent(foldCount);
+        SortedSlotFold[] folds = context.WorkingState.Folds;
         for (int fold = 0; fold < foldCount; fold++)
         {
             folds[fold] = new SortedSlotFold(slots[fold], operationOffset + starts[fold], counts[fold], walk.Boundary(covers[fold], slots[fold]), descendantBytes[fold]);
         }
-        walk.FoldedAhead ??= ArrayPool<byte>.Shared.Rent(PbtTwoLevelGroupGeometry.BoundarySlots * MaxNodeLength);
-        walk.FoldedAheadNodes ??= ArrayPool<SlotNode>.Shared.Rent(PbtTwoLevelGroupGeometry.BoundarySlots);
-        FoldSlotRuns(context, folds, runEnds[..runCount], walk.Path.ToPath<TPath>(), bitDepth, walk.FoldedAhead);
+        if (walk.FoldedAhead is null) context.WorkingState.RentFoldedAhead(out walk.FoldedAhead, out walk.FoldedAheadNodes);
+        ForEachOnQuota(context.FoldQuota, runCount, (Context: context, GroupPath: walk.Path.ToPath<TPath>(), BitDepth: bitDepth, FoldedAhead: walk.FoldedAhead),
+            static (run, state) => FoldRun(state.Context, run, state.GroupPath, state.BitDepth, state.FoldedAhead));
 
         foreach (ref SortedSlotFold fold in folds.AsSpan(0, foldCount))
         {
             walk.Writer.AddDescendantDelta(fold.Slot, fold.Result.SizeDelta);
             walk.Writer.DescendantPointers[fold.Slot] = fold.Result.GroupPointer;
-            walk.FoldedAheadNodes[fold.Slot] = fold.Result;
+            walk.FoldedAheadNodes![fold.Slot] = fold.Result;
             walk.FoldedAheadMask |= 1 << fold.Slot;
         }
-        // The folds hold boundary encodings; clear so the pool does not keep them alive.
-        ArrayPool<SortedSlotFold>.Shared.Return(folds, clearArray: true);
+        // The folds hold boundary encodings; clear so the pooled state does not keep them alive.
+        folds.AsSpan(0, foldCount).Clear();
     }
 
-    /// <summary>Folds the planned runs of slots, the part of <see cref="TryFoldSlotsInParallel"/> past its early exits.</summary>
-    /// <remarks>Kept apart so the closure over the runs is allocated only once a frame is known to split.</remarks>
-    private static void FoldSlotRuns(FoldContext context, SortedSlotFold[] folds, scoped ReadOnlySpan<int> runEnds, TPath groupPath, int bitDepth, byte[] foldedAhead)
+    /// <summary>Folds run <paramref name="run"/> of the slot folds <paramref name="context"/>'s working state planned, on a spare working state.</summary>
+    private static void FoldRun(FoldContext context, int run, TPath groupPath, int bitDepth, byte[] foldedAhead)
     {
-        using ArrayPoolList<int> runs = new(runEnds);
-        ForEachOnQuota(context.FoldQuota, runs.Count, run =>
+        SortedSlotFold[] folds = context.WorkingState.Folds;
+        int[] runEnds = context.WorkingState.RunEnds;
+        FoldWorkingState workingState = context.Spares.Rent();
+        try
         {
-            for (int fold = run == 0 ? 0 : runs[run - 1]; fold < runs[run]; fold++)
-                folds[fold].Fold(context, groupPath, bitDepth, foldedAhead);
-        });
+            FoldContext runContext = new(context.Store, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut, workingState, context.Spares);
+            for (int fold = run == 0 ? 0 : runEnds[run - 1]; fold < runEnds[run]; fold++)
+                folds[fold].Fold(runContext, groupPath, bitDepth, foldedAhead);
+        }
+        finally
+        {
+            context.Spares.Return(workingState);
+        }
     }
 
     /// <summary>Sorts a zone's operations, which the producer grouped by <paramref name="shardTable"/>'s shards, by sorting each shard in place, and replaces every set value with its leaf hash.</summary>
@@ -287,15 +290,22 @@ public static partial class TrieUpdater<TKey, TPath>
         }
 
         PbtWriteOperation<TKey>[] array = context.Operations!;
-        int[] starts = new int[shardCount + 1];
-        starts[0] = OffsetOf(array, operations);
-        for (int shard = 0; shard < shardCount; shard++) starts[shard + 1] = starts[shard] + shardTable[1 + shard];
-        ForEachOnQuota(context.FoldQuota, shardCount, shard =>
+        int[] starts = ArrayPool<int>.Shared.Rent(shardCount + 1);
+        try
         {
-            Span<PbtWriteOperation<TKey>> shardOperations = array.AsSpan(starts[shard], starts[shard + 1] - starts[shard]);
-            PbtOperationSort.Sort(shardOperations);
-            HashLeaves(shardOperations);
-        });
+            starts[0] = OffsetOf(array, operations);
+            for (int shard = 0; shard < shardCount; shard++) starts[shard + 1] = starts[shard] + shardTable[1 + shard];
+            ForEachOnQuota(context.FoldQuota, shardCount, (Array: array, Starts: starts), static (shard, state) =>
+            {
+                Span<PbtWriteOperation<TKey>> shardOperations = state.Array.AsSpan(state.Starts[shard], state.Starts[shard + 1] - state.Starts[shard]);
+                PbtOperationSort.Sort(shardOperations);
+                HashLeaves(shardOperations);
+            });
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(starts);
+        }
     }
 
     /// <summary>Folds the operations under boundary slot <paramref name="slot"/>, whose keys are of another type than the frame's, encoding the node the slot then holds.</summary>
@@ -331,13 +341,15 @@ public static partial class TrieUpdater<TKey, TPath>
             descendantBytes[index] = reader.DescendantBytes(slots[index]);
         }
 
-        byte[] foldedAhead = ArrayPool<byte>.Shared.Rent(PbtTwoLevelGroupGeometry.BoundarySlots * MaxNodeLength);
-        SlotNode[] foldedAheadNodes = ArrayPool<SlotNode>.Shared.Rent(PbtTwoLevelGroupGeometry.BoundarySlots);
+        context.WorkingState.RentFoldedAhead(out byte[] foldedAhead, out SlotNode[] foldedAheadNodes);
         try
         {
-            ForEachOnQuota(context.FoldQuota, slotCount, index =>
-                foldedAheadNodes[slots[index]] = foldSlot(slots[index], boundaries[index], descendantBytes[index],
-                    foldedAhead.AsSpan(slots[index] * MaxNodeLength, MaxNodeLength)));
+            ForEachOnQuota(context.FoldQuota, slotCount, (FoldSlot: foldSlot, Slots: slots, Boundaries: boundaries, DescendantBytes: descendantBytes, FoldedAhead: foldedAhead, Nodes: foldedAheadNodes),
+                static (index, state) =>
+                {
+                    int slot = state.Slots[index];
+                    state.Nodes[slot] = state.FoldSlot(slot, state.Boundaries[index], state.DescendantBytes[index], state.FoldedAhead.AsSpan(slot * MaxNodeLength, MaxNodeLength));
+                });
             foreach (int slot in slots)
             {
                 writer.AddDescendantDelta(slot, foldedAheadNodes[slot].SizeDelta);
@@ -357,8 +369,7 @@ public static partial class TrieUpdater<TKey, TPath>
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(foldedAhead);
-            ArrayPool<SlotNode>.Shared.Return(foldedAheadNodes);
+            context.WorkingState.ReturnFoldedAhead(foldedAhead, foldedAheadNodes);
         }
     }
 
@@ -379,7 +390,7 @@ public static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>One boundary slot a frame folds on a worker, with the node it then holds.</summary>
-    private struct SortedSlotFold(int slot, int offset, int count, BoundaryNode boundary, long descendantBytes)
+    public struct SortedSlotFold(int slot, int offset, int count, BoundaryNode boundary, long descendantBytes)
     {
         public readonly int Slot = slot;
         public SlotNode Result;
@@ -820,8 +831,7 @@ public static partial class TrieUpdater<TKey, TPath>
         {
             int slot = local.Slot;
             if ((walk.FoldedAheadMask >> slot & 1) != 0) return !walk.FoldedAheadNodes![slot].IsEmpty;
-            walk.FoldedAhead ??= ArrayPool<byte>.Shared.Rent(PbtTwoLevelGroupGeometry.BoundarySlots * MaxNodeLength);
-            walk.FoldedAheadNodes ??= ArrayPool<SlotNode>.Shared.Rent(PbtTwoLevelGroupGeometry.BoundarySlots);
+            if (walk.FoldedAhead is null) walk.Context.WorkingState.RentFoldedAhead(out walk.FoldedAhead, out walk.FoldedAheadNodes);
             SlotNode result = FoldSlotBelow(ref walk, local, cover, operations, walk.FoldedAhead.AsSpan(slot * MaxNodeLength, MaxNodeLength));
             walk.FoldedAheadNodes![slot] = result;
             walk.FoldedAheadMask |= 1 << slot;

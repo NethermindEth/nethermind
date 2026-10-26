@@ -77,7 +77,7 @@ public class PbtSnapshotCompactorTests
         RefCountingMemory CreateStorageLeafGroup()
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
-            using PbtNodeGroupWriter<PbtNodePath> writer = PbtNodeGroupWriter<PbtNodePath>.Rent(groupKey.BitDepth, memoryProvider);
+            using PbtNodeGroupWriter<PbtNodePath> writer = new(groupKey.BitDepth, memoryProvider);
             writer.Write(path, PbtTwoLevelGroupGeometry.RootPosition, PbtTreeHarness.EncodeLeaf(key));
             return writer.Detach(default, 0)!;
         }
@@ -330,7 +330,7 @@ public class PbtSnapshotCompactorTests
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
         byte[] expected;
-        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(group.BitDepth, store.Memory))
+        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = new(group.BitDepth, store.Memory))
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], group);
             if (group.BitDepth != 0) path.AppendMut(0);

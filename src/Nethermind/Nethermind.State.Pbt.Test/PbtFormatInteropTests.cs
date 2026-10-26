@@ -162,7 +162,7 @@ public class PbtFormatInteropTests
         PbtPath leaf = Eip8297KeyDerivation.AccountKey(default, 0);
         PbtSnapshotContent content = new();
         byte[] expected;
-        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(depth, store.Memory))
+        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = new(depth, store.Memory))
         {
             PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
             if (depth != 0) cursor.AppendMut(0);

@@ -15,7 +15,8 @@ namespace Nethermind.Pbt;
 
 /// <summary>Appends canonical nodes in position order to an owned, growable group payload.</summary>
 /// <remarks>
-/// Writable spans are borrowed until the next writer operation. The group is composed in a pooled scratch array.
+/// Writable spans are borrowed until the next writer operation. The group is composed in a pooled scratch array, which
+/// <see cref="Reset"/> keeps for the next group and <see cref="Dispose"/> releases.
 /// Detach rents a final-size output and transfers its lease; DetachTo finalizes directly into caller-owned storage.
 /// </remarks>
 public sealed class PbtNodeGroupWriter<TPath> : IDisposable
@@ -24,9 +25,6 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private const int MaxCapacity = PbtNodeGroupCodec.MaxPayloadLength;
     /// <summary>A scratch size that holds most groups outright, so growth rarely copies more than once.</summary>
     private const int InitialCapacity = 1024;
-    /// <summary>How many disposed writers each thread keeps for <see cref="Rent"/>, enough for the deepest fold's frames.</summary>
-    private const int CachedWritersPerThread = 64;
-    [ThreadStatic] private static Stack<PbtNodeGroupWriter<TPath>>? t_cache;
     private int _bitDepth;
     private IRefCountingMemoryProvider _memoryProvider;
     /// <summary>The group composed so far, from <see cref="ArrayPool{T}.Shared"/>, with room for the header in front.</summary>
@@ -36,34 +34,22 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private ushort _descendantDeltaMask;
     private uint _availability;
     private int _written;
-    private bool _disposed;
-    /// <summary>Whether <see cref="Dispose"/> hands this writer back to the calling thread's cache.</summary>
-    private bool _rented;
 
-    private PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider)
+    public PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider) => Reset(bitDepth, memoryProvider);
+
+    /// <summary>Starts an empty group at <paramref name="bitDepth"/>, keeping the scratch of the group written before.</summary>
+    /// <remarks>A fold opens one writer per group it rewrites, so reusing them keeps the fold from allocating one, or its scratch, per group.</remarks>
+    [MemberNotNull(nameof(_memoryProvider))]
+    public void Reset(int bitDepth, IRefCountingMemoryProvider memoryProvider)
     {
         Debug.Assert(PbtTwoLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a group boundary.");
         _bitDepth = bitDepth;
         _memoryProvider = memoryProvider;
-    }
-
-    /// <summary>A writer as the constructor makes it, reused from the calling thread's cache, which <see cref="Dispose"/> returns it to.</summary>
-    /// <remarks>A fold opens one writer per group it rewrites, so reusing them keeps the fold from allocating one per group.</remarks>
-    public static PbtNodeGroupWriter<TPath> Rent(int bitDepth, IRefCountingMemoryProvider memoryProvider)
-    {
-        if (t_cache is not { Count: > 0 } cache) return new(bitDepth, memoryProvider) { _rented = true };
-        PbtNodeGroupWriter<TPath> writer = cache.Pop();
-        Debug.Assert(PbtTwoLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a group boundary.");
-        writer._bitDepth = bitDepth;
-        writer._memoryProvider = memoryProvider;
-        ((Span<long>)writer._descendantDeltas).Clear();
-        writer._descendantDeltaMask = 0;
-        writer.DescendantPointers = default;
-        writer._availability = 0;
-        writer._written = 0;
-        writer._disposed = false;
-        writer._rented = true;
-        return writer;
+        ((Span<long>)_descendantDeltas).Clear();
+        _descendantDeltaMask = 0;
+        DescendantPointers = default;
+        _availability = 0;
+        _written = 0;
     }
 
     public PbtGroupLinks DescendantPointers;
@@ -168,7 +154,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     [DoesNotReturn, StackTraceHidden]
     private static int ThrowTooLarge() => throw new InvalidDataException("A PBT node group exceeds the maximum payload length.");
 
-    /// <summary>Finishes the canonical payload in an exactly sized destination and releases the scratch buffer.</summary>
+    /// <summary>Finishes the canonical payload in an exactly sized destination.</summary>
     public void DetachTo(Span<byte> payload, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
         int length = GetPayloadLength(descendantBytes, candidateSlots);
@@ -182,31 +168,22 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
             PbtNodeGroupCodec.WriteFooter(payload.Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength), _offsets, _availability, descendantMask,
                 descendantBytes);
         }
-        Release();
     }
 
     public void Dispose()
     {
-        Release();
-        if (!_rented) return;
-        _rented = false;
-        Stack<PbtNodeGroupWriter<TPath>> cache = t_cache ??= new(CachedWritersPerThread);
-        if (cache.Count < CachedWritersPerThread) cache.Push(this);
-    }
-
-    private void Release()
-    {
-        if (_disposed) return;
-        _disposed = true;
         if (_scratch is not null) ArrayPool<byte>.Shared.Return(_scratch);
         _scratch = null;
     }
 
-    /// <summary>Sizes the scratch for a group expected to be about <paramref name="length"/> bytes.</summary>
+    /// <summary>Sizes the scratch, before anything is written, for a group expected to be about <paramref name="length"/> bytes.</summary>
     /// <remarks>The group's previous size is the estimate, so a rewrite of similar size never grows the scratch.</remarks>
     public void ReserveFirstBuffer(int length)
     {
-        if (_scratch is null && length > 0) _scratch = ArrayPool<byte>.Shared.Rent(Math.Min(MaxCapacity, length));
+        Debug.Assert(_written == 0, "The first buffer is reserved before anything is written.");
+        if (length <= (_scratch?.Length ?? 0)) return;
+        if (_scratch is not null) ArrayPool<byte>.Shared.Return(_scratch);
+        _scratch = ArrayPool<byte>.Shared.Rent(Math.Min(MaxCapacity, length));
     }
 
     private void EnsureCapacity(int required)
