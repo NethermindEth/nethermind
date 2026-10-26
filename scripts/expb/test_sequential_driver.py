@@ -463,6 +463,7 @@ class CampaignScopeTests(unittest.TestCase):
         self.probe_counts_at_sample_start = []
         self.unsupported_checkpoint = False
         self.checkpoint_timeout = False
+        self.checkpoint_binary_missing = False
         self.snapshot_source = "/mnt/sda/nethermind-flat-25490000"
 
         def check_output(command, **_kwargs):
@@ -471,6 +472,8 @@ class CampaignScopeTests(unittest.TestCase):
                 self.assertEqual(_kwargs.get("timeout"), 30)
                 if self.checkpoint_timeout:
                     raise driver.subprocess.TimeoutExpired(command, timeout=30)
+                if self.checkpoint_binary_missing:
+                    raise FileNotFoundError("expb was not found")
                 if self.unsupported_checkpoint:
                     raise driver.subprocess.CalledProcessError(2, command, output="No such option: --startup-block")
                 return "Usage: expb execute-scenarios"
@@ -523,10 +526,11 @@ class CampaignScopeTests(unittest.TestCase):
         self.assertEqual(self.probes, [["expb", "execute-scenarios", "--startup-block", "26000000", "--help"]])
 
     def test_an_unsupported_checkpoint_stops_before_any_sample(self) -> None:
-        for timeout, message in ((False, "No such option: --startup-block"), (True, "timed out after 30 seconds")):
-            with self.subTest(timeout=timeout):
-                self.unsupported_checkpoint = not timeout
+        for timeout, missing, message in ((False, False, "No such option: --startup-block"), (True, False, "timed out after 30 seconds"), (False, True, "expb was not found")):
+            with self.subTest(timeout=timeout, missing=missing):
+                self.unsupported_checkpoint = not (timeout or missing)
                 self.checkpoint_timeout = timeout
+                self.checkpoint_binary_missing = missing
                 self.probes.clear()
                 code, attempted = self.run_campaign(
                     set(), STATE_LAYOUT="flat", PAYLOAD_SET="fusaka",
@@ -537,6 +541,7 @@ class CampaignScopeTests(unittest.TestCase):
                 campaign = json.loads((self.directory / "campaign" / "campaign.json").read_text(encoding="utf-8"))
                 self.assertEqual(campaign["status"], "failed")
                 self.assertIn(message, campaign["failure_reasons"][0])
+                self.assertIn("snapshot checkpoint", campaign["failure_reasons"][0])
 
     def test_unknown_and_reference_fixtures_do_not_require_the_new_capability(self) -> None:
         self.unsupported_checkpoint = True

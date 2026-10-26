@@ -214,7 +214,12 @@ class ExpbWorkflowTests(unittest.TestCase):
         self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)
 
     def test_campaign_passes_checkpoint_selection_inputs_to_the_driver(self):
-        step = WORKFLOW.read_text(encoding="utf-8-sig").split("      - name: Run sequential EXPB campaign\n", 1)[1]
+        workflow = WORKFLOW.read_text(encoding="utf-8-sig")
+        self.assertTrue("      payload_set: ${{ steps.resolve.outputs.payload_set }}" in workflow, "resolve must expose the payload_set step output")
+        code, log, output = self.run_resolver(DISPATCH_PAYLOAD_SET="fusaka", DISPATCH_STATE_LAYOUT="flat")
+        self.assertEqual(0, code, log)
+        self.assertEqual("fusaka", output.get("payload_set"))
+        step = workflow.split("      - name: Run sequential EXPB campaign\n", 1)[1]
         settings = step.split("        run: |\n", 1)[0]
         for name, output in (("STATE_LAYOUT", "state_layout"), ("PAYLOAD_SET", "payload_set"), ("FLAT_SNAPSHOT_BLOCK_DIR", "flat_snapshot_block_dir")):
             self.assertIn(f"          {name}: ${{{{ needs.resolve.outputs.{output} }}}}", settings)

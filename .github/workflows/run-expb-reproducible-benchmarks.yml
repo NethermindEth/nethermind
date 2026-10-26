@@ -239,6 +239,7 @@ jobs:
       retrospective_last: ${{ steps.resolve.outputs.retrospective_last }}
       retrospective_step: ${{ steps.resolve.outputs.retrospective_step }}
       state_layout: ${{ steps.resolve.outputs.state_layout }}
+      payload_set: ${{ steps.resolve.outputs.payload_set }}
       cells: ${{ steps.resolve.outputs.cells }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
       perf: ${{ steps.resolve.outputs.perf }}
@@ -699,6 +700,7 @@ jobs:
             echo "retrospective_last=${retrospective_last:-100}"
             echo "retrospective_step=${retrospective_step:-10}"
             echo "state_layout=${state_layout}"
+            echo "payload_set=${payload_set}"
             echo "cells=${cells}"
             echo "dottrace=${dottrace}"
             echo "perf=${perf:-false}"

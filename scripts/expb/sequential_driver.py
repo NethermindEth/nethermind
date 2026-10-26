@@ -469,6 +469,8 @@ def main() -> int:
                 subprocess.check_output([get("EXPB_BIN", "expb"), "execute-scenarios", *flags, "--help"], text=True, stderr=subprocess.STDOUT, timeout=30)
             except subprocess.CalledProcessError as error:
                 raise RuntimeError(f"installed expb does not support the snapshot checkpoint: {error.output}") from error
+            except (subprocess.TimeoutExpired, OSError) as error:
+                raise RuntimeError(f"snapshot checkpoint capability probe failed: {error}") from error
         parse_pairs(get("EXPB_ENV_PASSTHROUGH"))
         verify_clean(base)
     except Exception as error:
