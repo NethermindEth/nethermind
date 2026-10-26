@@ -94,7 +94,7 @@ jobs:
           } 2>&1 | tee "$ARTIFACTS/run.log"
           expected_cases=12
           if [[ "$MODE" == fixture ]]; then expected_cases=2; fi
-          python3 scripts/check-bal-catchup-results.py "$ARTIFACTS" "$expected_cases"
+          DOTNET_TieredCompilation= dotnet run --file scripts/CheckBalCatchupResults.cs -- "$ARTIFACTS" "$expected_cases"
       - name: Publish summary
         if: always()
         shell: bash

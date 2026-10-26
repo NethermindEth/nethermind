@@ -36,6 +36,9 @@ jobs:
       - name: Install dependencies
         run: dotnet restore src/Nethermind/${{ matrix.solution }}.slnx --locked-mode
 
+      - name: Build stall watchdog
+        run: dotnet build scripts/ci/RunWithStallWatchdog.cs --output "${{ runner.temp }}/stall-watchdog" -p:UseSharedCompilation=false
+
       - name: Build ${{ matrix.solution }}.slnx
         env:
           DIAG_DIR: ${{ runner.temp }}/stall-diagnostics
@@ -49,7 +52,7 @@ jobs:
           # leaves an unfinished gzip stream, so stall investigations need stacks/scheduler logs.
           MSBUILDDEBUGSCHEDULER: ${{ matrix.solution == 'EthereumTests' && 1 || '' }}
         run: >
-          bash scripts/ci/run-with-stall-watchdog.sh
+          dotnet "${{ runner.temp }}/stall-watchdog/RunWithStallWatchdog.dll"
           dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
           ${{ matrix.solution == 'EthereumTests' && format('-bl:{0}/stall-diagnostics/build.binlog', runner.temp) || '' }}
 

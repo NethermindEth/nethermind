@@ -10,7 +10,7 @@ on:
       - "src/Nethermind/Nethermind.Evm.Benchmark/EvmPooledMemoryBenchmarkHelper.cs"
       - "Directory.Packages.props"
       - ".github/workflows/evm-opcode-benchmark-diff.yml"
-      - "scripts/evm_benchmark_utils.py"
+      - "scripts/CompareEvmBenchmarks.cs"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -55,7 +55,7 @@ jobs:
             exit 0
           fi
           # Run if the benchmark harness, workflow, or utility script changed
-          if git diff --name-only "$base" "$head" | grep -qE "^(src/Nethermind/Nethermind\.Evm\.Benchmark/(EvmOpcodesBenchmark|EvmOpcodeGasColumnProvider|EvmPooledMemoryBenchmarkHelper)\.cs|\.github/workflows/evm-opcode-benchmark-diff\.yml|scripts/evm_benchmark_utils\.py)$"; then
+          if git diff --name-only "$base" "$head" | grep -qE "^(src/Nethermind/Nethermind\.Evm\.Benchmark/(EvmOpcodesBenchmark|EvmOpcodeGasColumnProvider|EvmPooledMemoryBenchmarkHelper)\.cs|\.github/workflows/evm-opcode-benchmark-diff\.yml|scripts/CompareEvmBenchmarks\.cs)$"; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -206,30 +206,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts${PYTHONPATH:+:$PYTHONPATH}"
-          python3 <<'PY'
-          import os
-          from evm_benchmark_utils import collect_logs, read_env_config, aggregate, compare_opcodes
-
-          config = read_env_config()
-          base_logs, pr_logs = collect_logs()
-          base_data = aggregate(base_logs)
-          pr_data = aggregate(pr_logs)
-
-          rerun_opcodes = [
-              opcode for opcode, info in compare_opcodes(base_data, pr_data, config)
-              if info["is_flagged"] and info["is_noisy"]
-          ]
-
-          with open("evm-rerun-opcodes.txt", "w", encoding="utf-8") as f:
-              for opcode in rerun_opcodes:
-                  f.write(opcode + "\n")
-
-          github_output = os.environ["GITHUB_OUTPUT"]
-          with open(github_output, "a", encoding="utf-8") as f:
-              f.write(f"rerun_needed={'true' if rerun_opcodes else 'false'}\n")
-              f.write(f"rerun_count={len(rerun_opcodes)}\n")
-          PY
+          dotnet run --file scripts/CompareEvmBenchmarks.cs -- detect-noisy
 
       - name: Rerun base benchmark for flagged noisy opcodes
         if: steps.detect_noisy.outputs.rerun_needed == 'true'
@@ -292,92 +269,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts${PYTHONPATH:+:$PYTHONPATH}"
-          python3 <<'PY'
-          import os
-          from evm_benchmark_utils import (
-              collect_logs, read_env_config, aggregate, compare_opcodes, fmt_cv,
-          )
-
-          config = read_env_config()
-          base_logs, pr_logs = collect_logs()
-          base_data = aggregate(base_logs)
-          pr_data = aggregate(pr_logs)
-
-          flagged = [
-              (opcode, info) for opcode, info in compare_opcodes(base_data, pr_data, config)
-              if info["is_flagged"]
-          ]
-
-          TABLE_HEADER = "| Opcode | Base Median (ns) | PR Median (ns) | Delta | Abs Δ (ns) | Base CV | PR CV | Threshold | Uncertainty | Effective |"
-          TABLE_SEPARATOR = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
-
-          def format_row(opcode, d):
-              base_str = "N/A" if d["base_val"] is None else f"{d['base_val']:.3f}"
-              pr_str = "N/A" if d["pr_val"] is None else f"{d['pr_val']:.3f}"
-              delta_str = "N/A" if d["delta_pct"] is None else f"{d['delta_pct']:+.2f}%"
-              delta_abs_str = "N/A" if d["delta_abs_ns"] is None else f"{d['delta_abs_ns']:.3f}"
-              base_cv = fmt_cv(d["base_mean"], d["base_stddev"])
-              pr_cv = fmt_cv(d["pr_mean"], d["pr_stddev"])
-              return f"| {opcode} | {base_str} | {pr_str} | {delta_str} | {delta_abs_str} | {base_cv} | {pr_cv} | ±{d['threshold']:.1f}% | ±{d['uncertainty_floor']:.1f}% | ±{d['effective_threshold']:.1f}% |"
-
-          regressions = [(op, d) for op, d in flagged if d["delta_pct"] is not None and d["delta_pct"] > 0]
-          improvements = [(op, d) for op, d in flagged if d["delta_pct"] is not None and d["delta_pct"] < 0]
-          unknown = [(op, d) for op, d in flagged if d["delta_pct"] is None]
-
-          summary_lines = []
-          summary_lines.append("## EVM Opcode Benchmark Diff")
-          summary_lines.append("")
-          summary_lines.append(f"Aggregated runs: base={len(base_logs)}, pr={len(pr_logs)}")
-          if os.environ.get("BASE_HARNESS_FALLBACK") == "true":
-              harness_delta = os.environ.get("BASE_HARNESS_DELTA") or "not reported"
-              summary_lines.append("")
-              summary_lines.append("> [!WARNING]")
-              summary_lines.append(
-                  "> The PR benchmark harness does not compile against the base commit, so the base side ran "
-                  "its own harness sources rather than the PR's."
-              )
-              summary_lines.append(f"> Harness delta between base and PR: {harness_delta}.")
-              summary_lines.append("")
-          if os.path.exists("evm-rerun-opcodes.txt"):
-              with open("evm-rerun-opcodes.txt", "r", encoding="utf-8") as f:
-                  rerun_ops = [line.strip() for line in f if line.strip()]
-              if rerun_ops:
-                  summary_lines.append(f"Noisy rerun opcodes: {', '.join(rerun_ops)}")
-          summary_lines.append("")
-
-          def append_table(title, rows):
-              summary_lines.append(f"### {title} ({len(rows)})")
-              summary_lines.append("")
-              summary_lines.append(TABLE_HEADER)
-              summary_lines.append(TABLE_SEPARATOR)
-              for opcode, d in rows:
-                  summary_lines.append(format_row(opcode, d))
-              summary_lines.append("")
-
-          if regressions:
-              append_table("Regressions", regressions)
-          if improvements:
-              append_table("Improvements", improvements)
-          if unknown:
-              append_table("New / Removed", unknown)
-
-          if not flagged:
-              summary_lines.append("No significant regressions or improvements detected.")
-
-          output = "\n".join(summary_lines) + "\n"
-          output = "<!-- evm-opcode-benchmark-diff -->\n" + output
-
-          summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
-          if summary_file:
-              with open(summary_file, "a", encoding="utf-8") as f:
-                  f.write(output)
-
-          with open("evm-opcode-comment.md", "w", encoding="utf-8") as f:
-              f.write(output)
-
-          print(output)
-          PY
+          dotnet run --file scripts/CompareEvmBenchmarks.cs -- compare
 
           {
             echo "comment_body<<EOF"
