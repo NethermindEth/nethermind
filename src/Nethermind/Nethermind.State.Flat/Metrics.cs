@@ -39,14 +39,6 @@ public static class Metrics
     public static long NodeRecordBufferGenerations { get; set; }
 
     [GaugeMetric]
-    [Description("Bytes of the records and tables kept by compacted trie node buffer generations.")]
-    public static long NodeRecordBufferCompressedMemory { get; set; }
-
-    [GaugeMetric]
-    [Description("Number of compacted trie node buffer generations held.")]
-    public static long NodeRecordBufferCompressedGenerations { get; set; }
-
-    [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
 

@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>An append-only buffer of trie node records that keeps every record until it is cleared or disposed.</summary>
 /// <remarks>
-/// Pointers are laid out as in <see cref="NodeRecordBuffer"/>, but no generation is ever dropped or compacted, so pins only defer
+/// Pointers are laid out as in <see cref="NodeRecordBuffer"/>, but no generation is ever dropped, so pins only defer
 /// the release of native storage past <see cref="Dispose"/>. It reports no metrics and keeps roots in a plain dictionary.
 /// The first generation is allocated on the first write and its storage is kept across <see cref="Clear"/>.
 /// </remarks>

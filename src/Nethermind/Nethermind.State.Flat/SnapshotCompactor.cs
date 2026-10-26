@@ -32,7 +32,6 @@ public class SnapshotCompactor(
         if (_snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
         {
             using Snapshot _ = snapshot;
-            snapshot.PopulateBloom();
 
             long sw = Stopwatch.GetTimestamp();
             using SnapshotPooledList snapshots = GetSnapshotsToCompact(snapshot);

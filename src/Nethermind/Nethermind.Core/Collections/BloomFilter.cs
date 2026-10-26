@@ -21,8 +21,6 @@ public sealed unsafe partial class BloomFilter : IDisposable
 {
     // ---- constants ----
     private const int CacheLineBytes = 64;      // 512 bits
-    private const int WordsPerLine = CacheLineBytes / sizeof(ulong);
-    private const int AddLanes = 8;
 
     // RocksDB golden ratio constants
     private const uint Mul32 = 0x9E3779B9u;
@@ -169,53 +167,6 @@ public sealed unsafe partial class BloomFilter : IDisposable
 
         Interlocked.Increment(ref _count);
         return lineIndex * CacheLineBytes;
-    }
-
-    /// <summary>Adds every key of <paramref name="keys"/>, as <see cref="Add(ulong)"/> does.</summary>
-    /// <remarks>
-    /// Keys are taken in groups of <see cref="AddLanes"/> whose cache lines are all prefetched before any is written, as each atomic OR
-    /// is a full fence that would otherwise serialize their misses. A key's probe bits are gathered per 64-bit word first, so each
-    /// word it touches takes one atomic OR rather than one per probe.
-    /// </remarks>
-    public void Add(ReadOnlySpan<long> keys)
-    {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-        // In bounds: GetLineAndHashState keeps lineIndex below NumBlocks, and a probe bit below 512 keeps bit >> 6 below WordsPerLine.
-        ulong** lines = stackalloc ulong*[AddLanes];
-        uint* hashes = stackalloc uint[AddLanes];
-        ulong* words = stackalloc ulong[WordsPerLine];
-        const int shift = 32 - 9; // log2(512)=9
-        int k = K;
-        for (int start = 0; start < keys.Length; start += AddLanes)
-        {
-            int lanes = Math.Min(AddLanes, keys.Length - start);
-            for (int lane = 0; lane < lanes; lane++)
-            {
-                GetLineAndHashState((ulong)keys[start + lane], NumBlocks, out long lineIndex, out hashes[lane]);
-                lines[lane] = (ulong*)(_data + lineIndex * CacheLineBytes);
-                if (Sse.IsSupported) Sse.Prefetch0(lines[lane]);
-            }
-
-            for (int lane = 0; lane < lanes; lane++)
-            {
-                new Span<ulong>(words, WordsPerLine).Clear();
-                uint h = hashes[lane];
-                for (int i = 0; i < k; i++)
-                {
-                    int bit = (int)(h >> shift);
-                    words[bit >> 6] |= 1UL << (bit & 63);
-                    h *= Mul32;
-                }
-
-                for (int word = 0; word < WordsPerLine; word++)
-                {
-                    if (words[word] != 0) Interlocked.Or(ref lines[lane][word], words[word]);
-                }
-            }
-        }
-
-        Interlocked.Add(ref _count, keys.Length);
     }
 
     /// <summary>

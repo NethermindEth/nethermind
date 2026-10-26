@@ -30,6 +30,7 @@ using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.State.Flat.Test.NodeBuffer;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -1481,7 +1482,7 @@ public class FlatWorldStateScopeProviderTests
         const int keyCount = 48;
         const int versionCount = 3;
         ResourcePool pool = new(new FlatDbConfig());
-        using NodeRecordBuffer buffer = new(1024 * 1024, 64 * 1024);
+        using NodeRecordBuffer buffer = new(64 * 1024);
         Hash256? address = storage ? TestItem.KeccakA : null;
         byte[] oldRlp = FlatTestHelpers.LeafRlp(0x01);
         ulong oldPointer = buffer.AppendRecordFromRlp(address, TreePath.FromHexString("f"), ValueKeccak.Compute(oldRlp), oldRlp, []);
@@ -1528,7 +1529,7 @@ public class FlatWorldStateScopeProviderTests
             buffer, pool, ResourcePool.Usage.MainBlockProcessing,
             readOnlySnapshots ? null : snapshots);
         for (int i = 0; i < 12; i++) FlatTestHelpers.StartNewGeneration(buffer);
-        Assert.That(() => buffer.FindBloom(oldPointer) is null, Is.True.After(10_000, 10), "the unretained generation is compacted while snapshots retain later generations");
+        Assert.That(NodeRecordBufferTests.IsLocatable(buffer, oldPointer), Is.False, "the unretained generation is dropped while snapshots retain later generations");
 
         using INodeRecordBufferPin writeRetain = buffer.PinHead();
         for (int version = 0; version < versionCount; version++)

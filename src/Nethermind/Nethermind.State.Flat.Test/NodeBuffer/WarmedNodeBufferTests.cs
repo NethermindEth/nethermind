@@ -23,7 +23,7 @@ internal class WarmedNodeBufferTests
     public void Written_records_are_indexed_by_position_and_resolve_through_the_combined_buffer([Values] bool storage)
     {
         using WarmedNodeBuffer warmed = new(1024);
-        using NodeRecordBuffer global = new(0, GenerationBytes);
+        using NodeRecordBuffer global = new(GenerationBytes);
         WarmedNodeRecordBuffer combined = new(global, warmed);
         Hash256? address = storage ? TestItem.KeccakA : null;
         Hash256? otherAddress = storage ? null : TestItem.KeccakA;
