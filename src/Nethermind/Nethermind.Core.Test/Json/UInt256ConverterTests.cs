@@ -4,7 +4,6 @@
 using System;
 using System.Globalization;
 using System.IO;
-using System.Text;
 using Nethermind.Int256;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
@@ -136,7 +135,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
             }
             writer.Flush();
 
-            Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(expected),
+            Assert.That(System.Text.Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(expected),
                 "decimal numbers, raw strings and property names must retain their exact JSON and encoder behavior");
         }
         finally
