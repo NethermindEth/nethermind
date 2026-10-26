@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from itertools import product
 from pathlib import Path
 
 
@@ -279,7 +280,7 @@ class ExpbWorkflowTests(unittest.TestCase):
         )
         return proc.returncode, proc.stdout + proc.stderr, output
 
-    def run_capability_probe(self, installer, fail_help):
+    def run_capability_probe(self, installer, fail_help, startup_block=""):
         start = installer.index("requested_flags=()")
         end = installer.index('echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"')
         probe = installer[start:end]
@@ -300,7 +301,9 @@ if [[ "${MOCK_FAIL_HELP}" == "true" ]]; then
   echo "No such option: --no-client-metrics" >&2
   exit 2
 fi
-if [[ "$#" -ne 3 || "$1" != "--perf" || "$2" != "--no-client-metrics" || "$3" != "--help" ]]; then
+expected="--perf --no-client-metrics"
+if [[ -n "${MOCK_STARTUP_BLOCK}" ]]; then expected="${expected} --startup-block ${MOCK_STARTUP_BLOCK}"; fi
+if [[ "$*" != "${expected} --help" ]]; then
   echo "unexpected capability probe arguments" >&2
   exit 3
 fi
@@ -313,6 +316,8 @@ fi
                 {
                     "PERF": "true",
                     "MEASUREMENT_SOURCE": "engine-api",
+                    "STARTUP_BLOCK": startup_block,
+                    "MOCK_STARTUP_BLOCK": startup_block,
                     "MOCK_EXPB": to_bash(mock),
                     "MOCK_ARGS": to_bash(observed_args),
                     "MOCK_FAIL_HELP": "true" if fail_help else "false",
@@ -349,6 +354,47 @@ fi
                     ["execute-scenarios", "--perf", "--no-client-metrics", "--help"],
                     observed_args,
                 )
+
+    def test_startup_checkpoint_requires_harness_capability(self):
+        for unsupported in (False, True):
+            with self.subTest(unsupported=unsupported):
+                proc, log, observed = self.run_capability_probe(self.installers[0], unsupported, "25490000")
+                self.assertEqual(not unsupported, proc.returncode == 0, log)
+                self.assertEqual(["execute-scenarios", "--perf", "--no-client-metrics", "--startup-block", "25490000", "--help"], observed)
+
+    def test_startup_checkpoint_only_applies_to_the_known_snapshot(self):
+        renderer = extract_step(WORKFLOW, "Render benchmark config")
+        start = renderer.index('snapshot_source="$(')
+        end = renderer.index('echo "expected_amount=', start)
+        fixture = "/mnt/sda/nethermind-flat-25490000"
+        for client, payload, layout, source, expected in (
+            ("nethermind", "fusaka", "flat", fixture, "25490000"),
+            ("nethermind", "fusaka", "flat", "/data/nethermind/nethermind-flat-25490000", "25490000"),
+            ("nethermind", "fusaka", "flat", "/snapshots/custom", ""),
+            ("nethermind", "fusaka", "halfpath", fixture, ""),
+            ("nethermind", "realblocks", "flat", fixture, ""),
+            ("custom", "fusaka", "flat", fixture, ""),
+        ):
+            with self.subTest(client=client, payload=payload, layout=layout, source=source), tempfile.TemporaryDirectory(prefix="expb-checkpoint-test-") as directory:
+                mock = Path(directory) / "yq"
+                mock.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "${MOCK_SOURCE}"\n', encoding="utf-8")
+                mock.chmod(0o755)
+                configured_fixture = source if source.startswith("/data/") else fixture
+                proc, output, _ = self.run_body('scenario_key="test"\n' + renderer[start:end], {
+                    "YQ": to_bash(mock), "RENDERED_CONFIG_FILE": "unused.yaml", "MOCK_SOURCE": source,
+                    "CLIENT": client, "PAYLOAD_SET": payload, "STATE_LAYOUT": layout,
+                    "FLAT_SNAPSHOT_BLOCK_DIR": configured_fixture,
+                })
+                self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                self.assertEqual(expected, output["startup_block"])
+
+        launcher = extract_step(WORKFLOW, "Run expb scenarios")
+        self.assertIn('startup_flags+=(--startup-block "${STARTUP_BLOCK}")', launcher)
+        self.assertIn('${startup_flags[@]+"${startup_flags[@]}"}', launcher)
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        for name in ("Install or upgrade expb", "Run expb scenarios"):
+            block = workflow.split(f"      - name: {name}\n", 1)[1].split("\n      - name:", 1)[0]
+            self.assertIn("STARTUP_BLOCK: ${{ steps.render-config.outputs.startup_block }}", block.split("run: |", 1)[0])
 
     def test_arm_reth_selects_reth_snapshot(self):
         code, log, output = self.run_resolver(DISPATCH_CLIENT="reth", DISPATCH_ARCH="arm64")
@@ -485,6 +531,7 @@ fi
                     "RUN_URL": "https://example.invalid/run",
                     "CLIENT": "nethermind",
                     "RUNNER_TEMP": to_bash(root),
+                    "BENCHMARK_RESULT": "success",
                 },
             )
         self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
@@ -549,7 +596,7 @@ fi
         for index, image_id in enumerate(ids, start=1):
             self.assertRegex(image_id, r"^image-{}-[0-9a-f]{{12}}$".format(index))
 
-    def run_analyzer(self, body, log_text, metrics_name="expb-metrics-latest-0-run1/metrics.env", **overrides):
+    def run_analyzer(self, body, log_text, metrics_name="expb-metrics.env", **overrides):
         """Run one `Analyze benchmark output` body over a synthetic expb run log."""
         with tempfile.TemporaryDirectory(prefix="expb-analyze-test-") as temp_dir:
             temp_path = Path(temp_dir)
@@ -567,6 +614,7 @@ fi
                     "TAG": "latest-0",
                     "RUN": "1",
                     "MEASUREMENT_SOURCE": "engine-api",
+                    "RUN_OUTCOME": "success",
                     "MEASUREMENT_MODE": "standard",
                     "EXPECTED_AMOUNT": "3",
                     "GITHUB_OUTPUT": to_bash(output),
@@ -591,25 +639,79 @@ fi
         """The per-payload metrics table expb prints, which is the engine-api timing source."""
         return "".join("| {} | 30000000 | {}.0 |\n".format(index, 20 + index) for index in range(1, rows + 1))
 
-    def test_engine_api_gate_refuses_a_partial_run(self):
-        # The gate is the only thing keeping a truncated run from being averaged into a cross-client
-        # comparison, and it can abort a multi-hour benchmark. The campaign driver applies the same
-        # delivery gate to every multi-image sample (see scripts/expb/test_sequential_driver.py).
+    def test_analyzer_refuses_incomplete_or_duplicate_payloads_in_each_mode(self):
         for analyzer in self.analyzers:
-            with self.subTest(copy="single"):
-                complete, _ = self.run_analyzer(analyzer, self.k6_table(3))
-                self.assertEqual(0, complete.returncode, complete.stdout + complete.stderr)
+            for source in ("engine-api", "auto"):
+                for rows, valid in ((self.k6_table(3), True), (self.k6_table(2), False),
+                                    (self.k6_table(2) + self.k6_table(1), False)):
+                    with self.subTest(source=source, rows=rows):
+                        proc, metrics = self.run_analyzer(analyzer, rows, MEASUREMENT_SOURCE=source)
+                        self.assertEqual(valid, proc.returncode == 0, proc.stdout + proc.stderr)
+                        if not valid:
+                            self.assertIn("refusing an incomplete benchmark", proc.stdout)
+                            self.assertEqual("", metrics)
 
-                partial, metrics = self.run_analyzer(analyzer, self.k6_table(2))
-                self.assertNotEqual(0, partial.returncode)
-                self.assertIn("refusing a partial engine-api measurement", partial.stdout)
-                if metrics:
-                    self.assertIn("ERROR=partial_engine_api_metrics", metrics)
+    def test_failed_runs_or_invalid_engine_responses_produce_no_metrics(self):
+        for outcome, diagnostic in (("failure", ""), ("cancelled", ""), ("skipped", ""),
+                                     ("success", "payload status SYNCING"),
+                                     ("success", "payload status ACCEPTED"),
+                                     ("success", "payload status INVALID"),
+                                     ("success", "payload status missing"),
+                                     ("success", "JSON-RPC error"),
+                                     ("success", "HTTP status 500")):
+            for kind in ("newPayload", "forkchoiceUpdated"):
+                with self.subTest(outcome=outcome, diagnostic=diagnostic, kind=kind):
+                    line = f'time="2026-10-26" level=error msg="[engine] {kind} idx=1 {diagnostic}"\n' if diagnostic else ""
+                    proc, metrics = self.run_analyzer(self.analyzers[0], line + self.k6_table(3), RUN_OUTCOME=outcome)
+                    self.assertNotEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                    self.assertEqual("", metrics)
 
-                # The same short run is a valid measurement when the caller did not ask for the
-                # common Engine API timing source.
-                auto, _ = self.run_analyzer(analyzer, self.k6_table(2), MEASUREMENT_SOURCE="auto")
-                self.assertEqual(0, auto.returncode, auto.stdout + auto.stderr)
+    def test_invalid_matrix_replaces_comparisons_with_a_failure_notice(self):
+        for result, revision in product(("failure", "cancelled", "skipped", ""), ("a" * 40, "", "invalid")):
+            with self.subTest(result=result, revision=revision), tempfile.TemporaryDirectory(prefix="expb-comment-test-") as directory:
+                root = Path(directory)
+                metrics = root / "metrics/expb-single-metrics-fusaka-run1"
+                metrics.mkdir(parents=True)
+                (metrics / "expb-metrics.env").write_text("SOURCE=k6\nAVG=1.6\nMGAS_S=19000\n", encoding="utf-8")
+                proc, output, _ = self.run_body(extract_step(WORKFLOW, "Build PR comparison comment"), {
+                    "METRICS_DIR": to_bash(root / "metrics"), "MASTER_CACHE_ROOT": to_bash(root),
+                    "CELLS": json.dumps(self.AUTOMATED_CELLS), "STATE_LAYOUT": "flat",
+                    "CLEAN_BRANCH": "test", "IMAGE": "", "IMAGE_REVISION": revision,
+                    "RUN_URL": "https://example.invalid/run", "CLIENT": "nethermind",
+                    "RUNNER_TEMP": to_bash(root), "BENCHMARK_RESULT": result,
+                })
+                self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                self.assertIn("Invalid benchmark run", output["body"])
+                self.assertNotIn("Tested against commit", output["body"])
+                self.assertNotIn("| Avg |", output["body"])
+                self.assertNotIn("19000", output["body"])
+
+    def test_invalid_matrix_summary_contains_no_timing_table(self):
+        for result in ("failure", "cancelled", "skipped", ""):
+            with self.subTest(result=result), tempfile.TemporaryDirectory(prefix="expb-summary-test-") as directory:
+                root = Path(directory)
+                summary = root / "summary.md"
+                proc, _, _ = self.run_body(extract_step(WORKFLOW, "Build summary"), {
+                    "METRICS_DIR": to_bash(root), "CELLS": json.dumps(self.AUTOMATED_CELLS),
+                    "RUN_COUNT": "1", "STATE_LAYOUT": "flat", "CLEAN_BRANCH": "test",
+                    "RUN_URL": "https://example.invalid/run", "CLIENT": "nethermind",
+                    "RUNNER_TEMP": to_bash(root), "GITHUB_STEP_SUMMARY": to_bash(summary),
+                    "BENCHMARK_RESULT": result,
+                })
+                self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                self.assertIn("Invalid benchmark run", summary.read_text(encoding="utf-8"))
+                self.assertNotIn("| Metric |", summary.read_text(encoding="utf-8"))
+
+    def test_only_quality_checked_metrics_can_be_published_or_cached(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        quality = text.index("      - name: Enforce run quality gates")
+        for name in ("Upload metrics artifact", "Prepare master metrics cache", "Save master metrics cache"):
+            start = text.index(f"      - name: {name}")
+            end = text.index("\n      - name:", start + 1)
+            with self.subTest(step=name):
+                self.assertLess(quality, start)
+                self.assertIn("steps.quality.outcome == 'success'", text[start:end])
+        self.assertNotIn("expb-master-metrics-v6-", text)
 
     def test_the_feed_pairs_with_the_k6_rows_only_when_complete_or_one_short(self):
         # Same rule as collect_metrics in scripts/expb/sequential_driver.py: the feed can lack only its last
@@ -632,15 +734,13 @@ fi
                     self.assertEqual(paired, "OUTSIDE_AVG=" in metrics)
                     self.assertIn("TTFB_MGAS_S=", metrics)
 
-    def test_an_unusable_amount_disables_the_gate_but_says_so(self):
-        # `expected_amount` is `.amount // ""` from the rendered config, so it can arrive empty - and
-        # a silently skipped completeness check is exactly what the gate exists to prevent.
+    def test_an_unusable_amount_refuses_unverifiable_metrics(self):
         for analyzer in self.analyzers:
             for amount in ("", "all"):
                 with self.subTest(copy="single", amount=amount):
                     proc, _ = self.run_analyzer(analyzer, self.k6_table(2), EXPECTED_AMOUNT=amount)
-                    self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
-                    self.assertIn("completeness check is disabled", proc.stdout)
+                    self.assertNotEqual(0, proc.returncode)
+                    self.assertIn("benchmark completeness cannot be checked", proc.stdout)
 
     def test_no_metrics_at_all_still_fails_before_the_completeness_gate(self):
         for analyzer in self.analyzers:
