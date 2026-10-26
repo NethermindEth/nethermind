@@ -69,10 +69,9 @@ public static partial class TrieUpdater
             : storageFold.Fold(slot, boundary, descendantBytes, encoding);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
         FoldWorkingState workingState = FoldWorkingState.Rent();
-        using SpareWorkingStates spares = new();
         try
         {
-            FoldContext context = new(store, memoryProvider, foldQuota, null, fanOut, workingState, spares);
+            FoldContext context = new(store, memoryProvider, foldQuota, null, fanOut, workingState, null);
             // An empty tree owns no groups; a group left at the root path by an earlier tree is stale.
             if (currentRoot.Hash == default)
             {

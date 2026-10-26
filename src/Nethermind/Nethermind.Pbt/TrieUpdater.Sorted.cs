@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -140,29 +139,24 @@ public static partial class TrieUpdater<TKey, TPath>
         ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int anchorDepth, scoped Span<byte> encoding)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
+        // A fold that throws leaves its writer to the collector rather than to the working state.
         PbtNodeGroupWriter<TPath> writer = context.WorkingState.RentWriter(bitDepth, context.MemoryProvider);
-        try
+        StoredGroupHashes.Open(out StoredGroupHashes hashes);
+        ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path);
+        SlotNode result = default;
+        if (!root.IsEmpty)
         {
-            StoredGroupHashes.Open(out StoredGroupHashes hashes);
-            ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path);
-            SlotNode result = default;
-            if (!root.IsEmpty)
-            {
-                ReadOnlySpan<byte> node = writer.Entry(root.Offset, root.Length).Span;
-                result = anchorDepth == bitDepth || PbtNodeCodec.IsLeaf(node)
-                    ? Copy(node, root.Hash, encoding)
-                    : new SlotNode(EncodeLifted(PbtBranchReader.FromValidated(node), path, anchorDepth, encoding), default);
-                writer.DropLast(PbtTwoLevelGroupGeometry.RootPosition);
-            }
-            GroupPublication publication = PublishGroup(context, ref reader, writer, path);
-            result.SizeDelta = publication.SizeDelta;
-            result.GroupPointer = publication.Pointer;
-            return result;
+            ReadOnlySpan<byte> node = writer.Entry(root.Offset, root.Length).Span;
+            result = anchorDepth == bitDepth || PbtNodeCodec.IsLeaf(node)
+                ? Copy(node, root.Hash, encoding)
+                : new SlotNode(EncodeLifted(PbtBranchReader.FromValidated(node), path, anchorDepth, encoding), default);
+            writer.DropLast(PbtTwoLevelGroupGeometry.RootPosition);
         }
-        finally
-        {
-            context.WorkingState.ReturnWriter(writer);
-        }
+        GroupPublication publication = PublishGroup(context, ref reader, writer, path);
+        context.WorkingState.ReturnWriter(writer);
+        result.SizeDelta = publication.SizeDelta;
+        result.GroupPointer = publication.Pointer;
+        return result;
     }
 
     /// <summary>Rebuilds the open frame's group from <paramref name="input"/> and the range, leaving its root as the last entry, at the root position.</summary>
@@ -254,16 +248,17 @@ public static partial class TrieUpdater<TKey, TPath>
     {
         SortedSlotFold[] folds = context.WorkingState.Folds;
         int[] runEnds = context.WorkingState.RunEnds;
-        FoldWorkingState workingState = context.Spares.Rent();
+        SpareWorkingStates spares = context.Spares!;
+        FoldWorkingState workingState = spares.Rent();
         try
         {
-            FoldContext runContext = new(context.Store, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut, workingState, context.Spares);
+            FoldContext runContext = new(context.Store, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut, workingState, spares);
             for (int fold = run == 0 ? 0 : runEnds[run - 1]; fold < runEnds[run]; fold++)
                 folds[fold].Fold(runContext, groupPath, bitDepth, foldedAhead);
         }
         finally
         {
-            context.Spares.Return(workingState);
+            spares.Return(workingState);
         }
     }
 
@@ -290,22 +285,15 @@ public static partial class TrieUpdater<TKey, TPath>
         }
 
         PbtWriteOperation<TKey>[] array = context.Operations!;
-        int[] starts = ArrayPool<int>.Shared.Rent(shardCount + 1);
-        try
+        using ArrayPoolSpan<int> starts = new(shardCount + 1);
+        starts[0] = OffsetOf(array, operations);
+        for (int shard = 0; shard < shardCount; shard++) starts[shard + 1] = starts[shard] + shardTable[1 + shard];
+        ForEachOnQuota(context.FoldQuota, shardCount, (Array: array, Starts: starts), static (shard, state) =>
         {
-            starts[0] = OffsetOf(array, operations);
-            for (int shard = 0; shard < shardCount; shard++) starts[shard + 1] = starts[shard] + shardTable[1 + shard];
-            ForEachOnQuota(context.FoldQuota, shardCount, (Array: array, Starts: starts), static (shard, state) =>
-            {
-                Span<PbtWriteOperation<TKey>> shardOperations = state.Array.AsSpan(state.Starts[shard], state.Starts[shard + 1] - state.Starts[shard]);
-                PbtOperationSort.Sort(shardOperations);
-                HashLeaves(shardOperations);
-            });
-        }
-        finally
-        {
-            ArrayPool<int>.Shared.Return(starts);
-        }
+            Span<PbtWriteOperation<TKey>> shardOperations = state.Array.AsSpan(state.Starts[shard], state.Starts[shard + 1] - state.Starts[shard]);
+            PbtOperationSort.Sort(shardOperations);
+            HashLeaves(shardOperations);
+        });
     }
 
     /// <summary>Folds the operations under boundary slot <paramref name="slot"/>, whose keys are of another type than the frame's, encoding the node the slot then holds.</summary>

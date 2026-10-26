@@ -49,35 +49,42 @@ public static partial class TrieUpdater
             work(next, state);
         if (next < count - 1)
         {
-            int callerThreadId = Environment.CurrentManagedThreadId;
-            int admissionSlotClaimed = 0;
-            try
-            {
-                ParallelUnbalancedWork.For(next, count, ParallelUnbalancedWork.DefaultOptions,
-                    () =>
-                    {
-                        if (Environment.CurrentManagedThreadId == callerThreadId) return false;
-                        if (Interlocked.Exchange(ref admissionSlotClaimed, 1) != 0) quota.TakeConcurrencyQuota();
-                        return true;
-                    },
-                    (index, tookQuota) =>
-                    {
-                        work(index, state);
-                        return tookQuota;
-                    },
-                    tookQuota =>
-                    {
-                        if (tookQuota) quota.ReturnConcurrencyQuota();
-                    });
-            }
-            finally
-            {
-                if (Interlocked.Exchange(ref admissionSlotClaimed, 1) == 0) quota.ReturnConcurrencyQuota();
-            }
+            ForEachAdmitted(quota, next, count, state, work);
         }
         else if (next < count)
         {
             work(next, state);
+        }
+    }
+
+    /// <summary>The parallel loop of <see cref="ForEachOnQuota"/> once its admission slot is taken.</summary>
+    /// <remarks>Kept apart so the closure over the loop's state is allocated only once a loop goes parallel.</remarks>
+    private static void ForEachAdmitted<TState>(ConcurrencyController quota, int next, int count, TState state, Action<int, TState> work)
+    {
+        int callerThreadId = Environment.CurrentManagedThreadId;
+        int admissionSlotClaimed = 0;
+        try
+        {
+            ParallelUnbalancedWork.For(next, count, ParallelUnbalancedWork.DefaultOptions,
+                () =>
+                {
+                    if (Environment.CurrentManagedThreadId == callerThreadId) return false;
+                    if (Interlocked.Exchange(ref admissionSlotClaimed, 1) != 0) quota.TakeConcurrencyQuota();
+                    return true;
+                },
+                (index, tookQuota) =>
+                {
+                    work(index, state);
+                    return tookQuota;
+                },
+                tookQuota =>
+                {
+                    if (tookQuota) quota.ReturnConcurrencyQuota();
+                });
+        }
+        finally
+        {
+            if (Interlocked.Exchange(ref admissionSlotClaimed, 1) == 0) quota.ReturnConcurrencyQuota();
         }
     }
 
@@ -167,10 +174,10 @@ public static partial class TrieUpdater<TKey, TPath>
     /// every operation range, so a bucket can rebuild its span on another thread,
     /// and <see cref="FanOut"/> gives how many operations a concurrent run of buckets holds at least, by what it has stored below it.
     /// Buffer frames borrow records directly; <see cref="Store"/> remains the exact-view fallback and takes every group record.
-    /// A parallel run folds under a context of its own, carrying a working state from <see cref="Spares"/>.
+    /// A parallel run folds under a context of its own, carrying a working state from <see cref="Spares"/>, which is set with <see cref="Operations"/>.
     /// </remarks>
     public readonly struct FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations,
-        FoldFanOut fanOut, FoldWorkingState workingState, SpareWorkingStates spares)
+        FoldFanOut fanOut, FoldWorkingState workingState, SpareWorkingStates? spares)
     {
         public IPbtStore Store { get; } = store;
         public IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
@@ -178,6 +185,6 @@ public static partial class TrieUpdater<TKey, TPath>
         public PbtWriteOperation<TKey>[]? Operations { get; } = operations;
         public FoldFanOut FanOut { get; } = fanOut;
         public FoldWorkingState WorkingState { get; } = workingState;
-        public SpareWorkingStates Spares { get; } = spares;
+        public SpareWorkingStates? Spares { get; } = spares;
     }
 }
