@@ -31,6 +31,7 @@ using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.Snapshot;
 using Nethermind.State.Pbt.Steps;
 using NUnit.Framework;
+using static Nethermind.State.Pbt.Test.PbtReferenceModel;
 using NSubstitute;
 
 namespace Nethermind.State.Pbt.Test;
@@ -772,18 +773,6 @@ public class ImportPbtFromPreimageFlatTests
         using IPersistence.IWriteBatch batch = source.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), WriteFlags.None);
         write(batch);
         return source;
-    }
-
-    private static void SetAccount(IPersistence.IWriteBatch batch, Dictionary<string, byte[]> model, Address address, Account account, byte[]? code)
-    {
-        PbtReferenceModel.SetAccount(model, address, (ulong)account.Nonce, account.Balance, code);
-        batch.SetAccount(address, code is null ? account : account.WithChangedCodeHash(Keccak.Compute(code)));
-    }
-
-    private static void SetSlot(IPersistence.IWriteBatch batch, Dictionary<string, byte[]> model, Address address, in UInt256 slot, in UInt256 value)
-    {
-        PbtReferenceModel.SetSlot(model, address, slot, value);
-        batch.SetStorage(address, slot, value);
     }
 
     private sealed class RecordingColumnsDb : IColumnsDb<PbtColumns>

@@ -28,6 +28,7 @@ using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.State.Pbt.Test.PbtReferenceModel;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -40,8 +41,7 @@ public class PbtSelfImportTests
 
     /// <remarks>
     /// The preimages list the anchor's state, which still holds an account and a slot the flat state no longer has.
-    /// A slot of an anchor account and a whole account created since are listed only by the BALs after the anchor:
-    /// the first as a write, the second's slot as a read.
+    /// A slot of an anchor account and a whole account created since, with its slot, are listed only by the BALs after the anchor.
     /// </remarks>
     [Test]
     public async Task Imports_flat_state_through_preimages_and_bals(
@@ -77,7 +77,7 @@ public class PbtSelfImportTests
         AddBlock(blockTree, balStore, AnchorBlock + 1, Keccak.Zero, scenario == "anchor-before-bal" ? null : Bal(
             new ReadOnlyAccountChanges(TestItem.AddressB, scenario == "unlisted-slot" ? [] : [new ReadOnlySlotChanges(1000, [new StorageChange(1, 0x1234)])], [], [], [], [])));
         AddBlock(blockTree, balStore, SourceBlock, SourceStateRoot, Bal(scenario == "unlisted-account" ? [] :
-            [new ReadOnlyAccountChanges(TestItem.AddressC, [], [2000], [new BalanceChange(1, 7)], [new NonceChange(1, 2)], [])]));
+            [new ReadOnlyAccountChanges(TestItem.AddressC, [new ReadOnlySlotChanges(2000, [new StorageChange(1, 0x55)])], [], [new BalanceChange(1, 7)], [new NonceChange(1, 2)], [])]));
 
         using TempPath scratch = TempPath.GetTempDirectory();
         PbtConfig config = new() { ImportSortBufferBytes = 1024 };
@@ -138,17 +138,5 @@ public class PbtSelfImportTests
         blockTree.FindHeader(number).Returns(header);
         blockTree.FindHeader(number, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
         return header;
-    }
-
-    private static void SetAccount(IPersistence.IWriteBatch batch, Dictionary<string, byte[]> model, Address address, Account account, byte[]? code)
-    {
-        PbtReferenceModel.SetAccount(model, address, (ulong)account.Nonce, account.Balance, code);
-        batch.SetAccount(address, code is null ? account : account.WithChangedCodeHash(Keccak.Compute(code)));
-    }
-
-    private static void SetSlot(IPersistence.IWriteBatch batch, Dictionary<string, byte[]> model, Address address, in UInt256 slot, in UInt256 value)
-    {
-        PbtReferenceModel.SetSlot(model, address, slot, value);
-        batch.SetStorage(address, slot, value);
     }
 }

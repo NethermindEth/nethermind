@@ -83,7 +83,8 @@ public sealed class PbtMigrationBootstrap(
         }
         else if (configuration.MigrationPreimagesPath is { } preimagesPath)
         {
-            using Stream preimages = File.Open(preimagesPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            // The join reads the preimages a 32-byte record at a time.
+            using Stream preimages = new FileStream(preimagesPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
             await selfImport.Import(preimages, header, cancellationToken);
         }
         else

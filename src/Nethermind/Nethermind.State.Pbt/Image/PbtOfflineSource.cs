@@ -30,7 +30,7 @@ namespace Nethermind.State.Pbt.Image;
 public static class PbtOfflineSource
 {
     /// <summary>Keccak address path, the account/slot tag, then the Keccak slot path.</summary>
-    private const int PreimageKeyLength = 65;
+    public const int PreimageKeyLength = 65;
 
     /// <summary>Address ranges per worker, so an uneven spread of storage still balances out.</summary>
     private const int PartitionsPerWorker = 16;

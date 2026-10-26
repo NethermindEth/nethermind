@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -25,8 +26,7 @@ public static class PbtColumnSweep
     /// <see cref="TrieUpdater"/> reads a stored root group before its supplied root hash, so stale nodes
     /// would produce the wrong root.
     /// </remarks>
-    /// <returns>Whether any entry was removed.</returns>
-    public static bool ClearInterruptedImport(IColumnsDb<PbtColumns> pbtDb)
+    public static void ClearInterruptedImport(IColumnsDb<PbtColumns> pbtDb, ILogger logger)
     {
         bool cleared = false;
         pbtDb.GetColumnDb(PbtColumns.Metadata).Remove(PbtRocksDbPersistence.RootNodeGroupKey);
@@ -40,6 +40,6 @@ public static class PbtColumnSweep
             cleared = true;
         }
 
-        return cleared;
+        if (cleared && logger.IsInfo) logger.Info("Discarded entries left by an interrupted PBT import.");
     }
 }

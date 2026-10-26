@@ -57,7 +57,7 @@ public class ImportPbtFromPreimageFlat(
         int workers = config.ExportConcurrency > 0 ? config.ExportConcurrency : Environment.ProcessorCount;
         if (_logger.IsInfo) _logger.Info($"Rebuilding PBT state from preimage-flat database at {sourceState} with {workers} source reader(s)");
 
-        if (PbtColumnSweep.ClearInterruptedImport(pbtDb) && _logger.IsInfo) _logger.Info("Discarded entries left by an interrupted PBT import.");
+        PbtColumnSweep.ClearInterruptedImport(pbtDb, _logger);
         string directory = Path.Combine(PbtMigrationAnchor.ScratchDirectory(dbFactory, "import"), $"pbt-import-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         try

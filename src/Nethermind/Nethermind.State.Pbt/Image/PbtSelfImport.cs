@@ -47,9 +47,6 @@ public sealed class PbtSelfImport(
     IPbtConfig config,
     ILogManager logManager)
 {
-    /// <summary>Keccak address path, the account/slot tag, then the Keccak slot path.</summary>
-    private const int BalKeyLength = 65;
-
     /// <summary>The Keccak address path bytes a hash-keyed flat account key keeps.</summary>
     private const int FlatAccountKeyLength = Address.Size;
 
@@ -68,25 +65,29 @@ public sealed class PbtSelfImport(
         }
 
         Stopwatch importing = Stopwatch.StartNew();
-        // The one snapshot pins the source for the whole import while the live flat state moves on.
-        using IPersistence.IPersistenceReader reader = flatPersistence.CreateReader(ReaderFlags.FullScan);
-        StateId sourceState = reader.CurrentState;
-        BlockHeader source = blockTree.FindHeader(sourceState.BlockNumber, BlockTreeLookupOptions.RequireCanonical) is { } header &&
-            header.StateRoot?.ValueHash256 == sourceState.StateRoot
-                ? header
-                : throw new InvalidOperationException($"The persisted flat state {sourceState} is not on the canonical chain.");
-        if (_logger.IsInfo) _logger.Info($"Importing PBT state at the flat state {sourceState} through the preimages of {anchor.ToString(BlockHeader.Format.Short)}.");
-
-        if (PbtColumnSweep.ClearInterruptedImport(pbtDb) && _logger.IsInfo) _logger.Info("Discarded entries left by an interrupted PBT import.");
+        PbtColumnSweep.ClearInterruptedImport(pbtDb, _logger);
         string directory = Path.Combine(PbtMigrationAnchor.ScratchDirectory(dbFactory, "import"), $"pbt-self-import-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
+        StateId sourceState;
+        BlockHeader source;
         (ValueHash256 Root, ulong Accounts, ulong Slots) imported;
         try
         {
-            using SortedSpool balKeys = new(directory, config.ImportSortBufferBytes, writerCount: 1, logManager, cancellationToken);
-            await SpoolBalKeys(balKeys, anchor, source, cancellationToken);
             using SortedSpool leaves = new(directory, config.ImportSortBufferBytes, writerCount: 1, logManager, cancellationToken);
-            Join(reader, preimages, balKeys, leaves, cancellationToken);
+            // The one snapshot pins the source until it is joined, while the live flat state moves on.
+            using (IPersistence.IPersistenceReader reader = flatPersistence.CreateReader(ReaderFlags.FullScan))
+            {
+                sourceState = reader.CurrentState;
+                source = blockTree.FindHeader(sourceState.BlockNumber, BlockTreeLookupOptions.RequireCanonical) is { } header &&
+                    header.StateRoot?.ValueHash256 == sourceState.StateRoot
+                        ? header
+                        : throw new InvalidOperationException($"The persisted flat state {sourceState} is not on the canonical chain.");
+                if (_logger.IsInfo) _logger.Info($"Importing PBT state at the flat state {sourceState} through the preimages of {anchor.ToString(BlockHeader.Format.Short)}.");
+
+                using SortedSpool balKeys = new(directory, config.ImportSortBufferBytes, writerCount: 1, logManager, cancellationToken);
+                await SpoolBalKeys(balKeys, anchor, source, cancellationToken);
+                Join(reader, preimages, balKeys, leaves, cancellationToken);
+            }
             imported = await leafIngestion.Ingest(_ => PbtLeafIngestion.SpoolLeaves(leaves), sourceState, expectedRoot: null, VerifyCanonical, cancellationToken);
         }
         finally
@@ -107,7 +108,8 @@ public sealed class PbtSelfImport(
         }
     }
 
-    /// <summary>Spools the accounts and slot keys the BALs of the blocks after <paramref name="anchor"/> up to <paramref name="source"/> list.</summary>
+    /// <summary>Spools the accounts and changed slot keys the BALs of the blocks after <paramref name="anchor"/> up to <paramref name="source"/> list.</summary>
+    /// <remarks>A slot the anchor lacked is nonzero at <paramref name="source"/> only once a block wrote it, so reads add nothing.</remarks>
     private async Task SpoolBalKeys(SortedSpool keys, BlockHeader anchor, BlockHeader source, CancellationToken cancellationToken)
     {
         if (source.Number <= anchor.Number) return;
@@ -117,7 +119,7 @@ public sealed class PbtSelfImport(
             throw new InvalidOperationException("The BALs from the preimages' anchor up to the flat state are unavailable.");
 
         using SortedSpool.Writer writer = keys.CreateWriter();
-        byte[] key = new byte[BalKeyLength];
+        byte[] key = new byte[PbtOfflineSource.PreimageKeyLength];
         for (ulong number = anchor.Number + 1; number <= source.Number; number++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -132,19 +134,16 @@ public sealed class PbtSelfImport(
             {
                 // The zero tag and slot-hash region keep an account ahead of its own slots.
                 Array.Clear(key);
-                ValueKeccak.Compute(account.Address.Bytes).Bytes.CopyTo(key);
+                account.Address.ToAccountPath.Bytes.CopyTo(key);
                 writer.Add(key, account.Address.Bytes);
                 key[ValueHash256.MemorySize] = 1;
-                foreach (UInt256 slot in account.ChangedSlots) AddSlot(slot);
-                foreach (UInt256 slot in account.StorageReads) AddSlot(slot);
+                foreach (UInt256 slot in account.ChangedSlots)
+                {
+                    ValueHash256 slotKey = slot.ToValueHash();
+                    ValueKeccak.Compute(slotKey.Bytes).Bytes.CopyTo(key.AsSpan(ValueHash256.MemorySize + 1));
+                    writer.Add(key, slotKey.Bytes);
+                }
             }
-        }
-
-        void AddSlot(in UInt256 slot)
-        {
-            ValueHash256 slotKey = slot.ToValueHash();
-            ValueKeccak.Compute(slotKey.Bytes).Bytes.CopyTo(key.AsSpan(ValueHash256.MemorySize + 1));
-            writer.Add(key, slotKey.Bytes);
         }
     }
 
@@ -165,7 +164,8 @@ public sealed class PbtSelfImport(
             cancellationToken.ThrowIfCancellationRequested();
             RlpReader rlp = new(flatAccounts.CurrentValue);
             Account account = AccountDecoder.Slim.Decode(ref rlp) ?? throw new InvalidDataException("Invalid source account.");
-            Address address = listed.Account(flatAccounts.CurrentKey, out ValueHash256 addressHash);
+            Address address = listed.Account(flatAccounts.CurrentKey);
+            ValueHash256 addressHash = listed.AddressHash;
             ValueHash256 addressKeyHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
             PbtOfflineSource.SpoolAccount(writer, codeDb, addressKeyHash, account);
             using (IPersistence.IFlatIterator flatSlots = source.CreateStorageIterator(addressHash, default, ValueKeccak.MaxValue))
@@ -189,14 +189,11 @@ public sealed class PbtSelfImport(
         private readonly PbtPreimageReader _preimages;
         private readonly SortedSpool.Cursor _balKeys;
         private readonly CancellationToken _cancellationToken;
-        private readonly byte[] _balKey = new byte[BalKeyLength];
+        private readonly byte[] _balKey = new byte[PbtOfflineSource.PreimageKeyLength];
         private bool _hasBalKey;
         private Address? _listedAddress;
         private uint _unreadListedSlots;
-        private bool _listedIsCurrent;
-        private ValueHash256? _listedSlotHash;
         private ValueHash256 _listedSlot;
-        private ValueHash256 _addressHash;
 
         public PreimageJoin(Stream preimages, SortedSpool balKeys, CancellationToken cancellationToken)
         {
@@ -208,52 +205,52 @@ public sealed class PbtSelfImport(
             NextListedAccount();
         }
 
+        /// <summary>The whole Keccak path of the account <see cref="Account"/> resolved last.</summary>
+        public ValueHash256 AddressHash { get; private set; }
+
         /// <summary>The address under the flat account key <paramref name="flatKey"/>, which keeps only a prefix of its Keccak path.</summary>
-        /// <param name="addressHash">The whole Keccak path of the address.</param>
-        public Address Account(in ValueHash256 flatKey, out ValueHash256 addressHash)
+        public Address Account(in ValueHash256 flatKey)
         {
             ReadOnlySpan<byte> prefix = flatKey.Bytes[..FlatAccountKeyLength];
-            while (_listedAddress is not null && _preimages.AccountHash!.Value.Bytes[..FlatAccountKeyLength].SequenceCompareTo(prefix) < 0)
-                NextListedAccount();
+            while (_listedAddress is not null && CompareListedAccount(prefix) < 0) NextListedAccount();
+            if (_listedAddress is not null && CompareListedAccount(prefix) == 0)
+            {
+                AddressHash = _preimages.AccountHash!.Value;
+                return _listedAddress;
+            }
 
-            _listedIsCurrent = _listedAddress is not null && _preimages.AccountHash!.Value.Bytes[..FlatAccountKeyLength].SequenceEqual(prefix);
-            Address address;
-            if (_listedIsCurrent)
-            {
-                address = _listedAddress!;
-                _addressHash = _preimages.AccountHash!.Value;
-                NextListedSlot();
-            }
-            else
-            {
-                Array.Clear(_balKey);
-                prefix.CopyTo(_balKey);
-                SeekBalKey();
-                if (!_hasBalKey || !_balKeys.Key[..FlatAccountKeyLength].SequenceEqual(prefix) || _balKeys.Key[ValueHash256.MemorySize] != 0)
-                    throw new InvalidDataException($"Flat account {prefix.ToHexString()} has no preimage.");
-                address = new Address(_balKeys.Value);
-                _addressHash = new ValueHash256(_balKeys.Key[..ValueHash256.MemorySize]);
-            }
-            addressHash = _addressHash;
-            return address;
+            Array.Clear(_balKey);
+            prefix.CopyTo(_balKey);
+            SeekBalKey();
+            if (!_hasBalKey || !_balKeys.Key[..FlatAccountKeyLength].SequenceEqual(prefix) || _balKeys.Key[ValueHash256.MemorySize] != 0)
+                throw new InvalidDataException($"Flat account {prefix.ToHexString()} has no preimage.");
+            AddressHash = new ValueHash256(_balKeys.Key[..ValueHash256.MemorySize]);
+            return new Address(_balKeys.Value);
         }
 
         /// <summary>The slot key of the current account at the Keccak path <paramref name="slotHash"/>.</summary>
         public UInt256 Slot(in ValueHash256 slotHash)
         {
-            if (_listedIsCurrent)
+            if (_listedAddress is not null && _preimages.AccountHash == AddressHash)
             {
-                while (_listedSlotHash is { } listedHash && listedHash.Bytes.SequenceCompareTo(slotHash.Bytes) < 0) NextListedSlot();
-                if (_listedSlotHash == slotHash) return new UInt256(_listedSlot.Bytes, isBigEndian: true);
+                while (_unreadListedSlots > 0 && (_preimages.SlotHash is not { } listedHash || listedHash.Bytes.SequenceCompareTo(slotHash.Bytes) < 0))
+                    NextListedSlot();
+                if (_preimages.SlotHash == slotHash) return new UInt256(_listedSlot.Bytes, isBigEndian: true);
             }
 
-            _addressHash.Bytes.CopyTo(_balKey);
+            AddressHash.Bytes.CopyTo(_balKey);
             _balKey[ValueHash256.MemorySize] = 1;
             slotHash.Bytes.CopyTo(_balKey.AsSpan(ValueHash256.MemorySize + 1));
             SeekBalKey();
             if (!_hasBalKey || !_balKeys.Key.SequenceEqual(_balKey))
-                throw new InvalidDataException($"Flat slot {slotHash} of account {_addressHash} has no preimage.");
+                throw new InvalidDataException($"Flat slot {slotHash} of account {AddressHash} has no preimage.");
             return new UInt256(_balKeys.Value, isBigEndian: true);
+        }
+
+        private int CompareListedAccount(ReadOnlySpan<byte> prefix)
+        {
+            ValueHash256 listedHash = _preimages.AccountHash!.Value;
+            return listedHash.Bytes[..FlatAccountKeyLength].SequenceCompareTo(prefix);
         }
 
         /// <summary>Moves the BAL key cursor to the first key at or past <see cref="_balKey"/>.</summary>
@@ -265,19 +262,12 @@ public sealed class PbtSelfImport(
         private void NextListedAccount()
         {
             while (_unreadListedSlots > 0) NextListedSlot();
-            _listedSlotHash = null;
             if (!_preimages.ReadAccount(out _listedAddress, out _unreadListedSlots, _cancellationToken)) _listedAddress = null;
         }
 
         private void NextListedSlot()
         {
-            if (_unreadListedSlots == 0)
-            {
-                _listedSlotHash = null;
-                return;
-            }
             _listedSlot = _preimages.ReadSlot(_cancellationToken);
-            _listedSlotHash = _preimages.SlotHash;
             _unreadListedSlots--;
         }
 
