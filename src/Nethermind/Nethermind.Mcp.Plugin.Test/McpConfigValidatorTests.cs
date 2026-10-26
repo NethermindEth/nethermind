@@ -342,6 +342,9 @@ public class McpConfigValidatorTests
     {
         string tokenFile = Path.Combine(certificate.Directory, "mcp.token");
         File.WriteAllText(tokenFile, ValidToken);
+        // A complete remote config must not trip the token-file permission warning.
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(tokenFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         return new McpConfig
         {
             Host = "0.0.0.0",
