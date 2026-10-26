@@ -75,15 +75,15 @@ internal sealed class TraceStorePreflight
         await ValidateConfig(http, output, "JsonRpc", "TraceBlockParallelism", "1", cancellationToken);
         await ValidateConfig(http, output, "FlatDb", "HistoryTransactionIndexTraceParallelism", "0", cancellationToken);
         await ValidateConfig(http, output, "Receipt", "StoreTxHashes", "false", cancellationToken);
-        var snapshot = await Call(http, output, "snapshot", "eth_getBlockByNumber", ["0x184f250", false], cancellationToken);
+        var snapshot = await Call(http, output, "snapshot", "eth_getBlockByNumber", new JsonArray("0x184f250", false), cancellationToken);
         Require(Number(snapshot["number"]!) == 25490000 && snapshot["hash"]!.GetValue<string>() == _manifest["snapshot_hash"]!.GetValue<string>(), "Snapshot hash mismatch.");
-        var block = await Call(http, output, "block", "eth_getBlockByNumber", [_target["hex_number"]!.GetValue<string>(), false], cancellationToken);
+        var block = await Call(http, output, "block", "eth_getBlockByNumber", new JsonArray(_target["hex_number"]!.GetValue<string>(), false), cancellationToken);
         Require(Number(block["number"]!) == 25489981 && block["hash"]!.GetValue<string>() == _target["hash"]!.GetValue<string>(), "Target block hash mismatch.");
         Require(block["transactions"]!.AsArray().Select(hash => hash!.GetValue<string>()).SequenceEqual(_transactions), "Target transaction count/order mismatch.");
-        var debug = await Call(http, output, "debug-trace", "debug_traceBlockByNumber", [_target["hex_number"]!.GetValue<string>(), new JsonObject { ["tracer"] = "callTracer" }], cancellationToken);
+        var debug = await Call(http, output, "debug-trace", "debug_traceBlockByNumber", new JsonArray(_target["hex_number"]!.GetValue<string>(), new JsonObject { ["tracer"] = "callTracer" }), cancellationToken);
         ValidateResult("debug_traceBlockByNumber", debug);
         var before = enabled == "true" ? await HitLines(container, cancellationToken) : Array.Empty<string>();
-        var trace = await Call(http, output, "parity-trace", "trace_block", [_target["hex_number"]!.GetValue<string>()], cancellationToken);
+        var trace = await Call(http, output, "parity-trace", "trace_block", new JsonArray(_target["hex_number"]!.GetValue<string>()), cancellationToken);
         ValidateResult("trace_block", trace);
         if (enabled == "true")
         {
@@ -105,7 +105,7 @@ internal sealed class TraceStorePreflight
 
     private static async Task ValidateConfig(HttpClient http, string output, string category, string name, string expected, CancellationToken cancellationToken)
     {
-        var value = await Call(http, output, "config-" + category + "-" + name, "debug_getConfigValue", [category, name], cancellationToken);
+        var value = await Call(http, output, "config-" + category + "-" + name, "debug_getConfigValue", new JsonArray(category, name), cancellationToken);
         Require(value.ToString().Replace(" ", "", StringComparison.Ordinal).Equals(expected, StringComparison.OrdinalIgnoreCase), "Unexpected runtime config: " + category + "." + name);
     }
 
