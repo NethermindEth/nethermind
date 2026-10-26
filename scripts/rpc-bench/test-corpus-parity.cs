@@ -38,11 +38,16 @@ try
         using (var file = File.Create(path)) using (var gzip = new GZipStream(file, CompressionMode.Compress)) gzip.Write([0xff, 0xfe, .. Encoding.UTF8.GetBytes(sentinel)]);
         using var parity = Create(); await Reject(() => { parity.LoadCorpus(path); return Task.CompletedTask; }, "cannot read corpus");
     });
-    await Check("truncated gzip stays private", async () =>
-    {
-        var path = Corpus(200, true); var bytes = File.ReadAllBytes(path); File.WriteAllBytes(path, bytes[..^8]);
-        using var parity = Create(); await Reject(() => { parity.LoadCorpus(path); return Task.CompletedTask; });
-    });
+    // An empty member (as written by gzip(1)) is deflate 03 00 and an all-zero trailer, so trailer bytes resemble deflate bytes.
+    foreach (var (last, cut) in new[] { ("only", 8), ("second", 4), ("second", 64), ("empty", 1) })
+        await Check($"truncated gzip stays private ({last} member, {cut} bytes cut)", async () =>
+        {
+            var path = Corpus(200, true);
+            if (last == "second") File.WriteAllBytes(path, [.. File.ReadAllBytes(Corpus(3, true)), .. File.ReadAllBytes(path)]);
+            if (last == "empty") File.WriteAllBytes(path, [.. File.ReadAllBytes(path), .. Convert.FromHexString("1F8B08000000000000FF03000000000000000000")]);
+            var bytes = File.ReadAllBytes(path); File.WriteAllBytes(path, bytes[..^cut]);
+            using var parity = Create(); await Reject(() => { parity.LoadCorpus(path); return Task.CompletedTask; });
+        });
     await Check("concatenated gzip members remain loadable", () =>
     {
         var path = Corpus(2, true); var second = Corpus(3, true);
