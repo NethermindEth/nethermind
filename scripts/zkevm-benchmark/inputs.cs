@@ -74,7 +74,7 @@ var written = 0;
 foreach (var file in cases.GroupBy(static c => c.JsonPath).OrderBy(static g => g.Key, StringComparer.Ordinal))
 {
     HashSet<string> wanted = [.. file.Select(static c => c.Id)];
-    foreach ((var id, var input, var output) in ReadLastBlocks(Path.Combine(options["root"], file.Key), wanted))
+    foreach (var (id, input, output) in ReadLastBlocks(Path.Combine(options["root"], file.Key), wanted))
     {
         var data = Convert.FromHexString(input.AsSpan(2));
         var name = $"{written++}.ssz";

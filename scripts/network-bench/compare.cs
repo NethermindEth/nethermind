@@ -42,7 +42,7 @@ if (headResults.Count == 0)
 
 Console.WriteLine("| Benchmark | Base | Head | Δ | CV base | CV head | Alloc base | Alloc head | Δ alloc |");
 Console.WriteLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
-foreach ((var name, var head) in headResults)
+foreach (var (name, head) in headResults)
 {
     var @base = baseResults.GetValueOrDefault(name);
     Console.WriteLine(
