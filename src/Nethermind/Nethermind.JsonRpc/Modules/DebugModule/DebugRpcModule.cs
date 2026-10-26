@@ -509,8 +509,6 @@ public class DebugRpcModule(
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
-        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
-
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
