@@ -149,40 +149,38 @@ public static partial class Merkle
         Sha256State state = Unsafe.As<ulong, Sha256State>(ref MemoryMarshal.GetReference(Sha256InitialState));
 
         bool adjacent = Unsafe.AreSame(ref Unsafe.Add(ref Unsafe.AsRef(in left), 1), ref Unsafe.AsRef(in right));
-        Sha256FParameters parameters;
-        parameters.State = (ulong*)&state;
+        ulong* input;
         fixed (UInt256* pair = &left)
         {
             // The precompile requires 8-byte aligned operands; the locals and the RVA padding block are.
             NodePair block;
             if (adjacent && ((nuint)pair & 7) == 0)
             {
-                parameters.Input = (ulong*)pair;
+                input = (ulong*)pair;
             }
             else
             {
                 block.Left = left;
                 block.Right = right;
-                parameters.Input = (ulong*)&block;
+                input = (ulong*)&block;
             }
 
-            Compress(&parameters);
+            Compress((ulong*)&state, input);
         }
 
-        parameters.Input = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
-        Compress(&parameters);
+        Compress((ulong*)&state, (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage)));
 
         parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
     }
 
-    /// <summary>Compresses the block <paramref name="parameters"/> names into its state.</summary>
+    /// <summary>Compresses the 64-byte block at <paramref name="input"/> into <paramref name="state"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe void Compress(Sha256FParameters* parameters)
+    private static unsafe void Compress(ulong* state, ulong* input)
     {
         if (OpenVmSha256Flag.IsActive)
-            Accelerators.OpenVMSha256Compress(parameters->State, parameters->Input, parameters->State);
+            Accelerators.OpenVMSha256Compress(state, input, state);
         else
-            Sha256F(parameters);
+            Sha256F(state, input);
     }
 
     /// <summary>Two state words of the precompile, native 32-bit words packed low first, as the digest's next eight bytes.</summary>
@@ -216,19 +214,12 @@ public static partial class Merkle
 
     /// <summary>ZisK's SHA-256 compression precompile, called directly rather than through <see cref="Accelerators.Sha256F"/>.</summary>
     /// <remarks>
-    /// One parameter block serves both compressions of a pair, so the second call rewrites only its input
-    /// pointer, where the accelerator zeroes and refills a fresh block each call.
-    /// <see cref="Sha256FParameters"/> mirrors the ZiskOS <c>syscall_sha256_f</c> ABI that Nethermind.Zkvm.Abstractions
-    /// also encodes; nothing checks the two agree at compile time, so recheck it when that package is bumped.
+    /// ZisK 1.4 takes the state and the block as two pointers. Nethermind.Zkvm.Abstractions still encodes the
+    /// parameter block of earlier versions, and nothing checks the two agree at compile time, so recheck this
+    /// when that package is bumped.
     /// </remarks>
     [DllImport("__Internal", EntryPoint = "syscall_sha256_f", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void Sha256F(Sha256FParameters* parameters);
-
-    private unsafe struct Sha256FParameters
-    {
-        public ulong* State;
-        public ulong* Input;
-    }
+    private static extern unsafe void Sha256F(ulong* state, ulong* input);
 
     private struct Sha256State
     {

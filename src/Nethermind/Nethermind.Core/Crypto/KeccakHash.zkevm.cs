@@ -132,11 +132,25 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ValueHash256 ComputeHash256(byte* data, nuint length)
     {
+        if (ZiskFlag.IsActive)
+        {
+            Unsafe.SkipInit(out ValueHash256 hash);
+            ZiskKeccak256(data, length, (byte*)&hash);
+            return hash;
+        }
+
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         Sponge(ref lane, data, length);
         return Unsafe.As<ulong, ValueHash256>(ref lane);
     }
+
+    /// <summary>ZisK's keccak256 library routine, a call thunk in the runtime.</summary>
+    /// <remarks>Callers may pass an unpinned <paramref name="output"/>: nothing between taking the pointer and the
+    /// call returning can reach a GC safepoint, as the import suppresses the GC transition and the guest is
+    /// single-threaded.</remarks>
+    [DllImport("__Internal", EntryPoint = "zisklib_keccak256", ExactSpelling = true), SuppressGCTransition]
+    private static extern unsafe int ZiskKeccak256(byte* data, nuint length, byte* output);
 
     /// <summary>Absorbs and pads the <paramref name="length"/> bytes at <paramref name="data"/> into a state of
     /// uninitialized lanes, leaving their digest in its first four lanes.</summary>
@@ -317,6 +331,12 @@ public sealed partial class KeccakHash
 
                 fixed (byte* data = node)
                 {
+                    if (ZiskFlag.IsActive)
+                    {
+                        ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
+                        continue;
+                    }
+
                     Debug.Assert(((nuint)data & 7) == 0);
                     // An array's data is 8-byte aligned; the rounding lets the JIT prove it.
                     Sponge(ref lane, StrictAlignmentFlag.IsActive ? AlignedDown(data) : data, (nuint)node.Length);
@@ -369,6 +389,12 @@ public sealed partial class KeccakHash
 
             fixed (byte* data = node)
             {
+                if (ZiskFlag.IsActive)
+                {
+                    ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
+                    continue;
+                }
+
                 Sponge(ref lane, StrictAlignmentFlag.IsActive ? AlignedDown(data) : data, (nuint)node.Length);
             }
 
