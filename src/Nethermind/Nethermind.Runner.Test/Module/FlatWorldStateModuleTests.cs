@@ -48,11 +48,13 @@ public class FlatWorldStateModuleTests
         }
     }
 
-    [Test]
-    public void File_paths_are_rooted_like_the_databases_under_a_relative_BaseDbPath()
+    [TestCase("")]
+    [TestCase("./")]
+    public void File_paths_are_rooted_like_the_databases_under_a_relative_BaseDbPath(string prefix)
     {
-        string baseDbPath = $"flat-paths-{Guid.NewGuid():N}";
-        string rootedBaseDbPath = Path.Combine(PathUtils.ExecutingDirectory, baseDbPath);
+        string name = $"flat-paths-{Guid.NewGuid():N}";
+        string baseDbPath = prefix + name;
+        string dbRootedBaseDbPath = prefix.Length == 0 ? Path.Combine(PathUtils.ExecutingDirectory, name) : baseDbPath;
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         fileSystem.Path.Returns(new RealFileSystem().Path);
         FlatDbConfig flatDbConfig = new();
@@ -73,14 +75,14 @@ public class FlatWorldStateModuleTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(Directory.Exists(Path.Combine(rootedBaseDbPath, "persistedSnapshot", "arena")), "arena");
-                Assert.That(Directory.Exists(Path.Combine(rootedBaseDbPath, "persistedSnapshot", "blob")), "blob");
+                Assert.That(Directory.Exists(Path.Combine(dbRootedBaseDbPath, "persistedSnapshot", "arena")), "arena");
+                Assert.That(Directory.Exists(Path.Combine(dbRootedBaseDbPath, "persistedSnapshot", "blob")), "blob");
             }
-            fileSystem.Directory.Received().Exists(Path.Combine(rootedBaseDbPath, "flatTrieNodeLog"));
+            fileSystem.Directory.Received().Exists(Path.Combine(dbRootedBaseDbPath, "flatTrieNodeLog"));
         }
         finally
         {
-            if (Directory.Exists(rootedBaseDbPath)) Directory.Delete(rootedBaseDbPath, recursive: true);
+            if (Directory.Exists(dbRootedBaseDbPath)) Directory.Delete(dbRootedBaseDbPath, recursive: true);
         }
     }
 }
