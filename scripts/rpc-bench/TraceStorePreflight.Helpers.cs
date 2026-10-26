@@ -50,7 +50,11 @@ internal sealed class TraceStorePreflight
             .Single(flag => flag.StartsWith("--TraceStore.Enabled=", StringComparison.Ordinal)).Split('=')[1];
         Require(enabled is "true" or "false", "Missing explicit TraceStore arm value.");
         Directory.CreateDirectory(output);
-        File.WriteAllText(Path.Combine(output, "arm.json"), JsonSerializer.Serialize(arm));
+        File.WriteAllText(Path.Combine(output, "arm.json"), new JsonObject
+        {
+            ["Client"] = arm.Client, ["Image"] = arm.Image, ["Environment"] = arm.Environment,
+            ["Flags"] = arm.Flags, ["Label"] = arm.Label
+        }.ToJsonString(RpcJson.SerializerOptions));
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
         using var settled = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         settled.CancelAfter(TimeSpan.FromMinutes(15));
@@ -89,7 +93,11 @@ internal sealed class TraceStorePreflight
                 await Task.Delay(500, cancellationToken);
                 after = await HitLines(container, cancellationToken);
             }
-            File.WriteAllText(Path.Combine(output, "store-hit-proof.json"), JsonSerializer.Serialize(new { before = before.Length, after = after.Length, newLines = after.Skip(before.Length).ToArray() }));
+            File.WriteAllText(Path.Combine(output, "store-hit-proof.json"), new JsonObject
+            {
+                ["before"] = before.Length, ["after"] = after.Length,
+                ["newLines"] = new JsonArray(after.Skip(before.Length).Select(line => (JsonNode?)JsonValue.Create(line)).ToArray())
+            }.ToJsonString(RpcJson.SerializerOptions));
             Require(after.Length > before.Length, "TraceStore ON missed the exact fixed block; timing is refused.");
         }
         File.WriteAllText(Path.Combine(output, "passed.txt"), "Preflight passed. ON uses narrow hit logging. Full result arrays match all prior arms.\n");
