@@ -1,0 +1,6 @@
+name: "github.com/NethermindEth/nethermind/tools/frame-tx-kurtosis-devnet"
+description: |
+  EIP-8141 MAX_VERIFY_GAS multi-client devnet. Wraps ethpandaops/ethereum-package with a
+  Nethermind + ethrex frame-transaction topology, a per-scenario VERIFY gas ceiling, and a
+  traffic generator that drives the campaign's baseline and attacker roles against the
+  running network.

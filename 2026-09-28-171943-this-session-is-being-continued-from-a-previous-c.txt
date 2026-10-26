@@ -1,0 +1,1163 @@
+ ▐▛███▛█   Claude Code v2.1.283
+▝▜██████▀  Opus 5.5 · Claude Pro
+ ▝▝   ▝▝   ~/Work/Nethermind/Projects/nethermind
+
+⚠ Your login expires in 2 days · run /login to renew
+
+● Ho finito la fase 2, l'ondata perf di svlachakis. Esito: nessuna differenza di
+  comportamento tra l'EVM prima dell'ondata e dopo tutte le sue 20 PR, e ognuno
+  dei miei controlli ha dimostrato di saper rilevare un bug iniettato.
+
+  Cosa ho verificato
+
+  Integrazione: master di oggi, che contiene già 8 PR dell'ondata mergiate nel
+  pomeriggio, più le 12 aperte. Una sola collisione tra PR, solo nei test:
+  #13891 e #13895 aggiungono entrambe in VirtualMachineTests.cs. Ora che #13891
+  è entrata, #13895 andrà ribasata.
+
+  Suite complete sull'integrazione, tutte verdi:
+  - 14.188 test di Evm.Test, 2.261 di State.Test, 4.673 di Blockchain.Test;
+  - 1.191 test RPC su trace, log e debug;
+  - 45 test di TraceStore, 177 di Facade e 463 di Consensus.
+
+  L'unico fallimento, in Blockchain.Test, è stato il test sul file watcher, poi
+  passato 5 volte su 5 da solo: un flake noto.
+
+  Fuzz differenziale dell'EVM, confrontando la baseline pre-ondata cc1cd4af17
+  con l'integrazione:
+  - 20.000 esecuzioni per lato, in modalità receipt-only e con tracing completo.
+  - I programmi sono concentrati sugli opcode toccati dall'ondata: aritmetica,
+    SIGNEXTEND, EXP, salti, DUPn/SWAPn fino al limite di 1.024 elementi, MCOPY,
+    storage fredda e calda, precompile identity, delega EIP-7702, CREATE, LOG.
+  - Risultato: 0 righe diverse.
+  - Controlli negativi: ho iniettato 3 bug, cioè un off-by-one sui bounds dello
+    stack, MCOPY con un byte in meno e lo scratch della identity sfasato. Tutti 
+    e 3 vengono rilevati.
+
+  Differenziale del JSON di stateDiff (#13900): 1.200 state diff casuali, 0 
+  differenze. Il mutante con esadecimale maiuscolo viene rilevato su tutte le
+  1.200 righe.
+
+  CI: tutte e 12 le PR hanno 99 job EEST verdi ciascuna.
+
+  Review esistenti: tutti i punti aperti di LukaszRozmej sono stati risolti con
+  modifiche al codice. Il CHANGES_REQUESTED su #13884 è superato: la richiesta
+  di design è stata applicata, ma lo stato resta finché lui non rivede.
+
+  I limiti, detti chiaramente
+
+  - Performance: nessun beneficio misurato. Tutte le descrizioni dicono "Not
+    measured yet; pending A/B", e il diff dei benchmark opcode della CI non
+    mostra miglioramenti significativi sugli opcode bersaglio. L'unica eccezione
+    è SIGNEXTEND −65%, che la CI stessa marca come rumoroso. Io ho verificato 
+    la correttezza, non il guadagno. Se mergiare ottimizzazioni non misurate lo
+    decidono i maintainer.
+  - #13889 (shortcut di lettura dello storage per round): il mio fuzz esegue
+    transazioni singole, quindi la semantica a livello di blocco è coperta solo
+    da State.Test ed EEST.
+  - #13884, #13890 e #13892 (tracing e RPC): li ho verificati con ragionamento
+    sul codice e test, non con un differenziale.
+
+  Stato delle PR e cosa pubblicare
+
+  Già mergiate mentre lavoravo: #13882, #13883, #13891, #13893 e #13892. Il
+  differenziale le copre, come le 8 del pomeriggio.
+
+  Da approvare, le 7 ancora aperte, con SHA fissati:
+
+  for p in 13870:8b97becb0dc36a76f142444b82978a28e2bd6a9f
+  13888:df0e447dd2bba20bfcfaf64c3b7233183e3b4e76
+  13889:9c8b0d5c47c5419e6e1adab176f0e31643704b89
+  13895:db04620e69f2acc9df833311fce86d876442f1c4
+  13884:53855ea9ced8bc5c4c7f89a1d3a1c06676812eae
+  13890:38d0970379990c53702a8ff3cbb93d78b897dc69
+  13900:ecef61e8306421202a2c9ad0856904e521bb24a7; do gh api -X POST
+  repos/NethermindEth/nethermind/pulls/${p%%:*}/reviews -f event=APPROVE -f
+  commit_id=${p#*:} -q '"\(.state) \(.html_url)"'; done
+
+  Restano da pubblicare anche i 3 comandi della fase 1, nel messaggio
+  precedente: le approvazioni di #13881, #13897 e #13904, la risposta ad
+  AnkushinDaniil su #13904, e il commento su #13875 e #13836.
+
+  Quando hai eseguito, dimmelo e controllo tutto.
+
+✻ Brewed for 43m 32s · done sabato 18:42
+
+※ recap: Stiamo revisionando le PR Nethermind: finite le 4 singole e l'ondata perf di svlachakis, nessun bug trovato. Il prossimo passo è tuo: esegui i comandi di pubblicazione dei due messaggi precedenti, poi io verifico. (disable recaps in /config)
+
+❯ /compact e cominciamo una nuova sessione di review partendo con               
+/nethermind-pr-board                                                            
+  ⎿  Compacted (ctrl+o to see full summary)
+
+❯ cominciamo una nuova sessione di review partendo con /nethermind-pr-board     
+
+● Skill(nethermind-pr-board)
+  ⎿  Successfully loaded skill
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Lo scratchpad è stato svuotato di nuovo. Ho recuperato lo script di scoring
+  dalla trascrizione, e ora scarico lo stato di revisione delle PR aperte.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Artifact(read https://claude.ai/artifact/2eGaAFYn8jUVzAVxZjdqgv)
+  ⎿  Received 64.8KB (200 OK)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Artifact("nethermind-pr-board/nethermind-pr-board.html")
+  ⎿  Updated ⧉ https://claude.ai/artifact/2eGaAFYn8jUVzAVxZjdqgv
+
+● Board pubblicato. Ora controllo cosa è cambiato su #13897 dopo la mia
+  approvazione e se le approvazioni dell'ondata sono arrivate.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Ho aggiornato il board allo snapshot del 28 settembre, ore 14:32: ⧉
+  https://claude.ai/artifact/2eGaAFYn8jUVzAVxZjdqgv
+
+  Situazione
+
+  ┌─────────────────┬───────────────────────────────┐
+  │     Bucket      │              PR               │
+  ├─────────────────┼───────────────────────────────┤
+  │ Pronte ora      │ 18                            │
+  ├─────────────────┼───────────────────────────────┤
+  │ Approfondimento │ 16                            │
+  ├─────────────────┼───────────────────────────────┤
+  │ Bloccate        │ 16                            │
+  ├─────────────────┼───────────────────────────────┤
+  │ Valore basso    │ 14                            │
+  ├─────────────────┼───────────────────────────────┤
+  │ Escluse         │ 92 (87 draft, 3 infra, 2 tue) │
+  └─────────────────┴───────────────────────────────┘
+
+  Le review del giro scorso sono tutte arrivate. Le 10 PR che avevi approvato o
+  commentato nelle fasi 1 e 2 sono tutte mergiate, compresa #13875 (27
+  settembre).
+
+  Solo #13897 ha nuovi commit dopo la tua approvazione, e non serve rivederla.
+  Sono 30 commit: 29 vengono dal merge di master, cioè le PR dell'ondata già
+  validate. L'unico commit nuovo è di LukaszRozmej (ab7e36914b) e tocca solo 3
+  file di test. Il board la segna comunque con il tag rosso, perché il controllo
+  confronta solo gli SHA.
+
+  Le migliori tra le pronte
+
+  - #13996 (Matgothmog, +2 −1): con NativeAOT salta la scansione degli assembly
+    in TypeDiscovery. Minima, ma va verificato cosa legge quella scansione a
+    runtime.
+  - #13985 (kamilchodola, +22, nessun reviewer umano): usa la sponge Keccak-256
+    snella per ogni Compute a 256 bit nel guest zkEVM. Ha il bonus di coerenza
+    dalla memoria sullo stateless guest.
+  - #13979 (stdevMac, +104 −11): eth_simulateV1 scarta i log emessi da frame di
+    chiamata revertiti. È un fix di parità RPC, verificabile con un test
+    diretto.
+
+  Tutte e 3 sono ancora senza approvazione umana.
+
+  Proposta per il prossimo giro
+
+  - Veloci: #13996, #13974, #13985, #14001, #13999, #13997, #13979
+  - Medie: #13915 (inclusion list in forkchoiceUpdatedV5, 0 reviewer), #13977,
+    #13981, #13989, #13937
+
+  Dimmi quali lanciare con /nethermind-pr-review.
+
+  ★ Insight ─────────────────────────────────────
+  - Perché il tag scatta su #13897 anche se non serve rivederla: il board
+    confronta lo SHA della tua approvazione con la head attuale. Un merge di
+    master basta a far scattare "head moved", anche quando la PR in sé non
+    cambia.
+  - Il controllo che distingue i due casi: l'endpoint compare di GitHub elenca i
+    commit tra i due SHA. Scartando quelli che portano un numero (#NNNNN) nel
+    titolo, cioè già mergiati su master, restano i commit specifici della PR.
+  - Il template non si perde più: lo scratchpad era stato svuotato di nuovo. Ho
+    ricostruito il template dalla versione pubblicata dell'artifact, che fa da
+    fonte stabile.
+    ─────────────────────────────────────────────────
+
+✻ Cooked for 3m 10s · done 14:33
+
+❯ vai approvo le veloci e medie, puoi procedere con tutte (includi anche        
+  #13966)                                                                       
+
+● Skill(nethermind-pr-review)
+  ⎿  Successfully loaded skill
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Tutte e 13 sono aperte. Creo i worktree (PR mergiata con master) e intanto
+  leggo i diff.
+
+  Ran 6 shell commands (ctrl+o to expand)
+
+● Sto verificando #13985: nella build guest ComputeHash256 non richiama
+  ComputeHash, quindi niente ricorsione. Ora cerco i test zkEVM esistenti per
+  l'hashing.
+
+  Ran 6 shell commands (ctrl+o to expand)
+
+● Sto costruendo per #13985 un differenziale che esegue sull'host il Keccak del
+  guest, con una permutazione gestita al posto della syscall. Lo lancio e
+  intanto leggo gli altri diff.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Background command "Build and run zkEVM Core tests with scratch differential"
+completed (exit code 0)
+
+  Read 1 file, ran 2 shell commands (ctrl+o to expand)
+
+● Il differenziale passa: 11 test su 11, lunghezze 0-1100, output non allineato,
+  in place e altre larghezze. Ora il controllo negativo: un mutante nel nuovo
+  ramo.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Mutante rilevato: 4 fallimenti su 4 seed, a lunghezza 532. Lancio in
+  background i test delle PR piccole, con i probe di revert, e intanto leggo gli
+  altri diff.
+
+  Ran 2 shell commands (ctrl+o to expand)
+● Leggo il SimulateTxTracer di #13979: devo capire se gli hook dei frame
+  scattano anche senza traceTransfers, e se ogni ReportAction ha esattamente una
+  chiusura.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Ho verificato che ogni ReportAction del VM in #13979 termina con End, Error o
+  Revert, incluso il deposito CREATE e il trasferimento semplice, mantenendo lo
+  stack dei frame bilanciato. Ora esamino i diff più grandi.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Il conflitto di #13915 riguarda solo una riga di using nei test: lo risolvo
+  tenendo quella di master. Poi guardo cosa è cambiato su master nel file
+  Bogota, perché potrebbe sovrapporsi alla PR.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Due probe su tre sono già verdi: #14001 (3 casi falliscono senza il fix) e
+  #13997 (il nuovo test fallisce senza il fix). Controllo se ci sono altri
+  lettori di GasCap con lo stesso difetto.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● #14001 è pulita: estimateGas passa già ?? 0 a GasEstimator, che tratta 0 come
+  nessun limite. Leggo #13937 e #13981.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● #13937 è pulita: SearchForReceiptBlockHash falliva solo per hash assente,
+  quindi il nuovo null copre esattamente quel caso e gli altri errori restano.
+  Leggo #13981.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● #13981 cambia un'API visibile: le etichette di errore e il result sui frame
+  revertiti. Leggo il tracer completo per verificare gasUsed, il frame radice e
+  i percorsi che scrivono error/result.
+
+  Ran 6 shell commands (ctrl+o to expand)
+
+● Continuo su #13981: confronto il formato dei frame revertiti con Reth
+  (revm-inspectors), per verificare che result insieme a error: "Reverted" sia
+  la convenzione degli altri client.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Reth conferma le etichette "Out of stack", "Built-in failed" e "Insufficient
+  balance for transfer" e il result per i frame revertiti, ma per il CREATE
+  revertito usa {address, code, gasUsed}. Ora verifico il formato di Erigon.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Ho notato una discrepanza: Erigon e Reth inseriscono i dati di revert di un
+  CREATE in code con address, mentre la PR li mette in output senza address — lo
+  segnalo come domanda per l'autore. Ora prendo gli SHA per i permalink e
+  controllo le catene di test.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Ho verificato #14001, #13997, #13999 e #13985, tutti confermati da probe e
+  mutanti; controllo se il codice di uscita 2 di #13985 dipenda dai miei file
+  scratch, poi passo a esaminare #13996 sotto NativeAOT.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Il formato di #13985 torna pulito senza i miei file scratch. Per #13996
+  l'issue ha un repro NativeAOT: provo a pubblicarlo davvero, contro master e
+  contro la PR.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Mentre gira la pubblicazione AOT, lancio le catene di test per #13979, #13937,
+  #13981 e #13915.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● La PR #13989 tocca codice concorrente: verifico se dopo un engine_newPayload
+  riuscito si riparte subito o si attende l'FCU, e cosa succede se il blocco in
+  coda è un fork laterale.
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+● Sto verificando se #13966 e #13979 entrano in conflitto, dato che entrambe
+  toccano SimulateTxTracer: #13979 svuota i log in MarkAsFailed, mentre #13966
+  vuole mantenere i log dei frame committati di una frame tx fallita.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Confermo il conflitto testuale: entrambe le PR aggiungono il campo
+  _frameLogStarts ma con tipi diversi. Ora controllo i commenti su #13979 e
+  #13966 per vedere se la sovrapposizione è già stata segnalata.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Claude bot ha già segnalato su #13979 il problema delle frame tx con Clear().
+  L'agente dell'autore ha risposto che master "non contiene ancora il processing
+  EIP-8141". Verifico se è vero.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● La premessa della risposta dell'autore è falsa: su master il processing
+  EIP-8141 già gestisce correttamente il POST_TX revertito con MarkAsFailed,
+  mantenendo i log del prefisso nella receipt. Ora controllo i test di #13966 ed
+  eseguo le relative verifiche.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Nessuna delle due PR è a conoscenza dell'altra: Marchhill in #13966 nota una
+  lacuna sui txs ordinari che #13979 risolve. Ora controllo le catene e avvio le
+  verifiche rimanenti.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● NativeAOT conferma un risultato chiave per #13996: la PR risolve il
+  PlatformNotSupportedException originale, ma il repro dell'issue crasha ancora
+  sotto AOT con un nuovo errore (Couldn't find direct implementation of 
+  IBlocksConfig). Ora verifico se dipende dal trimming radicando l'assembly
+  Nethermind.Config.
+
+  Ran 1 shell command (ctrl+o to expand)
+● Con Nethermind.Config radicato, la build AOT funziona correttamente: GetConfig
+  trova 4 tipi come sotto JIT, confermando che il fix è valido. Ora verifico
+  anche il secondo requisito, il trimming, controllando le catene C e D.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● #13979 (probe fallisce senza il fix) e #13981 (9 su 9 falliscono senza il fix)
+  sono confermate. Cerco altri punti del repo che dipendono dalle vecchie
+  etichette di errore di #13981.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Nessun altro uso delle vecchie etichette nel repo. Lancio la catena per #13966
+  e #13989, e intanto preparo i test zkEVM di #13977.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Il probe #13937 non è valido: revertire l'interfaccia rompe i test per errori
+  di nullabilità, e i 4 test "passati" giravano su un binario vecchio. Lo
+  rifaccio con un mutante mirato dopo la catena C, e intanto lancio #13966 e
+  #13989.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Mentre monitoro l'esecuzione, guardo il test #13974, che ora usa una finestra
+  di 500 ms al posto dell'ordinamento deterministico dello scheduler seriale.
+  Verifico che rilevi ancora l'inversione tra drain e dispose, quindi cerco il
+  punto da mutare.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Per #13974 preparo 15 esecuzioni ripetute del test e un mutante che toglie
+  DrainAsync: il test deve fallire. Lo lancio in background.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Il probe di #13915 conferma le previsioni: senza il fix fallisce solo il test
+  SYNCING, mentre "latest retained list" passa anche su master perché il vecchio
+  LRU applicava già la regola dell'ultima scrittura vincente. Ora rifaccio il
+  probe di #13937 con un mutante mirato.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Il mutante di #13937 viene rilevato: 4 fallimenti su 4 combinazioni, streaming
+  e pending. Controllo #13977 e #13974.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● #13977 e #13974 sono confermate: il mutante del limbo viene rilevato a tutte
+  le profondità e il test di #13974 conferma il pattern (15/15 vs 3/3). Ora
+  controllo i risultati di #13966 e #13989.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Merge.Plugin.Test per #13989 ha eseguito zero test a causa di un filtro errato
+  (EngineModuleTests è una classe parziale). Ora lancio la suite completa con
+  il prewarm di default e due mutanti su Consensus.Test.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Mentre gira #13989, raccolgo lo stato delle review esistenti e i commenti
+  umani su tutte e 13 le PR, come richiede il report.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Due cose sono cambiate mentre lavoravo. #13966 ha un nuovo head (b071eebfc1) e
+  #13981 ora risulta in conflitto con master. Verifico entrambe.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Master è avanzato: #13989 è già stata mergiata, insieme a #13968 e #13913.
+  Rifaccio il fetch, che era fallito per una corsa sul lock.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● #13981 ora va in conflitto con master in due file del writer Parity. La causa
+  è #13968, appena mergiata, che tocca gli stessi file. Ora isolo cosa c'è di
+  nuovo in #13966 oltre al merge di master.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● I file sorgente tra i due head di #13966 sono identici: il nuovo commit è solo
+  un merge di master. Verifico ora che #13966 si integri ancora col master
+  attuale, dato che #13968 tocca FrameTx.cs, e rilancio i test di integrazione.
+
+  Read 1 file, ran 2 shell commands (ctrl+o to expand)
+
+● La #13989 risulta già mergiata su master mentre la verificavo, quindi la tolgo
+  dalle pubblicazioni (il mutante 1 era comunque rilevato, loop stabile 10/10).
+  Ora controllo lo stato della base della #13985 mentre l'ultima catena
+  finisce.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● La base di #13985 non è cambiata. Aspetto la catena di #13966 sul master
+  aggiornato, l'ultima verifica prima del report.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Tutte le verifiche sono finite. Ricontrollo gli head, così gli SHA fissati nei
+  comandi corrispondono all'ultimo commit, poi pulisco i worktree.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Pulizia fatta. Recupero i numeri di riga esatti, all'head fissato, per i
+  commenti inline.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Verifico i nomi dei campi JSON di CreateTraceResult in Erigon e gli SHA
+  completi per i permalink, prima di citarli nel commento.
+
+  Ran 1 shell command (ctrl+o to expand)
+● Riferimenti verificati. Scrivo i payload JSON per le review con commento e
+  preparo i comandi.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Ho verificato tutte e 13 le PR. #13989 l'hanno mergiata mentre la verificavo,
+  quindi restano 12 da pubblicare: 7 approvazioni pulite, 4 con nota e 1 solo 
+  commento (#13981). Il problema più concreto: #13979 e #13966 modificano lo 
+  stesso tracer e si scontrano, e nessuno dei due autori lo sa.
+
+  Ogni PR è stata testata mergiata con master. Dove era possibile, ho verificato
+  che i test rilevino un difetto: tolto il fix, o iniettato un bug (mutante),
+  il test fallisce.
+
+  Approvazioni pulite
+
+  #14001, GasCap null o 0 in eth_call, estimateGas e createAccessList (+34 −2,
+  facile)
+  - Nessuna review umana precedente.
+  - GasCap!.Value veniva letto per ogni richiesta, anche senza blockOverride.
+    Con cap null, quindi, ogni eth_call rispondeva -32603.
+  - Verifica: 308 test passano. Tolto il fix, falliscono 3 casi su 6 (null senza
+    override, null e 0 con override grande).
+  - Gli altri lettori di GasCap passano già da EffectiveGasCap/IsGasCapped.
+    estimateGas passa ?? 0, e GasEstimator tratta 0 come "nessun limite".
+
+  #13999, range invertito in eth_getLogs che finisce al blocco 0 (+44 −11,
+  facile)
+  - Nessuna review umana precedente.
+  - Lo richiede la spec execution-apis#875. Il return [] rimosso da
+    FilterLogsIteratively era effettivamente irraggiungibile.
+  - Verifica: 216 test in Blockchain.Test e 46 RPC passano. Tolto il fix,
+    falliscono 1 caso su 2 del test su LogFinder e 6 su 6 dei casi RPC.
+
+  #13997, fork con genitore in memoria esclusi dalla conversione bulk (flat)
+  (+38 −2, medio)
+  - Nessuna review umana precedente.
+  - Ho verificato il percorso: i genitori sono al blocco b−1, quindi già
+    processati quando il ciclo arriva al blocco b. Contains vede quindi i
+    convertiti dello stesso batch.
+  - Verifica: 1.196 test di State.Flat passano. Tolto il fix, il nuovo test
+    fallisce (SnapshotCount è 0).
+
+  #13937, null da trace_transaction/trace_get per hash sconosciuto (+124 −37,
+  facile)
+  - Già approvata da 3 umani.
+  - SearchForReceiptBlockHash falliva solo per hash assente. Il null copre
+    quindi esattamente quel caso, e pruning, stato mancante e header mancante
+    restano errori.
+  - Verifica: 335 test sul trace e 50 di TraceStore passano. Il primo probe
+    (revert dei 3 file) non era valido: rompeva la compilazione per la
+    nullabilità e girava su un binario vecchio. L'ho rifatto con un mutante
+    mirato: falliscono 4 casi su 4.
+
+  #13974, deadlock nel test del drain del warmup (+10 −17, facile)
+  - Approvata da asdacap.
+  - La finestra di 500 ms è più debole dell'ordinamento deterministico di prima,
+    ma rileva ancora il difetto.
+  - Verifica:
+    - il test passa 15 volte su 15, e i 456 test di EthereumRunnerTests più
+      quelli di startup passano;
+    - con un mutante che toglie DrainAsync, fallisce 3 volte su 3 con "reports
+      still own their storage dependencies".
+
+  #13977, SWAP a limbi nel guest zkEVM (+117 −3, medio)
+  - LukaszRozmej ha approvato.
+  - Verifica:
+    - 1.186 test di Evm.ZkEvm.Test passano, compilati con EnableZkEvm=true, più
+      3.276 test di stack e swap sull'host;
+    - il mutante (limbo 3 scritto con low2) fa fallire tutte le profondità.
+  - Il requisito di allineamento a 8 byte è lo stesso che SwapSlot già usa.
+
+  #13985, sponge Keccak snella per ogni ComputeHash a 256 bit nel guest (+22,
+  medio)
+  - Nessuna review. È impilata su #13885, che è ancora aperta.
+  - Nel guest ComputeHash256 non richiama ComputeHash, quindi non c'è
+    ricorsione.
+  - Verifica: i test su host non raggiungono il Keccak del guest, perché nel
+    guest la permutazione è una syscall. Ho costruito un differenziale apposta:
+    - la syscall sostituita, solo nel worktree, dalla permutazione gestita;
+    - un Keccak di riferimento scritto da zero;
+    - lunghezze 0-1100 con 4 seed, output non allineato, output in place e
+      larghezze 20/28/31/33/48/64.
+  - Risultato: 11 test su 11 passano. Un mutante sul nuovo ramo, a lunghezza
+    532, viene rilevato su tutti e 4 i seed. I 1.209 test Keccak su host
+    passano.
+
+  Approvazioni con nota
+
+  #13979, log dei frame revertiti in eth_simulateV1 (+104 −11, medio)
+  - Ho verificato che ogni ReportAction del VM si chiude con esattamente uno tra
+    End, Error e Revert, compresi il deposito di codice CREATE e il
+    trasferimento semplice. Lo stack resta quindi bilanciato.
+  - Verifica: 148 test di simulate e 179 di Facade.Test passano. Tolto il fix,
+    il nuovo test fallisce in entrambe le varianti.
+  - Il problema:
+    - claude bot aveva segnalato che _logs.Clear() in MarkAsFailed è sbagliato
+      per le frame tx.
+    - L'agente dell'autore ha risposto che master "non contiene ancora
+      EIP-8141". È falso: FrameTx.cs:587 su master chiama già MarkAsFailed per
+      un POST_TX revertito.
+    - #13966 (3 approvazioni) riscrive lo stesso tracer: c'è un conflitto
+      testuale (_frameLogStarts, con tipi diversi nelle due PR) e uno semantico.
+      Il Clear() cancellerebbe i log committati che #13966 vuole tenere.
+  - Nota inline LOW: limitare il Clear() alle transazioni normali.
+
+  #13966, stato derivato delle frame tx nei tracer e log di simulate (+423 −26,
+  alto)
+  - Già 3 approvazioni e molti giri di review.
+  - L'head è cambiato durante la review, ma solo per un merge di master: i file
+    sorgente della PR sono identici. L'ho ritestata sul master attuale, che ora
+    contiene #13968:
+    - 1.073 test FrameTx e tracing più 755 test RPC passano;
+    - tolto il BlockReceiptsTracer modificato, falliscono 9 test su 87.
+  - Body: avviso della sovrapposizione con #13979. Marchhill scrive "master has
+    the same gap for ordinary txs", ed è proprio il fix di #13979.
+
+  #13915, inclusion list conservate per forkchoiceUpdatedV5 (+140 −12, medio)
+  - Nessuna review umana. È in conflitto con master solo su una riga di using
+    nei test, che ho risolto nel worktree.
+  - Verifica: 43 test passano. Tolto il fix, fallisce solo il test sul SYNCING:
+    quello "latest retained list" passa anche su master, dove la cache faceva
+    già vincere l'ultima scrittura.
+  - Nota inline LOW: RetainedInclusionList.Transactions non viene mai letto. Un
+    payload ACCEPTED che poi diventa head VALID riporta ancora null, mentre
+    bogota.md chiede il verdetto.
+
+  #13996, NativeAOT in TypeDiscovery (+2 −1, già 2 approvazioni)
+  - Ho pubblicato davvero il repro dell'issue come NativeAOT, con la PR e con
+    master.
+  - Con master crasha con il PlatformNotSupportedException dell'issue. Con la PR
+    quell'errore sparisce, ma con il trimming di default il repro si ferma su
+    "Couldn't find direct implementation of IBlocksConfig".
+  - Aggiungendo <TrimmerRootAssembly Include="Nethermind.Config" /> funziona e
+    trova 4 tipi, come sotto JIT.
+  - Il fix è giusto, ma "Fixes #13992" promette più di quanto fa da solo. La
+    nota va nel body.
+
+  Solo commento
+
+  #13981, result sui frame revertiti ed etichette di errore Parity (+215 −26,
+  medio)
+  - Approvata da svlachakis.
+  - Verifica:
+    - 605 test di tracing EVM, 335 RPC e 50 di TraceStore passano;
+    - tolto il fix, falliscono 9 test su 9;
+    - nel repo non c'è nessun altro uso delle vecchie etichette.
+  - Le etichette corrispondono a OpenEthereum. Reth usa "Out of stack",
+    "Built-in failed" e "Insufficient balance for transfer".
+  - Niente approvazione per ora, per due motivi:
+    - È in conflitto con master (#13968 in ParityReplayEnvelopeWriter.cs e
+      ParityTxTraceFromReplay.cs). Il rebase toccherà proprio il writer, quindi
+      è da rivedere dopo.
+    - La forma del CREATE revertito diverge dagli altri client. La PR scrive
+      {gasUsed, output} senza address. Erigon (trace_adhoc.go:635-637) e Reth
+      (types.rs:353-357) mettono i dati di revert in code e tengono address. Lo
+      segnalo come domanda LOW inline.
+
+  Comandi da eseguire
+
+  Tutti gli SHA sono fissati sull'head che ho ricontrollato alla fine. Se un
+  autore pusha nel frattempo, GitHub rifiuta la review invece di attaccarla al
+  commit sbagliato.
+
+  # 7 approvazioni pulite
+  for p in 14001:bb05fa5cc29350818f373a78707319d1673714c3
+  13999:93a5ed984dad75b8ccb972d6508925ac4127d69a
+  13997:cf0ec848ebcf80e77319eb5347555d2f12036ff9
+  13937:d84fbd1bb8a7b498c7102e51d06db0ba4767b72d
+  13974:473a374f1853ec8dc213f721f2ec55b8aa208ff1
+  13977:682c06ad26c883597ecc547dbb54ecd7b610b2db
+  13985:499a53f2018b15b6fba8ede0ca7e0023adf4cd8a; do gh api -X POST
+  repos/NethermindEth/nethermind/pulls/${p%%:*}/reviews -f event=APPROVE -f
+  commit_id=${p#*:} -q '"\(.state) \(.html_url)"'; done
+
+  # 5 review con body o inline (payload già pronti)
+  D=/tmp/claude-1000/-home-manuel-Work-Nethermind-Projects-nethermind/c6581982-e
+  6e6-4239-87ee-a19043cd790e/scratchpad/post
+  for n in 13979 13966 13915 13996 13981; do gh api -X POST
+  repos/NethermindEth/nethermind/pulls/$n/reviews --input $D/$n.json -q
+  '"\(.state) \(.html_url)"'; done
+
+  Il secondo ciclo pubblica 4 approvazioni (#13979, #13966, #13915, #13996) e un
+  COMMENT (#13981). Quando hai eseguito, dimmelo e controllo che tutto sia
+  arrivato sulla riga giusta.
+
+  ★ Insight ─────────────────────────────────────
+  - Le PR "verdi" si possono scontrare: #13979 e #13966 passano entrambe da
+    sole, ma si rompono a vicenda sullo stesso tracer. Solo un merge-tree tra le
+    due PR, e non tra ciascuna e master, lo fa emergere.
+  - Serve anche il repro dell'issue: in #13996 il repro NativeAOT ha mostrato un
+    secondo requisito, il trimming, che nessun test in CI esercita.
+  - Un probe che non compila non prova niente: un probe che rompe la
+    compilazione può "passare" su un binario vecchio. In #13937 la differenza
+    l'ha fatta un mutante mirato di una riga, al posto del revert dei file
+    interi.
+    ─────────────────────────────────────────────────
+
+✻ Crunched for 27m 19s · done 15:06
+
+※ recap: Stiamo facendo la review di 13 PR di Nethermind: 12 sono verificate e pronte, e #13989 è già stata mergiata. Prossimo passo: esegui i comandi del mio ultimo messaggio (7 approvazioni pulite e 5 review da file JSON), poi dimmelo e controllo cosa è stato pubblicato. (disable recaps in /config)
+
+❯ ok fatto, next?                                                               
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Tutte e 12 le review sono arrivate come previsto:
+
+  ┌───────────────┬─────────────────────────────────────────────────────────┐
+  │   Controllo   │                          Esito                          │
+  ├───────────────┼─────────────────────────────────────────────────────────┤
+  │ Approvazioni  │ tutte sull'head fissato: 7 pulite e 4 con body          │
+  │ (11)          │                                                         │
+  ├───────────────┼─────────────────────────────────────────────────────────┤
+  │ COMMENT su    │ arrivato                                                │
+  │ #13981        │                                                         │
+  ├───────────────┼─────────────────────────────────────────────────────────┤
+  │               │ tutti sulla riga giusta: #13979                         │
+  │ Commenti      │ SimulateTxTracer.cs:108, #13915                         │
+  │ inline        │ EngineRpcModule.Bogota.cs:26, #13981                    │
+  │               │ ParityLikeTxTracer.cs:509                               │
+  └───────────────┴─────────────────────────────────────────────────────────┘
+
+  Prossimo giro
+
+  Sono aperte 49 PR non draft che non abbiamo ancora visto. Dal board aggiornato
+  più 2 PR nuove, propongo questo giro.
+
+  Veloci
+  - #14004 (Matgothmog, +9, nessun reviewer): preserva gli interni di
+    ConcurrentDictionary sotto NativeAOT. È il seguito di #13996, e il repro AOT
+    che ho già in scratchpad va bene anche per questa.
+  - #14002 (LukaszRozmej, +80 −22): memorizza i flag del tracer una volta per
+    transazione in TransactionProcessor. Tocca un percorso critico, quindi
+    controllo che nessun flag cambi a metà transazione.
+  - #13990 (AnkushinDaniil, +167 −36): serializza come quantità i campi dei
+    frame EIP-8141 e le frame receipt nell'RPC.
+  - #13971 (AnkushinDaniil, +139 −13): la flatdb tiene la cache del read-bundle
+    finché gli snapshot non vengono rilasciati.
+
+  Medie
+  - #13994 (AnkushinDaniil, +300 −40, nessun reviewer): la validazione delle
+    frame tx arrivate via gossip viene interrotta mentre si processa un blocco.
+    È codice concorrente, quindi preparo stress test e mutanti.
+  - #13911 (Marchhill, +314 −15): simulazione di frame tx non firmate.
+  - #13957 e #13958 (banteg): frame falliti e gas inoltrato nel vmTrace. Toccano
+    lo stesso tracer Parity di #13981, quindi controllo subito i conflitti tra
+    le tre.
+  - #13636 (MysticRyuujin, +275 −30, nessun reviewer): indice di log a livello
+    di blocco nell'output withLog del callTracer.
+
+  Pesante, se vuoi
+  - #13988 (benaadams, +502 −189, 19 file): condivide i worker tra il calcolo
+    della receipt root e il commit del trie. È critica per il consenso:
+    servirebbe un differenziale sulle root e stress test di concorrenza.
+
+  Le PR EIP-8141 (#13990, #13994, #13911) sono vicine al tuo branch sulle frame
+  tx, quindi le verifico con più contesto.
+
+  Procedo con le 4 veloci e le 5 medie? #13988 la aggiungo solo se me lo chiedi.
+
+✻ Cooked for 2m 34s · done 15:22
+
+❯ vai con veloci + medie                                                        
+
+● Skill(nethermind-pr-review)
+  ⎿  Successfully loaded skill
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Tutte e 9 sono aperte. #13957 e #13958 vanno in conflitto con master su
+  ParityLikeTxTracer.cs, probabilmente per #13968. #13636 va in conflitto solo
+  in un file di test. Leggo prima le due veloci.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● La #14004 aggiunge solo attributi di trimming, quindi la verifica reale sarà
+  il repro NativeAOT. Su #14002 controllo se ExecuteEvmCall e
+  FinalizeTransaction, essendo condivisi, possano ricevere sul percorso delle
+  frame tx un valore residuo di _tracerFlags da una transazione precedente.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Il percorso delle frame tx non passa per ExecuteEvmCall né
+  FinalizeTransaction, quindi non legge la cache. Ora verifico l'altra ipotesi
+  della PR, cioè che i flag di un tracer non cambino durante una transazione.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● I flag dei tracer risultano tutti fissati nel costruttore, confermando la
+  coerenza della cache per transazione in #14002. Ora leggo #13990 e #13971.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Verifico se l'indice resta coerente con i log della receipt anche per i frame
+  falliti o annullati, e se il nuovo ByteConverter si applica solo dove presente
+  l'attributo o a tutti i byte serializzati.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Nel caso di successo confermo che gli indici dei frame combaciano con
+  ConcatLogs(frameReceipts). Ora verifico il caso di fallimento con POST_TX
+  revertito, controllando se le frame receipt mantengono i log del prefisso
+  anche quando la receipt della transazione risulta vuota.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Nel caso di fallimento BuildFailedReceipt usa anch'esso ConcatLogs, quindi gli
+  indici restano allineati. Confronto il nuovo formato con lo schema di
+  execution-apis#907, citato dalla PR.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Il formato corrisponde allo schema FrameReceipt della bozza #907: status
+  quantità, gasUsed come somma, log completi con indici di blocco. Leggo #13971.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● La PR #13971 gestisce lo svuotamento della cache bundle (sicuro grazie a
+  snapshot immutabili e reader coerenti) e il limite al tracking delle
+  scritture. Ora controllo il commit del write batch per verificare il percorso
+  _clearAll quando i set sono null.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Anche #13971 regge: nel ramo di overflow il set viene restituito e i
+  riferimenti azzerati, poi OnCommitted con clearAll svuota tutto. Ora preparo
+  il repro NativeAOT di #14004 e lancio le catene di test delle 4 veloci.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Le catene sono partite. Il probe AOT di #14004 usa lo stesso worktree della
+  catena G: controllerò dagli orari che non si siano sovrapposti. Intanto leggo
+  #13994.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Su #13994 verifico due cose nel codice completo del simulatore: se una
+  simulazione preemptata consuma comunque il budget per head, e l'ordine dei
+  catch tra preemption e timeout.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Confermato: il catch di preemption precede quello di timeout, quindi un
+  timeout imputabile al mittente viene riclassificato come "preempted" se in
+  quel momento parte un blocco. Ora cerco il test di timeout esistente per
+  scrivere un probe che lo dimostri.
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Confermo che con la PR NoResizeClear e NoLockClear funzionano in NativeAOT su
+  tutte e 3 le istanziazioni, mentre su master crasha come descritto nell'issue
+  #14004. Ora verifico che la catena G non abbia compilato #14004 mentre il
+  probe AOT aveva i file revertiti.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Nessuna sovrapposizione: il probe AOT è finito alle 15:28:14, la build di
+  #14004 è partita alle 15:29:11. #14002 passa tutta Evm.Test, 14.225 test.
+  Leggo #13911.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Nel PR #13911 il gate !ShouldValidate(opts) è rischioso: il body afferma che
+  la costruzione dei blocchi resta validata, ma ProcessingOptions.ProducingBlock
+  include NoValidation. Ora verifico come si traduce in ExecutionOptions
+  durante la produzione di un blocco.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Confermato che il gate di #13911 regge: la produzione dei blocchi passa da
+  BuildUp senza SkipValidation, e la txpool valida tramite l'overload pubblico
+  che rifiuta le firme vuote, quindi una frame tx con placeholder non può
+  entrare in un blocco prodotto. Ora passo a leggere #13957.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Il punto critico dell'#13957 è Memory.TryLoad nel percorso di rifiuto: se
+  espandesse la memoria senza addebitarla, altererebbe MSIZE e il gas sotto
+  tracing. Verifico che l'espansione avvenga prima del precheck.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● L'espansione di memoria e il calcolo del gas risultano corretti, ma
+  ReportRejectedAction ha un'implementazione di default vuota: ora cerco i
+  tracer wrapper che inoltrano le altre callback ma non questa.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● I wrapper che inoltrano (BlockReceiptsTracer, CompositeTxTracer,
+  CancellationTxTracer) coprono tutti il nuovo metodo, mentre gli altri chiamano
+  solo base. senza inoltrare nulla. Ora controllo i conflitti a coppie tra le
+  tre PR di banteg sul tracer Parity e con master.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● #13957 e #13958 sono compatibili tra loro ma confliggono con #13981 e con
+  master sul tracer Parity. Ora esamino il worktree per risolvere il conflitto
+  con master prima di testarle.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Risolvo il conflitto mantenendo sia _frameTx?.EnsureRoot(); introdotto da
+  #13968 sia la riscrittura di ReportAction della PR; ReportRejectedAction non
+  necessita di questa aggiunta, essendo generato da un opcode in un frame già
+  aperto.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● #13958 è impilata su #13957: di nuovo c'è solo il commit a2e157bd4a. Risolvo
+  lo stesso conflitto e poi guardo solo quel commit.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● La PR #13958 modifica anche ReportGasUpdateForVmTrace, riassegnando Push a
+  ogni chiamata: cambiamento innocuo dato che _currentPushList si azzera in
+  StartOperation e può solo crescere. Ora controllo le catene, poi passo a
+  leggere la #13636.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Conferma #13994 (blocco simultaneo riclassifica come Yielded) e #13971 (5/11
+  test falliscono senza fix), ma il probe su TxPool.cs non ha catturato nulla:
+  cerco i test nuovi che potrebbero essere sfuggiti al filtro.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Il probe corretto conferma il fix: senza la modifica a TxPool.cs il test
+  Gossiped_frame_tx_whose_simulation_yielded_is_refetchable_once_per_request
+  fallisce, mentre il primo probe aveva solo il filtro sbagliato. Ora leggo
+  #13636.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● La PR #13636 modifica il costruttore di GethStyleTracer, che ora richiede
+  [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder — con Autofac ciò
+  funziona solo se la registrazione abilita WithAttributeFiltering(). Verifico
+  la registrazione e proseguo con il resto del diff.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Il DSL AddScoped passa da CommonNethermindConfig(), che abilita
+  WithAttributeFiltering(), quindi il KeyFilter funziona. Leggo il resto di
+  GethStyleTracer.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● KeyFilter e seed degli indici sono a posto. Ora verifico il costo di
+  StoredLogIndex, che chiama receiptFinder.Get(block) per ogni transazione sul
+  percorso parallelo, controllando se il finder rigenerabile ha una cache per le
+  receipt potate.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Ho individuato una race condition di bassa severità: il finder rigenerabile
+  non protegge dalle chiamate concorrenti, causando in debug_traceBlock la
+  rigenerazione ridondante dell'intero blocco da più worker. La segnalo come LOW
+  e passo ora a risolvere il conflitto nei test di #13636.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Conflitto risolto, con la parentesi di chiusura del test di master al suo
+  posto. Lancio i test di #13911, #13957, #13958 e #13636.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Blockchain.Test su #14002 mostra 3 fallimenti: due sono il flake noto del file
+  watcher, il terzo un timeout della coda probabilmente legato al carico
+  parallelo delle build. Li rieseguo isolatamente per conferma.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Il test della coda fallisce 1 volta su 3 anche da solo, con la macchina ancora
+  carica. Controllo se tocca il codice di #14002 e se è instabile anche su
+  master.
+  Ran 1 shell command (ctrl+o to expand)
+
+● Il test usa una pipeline simulata e non coinvolge TransactionProcessor, quindi
+  l'instabilità non dipende da #14002: lo verifico su master. Nel frattempo,
+  sul worktree ora libero di #14002, lancio due mutanti per misurare la
+  sensibilità dei test a un flag letto male.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Mentre girano i mutanti di #14002, preparo quello di #13990: l'indice dei log
+  dei frame che non avanza tra un frame e l'altro.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Il mutante di #13990 viene rilevato: logIndex vale 0x5 al posto di 0x6.
+  Aspetto le catene J e K e i mutanti di #14002.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● La build dei test RPC della #13636 fallisce per un using System.Linq
+  duplicato, artefatto del merge che l'autore risolverà al rebase. Lo rimuovo
+  nel worktree e procedo a lanciare i mutanti rimasti per #13636, #13911 e
+  #13958.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Mentre girano i mutanti, leggo le review e i commenti esistenti sulle 9 PR,
+  per non ripetere quello che altri hanno già detto.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Vedo la segnalazione P2 su #14002 da Marchhill riguardo al campo _tracerFlags
+  che trattiene il tracer oltre la transazione anche quando il processor rientra
+  nel pool RPC condiviso. Ora leggo il commento completo per verificare se il
+  fix è stato applicato.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Ho verificato che il VM già trattiene l'ultimo tracer eseguito senza mai
+  azzerarlo, mentre il nuovo campo aggiunge ritenzione solo sui percorsi che
+  bypassano il VM; il punto di Marchhill resta valido ma limitato e ancora
+  aperto. Seguendo la regola di non approvare con commenti aperti di un
+  maintainer, lascerò un COMMENT di convergenza su #14002 e aspetterò i mutanti.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Tutti i mutanti sono stati rilevati: per il #13636 la protezione risiede in
+  Evm.Test, dove Test_CallTrace_NestedCalls_RevertInternalCall fallisce se un
+  frame revertito non restituisce i suoi indici di log. Ora ricontrollo CI e
+  head, poi procedo con la pulizia.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Gli head non sono cambiati. Pulisco i worktree e recupero i numeri di riga per
+  i commenti inline.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● NativeCallTracer ha già un override di MarkAsFailed (riga 242). Prima di
+  scrivere il finding sulle frame tx fallite, verifico che non faccia avanzare
+  Next.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Confermo che MarkAsFailed non avanza Next, e poiché BuildFailedReceipt
+  mantiene i log del prefisso tramite ConcatLogs, le transazioni successive nel
+  percorso sequenziale ricevono indici troppo bassi. Ora scrivo i payload.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Ho verificato tutte e 9 le PR: 8 approvazioni (4 pulite e 4 con nota) e un 
+  COMMENT su #14002, che aspetta il fix di un maintainer. Non ho trovato bug di
+  consenso. Il più concreto è su #13994: in una finestra stretta, una
+  simulazione scaduta per timeout sfugge all'addebito.
+
+  Ogni PR è stata testata mergiata con master. Dove era possibile ho verificato
+  che i test rilevino un difetto: tolto il fix, o iniettato un bug (mutante), il
+  test fallisce.
+
+  Approvazioni pulite
+
+  #14004, ConcurrentDictionary sotto NativeAOT (+9, nessuna review)
+  - Aggiunge solo attributi [DynamicDependency], quindi la verifica vera è
+    l'AOT.
+  - Verifica: ho pubblicato come NativeAOT un repro con 3 istanziazioni: valore,
+    riferimento e tupla.
+    - Con la PR NoResizeClear e NoLockClear svuotano il dizionario, e il
+      dizionario resta usabile.
+    - Con master crasha nell'inizializzatore statico, come dice l'issue.
+  - 269 test sulle collection passano.
+
+  #13990, campi EIP-8141 come quantità nell'RPC (+167 −36, approvata da
+  LukaszRozmej)
+  - Il formato corrisponde allo schema FrameReceipt della bozza
+    execution-apis#907:
+    - status in hex, gasUsed come somma, log completi.
+    - I logIndex sono a livello di blocco e restano allineati: sia la receipt
+      riuscita sia quella fallita usano ConcatLogs.
+  - Il ByteConverter vale solo dove c'è l'attributo.
+  - Verifica: i test passano (133 RPC, 652 su JSON e byte, 778 Optimism). Con un
+    mutante che non fa avanzare l'indice tra un frame e l'altro, logIndex vale
+    0x5 al posto di 0x6.
+
+  #13971, cache dei bundle della flatdb (+139 −13)
+  - Svuotare la cache serve solo a liberare memoria: i bundle tengono snapshot
+    immutabili e reader RocksDB coerenti, quindi saltare gli svuotamenti per
+    blocco è corretto.
+  - Il limite al tracking delle scritture passa correttamente a "svuota tutto".
+  - Verifica: 1.204 test passano. Senza il fix falliscono 5 test su 11.
+
+  #13911, simulazione di frame tx non firmate (+314 −15, approvata da
+  AnkushinDaniil)
+  - Il rischio vero era il gate !ShouldValidate(opts). Ho verificato che la
+    produzione dei blocchi usa BuildUp, senza SkipValidation, e che la txpool
+    valida con l'overload pubblico. Un placeholder non entra quindi mai in un
+    blocco.
+  - Verifica: 507 test FrameTx, 231 Core e 219 RPC passano. Tre mutanti vengono
+    tutti rilevati:
+    - firme vuote mai accettate;
+    - la stima del gas che ignora i byte dei placeholder;
+    - firme vuote accettate anche nell'esecuzione di consenso.
+
+  Approvazioni con nota
+
+  #13994, simulazione delle frame tx interrotta durante il processing di un 
+  blocco (+300 −40, nessuna review umana)
+  - La logica di deferral è corretta: TryDefer concede al massimo un rinvio per
+    richiesta inviata.
+  - Verifica: 1.495 test TxPool e 33 FrameTx passano. Il mio primo probe su
+    TxPool.cs aveva il filtro sbagliato; rifatto sui test nuovi, rileva il fix.
+  - Nota inline LOW:
+    - IsCancelled controlla TimedOut prima di Preempted. Il catch poi rilegge
+      Preempted, che richiama il callback in quel momento.
+    - Se un blocco parte proprio lì, un timeout (addebitabile al mittente)
+      diventa RejectYielded: niente addebito e un nuovo download della tx.
+    - Riprodotto con un test scratch: Yielded e NodeBound tornano entrambi true.
+
+  #13957, frame per CALL/CREATE che falliscono il precheck (+404 −13, approvata
+  da svlachakis)
+  - Tocca le istruzioni CALL/CREATE, ma il nuovo codice gira solo sotto
+    IsTracingActions.
+  - L'espansione della memoria avviene prima del precheck, quindi TryLoad non
+    cambia MSIZE né il gas.
+  - I wrapper che inoltrano le callback coprono tutti il nuovo metodo.
+  - Verifica: 1.073 test EVM e 631 RPC passano. Revertendo le istruzioni
+    CALL/CREATE, falliscono tutti i test nuovi.
+  - Nota: serve un rebase. È in conflitto con #13968 in ReportAction, dove basta
+    tenere _frameTx?.EnsureRoot() in cima; io l'ho risolto così e la build è
+    verde. Va in conflitto anche con #13981, sulle stesse etichette di errore.
+
+  #13958, gas inoltrato nel vmTrace di un CREATE senza frame (è impilata su
+  #13957; nuovo è solo a2e157bd4a)
+  - Verifica: 670 test EVM e 333 RPC passano. Il mutante che non aggiunge il
+    costo viene rilevato: 3 test su 105 falliscono.
+  - Nota: stesso conflitto di #13957.
+
+  #13636, index dei log nel callTracer con withLog (+275 −30, nessuna review)
+  - Il KeyFilter sul finder rigenerabile funziona: la registrazione passa da
+    CommonNethermindConfig(), che abilita WithAttributeFiltering().
+  - Verifica: 237 test Debug RPC e 263 GethLike passano. Il mutante "un frame
+    revertito non restituisce i suoi indici" viene rilevato solo da
+    Test_CallTrace_NestedCalls_RevertInternalCall in Evm.Test: nessun test RPC
+    lo copre.
+  - Nel body: serve un rebase (conflitto nei test con master), e dopo il merge
+    il file ha using System.Linq duplicato, che rompe la build.
+  - Due note inline LOW:
+    - una frame tx fallita tiene nella receipt i log del prefisso, ma solo
+      MarkAsSuccess fa avanzare il contatore di blocco. Nel percorso sequenziale
+      le tx successive ricevono indici troppo bassi.
+    - nel percorso parallelo, receiptFinder.Get(block) viene chiamato per ogni
+      transazione. Il finder rigenerabile non evita le chiamate concorrenti
+      duplicate, quindi con receipt da rigenerare più worker possono rieseguire
+      l'intero blocco.
+  - Non lo metto nel commento: i trace sui blocchi forniti in RLP rieseguono le
+    tx precedenti anche per il callTracer senza withLog. È solo lavoro in più.
+
+  Solo commento
+
+  #14002, cache per transazione dei flag del tracer (+80 −22)
+  - La cache è coerente: tutti i tracer fissano i flag nel costruttore, e il
+    percorso delle frame tx non la legge.
+  - Verifica: 14.225 test EVM e 755 RPC passano. Tutti e 4 i mutanti vengono
+    rilevati, da 2 a 35 fallimenti ciascuno.
+  - In Blockchain.Test fallisce Wait_until_executed_copy_removed..., 1 volta su
+    3 anche da solo. Usa una pipeline simulata e non tocca TransactionProcessor,
+    quindi è un flake indipendente dalla PR.
+  - Perché solo COMMENT: il P2 di Marchhill è ancora aperto. Il campo trattiene
+    il tracer dopo la transazione. Converge con quello che ho trovato: il VM già
+    trattiene l'ultimo tracer (VirtualMachine.cs:292), quindi la ritenzione in
+    più riguarda solo i percorsi che non entrano nel VM.
+
+  Comandi
+
+  # 4 approvazioni pulite
+  for p in 14004:71eec90c4bf16e77376b70f1dcab9010776f3b73
+  13990:2c7960b64e1ba4c0a2e0384acb7748a92ef31e7f
+  13971:28983190b5bdea575d462a96d7823ef5e684e940
+  13911:27b48b783c73ad0651cee95b8f327bfe3ee1b3f9; do gh api -X POST
+  repos/NethermindEth/nethermind/pulls/${p%%:*}/reviews -f event=APPROVE -f
+  commit_id=${p#*:} -q '"\(.state) \(.html_url)"'; done
+
+  # 5 review con body o inline (4 APPROVE, 1 COMMENT su #14002)
+  D=/tmp/claude-1000/-home-manuel-Work-Nethermind-Projects-nethermind/c6581982-e
+  6e6-4239-87ee-a19043cd790e/scratchpad/post2
+  for n in 13994 13957 13958 13636 14002; do gh api -X POST
+  repos/NethermindEth/nethermind/pulls/$n/reviews --input $D/$n.json -q
+  '"\(.state) \(.html_url)"'; done
+
+  Tutti gli SHA sono fissati sull'head che ho ricontrollato alla fine, e
+  worktree e branch sono già stati rimossi. Quando hai eseguito, dimmelo e
+  verifico.
+
+  ★ Insight ─────────────────────────────────────
+  - Un callback richiamato fuori dal punto di decisione: il bug di #13994 nasce
+    da una proprietà "latched" (_preempted ||= callback()) riletta nel catch. La
+    proprietà sembra un valore, ma è una nuova interrogazione del mondo
+    esterno. La regola: classificare sulla causa registrata quando la
+    cancellazione è scattata, non su uno stato riletto dopo.
+  - Un mutante misura quali test proteggono il codice: in #13636 il mutante
+    sugli indici dei frame revertiti è sfuggito a tutti i test RPC ed è stato
+    preso da un solo test EVM.
+  - Il conflitto che GitHub non vede: il using System.Linq duplicato si
+    manifesta solo dopo aver risolto il conflitto nei test. Compilare il
+    risultato del merge con master lo fa emergere prima del rebase.
+    ─────────────────────────────────────────────────
+
+✻ Baked for 21m 57s · done 15:45
+
+※ recap: Stiamo facendo la review delle PR aperte di Nethermind, e il giro di 9 PR è finito: 8 approvazioni e un COMMENT su #14002. Esegui i due blocchi di comandi del messaggio precedente e dimmelo, così controllo che tutto sia arrivato. (disable recaps in /config)
+
+● agents-md: no CLAUDE.md found; AGENTS.md loaded: 
+  /home/manuel/Work/Nethermind/Projects/nethermind/AGENTS.md

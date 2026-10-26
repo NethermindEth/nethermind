@@ -1,0 +1,14 @@
+# Raw run output: large, per-run, and reproducible from run.json.
+results/
+
+# Third-party material fetched by traffic/vendor/fetch.sh, pinned by commit and checksum.
+traffic/vendor/soispoke/
+
+# Image provenance written by images/build.sh on the machine that built them.
+images/build-manifest.json
+
+# Rendered per-scenario args files.
+.rendered-*.yaml
+
+# Groth16 sweep artifacts fetched from NethermindEth/frame-verify-gas.
+groth16/

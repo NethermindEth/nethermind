@@ -1,0 +1,22 @@
+{
+  "_comment": [
+    "PromQL snapshotted per scenario over the run window. Everything here comes from native",
+    "client telemetry that ethereum-package's Prometheus scrapes on port 9001; the generator",
+    "never duplicates it. Client metric names differ between Nethermind and ethrex, so the",
+    "regex forms capture both and the analysis pass narrows. Edit freely: the runner reads",
+    "this file, it hardcodes nothing."
+  ],
+  "queries": {
+    "up": "up",
+    "el_head_block": "{__name__=~\"nethermind_blocks|ethrex_.*block.*number.*\"}",
+    "el_mempool_size": "{__name__=~\"nethermind_transaction_count|nethermind_pending_transactions.*|ethrex_.*mempool.*\"}",
+    "frame_tx_admission_rejections": "{__name__=~\"nethermind_pending_transactions_frame_tx.*|ethrex_.*frame.*\"}",
+    "frame_tx_simulation": "{__name__=~\"nethermind_frame_tx_simulations.*|nethermind_frame_tx_revalidations.*\"}",
+    "frame_tx_evictions": "{__name__=~\"nethermind_frame_tx_.*evictions\"}",
+    "block_processing_time": "{__name__=~\"nethermind_.*processing.*|nethermind_recovery_queue_size|ethrex_.*block.*time.*\"}",
+    "peers": "{__name__=~\"nethermind_peers|ethrex_.*peers.*\"}",
+    "process_cpu_seconds": "process_cpu_seconds_total",
+    "process_resident_memory": "process_resident_memory_bytes",
+    "exceptions": "{__name__=~\"nethermind_.*exceptions.*|nethermind_.*errors.*\"}"
+  }
+}
