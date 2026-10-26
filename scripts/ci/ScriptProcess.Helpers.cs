@@ -9,17 +9,18 @@ static class ScriptProcess
     internal static async Task<(int Code, string Output, string Error)> Run(string executable, string[] arguments, CancellationToken cancellationToken, bool echo = false, string? workingDirectory = null, bool capture = true)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var redirect = !echo || capture;
         var start = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
+            RedirectStandardOutput = redirect,
+            RedirectStandardError = redirect,
             WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory
         };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start)!;
-        var stdout = Drain(process.StandardOutput, echo ? Console.Out : null, capture, cancellationToken);
-        var stderr = Drain(process.StandardError, echo ? Console.Error : null, capture, cancellationToken);
+        var stdout = redirect ? Drain(process.StandardOutput, echo ? Console.Out : null, capture, cancellationToken) : Task.FromResult("");
+        var stderr = redirect ? Drain(process.StandardError, echo ? Console.Error : null, capture, cancellationToken) : Task.FromResult("");
         try
         {
             await process.WaitForExitAsync(cancellationToken);

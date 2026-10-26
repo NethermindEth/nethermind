@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Benchmark;
@@ -88,7 +89,7 @@ public class ReceiptsSubscriptionFanOutBenchmarks
         SubscriptionFactory factory = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         factory.RegisterLogsSubscription(_monitor, _filterStore, blockTree, NullLogManager.Instance);
-        factory.RegisterTransactionReceiptsSubscription(_monitor, blockTree, NullLogManager.Instance);
+        factory.RegisterTransactionReceiptsSubscription(_monitor, blockTree, MainnetSpecProvider.Instance, NullLogManager.Instance);
 
         bool isLogs = Kind == SubscriptionType.EthSubscription.Logs;
         bool same = Filters == FilterMode.Same;
@@ -97,8 +98,8 @@ public class ReceiptsSubscriptionFanOutBenchmarks
         {
             (true, true) => Logs * Subscribers,
             (true, false) => Logs * (1 + unfiltered),
-            (false, true) => Receipts * Subscribers,
-            (false, false) => Math.Min(Receipts, Subscribers) + Receipts * unfiltered,
+            (false, true) => Subscribers,
+            (false, false) => Math.Min(Receipts, Subscribers) + unfiltered,
         };
         _subscriptions = [.. Enumerable.Range(0, Subscribers + unfiltered).Select(i => factory.CreateSubscription(new SerializingClient(this), Kind, (isLogs, same) switch
         {

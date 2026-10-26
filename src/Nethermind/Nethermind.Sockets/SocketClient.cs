@@ -96,7 +96,6 @@ public class SocketClient<TStream>(
         }
         finally
         {
-            await _stream.DisposeAsync();
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }

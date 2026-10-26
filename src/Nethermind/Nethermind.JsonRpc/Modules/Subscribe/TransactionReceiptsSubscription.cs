@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -17,10 +19,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 
 public class TransactionReceiptsSubscription : Subscription
 {
-    private static readonly TxGasInfo _emptyGasInfo = new();
-
     private readonly IReceiptMonitor _receiptMonitor;
     private readonly IBlockTree _blockTree;
+    private readonly ISpecProvider _specProvider;
     private readonly HashSet<ValueHash256>? _filterHashes;
     private readonly ReceiptsEventPayloadCache<HashSet<ValueHash256>>.Membership _payloads;
 
@@ -28,9 +29,10 @@ public class TransactionReceiptsSubscription : Subscription
         IJsonRpcDuplexClient jsonRpcDuplexClient,
         IReceiptMonitor receiptCanonicalityMonitor,
         IBlockTree blockTree,
+        ISpecProvider specProvider,
         ILogManager logManager,
         TransactionHashesFilter? filter)
-        : this(jsonRpcDuplexClient, receiptCanonicalityMonitor, blockTree, logManager, CreatePayloadCache(), filter)
+        : this(jsonRpcDuplexClient, receiptCanonicalityMonitor, blockTree, specProvider, logManager, CreatePayloadCache(), filter)
     {
     }
 
@@ -38,6 +40,7 @@ public class TransactionReceiptsSubscription : Subscription
         IJsonRpcDuplexClient jsonRpcDuplexClient,
         IReceiptMonitor receiptCanonicalityMonitor,
         IBlockTree blockTree,
+        ISpecProvider specProvider,
         ILogManager logManager,
         ReceiptsEventPayloadCache<HashSet<ValueHash256>> payloads,
         TransactionHashesFilter? filter)
@@ -45,10 +48,12 @@ public class TransactionReceiptsSubscription : Subscription
     {
         ArgumentNullException.ThrowIfNull(receiptCanonicalityMonitor);
         ArgumentNullException.ThrowIfNull(blockTree);
+        ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(logManager);
 
         _receiptMonitor = receiptCanonicalityMonitor;
         _blockTree = blockTree;
+        _specProvider = specProvider;
         _logger = logManager.GetClassLogger<TransactionReceiptsSubscription>();
 
         // Validate max 200 hashes
@@ -86,6 +91,10 @@ public class TransactionReceiptsSubscription : Subscription
             return;
         }
 
+        BlockHeader header = e.BlockHeader;
+        IReleaseSpec spec = _specProvider.GetSpec(header);
+        // Holds each receipt as a ReceiptForRpc, or as its SerializedJson when it is shared with other subscriptions.
+        using ArrayPoolList<object> receipts = new(_filterHashes is null ? e.TxReceipts.Length : Math.Min(_filterHashes.Count, e.TxReceipts.Length));
         int cumulativeLogIndex = 0;
         EventPayloads payloads = default;
         bool payloadsResolved = false;
@@ -109,32 +118,37 @@ public class TransactionReceiptsSubscription : Subscription
                 payloadsResolved = true;
             }
 
-            // Send the receipt
-            using JsonRpcResult result = CreateReceiptMessage(payloads, i, e, receipt, cumulativeLogIndex);
-            await JsonRpcDuplexClient.SendJsonRpcResult(result);
-
-            if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} sent receipt for tx {receipt.TxHash}.");
+            receipts.Add(CreateReceiptPayload(payloads, i, e, spec, cumulativeLogIndex));
 
             // Update cumulative log index
             cumulativeLogIndex += receipt.Logs?.Length ?? 0;
         }
+
+        if (receipts.Count == 0)
+        {
+            return;
+        }
+
+        using JsonRpcResult result = CreateSubscriptionMessage(receipts);
+        await JsonRpcDuplexClient.SendJsonRpcResult(result);
+
+        if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} sent {receipts.Count} receipts of block {header.Number}.");
     }
 
-    private JsonRpcResult CreateReceiptMessage(EventPayloads payloads, int position, ReceiptsEventArgs e, TxReceipt receipt, int cumulativeLogIndex)
+    private static object CreateReceiptPayload(EventPayloads payloads, int position, ReceiptsEventArgs e, IReleaseSpec spec, int cumulativeLogIndex)
     {
-        if (payloads.TryGet(position, out SerializedJson payload)) return CreateSubscriptionMessage(payload);
+        if (payloads.TryGet(position, out SerializedJson payload)) return payload;
 
-        // Create receipt for RPC
-        // Using basic TxGasInfo with null values since tests don't check gas info
+        TxReceipt receipt = e.TxReceipts[position];
         ReceiptForRpc receiptForRpc = new(
             receipt.TxHash!,
             receipt,
             e.BlockHeader.Timestamp,
-            _emptyGasInfo,
+            e.Transactions?[position].GetGasInfo(spec, e.BlockHeader) ?? default,
             cumulativeLogIndex
         );
 
-        return payloads.Stores ? CreateSubscriptionMessage(payloads.Store(position, receiptForRpc)) : CreateSubscriptionMessage(receiptForRpc);
+        return payloads.Stores ? payloads.Store(position, receiptForRpc) : receiptForRpc;
     }
 
     public override string Type => SubscriptionType.EthSubscription.TransactionReceipts;
