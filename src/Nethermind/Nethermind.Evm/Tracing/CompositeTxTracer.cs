@@ -43,6 +43,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
             IsTracingCallOutputMemory |= t.IsTracingCallOutputMemory;
             IsTracingCode |= t.IsTracingCode;
             IsTracingStack |= t.IsTracingStack;
+            IsTracingStackPushes |= t.IsTracingStackPushes;
             IsTracingBlockHash |= t.IsTracingBlockHash;
             IsTracingStorage |= t.IsTracingStorage;
             IsTracingAccess |= t.IsTracingAccess;
@@ -79,6 +80,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
     public bool IsTracingCallOutputMemory { get; }
     public bool IsTracingCode { get; }
     public bool IsTracingStack { get; private set; }
+    public bool IsTracingStackPushes { get; }
     public bool IsTracingBlockHash { get; }
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
@@ -97,19 +99,6 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
                 mask |= filter.InstructionMask;
             }
             return mask;
-        }
-    }
-
-    public bool ObservesStackPushes
-    {
-        get
-        {
-            for (int index = 0; index < _txTracers.Length; index++)
-            {
-                ITxTracer tracer = _txTracers[index];
-                if (tracer.IsTracingInstructions && tracer is not IInstructionTracingFilter { ObservesStackPushes: false }) return true;
-            }
-            return false;
         }
     }
 

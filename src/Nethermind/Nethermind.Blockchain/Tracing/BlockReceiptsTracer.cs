@@ -67,12 +67,12 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     public UInt256 InstructionMask => _currentTxTracer is IInstructionTracingFilter filter
         ? filter.InstructionMask
         : UInt256.MaxValue;
-    public bool ObservesStackPushes => _currentTxTracer is not IInstructionTracingFilter filter || filter.ObservesStackPushes;
     public bool IsTracingRefunds => _currentTxTracer.IsTracingRefunds;
     public bool IsTracingReturnData => _currentTxTracer.IsTracingReturnData;
     public bool IsTracingCallOutputMemory => _currentTxTracer.IsTracingCallOutputMemory;
     public bool IsTracingCode => _currentTxTracer.IsTracingCode;
     public bool IsTracingStack => _currentTxTracer.IsTracingStack;
+    public bool IsTracingStackPushes => _currentTxTracer.IsTracingStackPushes;
     public bool IsTracingState => _currentTxTracer.IsTracingState;
     public bool IsTracingStorage => _currentTxTracer.IsTracingStorage;
 

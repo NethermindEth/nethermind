@@ -364,7 +364,7 @@ public partial class VirtualMachine<TGasPolicy>(
         IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
         IsTracingOperationGasCost = TTracingInst.IsActive && txTracer.Any<ITraceOperationGasCost>(static tracer => tracer.IsTracingInstructions);
         IsTracingOperationStart = TTracingInst.IsActive && txTracer.Any<ITraceOperationStart>(static tracer => tracer.IsTracingInstructions);
-        _stackPushTracer = txTracer is IInstructionTracingFilter { ObservesStackPushes: false } ? null : txTracer;
+        _stackPushTracer = txTracer.IsTracingStackPushes ? txTracer : null;
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
         _isInstructionTraceActive = false;

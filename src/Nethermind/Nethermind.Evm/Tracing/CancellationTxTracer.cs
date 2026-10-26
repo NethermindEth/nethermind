@@ -64,8 +64,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         ? filter.InstructionMask
         : UInt256.MaxValue;
 
-    public bool ObservesStackPushes => innerTracer is not IInstructionTracingFilter filter || filter.ObservesStackPushes;
-
     public bool IsCancelable => true;
     public bool IsCancelled => token.IsCancellationRequested;
 
@@ -126,6 +124,9 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         get => _isTracingStack || innerTracer.IsTracingStack;
         init => _isTracingStack = value;
     }
+
+    // Pushes are also cancellation points while the inner tracer traces no instructions.
+    public bool IsTracingStackPushes => innerTracer.IsTracingInstructions ? innerTracer.IsTracingStackPushes : _isTracingInstructions;
 
     public bool IsTracingState
     {
