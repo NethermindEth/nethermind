@@ -19,7 +19,8 @@ namespace Nethermind.Eez.Execution;
 /// </summary>
 /// <remarks>
 /// The mint happens in <see cref="PayValue"/>, which the base processor runs after it snapshots state for the
-/// call, so a reverted or halted call discards the mint while the nonce increment and gas use remain.
+/// call, so a reverted or halted call discards the mint while gas use remains. Legacy envelopes advance
+/// the system nonce; native-v1 envelopes never change it.
 /// </remarks>
 public sealed class EezTransactionProcessor(
     EezChainRules rules,
@@ -36,12 +37,13 @@ public sealed class EezTransactionProcessor(
     private IReleaseSpec? _withoutFeeCollector;
 
     /// <remarks>
-    /// The wire format carries no gas, so the budget is set here: RollupX gives what the block has left, up to its cap,
-    /// which only the block being executed knows.
+    /// Legacy envelopes carry no gas and receive the position's budget here. Native-v1 envelopes encode
+    /// that budget; their exact value is checked without changing the received transaction.
     /// </remarks>
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
-        if (tx.IsEezSystemTransaction() && rules.SystemTransactionGas(VirtualMachine.BlockExecutionContext.Header) is { } gas)
+        if (tx.Type == EezConstants.SystemTxType && !rules.UsesNativeSystemTransactions &&
+            rules.SystemTransactionGas(VirtualMachine.BlockExecutionContext.Header) is { } gas)
         {
             tx.GasLimit = gas;
         }
@@ -51,9 +53,23 @@ public sealed class EezTransactionProcessor(
 
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas<EthereumGasPolicy> intrinsicGas) =>
-        tx.IsEezSystemTransaction() && !tx.HasSystemTransactionFields(rules)
+        tx.IsEezSystemTransaction() && (!tx.HasSystemTransactionFields(rules) ||
+            rules.UsesNativeSystemTransactions && (tx.ChainId != SpecProvider.ChainId || !rules.HasNativePositionGas(tx, header)))
             ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("EEZ system transaction with non-protocol sender, target, gas or fee fields")
             : base.ValidateStatic(tx, header, spec, opts, in intrinsicGas);
+
+    protected override SystemTransactionProcessor<EthereumGasPolicy> CreateSystemTransactionProcessor() =>
+        new EezSystemTransactionProcessor(this, _blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
+
+    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) =>
+        tx.Type == EezConstants.NativeSystemTxType
+            ? TransactionResult.Ok
+            : base.IncrementNonce(tx, header, spec, tracer, opts);
+
+    protected override void DecrementNonce(Transaction tx)
+    {
+        if (tx.Type != EezConstants.NativeSystemTxType) base.DecrementNonce(tx);
+    }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
@@ -100,5 +116,20 @@ public sealed class EezTransactionProcessor(
     private sealed class WithoutFeeCollector(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
     {
         public override Address? FeeCollector => null;
+    }
+
+    private sealed class EezSystemTransactionProcessor(
+        EezTransactionProcessor owner,
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider? specProvider,
+        IWorldState? worldState,
+        IVirtualMachine<EthereumGasPolicy>? virtualMachine,
+        ICodeInfoRepository? codeInfoRepository,
+        ILogManager? logManager)
+        : SystemTransactionProcessor<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    {
+        // Native-v1 shares Ethereum's system sender, but remains a metered transaction with normal call rollback.
+        protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts) =>
+            tx.IsEezSystemTransaction() ? owner.Execute(tx, tracer, opts) : base.Execute(tx, tracer, opts);
     }
 }

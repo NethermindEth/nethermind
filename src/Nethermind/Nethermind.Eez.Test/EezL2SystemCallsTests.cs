@@ -28,7 +28,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Eez.Test;
 
-public class EezL2SystemCallsTests
+public partial class EezL2SystemCallsTests
 {
     private static readonly Address[] ConsensusAccounts =
         [Eip4788Constants.BeaconRootsAddress, Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7251Constants.ConsolidationRequestPredeployAddress];

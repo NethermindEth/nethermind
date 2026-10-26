@@ -26,20 +26,31 @@ public sealed class EezChainRules
     public static readonly ulong RollupXSystemTxGasCap = Eip7825Constants.DefaultTxGasLimitCap;
 
     private static readonly Address[] RollupXBurned = [EezConstants.RollupXEezl2Address, EezConstants.SystemAddress];
+    private static readonly Address[] NativeRollupXBurned = [EezConstants.RollupXEezl2Address, Address.SystemUser];
 
     private readonly bool _skipConsensusLayerCalls;
 
-    private EezChainRules(Address eezl2Address, RollupXSchedule? schedule, Address? feeCollector = null, bool skipConsensusLayerCalls = false)
+    private EezChainRules(Address eezl2Address, RollupXSchedule? schedule, Address? feeCollector = null, bool skipConsensusLayerCalls = false,
+        TxType systemTransactionType = EezConstants.SystemTxType)
     {
         _skipConsensusLayerCalls = skipConsensusLayerCalls;
         Eezl2Address = eezl2Address;
         Schedule = schedule;
         FeeCollector = feeCollector;
+        SystemTransactionType = systemTransactionType;
     }
 
     public static EezChainRules Rollup0 { get; } = new(EezConstants.Eezl2Address, null);
 
     public static EezChainRules RollupX(RollupXSchedule schedule) => new(EezConstants.RollupXEezl2Address, schedule);
+
+    internal static EezChainRules NativeRollupX(RollupXSchedule schedule, Address feeCollector)
+    {
+        if (feeCollector == Address.Zero || feeCollector == Address.SystemUser || feeCollector == EezConstants.RollupXEezl2Address)
+            throw new ArgumentException("Native fee collector uses a reserved address.", nameof(feeCollector));
+        return new EezChainRules(EezConstants.RollupXEezl2Address, schedule, feeCollector,
+            systemTransactionType: EezConstants.NativeSystemTxType);
+    }
 
     /// <exception cref="InvalidDataException">The genesis has a <c>rollupX</c> section that breaks a RollupX rule.</exception>
     public static EezChainRules FromGenesis(JsonElement genesis)
@@ -88,13 +99,17 @@ public sealed class EezChainRules
     /// <summary>The fixed genesis recipient of ordinary transaction base fees; null preserves burn behavior.</summary>
     public Address? FeeCollector { get; }
 
+    internal TxType SystemTransactionType { get; }
+    internal bool UsesNativeSystemTransactions => SystemTransactionType == EezConstants.NativeSystemTxType;
+    internal Address SystemAddress => UsesNativeSystemTransactions ? Address.SystemUser : EezConstants.SystemAddress;
+
     public bool IsRollupX => Schedule is not null;
 
     /// <summary>
     /// The accounts whose balance RollupX zeroes before the first transaction of every block, after the EIP-2935
     /// history update: ether left on the execution manager or sent to the system address does not carry over.
     /// </summary>
-    public Address[] BurnedAtBlockStart => IsRollupX ? RollupXBurned : [];
+    public Address[] BurnedAtBlockStart => UsesNativeSystemTransactions ? NativeRollupXBurned : IsRollupX ? RollupXBurned : [];
 
     /// <summary>The EIP-1559 denominator the chain uses instead of the fork's, if any.</summary>
     public ulong? BaseFeeMaxChangeDenominator => IsRollupX ? RollupXBaseFeeMaxChangeDenominator : null;
@@ -105,7 +120,7 @@ public sealed class EezChainRules
     /// <summary>Whether blocks read deposits and request contracts; RollupX blocks never carry requests.</summary>
     public bool ReadsExecutionRequests => !IsRollupX && !_skipConsensusLayerCalls;
 
-    internal EezChainRules WithoutConsensusLayerCalls() => new(Eezl2Address, Schedule, FeeCollector, true);
+    internal EezChainRules WithoutConsensusLayerCalls() => new(Eezl2Address, Schedule, FeeCollector, true, SystemTransactionType);
 
     /// <summary>
     /// The gas a RollupX system transaction executes with, given the gas the block has used before it: what is left,
@@ -117,4 +132,8 @@ public sealed class EezChainRules
     /// <summary>Whether <paramref name="gasLimit"/> is one a system transaction of this chain can carry.</summary>
     public bool IsSystemTransactionGas(ulong gasLimit) =>
         IsRollupX ? gasLimit <= RollupXSystemTxGasCap : gasLimit == EezConstants.SystemTxGasLimit;
+
+    internal bool HasNativePositionGas(Transaction tx, BlockHeader header) =>
+        header.GasUsed <= header.GasLimit && tx.GasLimit == Math.Min(header.GasLimit - header.GasUsed,
+            tx.To == EezConstants.L1HistoryAddress ? EezConstants.L1HistoryTxGasCap : RollupXSystemTxGasCap);
 }
