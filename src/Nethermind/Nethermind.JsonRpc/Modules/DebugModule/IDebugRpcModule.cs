@@ -132,7 +132,8 @@ public interface IDebugRpcModule : IRpcModule
     /// </summary>
     /// <param name="file">Optional absolute local path (not a UNC or device path) of a new file to write the list to; an existing file is never overwritten.</param>
     /// <returns>The list of invalid blocks, or <c>null</c> when it was written to <paramref name="file"/>.</returns>
-    [JsonRpcMethod(Description = "Return list of invalid blocks. If an absolute local file path is given, writes the list to that new file and returns null.")]
+    [JsonRpcMethod(Description = "Return list of invalid blocks. If an absolute local file path is given, writes the list to that new file and returns null.",
+        ResponseDescription = "Each `block` carries full transaction objects.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null);
 
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks",

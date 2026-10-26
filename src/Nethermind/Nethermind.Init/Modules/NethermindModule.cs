@@ -5,6 +5,7 @@ using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -26,7 +27,6 @@ using Nethermind.EraE.Config;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -80,7 +80,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
             .AddModule(new KeyStoreModule())
-            .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
+            .AddSingleton<IMonitoringService, NoopMonitoringService>()
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             // Sequences deferred block-data flushing before state persistence (see IStatePersistenceBarrier).

@@ -231,7 +231,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Whether to enable eth_signTransaction. Disabled by default; enable only on nodes that explicitly manage unlocked accounts.", DefaultValue = "false")]
     bool EnableEthSignTransaction { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
+    [ConfigItem(Description = "The JSON-RPC server CORS origins. Also limits WebSocket connections: a handshake with an `Origin` header not in this list is refused with HTTP 403; handshakes without an `Origin` header are accepted.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
 
     [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on URLs without authentication, as host names without a port, for example `localhost` or `*.example.com`. Matching ignores the port and case. Requests with other host names get HTTP 403. Requests with an IP address or without a `Host` header are always accepted. `*` accepts all hosts. To stop web pages from calling the server, also limit `CorsOrigins`.", DefaultValue = "*")]
