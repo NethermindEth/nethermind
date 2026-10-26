@@ -786,10 +786,16 @@ public class PbtProtocolStorageClearTests
                 (byte)Instruction.JUMPI, .. call, (byte)Instruction.STOP, (byte)Instruction.JUMPDEST, (byte)Instruction.STOP];
         PbtConfig config = new()
         {
-            Enabled = true, InlineCompaction = true, CompactSize = 2, CompactionOffset = 0,
-            MinReorgDepth = 128, MaxInMemoryBaseSnapshotCount = int.MaxValue,
-            ArenaFileSizeBytes = 1048576, PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
-            PersistedSnapshotArenaPageCacheBytes = 0, ValidatePersistedSnapshot = true,
+            Enabled = true,
+            InlineCompaction = true,
+            CompactSize = 2,
+            CompactionOffset = 0,
+            MinReorgDepth = 128,
+            MaxInMemoryBaseSnapshotCount = int.MaxValue,
+            ArenaFileSizeBytes = 1048576,
+            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ValidatePersistedSnapshot = true,
         };
         IContainer Open() => PbtTestContext.BuildProductionContainer(config, builder =>
         {

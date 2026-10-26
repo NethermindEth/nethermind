@@ -148,13 +148,13 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Validate converted snapshots against their source.", DefaultValue = "false")]
     bool ValidatePersistedSnapshot { get; set; }
 
-    /// <summary>Persisted snapshot bloom bits per key; zero disables filtering. Defaults to 14.0.</summary>
-    [ConfigItem(Description = "Persisted snapshot bloom bits per key; zero disables filtering.", DefaultValue = "14.0")]
+    /// <summary>Persisted snapshot bloom bits per key; zero disables filtering. Defaults to 14.</summary>
+    [ConfigItem(Description = "Persisted snapshot bloom bits per key; zero disables filtering.", DefaultValue = "14")]
     double PersistedSnapshotBloomBitsPerKey { get; set; }
 
     /// <summary>Gets or sets the bits per key in the in-memory snapshot slot filter used by read-only execution.</summary>
     /// <remarks>Defaults to 14 bits per key. Set to 0 to disable the filter. Block processing does not use it.</remarks>
-    [ConfigItem(Description = "Bits per key for the negative filter over the slot runs held or cleared by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution, and lets those reads skip the per-snapshot lookups for a run no in-memory snapshot holds. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14.0")]
+    [ConfigItem(Description = "Bits per key for the negative filter over the slot runs held or cleared by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution, and lets those reads skip the per-snapshot lookups for a run no in-memory snapshot holds. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14")]
     double InMemorySnapshotBloomBitsPerKey { get; set; }
 
     [ConfigItem(Description = "Rebuild the PBT state from an existing preimage-flat state database, then exit. Requires a fully synced FlatLayout.PreimageFlat 'flat' database (and the 'code' database) in the data directory.", DefaultValue = "false")]
@@ -217,31 +217,31 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "TrieNodeLogMergeLag of the second-level trie node log, or -1 to disable it. Each merged trie node log generation is copied, deduplicated, into the second-level log instead of RocksDB; it has the same size and backlog settings as the first, an in-memory index of 1/16 of its size for both partitions, and merges its own generations into RocksDB once this many newer ones are sealed. The surviving groups are less likely to be rewritten, and the log's index answers their reads faster than RocksDB.", DefaultValue = "1")]
     int TrieNodeLogSecondLevelMergeLag { get; set; }
 
-    [ConfigItem(Description = "RocksDB options shared by every column of the pbt database. Applied on top of the global database options, and overridden in turn by the per-column options below.", HiddenFromDocs = true)]
+    /// <summary>RocksDB options shared by every column of the pbt database. Applied on top of the global database options, and overridden in turn by the per-column options below.</summary>
     string RocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt metadata column.", HiddenFromDocs = true)]
+    /// <summary>RocksDB options of the pbt metadata column.</summary>
     string MetadataRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options shared by the pbt flat entry columns (accounts, storages, codes and code leaves). Applied after the shared options and before each column's own options.", HiddenFromDocs = true)]
+    /// <summary>RocksDB options shared by the pbt flat entry columns (accounts, storages, codes and code leaves). Applied after the shared options and before each column's own options.</summary>
     string FlatEntriesRocksDbOptions { get; set; }
 
     [ConfigItem(Description = "RocksDB options applied last to every pbt flat entry column, overriding all the other pbt options of those columns.", DefaultValue = "")]
     string FlatEntriesAdditionalRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt whole accounts column, keyed by the PBT address hash.", HiddenFromDocs = true)]
+    /// <summary>RocksDB options of the pbt whole accounts column, keyed by the PBT address hash.</summary>
     string AccountsRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt whole bytecode column, keyed by code hash.", HiddenFromDocs = true)]
+    /// <summary>RocksDB options of the pbt whole bytecode column, keyed by code hash.</summary>
     string CodesRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the unused pbt code-chunk leaves column, kept so existing databases still open.", HiddenFromDocs = true)]
+    /// <summary>RocksDB options of the unused pbt code-chunk leaves column, kept so existing databases still open.</summary>
     string CodeLeavesRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt storage words column, keyed by the address hash, zone and remaining bytes of the EIP-8297 storage key.", HiddenFromDocs = true)]
+    /// <summary>RocksDB options of the pbt storage words column, keyed by the address hash, zone and remaining bytes of the EIP-8297 storage key.</summary>
     string StoragesRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options shared by the pbt account, code and storage node-group columns, keyed by boundary path.", HiddenFromDocs = true)]
+    /// <summary>RocksDB options shared by the pbt account, code and storage node-group columns, keyed by boundary path.</summary>
     string NodeGroupsRocksDbOptions { get; set; }
 
     [ConfigItem(Description = "RocksDB options applied last to every pbt node-group column, overriding all the other pbt options of those columns.", DefaultValue = "")]

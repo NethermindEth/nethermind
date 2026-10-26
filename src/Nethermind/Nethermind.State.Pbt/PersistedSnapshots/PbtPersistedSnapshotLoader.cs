@@ -3,11 +3,12 @@
 
 using Autofac.Features.AttributeFilters;
 using System.Runtime.ExceptionServices;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.Snapshot;
 
