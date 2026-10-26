@@ -1,0 +1,41 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Test.ForkChoice;
+using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
+using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
+
+namespace Nethermind.BeaconChain.Test.Crypto;
+
+[HardTimeout(60_000)]
+public class ProposerSignatureBoundsTests
+{
+    [TestCase(-1, false, null, TestName = "last_validator_with_a_cached_key_verifies")]
+    [TestCase(0, false, "is not a validator index", TestName = "index_past_the_registry_is_refused")]
+    [TestCase(-1, true, "has no cached public key", TestName = "index_past_the_pubkey_cache_is_refused")]
+    public void Fulu_proposer_signature_check_bounds_the_proposer_index(int indexFromRegistryEnd, bool cacheLacksLastValidator, string? refusal)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        BeaconStateFulu state = chain.AnchorState;
+        Validator[] validators = state.Validators!;
+        PubkeyCache pubkeys = new();
+        pubkeys.Build(cacheLacksLastValidator ? validators[..^1] : validators);
+
+        int proposerIndex = validators.Length + indexFromRegistryEnd;
+        BeaconBlock block = TestChain.CreateBlock(1, chain.AnchorRoot).Message!;
+        block.ProposerIndex = (ulong)proposerIndex;
+        Hash256 domain = state.GetDomain(DomainType.BeaconProposer, 0);
+        BlsSignature signature = Sign(ValidatorKey(proposerIndex), Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block), domain));
+
+        if (refusal is null)
+            Assert.That(SignatureSets.VerifyProposerSignature(state, block, signature, pubkeys), Is.True);
+        else
+            Assert.That(() => SignatureSets.VerifyProposerSignature(state, block, signature, pubkeys),
+                Throws.TypeOf<BeaconStateException>().With.Message.Contains(refusal));
+    }
+}

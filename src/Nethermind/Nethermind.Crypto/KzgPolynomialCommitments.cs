@@ -130,4 +130,27 @@ public static partial class KzgPolynomialCommitments
     /// <param name="blob">The input blob data.</param>
     /// <param name="cells">The output span of size <c>CELLS_PER_EXT_BLOB * BYTES_PER_CELL</c> (262144 bytes) where cells will be written.</param>
     public static void ComputeCells(ReadOnlySpan<byte> blob, Span<byte> cells) => Ckzg.ComputeCells(cells, blob, CkzgSetup);
+
+    /// <summary>
+    /// EIP-7594 <c>verify_cell_kzg_proof_batch</c>: verifies <paramref name="count"/> cells, each against its own commitment and proof.
+    /// </summary>
+    /// <param name="commitments">The <c>BYTES_PER_COMMITMENT</c> commitment of each cell, concatenated.</param>
+    /// <param name="cellIndices">The extended-blob index of each cell.</param>
+    /// <param name="cells">The <c>BYTES_PER_CELL</c> cells, concatenated.</param>
+    /// <param name="proofs">The <c>BYTES_PER_PROOF</c> proof of each cell, concatenated.</param>
+    /// <param name="count">The number of cells.</param>
+    /// <returns><c>true</c> if every proof is valid.</returns>
+    public static bool VerifyCellProofBatch(ReadOnlySpan<byte> commitments, ReadOnlySpan<ulong> cellIndices, ReadOnlySpan<byte> cells, ReadOnlySpan<byte> proofs, int count) =>
+        Ckzg.VerifyCellKzgProofBatch(commitments, cellIndices, cells, proofs, count, CkzgSetup);
+
+    /// <summary>
+    /// EIP-7594 <c>recover_cells_and_kzg_proofs</c>: rebuilds every cell and proof of an extended blob from at least half of its cells.
+    /// </summary>
+    /// <param name="recoveredCells">The output span of size <c>CELLS_PER_EXT_BLOB * BYTES_PER_CELL</c>.</param>
+    /// <param name="recoveredProofs">The output span of size <c>CELLS_PER_EXT_BLOB * BYTES_PER_PROOF</c>.</param>
+    /// <param name="cellIndices">The extended-blob index of each held cell.</param>
+    /// <param name="cells">The held <c>BYTES_PER_CELL</c> cells, concatenated.</param>
+    /// <param name="count">The number of held cells.</param>
+    public static void RecoverCellsAndProofs(Span<byte> recoveredCells, Span<byte> recoveredProofs, ReadOnlySpan<ulong> cellIndices, ReadOnlySpan<byte> cells, int count) =>
+        Ckzg.RecoverCellsAndKzgProofs(recoveredCells, recoveredProofs, cellIndices, cells, count, CkzgSetup);
 }

@@ -1,0 +1,11 @@
+<Project>
+  <Import Project="../Ethereum.ConsensusSpec.Test/Ethereum.ConsensusSpec.Test.csproj" />
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);MINIMAL_PRESET</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Ethereum.ConsensusSpec.Test/*.cs" />
+    <ProjectReference Remove="../Nethermind.BeaconChain/Nethermind.BeaconChain.csproj" />
+    <ProjectReference Include="../Nethermind.BeaconChain.Minimal/Nethermind.BeaconChain.Minimal.csproj" />
+  </ItemGroup>
+</Project>
