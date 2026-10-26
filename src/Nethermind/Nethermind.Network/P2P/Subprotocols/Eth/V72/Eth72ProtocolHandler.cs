@@ -707,17 +707,18 @@ public class Eth72ProtocolHandler(
         long excess;
         lock (_cellRequestRatioLock)
         {
-            excess = totalRequests - _forgivenCellRequests - announcements * RequestToAnnouncementRatioThreshold;
             // A peer that fetches full blobs announces them back only after admission, so its bursts come before the
-            // announcements. Excess requests drain over time, but idle time gives no credit beyond an empty bucket.
+            // announcements. Excess requests drain over time, but idle time gives no credit beyond an empty bucket,
+            // so only the excess from before this batch drains.
             long refill = (long)((now - _cellRequestBurstRefilledAt).TotalSeconds * CellRequestBurstRefillPerSecond);
             if (refill > 0)
             {
-                _cellRequestBurstRefilledAt = now;
-                long forgiven = Math.Min(refill, Math.Max(0, excess));
-                _forgivenCellRequests += forgiven;
-                excess -= forgiven;
+                _cellRequestBurstRefilledAt += TimeSpan.FromSeconds((double)refill / CellRequestBurstRefillPerSecond);
+                long previousExcess = totalRequests - requestCount - _forgivenCellRequests - announcements * RequestToAnnouncementRatioThreshold;
+                _forgivenCellRequests += Math.Min(refill, Math.Max(0, previousExcess));
             }
+
+            excess = totalRequests - _forgivenCellRequests - announcements * RequestToAnnouncementRatioThreshold;
         }
 
         if (excess < CellRequestBurstAllowance)

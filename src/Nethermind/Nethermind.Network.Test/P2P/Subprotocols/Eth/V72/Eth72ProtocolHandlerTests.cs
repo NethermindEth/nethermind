@@ -947,7 +947,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void normal_mode_should_request_full_cells_when_too_few_peers_to_sample()
+    public void normal_mode_should_request_full_cells_when_too_few_peers_to_sample([Values] bool fullAnnouncement)
     {
         RecreateHandler();
         _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
@@ -960,37 +960,22 @@ public class Eth72ProtocolHandlerTests
             [(byte)TxType.Blob],
             [1024],
             [tx.Hash!],
-            BlobCellMask.Full.ToBytes());
+            (fullAnnouncement ? BlobCellMask.Full : BlobCellMask.FromIndices([2, 7, 9])).ToBytes());
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
 
-        _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
-            m.Hashes.Length == 1 &&
-            m.Hashes[0] == tx.Hash &&
-            m.CellMask.SequenceEqual(BlobCellMask.Full.ToBytes())));
-    }
-
-    [Test]
-    public void normal_mode_should_wait_for_partial_announcement_when_too_few_peers_to_sample()
-    {
-        RecreateHandler();
-        _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
-        Transaction tx = BuildSamplerBlobTransaction();
-        _sparseBlobPoolPeerRegistry.RemovePeer(_idlePeer);
-        _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
-            .Returns(AnnounceResult.RequestRequired);
-
-        using NewPooledTransactionHashesMessage72 message = new(
-            [(byte)TxType.Blob],
-            [1024],
-            [tx.Hash!],
-            BlobCellMask.FromIndices([2, 7, 9]).ToBytes());
-
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
-
-        _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
+        if (fullAnnouncement)
+        {
+            _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
+                m.Hashes.Length == 1 &&
+                m.Hashes[0] == tx.Hash &&
+                m.CellMask.SequenceEqual(BlobCellMask.Full.ToBytes())));
+        }
+        else
+        {
+            _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
+        }
     }
 
     [Test]
@@ -1028,6 +1013,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void sampler_should_fetch_full_cells_when_second_provider_wait_ends([Values] bool peerLeaves)
     {
+        ManualTimestamper clock = UseManualClock();
         Transaction tx = AnnounceParkedSamplerTransaction();
         if (peerLeaves)
         {
@@ -1035,10 +1021,10 @@ public class Eth72ProtocolHandlerTests
         }
 
         ISparseBlobPoolPeer handler = _handler;
-        handler.MaintainSparseBlobState(DateTimeOffset.UtcNow + Eth72ProtocolHandler.SamplerProviderWait / 2);
+        handler.MaintainSparseBlobState(clock.UtcNowOffset + Eth72ProtocolHandler.SamplerProviderWait / 2);
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
 
-        handler.MaintainSparseBlobState(DateTimeOffset.UtcNow + Eth72ProtocolHandler.SamplerProviderWait * 2);
+        handler.MaintainSparseBlobState(clock.UtcNowOffset + Eth72ProtocolHandler.SamplerProviderWait * 2);
 
         _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
             m.Hashes.Length == 1 &&
@@ -1900,40 +1886,94 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_refill_cell_request_burst_allowance_over_time()
+    public void should_refill_cell_request_burst_allowance_over_time([Values] bool batched)
     {
-        HandleIncomingStatusMessage();
-        typeof(Eth72ProtocolHandler)
-            .GetField("_requestRatioWarmupEndsAt", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(_handler, DateTimeOffset.MinValue);
-        BlobCellMask requestedMask = BlobCellMask.FromIndices([1]);
+        ManualTimestamper clock = StartCellRequestRatioCheck();
         int hashIndex = 0;
 
-        void SendRequests(int count)
-        {
-            for (int i = 0; i < count; i++, hashIndex++)
-            {
-                using GetCellsMessage72 request = new(1000 + hashIndex, [HashFromInt(hashIndex)], requestedMask.ToBytes());
-                HandleZeroMessage(request, Eth72MessageCode.GetCells);
-            }
-        }
+        SendCellRequests(ref hashIndex, Eth72ProtocolHandler.CellRequestBurstAllowance - 1, batched);
+        // Much longer than one burst takes to drain; the extra idle time must give no credit, also not to the next batch.
+        clock.Add(TimeSpan.FromSeconds(10.0 * Eth72ProtocolHandler.CellRequestBurstAllowance / Eth72ProtocolHandler.CellRequestBurstRefillPerSecond));
 
-        SendRequests(Eth72ProtocolHandler.CellRequestBurstAllowance - 1);
-        // Much longer than one burst takes to drain; the extra idle time must give no credit.
-        double idleSeconds = 10.0 * Eth72ProtocolHandler.CellRequestBurstAllowance / Eth72ProtocolHandler.CellRequestBurstRefillPerSecond;
-        typeof(Eth72ProtocolHandler)
-            .GetField("_cellRequestBurstRefilledAt", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(_handler, DateTimeOffset.UtcNow - TimeSpan.FromSeconds(idleSeconds));
-
-        // The first of these requests also drains, so the bucket holds one less than this batch.
-        SendRequests(Eth72ProtocolHandler.CellRequestBurstAllowance);
+        SendCellRequests(ref hashIndex, Eth72ProtocolHandler.CellRequestBurstAllowance - 1, batched);
         _session.DidNotReceive().InitiateDisconnect(DisconnectReason.UselessPeer, Arg.Any<string>());
 
-        SendRequests(1);
+        SendCellRequests(ref hashIndex, 1, batched);
+        AssertCellRequestRatioDisconnect();
+    }
+
+    [Test]
+    public void should_keep_fractional_cell_request_burst_refill()
+    {
+        ManualTimestamper clock = StartCellRequestRatioCheck();
+        int hashIndex = 0;
+        SendCellRequests(ref hashIndex, Eth72ProtocolHandler.CellRequestBurstAllowance - 1, batched: true);
+
+        // Each step refills 1.5 requests: 10 steps drain 15, so 5 requests more than the steps send fit again.
+        const int steps = 10;
+        for (int i = 0; i < steps; i++)
+        {
+            clock.Add(TimeSpan.FromSeconds(1.5 / Eth72ProtocolHandler.CellRequestBurstRefillPerSecond));
+            SendCellRequests(ref hashIndex, 1, batched: true);
+        }
+
+        SendCellRequests(ref hashIndex, 5, batched: true);
+        _session.DidNotReceive().InitiateDisconnect(DisconnectReason.UselessPeer, Arg.Any<string>());
+
+        SendCellRequests(ref hashIndex, 1, batched: true);
+        AssertCellRequestRatioDisconnect();
+    }
+
+    /// <summary>Ends the request-ratio warmup and drives the handler from a manual clock.</summary>
+    private ManualTimestamper StartCellRequestRatioCheck()
+    {
+        HandleIncomingStatusMessage();
+        ManualTimestamper clock = UseManualClock();
+        typeof(Eth72ProtocolHandler)
+            .GetField("_requestRatioWarmupEndsAt", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(_handler, clock.UtcNowOffset);
+        typeof(Eth72ProtocolHandler)
+            .GetField("_cellRequestBurstRefilledAt", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(_handler, clock.UtcNowOffset);
+        return clock;
+    }
+
+    private ManualTimestamper UseManualClock()
+    {
+        ManualTimestamper clock = new();
+        typeof(SyncPeerProtocolHandlerBase)
+            .GetField("_timestamper", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(_handler, clock);
+        return clock;
+    }
+
+    private void SendCellRequests(ref int hashIndex, int count, bool batched)
+    {
+        byte[] requestedMask = BlobCellMask.FromIndices([1]).ToBytes();
+        if (batched)
+        {
+            ValueHash256[] hashes = new ValueHash256[count];
+            for (int i = 0; i < count; i++, hashIndex++)
+            {
+                hashes[i] = HashFromInt(hashIndex);
+            }
+
+            using GetCellsMessage72 request = new(1000 + hashIndex, hashes, requestedMask);
+            HandleZeroMessage(request, Eth72MessageCode.GetCells);
+            return;
+        }
+
+        for (int i = 0; i < count; i++, hashIndex++)
+        {
+            using GetCellsMessage72 request = new(1000 + hashIndex, [HashFromInt(hashIndex)], requestedMask);
+            HandleZeroMessage(request, Eth72MessageCode.GetCells);
+        }
+    }
+
+    private void AssertCellRequestRatioDisconnect() =>
         _session.Received(1).InitiateDisconnect(
             DisconnectReason.UselessPeer,
             Arg.Is<string>(details => details.Contains("request-to-announce ratio exceeded", StringComparison.Ordinal)));
-    }
 
     [Test]
     public void should_account_for_discarded_get_cells_hashes_when_enforcing_request_ratio()
