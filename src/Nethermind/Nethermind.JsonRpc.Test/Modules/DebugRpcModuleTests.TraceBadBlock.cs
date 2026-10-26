@@ -30,14 +30,25 @@ public partial class DebugRpcModuleTests
         Assert.That(json["error"], Is.Null, actual);
         JArray entries = (JArray)json["result"]!;
         Assert.That(entries, Has.Count.EqualTo(valid.Transactions.Length));
-        Assert.That(actual, Is.EqualTo(expected));
         if (tracer is ThrowingResultJavaScriptTracer)
         {
+            JToken expectedJson = JToken.Parse(expected);
+            foreach (JObject entry in expectedJson["result"]!)
+            {
+                Assert.That(entry["result"]?.Type, Is.EqualTo(JTokenType.Null));
+                entry.Remove("result");
+            }
+            expected = expectedJson.ToString(Newtonsoft.Json.Formatting.None);
             foreach (JToken entry in entries)
             {
-                Assert.That((string?)entry["error"] ?? "", Does.Contain("result failure"), actual);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((string?)entry["error"] ?? "", Does.Contain("result failure"), actual);
+                    Assert.That(entry["result"], Is.Null, actual);
+                }
             }
         }
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]

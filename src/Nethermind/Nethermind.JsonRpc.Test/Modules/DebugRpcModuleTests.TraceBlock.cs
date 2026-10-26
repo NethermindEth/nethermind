@@ -759,7 +759,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That((string?)traces[i]["txHash"], Is.EqualTo(context.Blockchain.BlockTree.Head.Transactions[i].Hash!.ToString()));
                 Assert.That((string?)traces[i]["error"], Does.Contain("unknownTracer"));
-                Assert.That(traces[i]["result"], Is.Null);
+                Assert.That(traces[i]["result"]?.Type, Is.EqualTo(JTokenType.Null));
             }
         }
     }
@@ -1056,7 +1056,8 @@ public partial class DebugRpcModuleTests
                 if (failAt < 0 || transactionIndex == failAt)
                 {
                     Assert.That((string?)entries[index]["error"], Is.Not.Null.And.Not.Empty, response);
-                    Assert.That(entries[index]["result"], Is.Null);
+                    if (method == "debug_traceBlock") Assert.That(entries[index]["result"], Is.Null);
+                    else Assert.That(entries[index]["result"]?.Type, Is.EqualTo(JTokenType.Null));
                     if (invalidRead is not null)
                     {
                         string expectedError = failure switch
@@ -1316,7 +1317,7 @@ public partial class DebugRpcModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((string?)entry["error"] ?? "", Does.Contain("mux result failure"), response);
-                Assert.That(entry["result"], Is.Null, response);
+                Assert.That(entry["result"]?.Type, Is.EqualTo(JTokenType.Null), response);
             }
         }
     }
