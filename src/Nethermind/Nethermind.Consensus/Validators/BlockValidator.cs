@@ -13,6 +13,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -141,7 +142,7 @@ public class BlockValidator(
     {
         if (spec.IsEip7934Enabled)
         {
-            int encodedSize = block.EncodedSize ?? _blockDecoder.GetLength(block, RlpBehaviors.None);
+            int encodedSize = block.EncodedSize ??= _blockDecoder.GetLength(block, RlpBehaviors.None);
             if (encodedSize > spec.Eip7934MaxRlpBlockSize)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} RLP encoded size of {encodedSize} bytes exceeds the max limit of {spec.Eip7934MaxRlpBlockSize} bytes");
@@ -338,6 +339,8 @@ public class BlockValidator(
     {
         Transaction[] transactions = block.Transactions;
         bool isEip2780Enabled = spec.IsEip2780Enabled;
+        bool isEip7778Enabled = spec.IsEip7778Enabled;
+        ulong minimumBlockGas = 0;
 
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
         {
@@ -363,9 +366,37 @@ public class BlockValidator(
                 errorMessage = isWellFormed.Error;
                 return false;
             }
+
+            if (isEip7778Enabled)
+            {
+                minimumBlockGas = minimumBlockGas.SaturatingAdd(MinimumBlockGas(transaction, spec));
+                if (minimumBlockGas > block.Header.GasLimit)
+                {
+                    errorMessage = BlockErrorMessages.MinimumBlockGasAboveGasLimit(minimumBlockGas, block.Header.GasLimit);
+                    if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {errorMessage}");
+                    return false;
+                }
+            }
         }
 
         return true;
+    }
+
+    /// <summary>The least execution-dimension block gas <paramref name="tx"/> can charge, known before it runs.</summary>
+    /// <remarks>
+    /// A lower bound only under EIP-7778, where refunds no longer reduce block gas: a transaction then charges at
+    /// least its intrinsic execution gas or its EIP-7623 floor. Summed over the body, it rejects a block that cannot
+    /// fit its gas limit before any of it executes. Frame and system transactions are left out rather than priced.
+    /// </remarks>
+    private static ulong MinimumBlockGas(Transaction tx, IReleaseSpec spec)
+    {
+        if (tx.SupportsFrames || tx.IsSystem()) return 0;
+
+        // An unrecovered sender is priced as a transfer to someone else; the EIP-2780 self-transfer price is the lower one.
+        IntrinsicGas<EthereumGasPolicy> gas = spec.IsEip2780Enabled && tx.SenderAddress is null
+            ? EthereumGasPolicy.CalculateIntrinsicGasAsEip2780SelfTransfer(tx, spec)
+            : EthereumGasPolicy.CalculateIntrinsicGas(tx, spec);
+        return Math.Max(gas.Standard.Value, gas.FloorGas.Value);
     }
 
     protected virtual bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error)

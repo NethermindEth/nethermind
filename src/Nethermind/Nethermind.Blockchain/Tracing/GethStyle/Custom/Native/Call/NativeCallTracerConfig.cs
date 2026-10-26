@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 
@@ -16,7 +15,7 @@ public class NativeCallTracerConfig
 
     internal static NativeCallTracerConfig FromJson(JsonElement? json, JsonSerializerOptions options)
     {
-        JsonConfig? config = TypeInfoJsonSerializer.Deserialize<JsonConfig>(json, options);
+        JsonConfig? config = GethLikeNativeTracerFactory.ParseConfig<JsonConfig>(json, options);
         return config is null ? DefaultConfig : new()
         {
             OnlyTopCall = config.OnlyTopCall ?? false,

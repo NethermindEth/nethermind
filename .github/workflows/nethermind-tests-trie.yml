@@ -37,72 +37,82 @@ jobs:
         {"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""}]}
 
   tests:
-    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.project.list && 25 || 20 }}
     env:
       DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/RunTestProjects.cs).
         project:
-          - Nethermind.Abi.Test
-          - Nethermind.Analyzers.Test
-          - Nethermind.Api.Test
-          - Nethermind.AuRa.Test
-          - Nethermind.BalRecorder.Test
-          - Nethermind.Blockchain.Test
-          - Nethermind.CensorshipDetector.Plugin.Test
-          - Nethermind.Clique.Test
-          - Nethermind.Config.Test
-          - Nethermind.Consensus.Test
-          - Nethermind.Core.Test
-          - Nethermind.Db.Test
-          - Nethermind.Era1.Test
-          - Nethermind.EraE.Test
-          - Nethermind.Ethash.Test
-          - Nethermind.EthStats.Test
-          - Nethermind.Evm.Test
-          - Nethermind.Facade.Test
-          - Nethermind.Flashbots.Test
-          - Nethermind.HealthChecks.Test
-          - Nethermind.History.Test
-          - Nethermind.Hive.Test
-          - Nethermind.Init.Snapshot.Test
-          - Nethermind.Init.Test
           - Nethermind.JsonRpc.Test
-          - Nethermind.JsonRpc.TraceStore.Test
-          - Nethermind.KeyStore.Test
-          - Nethermind.Logging.NLog.Test
-          - Nethermind.Merge.AuRa.Test
-          - Nethermind.Merge.Plugin.Test
-          - Nethermind.Mining.Test
-          - Nethermind.Monitoring.Test
-          - Nethermind.Network.Discovery.Test
-          - Nethermind.Network.Dns.Test
-          - Nethermind.Network.Enr.Test
-          - Nethermind.Network.Test
-          - Nethermind.OpcodeTracing.Plugin.Test
-          - Nethermind.Optimism.Test
-          - Nethermind.PortfolioViewer.Plugin.Test
-          - Nethermind.Runner.Test
-          - Nethermind.SendPolicy.Plugin.Test
-          - Nethermind.Serialization.Ssz.Test
-          - Nethermind.Serialization.SszGenerator.Test
-          - Nethermind.Shutter.Test
-          - Nethermind.Sockets.Test
-          - Nethermind.Specs.Test
-          - Nethermind.State.Flat.History.Test
-          - Nethermind.State.Flat.Test
-          - Nethermind.State.Test
-          - Nethermind.State.Test.Runner.Test
-          - Nethermind.StateDiffsWriter.Test
-          - Nethermind.Taiko.Test
-          - Nethermind.Trie.Test
+          - Nethermind.Mcp.Plugin.Test
           - Nethermind.TxPool.Test
-          - Nethermind.Wallet.Test
-          - Nethermind.Xdc.Test
+          - name: Nethermind tests 1
+            list: >-
+              Nethermind.AuRa.Test
+              Nethermind.Db.Test
+              Nethermind.Era1.Test
+              Nethermind.Facade.Test
+              Nethermind.Network.Test
+              Nethermind.Specs.Test
+              Nethermind.State.Flat.History.Test
+              Nethermind.Wallet.Test
+          - name: Nethermind tests 2
+            list: >-
+              Nethermind.Blockchain.Test
+              Nethermind.Consensus.Test
+              Nethermind.Flashbots.Test
+              Nethermind.Init.Snapshot.Test
+              Nethermind.KeyStore.Test
+              Nethermind.Optimism.Test
+              Nethermind.State.Flat.Test
+              Nethermind.State.Test
+          - name: Nethermind tests 3
+            list: >-
+              Nethermind.Abi.Test
+              Nethermind.Analyzers.Test
+              Nethermind.Api.Test
+              Nethermind.BalRecorder.Test
+              Nethermind.CensorshipDetector.Plugin.Test
+              Nethermind.Clique.Test
+              Nethermind.Config.Test
+              Nethermind.Core.Test
+              Nethermind.EraE.Test
+              Nethermind.EthStats.Test
+              Nethermind.Ethash.Test
+              Nethermind.HealthChecks.Test
+              Nethermind.History.Test
+              Nethermind.Hive.Test
+              Nethermind.Init.Test
+              Nethermind.JsonRpc.TraceStore.Test
+              Nethermind.Logging.NLog.Test
+              Nethermind.Merge.Plugin.Test
+              Nethermind.Mining.Test
+              Nethermind.Monitoring.Test
+              Nethermind.Network.Dns.Test
+              Nethermind.Network.Enr.Test
+              Nethermind.OpcodeTracing.Plugin.Test
+              Nethermind.PortfolioViewer.Plugin.Test
+              Nethermind.Runner.Test
+              Nethermind.SendPolicy.Plugin.Test
+              Nethermind.Serialization.Ssz.Test
+              Nethermind.Serialization.SszGenerator.Test
+              Nethermind.Sockets.Test
+              Nethermind.State.Test.Runner.Test
+              Nethermind.StateDiffsWriter.Test
+          - name: Nethermind tests 4
+            list: >-
+              Nethermind.Evm.Test
+              Nethermind.Merge.AuRa.Test
+              Nethermind.Network.Discovery.Test
+              Nethermind.Shutter.Test
+              Nethermind.Taiko.Test
+              Nethermind.Trie.Test
+              Nethermind.Xdc.Test
         chunk: ['']
         include: # Synchronization.Test is chunked on every runner in the main suite — its unchunked variant hits the wall.
           - { project: Nethermind.Synchronization.Test, chunk: 1of4 }
@@ -114,103 +124,96 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
         with:
           variant: release
 
-      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+      - name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
-        working-directory: src/Nethermind/${{ matrix.project }}
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
-        run: |
-          # A hung test host is killed with a dump of every thread instead of running into the job
-          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
-          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
-          # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
-          # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          ../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults \
-            --hangdump --hangdump-timeout 8m --hangdump-type Mini \
-            --crashdump --crashdump-type Mini --crash-report-if-supported
+          PROJECTS: ${{ matrix.project.list || matrix.project }}
+          CRASH_RETRY: false
+        run: dotnet run --file scripts/ci/RunTestProjects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
-          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
+          name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
           path: |
-            src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
-            src/Nethermind/${{ matrix.project }}/TestResults/*_crash.*
+            src/Nethermind/*/TestResults/*_hang.*
+            src/Nethermind/*/TestResults/*_crash.*
           if-no-files-found: ignore
           retention-days: 3
 
   tests-spec:
-    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      # Only these EF fixture tests read the src/tests submodule at runtime.
-      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
+    timeout-minutes: ${{ matrix.project.list && 25 || 20 }}
     strategy:
       fail-fast: false
       matrix:
         project:
-          - Ethereum.Abi.Test
-          - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Test
-          - Ethereum.Difficulty.Test
-          - Ethereum.HexPrefix.Test
-          - Ethereum.KeyAddress.Test
-          - Ethereum.KeyStore.Test
-          - Ethereum.Legacy.Blockchain.Block.Test
-          - Ethereum.Legacy.Transition.Test
-          - Ethereum.Legacy.VM.Test
-          - Ethereum.PoW.Test
-          - Ethereum.Rlp.Test
-          - Ethereum.Ssz.Test
-          - Ethereum.Transaction.Test
-          - Ethereum.Trie.Test
+          - name: Ethereum fixture tests
+            fixtures: true  # these read the src/tests submodule at runtime
+            list: >-
+              Ethereum.Blockchain.Block.Test
+              Ethereum.Legacy.Blockchain.Block.Test
+              Ethereum.Legacy.Transition.Test
+              Ethereum.Legacy.VM.Test
+          - name: Ethereum tests
+            list: >-
+              Ethereum.Abi.Test
+              Ethereum.Basic.Test
+              Ethereum.Difficulty.Test
+              Ethereum.HexPrefix.Test
+              Ethereum.KeyAddress.Test
+              Ethereum.KeyStore.Test
+              Ethereum.PoW.Test
+              Ethereum.Rlp.Test
+              Ethereum.Ssz.Test
+              Ethereum.Transaction.Test
+              Ethereum.Trie.Test
         chunk: ['']
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Fetch submodules
-        if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
+        if: matrix.project.fixtures
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
         with:
           variant: release
 
-      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+      - name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
-        working-directory: src/Nethermind/${{ matrix.project }}
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
-        run: |
-          ../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults \
-            --hangdump --hangdump-timeout 8m --hangdump-type Mini \
-            --crashdump --crashdump-type Mini --crash-report-if-supported
+          PROJECTS: ${{ matrix.project.list || matrix.project }}
+          CRASH_RETRY: false
+        run: dotnet run --file scripts/ci/RunTestProjects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
-          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
+          name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
           path: |
-            src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
-            src/Nethermind/${{ matrix.project }}/TestResults/*_crash.*
+            src/Nethermind/*/TestResults/*_hang.*
+            src/Nethermind/*/TestResults/*_crash.*
           if-no-files-found: ignore
           retention-days: 3
 
@@ -241,7 +244,7 @@ jobs:
           submodules: recursive
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
@@ -260,7 +263,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-dumps
           path: |

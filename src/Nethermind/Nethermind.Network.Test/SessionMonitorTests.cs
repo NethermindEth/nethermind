@@ -76,7 +76,12 @@ namespace Nethermind.Network.Test
             ISession responsive = CreateSession();
             ISession unresponsive = CreateUnresponsiveSession();
             DisconnectReason? reason = null;
-            unresponsive.Disconnected += (_, args) => reason = args.DisconnectReason;
+            DateTime disconnectedAt = default;
+            unresponsive.Disconnected += (_, args) =>
+            {
+                disconnectedAt = DateTime.UtcNow;
+                reason = args.DisconnectReason;
+            };
 
             NetworkConfig networkConfig = new();
             networkConfig.P2PPingInterval = 200;
@@ -84,18 +89,17 @@ namespace Nethermind.Network.Test
             SessionMonitor sessionMonitor = new(networkConfig, new OneLoggerLogManager(new(logger)));
             sessionMonitor.AddSession(responsive);
             sessionMonitor.AddSession(unresponsive);
-            responsive.LastPongUtc = DateTime.UtcNow;
-            unresponsive.LastPongUtc = DateTime.UtcNow;
+            DateTime lastPong = DateTime.UtcNow;
+            responsive.LastPongUtc = lastPong;
+            unresponsive.LastPongUtc = lastPong;
             sessionMonitor.Start();
             try
             {
-                await Task.Delay(600);
-                Assert.That(unresponsive.IsClosing, Is.False,
-                    "the window is measured from the last pong, so the first missed pongs have to be tolerated");
-
                 Assert.That(() => unresponsive.IsClosing, Is.True.After(10_000, 20));
                 Assert.That(() => reason, Is.EqualTo(DisconnectReason.ReceiveMessageTimeout).After(5_000, 20),
                     "the reason selects the reconnect delay and lets the privileged-node gate reap dead static sessions");
+                Assert.That(disconnectedAt - lastPong, Is.GreaterThanOrEqualTo(6 * TimeSpan.FromMilliseconds(networkConfig.P2PPingInterval)),
+                    "the window is measured from the last pong, so the first missed pongs have to be tolerated");
                 Assert.That(responsive.IsClosing, Is.False);
             }
             finally

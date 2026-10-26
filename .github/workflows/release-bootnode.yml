@@ -32,6 +32,11 @@ jobs:
   build:
     name: Build Bootnode packages
     runs-on: ubuntu-latest
+    # contents: write lets the version check see draft releases
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
     outputs:
       release-tag: ${{ steps.version.outputs.release-tag }}
       release-name: ${{ steps.version.outputs.release-name }}
@@ -43,6 +48,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
       - name: Detect version
         id: version
         env:
@@ -51,8 +59,8 @@ jobs:
           INPUT_PUBLISH_LATEST: ${{ inputs.publish_latest }}
         run: |
           # The same derivation that feeds the image's OCI version label, so the tag and the label
-          # cannot diverge. version.sh fails on a missing VersionPrefix or an unusable result.
-          if ! version=$(scripts/version.sh tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj); then
+          # cannot diverge. Version.cs fails on a missing VersionPrefix or an unusable result.
+          if ! version=$(dotnet run --file scripts/Version.cs -- tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj); then
             echo "Bootnode version must produce valid Docker and Git tags."
             exit 1
           fi
@@ -103,9 +111,6 @@ jobs:
           echo "publish-latest=$INPUT_PUBLISH_LATEST" >> "$GITHUB_OUTPUT"
           echo "PACKAGE_PREFIX=$package_prefix" >> "$GITHUB_ENV"
 
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-
       - name: Build Bootnode solution
         working-directory: tools
         run: dotnet build ./Bootnode/Bootnode.slnx -c release -p:SaveDiskSpace=true
@@ -128,11 +133,17 @@ jobs:
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
-          for file_name in *.tar.gz *.zip SHA256SUMS; do
-            gpg --no-tty --batch --yes --pinentry-mode loopback \
-              --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
-              -o "$file_name.asc" -ab "$file_name"
-          done
+          # One signature over the checksums covers every file
+          cat SHA256SUMS
+          gpg --no-tty --batch --yes --pinentry-mode loopback \
+            --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+            -o SHA256SUMS.asc -ab SHA256SUMS
+
+      # Unlike the key signature, the attestation binds each file to this workflow and commit
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: ${{ env.PACKAGE_DIR }}/SHA256SUMS
 
       - name: Upload Bootnode packages
         uses: actions/upload-artifact@v7
@@ -193,9 +204,11 @@ jobs:
           docker pull nethermind/bootnode:$RELEASE_VERSION
           \`\`\`
 
-          ## Build signatures
+          ## Build signature
 
-          The packages are signed with the following OpenPGP key: \`AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E\`.
+          \`SHA256SUMS\` lists every file and is signed with the following OpenPGP key: \`AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E\`
+
+          Each file listed in \`SHA256SUMS\` also has a build provenance attestation: \`gh attestation verify <file> --repo $GITHUB_REPOSITORY\`
           EOF
           )
 
