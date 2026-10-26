@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Threading;
@@ -34,6 +35,175 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    private static IEnumerable<TestCaseData> BufferedDeadlineRoutes()
+    {
+        foreach (bool indexed in new[] { false, true })
+            foreach (bool filtered in new[] { false, true })
+                foreach (string expiry in new[] { "reset", "before", "after" })
+                    yield return new(indexed, filtered, expiry);
+        yield return new(true, false, "external");
+    }
+
+    [TestCaseSource(nameof(BufferedDeadlineRoutes))]
+    public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution(bool indexed, bool filtered, string expiry) =>
+        AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: false);
+
+    [TestCaseSource(nameof(BufferedDeadlineRoutes))]
+    public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution_by_hash(bool indexed, bool filtered, string expiry) =>
+        AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: true);
+
+    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        DeadlineExecution clock = new();
+        ParallelDeadlineProbe probe = new();
+        using ParallelTraceBudget budget = new(2);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
+                .AddDecorator<IParallelBlockTracer>((_, inner) => new DeadlineParallelTracer(inner, probe))
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        if (indexed) IndexThroughTheCapture(chain, index, block, parent);
+        clock.Enabled = true;
+        clock.Target = nonce + (filtered ? 2UL : 1UL);
+        clock.Prefix = filtered;
+        clock.Expiry = expiry;
+        clock.Cancel = () => probe.Cancel!();
+        GethTraceOptions options = new()
+        {
+            Tracer = "callTracer",
+            Timeout = TimeSpan.FromSeconds(1),
+            DeadlineClock = clock,
+            TxHash = filtered ? block.Transactions[2].Hash : null
+        };
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => byHash
+            ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
+            : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
+        // Keep parallel routing enabled but serialize execution so fake-clock advancement is deterministic.
+        budget.Wait(CancellationToken.None);
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result;
+        try
+        {
+            if (expiry == "external")
+            {
+                Assert.Catch<OperationCanceledException>(() => Trace());
+                Assert.That(probe.Attempts, Is.EqualTo(1));
+                Assert.That(clock.Calls, Is.InRange(2, 3), "indexed workers may acquire the execution permit out of transaction order");
+                Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+                return;
+            }
+            result = Trace();
+        }
+        finally { budget.Release(); }
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = result;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probe.Attempts, Is.EqualTo(filtered ? 0 : 1), "the full-block RPC must reach the production parallel route");
+            Assert.That(probe.Completed, Is.EqualTo(indexed && !filtered && expiry == "reset" ? 1 : 0), "a successful seeded trace must not silently fall back");
+            if (expiry == "reset")
+            {
+                Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+                Assert.That(response.Data.Count, Is.EqualTo(filtered ? 1 : 3));
+                Assert.That(clock.Calls, Is.EqualTo(indexed && filtered ? 1 : 3), "indexed filtering executes only its target; fallback replays the prefix outside the budget");
+            }
+            else
+            {
+                Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(response.Result.Error, Is.EqualTo("execution timeout"));
+                Assert.That(clock.Calls, indexed && !filtered ? Is.InRange(2, 3) : Is.EqualTo(filtered ? indexed ? 1 : 3 : 2),
+                    "indexed workers may acquire the execution permit out of transaction order");
+            }
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    private sealed class ParallelDeadlineProbe
+    {
+        internal int Attempts;
+        internal int Completed;
+        internal Action? Cancel;
+    }
+
+    private sealed class DeadlineParallelTracer(IParallelBlockTracer inner, ParallelDeadlineProbe probe) : IParallelBlockTracer
+    {
+        public bool TryTrace<TTrace>(Block block, BlockHeader parent, Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, CancellationToken token, [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces)
+        {
+            probe.Attempts++;
+            using CancellationTokenSource external = CancellationTokenSource.CreateLinkedTokenSource(token);
+            probe.Cancel = external.Cancel;
+            bool completed = inner.TryTrace(block, parent, forTransaction, afterTransactions, external.Token, out traces);
+            if (completed) probe.Completed++;
+            return completed;
+        }
+        public bool TryStream<TTrace>(Block block, BlockHeader parent, Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, Action<IReadOnlyCollection<TTrace>> emit, CancellationToken token) =>
+            inner.TryStream(block, parent, forTransaction, afterTransactions, emit, token);
+    }
+
+    private sealed class DeadlineAdapter(ITransactionProcessorAdapter inner, DeadlineExecution clock) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer tracer)
+        {
+            if (!clock.Enabled) return inner.Execute(transaction, tracer);
+            clock.Calls++;
+            if (clock.Expiry != "after") clock.Advance(transaction.Nonce);
+            TransactionResult result = inner.Execute(transaction, tracer);
+            if (clock.Expiry == "after") clock.Advance(transaction.Nonce);
+            return result;
+        }
+        public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
+        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
+    }
+
+    private sealed class DeadlineExecution : TimeProvider
+    {
+        private long _timestamp;
+        internal bool Enabled;
+        internal bool Prefix;
+        internal ulong Target;
+        internal string Expiry = "reset";
+        internal Action? Cancel;
+        internal int Calls;
+        internal List<ExecutionTimer> Timers { get; } = [];
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => _timestamp;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            ExecutionTimer timer = new(callback, state);
+            Timers.Add(timer);
+            return timer;
+        }
+        internal void Advance(ulong nonce)
+        {
+            if (Expiry == "external" && nonce == Target) Cancel!();
+            _timestamp += TimeSpan.FromMilliseconds(Prefix && nonce < Target ? 10_000 : Expiry is "before" or "after" && nonce == Target ? 1_200 : 600).Ticks;
+            foreach (ExecutionTimer timer in Timers) timer.Fire();
+        }
+    }
+
+    private sealed class ExecutionTimer(TimerCallback callback, object? state) : ITimer
+    {
+        internal bool Disposed { get; private set; }
+        public bool Change(TimeSpan dueTime, TimeSpan period) => !Disposed;
+        internal void Fire() { if (!Disposed) callback(state); }
+        public void Dispose() => Disposed = true;
+        public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+    }
+
     [Test]
     public async Task Debug_traceCall_log_indices_include_prefix_transactions([Values] bool revertFirst)
     {

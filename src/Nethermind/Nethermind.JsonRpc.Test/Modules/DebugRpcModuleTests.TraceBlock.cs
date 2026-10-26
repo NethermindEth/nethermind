@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -52,6 +53,75 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceBlockByNumber_buffered_execution_deadline(
+        [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "")] string tracer,
+        [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered)
+    {
+        DeadlineExecution clock = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        clock.Enabled = true;
+        IDebugRpcModule module = WithDeadlineClock(chain.DebugRpcModule, clock);
+        Dictionary<string, object> options = new() { ["timeout"] = timeout, ["streamMode"] = false };
+        if (tracer.Length != 0) options["tracer"] = tracer;
+        if (filtered) options["txHash"] = block.Transactions[^1].Hash!;
+
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
+        {
+            object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+            string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
+            JToken json = JToken.Parse(response);
+            if (timeout == "1s" || tracer == "noopTracer")
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((JArray)json["result"]!, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+                    Assert.That(json["result"], Is.Null, response);
+                }
+            }
+        }
+        Assert.That(clock.Timers, tracer == "noopTracer" ? Is.Empty : Is.Not.Empty);
+        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+    }
+
+    [TestCase("callTracer", "onlyTopCall")]
+    [TestCase("prestateTracer", "diffMode")]
+    public async Task Debug_traceBlockByNumber_native_config_error_precedes_expired_deadline(string tracer, string field)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { tracer, timeout = "0s", tracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"{{field}}":[]}""") });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Not.Null, response);
+        Assert.That(json["error"]!.ToString(), Does.Contain("Cannot convert").And.Not.Contain("execution timeout"), response);
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_does_not_start_deadlines_without_a_selected_transaction(
+        [Values("callTracer", "prestateTracer", "4byteTracer", "")] string tracer, [Values] bool empty)
+    {
+        using Context context = await Context.Create();
+        Block block = empty ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        Dictionary<string, object> options = new() { ["timeout"] = "0s", ["streamMode"] = false };
+        if (tracer.Length != 0) options["tracer"] = tracer;
+        if (!empty) options["txHash"] = TestItem.KeccakD;
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        Assert.That((JArray)json["result"]!, Is.Empty);
+    }
+
     [Test]
     public async Task NativeConfigPreflight_matches_constructor_null_semantics(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
@@ -115,16 +185,30 @@ public partial class DebugRpcModuleTests
                 .AddSingleton(parallel));
         Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
         var options = new { tracer = "callTracer", timeout, streamMode = true };
+        DeadlineExecution clock = new();
+        IDebugRpcModule module = WithDeadlineClock(chain.DebugRpcModule, clock);
 
-        using JsonRpcResponse response = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        using JsonRpcResponse response = await RpcTest.TestRequest(module, "debug_traceBlockByNumber", block.Number, options);
         Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null,
             Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>());
-        string streamed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        string streamed = await RpcTest.TestSerializedRequest(module, "debug_traceBlockByNumber", block.Number, options);
         Assert.That(parallel.ReceivedCalls(), Is.Not.Empty, "the consumed native stream must use the indexed path");
-        string buffered = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+        string buffered = await RpcTest.TestSerializedRequest(module, "debug_traceBlockByNumber", block.Number,
             new { tracer = "callTracer", timeout, streamMode = false });
         Assert.That(streamed, Is.EqualTo(buffered));
         Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+        Assert.That(clock.Timers, Has.Count.EqualTo(block.Transactions.Length));
+        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+    }
+
+    private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock)
+    {
+        IDebugRpcModule module = Substitute.For<IDebugRpcModule>();
+        module.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+            inner.debug_traceBlockByNumber(call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock }));
+        module.debug_traceBlockByHash(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+            inner.debug_traceBlockByHash(call.Arg<Hash256>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock }));
+        return module;
     }
 
     [Test]
