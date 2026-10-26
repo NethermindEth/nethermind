@@ -304,7 +304,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         parameters = [];
         if (HasUnexpectedZeroParameterArray(useUtf8Parameters, providedParametersUtf8, providedParameters))
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, TooManyArguments(0), null, in request.IdRef);
         }
 
         return null;
@@ -364,7 +364,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // Caller-supplied params that fail to bind are answered with -32602; the echo of the params and the
             // exception (with its stack trace) is Debug-only detail, not an operator warning (#13156).
             if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
-            string message = GetSafePublicMessage(e) ?? "Invalid params";
+            string? reason = GetSafePublicMessage(e, out bool omitArgumentPosition);
+            string message = e switch
+            {
+                InvalidArgumentException when omitArgumentPosition => reason!,
+                InvalidArgumentException { Index: int index } when reason is not null => $"invalid argument {index}: {reason}",
+                InvalidArgumentException { Index: int index } => $"invalid argument {index}",
+                _ => reason ?? "Invalid params"
+            };
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
     }
@@ -551,7 +558,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // over-long request has to be rejected here rather than indexing past the end.
         if (providedParametersLength > expectedParameters.Length || missingParamsCount < 0)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in requestId);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, TooManyArguments(expectedParameters.Length), null, in requestId);
         }
 
         if (missingRequiredParameterIndex >= 0)
@@ -1056,15 +1063,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     ThrowMissingParameterBytes();
                 }
 
+                object? parameter;
                 try
                 {
-                    executionParameters[i] = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
+                    parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
                 }
                 catch (Exception e)
                 {
                     throw new InvalidArgumentException(i, e);
                 }
 
+                executionParameters[i] = parameter;
                 i++;
             }
         }
@@ -1077,22 +1086,28 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             throw new JsonException("Missing JSON-RPC parameter bytes.");
     }
 
-    private static string? GetSafePublicMessage(Exception e)
+    // Geth's wording, so clients can match the -32602 messages of either client.
+    private static string TooManyArguments(int expectedCount) => $"too many arguments, want at most {expectedCount}";
+
+    /// <summary>A parameter that failed to bind, with its zero-based position in the request.</summary>
+    private sealed class InvalidArgumentException(int index, Exception innerException) : Exception(null, innerException)
+    {
+        public int Index { get; } = index;
+    }
+
+    private static string? GetSafePublicMessage(Exception e, out bool omitArgumentPosition)
     {
         for (Exception? ex = e; ex is not null; ex = ex.InnerException)
         {
             if (ex is IExceptionWithSafePublicMessage safe)
-                return e is InvalidArgumentException { Index: int index } && !safe.OmitArgumentPosition
-                    ? $"invalid argument {index}: {ex.Message}"
-                    : ex.Message;
+            {
+                omitArgumentPosition = safe.OmitArgumentPosition;
+                return ex.Message;
+            }
         }
-        return null;
-    }
 
-    /// <summary>Wraps a failure to bind the JSON-RPC argument at <see cref="Index"/>.</summary>
-    private sealed class InvalidArgumentException(int index, Exception innerException) : Exception(innerException.Message, innerException)
-    {
-        public int Index { get; } = index;
+        omitArgumentPosition = false;
+        return null;
     }
 
     private static void FillDefaultParameters(ExpectedParameter[] expected, object?[] actual, int start, int count)

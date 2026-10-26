@@ -1229,7 +1229,7 @@ public class TraceRpcModuleTests
             "\"fromBlock\":\"0x1\"", "\"toBlock\":\"latest\"", "\"fromBlock\":\"0x1\",\"toBlock\":null",
             "\"fromBlock\":\"earliest\",\"toBlock\":\"latest\""
         })
-            yield return new TestCaseData($"{{\"blockHash\":\"{TestItem.KeccakA}\",{bounds}}}", $"invalid argument 0: {ErrorMessages.BlockHashAndRange}");
+            yield return new TestCaseData($"{{\"blockHash\":\"{TestItem.KeccakA}\",{bounds}}}", ErrorMessages.BlockHashAndRange);
 
         foreach (string bound in new[] { "fromBlock", "toBlock" })
             foreach (string value in new[]
@@ -1237,7 +1237,7 @@ public class TraceRpcModuleTests
             $"\"{TestItem.KeccakA}\"", $"{{\"blockHash\":\"{TestItem.KeccakA}\"}}",
             $"{{\"blockHash\":\"{TestItem.KeccakA}\",\"requireCanonical\":true}}"
         })
-                yield return new TestCaseData($"{{\"{bound}\":{value}}}", "invalid argument 0: block hash is not a block number or tag");
+                yield return new TestCaseData($"{{\"{bound}\":{value}}}", "block hash is not a block number or tag");
     }
 
     [TestCaseSource(nameof(InvalidTraceFilterBlocks))]
@@ -1255,7 +1255,7 @@ public class TraceRpcModuleTests
         {
             Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
             if (expectedMessage is not null)
-                Assert.That(error.GetProperty("message").GetString(), Is.EqualTo(expectedMessage), response);
+                Assert.That(error.GetProperty("message").GetString(), Is.EqualTo($"invalid argument 0: {expectedMessage}"), response);
         }
     }
 

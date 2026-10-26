@@ -1368,7 +1368,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2728\",\"highestBlock\":\"0x273a\"}}}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x2728\",\"currentBlock\":\"0x2728\",\"highestBlock\":\"0x273a\"}}}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
@@ -1386,7 +1386,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2738\",\"highestBlock\":\"0x2773\"}}}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x2738\",\"currentBlock\":\"0x2738\",\"highestBlock\":\"0x2773\"}}}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 

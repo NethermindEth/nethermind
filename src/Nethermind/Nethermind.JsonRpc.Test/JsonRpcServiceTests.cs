@@ -166,7 +166,7 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBlockByNumber),
             """["0x1",false,"extra"]""",
-            "Invalid params",
+            "too many arguments, want at most 2",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Extra argument");
         yield return new TestCaseData(
@@ -178,7 +178,7 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBlockByNumber),
             """["",false,"extra"]""",
-            "Invalid params",
+            "too many arguments, want at most 2",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Extra argument alongside a missing marker");
         yield return new TestCaseData(
@@ -1126,8 +1126,9 @@ public class JsonRpcServiceTests
     [TestCase("eth_getBlockByNumber", new object?[] { "", false }, "missing value for required argument 0", TestName = "FirstArgMarkedMissingBeforeAnother")]
     [TestCase("eth_getProof", new object?[] { "0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842", "", "latest" }, "missing value for required argument 1", TestName = "LaterArgMarkedMissingBeforeAnother")]
     [TestCase("eth_feeHistory", new object?[] { "", "latest" }, "missing value for required argument 0", TestName = "MarkedMissingArgIsNamedAheadOfOmittedTrailingOnes")]
-    [TestCase("eth_getBlockByNumber", new object?[] { "", false, "" }, "Invalid params", TestName = "ExtraArgumentWinsOverAMarkedMissingOne")]
-    [TestCase("eth_getBlockByNumber", new object?[] { "0x1", false, "" }, "Invalid params", TestName = "ExtraTrailingMarkerIsAnExtraArgument")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "", false, "" }, "too many arguments, want at most 2", TestName = "ExtraArgumentWinsOverAMarkedMissingOne")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "0x1", false, "" }, "too many arguments, want at most 2", TestName = "ExtraTrailingMarkerIsAnExtraArgument")]
+    [TestCase("eth_blockNumber", new object?[] { "0x1" }, "too many arguments, want at most 0", TestName = "ArgumentToAMethodThatTakesNone")]
     public void MissingRequiredArgument_ReturnsGethStyleError(string method, object?[] parameters, string expectedMessage)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();

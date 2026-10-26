@@ -5,7 +5,6 @@ using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -75,7 +74,7 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         _isDeserializing = false;
         if (_data is null) return;
         if (Input is not null && !Input.AsSpan().SequenceEqual(_data))
-            throw new SafePublicMessageFormatException(RpcTransactionErrors.DataAndInputDiffer, omitArgumentPosition: true);
+            throw new DataAndInputDifferException();
 
         Input = _data;
         _data = null;

@@ -154,10 +154,6 @@ public partial class DebugRpcModuleTests
         string tracer, string configuration, bool empty, bool unknown) =>
         await AssertNativeConfigError("debug_traceBlockByHash", tracer, configuration, empty, unknown: unknown);
 
-    [Test]
-    public async Task Debug_traceTransaction_native_config_errors_remain_invalid_params() =>
-        await AssertNativeConfigError("debug_traceTransaction", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidParams);
-
     private static async Task AssertNativeConfigError(string method, string tracer, string configuration, bool empty, bool invalidRlp = false, bool unknown = false, int? expectedError = null, bool? streamMode = null)
     {
         using Context context = await Context.Create();
@@ -170,7 +166,6 @@ public partial class DebugRpcModuleTests
         object target = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
-            "debug_traceTransaction" => block.Transactions[0].Hash!,
             "debug_traceBlockByHash" => unknown ? TestItem.KeccakD : block.Hash!,
             _ => invalidRlp ? "0xc0" : Rlp.Encode(block).ToString()
         };
@@ -237,8 +232,8 @@ public partial class DebugRpcModuleTests
     [TestCase("debug_traceBlockByHash", "prestateTracer", ErrorCodes.InvalidInput)]
     [TestCase("debug_traceBlock", "callTracer", ErrorCodes.InvalidInput)]
     [TestCase("debug_traceBlock", "prestateTracer", ErrorCodes.InvalidInput)]
-    [TestCase("debug_traceTransaction", "callTracer", ErrorCodes.InvalidParams)]
-    [TestCase("debug_traceTransaction", "prestateTracer", ErrorCodes.InvalidParams)]
+    [TestCase("debug_traceTransaction", "callTracer", ErrorCodes.InvalidInput)]
+    [TestCase("debug_traceTransaction", "prestateTracer", ErrorCodes.InvalidInput)]
     [TestCase("debug_traceCall", "callTracer", ErrorCodes.InvalidParams)]
     [TestCase("debug_traceCall", "prestateTracer", ErrorCodes.InvalidParams)]
     public async Task Debug_native_config_errors_preserve_route_classification(
@@ -1742,7 +1737,7 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
 
-        const string expected = """{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}""";
+        const string expected = """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 0"},"id":67}""";
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", "xxx");
 
         Assert.That(JsonElement.DeepEquals(

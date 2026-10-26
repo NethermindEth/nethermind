@@ -2,16 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
+using Nethermind.State.Proofs;
 using NUnit.Framework;
 
 namespace Nethermind.DocGen.Test;
@@ -43,7 +50,18 @@ public class JsonRpcGeneratorTests
     [TestCase("trace", "trace_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("debug", "debug_simulateV1", "- `traces`:", "- `calls`:")]
     [TestCase("eth", "eth_simulateV1", "- `calls`:", "- `traces`:")]
+    [TestCase("eth", "eth_getBlockByHash", "- `transactions`: optional array of _string_ (hash), or array of _object_ (transaction, same as `result` in `eth_getTransactionByHash`) when full transactions are requested", "- `hashes`:")]
+    [TestCase("debug", "debug_getBadBlocks", "Each `block` carries full transaction objects.", "- `hashes`:")]
+    [TestCase("eth", "eth_createAccessList", "- `accessList`: array of _object_", "- `accessList`: _object_")]
+    [TestCase("eth", "eth_getProof", "- `storageHash`:", "- `storageRoot`:")]
+    [TestCase("eth", "eth_syncing", "`result`: `false` when not syncing, else _object_", "- `isSyncing`:")]
+    [TestCase("debug", "debug_getRawBlockAccessList", "`result`: _string_ (hex data)", "- `memory`:")]
+    [TestCase("debug", "debug_traceTransaction", "- `structLogs`:", "- `customTracerResult`:")]
+    [TestCase("debug", "debug_simulateV1", "- `traces`: array of _object_ (the tracer's own result instead when `tracer` is set)", "- `customTracerResult`:")]
     [TestCase("eth", "eth_getHeaderByNumber", "- `nonce`: _string_ (8-byte hex data) or `null`", "- `baseFeePerGas`: _string_ (hex integer) or `null`")]
+    [TestCase("eth", "eth_capabilities", "- `deleteStrategy`: optional _object_", "- `deleteStrategy`: _object_")]
+    [TestCase("eth", "eth_config", "- `next`: _object_ or `null`", "- `next`: optional")]
+    [TestCase("eth", "eth_config", "- `precompiles`: map of _string_ (address)", "`result`: _object_\n\n")]
     [TestCase("trace", "trace_get", "- `from`: _string_ (address)\n", "- `from`: _string_ (address) or `null`")]
     public void Response_documents_wire_shape(string ns, string method, string documented, string notDocumented)
     {
@@ -128,6 +146,119 @@ public class JsonRpcGeneratorTests
         }
     }
 
+    private static IEnumerable<TestCaseData> ResultsWithOmittedMembers()
+    {
+        ResourceAvailability disabled = new(true);
+        yield return new TestCaseData("eth", "eth_capabilities", "state",
+            new EthCapabilities(new ChainHead(1, Keccak.Zero), disabled, disabled, disabled, disabled));
+        yield return new TestCaseData("eth", "eth_config", "current", new ForkConfigSummary
+        {
+            Current = new ForkConfig { ActivationTime = 1, BlobSchedule = null, ChainId = 1, ForkId = [0, 0, 0, 0], Precompiles = [], SystemContracts = [] },
+            Next = null,
+            Last = null
+        });
+    }
+
+    [TestCaseSource(nameof(ResultsWithOmittedMembers))]
+    public void Response_documents_members_omitted_from_wire_as_optional(string ns, string method, string property, object result)
+    {
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(result));
+        string response = ReadResponse(ns, method);
+        JsonElement value = wire.RootElement.GetProperty(property);
+        const string prefix = "    - `";
+        string[] lines = [.. ReadPropertyBlock(response, property, 2).Split('\n').Where(l => l.StartsWith(prefix, StringComparison.Ordinal))];
+        string[] omitted = [.. lines.Where(l => !value.TryGetProperty(l[prefix.Length..l.IndexOf('`', prefix.Length)], out _))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDocumentedProperties(wire.RootElement, response, 2);
+            AssertDocumentedProperties(value, string.Join('\n', lines), 4);
+            Assert.That(omitted, Is.Not.Empty);
+            Assert.That(omitted, Has.All.Contains("`: optional "));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ConverterWrittenResults()
+    {
+        yield return new TestCaseData("eth", "eth_getProof", new AccountProof());
+        yield return new TestCaseData("eth", "eth_syncing", new SyncingResult
+        {
+            IsSyncing = true,
+            SyncedAccounts = 0,
+            SyncedStorage = 0,
+            SyncedBytecodes = 0,
+            HealedTrienodes = 0,
+            HealedBytecodes = 0,
+            WarpChunksAmount = 0,
+            WarpChunksProcessed = 0
+        });
+    }
+
+    [TestCaseSource(nameof(ConverterWrittenResults))]
+    public void Response_documents_properties_written_by_class_converter(string ns, string method, object result)
+    {
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(result));
+
+        AssertDocumentedPropertiesMatch(wire.RootElement, ReadResponse(ns, method), 2);
+    }
+
+    [TestCase("debug_traceTransaction", false)]
+    [TestCase("debug_traceBlockByNumber", true)]
+    public void Trace_response_documents_struct_log_entries(string method, bool isBlockTrace)
+    {
+        GethLikeTxTrace trace = CreateTraceWithStructLog();
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(
+            isBlockTrace ? new GethLikeTxTraceStreamingResult([trace]) : (object)trace));
+        string response = ReadResponse("debug", method);
+        JsonElement traceElement = isBlockTrace ? wire.RootElement[0].GetProperty("result") : wire.RootElement;
+        int indentation = isBlockTrace ? 4 : 2;
+        string traceResponse = isBlockTrace ? ReadPropertyBlock(response, "result", 2) : response;
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (isBlockTrace)
+                AssertDocumentedPropertiesMatch(wire.RootElement[0], response, 2);
+
+            AssertDocumentedPropertiesMatch(traceElement, traceResponse, indentation);
+            AssertDocumentedPropertiesMatch(traceElement.GetProperty("structLogs")[0],
+                ReadPropertyBlock(traceResponse, "structLogs", indentation), indentation + 2);
+            Assert.That(traceResponse.Split('\n'), Has.Some.EqualTo($"{new string(' ', indentation)}- `gas`: _integer_"));
+        }
+    }
+
+    private static GethLikeTxTrace CreateTraceWithStructLog() => new()
+    {
+        TxHash = Keccak.Zero,
+        Entries =
+        [
+            new GethTxTraceEntry
+            {
+                Opcode = "SSTORE",
+                Error = "out of gas",
+                Refund = 1,
+                Stack = new ReadOnlyMemory<byte>(new byte[32]),
+                Memory = new ReadOnlyMemory<byte>(new byte[32]),
+                Storage = new Dictionary<UInt256, UInt256> { [UInt256.One] = UInt256.One },
+                ReturnData = new ReadOnlyMemory<byte>([1])
+            }
+        ]
+    };
+
+    [Test]
+    public void Create_access_list_response_documents_access_list_items()
+    {
+        AccessList accessList = new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.One).Build();
+        AccessListResultForRpc result = new(AccessListForRpc.FromAccessList(accessList), UInt256.One, null);
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(result));
+        string accessListResponse = ReadPropertyBlock(ReadResponse("eth", "eth_createAccessList"), "accessList", 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDocumentedPropertiesMatch(wire.RootElement.GetProperty("accessList")[0], accessListResponse, 4);
+            Assert.That(accessListResponse, Does.Contain("- `storageKeys`: array of _string_ (32-byte hex data)"));
+        }
+    }
+
     private static IEnumerable<TestCaseData> ResultsWithNullMembers()
     {
         yield return new TestCaseData("eth", "eth_getHeaderByNumber",
@@ -174,6 +305,20 @@ public class JsonRpcGeneratorTests
         foreach (JsonProperty property in value.EnumerateObject())
             Assert.That(response.Split('\n'), Has.Some.StartsWith($"{new string(' ', indentation)}- `{property.Name}`:"),
                 $"serialized property {property.Name} is missing from its response object");
+    }
+
+    // Holds only for converters that write every member on every call
+    private static void AssertDocumentedPropertiesMatch(JsonElement value, string response, int indentation)
+    {
+        AssertDocumentedProperties(value, response, indentation);
+
+        string prefix = $"{new string(' ', indentation)}- `";
+
+        foreach (string line in response.Split('\n').Where(l => l.StartsWith(prefix, StringComparison.Ordinal)))
+        {
+            string name = line[prefix.Length..line.IndexOf('`', prefix.Length)];
+            Assert.That(value.TryGetProperty(name, out _), Is.True, $"documented property {name} is not serialized");
+        }
     }
 
     private static string ReadPropertyBlock(string response, string property, int indentation)
