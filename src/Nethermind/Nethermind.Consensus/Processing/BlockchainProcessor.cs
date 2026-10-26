@@ -327,13 +327,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             int copies = Interlocked.Decrement(ref _copies);
             // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
-            if (copies == 0 && Interlocked.CompareExchange(ref _copies, -1, 0) == 0)
+            if (copies == 0)
             {
-                Release();
-                return true;
+                copies = Interlocked.CompareExchange(ref _copies, -1, 0);
+                if (copies == 0)
+                {
+                    Release();
+                    return true;
+                }
             }
 
-            if (executed) Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
+            if (copies > 0 && executed) Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
             return false;
         }
 

@@ -917,6 +917,21 @@ public class BlockchainProcessorTests
         Assert.That(removed.IsCompleted, Is.True);
     }
 
+    [Test]
+    public void Overlapping_last_copy_removal_leaves_waiter_release_to_the_owner()
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> removedWhenExecutedCopyCompletes) = ObserveInFlightRemoval(copies: 0);
+
+        Assert.That(removeCopy(true), Is.False);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed.IsCompleted, Is.False);
+            Assert.That(removedWhenExecutedCopyCompletes.IsCompleted, Is.False,
+                "the removal that already decremented the last copy to zero owns the release");
+        }
+    }
+
     private static (Func<bool, bool> RemoveCopy, Task Removed, Task<bool> RemovedWhenExecutedCopyCompletes) ObserveInFlightRemoval(int copies)
     {
         Type type = typeof(BlockchainProcessor).GetNestedType("InFlightBlock", BindingFlags.NonPublic)!;
