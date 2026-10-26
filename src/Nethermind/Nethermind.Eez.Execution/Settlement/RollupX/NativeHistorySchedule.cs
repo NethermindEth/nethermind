@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
@@ -35,4 +36,35 @@ internal sealed class NativeHistorySchedule
         ulong elapsed = timestamp - FirstCutoff;
         return elapsed < Delay ? BootstrapCutoff : FirstCutoff + ((elapsed - Delay) / Interval) * Interval;
     }
+
+    internal NativeHistoryExecution Resolve(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, ulong? selected)
+    {
+        if (timestamp <= FirstCutoff || (timestamp - FirstCutoff) % BlockInterval != 0)
+            throw NativeL1Header.Invalid("history requires an aligned post-genesis timestamp");
+        ulong cutoff = SourceCutoff(timestamp);
+        bool updating = timestamp - cutoff == Delay;
+        if (!updating && cutoff > ulong.MaxValue - Interval) throw NativeL1Header.Invalid("next cutoff overflow");
+        ulong expectedNext = updating ? cutoff : cutoff + Interval;
+        if (state.FirstNumber > state.Endpoint || state.NextCutoff != expectedNext || chain.At(state.Endpoint).Hash != state.EndpointHash)
+            throw NativeL1Header.Invalid("parent history state mismatch");
+        if (updating != selected.HasValue) throw NativeL1Header.Invalid("missing or off-schedule history transaction");
+        NativeL1Header source = chain.At(selected ?? state.Endpoint);
+        if (source.Timestamp > cutoff) throw NativeL1Header.Invalid("origin is newer than delayed cutoff");
+        ReadOnlyMemory<byte> import = default;
+        if (updating)
+        {
+            if (source.Number < state.Endpoint || source.Number - state.Endpoint > NativeHistoryCall.MaxHashes)
+                throw NativeL1Header.Invalid("history import exceeds bound or regresses");
+            if (cutoff > ulong.MaxValue - Interval) throw NativeL1Header.Invalid("next cutoff overflow");
+            import = NativeHistoryCall.Encode(cutoff, chain, state.Endpoint, source.Number);
+        }
+        return new NativeHistoryExecution(cutoff, source.Number, source.Hash, source.PrevRandao, import);
+    }
 }
+
+/// <summary>History values read from the authenticated parent state, rather than an RPC assertion.</summary>
+internal readonly record struct NativeHistoryState(ulong FirstNumber, ulong Endpoint, ValueHash256 EndpointHash, ulong NextCutoff);
+
+/// <summary>Recorded origin and pre-execution import; final anchor authorization remains required.</summary>
+internal readonly record struct NativeHistoryExecution(ulong Cutoff, ulong OriginNumber, ValueHash256 OriginHash,
+    ValueHash256 PrevRandao, ReadOnlyMemory<byte> Import);

@@ -29,14 +29,31 @@ internal static class NativeHistoryCall
 
     internal static byte[] Encode(ulong cutoff, ReadOnlySpan<ValueHash256> hashes)
     {
-        if (hashes.Length > MaxHashes) throw new EezAbiException("Native history import exceeds 64 hashes.");
-        byte[] encoded = new byte[HeadLength + hashes.Length * AbiWord.Size];
+        byte[] encoded = Create(cutoff, hashes.Length);
+        AbiWriter writer = new(encoded.AsSpan(HeadLength));
+        foreach (ref readonly ValueHash256 hash in hashes) writer.Write(in hash);
+        return encoded;
+    }
+
+    internal static byte[] Encode(ulong cutoff, NativeL1HeaderChain chain, ulong after, ulong selected)
+    {
+        if (selected < after || selected - after > MaxHashes) throw new EezAbiException("Invalid native history import range.");
+        int count = (int)(selected - after);
+        byte[] encoded = Create(cutoff, count);
+        AbiWriter writer = new(encoded.AsSpan(HeadLength));
+        for (int offset = 1; offset <= count; offset++) writer.Write(chain.At(after + (ulong)offset).Hash);
+        return encoded;
+    }
+
+    private static byte[] Create(ulong cutoff, int count)
+    {
+        if ((uint)count > MaxHashes) throw new EezAbiException("Native history import exceeds 64 hashes.");
+        byte[] encoded = new byte[HeadLength + count * AbiWord.Size];
         Selector.CopyTo(encoded, 0);
         AbiWriter writer = new(encoded.AsSpan(4));
         writer.Write(cutoff);
         writer.WriteOffset(2 * AbiWord.Size);
-        writer.Write((ulong)hashes.Length);
-        foreach (ref readonly ValueHash256 hash in hashes) writer.Write(in hash);
+        writer.Write((ulong)count);
         return encoded;
     }
 }

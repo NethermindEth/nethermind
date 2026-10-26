@@ -315,13 +315,15 @@ public partial class RollupXGenesisTests
     private static NativeL1HeaderRules LayoutRules(int fields) =>
         new(fields >= 16 ? 0UL : null, fields >= 17 ? 0UL : null, fields >= 20 ? 0UL : null, fields >= 21 ? 0UL : null, null);
 
-    private static ReadOnlyMemory<byte>[] L1ChainBytes()
+    private static ReadOnlyMemory<byte>[] L1ChainBytes() => L1ChainBytes([108, 120, 132, 144, 156]);
+
+    private static ReadOnlyMemory<byte>[] L1ChainBytes(ulong[] times)
     {
-        ReadOnlyMemory<byte>[] raw = new ReadOnlyMemory<byte>[5];
+        ReadOnlyMemory<byte>[] raw = new ReadOnlyMemory<byte>[times.Length];
         ValueHash256 parent = default;
         for (int index = 0; index < raw.Length; index++)
         {
-            raw[index] = L1HeaderBytes((ulong)index + 99, (ulong)index * 12 + 108, parent);
+            raw[index] = L1HeaderBytes((ulong)index + 99, times[index], parent, 15, 13, Rlp.Encode(OfflineHash((byte)(index + 1)).Bytes));
             parent = ValueKeccak.Compute(raw[index].Span);
         }
         return raw;
