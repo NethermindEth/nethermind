@@ -231,6 +231,23 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
+        public async Task Rethrows_other_exceptions_while_preparing()
+        {
+            IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+            gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<ulong?>()).Throws(new InvalidOperationException("Not a state error"));
+            Context context = new(gasLimitCalculator: gasLimitCalculator);
+
+            try
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(async () => await context.AuRaBlockProducer.BuildBlock(Build.A.BlockHeader.TestObject));
+            }
+            finally
+            {
+                await context.StopAsync();
+            }
+        }
+
+        [Test]
         public async Task Does_not_produce_block_when_there_is_new_best_suggested_block_not_yet_processed() =>
             await StartStop(new Context(), expectBlock: false, newBestSuggestedBlock: true);
 
