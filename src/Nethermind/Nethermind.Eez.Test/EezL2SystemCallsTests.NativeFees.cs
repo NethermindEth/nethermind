@@ -4,6 +4,7 @@
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -19,6 +20,55 @@ namespace Nethermind.Eez.Test;
 
 public partial class EezL2SystemCallsTests
 {
+    [TestCase(false, 0UL, false)]
+    [TestCase(true, 30_000UL, false)]
+    [TestCase(false, 30_000UL, true)]
+    [TestCase(false, 21_000UL, true)]
+    [TestCase(true, 42_000UL, true)]
+    public void Execute_NativeCollectorCapacity_UsesExactFinalCredit(bool beneficiary, ulong headroom, bool accepted)
+    {
+        Address collector = beneficiary ? TestItem.AddressC : TestItem.AddressD;
+        EezChainRules rules = EezChainRules.NativeRollupX(NativeSchedule(), collector);
+        WithProcessor(rules, (state, processor, _) =>
+        {
+            UInt256 balance = UInt256.MaxValue - headroom * 1.GWei;
+            state.CreateAccount(TestItem.PrivateKeyA.Address, 1.Ether, 5);
+            state.CreateAccount(TestItem.AddressB, 5, 1);
+            state.CreateAccount(collector, balance);
+            if (!beneficiary) state.CreateAccount(TestItem.AddressC, 13);
+            state.InsertCode(TestItem.AddressB, StopCode, Osaka.Instance);
+            state.Commit(Osaka.Instance);
+            Transaction tx = Build.A.Transaction.WithChainId(1).WithNonce(5).WithTo(TestItem.AddressB).WithValue(0)
+                .WithGasLimit(100_000).WithGasPrice(2.GWei).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            TransactionResult result = default;
+            if (accepted) result = processor.Execute(tx, new CallOutputTracer());
+            else Assert.That(() => processor.Execute(tx, new CallOutputTracer()), Throws.TypeOf<InvalidBlockException>());
+            UInt256 credit = 21_000UL * 1.GWei;
+            using (Assert.EnterMultipleScope())
+            {
+                if (accepted) Assert.That(result.TransactionExecuted, Is.True, result.ToString());
+                Assert.That(state.GetBalance(collector), Is.EqualTo(accepted ? balance + credit + (beneficiary ? credit : UInt256.Zero) : balance));
+                if (!beneficiary) Assert.That(state.GetBalance(TestItem.AddressC), Is.EqualTo((UInt256)13 + (accepted ? credit : UInt256.Zero)));
+            }
+        });
+    }
+
+    [Test]
+    public void Execute_NativeFreeTransaction_IgnoresUnusedCollectorCapacity() =>
+        WithProcessor(NativeRules(), (state, processor, _) =>
+        {
+            state.CreateAccount(EezConstants.RollupXEezl2Address, 0, 1);
+            state.CreateAccount(TestItem.AddressD, UInt256.MaxValue);
+            state.InsertCode(EezConstants.RollupXEezl2Address, StopCode, Osaka.Instance);
+            state.Commit(Osaka.Instance);
+            TransactionResult result = processor.Execute(NativeTransaction(0, EezChainRules.RollupXSystemTxGasCap), new CallOutputTracer());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True, result.ToString());
+                Assert.That(state.GetBalance(TestItem.AddressD), Is.EqualTo(UInt256.MaxValue));
+            }
+        });
+
     [Test]
     public void Execute_CollectorCreatedAndDestroyed_UsesProfileFeeRule([Values] bool native)
     {

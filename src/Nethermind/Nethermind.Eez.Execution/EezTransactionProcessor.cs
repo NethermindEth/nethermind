@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
@@ -91,6 +92,10 @@ public sealed class EezTransactionProcessor(
         in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice,
         in UInt256 blobBaseFee, int statusCode)
     {
+        if (rules.UsesNativeSystemTransactions && spec.FeeCollector is { } nativeCollector)
+        {
+            ValidateNativeFeeCredit(tx, header, spec, in substate, spentGas, in premiumPerGas, in effectiveGasPrice, in blobBaseFee, statusCode, nativeCollector);
+        }
         if (!rules.UsesNativeSystemTransactions && statusCode == StatusCode.Success && spec.FeeCollector is { } collector &&
             !spec.IsEip8037Enabled && substate.DestroyListContains(collector))
         {
@@ -102,6 +107,23 @@ public sealed class EezTransactionProcessor(
             spec = _withoutFeeCollector!;
         }
         base.PayFees(tx, header, spec, tracer, in substate, spentGas, in premiumPerGas, in effectiveGasPrice, in blobBaseFee, statusCode);
+    }
+
+    private void ValidateNativeFeeCredit(Transaction tx, BlockHeader header, IReleaseSpec spec, in TransactionSubstate substate,
+        ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode, Address collector)
+    {
+        UInt256 credit = UInt256.Zero;
+        if (!tx.IsFree() && spec.IsEip1559Enabled &&
+            UInt256.MultiplyOverflow((UInt256)spentGas, UInt256.Min(header.BaseFeePerGas, effectiveGasPrice), out credit))
+            throw new InvalidBlockException(header, "Native collector fee overflows uint256.");
+        if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled && UInt256.AddOverflow(credit, blobBaseFee, out credit))
+            throw new InvalidBlockException(header, "Native collector fee overflows uint256.");
+        if (credit.IsZero) return;
+        UInt256 balance = WorldState.GetBalance(collector);
+        if (collector == header.GasBeneficiary && (statusCode == StatusCode.Failure || !substate.DestroyListContains(collector) || spec.IsEip8037Enabled) &&
+            (UInt256.MultiplyOverflow((UInt256)spentGas, premiumPerGas, out UInt256 tip) || UInt256.AddOverflow(balance, tip, out balance)))
+            throw new InvalidBlockException(header, "Native collector balance overflows uint256.");
+        if (UInt256.AddOverflow(balance, credit, out _)) throw new InvalidBlockException(header, "Native collector balance overflows uint256.");
     }
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
