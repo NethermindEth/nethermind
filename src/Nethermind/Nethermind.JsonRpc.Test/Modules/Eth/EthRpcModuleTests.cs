@@ -2842,7 +2842,7 @@ public partial class EthRpcModuleTests
         }
     }
 
-    private static string AccessListContractCall =>$$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}"}""";
+    private static string AccessListContractCall => $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}"}""";
 
     // The contract under test runs code; the delegated account delegates to a contract that only stops.
     private static string AccessListStateOverride(string code) => $$$"""
