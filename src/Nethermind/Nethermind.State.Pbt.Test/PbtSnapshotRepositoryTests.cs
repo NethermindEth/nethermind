@@ -13,7 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
+using Nethermind.Api.Monitoring;
 using NUnit.Framework;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -559,7 +559,7 @@ public class PbtSnapshotRepositoryTests
     private sealed class CallbackCatalog(Action deleting) : ISnapshotCatalog
     {
         public void Add(CatalogEntry entry) { }
-        public bool Remove(in StateId to, long depth) { deleting(); return true; }
+        public bool Remove(in StateId to, SnapshotTier tier) { deleting(); return true; }
         public IEnumerable<CatalogEntry> Load() => [];
     }
 
@@ -567,7 +567,7 @@ public class PbtSnapshotRepositoryTests
     {
         internal bool Fail { get; set; } = true;
         public void Add(CatalogEntry entry) { }
-        public bool Remove(in StateId to, long depth) => Fail ? throw new IOException("injected catalog sync failure") : true;
+        public bool Remove(in StateId to, SnapshotTier tier) => Fail ? throw new IOException("injected catalog sync failure") : true;
         public IEnumerable<CatalogEntry> Load() => [];
     }
 

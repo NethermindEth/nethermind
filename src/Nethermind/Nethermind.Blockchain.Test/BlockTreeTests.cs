@@ -2177,7 +2177,7 @@ public class BlockTreeTests
         {
             Assert.That(stored, Has.Length.EqualTo(1));
             Assert.That(stored[0].Hash, Is.EqualTo(bad.Hash!));
-            Assert.That(blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
+            Assert.That(blockTree.FindHeader(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
             Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(originalSuggested),
                 "ReportBadBlock must not roll back BestSuggested the way DeleteInvalidBlock does");
         }
@@ -3140,9 +3140,10 @@ public class BlockTreeTests
                 {
                     TestName = $"InvalidBlock_{nameof(FindHeader)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                 };
-                yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, allowInvalid)
+                // Only the header of an invalid block is kept, so its body is never found.
+                yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, false)
                 {
-                    TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
+                    TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_not_found"
                 };
             }
         }

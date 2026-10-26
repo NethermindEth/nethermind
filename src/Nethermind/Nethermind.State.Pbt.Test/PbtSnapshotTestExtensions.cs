@@ -26,13 +26,13 @@ internal static class PbtSnapshotTestExtensions
     /// <summary>Whether the repository indexes this exact persisted instance.</summary>
     internal static bool ContainsPersistedSource(this PbtSnapshotRepository repository, PbtPersistedSnapshot snapshot)
     {
-        if (!repository.TryLeasePersistedCatalogKey(snapshot.To, snapshot.Depth, out PbtPersistedSnapshot? current)) return false;
+        if (!repository.TryLeasePersistedCatalogKey(snapshot.To, snapshot.Tier, out PbtPersistedSnapshot? current)) return false;
         using (current) return ReferenceEquals(current, snapshot);
     }
 
     internal static bool TryLeasePersisted(this PbtSnapshotRepository repository, in StateId to, long depth, SnapshotTier tier, out PbtPersistedSnapshot? snapshot)
     {
-        if (repository.TryLeasePersistedCatalogKey(to, depth, out snapshot) && snapshot!.Tier == tier) return true;
+        if (repository.TryLeasePersistedCatalogKey(to, tier, out snapshot) && snapshot!.Depth == depth) return true;
         snapshot?.Dispose();
         snapshot = null;
         return false;

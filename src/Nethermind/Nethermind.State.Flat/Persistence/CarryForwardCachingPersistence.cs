@@ -302,31 +302,42 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public bool SupportsPrefetch => inner is IPersistence.IPrefetchingReader { SupportsPrefetch: true };
 
-        /// <summary>Forwards only the keys this cache cannot serve, so a prefetch never reads what a later read finds here.</summary>
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        /// <summary>Plans on the samples this cache cannot serve; a sample it holds is answered from memory.</summary>
+        public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples)
         {
-            if (inner is not IPersistence.IPrefetchingReader prefetcher) return;
-            if (parent.IsCurrent(generation))
+            if (inner is not IPersistence.IPrefetchingReader prefetcher) return IPersistence.PrefetchColumns.None;
+            if (parent.IsCurrent(generation)) DropCached(ref accountSamples, ref slotSamples);
+            return prefetcher.PlanPrefetch(accountSamples, slotSamples);
+        }
+
+        /// <summary>Forwards only the keys this cache cannot serve, so a prefetch never reads what a later read finds here.</summary>
+        public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        {
+            if (columns == IPersistence.PrefetchColumns.None || inner is not IPersistence.IPrefetchingReader prefetcher) return;
+            if ((columns & IPersistence.PrefetchColumns.Accounts) == 0) accounts = default;
+            if ((columns & IPersistence.PrefetchColumns.Slots) == 0) slots = default;
+            if (parent.IsCurrent(generation)) DropCached(ref accounts, ref slots);
+            prefetcher.Prefetch(columns, accounts, slots, cancellationToken);
+        }
+
+        private void DropCached(ref Span<Address> accounts, ref Span<StorageCell> slots)
+        {
+            // Compacted in place: cached keys are dropped without copying the others.
+            int keptAccounts = 0;
+            foreach (Address address in accounts)
             {
-                // Compacted in place: cached keys are dropped without copying the others.
-                int keptAccounts = 0;
-                foreach (Address address in accounts)
-                {
-                    if (!parent._accounts.ContainsKey(address)) accounts[keptAccounts++] = address;
-                }
-
-                int keptSlots = 0;
-                foreach (StorageCell cell in slots)
-                {
-                    ulong hash = CarryForwardSlotTable.Hash(cell.Address, cell.Index);
-                    if (!parent._slots.TryGet(hash, cell.Address, cell.Index, out _, out _)) slots[keptSlots++] = cell;
-                }
-
-                accounts = accounts[..keptAccounts];
-                slots = slots[..keptSlots];
+                if (!parent._accounts.ContainsKey(address)) accounts[keptAccounts++] = address;
             }
 
-            prefetcher.Prefetch(accounts, slots, cancellationToken);
+            int keptSlots = 0;
+            foreach (StorageCell cell in slots)
+            {
+                ulong hash = CarryForwardSlotTable.Hash(cell.Address, cell.Index);
+                if (!parent._slots.TryGet(hash, cell.Address, cell.Index, out _, out _)) slots[keptSlots++] = cell;
+            }
+
+            accounts = accounts[..keptAccounts];
+            slots = slots[..keptSlots];
         }
 
         /// <remarks>
@@ -408,6 +419,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             _clearAll = true;
             inner.DeleteStorageRange(addressHash, fromPath, toPath);
+        }
+
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            _clearAll = true;
+            inner.SelfDestructRange(fromPath, toPath);
         }
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);

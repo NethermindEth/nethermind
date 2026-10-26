@@ -19,9 +19,9 @@ public sealed class PbtSnapshotCatalog([KeyFilter(PbtSnapshotCatalog.DatabaseKey
         db.SyncWal();
     }
 
-    public bool Remove(in StateId to, long depth)
+    public bool Remove(in StateId to, SnapshotTier tier)
     {
-        bool removed = _catalog.Remove(to, depth);
+        bool removed = _catalog.Remove(to, tier);
         // A retry can see a live deletion whose previous WAL sync failed.
         db.SyncWal();
         return removed;

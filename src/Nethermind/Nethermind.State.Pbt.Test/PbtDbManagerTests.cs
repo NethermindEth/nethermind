@@ -35,7 +35,7 @@ using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Logging;
 using Nethermind.Pbt;
-using Nethermind.Monitoring.Config;
+using Nethermind.Api.Monitoring;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
 using Nethermind.State.Pbt.Steps;
@@ -238,9 +238,9 @@ public class PbtDbManagerTests
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
         catalog.Add(new(StateId.PreGenesis, state, new(0, 0, 1), SnapshotTier.PersistedBase));
         db.FailNext = true;
-        Assert.That(() => catalog.Remove(state, 2), Throws.InstanceOf<IOException>());
+        Assert.That(() => catalog.Remove(state, SnapshotTier.PersistedBase), Throws.InstanceOf<IOException>());
         int before = db.SyncCalls;
-        Assert.That(catalog.Remove(state, 2), Is.False);
+        Assert.That(catalog.Remove(state, SnapshotTier.PersistedBase), Is.False);
         Assert.That(db.SyncCalls, Is.EqualTo(before + 1));
     }
 
@@ -406,6 +406,66 @@ public class PbtDbManagerTests
         finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
     }
 
+    [Test]
+    public async Task Persisted_recompaction_to_another_depth_after_restart_replaces_snapshot_and_catalog_row()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "pbt-recompaction-" + Guid.NewGuid().ToString("N"));
+        using MemDb catalog = new();
+        PbtConfig config = new()
+        {
+            Enabled = true,
+            CompactSize = 4,
+            CompactionOffset = 0,
+            ArenaFileSizeBytes = 1048576,
+            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
+            PersistedSnapshotArenaPageCacheBytes = 0,
+        };
+        IContainer Open() => PbtTestContext.BuildProductionContainer(config,
+            builder => builder.RegisterInstance(catalog).Keyed<IDb>(PbtSnapshotCatalog.DatabaseKey).ExternallyOwned(),
+            new InitConfig { BaseDbPath = path });
+        StateId head = new(8, TestItem.KeccakA.ValueHash256);
+        try
+        {
+            await using (IContainer initial = Open())
+            {
+                initial.Resolve<IPbtPersistedSnapshotLoader>().Load();
+                PbtSnapshotRepository repository = initial.Resolve<PbtSnapshotRepository>();
+                ArrayPoolList<StateId> batch = new(8);
+                for (ulong block = 1; block <= 8; block++)
+                {
+                    StateId state = new(block, TestItem.KeccakA.ValueHash256);
+                    PbtSnapshot snapshot = LoaderSnapshot(initial, new(block - 1, TestItem.KeccakA.ValueHash256), state);
+                    snapshot.TryLease();
+                    repository.TryAdd(snapshot);
+                    using (snapshot) initial.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot);
+                    batch.Add(state);
+                }
+                await initial.Resolve<IPbtPersistedSnapshotCompactor>().EnqueueAsync(batch, 0, CancellationToken.None);
+            }
+            // After a restart the persisted block clamps the large compaction at the same head to a shallower depth.
+            await using (IContainer restarted = Open())
+            {
+                restarted.Resolve<IPbtPersistedSnapshotLoader>().Load();
+                Assert.That(restarted.Resolve<PbtSnapshotRepository>().TryLeasePersisted(head, 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? deep), Is.True);
+                deep?.Dispose();
+                await restarted.Resolve<IPbtPersistedSnapshotCompactor>().EnqueueAsync(new ArrayPoolList<StateId>(1) { head }, 2, CancellationToken.None);
+            }
+            await using IContainer reopened = Open();
+            reopened.Resolve<IPbtPersistedSnapshotLoader>().Load();
+            PbtSnapshotRepository loaded = reopened.Resolve<PbtSnapshotRepository>();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(new PbtSnapshotCatalog(catalog).Load().Where(entry => entry.To == head && entry.Tier == SnapshotTier.PersistedLargeCompacted)
+                    .Select(entry => entry.From.BlockNumber), Is.EqualTo(new[] { 2UL }));
+                Assert.That(loaded.TryLeasePersisted(head, 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? replaced), Is.False);
+                replaced?.Dispose();
+                Assert.That(loaded.TryLeasePersisted(head, 6, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? large), Is.True);
+                using (large) Assert.That(large!.TryGetCode(TestItem.KeccakC.ValueHash256, out _), Is.True);
+            }
+        }
+        finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
+    }
+
     private sealed class LoaderSyncFailureDb : MemDb
     {
         internal bool FailNext { get; set; }
@@ -457,10 +517,10 @@ public class PbtDbManagerTests
             AfterAdd?.Invoke();
             if (Fail) throw new IOException("injected catalog publication failure");
         }
-        public bool Remove(in StateId to, long depth)
+        public bool Remove(in StateId to, SnapshotTier tier)
         {
             if (Fail && rollbackFails) throw new IOException("injected rollback failure");
-            return inner.Remove(to, depth);
+            return inner.Remove(to, tier);
         }
         public IEnumerable<CatalogEntry> Load() => inner.Load();
     }
@@ -1320,7 +1380,7 @@ public class PbtDbManagerTests
     {
         internal bool FailRemove { get; set; }
         public void Add(CatalogEntry entry) => inner.Add(entry);
-        public bool Remove(in StateId to, long depth) => FailRemove ? throw new IOException("injected rewind catalog delete failure") : inner.Remove(to, depth);
+        public bool Remove(in StateId to, SnapshotTier tier) => FailRemove ? throw new IOException("injected rewind catalog delete failure") : inner.Remove(to, tier);
         public IEnumerable<CatalogEntry> Load() => inner.Load();
     }
 

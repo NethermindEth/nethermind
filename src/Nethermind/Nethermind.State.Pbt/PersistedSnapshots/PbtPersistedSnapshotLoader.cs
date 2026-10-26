@@ -58,7 +58,7 @@ public sealed class PbtPersistedSnapshotLoader(
                 if (missing.Contains(entry.Location.ArenaId))
                 {
                     if (_logger.IsWarn) _logger.Warn($"Persisted PBT state {entry.To} has no arena {entry.Location.ArenaId}; removing its stale catalog entry.");
-                    catalog.Remove(entry.To, Depth(entry.From, entry.To));
+                    catalog.Remove(entry.To, entry.Tier);
                     continue;
                 }
                 if (arena is ArenaManager mapped && !mapped.ContainsLocation(entry.Location))
@@ -139,18 +139,21 @@ public sealed class PbtPersistedSnapshotLoader(
 
     private bool Publish(PbtPersistedSnapshot snapshot, bool duplicateSuccess)
     {
-        long depth = snapshot.Depth;
-        if (repository.TryLeasePersistedCatalogKey(snapshot.To, depth, out PbtPersistedSnapshot? existing))
+        if (repository.TryLeasePersistedCatalogKey(snapshot.To, snapshot.Tier, out PbtPersistedSnapshot? existing))
         {
             using (existing)
             {
-                if (existing!.From != snapshot.From || existing.TreeRoot != snapshot.TreeRoot)
-                    throw new InvalidDataException("Conflicting persisted PBT catalog identity.");
-                return duplicateSuccess;
+                if (existing!.From == snapshot.From)
+                {
+                    if (existing.TreeRoot != snapshot.TreeRoot) throw new InvalidDataException("Conflicting persisted PBT catalog identity.");
+                    return duplicateSuccess;
+                }
             }
         }
         try
         {
+            // Replaces the row of a snapshot already at (To, tier), which the admission displaces, so no row outlives
+            // its snapshot. A rollback then leaves that one unrecorded: missing after a restart, not stale.
             catalog.Add(new(snapshot.From, snapshot.To, snapshot.Location, snapshot.Tier));
             if (!repository.TryAddPersisted(snapshot)) throw new InvalidOperationException("Persisted PBT admission lost under publication lock.");
             return true;
@@ -159,7 +162,7 @@ public sealed class PbtPersistedSnapshotLoader(
         {
             try
             {
-                catalog.Remove(snapshot.To, depth);
+                catalog.Remove(snapshot.To, snapshot.Tier);
             }
             catch (Exception rollbackError)
             {
@@ -200,8 +203,6 @@ public sealed class PbtPersistedSnapshotLoader(
         }
         catch { result.Dispose(); throw; }
     }
-
-    private static long Depth(in StateId from, in StateId to) => unchecked((long)(to.BlockNumber - from.BlockNumber));
 
     public void Dispose()
     {

@@ -11,7 +11,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
+using Nethermind.Api.Monitoring;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;

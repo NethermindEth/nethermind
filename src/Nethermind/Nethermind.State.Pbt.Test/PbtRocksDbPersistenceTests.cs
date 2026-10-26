@@ -34,7 +34,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
+using Nethermind.Api.Monitoring;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;

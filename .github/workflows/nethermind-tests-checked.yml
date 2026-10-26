@@ -50,7 +50,7 @@ jobs:
             hw-intrinsic: 0
             artifact: release
             avx512: 1
-        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.sh).
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/RunTestProjects.cs).
         project:
           - Nethermind.JsonRpc.Test
           - Nethermind.Synchronization.Test
@@ -167,12 +167,16 @@ jobs:
           submodules: ${{ matrix.project.fixtures && 'recursive' || 'false' }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
         with:
           variant: ${{ matrix.variant.artifact }}
+
+      - name: Build test project runner
+        if: matrix.project.list
+        run: dotnet build scripts/ci/RunTestProjects.cs --output "${{ runner.temp }}/test-project-runner"
 
       # A pack runs the checked and no-intrinsics lanes of several projects; the ISA lanes keep their own step.
       - name: ${{ matrix.project.name }}
@@ -182,7 +186,7 @@ jobs:
           CRASH_RETRY: false
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
           DOTNET_EnableAVX512: ${{ matrix.variant.avx512 }}
-        run: bash scripts/ci/run-test-projects.sh
+        run: dotnet "${{ runner.temp }}/test-project-runner/RunTestProjects.dll"
 
       - name: ${{ matrix.project }}
         if: '!matrix.project.list'
@@ -249,7 +253,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.project.name || matrix.project }}-${{ matrix.variant.label }}-dumps
           # The ISA lanes run several projects, each writing into its own TestResults.
@@ -294,7 +298,7 @@ jobs:
           submodules: recursive
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
@@ -322,7 +326,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.variant.label }}-dumps
           path: |

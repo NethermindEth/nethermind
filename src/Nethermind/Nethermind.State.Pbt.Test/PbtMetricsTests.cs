@@ -12,7 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
-using Nethermind.Monitoring.Config;
+using Nethermind.Api.Monitoring;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;

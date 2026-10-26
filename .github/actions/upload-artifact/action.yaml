@@ -1,0 +1,216 @@
+name: Upload artifact
+description: >-
+  Runs actions/upload-artifact, retrying up to 10 attempts with growing pauses, as the artifact service
+  sometimes fails (e.g. "Failed to FinalizeArtifact"). Takes the inputs of
+  actions/upload-artifact that the workflows use. Run after actions/checkout, as this action is local.
+  Use actions/upload-artifact directly when a failure always repeats, e.g. with if-no-files-found: error
+  after a step that may not write the files: each failed attempt adds a pause of up to 45 s.
+
+inputs:
+  name:
+    description: Artifact name.
+    required: true
+  path:
+    description: Files, directories or wildcard patterns to upload.
+    required: true
+  if-no-files-found:
+    description: warn, error or ignore.
+    default: warn
+  retention-days:
+    description: Days to keep the artifact. Empty uses the repository default.
+    default: ''
+  compression-level:
+    description: Zlib compression level, 0 to 9.
+    default: '6'
+  include-hidden-files:
+    description: Upload hidden files.
+    default: 'false'
+  overwrite:
+    description: Replace an artifact with the same name.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Upload artifact
+      id: attempt1
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}
+
+    - name: Wait before attempt 2
+      if: steps.attempt1.outcome == 'failure'
+      shell: bash
+      run: sleep 5
+
+    - name: Upload artifact (attempt 2)
+      id: attempt2
+      if: steps.attempt1.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}
+
+    - name: Wait before attempt 3
+      if: steps.attempt2.outcome == 'failure'
+      shell: bash
+      run: sleep 10
+
+    - name: Upload artifact (attempt 3)
+      id: attempt3
+      if: steps.attempt2.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}
+
+    - name: Wait before attempt 4
+      if: steps.attempt3.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Upload artifact (attempt 4)
+      id: attempt4
+      if: steps.attempt3.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}
+
+    - name: Wait before attempt 5
+      if: steps.attempt4.outcome == 'failure'
+      shell: bash
+      run: sleep 20
+
+    - name: Upload artifact (attempt 5)
+      id: attempt5
+      if: steps.attempt4.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}
+
+    - name: Wait before attempt 6
+      if: steps.attempt5.outcome == 'failure'
+      shell: bash
+      run: sleep 25
+
+    - name: Upload artifact (attempt 6)
+      id: attempt6
+      if: steps.attempt5.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}
+
+    - name: Wait before attempt 7
+      if: steps.attempt6.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+
+    - name: Upload artifact (attempt 7)
+      id: attempt7
+      if: steps.attempt6.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}
+
+    - name: Wait before attempt 8
+      if: steps.attempt7.outcome == 'failure'
+      shell: bash
+      run: sleep 35
+
+    - name: Upload artifact (attempt 8)
+      id: attempt8
+      if: steps.attempt7.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}
+
+    - name: Wait before attempt 9
+      if: steps.attempt8.outcome == 'failure'
+      shell: bash
+      run: sleep 40
+
+    - name: Upload artifact (attempt 9)
+      id: attempt9
+      if: steps.attempt8.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}
+
+    - name: Wait before attempt 10
+      if: steps.attempt9.outcome == 'failure'
+      shell: bash
+      run: sleep 45
+
+    - name: Upload artifact (attempt 10)
+      id: attempt10
+      if: steps.attempt9.outcome == 'failure'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        if-no-files-found: ${{ inputs.if-no-files-found }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        include-hidden-files: ${{ inputs.include-hidden-files }}
+        overwrite: ${{ inputs.overwrite }}

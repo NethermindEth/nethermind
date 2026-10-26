@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Builders;
 using System.IO.Abstractions;
@@ -352,6 +353,262 @@ public class EraImporterTest
                 Assert.That(targetTree.Head!.Hash, Is.EqualTo(targetParent.Hash));
                 Assert.That(targetTree.FinalizedHash, Is.EqualTo(finalizedBeforeImport));
             }
+        }
+    }
+
+    [Test]
+    public async Task Import_EpochForeignToLocalHeaders_KeepsLocalHeaders([Values] bool withTrustedAccumulators, [Values(1UL, 9UL)] ulong lowestLocalHeader)
+    {
+        const int chainLength = 16;
+        await using IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(chainLength);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        targetTree.SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+
+        Hash256[] localHashes = new Hash256[chainLength];
+        for (ulong i = lowestLocalHeader; i < chainLength; i++)
+        {
+            BlockHeader local = sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Clone();
+            local.ExtraData = [0x4c, 0x4f, 0x43, (byte)i];
+            local.Hash = local.CalculateHash();
+            targetTree.Insert(local, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+            localHashes[i] = local.Hash;
+        }
+
+        string? accumulatorFile = withTrustedAccumulators ? Path.Join(exportPath, EraExporter.AccumulatorFileName) : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, accumulatorFile, CancellationToken.None),
+                Throws.TypeOf<EraVerificationException>());
+            for (ulong i = 1; i < chainLength; i++)
+                Assert.That(targetTree.FindLevel(i)?.BlockInfos.Select(static info => info.BlockHash), i < lowestLocalHeader ? Is.Null : Is.EqualTo(new[] { localHashes[i] }), $"headers at {i}");
+        }
+    }
+
+    private static async Task<(IContainer Source, IContainer Target, IBlockTree TargetTree, string ExportPath)> BuildBeaconGapEnv(bool foreignBeaconHeaders)
+    {
+        const int chainLength = 16;
+        const ulong bestKnown = 4;
+        const ulong lowestBeacon = 10;
+        IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+        IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        targetTree.SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+
+        for (ulong i = 1; i <= bestKnown; i++)
+            targetTree.Insert(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+
+        targetTree.LowestInsertedHeader = sourceTree.FindHeader(1, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+        for (ulong i = chainLength - 1; i >= lowestBeacon; i--)
+        {
+            BlockHeader beacon = sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Clone();
+            if (foreignBeaconHeaders)
+            {
+                beacon.ExtraData = [0x42, 0x43, (byte)i];
+                beacon.Hash = beacon.CalculateHash();
+            }
+
+            targetTree.Insert(beacon, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded | BlockTreeInsertHeaderOptions.BeaconHeaderMetadata | BlockTreeInsertHeaderOptions.NotOnMainChain);
+        }
+
+        return (sourceCtx, targetCtx, targetTree, sourceCtx.ResolveTempDirPath());
+    }
+
+    [Test]
+    public async Task Import_ArchiveForeignToBeaconHeadersAboveGap_WritesNothingInGap()
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, string exportPath) = await BuildBeaconGapEnv(foreignBeaconHeaders: true);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.LowestInsertedHeader?.Number, Is.LessThan(5UL));
+                Assert.That(targetTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(10UL));
+                Assert.That(
+                    () => targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, null, CancellationToken.None),
+                    Throws.TypeOf<EraVerificationException>());
+                for (ulong i = 5; i < 10; i++)
+                    Assert.That(targetTree.FindLevel(i), Is.Null, $"level {i}");
+            }
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BeaconGap_MustLinkToBeaconHeaders([Values] bool linked)
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, _) = await BuildBeaconGapEnv(foreignBeaconHeaders: !linked);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+            Task Check() => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                targetTree,
+                0,
+                15,
+                number => Task.FromResult(sourceTree.FindBlock(number, BlockTreeLookupOptions.None)),
+                CancellationToken.None);
+
+            if (linked)
+                Assert.That(Check, Throws.Nothing);
+            else
+                Assert.That(Check, Throws.TypeOf<EraVerificationException>());
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BeaconGapStartsAtForeignBlock_Throws()
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, _) = await BuildBeaconGapEnv(foreignBeaconHeaders: false);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+            Block foreign = Build.A.Block.WithNumber(5).WithParentHash(Keccak.OfAnEmptyString).TestObject;
+
+            Assert.That(
+                () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                    targetTree,
+                    5,
+                    15,
+                    number => Task.FromResult(number == 5 ? foreign : sourceTree.FindBlock(number, BlockTreeLookupOptions.None)),
+                    CancellationToken.None),
+                Throws.TypeOf<EraVerificationException>());
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_RangeEndsInsideBeaconGap_MustLinkToBestKnown([Values] bool linked)
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, _) = await BuildBeaconGapEnv(foreignBeaconHeaders: false);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+            Block first = linked
+                ? sourceTree.FindBlock(5, BlockTreeLookupOptions.None)!
+                : Build.A.Block.WithNumber(5).WithParentHash(Keccak.OfAnEmptyString).TestObject;
+
+            Func<Task> check = () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                targetTree,
+                5,
+                8,
+                number => Task.FromResult(number == 5 ? first : sourceTree.FindBlock(number, BlockTreeLookupOptions.None)),
+                CancellationToken.None);
+
+            if (linked)
+                Assert.That(check, Throws.Nothing);
+            else
+                Assert.That(check, Throws.TypeOf<EraVerificationException>());
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_CancelledOverKnownHeights_ThrowsWithoutReadingArchive()
+    {
+        const int chainLength = 16;
+        await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        int archiveReads = 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                    ctx.Resolve<IBlockTree>(),
+                    1,
+                    chainLength - 1,
+                    _ =>
+                    {
+                        archiveReads++;
+                        return Task.FromResult<Block?>(null);
+                    },
+                    new CancellationToken(canceled: true)),
+                Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(archiveReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_HeadersCoverRange_DoesNotLoadEveryLevel()
+    {
+        const int chainLength = 200;
+        await using IContainer sourceCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer ctx = EraTestModule.BuildContainerBuilder()
+            .AddDecorator<IBlockTree, FindLevelCountingBlockTree>()
+            .Build();
+        FindLevelCountingBlockTree blockTree = (FindLevelCountingBlockTree)ctx.Resolve<IBlockTree>();
+        blockTree.SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        for (ulong i = 1; i < chainLength; i++)
+            blockTree.Insert(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        blockTree.LowestInsertedHeader = sourceTree.FindHeader(1, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        blockTree.ResetCalls();
+
+        await KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(blockTree, 1, chainLength - 1, _ => Task.FromResult<Block?>(null), CancellationToken.None);
+
+        Assert.That(blockTree.FindLevelCalls, Is.LessThan(10));
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BlockAboveHighestKnown_MustLinkToIt([Values] bool linked)
+    {
+        const int chainLength = 16;
+        await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+        BlockHeader top = blockTree.FindHeader(blockTree.BestKnownNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
+        Block above = Build.A.Block.WithNumber(top.Number + 1).WithParentHash(linked ? top.Hash! : Keccak.OfAnEmptyString).TestObject;
+
+        Task Check() => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+            blockTree,
+            top.Number + 1,
+            top.Number + 1,
+            number => Task.FromResult<Block?>(number == above.Number ? above : null),
+            CancellationToken.None);
+
+        if (linked)
+            Assert.That(Check, Throws.Nothing);
+        else
+            Assert.That(Check, Throws.TypeOf<EraImportException>().With.Message.Contains("Unknown parent"));
+    }
+
+    [Test]
+    public async Task EnsureMatch_MainChainBlock_DoesNotAllocate()
+    {
+        await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10).Build();
+        IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+        Block block = blockTree.FindBlock(5, BlockTreeLookupOptions.None)!;
+        KnownHeaders.EnsureMatch(blockTree, block);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_000; i++)
+            KnownHeaders.EnsureMatch(blockTree, block);
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(1_000));
+    }
+
+    private sealed class FindLevelCountingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+    {
+        public int FindLevelCalls { get; private set; }
+
+        public void ResetCalls() => FindLevelCalls = 0;
+
+        public override ChainLevelInfo? FindLevel(ulong number)
+        {
+            FindLevelCalls++;
+            return base.FindLevel(number);
         }
     }
 }

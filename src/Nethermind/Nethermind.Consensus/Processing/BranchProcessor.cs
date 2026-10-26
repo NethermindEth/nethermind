@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -16,6 +17,8 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -26,10 +29,13 @@ public class BranchProcessor(
     IBlockhashProvider blockhashProvider,
     IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
     ILogManager logManager,
+    IWorldStateManager worldStateManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
+
+    private readonly Lazy<IWorldStateScopeProvider> _inclusionListParentState = new(worldStateManager.CreateResettableWorldState);
 
     private const int MaxUncommittedBlocks = 64;
 
@@ -50,6 +56,10 @@ public class BranchProcessor(
     }
 
     private IDisposable BeginTargetScope(Block targetBlock) => stateProvider.BeginScopeAtTarget(targetBlock.Header);
+
+    private IWorldStateScopeProvider.IScope OpenInclusionListParentScope(BlockHeader? parent)
+        => _inclusionListParentState.Value.TryBeginScope(parent, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope)
+            ? scope : throw new StateNotRetainedException("Parent state is unavailable for inclusion-list validation");
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
@@ -90,11 +100,21 @@ public class BranchProcessor(
         Exception? processingException = null;
         bool verdictGiven = false;
 
+        bool useBalForInclusionList = false;
+        bool? boundaryInclusionListSatisfied = null;
+        // Production, tracing and simulation do not report inclusion-list compliance.
+        bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
+
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
-        blockProcessor.TransactionsExecuted += CancelBackgroundWork;
+        void OnTransactionsExecuted(Block processedBlock)
+        {
+            backgroundCancellation?.Cancel();
+            if (checkInclusionList && !useBalForInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 })
+                boundaryInclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
+        }
+        blockProcessor.TransactionsExecuted += OnTransactionsExecuted;
 
         try
         {
@@ -104,7 +124,7 @@ public class BranchProcessor(
             {
                 // Start prewarming as early as possible.
                 prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-                prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                prefetchBlockhash = spec.IsEip7709Enabled ? null : blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
                 blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
                 BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
             }
@@ -112,14 +132,13 @@ public class BranchProcessor(
             BlockHeader? preBlockBaseBlock = baseBlock;
 
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-            // Production, tracing and eth_simulate never report inclusion-list compliance.
-            bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
 
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
+                boundaryInclusionListSatisfied = null;
                 using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
                 {
@@ -139,7 +158,7 @@ public class BranchProcessor(
                 // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();
                 if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
-                prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                if (!spec.IsEip7709Enabled) prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
                 {
@@ -151,6 +170,8 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
+                useBalForInclusionList = checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 }
+                    && spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis;
                 ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
                     ? options
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
@@ -185,10 +206,32 @@ public class BranchProcessor(
                 if (processedBlock.GasUsed == 0) processedBlock.Header.GasUsedPerDimension ??= (0, 0);
                 suggestedBlock.Header.GasUsedPerDimension = processedBlock.Header.GasUsedPerDimension;
 
-                // A signal, not a rejection: the block is still committed, and it reads post-execution
-                // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
-                bool inclusionListSatisfied = !checkInclusionList
-                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
+                // Finalized BAL values include post-execution credits; reverse them only for accounts the checker reads.
+                bool inclusionListSatisfied = true;
+                if (useBalForInclusionList)
+                {
+                    IWorldStateScopeProvider.IScope? parentScope = null;
+                    try
+                    {
+                        InclusionListCommittedState boundaryState = new(stateProvider, (uint)processedBlock.Transactions.Length + 1,
+                            () => processedBlock.BlockAccessList ?? (processedBlock.EncodedBlockAccessList is { } encoded
+                                ? BlockAccessListDecoder.Instance.Decode(encoded)
+                                : processedBlock.GeneratedBlockAccessList is { } generated
+                                    ? BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(generated)) : null),
+                            () => new ScopeReadOnlyStateProvider(parentScope ??= OpenInclusionListParentScope(preBlockBaseBlock)));
+                        inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, boundaryState);
+                        if (!boundaryState.Available) throw new InvalidOperationException("Inclusion-list transaction-boundary state is unavailable");
+                    }
+                    finally
+                    {
+                        parentScope?.Dispose();
+                    }
+                }
+                else if (checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 })
+                {
+                    inclusionListSatisfied = boundaryInclusionListSatisfied
+                        ?? throw new InvalidOperationException("Inclusion list was not checked after transactions");
+                }
                 processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
                 suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
 
@@ -258,7 +301,7 @@ public class BranchProcessor(
         {
             try
             {
-                blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+                blockProcessor.TransactionsExecuted -= OnTransactionsExecuted;
                 worldStateCloser?.Dispose();
             }
             finally
