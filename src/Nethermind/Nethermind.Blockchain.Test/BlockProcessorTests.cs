@@ -2404,8 +2404,11 @@ public partial class BlockProcessorTests
         Assert.That(eventFired, Is.True, "TransactionsExecuted should fire after ProcessTransactions completes");
     }
 
-    [Test]
-    public void ProcessOne_rejects_parallel_failure_without_sequential_retry([Values] bool balFailure)
+    [TestCase(false, false, true)]
+    [TestCase(true, false, false)]
+    [TestCase(true, true, false)]
+    [TestCase(true, true, true)]
+    public void ProcessOne_retries_sequentially_only_an_undeclared_access_during_parallel_execution(bool balFailure, bool undeclaredAccess, bool raisedByWorker)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -2428,11 +2431,13 @@ public partial class BlockProcessorTests
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         // The BAL is bound to the block hash, so a BAL failure makes the block invalid just as a tx failure does;
-        // re-executing it sequentially would only double the cost of rejecting it.
-        InvalidBlockException failure = balFailure
-            ? new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL")
-            : new InvalidTransactionException(block.Header, "invalid tx", TransactionResult.ErrorType.MalformedTransaction);
-        BlockAccessListManager.ParallelExecutionException parallelFailure = new(failure);
+        // re-executing it sequentially only pays off when execution stopped at an undeclared access before its own rejection.
+        InvalidBlockException failure = !balFailure
+            ? new InvalidTransactionException(block.Header, "invalid tx", TransactionResult.ErrorType.MalformedTransaction)
+            : undeclaredAccess
+                ? new BlockAccessListBasedWorldState.UndeclaredAccessException(block.Header, "undeclared access")
+                : new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL");
+        InvalidBlockException parallelFailure = raisedByWorker ? new BlockAccessListManager.ParallelExecutionException(failure) : failure;
         transactionsExecutor.ProcessTransactions(
                 Arg.Any<Block>(),
                 Arg.Any<ProcessingOptions>(),
@@ -2448,9 +2453,17 @@ public partial class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception, Is.SameAs(parallelFailure));
+            if (undeclaredAccess)
+            {
+                Assert.That(exception, Is.InstanceOf<BlockProcessor.BlockAccessListSequentialRetryException>());
+                Assert.That(exception!.InnerException, Is.SameAs(parallelFailure));
+            }
+            else
+            {
+                Assert.That(exception, Is.SameAs(parallelFailure));
+            }
             Assert.That(logger.LogList, Has.Exactly(balFailure ? 1 : 0).Contains("for its block access list"),
-                "a parallel BAL rejection has no sequential fallback, so it must be visible");
+                "a false positive on a valid block must be visible even when a sequential retry accepts it");
             // The metric is process-wide and other tests may bump it concurrently, so only growth is asserted.
             if (balFailure) Assert.That(Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections), Is.GreaterThan(rejectionsBefore));
         }

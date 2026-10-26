@@ -469,8 +469,8 @@ public class BlockAccessListBasedWorldStateTests
             }
             else bws.Setup(next);
 
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.Get(in cell, out _));
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.GetOriginal(in cell, out _));
+            Assert.Throws<BlockAccessListBasedWorldState.UndeclaredAccessException>(() => bws.Get(in cell, out _));
+            Assert.Throws<BlockAccessListBasedWorldState.UndeclaredAccessException>(() => bws.GetOriginal(in cell, out _));
         }
     }
 
@@ -592,9 +592,9 @@ public class BlockAccessListBasedWorldStateTests
             Assert.That(bws.GetBalance(new Address(TestItem.AddressA.Bytes)), Is.EqualTo((UInt256)10));
             Assert.That(bws.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)30));
             Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+            Assert.Throws<BlockAccessListBasedWorldState.UndeclaredAccessException>(
                 () => bws.GetBalance(TestItem.AddressC));
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+            Assert.Throws<BlockAccessListBasedWorldState.UndeclaredAccessException>(
                 () => bws.GetBalance(TestItem.AddressC));
             Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
 
@@ -705,9 +705,9 @@ public class BlockAccessListBasedWorldStateTests
                 Assert.That(bws.IsContract(TestItem.AddressA), Is.EqualTo(last < 0 ? kind is "nonce" or "empty" : last % 2 == 0 && kind == "code"));
             }
             if (!decorate) Assert.That(parent.TakeSnapshot(), Is.EqualTo(before), "composite reads must not journal");
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.AccountExists(TestItem.AddressB));
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.IsDeadAccount(TestItem.AddressB));
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.IsContract(TestItem.AddressB));
+            Assert.Throws<BlockAccessListBasedWorldState.UndeclaredAccessException>(() => bws.AccountExists(TestItem.AddressB));
+            Assert.Throws<BlockAccessListBasedWorldState.UndeclaredAccessException>(() => bws.IsDeadAccount(TestItem.AddressB));
+            Assert.Throws<BlockAccessListBasedWorldState.UndeclaredAccessException>(() => bws.IsContract(TestItem.AddressB));
         }
     }
 
@@ -1148,7 +1148,7 @@ public class BlockAccessListBasedWorldStateTests
             suggestedBal: new ReadOnlyBlockAccessList());
         using (scope)
         {
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() =>
+            Assert.Throws<BlockAccessListBasedWorldState.UndeclaredAccessException>(() =>
                 bws.GetBalance(TestItem.AddressB));
         }
     }
@@ -1215,7 +1215,7 @@ public class BlockAccessListBasedWorldStateTests
 
         using (scope)
         {
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+            Assert.Throws<BlockAccessListBasedWorldState.UndeclaredAccessException>(
                 () =>
                 {
                     if (original) bws.GetOriginal(in cell, out _);

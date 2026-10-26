@@ -96,6 +96,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
 
+    /// <summary>Execution reached an account or storage slot the suggested block access list does not declare.</summary>
+    public class UndeclaredAccessException(BlockHeader block, string message) : InvalidBlockLevelAccessListException(block, message);
+
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
 
     /// <inheritdoc/>
@@ -566,7 +569,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingAccount(Address address)
-        => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        => throw new UndeclaredAccessException(SuggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
 
     [DoesNotReturn, StackTraceHidden]
     private ReadOnlyMemory<byte> ThrowMissingAdoptedCode(in ValueHash256 codeHash)
@@ -574,5 +577,5 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)
-        => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
+        => throw new UndeclaredAccessException(SuggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
 }

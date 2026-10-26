@@ -97,7 +97,7 @@ public partial class BlockProcessor(
             // ordinary invalid blocks, even when a sequential retry later accepts it.
             Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
             if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
-            if (HasFrameTransaction(suggestedBlock)) throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
+            if (IsUndeclaredAccess(ex)) throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
             throw;
         }
         finally
@@ -114,15 +114,16 @@ public partial class BlockProcessor(
         return (block, receipts);
     }
 
-    private static bool HasFrameTransaction(Block block)
-    {
-        foreach (Transaction tx in block.Transactions)
-        {
-            if (tx.Type == TxType.FrameTx) return true;
-        }
-
-        return false;
-    }
+    /// <summary>Whether execution against the block access list stopped at an access the list does not declare.</summary>
+    /// <remarks>
+    /// What makes a block invalid is missing from its list: an invalid transaction (a sender short of funds, a wrong nonce,
+    /// an EIP-8141 frame transaction invalidated by its frames) or a system contract with no code. Execution reaches such an
+    /// access before it can report that rejection. Sequential execution reports it, and still rejects a list that execution
+    /// disagrees with.
+    /// </remarks>
+    private static bool IsUndeclaredAccess(InvalidBlockException e) =>
+        e is BlockAccessListBasedWorldState.UndeclaredAccessException
+            or BlockAccessListManager.ParallelExecutionException { InnerException: BlockAccessListBasedWorldState.UndeclaredAccessException };
 
     private static bool IsBlockAccessListFailure(InvalidBlockException e) =>
         e is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException
