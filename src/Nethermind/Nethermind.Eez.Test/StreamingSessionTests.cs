@@ -96,26 +96,29 @@ public class StreamingSessionTests
         Assert.That(session.Ready(session.Binding, 4).Ready.ValidatedThrough, Is.EqualTo(11), "a duplicate does not create capacity or advance the prefix");
     }
 
-    [TestCase(true, TestName = "Duplicate_ReplacementOverByteQuota_IsRejectedWithWitnessCapacityAvailable")]
-    [TestCase(false, TestName = "Duplicate_ReplacementOverWitnessQuota_IsRejectedWithByteCapacityAvailable")]
-    public void Duplicate_WithOversizedReplacementWitness_IsStillRejected(bool byteQuota)
+    [Test]
+    public void Duplicate_WithOversizedReplacementWitness_IsStillRejected([Values] bool byteQuota, [Values] bool conditional)
     {
         BlockWitness block = Block(11, AnchorHash);
         long maxBytes = byteQuota ? block.CalculateSize() : 10000;
         long maxWitnessItems = byteQuota ? 16 : 1;
-        StreamingSession session = new("composer", Anchor(), new StreamingSessionLimits(2, maxBytes, maxWitnessItems));
+        StreamingSession session = new("composer", Anchor(), new StreamingSessionLimits(2, maxBytes, maxWitnessItems),
+            new StreamingProtocolRules(conditional ? StreamingSettlementProfile.Rollup0Conditional : StreamingSettlementProfile.Rollup0Calldata));
         Add(session, 11, AnchorHash);
         block.Witness.Codes.Add(Hash(90));
         long items = (long)block.Witness.State.Count + block.Witness.Codes.Count + block.Witness.Keys.Count + block.Witness.Headers.Count;
-        if (byteQuota)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(block.CalculateSize(), Is.GreaterThan(maxBytes));
-            Assert.That(items, Is.LessThanOrEqualTo(maxWitnessItems));
-        }
-        else
-        {
-            Assert.That(block.CalculateSize(), Is.LessThanOrEqualTo(maxBytes));
-            Assert.That(items, Is.GreaterThan(maxWitnessItems));
+            if (byteQuota)
+            {
+                Assert.That(block.CalculateSize(), Is.GreaterThan(maxBytes));
+                Assert.That(items, Is.LessThanOrEqualTo(maxWitnessItems));
+            }
+            else
+            {
+                Assert.That(block.CalculateSize(), Is.LessThanOrEqualTo(maxBytes));
+                Assert.That(items, Is.GreaterThan(maxWitnessItems));
+            }
         }
         AssertCode(() => session.AdmitBlock(session.Binding, 2, block), StatusCode.ResourceExhausted);
         Assert.That(session.Ready(session.Binding, 3).Ready.ValidatedThrough, Is.EqualTo(11), "temporary duplicate witness data remains independently bounded");
@@ -494,6 +497,90 @@ public class StreamingSessionTests
         SessionBinding binding = session.Binding;
         AssertCode(() => session.Rewind(binding, 2, ByteString.Empty), expected);
         Assert.That((session.Binding, session.Ready(binding, 3).Ready.ValidatedThrough), Is.EqualTo((binding, 10UL)));
+    }
+
+    [Test]
+    public void ConditionalQuota_ConsecutiveFullWindows_KeepSessionAndBoundEachProof([Values("blocks", "bytes", "items")] string quota)
+    {
+        long pairBytes = Block(11, AnchorHash).CalculateSize() + Block(12, Hash(11)).CalculateSize();
+        StreamingSessionLimits limits = new(quota == "blocks" ? 2 : 8, quota == "bytes" ? pairBytes : 10000, quota == "items" ? 2 : 16);
+        StreamingSession session = new("composer", Anchor(), limits, new StreamingProtocolRules(StreamingSettlementProfile.Rollup0Conditional));
+        for (ulong first = 11; first < 17; first += 2)
+        {
+            Add(session, first, first == 11 ? AnchorHash : Hash((byte)(first - 1)));
+            Add(session, first + 1, Hash((byte)first));
+            AssertCode(() => session.AdmitBlock(session.Binding, 1, Block(first + 2, Hash((byte)(first + 1)))), StatusCode.ResourceExhausted);
+            if (first > 11)
+                AssertCode(() => session.AdmitFinalize(session.Binding, 2, FinalizeRange(first - 2, first + 1)), StatusCode.ResourceExhausted);
+            Complete(session, first, first + 1);
+            Assert.That(session.Ready(session.Binding, 3).Ready.ValidatedThrough, Is.EqualTo(first + 1));
+        }
+        AssertCode(() => session.AdmitFinalize(session.Binding, 4, FinalizeRange(11, 12)), StatusCode.OutOfRange);
+    }
+
+    [Test]
+    public void ConditionalQuota_ProofRetryAndRewind_DoNotGrantAnotherWindow()
+    {
+        StreamingSession session = new("composer", Anchor(), new StreamingSessionLimits(2, 10000, 16),
+            new StreamingProtocolRules(StreamingSettlementProfile.Rollup0Conditional));
+        Add(session, 11, AnchorHash);
+        Add(session, 12, Hash(11));
+        Complete(session, 11, 12);
+        Add(session, 13, Hash(12));
+        Complete(session, 11, 11);
+        Add(session, 14, Hash(13));
+        AssertCode(() => session.AdmitBlock(session.Binding, 1, Block(15, Hash(14))), StatusCode.ResourceExhausted);
+        using (SessionOperation duplicate = session.AdmitBlock(session.Binding, 2, Block(14, Hash(13))))
+            session.CommitBlock(duplicate, Executed(duplicate));
+        AssertCode(() => session.AdmitBlock(session.Binding, 3, Block(15, Hash(14))), StatusCode.ResourceExhausted);
+
+        session.Rewind(session.Binding, 4, Hash(11));
+        Add(session, 12, Hash(11));
+        Add(session, 13, Hash(12));
+        AssertCode(() => session.AdmitBlock(session.Binding, 5, Block(14, Hash(13))), StatusCode.ResourceExhausted);
+        session.Rewind(session.Binding, 6, AnchorHash);
+        Add(session, 11, AnchorHash);
+        Add(session, 12, Hash(11));
+        AssertCode(() => session.AdmitBlock(session.Binding, 7, Block(13, Hash(12))), StatusCode.ResourceExhausted);
+    }
+
+    [Test]
+    public void ConditionalQuota_FailedProofAndStaleProof_DoNotReleaseActiveBudget([Values] bool stale)
+    {
+        StreamingSession session = new("composer", Anchor(), new StreamingSessionLimits(1, 10000, 16),
+            new StreamingProtocolRules(StreamingSettlementProfile.Rollup0Conditional));
+        Add(session, 11, AnchorHash);
+        using (SessionOperation operation = session.AdmitFinalize(session.Binding, 1, FinalizeRange(11, 11)))
+        {
+            if (stale) session.Resume("composer");
+            AssertCode(() => session.CompleteProof(operation, stale ? ValidProof() : new Proof()), stale ? StatusCode.Aborted : StatusCode.Internal);
+        }
+        AssertCode(() => session.AdmitBlock(session.Binding, 2, Block(12, Hash(11))), StatusCode.ResourceExhausted);
+        Complete(session, 11, 11);
+        Add(session, 12, Hash(11));
+    }
+
+    [TestCase(0UL, 12UL, StatusCode.InvalidArgument)]
+    [TestCase(12UL, 11UL, StatusCode.InvalidArgument)]
+    [TestCase(10UL, 9UL, StatusCode.InvalidArgument)]
+    [TestCase(10UL, 12UL, StatusCode.OutOfRange)]
+    [TestCase(11UL, 13UL, StatusCode.FailedPrecondition)]
+    public void ConditionalFinalize_InvalidRange_UsesRecoveryStatusWithoutChangingProgress(ulong from, ulong to, StatusCode expected)
+    {
+        StreamingSession session = new("composer", Anchor(), Limits(), new StreamingProtocolRules(StreamingSettlementProfile.Rollup0Conditional));
+        Add(session, 11, AnchorHash);
+        Add(session, 12, Hash(11));
+        SessionBinding binding = session.Binding;
+        AssertCode(() => session.AdmitFinalize(binding, 1, FinalizeRange(from, to)), expected);
+        Assert.That((session.Binding, session.Ready(binding, 2).Ready.ValidatedThrough), Is.EqualTo((binding, 12UL)));
+    }
+
+    private static Proof ValidProof() => new() { PublicInputsHash = Hash(80), Proof_ = Hash(81) };
+
+    private static void Complete(StreamingSession session, ulong from, ulong to)
+    {
+        using SessionOperation operation = session.AdmitFinalize(session.Binding, 1, FinalizeRange(from, to));
+        session.CompleteProof(operation, ValidProof());
     }
 
     private static StreamingSession Session() => new("composer", Anchor(), Limits());

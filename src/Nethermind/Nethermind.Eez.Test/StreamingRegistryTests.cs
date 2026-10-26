@@ -34,9 +34,12 @@ public class StreamingRegistryTests
     }
 
     [Test]
-    public void GlobalReservationLimit_IsIndependentOfSessionCount()
+    public void GlobalReservationLimit_IsIndependentOfSessionCount([Values] bool conditional)
     {
-        using StreamingSessionRegistry registry = Registry(new ManualTime(), 4, 4, 7999);
+        long reservation = conditional ? 8000 : 4000;
+        using StreamingSessionRegistry registry = new(new StreamingRegistryLimits(4, 4, reservation * 2 - 1, TimeSpan.FromSeconds(10)),
+            new StreamingSessionLimits(8, 1000, 16), new ManualTime(),
+            conditional ? StreamingSettlementProfile.Rollup0Conditional : StreamingSettlementProfile.Rollup0Calldata);
         registry.Begin("first", Anchor());
         AssertCode(() => registry.Begin("second", Anchor()), StatusCode.ResourceExhausted);
     }
@@ -561,7 +564,7 @@ public class StreamingRegistryTests
     }
 
     private static StreamingSessionRegistry NativeRegistry(ManualTime time, int count, StreamingSettlementProfile profile = StreamingSettlementProfile.RollupXNative) =>
-        new(new StreamingRegistryLimits(count, count, 4000 * count, TimeSpan.FromSeconds(10)),
+        new(new StreamingRegistryLimits(count, count, (profile == StreamingSettlementProfile.Rollup0Conditional ? 8000L : 4000L) * count, TimeSpan.FromSeconds(10)),
             new StreamingSessionLimits(8, 1000, 16), time, profile);
 
     private static void Commit(StreamingConnection connection, ServerFrame ready, ulong requestId)

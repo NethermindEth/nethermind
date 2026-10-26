@@ -13,7 +13,6 @@ namespace Nethermind.Eez.Attester;
 
 internal sealed class StreamingSessionRegistry : IDisposable
 {
-    internal const int ReservationCopies = 4;
     private readonly object _lock = new();
     private readonly Dictionary<ByteString, Entry> _sessions = [];
     private readonly StreamingRegistryLimits _limits;
@@ -30,10 +29,10 @@ internal sealed class StreamingSessionRegistry : IDisposable
     {
         sessionLimits.Validate();
         limits.Validate();
-        if (sessionLimits.MaxBytes > long.MaxValue / ReservationCopies) throw new ArgumentOutOfRangeException(nameof(sessionLimits));
-        _reservation = sessionLimits.MaxBytes * ReservationCopies;
-        if (_reservation > limits.MaxReservedBytes) throw new ArgumentOutOfRangeException(nameof(limits));
         Rules = new StreamingProtocolRules(profile);
+        if (sessionLimits.MaxBytes > long.MaxValue / Rules.ReservationCopies) throw new ArgumentOutOfRangeException(nameof(sessionLimits));
+        _reservation = sessionLimits.MaxBytes * Rules.ReservationCopies;
+        if (_reservation > limits.MaxReservedBytes) throw new ArgumentOutOfRangeException(nameof(limits));
         _limits = limits;
         _sessionLimits = sessionLimits;
         _time = time;

@@ -23,23 +23,23 @@ namespace Nethermind.Eez.Test;
 
 public class StreamingConformanceTests
 {
-    private static string DirectoryPath
+    private static string DirectoryPath(bool prooflessRequests)
     {
-        get
-        {
-            string? path = Environment.GetEnvironmentVariable("EEZ_CONFORMANCE_VECTOR_DIR");
-            if (!string.IsNullOrEmpty(path)) return path;
-            if (Environment.GetEnvironmentVariable("EEZ_REQUIRE_UPSTREAM_VECTORS") == "true")
-                throw new InvalidOperationException("the streaming CI job requires its selected upstream vector directory");
-            return StatelessFixtures.PathOf("streaming-conformance", "");
-        }
+        if (prooflessRequests) return StatelessFixtures.PathOf("streaming-conformance", "");
+        string? path = Environment.GetEnvironmentVariable("EEZ_CONFORMANCE_VECTOR_DIR");
+        if (!string.IsNullOrEmpty(path)) return path;
+        if (Environment.GetEnvironmentVariable("EEZ_REQUIRE_UPSTREAM_VECTORS") == "true")
+            throw new InvalidOperationException("the streaming CI job requires its selected upstream vector directory");
+        return StatelessFixtures.PathOf("streaming-conformance", "rollup0-conditional");
     }
 
-    private static IEnumerable<TestCaseData> Cases()
+    private static IEnumerable<TestCaseData> Cases() => ReadCases(false);
+
+    private static IEnumerable<TestCaseData> ReadCases(bool prooflessRequests)
     {
         foreach (string file in new[] { "rollup0-transcripts.json", "rollup0-limits-transcripts.json" })
         {
-            JsonElement document = Read(file);
+            JsonElement document = Read(file, prooflessRequests);
             foreach (JsonElement item in document.GetProperty("cases").EnumerateArray())
             {
                 string name = item.GetProperty("name").GetString()!;
@@ -50,7 +50,7 @@ public class StreamingConformanceTests
 
     private static IEnumerable<TestCaseData> ProoflessCases()
     {
-        foreach (TestCaseData test in Cases())
+        foreach (TestCaseData test in ReadCases(true))
         {
             string file = (string)test.Arguments[0]!;
             string name = (string)test.Arguments[1]!;
@@ -68,7 +68,7 @@ public class StreamingConformanceTests
 
     private static async Task ReplayScenario(string file, string name, bool prooflessRequests)
     {
-        JsonElement document = Read(file);
+        JsonElement document = Read(file, prooflessRequests);
         JsonElement scenario = document.GetProperty("cases").EnumerateArray().Single(item => item.GetProperty("name").GetString() == name);
         ulong parent = name switch
         {
@@ -90,7 +90,7 @@ public class StreamingConformanceTests
     [TestCase("finalize-last-block", TestName = "ProveStream_UnsettledLastBlock_RejectsProof")]
     public async Task ProveStream_ParentNotRegistered_RejectsBeforeSigning(string name)
     {
-        JsonElement scenario = Read("rollup0-transcripts.json").GetProperty("cases").EnumerateArray()
+        JsonElement scenario = Read("rollup0-transcripts.json", true).GetProperty("cases").EnumerateArray()
             .Single(item => item.GetProperty("name").GetString() == name);
         await using StreamingEndpointTests.EndpointServer server = await StreamingEndpointTests.EndpointServer.Start(
             StatelessFixtures.Window84, 79, 84, new WindowLimits(8, 16 * 1024 * 1024, 100_000), 78);
@@ -127,9 +127,9 @@ public class StreamingConformanceTests
         Assert.Fail("the selected upstream scenario has no Finalize");
     }
 
-    private static JsonElement Read(string file)
+    private static JsonElement Read(string file, bool prooflessRequests)
     {
-        string path = Path.Combine(DirectoryPath, file);
+        string path = Path.Combine(DirectoryPath(prooflessRequests), file);
         Assert.That(new FileInfo(path).Length, Is.InRange(1L, 8L * 1024 * 1024), "vector data must have a bounded size");
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         Assert.That(document.RootElement.GetProperty("format").GetString(), Is.EqualTo("eez-prove-v2-transcript-1"), "unknown transcript formats require an explicit adapter");

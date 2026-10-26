@@ -312,20 +312,29 @@ def vectors(args):
     args.directory.mkdir(parents=True, exist_ok=False)
     resolve(args)
     manifest = json.loads(args.output.read_text())
-    tree = api("git/trees/" + manifest["revision"] + "?recursive=1")
-    if tree.get("truncated"):
-        raise ValueError("upstream vector tree is incomplete")
-    available = {entry["path"]: entry["sha"] for entry in tree["tree"] if entry["type"] == "blob"}
-    found = [name for name in names if prefix + name in available]
-    snapshot = Path(__file__).resolve().parents[3] / "src/Nethermind/Nethermind.Eez.Test/Fixtures/streaming-conformance"
+    pull = api("pulls/229")
+    merged = pull["merged"]
+    if merged:
+        merge = sha(pull["merge_commit_sha"])
+        comparison = api("compare/" + merge + "..." + manifest["revision"])
+        if comparison["merge_base_commit"]["sha"] != merge:
+            raise ValueError("selected revision predates the current streaming quota contract")
+        tree = api("git/trees/" + manifest["revision"] + "?recursive=1")
+        if tree.get("truncated"):
+            raise ValueError("upstream vector tree is incomplete")
+        available = {entry["path"]: entry["sha"] for entry in tree["tree"] if entry["type"] == "blob"}
+        found = [name for name in names if prefix + name in available]
+    else:
+        found = []
+    snapshot = Path(__file__).resolve().parents[3] / "src/Nethermind/Nethermind.Eez.Test/Fixtures/streaming-conformance/rollup0-conditional"
     if len(found) == len(names):
         source = {"source": "public-main", "revision": manifest["revision"], "core_revision": manifest["core_revision"], "files": {}}
-    elif found or api("pulls/205")["merged"]:
+    elif found or merged:
         raise ValueError("selected upstream revision is missing the vector suite")
     else:
         source = json.loads((snapshot / "provenance.json").read_text())
         source["source"] = "reviewed-pr-snapshot-before-merge"
-        print("PR205 vectors are not on public main yet; running the explicit reviewed snapshot " + sha(source["revision"]))
+        print("PR229 vectors are not on public main yet; running the explicit reviewed snapshot " + sha(source["revision"]))
     for name in names:
         if found:
             blob = sha(available[prefix + name])

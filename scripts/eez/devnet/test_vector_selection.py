@@ -18,7 +18,7 @@ class VectorSelectionTests(unittest.TestCase):
     revision = "a" * 40
     core = "b" * 40
 
-    def invoke(self, directory, available, merged=False, data=None, truncated=False):
+    def invoke(self, directory, available, merged=True, data=None, truncated=False, old_replay=False):
         args = SimpleNamespace(revision="", directory=directory / "vectors", output=directory / "vectors/upstream.json")
         document = {"format": "eez-prove-v2-transcript-1", "cases": [{"name": "baseline", "steps": [
             {"action": "open", "stream": "main"}, {"action": "send", "stream": "main", "protobuf_hex": ""},
@@ -37,7 +37,8 @@ class VectorSelectionTests(unittest.TestCase):
                 return {"tree": [{"path": "eez-core-protocol", "mode": "160000", "sha": self.core}]}
             if path == "git/trees/" + self.revision + "?recursive=1":
                 return {"tree": [{"path": "crates/eez-control-rpc/conformance/" + name, "type": "blob", "sha": blobs[name]} for name in available], "truncated": truncated}
-            if path == "pulls/205": return {"merged": merged}
+            if path == "pulls/229": return {"merged": merged, "merge_commit_sha": "e" * 40}
+            if path.startswith("compare/" + "e" * 40): return {"merge_base_commit": {"sha": ("f" if old_replay else "e") * 40}}
             if path.startswith("git/blobs/"):
                 blob = path.removeprefix("git/blobs/")
                 name = next(name for name in self.names if blobs[name] == blob)
@@ -58,11 +59,19 @@ class VectorSelectionTests(unittest.TestCase):
             self.assertEqual(manifest["vectors"]["source"], "public-main")
             self.assertEqual(manifest["vectors"]["revision"], self.revision)
             self.assertEqual(paths.count("commits/main"), 1)
-            self.assertNotIn("pulls/205", paths)
+            self.assertIn("pulls/229", paths)
             for index, name in enumerate(self.names):
                 self.assertIn("git/blobs/" + str(index + 3) * 40, paths)
                 self.assertEqual((args.directory / name).read_bytes(), payloads[name])
                 self.assertEqual(manifest["vectors"]["files"][name], upstream.hashlib.sha256(payloads[name]).hexdigest())
+
+    def test_replay_before_quota_contract_merge_cannot_use_old_vectors(self):
+        with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "predates the current streaming quota contract"):
+            self.invoke(Path(temporary), self.names, old_replay=True)
+
+    def test_replay_before_quota_contract_merge_cannot_use_old_vectors(self):
+        with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "predates the current streaming quota contract"):
+            self.invoke(Path(temporary), self.names, old_replay=True)
 
     def test_vectors_above_contents_api_limit_use_the_selected_git_blob(self):
         snapshot = Path(upstream.__file__).resolve().parents[3] / "src/Nethermind/Nethermind.Eez.Test/Fixtures/streaming-conformance"
@@ -76,15 +85,16 @@ class VectorSelectionTests(unittest.TestCase):
 
     def test_before_merge_uses_exact_reviewed_snapshot_with_distinct_provenance(self):
         with tempfile.TemporaryDirectory() as temporary:
-            args, _, manifest, _ = self.invoke(Path(temporary), [])
+            args, paths, manifest, _ = self.invoke(Path(temporary), self.names, merged=False)
+            self.assertNotIn("git/trees/" + self.revision + "?recursive=1", paths)
             self.assertEqual(manifest["revision"], self.revision)
             self.assertEqual(manifest["vectors"]["source"], "reviewed-pr-snapshot-before-merge")
-            self.assertEqual(manifest["vectors"]["revision"], "d3c94296bd6f23b4a5e0104950948492ab36398b")
+            self.assertEqual(manifest["vectors"]["revision"], "ad5792d8044fd2c3a584a82c9b08d1e76aef67ce")
             for name in self.names:
                 self.assertEqual(manifest["vectors"]["files"][name], upstream.hashlib.sha256((args.directory / name).read_bytes()).hexdigest())
 
     def test_missing_partial_or_truncated_suite_cannot_use_a_silent_fallback(self):
-        for available, merged, truncated in (([], True, False), ([self.names[0]], False, False), (self.names, False, True)):
+        for available, merged, truncated in (([], True, False), ([self.names[0]], True, False), (self.names, True, True)):
             with self.subTest(available=available, merged=merged, truncated=truncated), tempfile.TemporaryDirectory() as temporary:
                 with self.assertRaises(ValueError):
                     self.invoke(Path(temporary), available, merged=merged, truncated=truncated)
@@ -94,7 +104,7 @@ class VectorSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, patch.object(upstream.hashlib, "sha256") as digest:
             digest.return_value.hexdigest.return_value = "0" * 64
             with self.assertRaisesRegex(ValueError, "snapshot digest mismatch"):
-                self.invoke(Path(temporary), [])
+                self.invoke(Path(temporary), [], merged=False)
 
     def test_empty_case_or_missing_requests_responses_cannot_count_as_conformance(self):
         no_response = [{"action": action, "stream": "main", "protobuf_hex": ""} for action in ("open", "send", "send", "eof")]

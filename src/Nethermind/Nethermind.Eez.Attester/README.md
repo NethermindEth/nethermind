@@ -35,7 +35,7 @@ requires a restart; retained sessions belong to the exact SHA256 certificate ide
 When v2 is enabled, keep `--listen-addr` on loopback. The v1 method cannot be called on
 the TLS listener. v1 and v2 share one backend execution slot. Configure both block/byte
 limits and total retained-byte budgets for the available memory. Each retained session
-reserves four times its byte limit for retained and temporary payload copies, so the example budget admits at most two full sessions. This reservation does not include all ABI decoding, protobuf object or EVM working memory.
+reserves four times its byte limit for retained and temporary payload copies, so the example budget admits at most two full sessions. The `rollup0-conditional` profile reserves eight times its byte limit. It retains one proved window and one active window; each Finalize range must still fit one window. Retrying an older proof does not grant more storage. Rewind charges replacement blocks against the active window. These reservations do not include all ABI decoding, protobuf object or EVM working memory.
 
 L1/L2 RPC sources are trusted operator infrastructure. L1 must serve `eth_chainId`,
 `eth_getBlockByNumber` and canonical EIP-1898 `eth_call`. L2 must serve `eth_chainId`

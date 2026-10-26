@@ -30,7 +30,13 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri? L1Rpc, Ur
                 UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
                 MaxDepth = 16,
             }) ?? throw Invalid();
-            bool conditional = settings.Profile == "rollup0-conditional";
+            StreamingSettlementProfile profile = settings.Profile switch
+            {
+                "rollupx-native" => StreamingSettlementProfile.RollupXNative,
+                "rollup0-conditional" => StreamingSettlementProfile.Rollup0Conditional,
+                _ => StreamingSettlementProfile.Rollup0Calldata,
+            };
+            bool conditional = profile == StreamingSettlementProfile.Rollup0Conditional;
             if (settings.Profile is not ("rollup0-calldata" or "rollup0-conditional" or "rollupx-native") ||
                 !IPAddress.IsLoopback(attester.ListenAddress.Address) || settings.ComposerCertificates is not { Length: > 0 and <= 16 }) throw Invalid();
             if (conditional ? settings.L1Rpc is not null || settings.L2Rpc is not null || settings.L1ChainId != 0 ||
@@ -51,7 +57,7 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri? L1Rpc, Ur
             sessionLimits.Validate();
             transportLimits.Validate();
             if (settings.MaxConnections > 64 || settings.MaxSessions > 64 || settings.MaxSessionsPerOwner > settings.MaxSessions ||
-                settings.MaxReservedBytes > 8L * 1024 * 1024 * 1024 || settings.MaxSessionBytes > registryLimits.MaxReservedBytes / StreamingSessionRegistry.ReservationCopies)
+                settings.MaxReservedBytes > 8L * 1024 * 1024 * 1024 || settings.MaxSessionBytes > registryLimits.MaxReservedBytes / new StreamingProtocolRules(profile).ReservationCopies)
                 throw Invalid();
             string directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             string[] pins = new string[settings.ComposerCertificates.Length];
@@ -60,12 +66,7 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri? L1Rpc, Ur
                 Path.GetFullPath(Required(settings.ServerCertificate), directory), Path.GetFullPath(Required(settings.ServerPasswordFile), directory),
                 pins, registryLimits, sessionLimits, transportLimits)
             {
-                Profile = settings.Profile switch
-                {
-                    "rollupx-native" => StreamingSettlementProfile.RollupXNative,
-                    "rollup0-conditional" => StreamingSettlementProfile.Rollup0Conditional,
-                    _ => StreamingSettlementProfile.Rollup0Calldata,
-                },
+                Profile = profile,
                 L1ChainConfigPath = settings.Profile == "rollupx-native" ? Path.GetFullPath(Required(settings.L1ChainConfigPath), directory) : null,
                 L2GenesisHash = settings.Profile == "rollupx-native" ? GenesisHash(settings.L2GenesisHash) : null,
             };

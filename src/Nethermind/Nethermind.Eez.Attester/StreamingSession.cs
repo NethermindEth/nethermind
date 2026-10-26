@@ -22,6 +22,7 @@ internal sealed class StreamingSession
     private readonly StreamingProtocolRules _rules;
     private bool _attached = true;
     private readonly ulong _initialAnchorNumber;
+    private ulong _provedThrough;
     private readonly List<RetainedBlock> _blocks = [];
     private Begin _anchor;
     private SessionBinding _binding;
@@ -46,6 +47,7 @@ internal sealed class StreamingSession
         _owner = authenticatedOwner;
         RollupId = begin.RollupId;
         _initialAnchorNumber = begin.AnchorNumber;
+        _provedThrough = begin.AnchorNumber;
         _anchor = new Begin
         {
             RollupId = begin.RollupId,
@@ -156,6 +158,7 @@ internal sealed class StreamingSession
             if (index == -2) throw Error(StatusCode.FailedPrecondition, "ancestor outside validated prefix");
             AdvanceEpoch();
             RemoveSuffix(index + 1);
+            _provedThrough = Math.Min(_provedThrough, TipNumber);
             return (Frame(requestId, new Ready { ValidatedThrough = TipNumber, ValidatedHash = TipHash }), _binding, _revoked.Task);
         }
     }
@@ -197,10 +200,18 @@ internal sealed class StreamingSession
             long size = _rules.ChargesWireFrames ? frameBytes : block.CalculateSize();
             if (size <= 0) throw new ArgumentOutOfRangeException(nameof(frameBytes));
             long items = (long)block.Witness.State.Count + block.Witness.Codes.Count + block.Witness.Keys.Count + block.Witness.Headers.Count;
-            long availableBytes = duplicate >= 0 ? _limits.MaxBytes : _limits.MaxBytes - _bytes;
-            long availableItems = duplicate >= 0 ? _limits.MaxWitnessItems : _limits.MaxWitnessItems - _witnessItems;
-            if (size > availableBytes || items > availableItems || (duplicate < 0 && _blocks.Count >= _limits.MaxBlocks))
-                throw Error(StatusCode.ResourceExhausted, "session block limit exceeded");
+            if (_rules.RetainsProvedWindow)
+            {
+                int first = duplicate >= 0 ? _blocks.Count : checked((int)(_provedThrough - _anchor.AnchorNumber));
+                CheckWindowQuota(first, _blocks.Count, size, items, 1);
+            }
+            else
+            {
+                long availableBytes = duplicate >= 0 ? _limits.MaxBytes : _limits.MaxBytes - _bytes;
+                long availableItems = duplicate >= 0 ? _limits.MaxWitnessItems : _limits.MaxWitnessItems - _witnessItems;
+                if (size > availableBytes || items > availableItems || (duplicate < 0 && _blocks.Count >= _limits.MaxBlocks))
+                    throw Error(StatusCode.ResourceExhausted, "session block limit exceeded");
+            }
 
             ByteString preStateRoot = duplicate >= 0 ? PreStateRoot(duplicate) : TipStateRoot;
             _pending = new SessionOperation(this, binding, requestId, block.Clone(), preStateRoot, size, items, duplicate);
@@ -214,12 +225,16 @@ internal sealed class StreamingSession
         {
             CheckBinding(binding);
             CheckIdle();
-            if (finalize.Settlement is null || finalize.TerminalHash.Length != 32 || finalize.FromBlock <= _initialAnchorNumber || finalize.FromBlock > finalize.ToBlock)
+            if (finalize.Settlement is null || finalize.TerminalHash.Length != 32 || finalize.FromBlock == 0 || finalize.FromBlock > finalize.ToBlock ||
+                (!_rules.RetainsProvedWindow && finalize.FromBlock <= _initialAnchorNumber))
                 throw Error(_rules.InvalidRange, "invalid finalization range or settlement");
+            if (_rules.RetainsProvedWindow && finalize.FromBlock <= _anchor.AnchorNumber)
+                throw Error(StatusCode.OutOfRange, "range starts before retained session prefix");
             int first = FindBlock(finalize.FromBlock);
             int last = FindBlock(finalize.ToBlock);
             if (first < 0 || last < first || _blocks[last].Data.Hash != finalize.TerminalHash)
                 throw Error(StatusCode.FailedPrecondition, "range outside validated prefix");
+            if (_rules.RetainsProvedWindow) CheckWindowQuota(first, last + 1);
             long settlementBytes = _rules.ChargesWireFrames ? frameBytes : finalize.CalculateSize();
             if (settlementBytes <= 0) throw new ArgumentOutOfRangeException(nameof(frameBytes));
             if (settlementBytes > (_rules.ChargesWireFrames ? _limits.MaxBytes - _bytes : _limits.MaxBytes))
@@ -255,8 +270,11 @@ internal sealed class StreamingSession
             else
             {
                 _blocks.Add(new RetainedBlock(block, executed.PostStateRoot, operation.Size, operation.WitnessItems));
-                _bytes += operation.Size;
-                _witnessItems += operation.WitnessItems;
+                if (!_rules.RetainsProvedWindow)
+                {
+                    _bytes += operation.Size;
+                    _witnessItems += operation.WitnessItems;
+                }
             }
             operation.Completed = true;
             return new ServerFrame
@@ -286,15 +304,17 @@ internal sealed class StreamingSession
         lock (_lock)
         {
             CheckOperation(operation);
-            (ulong from, _) = operation.FinalizationRange;
+            (ulong from, ulong to) = operation.FinalizationRange;
             if (proof.PublicInputsHash.Length != 32 || proof.Proof_.IsEmpty)
                 throw Error(StatusCode.Internal, "invalid proof backend result");
             int first = FindBlock(from);
             ServerFrame response = new() { SessionId = Id, RequestId = operation.RequestId, Epoch = operation.Binding.Epoch, Proof = proof.Clone() };
             AdvanceEpoch();
             _anchor = operation.Predecessor!;
-            for (int i = 0; i < first; i++) Release(_blocks[i]);
+            if (!_rules.RetainsProvedWindow)
+                for (int i = 0; i < first; i++) Release(_blocks[i]);
             _blocks.RemoveRange(0, first);
+            if (_rules.RetainsProvedWindow) _provedThrough = Math.Max(_provedThrough, to);
             operation.Completed = true;
             return (response, _binding, _revoked.Task);
         }
@@ -350,9 +370,26 @@ internal sealed class StreamingSession
         return checked((int)(number - _anchor.AnchorNumber - 1));
     }
 
+    private void CheckWindowQuota(int first, int end, long bytes = 0, long items = 0, int additionalBlocks = 0)
+    {
+        if ((long)end - first + additionalBlocks > _limits.MaxBlocks)
+            throw Error(StatusCode.ResourceExhausted, "window block limit exceeded");
+        if (bytes > _limits.MaxBytes || items > _limits.MaxWitnessItems)
+            throw Error(StatusCode.ResourceExhausted, "window witness limit exceeded");
+        for (int i = first; i < end; i++)
+        {
+            RetainedBlock block = _blocks[i];
+            if (block.Size > _limits.MaxBytes - bytes || block.WitnessItems > _limits.MaxWitnessItems - items)
+                throw Error(StatusCode.ResourceExhausted, "window witness limit exceeded");
+            bytes += block.Size;
+            items += block.WitnessItems;
+        }
+    }
+
     private void RemoveSuffix(int first)
     {
-        for (int i = first; i < _blocks.Count; i++) Release(_blocks[i]);
+        if (!_rules.RetainsProvedWindow)
+            for (int i = first; i < _blocks.Count; i++) Release(_blocks[i]);
         _blocks.RemoveRange(first, _blocks.Count - first);
     }
 
