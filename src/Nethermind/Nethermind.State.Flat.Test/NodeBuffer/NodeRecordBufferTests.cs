@@ -10,7 +10,6 @@ using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
