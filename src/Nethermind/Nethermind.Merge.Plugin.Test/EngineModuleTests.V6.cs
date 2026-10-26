@@ -427,8 +427,9 @@ public partial class EngineModuleTests
 
     [TestCase(
         "0x9d101a431b3af94e5ee308d6a29151bdcd58880470890f74b92bec3d55861767",
-        "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e")]
-    public async Task NewPayloadV5_invalid_BAL_keeps_both_access_lists_in_bad_blocks(string blockHash, string stateRoot)
+        "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
+        null)]
+    public virtual async Task NewPayloadV5_invalid_BAL_keeps_both_access_lists_in_bad_blocks(string blockHash, string stateRoot, string? customWithdrawalContractAddress)
     {
         List<Block> inserted = [];
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.NoEip8037Instance, configurer: builder => builder
@@ -444,7 +445,7 @@ public partial class EngineModuleTests
                 return store;
             }));
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block block = CreateBlockWithInvalidBal(chain, blockHash, stateRoot, null);
+        Block block = CreateBlockWithInvalidBal(chain, blockHash, stateRoot, customWithdrawalContractAddress);
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
