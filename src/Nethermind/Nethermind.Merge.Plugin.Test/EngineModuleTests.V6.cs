@@ -428,8 +428,9 @@ public partial class EngineModuleTests
     [TestCase(
         "0x9d101a431b3af94e5ee308d6a29151bdcd58880470890f74b92bec3d55861767",
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
+        "0x7e1753f77e6e83be83cbe533f587d2660f683af828a4ce2fea4883a7af2444a6",
         null)]
-    public virtual async Task NewPayloadV5_invalid_BAL_keeps_both_access_lists_in_bad_blocks(string blockHash, string stateRoot, string? customWithdrawalContractAddress)
+    public virtual async Task NewPayloadV5_invalid_BAL_keeps_both_access_lists_in_bad_blocks(string blockHash, string stateRoot, string generatedBalHash, string? customWithdrawalContractAddress)
     {
         List<Block> inserted = [];
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.NoEip8037Instance, configurer: builder => builder
@@ -458,8 +459,9 @@ public partial class EngineModuleTests
             Assert.That(badBlock["hash"]!.GetValue<string>(), Is.EqualTo(blockHash));
             Assert.That(badBlock["blockAccessList"]!.GetValue<string>(), Is.EqualTo(BlockAccessListDecoder.EncodeToBytes(block.BlockAccessList!).ToHexString(true)));
             // Parallel execution only checks the suggested access list and does not build one.
-            Assert.That(badBlock["generatedBlockAccessList"]?.GetValue<string>(),
-                Parallel ? Is.Null : Is.Not.Null.And.Not.EqualTo(badBlock["blockAccessList"]!.GetValue<string>()));
+            string? generated = badBlock["generatedBlockAccessList"]?.GetValue<string>();
+            Assert.That(generated is null ? null : Keccak.Compute(Bytes.FromHexString(generated)),
+                Parallel ? Is.Null : Is.EqualTo(new Hash256(generatedBalHash)));
             // The manager reuses its generated access list for the next block, so the bad block must keep its own copy.
             Assert.That(inserted.Single().EncodedGeneratedBlockAccessList?.ToHexString(true), Is.EqualTo(badBlock["generatedBlockAccessList"]?.GetValue<string>()));
         }
