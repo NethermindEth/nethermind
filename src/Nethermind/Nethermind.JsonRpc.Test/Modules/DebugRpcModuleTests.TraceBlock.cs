@@ -614,6 +614,9 @@ public partial class DebugRpcModuleTests
                     foreach (bool streamMode in new[] { false, true })
                         yield return new TestCaseData(scenario, streamMode, duration, method);
         }
+        foreach (string scenario in new[] { "native", "javascript", "empty-native", "empty-javascript" })
+            foreach (bool streamMode in new[] { false, true })
+                yield return new TestCaseData(scenario, streamMode, "bad", "debug_traceBlock");
     }
 
     [TestCaseSource(nameof(BlockTimeoutRouteCases))]
@@ -665,7 +668,12 @@ public partial class DebugRpcModuleTests
             options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":true,"onlyTopCall":null,"withLog":null}""");
         }
 
-        object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToString()
+        };
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, options);
         JToken json = JToken.Parse(response);
         if (duration is "type" or "oversized")
@@ -699,6 +707,15 @@ public partial class DebugRpcModuleTests
             Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length), response);
             for (int i = 0; i < traces.Count; i++)
                 Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+        }
+        else if (method == "debug_traceBlock")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+                Assert.That(json["result"], Is.Null, response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("invalid argument 1"), response);
+            }
         }
         else
         {
