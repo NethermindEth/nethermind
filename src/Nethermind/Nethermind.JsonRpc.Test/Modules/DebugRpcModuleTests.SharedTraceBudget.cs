@@ -45,7 +45,14 @@ public partial class DebugRpcModuleTests
     }
 
     [TestCaseSource(nameof(BufferedDeadlineRoutes))]
-    public async Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution(bool indexed, bool filtered, string expiry)
+    public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution(bool indexed, bool filtered, string expiry) =>
+        AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: false);
+
+    [TestCaseSource(nameof(BufferedDeadlineRoutes))]
+    public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution_by_hash(bool indexed, bool filtered, string expiry) =>
+        AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: true);
+
+    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -82,6 +89,9 @@ public partial class DebugRpcModuleTests
             DeadlineClock = clock,
             TxHash = filtered ? block.Transactions[2].Hash : null
         };
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => byHash
+            ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
+            : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
         // Keep parallel routing enabled but serialize execution so fake-clock advancement is deterministic.
         budget.Wait(CancellationToken.None);
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result;
@@ -89,13 +99,13 @@ public partial class DebugRpcModuleTests
         {
             if (expiry == "external")
             {
-                Assert.Catch<OperationCanceledException>(() => chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options));
+                Assert.Catch<OperationCanceledException>(() => Trace());
                 Assert.That(probe.Attempts, Is.EqualTo(1));
                 Assert.That(clock.Calls, Is.InRange(2, 3), "indexed workers may acquire the execution permit out of transaction order");
                 Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
                 return;
             }
-            result = chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
+            result = Trace();
         }
         finally { budget.Release(); }
         using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = result;
