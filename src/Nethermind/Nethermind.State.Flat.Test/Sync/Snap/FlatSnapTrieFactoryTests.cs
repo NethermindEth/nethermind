@@ -442,20 +442,20 @@ public class FlatSnapTrieFactoryTests
         StorageRangeProgress[]? storageRanges = null,
         AccountWithStorageStartingHash[]? accountsToRefresh = null,
         Hash256? anchorHash = null) => new()
-    {
-        AnchorNumber = 1,
-        AnchorHash = anchorHash ?? TestItem.KeccakA,
-        Partitions =
+        {
+            AnchorNumber = 1,
+            AnchorHash = anchorHash ?? TestItem.KeccakA,
+            Partitions =
         [
             new AccountRangeProgress(FirstPartitionLimit, FirstPartitionLimit, MoreAccountsToRight: false),
             new AccountRangeProgress(NextAccount, ValueKeccak.MaxValue, MoreAccountsToRight: true),
         ],
-        StoragesToRetrieve = storagesToRetrieve ?? [],
-        StorageRanges = storageRanges ?? [],
-        AccountsToRefresh = accountsToRefresh ?? [],
-        CodesToRetrieve = [],
-        UpdatedStorages = [],
-    };
+            StoragesToRetrieve = storagesToRetrieve ?? [],
+            StorageRanges = storageRanges ?? [],
+            AccountsToRefresh = accountsToRefresh ?? [],
+            CodesToRetrieve = [],
+            UpdatedStorages = [],
+        };
 
     private sealed class FlushFailingDb : MemDb, IDbMeta
     {
